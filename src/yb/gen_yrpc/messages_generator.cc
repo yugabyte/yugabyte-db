@@ -372,8 +372,7 @@ class Message {
       printer(
           "std::vector<std::pair<std::string, std::string>> TracingAttributes() const;\n"
           "void AppendTracingAttributes(\n"
-          "    const std::string& prefix,\n"
-          "    std::vector<std::pair<std::string, std::string>>* out) const;\n\n"
+          "    const std::string& prefix, ::yb::rpc::TracingAttributeCollector* out) const;\n\n"
       );
     }
 
@@ -466,7 +465,7 @@ class Message {
           "    const $message_pb_name$& msg);\n"
           "void AppendTracingAttributes(\n"
           "    const $message_pb_name$& msg, const std::string& prefix,\n"
-          "    std::vector<std::pair<std::string, std::string>>* out);\n\n"
+          "    ::yb::rpc::TracingAttributeCollector* out);\n\n"
       );
     }
 
@@ -1152,14 +1151,13 @@ class Message {
     printer(
         "std::vector<std::pair<std::string, std::string>> "
             "$message_lw_name$::TracingAttributes() const {\n"
-        "  std::vector<std::pair<std::string, std::string>> result;\n"
-        "  AppendTracingAttributes(\"req.\", &result);\n"
-        "  return result;\n"
+        "  ::yb::rpc::TracingAttributeCollector collector;\n"
+        "  AppendTracingAttributes(\"req.\", &collector);\n"
+        "  return collector.Finish();\n"
         "}\n"
         "\n"
         "void $message_lw_name$::AppendTracingAttributes(\n"
-        "    const std::string& prefix, "
-            "std::vector<std::pair<std::string, std::string>>* out) const {\n"
+        "    const std::string& prefix, ::yb::rpc::TracingAttributeCollector* out) const {\n"
     );
     EmitTracingAttributesBody(printer, Lightweight::kTrue);
 
@@ -1169,14 +1167,14 @@ class Message {
     printer(
         "std::vector<std::pair<std::string, std::string>> TracingAttributes(\n"
         "    const $message_pb_name$& msg) {\n"
-        "  std::vector<std::pair<std::string, std::string>> result;\n"
-        "  AppendTracingAttributes(msg, \"req.\", &result);\n"
-        "  return result;\n"
+        "  ::yb::rpc::TracingAttributeCollector collector;\n"
+        "  AppendTracingAttributes(msg, \"req.\", &collector);\n"
+        "  return collector.Finish();\n"
         "}\n"
         "\n"
         "void AppendTracingAttributes(\n"
         "    const $message_pb_name$& msg, const std::string& prefix,\n"
-        "    std::vector<std::pair<std::string, std::string>>* out) {\n"
+        "    ::yb::rpc::TracingAttributeCollector* out) {\n"
     );
     EmitTracingAttributesBody(printer, Lightweight::kFalse);
   }
@@ -1240,14 +1238,14 @@ class Message {
           }
         } else {
           printer(
-              "out->emplace_back(prefix + \"$field_name$\", " +
+              "out->Add(prefix + \"$field_name$\", " +
               value_expr(obj + "$field_name$()") + ");\n");
         }
         if_indent.Reset("}\n");
         continue;
       }
 
-      // Repeated: one attribute per element, index folded into the key.
+      // Repeated: index folded into the key; the collector merges equal consecutive elements.
       const bool pointer = lw && IsPointerField(field);
       if (pointer) {
         printer("if ($field_accessor$) {\n");
@@ -1268,7 +1266,7 @@ class Message {
               "    prefix + \"$field_name$.\" + std::to_string(index) + \".\", out);\n");
         } else {
           printer(
-              "out->emplace_back(\n"
+              "out->Add(\n"
               "    prefix + \"$field_name$.\" + std::to_string(index), " + value_expr("entry") +
               ");\n");
         }

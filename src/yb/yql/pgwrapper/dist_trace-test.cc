@@ -448,7 +448,10 @@ class OtlpHttpCollector {
 
   std::optional<Span> FindRpcSpanWithTableName(
       const std::string& trace_id, std::string_view table_name) const EXCLUDES(mutex_) {
-    return FindSpanWithNamePrefixAndTableName(trace_id, "rpc ", table_name);
+    // Only the pggate-published Perform span; the tserver's tablet Read/Write spans carry
+    // rpc.table_names too and must not satisfy this lookup.
+    return FindSpanWithNamePrefixAndTableName(
+        trace_id, "rpc yb.tserver.PgClientService.", table_name);
   }
 
   std::optional<Span> FindSpanWithNamePrefixAndTableName(
@@ -1102,6 +1105,11 @@ class DistTraceRpcTest : public DistTraceTest {
  protected:
   bool UsePgClientSharedMemory() const override {
     return false;
+  }
+
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceTest::ConfigureDistTraceOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_beta_feature_tablegroup=true");
   }
 };
 
@@ -2008,7 +2016,7 @@ TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
       "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
 
   ASSERT_OK(conn_->ExecuteFormat(
-      "INSERT INTO $0 VALUES (100, 'traced_insert')", kTableName));
+      "INSERT INTO $0 SELECT g, 'traced_insert' FROM generate_series(100, 104) g", kTableName));
 
   auto span = ASSERT_RESULT(WaitForSpanWithTableName(
       tp.trace_id, kSharedMemoryPerformSpanName, kTableName));
@@ -2018,8 +2026,9 @@ TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
   ASSERT_NE(table_names_it, span.str_attrs.end())
       << "rpc.table_names attribute missing on shared memory span";
   ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
+  // The five write ops share one table_id, so they collapse into a single index-range attribute.
   ASSERT_EQ(
-      span.str_attrs["req.ops.0.write.table_id"], ASSERT_RESULT(FetchYbTableId(kTableName)));
+      span.str_attrs["req.ops.0-4.write.table_id"], ASSERT_RESULT(FetchYbTableId(kTableName)));
 }
 
 TEST_F(DistTraceRpcTest, TestRpcSpans) {
@@ -2074,6 +2083,14 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
   ASSERT_EQ(read_span.service_name, "TabletServer");
   ASSERT_EQ(read_span.str_attrs["rpc.table_names"], Format("rpc_crossing_test($0)", table_id));
 
+  // A bulk insert is one Perform with many write ops on the same table; the per-op table_id tags
+  // fold into a single index-range attribute instead of one attribute per op.
+  ASSERT_OK(conn_->Execute(
+      "INSERT INTO rpc_crossing_test SELECT g, 'bulk' FROM generate_series(1000, 1099) g"));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp.trace_id, "rpc yb.tserver.PgClientService.Perform", "req.ops.0-99.write.table_id",
+      table_id));
+
   // CREATE TABLE runs the master RPC synchronously on the tserver's handler thread.
   ASSERT_OK(conn_->Execute(
       "CREATE TABLE master_crossing_test (id int PRIMARY KEY, val text)"));
@@ -2081,6 +2098,24 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
   ASSERT_OK(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.master.",
       "TabletServer" /* client_service */, "Master" /* server_service */));
+
+  // Only colocated reads embed the index as index_request (a regular table scans the index as
+  // its own read op); the tserver resolves the index name from its table cache for the Read span.
+  ASSERT_OK(conn_->Execute("CREATE TABLEGROUP rpc_crossing_tg"));
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE rpc_crossing_coloc (id int, val text) TABLEGROUP rpc_crossing_tg"));
+  ASSERT_OK(conn_->Execute("INSERT INTO rpc_crossing_coloc VALUES (1, 'row_1')"));
+  ASSERT_OK(conn_->Execute("CREATE INDEX rpc_crossing_coloc_val_idx ON rpc_crossing_coloc(val)"));
+  const auto coloc_table_id = ASSERT_RESULT(FetchYbTableId("rpc_crossing_coloc"));
+  const auto index_id = ASSERT_RESULT(FetchYbTableId("rpc_crossing_coloc_val_idx"));
+  auto tp_idx = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_idx.full));
+  ASSERT_OK(conn_->Execute("SET enable_seqscan = off"));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rpc_crossing_coloc WHERE val = 'row_1'"));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp_idx.trace_id, "rpc yb.tserver.TabletServerService.Read", "rpc.table_names",
+      Format("rpc_crossing_coloc($0), rpc_crossing_coloc_val_idx($1)", coloc_table_id, index_id)));
 }
 
 // Runs a traced INSERT with TEST_perform_async_error set, which fails Perform after its handler

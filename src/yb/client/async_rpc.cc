@@ -345,23 +345,34 @@ void PublishPendingRpcTableNames(const InFlightOps& ops) {
   }
   std::string joined_names;
   std::unordered_set<std::string_view> seen;
-  auto append = [&](const YBTableConstPtr& table) {
-    if (!table || !seen.insert(table->id()).second) {
+  auto append = [&](std::string_view name, std::string_view id) {
+    if (!seen.insert(id).second) {
       return;
     }
     if (!joined_names.empty()) {
       joined_names += ", ";
     }
-    joined_names += table->name().table_name();
+    joined_names += name;
     joined_names += '(';
-    joined_names += table->id();
+    joined_names += id;
     joined_names += ')';
   };
   for (const auto& op : ops) {
-    append(op.yb_op->table());
-    if (op.yb_op->type() == YBOperation::PGSQL_READ) {
-      append(down_cast<const YBPgsqlReadOp&>(*op.yb_op).index_table());
+    const auto& table = op.yb_op->table();
+    append(table->name().table_name(), table->id());
+    if (op.yb_op->type() != YBOperation::PGSQL_READ) {
+      continue;
     }
+    const auto& read_op = down_cast<const YBPgsqlReadOp&>(*op.yb_op);
+    if (!read_op.request().has_index_request()) {
+      continue;
+    }
+    // The index may be missing from the tserver table cache; keep the id so the span is still
+    // attributable.
+    const auto& index_table = read_op.index_table();
+    append(
+        index_table ? std::string_view(index_table->name().table_name()) : "?",
+        read_op.request().index_request().table_id());
   }
   if (!joined_names.empty()) {
     dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
