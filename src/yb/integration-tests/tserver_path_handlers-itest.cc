@@ -36,6 +36,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/json_document.h"
 #include "yb/util/stol_utils.h"
@@ -259,21 +260,26 @@ class TServerSstStatsPathHandlerItest : public TServerPathHandlersItest {
     }
     // The leader holds every row once the writes return, while a follower may still be applying
     // them: flushing one of those writes out an empty memtable, which RocksDB drops instead of
-    // adding to the manifest, leaving the page with no file to report on.
+    // adding to the manifest, leaving the page with no file to report on. The lookup is retried
+    // because the leader can briefly lack its lease, e.g. during a renewal or a stepdown.
     const auto table_info = VERIFY_RESULT(FindTable(cluster_.get(), table_name));
     size_t leader_index = cluster_->num_tablet_servers();
     TabletId tablet_id;
-    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      for (const auto& peer :
-           cluster_->GetTabletManager(i)->GetTabletPeersWithTableId(table_info->id())) {
-        if (peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-          leader_index = i;
-          tablet_id = peer->tablet_id();
-        }
-      }
-    }
-    SCHECK_LT(leader_index, cluster_->num_tablet_servers(), IllegalState,
-              "No ready leader replica of the table");
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+            for (const auto& peer :
+                 cluster_->GetTabletManager(i)->GetTabletPeersWithTableId(table_info->id())) {
+              if (peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+                leader_index = i;
+                tablet_id = peer->tablet_id();
+                return true;
+              }
+            }
+          }
+          return false;
+        },
+        30s, "Ready leader replica of the table"));
     RETURN_NOT_OK(cluster_->FlushTablets());
 
     return Format("http://$0/sst-stats?id=$1",
