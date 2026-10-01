@@ -187,6 +187,84 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
   }
 
   @Test
+  @Parameters({"true", "false"})
+  public void testKeepOriginalTaskOfOwningChain(boolean ownerIsUpdatingTask) {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+
+    TaskInfo originalTask = new TaskInfo(TaskType.ResizeNode, null);
+    originalTask.setOwner("test");
+    originalTask.setTaskState(TaskInfo.State.Failure);
+    originalTask.setTaskParams(mapper.createObjectNode());
+    originalTask.save();
+    CustomerTask originalCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            originalTask.getUuid(),
+            TargetType.Universe,
+            CustomerTask.TaskType.ResizeNode,
+            universe.getName());
+    originalCustomerTask.setCompletionTime(new Date());
+    originalCustomerTask.save();
+
+    TaskInfo intermediateRetry = new TaskInfo(TaskType.ResizeNode, null);
+    intermediateRetry.setOwner("test");
+    intermediateRetry.setTaskState(TaskInfo.State.Failure);
+    intermediateRetry.setTaskParams(
+        mapper.createObjectNode().put("originalTaskUUID", originalTask.getUuid().toString()));
+    intermediateRetry.save();
+    CustomerTask intermediateCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            intermediateRetry.getUuid(),
+            TargetType.Universe,
+            CustomerTask.TaskType.ResizeNode,
+            universe.getName());
+    intermediateCustomerTask.setCompletionTime(new Date());
+    intermediateCustomerTask.save();
+
+    TaskInfo owningTask = new TaskInfo(TaskType.ResizeNode, null);
+    owningTask.setOwner("test");
+    owningTask.setTaskState(TaskInfo.State.Failure);
+    owningTask.setTaskParams(
+        mapper.createObjectNode().put("originalTaskUUID", originalTask.getUuid().toString()));
+    owningTask.save();
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          if (ownerIsUpdatingTask) {
+            details.updatingTaskUUID = owningTask.getUuid();
+          } else {
+            details.placementModificationTaskUuid = owningTask.getUuid();
+          }
+          u.setUniverseDetails(details);
+        });
+
+    taskGarbageCollector.purgeStaleTasks(
+        defaultCustomer, List.of(originalCustomerTask, intermediateCustomerTask));
+    assertNotNull(CustomerTask.get(originalCustomerTask.getId()));
+    assertTrue(TaskInfo.maybeGet(originalTask.getUuid()).isPresent());
+    assertNull(CustomerTask.get(intermediateCustomerTask.getId()));
+    assertFalse(TaskInfo.maybeGet(intermediateRetry.getUuid()).isPresent());
+
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.updatingTaskUUID = null;
+          details.placementModificationTaskUuid = null;
+          u.setUniverseDetails(details);
+        });
+    taskGarbageCollector.purgeStaleTasks(
+        defaultCustomer, Collections.singletonList(originalCustomerTask));
+    checkCounters(defaultCustomer.getUuid(), 2.0, 0.0, 2.0, 2.0);
+    assertNull(CustomerTask.get(originalCustomerTask.getId()));
+    assertFalse(TaskInfo.maybeGet(originalTask.getUuid()).isPresent());
+  }
+
+  @Test
   @Parameters({"SoftwareUpgrade", "RollbackUpgrade", "FinalizeUpgrade"})
   public void testDeleteUpgradeTask(CustomerTask.TaskType taskType) {
     TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse, null);

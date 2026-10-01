@@ -1118,6 +1118,14 @@ public class CustomerTask extends Model {
         .orElse("Unknown");
   }
 
+  private boolean isOriginalTaskOf(@Nullable UUID ownerTaskUUID) {
+    return TaskInfo.maybeGet(ownerTaskUUID)
+        .map(TaskInfo::getTaskParams)
+        .map(params -> params.path("originalTaskUUID").asText())
+        .filter(taskUUID.toString()::equals)
+        .isPresent();
+  }
+
   @JsonIgnore
   public boolean isDeletable() {
     if (targetType.isUniverseTarget()) {
@@ -1138,6 +1146,13 @@ public class CustomerTask extends Model {
       }
       if (taskUUID.equals(taskParams.placementModificationTaskUuid)) {
         LOG.debug("Universe task {} is not deletable", targetUUID);
+        return false;
+      }
+      // An owning retry or rollback may read the first task of its chain through
+      // originalTaskUUID, as RollbackResizeNode does for the gflag baseline.
+      if (isOriginalTaskOf(taskParams.updatingTaskUUID)
+          || isOriginalTaskOf(taskParams.placementModificationTaskUuid)) {
+        LOG.debug("Universe task {} is not deletable as it starts the owning task chain", taskUUID);
         return false;
       }
     } else if (targetType == TargetType.Provider) {
