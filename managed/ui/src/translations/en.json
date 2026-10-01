@@ -101,6 +101,11 @@
         "error": {
           "failedToFetchStorageConfigs": "Failed to fetch customer storage configurations."
         }
+      },
+      "rollMaxBatchSize": {
+        "label": "Max batch size: ",
+        "tooltip": "Refers to the number of nodes that can be unavailable during upgrade process per AZ. This can possibly affect the performance of the cluster till the upgrade is finished",
+        "lockedTooltip": "Batching isn't available for this universe."
       }
     },
     "toast": {
@@ -278,7 +283,7 @@
       "helmOverrides": {
         "title": "Kubernetes Overrides",
         "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
-        "upgradeDelayLabel": "Upgrade delay between Pods:",
+        "upgradeDelayLabel": "Upgrade delay between pods/batches:",
         "addAvailabilityZone": "Add Availability Zone",
         "forceUpgrade": "Force Upgrade",
         "forceApply": "Force Apply"
@@ -583,8 +588,6 @@
         "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
         "nonRollingWarning": "<strong>Non-rolling rollback will cause database downtime.</strong><br /> The database will be unavailable for the duration of the rollback.",
         "upgradeDelayLabel": "Upgrade delay between Nodes:",
-        "numNodesToRollingUpgrade": "Max batch size: ",
-        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "footerMsg1": "After the upgrade is done, you can monitor performance and ",
         "footerMsg2": "if you detect any problems.",
         "footerMsg3": "Before upgrading, perform a full backup of your universe.",
@@ -939,8 +942,6 @@
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
         "flagsModifiedModalLine2": "Note that current changes will be lost.",
-        "numNodesToRollingUpgrade": "Max batch size: ",
-        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "pgGroupWarning": "You can't change the disabled fields because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
@@ -953,7 +954,9 @@
         "validateAndSaveSuccess": "Validated and Saved Successfully",
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
-        "yamlErrorsTitle": "Errors in helm YAML"
+        "yamlErrorsTitle": "Errors in helm YAML",
+        "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
+        "upgradeDelayLabel": "Upgrade delay between pods/batches:"
       },
       "azOverrides": {
         "modalTitle": "AZ Resource Overrides",
