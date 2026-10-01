@@ -38,9 +38,12 @@
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/util/tcmalloc_impl_util.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_util.h"
 
 using std::string;
+using namespace std::literals;
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_gauge_uint64(threads_running);
@@ -199,6 +202,34 @@ TEST_F(EMCTest, TestCallHomeCrash) {
   // Require exit code 0 from Shutdown to assert that we did not crash.
   ASSERT_NO_FATALS(cluster.Shutdown(
       ExternalMiniCluster::NodeSelectionMode::ALL, RequireExitCode0::kTrue));
+}
+
+TEST_F(EMCTest, TCMallocPerCpuCachesActive) {
+#if !YB_GOOGLE_TCMALLOC
+  GTEST_SKIP() << "Requires Google TCMalloc";
+#else
+  if (!tcmalloc::MallocExtension::PerCpuCachesActive() && !GlibcRegisteredRseq()) {
+    GTEST_SKIP() << "rseq is not available";
+  }
+
+  ExternalMiniClusterOptions opts;
+  opts.num_masters = 1;
+  opts.num_tablet_servers = 1;
+  ExternalMiniCluster cluster(opts);
+  ASSERT_OK(cluster.Start());
+
+  constexpr auto kPerCpuCachesActive = "TCMalloc per cpu caches active: 1";
+  auto* master = cluster.master(0);
+  auto* tserver = cluster.tablet_server(0);
+  tserver->Shutdown();
+  master->Shutdown();
+  LogWaiter master_waiter(master, kPerCpuCachesActive);
+  LogWaiter tserver_waiter(tserver, kPerCpuCachesActive);
+  ASSERT_OK(master->Restart());
+  ASSERT_OK(tserver->Restart());
+  ASSERT_OK(master_waiter.WaitFor(30s));
+  ASSERT_OK(tserver_waiter.WaitFor(30s));
+#endif  // YB_GOOGLE_TCMALLOC
 }
 
 } // namespace yb
