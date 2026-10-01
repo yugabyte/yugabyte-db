@@ -17,6 +17,7 @@
 #include <string_view>
 #include <thread>
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/json_util.h"
 
 #include "yb/master/master.h"
@@ -58,6 +59,7 @@ DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_bool(ysql_enable_read_request_cache_for_connection_auth);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
+DECLARE_string(ysql_hba_conf_csv);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
@@ -655,6 +657,49 @@ TEST_F_EX(PgCatalogPerfTest,
   // enabled test above.
   ASSERT_EQ(metrics.cache.queries, 1);
   ASSERT_EQ(metrics.cache.hits, 1);
+}
+
+class PgConnectionAuthRoleCacheTest : public PgConnectionAuthCacheTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) =
+        "host all postgres all trust,host all +auth_group all trust,host all all all reject";
+    PgConnectionAuthCacheTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgCatalogPerfTest, ConnectionAuthCacheRoleMembership, PgConnectionAuthRoleCacheTest) {
+  auto admin = ASSERT_RESULT(Connect());
+  ASSERT_OK(admin.Execute(
+      "CREATE ROLE auth_group;"
+      "CREATE ROLE auth_member LOGIN;"
+      "CREATE ROLE auth_outsider LOGIN;"
+      "GRANT auth_group TO auth_member"));
+  const auto version = static_cast<uint64_t>(ASSERT_RESULT(admin.FetchRow<int64_t>(
+      "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = 1")));
+  auto* server = cluster_->mini_tablet_server(0)->server();
+  ASSERT_OK(WaitFor([&] {
+    uint64_t current_version, last_breaking_version;
+    server->get_ysql_db_catalog_version(
+        kTemplate1Oid, &current_version, &last_breaking_version, false /* use_cache */);
+    return current_version >= version;
+  }, 10s * kTimeMultiplier, "Wait for authentication catalog version"));
+
+  auto settings = MakeConnSettings();
+  settings.user = "auth_member";
+  settings.connect_timeout = 1;
+  auto connect_member = [&]() -> Status {
+    RETURN_NOT_OK(PGConnBuilder(settings).Connect());
+    return Status::OK();
+  };
+  ASSERT_OK(connect_member());
+  const auto metrics = ASSERT_RESULT(metrics_->Delta(connect_member));
+  ASSERT_EQ(metrics.cache.queries, 2);
+  ASSERT_EQ(metrics.cache.hits, 2);
+
+  settings.user = "auth_outsider";
+  ASSERT_NOK_STR_CONTAINS(
+      PGConnBuilder(settings).Connect(), "pg_hba.conf rejects connection");
 }
 
 class PgCatalogShortRpcDeadlineTest : public PgCatalogWithUnlimitedCachePerfTest {

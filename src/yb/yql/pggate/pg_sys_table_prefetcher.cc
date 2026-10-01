@@ -540,9 +540,10 @@ class PgSysTablePrefetcher::Impl {
     //   catalog version N.
     // - Reading missed data at same read time when catalog version N has been read guaranties that
     //   data will be consistent to catalog version N
+    // Authentication uses a shared-memory version, not a fresh version read from the master.
+    // Keep its prefetch snapshot when a table is missing.
     return options_.caching_info &&
-           (options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE ||
-            options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE_AUTH)
+           options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE
         ?  std::optional(options_.caching_info->version_info.version_read_time) : std::nullopt;
   }
 
