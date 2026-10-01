@@ -215,8 +215,9 @@ class XClusterDBScopedAutomaticModeTlsTest : public XClusterDBScopedAutomaticMod
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = GetCertsDir();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_for_cdc_dir) =
-        JoinPathSegments(FLAGS_certs_dir, "xCluster");
+    // Per-test dir: a shared one under the build tree races with concurrent test processes
+    // rewriting ca.crt while the master reads it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_for_cdc_dir) = GetTestPath("xCluster");
     XClusterDBScopedAutomaticModeTest::SetUp();
   }
 
