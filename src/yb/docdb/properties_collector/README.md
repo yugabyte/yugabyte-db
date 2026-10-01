@@ -194,11 +194,41 @@ to the time of the request before they are added. The aggregate's bands never ar
 not anchors, so a file's garbage stays in the band it was in when the file was written. That is
 conservative for a consumer applying a cutoff, but it is not an age as of now.
 
+## Prometheus gauges
+
+`SstStatsMetrics` exports the aggregate as `docdb_sst_*` tablet-entity gauges, pulled on scrape:
+`total_entries`, `tombstone_entries`, `shadowed_entries`, `repackable_entries`, `dead_rows`,
+`dead_row_entries`, `rows`, `reclaimable_entries`, `reclaimable_bytes`, `raw_bytes`,
+`files_without_stats`, `files_with_partial_stats`, and `tablets_without_stats`. `total_entries`,
+`rows` and `raw_bytes` are the denominators for ratios in entries, rows and raw bytes, and cover the
+same files as their numerators.
+
+No scrape shows a per-tablet value. `MetricEntity` labels a tablet-entity metric with the table
+rather than the tablet, and `PrometheusWriter::WriteSingleEntry` sums the tablets into a series per
+table, a series for the whole server, or both, depending on which filter the scrape selects
+(`prometheus_metric_filter.cc`): the default v1 gates table level on `priority_regex` and drops the
+server-level series once table level applies, while v2 gates the two levels independently and can
+emit both. Every gauge here is additive by construction for that reason, and a per-tablet flag
+would be meaningless under the sum.
+
+Additive scalars only: this metrics system exports no bucket vectors, so nothing here carries a
+distribution. The age bands the aggregate does carry are rendered on the tablet status page only,
+and the per-file chain and stretch distributions stay in the SST properties.
+
+Two cases contribute zero rather than a number: every gauge for a tablet before its first resync,
+when the aggregate holds only the files the listener happened to see, and the two derived gauges
+while any covered file is partial, when their chain identities do not hold. The sum hides both --
+one unmeasured tablet in a table reads as a smaller total, not as a gap -- which is what
+`tablets_without_stats` and `files_with_partial_stats` are for: gate ratios on those two rather
+than reading a total as complete.
+
+Nothing inside the server reads these. They exist for operators: dashboards, and studying the
+trigger's thresholds before it ships.
+
 ## Boundaries
 
-This component produces the per-file record and the per-tablet sum of it. The rest is separate: the
-`docdb_sst_*` Prometheus gauges for humans (additive scalars only; this metrics system exports no
-bucket vectors), and a full-compaction trigger clause that reads the aggregate directly. Every
+This component produces the per-file record, the per-tablet sum of it, and the gauges over that
+sum. The full-compaction trigger clause that reads the aggregate directly is separate. Every
 consumer must account for **coverage**: files that predate the collector or whose properties cannot
 be read carry no statistics, and a ratio over them silently reads near zero. The latter contribute
 to the uncovered file count, but their entry and raw-byte counts are unknown.
