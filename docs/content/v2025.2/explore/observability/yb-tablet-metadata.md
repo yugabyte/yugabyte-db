@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-The `yb_tablet_metadata` view returns tablet placement and leadership for the whole cluster. The examples below look up tablets, leaders, and the tablet that holds a row.
+The `yb_tablet_metadata` view returns tablet placement and leadership for the whole cluster. The examples below look up tablets, leaders, range boundaries, and the tablet that holds a row.
 
 Columns are listed in [Tablet metadata](../../../launch-and-manage/monitor-and-alert/tablet-metadata/#yb-tablet-metadata).
 

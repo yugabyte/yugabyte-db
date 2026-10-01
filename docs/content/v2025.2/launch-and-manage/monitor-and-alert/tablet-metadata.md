@@ -71,3 +71,7 @@ For queries against this view, see [yb_tablet_metadata](../../../explore/observa
 | end_hash_code | int | Ending hash code (exclusive) for the tablet. NULL for range-sharded tables. |
 | leader | text | IP address and port of the leader node for the tablet. |
 | replicas | text[] | Replica IP addresses and ports for the tablet, including the leader. |
+| start_range | text | Starting range key (inclusive) for the tablet. NULL for hash-sharded tables. |
+| end_range | text | Ending range key (exclusive) for the tablet. NULL for hash-sharded tables. |
+| tablet_attrs | json | Reserved for future use. Currently empty. |
+| tablet_state | text | Current state of the tablet: `PREPARING`, `CREATING`, `RUNNING`, `REPLACED`, or `DELETED`. |
