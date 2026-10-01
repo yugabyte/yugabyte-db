@@ -37,6 +37,14 @@ type AzureCredentials struct {
 	ResourceGroup  string `json:"resource_group"`
 }
 
+// OCIAPIKeyCredentials required for OCI API_KEY authentication
+type OCIAPIKeyCredentials struct {
+	TenancyID         string
+	UserID            string
+	Fingerprint       string
+	PrivateKeyContent string
+}
+
 // HashicorpCredentials required for kms configs
 type HashicorpCredentials struct {
 	Token     string `json:"HC_VAULT_TOKEN"`
@@ -307,6 +315,61 @@ func AzureTenantIDFromEnv() (string, bool, error) {
 		return "", false, fmt.Errorf("%s env variable not found", AzureTenantIDEnv)
 	}
 	return azureTenantID, true, nil
+}
+
+// NormalizeOCIAuthType returns API_KEY or INSTANCE_PRINCIPAL.
+func NormalizeOCIAuthType(authType string) (string, error) {
+	switch strings.ToUpper(strings.TrimSpace(authType)) {
+	case "", OCIAuthTypeAPIKey:
+		return OCIAuthTypeAPIKey, nil
+	case OCIAuthTypeInstancePrincipal:
+		return OCIAuthTypeInstancePrincipal, nil
+	default:
+		return "", fmt.Errorf(
+			"invalid OCI auth type %q. Allowed values: %s, %s",
+			authType, OCIAuthTypeAPIKey, OCIAuthTypeInstancePrincipal)
+	}
+}
+
+// OCIAuthTypeFromEnv retrieves value of "OCI_AUTH_TYPE" from env variables
+func OCIAuthTypeFromEnv() string {
+	authType, _ := os.LookupEnv(OCIAuthTypeEnv)
+	return authType
+}
+
+// OCIAPIKeyCredentialsFromEnv retrieves OCI API key credentials from environment variables
+func OCIAPIKeyCredentialsFromEnv() (OCIAPIKeyCredentials, error) {
+	var creds OCIAPIKeyCredentials
+	var missing []string
+
+	var present bool
+	creds.TenancyID, present = os.LookupEnv(OCITenancyIDEnv)
+	if !present || IsEmptyString(creds.TenancyID) {
+		missing = append(missing, OCITenancyIDEnv)
+	}
+	creds.UserID, present = os.LookupEnv(OCIUserIDEnv)
+	if !present || IsEmptyString(creds.UserID) {
+		missing = append(missing, OCIUserIDEnv)
+	}
+	creds.Fingerprint, present = os.LookupEnv(OCIFingerprintEnv)
+	if !present || IsEmptyString(creds.Fingerprint) {
+		missing = append(missing, OCIFingerprintEnv)
+	}
+	privateKeyFile, present := os.LookupEnv(OCIPrivateKeyFileEnv)
+	if !present || IsEmptyString(privateKeyFile) {
+		missing = append(missing, OCIPrivateKeyFileEnv)
+	}
+
+	if len(missing) > 0 {
+		return OCIAPIKeyCredentials{}, fmt.Errorf(
+			"Empty env variable: %s", strings.Join(missing, " "))
+	}
+	privateKey, err := ReadFileToString(privateKeyFile)
+	if err != nil {
+		return OCIAPIKeyCredentials{}, err
+	}
+	creds.PrivateKeyContent = *privateKey
+	return creds, nil
 }
 
 // HashicorpVaultTokenFromEnv retrives value of "HASHICORP_VAULT_TOKEN" from env variables

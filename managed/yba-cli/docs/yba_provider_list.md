@@ -20,7 +20,7 @@ yba provider list
 
 ```
   -n, --name string   [Optional] Name of the provider.
-  -c, --code string   [Optional] Code of the provider, defaults to list all providers. Allowed values: aws, gcp, azu, onprem, kubernetes.
+  -c, --code string   [Optional] Code of the provider, defaults to list all providers. Allowed values: aws, gcp, azu, oci, onprem, kubernetes.
   -h, --help          help for list
 ```
 

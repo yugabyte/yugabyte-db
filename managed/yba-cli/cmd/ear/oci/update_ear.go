@@ -84,7 +84,7 @@ func runUpdateOCIEAR(cmd *cobra.Command) {
 	hasUpdates := false
 	apiKeyFlags := apiKeyFlagsSetCount(cmd)
 
-	if strings.EqualFold(config.OCI.AuthType, util.OCIKmsAuthTypeInstancePrincipal) &&
+	if strings.EqualFold(config.OCI.AuthType, util.OCIAuthTypeInstancePrincipal) &&
 		apiKeyFlags > 0 {
 		logrus.Fatalln(formatter.Colorize(
 			"API key flags cannot be set on a configuration that uses "+
