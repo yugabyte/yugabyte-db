@@ -48,8 +48,8 @@ Concurrent index creation allows data to be modified in the main table while the
 
 | Condition | Concurrent | Nonconcurrent |
 | :-------- | :--------- | :------------ |
-| Safe to do other DMLs during CREATE INDEX? | yes | no |
-| Keeps other transactions alive during CREATE INDEX? | mostly | no |
+| Safe to do other DMLs during CREATE INDEX? | yes | no (unless object locking is enabled) |
+| Keeps other transactions alive during CREATE INDEX? | mostly | no (unless object locking is enabled) |
 | Parallelizes index loading? | yes | no |
 
 {{< note title="Note" >}}
