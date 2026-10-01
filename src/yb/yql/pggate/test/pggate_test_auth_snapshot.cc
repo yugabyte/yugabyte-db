@@ -14,11 +14,6 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/wire_protocol.h"
-
-#include "yb/master/master_cluster.proxy.h"
-
-#include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/scope_exit.h"
 
@@ -34,24 +29,14 @@ class PggateAuthSnapshotTest : public PggateTest {
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* options) override {
     options->enable_ysql = true;
     options->extra_master_flags.push_back("--ysql_enable_auth_catalog_follower_reads=false");
-    options->extra_master_flags.push_back("--ysql_enable_catalog_follower_read_reservation=true");
+    options->extra_master_flags.push_back("--disable_pitr=true");
     options->extra_tserver_flags.push_back("--ysql_enable_auth_catalog_follower_reads=false");
     options->extra_tserver_flags.push_back(
         "--ysql_enable_read_request_cache_for_connection_auth=false");
   }
 
-  Status InitReservedCluster() {
+  Status InitPitrDisabledModeCluster() {
     RETURN_NOT_OK(Init("PggateAuthSnapshotTest", 1, 1, false /* should_create_db */));
-    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>();
-    master::ReserveYsqlCatalogFollowerReadsRequestPB req;
-    req.set_acknowledge_permanent_pitr_exclusion(true);
-    master::ReserveYsqlCatalogFollowerReadsResponsePB resp;
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(30 * kTimeMultiplier));
-    RETURN_NOT_OK(proxy.ReserveYsqlCatalogFollowerReads(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
     RETURN_NOT_OK(cluster_->SetFlag(
         cluster_->GetLeaderMaster(), "ysql_enable_auth_catalog_follower_reads", "true"));
     return cluster_->SetFlag(
@@ -97,7 +82,7 @@ class PggateAuthSnapshotTest : public PggateTest {
 };
 
 TEST_F(PggateAuthSnapshotTest, HistoricalContextCannotReplaceAuthenticationSnapshot) {
-  ASSERT_OK(InitReservedCluster());
+  ASSERT_OK(InitPitrDisabledModeCluster());
   const auto historical_time = ReadTime(YBCGetCurrentHybridTimeLsn());
   YBCPgSetHistoricalReadContext(historical_time, nullptr);
   auto cleanup = ScopeExit([] {
@@ -119,7 +104,7 @@ TEST_F(PggateAuthSnapshotTest, HistoricalContextCannotReplaceAuthenticationSnaps
 }
 
 TEST_F(PggateAuthSnapshotTest, HistoricalAndExplicitReadsWorkAfterAuthentication) {
-  ASSERT_OK(InitReservedCluster());
+  ASSERT_OK(InitPitrDisabledModeCluster());
   auto admin = ASSERT_RESULT(PgConnect("yugabyte"));
   ASSERT_OK(admin.Execute("CREATE ROLE auth_snapshot_role LOGIN"));
   const auto historical_time = ReadTime(YBCGetCurrentHybridTimeLsn());
