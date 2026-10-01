@@ -1494,6 +1494,19 @@ class YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam:
   int HistoryRetentionIntervalSec() override {
     return 30;
   }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsqlParam::UpdateMiniClusterOptions(opts);
+    // On sanitizer builds clone and schedule snapshots stall master UpdateConsensus for 5-7s.
+    // With 5s consensus timeouts this causes master failover (aborting the clone) or leader lease
+    // loss long enough for the ysql lease to expire, killing the clone's ysqlsh.
+    // Keep the wait RPC timeout above the lease TTL.
+    opts->extra_tserver_flags.emplace_back(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=120000");
+    opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=60000");
+    opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=30000");
+    opts->extra_master_flags.emplace_back("--leader_failure_max_missed_heartbeat_periods=60");
+  }
 };
 
 namespace {
@@ -2007,6 +2020,11 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_clearing_fully_applied_ms", "3000"));
+
+  // Master rejects backends catalog version waits for a lease TTL after becoming leader.
+  // Absorb that delay here, so it does not shift restore_time out of the backfill.
+  ASSERT_OK(conn.Execute("CREATE TABLE warmup_table (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX warmup_table_idx ON warmup_table (key)"));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table "
