@@ -1040,8 +1040,6 @@ class YBManifest:
 
             locations[tablet_location]['tablet-directories'][tablet_id] = {}
 
-        self.body['properties']['size-in-bytes'] += len(self.to_string())
-
     # Data saving/loading/printing.
     def to_string(self):
         return json.dumps(self.body, indent=2)
@@ -3268,8 +3266,18 @@ class YBBackup:
         if not pg_based_backup:
             self.manifest.init_locations(tablet_leaders, snapshot_bucket)
 
-        # Create Manifest file and upload it to tmp dir on the main host.
         metadata_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
+        manifest_size = len(self.manifest.to_string())
+        if not self.args.disable_checksums:
+            # The checksum tools write "<digest>  <path>\n".
+            if self.xxhash_checksum_path:
+                digest_size = 16
+            else:
+                digest_size = 40 if self.args.mac else 64
+            manifest_size += digest_size + 2 + len(os.fsencode(metadata_path)) + 1
+        self.manifest.body['properties']['size-in-bytes'] += manifest_size
+
+        # Create Manifest file and upload it to tmp dir on the main host.
         self.manifest.save_into_file(metadata_path)
         os.chmod(metadata_path, 0o600)
         if not self.args.local_yb_admin_binary:
