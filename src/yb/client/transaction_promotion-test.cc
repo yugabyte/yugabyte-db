@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <future>
+
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
@@ -279,7 +281,8 @@ TEST_F(TransactionPromotionTest, PromotedTransactionIntentsReadableForCDC) {
 }
 
 // A promoted transaction whose old status tablet heartbeats are failing stays registered at both,
-// so a savepoint rollback sends a heartbeat to each and returns on the old one's failure.
+// so a savepoint rollback sends a heartbeat to each and returns the old one's failure once both
+// complete.
 TEST_F(TransactionPromotionTest, RollbackWithHeartbeatInFlight) {
   DisableTransactionTimeout();
   // Disable periodic heartbeats so rpcs() occupancy reflects only the rollback heartbeat RPCs this
@@ -300,9 +303,17 @@ TEST_F(TransactionPromotionTest, RollbackWithHeartbeatInFlight) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_rollback_heartbeat_response_ms) =
       5000 * kTimeMultiplier;
 
+  auto rollback = std::async(std::launch::async, [&txn, sub_txn_id] {
+    return txn->RollbackToSubTransaction(sub_txn_id, TransactionRpcDeadline());
+  });
+  // The old status tablet's failure is injected without an rpc, so the registered call is the
+  // heartbeat to the new status tablet.
+  ASSERT_OK(WaitFor([&rpcs] { return rpcs.TEST_NumActiveCalls() == 1; },
+                    5s * kTimeMultiplier, "rollback heartbeat to new status tablet in flight"));
+
   // TimedOut is the status injected for the old status tablet, so it also confirms the transaction
-  // was still registered there and that both heartbeats were sent.
-  auto status = txn->RollbackToSubTransaction(sub_txn_id, TransactionRpcDeadline());
+  // was still registered there.
+  auto status = rollback.get();
   ASSERT_TRUE(status.IsTimedOut()) << status;
 
   txn.reset();

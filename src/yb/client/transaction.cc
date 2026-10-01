@@ -1122,7 +1122,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     // The response outlives this call, so it keeps the transaction alive until it arrives.
     auto transaction = transaction_->shared_from_this();
-    return MakeFuture<Status>([&, handle, transaction](auto callback) {
+    return MakeFuture<Status>([&, handle, transaction = std::move(transaction)](auto callback) {
       manager_->rpcs().RegisterAndStart(
           PrepareHeartbeatRPC(
               deadline, status_tablet, TransactionStatus::PENDING,
