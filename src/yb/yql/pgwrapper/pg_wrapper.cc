@@ -478,6 +478,13 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_empty_ms, 100
     "in case the last poll returned no notifications.");
 DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VALUE_VALIDATOR(0));
 
+DEFINE_RUNTIME_PG_FLAG(double, yb_dist_trace_sample_rate, 0.0,
+    "Fraction (0 to 1) of YSQL protocol cycles without a traceparent that are distributed-traced. "
+    "0 disables sampling. While sampling is on, every Parse of a prepared statement is traced and "
+    "its sampled executions link to that trace. Connections the tserver opens internally are "
+    "not sampled. Requires otel_collector_traces_endpoint.");
+DEFINE_validator(ysql_yb_dist_trace_sample_rate, FLAG_RANGE_VALIDATOR(0.0, 1.0));
+
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
 
