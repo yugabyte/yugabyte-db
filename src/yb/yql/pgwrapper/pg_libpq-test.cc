@@ -4716,13 +4716,10 @@ TEST_F_EX(PgLibPqTest, YbPreloadPgAuthidForAuthEnabled, PgPreloadPgAuthidEnabled
          "incur no pg_authid catalog cache misses";
 }
 
-// Forces the full catalog preload, so that connection start-up and every full catalog cache
-// refresh fill the catalog caches from the prefetched catalogs.
-class PgPreloadPgAttributeCachesTestBase : public PgLibPqTest {
+class PgCatalogPreloadCachesTestBase : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.emplace_back("--ysql_catalog_preload_additional_tables=true");
     options->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
     for (const auto& flag : ExtraTServerFlags()) {
       options->extra_tserver_flags.emplace_back(flag);
@@ -4737,93 +4734,93 @@ class PgPreloadPgAttributeCachesTestBase : public PgLibPqTest {
     return conn.Execute("CREATE INDEX ON t (a, b)");
   }
 
-  // Looks up a column of t by name.
-  static constexpr auto kAttnameQuery = "SELECT pg_get_serial_sequence('t', 'a')";
-  // The parser checks that a system column exists by looking it up by number.
-  static constexpr auto kAttnumQuery = "SELECT tableoid FROM t";
-
-  struct PgAttributeCacheMisses {
-    int64_t attname = 0;
-    int64_t attnum = 0;
-  };
-
-  PgAttributeCacheMisses GetPgAttributeCacheMisses() {
-    PgAttributeCacheMisses misses;
+  // Catalog cache misses, keyed by the index of the catalog cache.
+  std::unordered_map<std::string, int64_t> GetCatalogCacheMisses() {
+    std::unordered_map<std::string, int64_t> misses;
     for (const auto& metric : GetJsonMetrics()) {
       const auto it = metric.labels.find("table_name");
-      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") == std::string::npos ||
-          it == metric.labels.end()) {
-        continue;
-      }
-      if (it->second == "pg_attribute_relid_attnam_index") {
-        misses.attname += metric.value;
-      } else if (it->second == "pg_attribute_relid_attnum_index") {
-        misses.attnum += metric.value;
+      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
+          it != metric.labels.end()) {
+        misses[it->second] += metric.value;
       }
     }
     return misses;
   }
 
-  Result<PgAttributeCacheMisses> MissesFor(PGConn& conn, const std::string& query) {
-    const auto before = GetPgAttributeCacheMisses();
+  // Runs the query and returns the catalog cache misses it caused, keyed by catalog cache index.
+  Result<std::unordered_map<std::string, int64_t>> MissesFor(
+      PGConn& conn, const std::string& query) {
+    auto before = GetCatalogCacheMisses();
     RETURN_NOT_OK(conn.Fetch(query));
-    const auto after = GetPgAttributeCacheMisses();
-    const PgAttributeCacheMisses delta{
-        .attname = after.attname - before.attname, .attnum = after.attnum - before.attnum};
-    LOG(INFO) << "Catalog cache misses for '" << query << "': ATTNAME " << delta.attname
-              << ", ATTNUM " << delta.attnum;
+    auto delta = GetCatalogCacheMisses();
+    for (auto& [index, misses] : delta) {
+      misses -= before[index];
+    }
+    std::erase_if(delta, [](const auto& entry) { return entry.second == 0; });
+    LOG(INFO) << "Catalog cache misses for '" << query << "': " << AsString(delta);
     return delta;
   }
-};
 
-// The parameter says whether the ATTNAME and ATTNUM caches are filled.
-class PgPreloadPgAttributeCachesTest : public PgPreloadPgAttributeCachesTestBase,
-                                       public ::testing::WithParamInterface<std::pair<bool, bool>> {
- protected:
-  std::vector<std::string> ExtraTServerFlags() const override {
-    std::vector<std::string> flags;
-    if (!FillAttname()) {
-      flags.emplace_back("--ysql_yb_catalog_preload_attname_cache=false");
-    }
-    if (!FillAttnum()) {
-      flags.emplace_back("--ysql_yb_catalog_preload_attnum_cache=false");
-    }
-    return flags;
+  Status SetPreloadCaches(const std::string& value) {
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_catalog_preload_caches", value));
+    return LoggedWaitFor(
+        [this, &value]() -> Result<bool> {
+          auto conn = VERIFY_RESULT(Connect());
+          return VERIFY_RESULT(conn.FetchRow<std::string>(
+                     "SELECT current_setting('yb_catalog_preload_caches')")) == value;
+        },
+        30s * kTimeMultiplier, "postgres reloads ysql_yb_catalog_preload_caches");
   }
 
-  bool FillAttname() const { return GetParam().first; }
-  bool FillAttnum() const { return GetParam().second; }
+  static constexpr auto kAttnameIndex = "pg_attribute_relid_attnam_index";
+  static constexpr auto kAttnumIndex = "pg_attribute_relid_attnum_index";
+  // Looks up a column of t by name.
+  static constexpr auto kAttnameQuery = "SELECT pg_get_serial_sequence('t', 'a')";
+  // The parser checks that a system column exists by looking it up by number.
+  static constexpr auto kAttnumQuery = "SELECT tableoid FROM t";
 };
 
-INSTANTIATE_TEST_CASE_P(, PgPreloadPgAttributeCachesTest,
-                        ::testing::Values(std::make_pair(true, true),
-                                          std::make_pair(true, false),
-                                          std::make_pair(false, true),
-                                          std::make_pair(false, false)));
+struct PreloadCachesParam {
+  std::string value;
+  bool fills_attname;
+  bool fills_attnum;
+};
 
-TEST_P(PgPreloadPgAttributeCachesTest, CacheMisses) {
+// Forces the full catalog preload, so that connection start-up and every full catalog cache refresh
+// fill the catalog caches that ysql_yb_catalog_preload_caches selects.
+class PgCatalogPreloadCachesTest : public PgCatalogPreloadCachesTestBase,
+                                   public ::testing::WithParamInterface<PreloadCachesParam> {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_catalog_preload_additional_tables=true",
+            "--ysql_yb_catalog_preload_caches=" + GetParam().value};
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCachesTest, ::testing::Values(
+    PreloadCachesParam{"default", true, true},
+    PreloadCachesParam{"default,-ATTNAME", false, true},
+    PreloadCachesParam{"default,-pg_attribute_relid_attnum_index", true, false},
+    PreloadCachesParam{"default,-pg_attribute", false, false},
+    PreloadCachesParam{"none", false, false},
+    PreloadCachesParam{"none,attnum", false, true},
+    PreloadCachesParam{"all,-ATTNUM", true, false}));
+
+TEST_P(PgCatalogPreloadCachesTest, PgAttributeCacheMisses) {
   ASSERT_OK(CreateTestTable());
   auto ddl_conn = ASSERT_RESULT(Connect());
 
   // The first statement also reports the misses of the connection start-up.
   auto conn = ASSERT_RESULT(Connect());
   auto misses = ASSERT_RESULT(MissesFor(conn, "SELECT 1"));
-  ASSERT_EQ(misses.attname, 0);
-  ASSERT_EQ(misses.attnum, 0);
+  ASSERT_EQ(misses[kAttnameIndex], 0);
+  ASSERT_EQ(misses[kAttnumIndex], 0);
 
   misses = ASSERT_RESULT(MissesFor(conn, kAttnameQuery));
-  if (FillAttname()) {
-    ASSERT_EQ(misses.attname, 0);
-  } else {
-    ASSERT_GT(misses.attname, 0);
-  }
+  ASSERT_EQ(misses[kAttnameIndex] == 0, GetParam().fills_attname);
 
   misses = ASSERT_RESULT(MissesFor(conn, kAttnumQuery));
-  if (FillAttnum()) {
-    ASSERT_EQ(misses.attnum, 0);
-  } else {
-    ASSERT_GT(misses.attnum, 0);
-  }
+  ASSERT_EQ(misses[kAttnumIndex] == 0, GetParam().fills_attnum);
 
   // A breaking catalog version bump makes the next statement do a full catalog cache refresh,
   // which rebuilds the relcache entry of every index, including its opclass options. Without the
@@ -4833,35 +4830,71 @@ TEST_P(PgPreloadPgAttributeCachesTest, CacheMisses) {
   ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
   WaitForCatalogVersionToPropagate();
   misses = ASSERT_RESULT(MissesFor(conn, "SELECT 1"));
-  ASSERT_EQ(misses.attname, 0);
-  ASSERT_EQ(misses.attnum, 0);
+  ASSERT_EQ(misses[kAttnameIndex], 0);
+  ASSERT_EQ(misses[kAttnumIndex], 0);
   ASSERT_GT(GetMetricValue(GetJsonMetrics(), "CatCacheRefresh"), refreshes_before);
 }
 
-// The flags take effect at runtime: after the tserver reloads the postgres configuration, new
-// connections no longer fill the caches.
-TEST_F_EX(PgLibPqTest, PreloadPgAttributeCachesRuntimeFlags, PgPreloadPgAttributeCachesTestBase) {
+// Without the additional-tables gflags, selecting a cache of a catalog that is not preloaded by
+// default makes connections preload it. The flag takes effect at runtime.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCachesAddCatalog, PgCatalogPreloadCachesTestBase) {
   ASSERT_OK(CreateTestTable());
+  // Operator resolution looks up operators by name, in a list of the OPERNAMENSP cache.
+  constexpr auto kOperatorQuery = "SELECT k FROM t WHERE a = 1";
+  constexpr auto kOperatorNameIndex = "pg_operator_oprname_l_r_n_index";
+
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Fetch("SELECT 1"));
-  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kAttnameQuery)).attname, 0);
-  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kAttnumQuery)).attnum, 0);
+  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
 
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_catalog_preload_attname_cache", "false"));
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_catalog_preload_attnum_cache", "false"));
-  ASSERT_OK(LoggedWaitFor(
-      [this]() -> Result<bool> {
-        auto new_conn = VERIFY_RESULT(Connect());
-        return VERIFY_RESULT(new_conn.FetchRow<std::string>(
-                   "SELECT current_setting('yb_catalog_preload_attname_cache') || "
-                   "current_setting('yb_catalog_preload_attnum_cache')")) == "offoff";
-      },
-      30s * kTimeMultiplier, "postgres reloads the new flag values"));
-
+  ASSERT_OK(SetPreloadCaches("default,pg_operator"));
   conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Fetch("SELECT 1"));
-  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kAttnameQuery)).attname, 0);
-  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kAttnumQuery)).attnum, 0);
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kAttnameQuery))[kAttnameIndex], 0);
+
+  ASSERT_OK(SetPreloadCaches("default,pg_operator,-ATTNAME"));
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+  ASSERT_GT(ASSERT_RESULT(MissesFor(conn, kAttnameQuery))[kAttnameIndex], 0);
+}
+
+// Postgres rejects an invalid value on reload and keeps the previous one.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCachesInvalidValues, PgCatalogPreloadCachesTestBase) {
+  constexpr auto kValidValue = "default,-ATTNAME";
+  ASSERT_OK(SetPreloadCaches(kValidValue));
+  auto conn = ASSERT_RESULT(Connect());
+  bool fkey_catcache = true;
+  for (const auto& invalid_value : {
+           "",                    // no base
+           "pg_proc",             // no base
+           "default,pg_nosuch",   // unknown name
+           "default,-RELOID",     // needed by the relcache build
+           "default,-pg_class",   // has a cache needed by the relcache build
+           "default,-pg_inherits",
+           "default,PROCOID",     // filled together with PROCNAMEARGSNSP
+           "default,pg_trigger",  // has no catalog cache
+           "default,LANGOID"}) {  // on a catalog that is not preloadable
+    ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_catalog_preload_caches", invalid_value));
+    // Postgres applies the other changes of a configuration file with an invalid value, so wait
+    // for a change of another flag to know that it has reloaded the file.
+    fkey_catcache = !fkey_catcache;
+    const auto fkey_catcache_str = fkey_catcache ? "on" : "off";
+    ASSERT_OK(cluster_->SetFlagOnTServers(
+        "ysql_yb_enable_fkey_catcache", fkey_catcache ? "true" : "false"));
+    ASSERT_OK(LoggedWaitFor(
+        [this, fkey_catcache_str]() -> Result<bool> {
+          auto conn = VERIFY_RESULT(Connect());
+          return VERIFY_RESULT(conn.FetchRow<std::string>(
+                     "SELECT current_setting('yb_enable_fkey_catcache')")) == fkey_catcache_str;
+        },
+        30s * kTimeMultiplier, "postgres reloads its configuration"));
+    conn = ASSERT_RESULT(Connect());
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+                  "SELECT current_setting('yb_catalog_preload_caches')")),
+              kValidValue) << "Value: '" << invalid_value << "'";
+  }
 }
 
 // Enables the regular-backend tserver response cache for the connection-auth

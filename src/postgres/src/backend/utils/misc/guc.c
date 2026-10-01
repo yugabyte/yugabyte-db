@@ -908,6 +908,7 @@ static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
+static char *yb_catalog_preload_caches_string;
 static bool yb_conn_mgr_modifying_defaults = false;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
@@ -3624,28 +3625,6 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_fkey_catcache,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"yb_catalog_preload_attname_cache", PGC_SIGHUP, DEVELOPER_OPTIONS,
-			gettext_noop("Fill the pg_attribute catalog cache by column name when preloading the catalog."),
-			gettext_noop("If off, its entries are read on first use."),
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_catalog_preload_attname_cache,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"yb_catalog_preload_attnum_cache", PGC_SIGHUP, DEVELOPER_OPTIONS,
-			gettext_noop("Fill the pg_attribute catalog cache by column number when preloading the catalog."),
-			gettext_noop("If off, its entries are read on first use."),
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_catalog_preload_attnum_cache,
 		true,
 		NULL, NULL, NULL
 	},
@@ -7738,6 +7717,20 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		yb_check_neg_catcache_ids,
 		yb_set_neg_catcache_ids, NULL
+	},
+
+	{
+		{"yb_catalog_preload_caches", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Catalog caches filled when preloading the catalog."),
+			gettext_noop("A comma separated list that starts with \"default\", \"all\" "
+						 "or \"none\", followed by catalogs or catalog caches to add, "
+						 "or to exclude when prefixed with \"-\"."),
+			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
+		},
+		&yb_catalog_preload_caches_string,
+		"default",
+		yb_check_catalog_preload_caches,
+		yb_assign_catalog_preload_caches, NULL
 	},
 
 	{
