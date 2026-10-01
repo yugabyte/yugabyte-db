@@ -44,12 +44,12 @@ A nonconcurrent build does not perform online index backfill. Unless [table-leve
 
 Specify CONCURRENTLY explicitly whenever possible. With the explicit keyword, a statement that cannot be built concurrently (inside a transaction block or on a partitioned table) fails with an error instead of silently switching to a nonconcurrent build.
 
-Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, unless object locking is enabled. When object locking is enabled, concurrent writers are blocked until the index creation completes, to ensure safety. The following table summarizes the differences in these two modes.
+Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, unless table-level locks are enabled. When table-level locks are enabled, concurrent writers are blocked until the index creation completes, to ensure safety. The following table summarizes the differences in these two modes.
 
 | Condition | Concurrent | Nonconcurrent |
 | :-------- | :--------- | :------------ |
-| Safe to do other DMLs during CREATE INDEX? | yes | no (unless object locking is enabled) |
-| Keeps other transactions alive during CREATE INDEX? | mostly | no (unless object locking is enabled) |
+| Safe to do other DMLs during CREATE INDEX? | yes | no (unless table-level locks are enabled) |
+| Keeps other transactions alive during CREATE INDEX? | mostly | no (unless table-level locks are enabled) |
 | Parallelizes index loading? | yes | no |
 
 {{< note title="Note" >}}
