@@ -2353,6 +2353,12 @@ YbGetCatalogCacheIndexName(int cache_id)
 }
 
 const char *
+YbGetCatalogCacheName(int cache_id)
+{
+	return SysCacheName[cache_id];
+}
+
+const char *
 YbGetCatalogCacheTableNameFromTableId(int table_id)
 {
 	Assert(table_id >= 0 && table_id < YbNumCatalogCacheTables);

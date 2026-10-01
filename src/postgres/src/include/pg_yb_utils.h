@@ -328,6 +328,12 @@ extern YbObjectLockMode YBGetObjectLockMode();
  */
 extern bool YbNeedAdditionalCatalogTables();
 
+/* yb_catalog_preload_caches, implemented in relcache.c. */
+extern bool yb_check_catalog_preload_caches(char **newval, void **extra,
+											GucSource source);
+extern void yb_assign_catalog_preload_caches(const char *newval, void *extra);
+extern bool YbCatalogPreloadCachesNeedAdditionalTables(void);
+
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
  * in an atomic fashion, it is possible that we could have a table existing in
@@ -662,13 +668,6 @@ extern int	yb_insert_on_conflict_read_batch_size;
  * Enable preloading of foreign key information into the relation cache.
  */
 extern bool yb_enable_fkey_catcache;
-
-/*
- * Fill the pg_attribute catalog caches by column name (ATTNAME) and by
- * column number (ATTNUM) when preloading the catalog.
- */
-extern bool yb_catalog_preload_attname_cache;
-extern bool yb_catalog_preload_attnum_cache;
 
 /*
  * Enable batched DocDB lookup for foreign key constraint check when types
