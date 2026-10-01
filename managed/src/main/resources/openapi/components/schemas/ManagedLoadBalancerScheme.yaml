@@ -1,0 +1,12 @@
+x-yba-api-visibility: preview
+x-yba-api-since: 2.31.0.0
+title: ManagedLoadBalancerScheme
+description: |
+  Who can reach a load balancer that YBA manages.
+    - PRIVATE: clients in the VPC of the universe, or in a network peered with it.
+    - PUBLIC: clients on the internet. YBA does not create public load balancers yet and rejects ManagedLoadBalancerSpec.enable_public.
+type: string
+enum:
+  - PRIVATE
+  - PUBLIC
+example: PRIVATE

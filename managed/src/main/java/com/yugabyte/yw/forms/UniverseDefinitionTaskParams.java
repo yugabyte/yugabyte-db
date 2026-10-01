@@ -358,6 +358,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
   private CapacityReservationState capacityReservationState;
 
+  // Subtasks record a load balancer before the cloud call, so a retry or a destroy sees load
+  // balancers that a failed task created.
+  @Setter
+  @Getter
+  @ApiModelProperty(
+      hidden = true,
+      value = "YbaApi Internal. Load balancers that YBA created for this universe.")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  private ManagedLoadBalancerState managedLoadBalancerState;
+
   @Setter
   @Getter
   @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
@@ -1543,6 +1553,38 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         value = "WARNING: This is a preview API that could change. Multi-tenancy configuration")
     private MultiTenancyConfig multiTenancy;
 
+    @Data
+    @ApiModel(description = "Load balancers that YBA creates and manages for a cluster")
+    public static class ManagedLoadBalancerConfig {
+      @ApiModelProperty(value = "Create a private L4 load balancer in each region of the cluster")
+      private boolean enablePrivate = false;
+
+      @ApiModelProperty(
+          value =
+              "Create a public L4 load balancer in each region of the cluster. Not supported yet."
+                  + " Must be false.")
+      private boolean enablePublic = false;
+
+      @Override
+      public ManagedLoadBalancerConfig clone() {
+        ManagedLoadBalancerConfig newConfig = new ManagedLoadBalancerConfig();
+        newConfig.enablePrivate = enablePrivate;
+        newConfig.enablePublic = enablePublic;
+        return newConfig;
+      }
+    }
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.31.0.0")
+    @Getter
+    @Setter
+    @Nullable
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Load balancers that YBA creates,"
+                + " manages and deletes. Set when the universe is created. When set, it must"
+                + " enable at least one load balancer.")
+    private ManagedLoadBalancerConfig managedLoadBalancer;
+
     @ApiModelProperty(
         hidden = true,
         value = "YbaApi Internal. Universe provisioned with cpu cgroup")
@@ -1578,6 +1620,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @JsonIgnore
     public boolean isQosEnabled() {
       return multiTenancy != null && multiTenancy.isEnableQos();
+    }
+
+    @JsonIgnore
+    public boolean isManagedLoadBalancerEnabled() {
+      return managedLoadBalancer != null
+          && (managedLoadBalancer.isEnablePrivate() || managedLoadBalancer.isEnablePublic());
     }
 
     @Override
@@ -1669,6 +1717,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.useClockbound = useClockbound;
       if (multiTenancy != null) {
         newUserIntent.multiTenancy = multiTenancy.clone();
+      }
+      if (managedLoadBalancer != null) {
+        newUserIntent.managedLoadBalancer = managedLoadBalancer.clone();
       }
       newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
       newUserIntent.federationConfigured = federationConfigured;

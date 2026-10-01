@@ -234,6 +234,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createPersistCpuCgroupConfiguredTask(universe);
 
+      for (Cluster cluster : taskParams().clusters) {
+        createEnsureManagedLoadBalancerTasks(cluster);
+      }
+
       boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               taskParams().nodeDetailsSet,

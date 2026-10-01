@@ -12,6 +12,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -37,15 +39,20 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -255,6 +262,75 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
+  }
+
+  private UniverseDefinitionTaskParams getManagedLbTaskParams() {
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
+        new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+    lbConfig.setEnablePrivate(true);
+    taskParams.getPrimaryCluster().userIntent.setManagedLoadBalancer(lbConfig);
+    return taskParams;
+  }
+
+  private static List<TaskType> subTaskTypes(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .sorted(Comparator.comparing(TaskInfo::getPosition))
+        .map(TaskInfo::getTaskType)
+        .collect(Collectors.toList());
+  }
+
+  @Test
+  public void testCreateUniverseCreatesManagedLbBeforeVmsAndRegistersNodes() {
+    UniverseDefinitionTaskParams taskParams = getManagedLbTaskParams();
+    // A DNS name that the user points at the load balancer.
+    taskParams.getPrimaryCluster().placementInfo.cloudList.get(0).regionList.get(0).lbFQDN =
+        "db.example.com";
+    String lbName = ManagedLoadBalancerUtil.getPrivateName(taskParams.getPrimaryCluster().uuid);
+    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-1"), any(), any(), any()))
+        .thenReturn("lbi.elb.example.com");
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskType> subTasks = subTaskTypes(taskInfo);
+    int ensure = subTasks.indexOf(TaskType.EnsureManagedLoadBalancer);
+    int firstVm = subTasks.indexOf(TaskType.AnsibleCreateServer);
+    int register = subTasks.indexOf(TaskType.ManageLoadBalancerGroup);
+    assertTrue(subTasks.toString(), 0 <= ensure && ensure < firstVm && firstVm < register);
+    ArgumentCaptor<Map<AvailabilityZone, Set<NodeID>>> registered =
+        ArgumentCaptor.forClass(Map.class);
+    verify(cloudAPI)
+        .manageNodeGroup(any(), eq("region-1"), eq(lbName), registered.capture(), any(), any());
+    assertEquals(
+        taskParams.nodeDetailsSet.size(),
+        registered.getValue().values().stream().mapToInt(Set::size).sum());
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    PlacementInfo.PlacementRegion region =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .placementInfo
+            .cloudList
+            .get(0)
+            .regionList
+            .get(0);
+    // YBA records the address that AWS gives the load balancer, and leaves lbFQDN to the user.
+    assertEquals("db.example.com", region.lbFQDN);
+    ManagedLoadBalancer lb =
+        universe
+            .getUniverseDetails()
+            .getManagedLoadBalancerState()
+            .find(taskParams.getPrimaryCluster().uuid, region.uuid, lbName)
+            .get();
+    assertEquals(lbName, lb.getName());
+    assertEquals("lbi.elb.example.com", lb.getAddress());
+    // Today the load balancer serves every zone of its region.
+    assertEquals(
+        Region.getOrBadRequest(region.uuid).getZones().stream()
+            .map(AvailabilityZone::getUuid)
+            .collect(Collectors.toSet()),
+        new HashSet<>(lb.getAzUuids()));
   }
 
   @Test

@@ -1367,6 +1367,12 @@ public enum TaskType {
   DeleteCapacityReservation(
       com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class),
 
+  EnsureManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.EnsureManagedLoadBalancer.class),
+
+  DeleteManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteManagedLoadBalancer.class),
+
   DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
 
   EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class),

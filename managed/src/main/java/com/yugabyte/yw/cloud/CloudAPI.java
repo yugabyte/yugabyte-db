@@ -80,6 +80,37 @@ public interface CloudAPI {
       List<Integer> ports,
       NLBHealthCheckConfiguration healthCheckConfig);
 
+  // Managed load balancers. YBA creates only the parts that manageNodeGroup expects to exist;
+  // manageNodeGroup still owns listeners, target groups and node registration.
+
+  default boolean supportsManagedLoadBalancer() {
+    return false;
+  }
+
+  /**
+   * Creates the private load balancer that serves the zones, or reuses the one with the same name
+   * and adds the zones and tags that it lacks.
+   *
+   * @param zones the availability zones that the load balancer serves. A cloud whose load balancer
+   *     has no per-zone setting ignores them.
+   * @return the address that the cloud gives the load balancer.
+   */
+  default String ensureManagedLoadBalancer(
+      Provider provider,
+      String regionCode,
+      String name,
+      List<AvailabilityZone> zones,
+      Map<String, String> tags) {
+    throw new UnsupportedOperationException(
+        "Managed load balancers are not supported by this cloud provider");
+  }
+
+  /** Deletes the load balancer. A load balancer that does not exist counts as deleted. */
+  default void deleteManagedLoadBalancer(Provider provider, String regionCode, String name) {
+    throw new UnsupportedOperationException(
+        "Managed load balancers are not supported by this cloud provider");
+  }
+
   // AWS-specific methods with default unsupported implementations
   /**
    * Creates a capacity reservation (AWS-specific feature)

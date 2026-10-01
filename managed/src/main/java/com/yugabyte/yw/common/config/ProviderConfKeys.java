@@ -479,6 +479,16 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> managedLoadBalancerEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.managed_load_balancer_enabled",
+          ScopeType.PROVIDER,
+          "Enable managed load balancers",
+          "Lets universes created with this provider ask YBA to create and manage a private load"
+              + " balancer. Preview.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Boolean> ybcEnabledForProvider =
       new ConfKeyInfo<>(
           "ybc.provider.enabled",
