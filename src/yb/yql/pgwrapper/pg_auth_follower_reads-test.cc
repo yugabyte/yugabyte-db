@@ -57,11 +57,11 @@
 
 DECLARE_bool(TEST_enable_pg_client_mock);
 DECLARE_bool(TEST_skip_election_when_fail_detected);
+DECLARE_bool(disable_pitr);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_enable_catalog_follower_read_reservation);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_enable_profile);
 DECLARE_bool(ysql_enable_read_request_cache_for_connection_auth);
@@ -307,11 +307,11 @@ class PgAuthFollowerReadsTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_conn_mgr) = false;
     if (EnableRouting()) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auth_catalog_follower_reads) = true;
     }
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_catalog_follower_read_reservation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_profile) = EnableProfiles();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_relcache_init_optimization) = false;
@@ -326,9 +326,8 @@ class PgAuthFollowerReadsTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) =
         "host all postgres all trust,host all +auth_group all md5,host all all all reject";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = PgConf();
-    PgMiniTestBase::SetUp();
-    ASSERT_OK(Reserve());
-    ASSERT_OK(WaitForReservation());
+    ASSERT_NO_FATAL_FAILURE(PgMiniTestBase::SetUp());
+    ASSERT_OK(WaitForPitrDisabledMode());
   }
 
   size_t NumMasters() override { return 3; }
@@ -343,27 +342,15 @@ class PgAuthFollowerReadsTest : public PgMiniTestBase {
     return cluster_->mini_tablet_server(0)->server();
   }
 
-  Status Reserve() {
-    auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
-    master::ReserveYsqlCatalogFollowerReadsRequestPB req;
-    req.set_acknowledge_permanent_pitr_exclusion(true);
-    master::ReserveYsqlCatalogFollowerReadsResponsePB resp;
-    rpc::RpcController rpc;
-    rpc.set_timeout(30s * kTimeMultiplier);
-    RETURN_NOT_OK(proxy.ReserveYsqlCatalogFollowerReads(req, &resp, &rpc));
-    return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
-  }
-
-  Status WaitForReservation() {
+  Status WaitForPitrDisabledMode() {
     return WaitFor([&] {
       for (size_t i = 0; i < cluster_->num_masters(); ++i) {
-        if (!cluster_->mini_master(i)->master()->snapshot_coordinator()
-                 .YsqlCatalogFollowerReadsReserved()) {
+        if (!cluster_->mini_master(i)->master()->snapshot_coordinator().PitrDisabled()) {
           return false;
         }
       }
       return true;
-    }, 30s * kTimeMultiplier, "Replicate auth catalog follower-read reservation");
+    }, 30s * kTimeMultiplier, "Wait for local PITR-disabled mode");
   }
 
   Result<client::internal::RemoteTabletPtr> CatalogTablet() {
@@ -749,7 +736,7 @@ TEST_F(PgAuthFollowerReadsTest, FollowerNetworkFailureFallsBackAtSameSnapshot) {
   ASSERT_TRUE(leader_retry);
 }
 
-TEST_F(PgAuthFollowerReadsTest, ReservationAndFreshnessSurviveFailoverAndFullRestart) {
+TEST_F(PgAuthFollowerReadsTest, PitrDisabledModeAndFreshnessSurviveFailoverAndFullRestart) {
   {
     auto admin = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateRoles(&admin));
@@ -767,7 +754,7 @@ TEST_F(PgAuthFollowerReadsTest, ReservationAndFreshnessSurviveFailoverAndFullRes
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       return VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->permanent_uuid() == target;
     }, 30s * kTimeMultiplier, "Elect the chosen auth snapshot leader"));
-    ASSERT_OK(WaitForReservation());
+    ASSERT_OK(WaitForPitrDisabledMode());
     ASSERT_OK(admin.ExecuteFormat("ALTER ROLE auth_user PASSWORD '$0'", kNewPassword));
     ASSERT_NO_FATAL_FAILURE(AssertDenied(kOldPassword, "password authentication failed"));
     ASSERT_NO_FATAL_FAILURE(AssertFreshLogin(kNewPassword));
@@ -775,11 +762,12 @@ TEST_F(PgAuthFollowerReadsTest, ReservationAndFreshnessSurviveFailoverAndFullRes
 
   // Unlike RestartSync's rolling restart, stop every peer before starting any of them.
   cluster_->StopSync();
+  // Omit the creation flag so recovery must restore the persisted mode.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = false;
   ASSERT_OK(cluster_->Start());
-  ASSERT_OK(WaitForReservation());
+  ASSERT_OK(WaitForPitrDisabledMode());
   // PG starts asynchronously; only this readiness connection may retry.
   auto admin = ASSERT_RESULT(Connect());
-  // Do not reserve again: recovery itself must restore the durable admission state.
   ASSERT_NO_FATAL_FAILURE(AssertDenied(kOldPassword, "password authentication failed"));
   ASSERT_NO_FATAL_FAILURE(AssertFreshLogin(kNewPassword));
   ASSERT_OK(admin.ExecuteFormat("ALTER ROLE auth_user PASSWORD '$0'", kOldPassword));

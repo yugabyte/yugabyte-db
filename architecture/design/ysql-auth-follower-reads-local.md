@@ -1,19 +1,20 @@
 # Local reproduction: YSQL authentication catalog follower reads
 
-Validated on macOS arm64 release: daemon/PostgreSQL/admin builds and 54 selected
-tests passed, including all 22 PostgreSQL integration cases, with no skips.
-The manual Linux cluster procedure below has not been executed. Use the automated
-test first for a self-contained reproduction. No debug, sanitizer, mixed-binary,
-or throughput validation is claimed.
+Validated with a macOS arm64 release build and 79 selected test cases, without
+skips, including all 19 authentication integration cases and 10 creation-mode
+cases. The manual Linux cluster procedure below is **UNEXECUTED**. No Linux, debug,
+sanitizer, mixed-binary, or throughput validation is claimed.
 
-**Use only a new, disposable local universe. Reservation permanently excludes
-PITR, including YCQL schedules and system-catalog restore. There is no release
-operation. Turning routing off, restarting, or demoting the capability does not
-undo the reservation. Do not point these commands at a real deployment.**
+**Use only a new, disposable local universe, created with the non-runtime master
+flag `--disable_pitr=true`. This permanently excludes PITR schedules, including
+YCQL, and system-catalog restore. Existing default-mode universes cannot opt in,
+even if PITR was never used. Do not point these commands at a real deployment.**
 
-The [design](ysql-catalog-follower-reads.md) describes the fixed-snapshot contract
-and upgrade restrictions. Do not use mixed binaries or local overrides of
-`ysql_enable_catalog_follower_read_reservation` as an activation procedure.
+All masters and participating tserver/PostgreSQL processes must use compatible
+binaries before creation. The [design](ysql-catalog-follower-reads.md) describes
+the immutable mode, fixed-snapshot contract, and downgrade restrictions. Old
+experimental reservation universes are unsupported: use new data directories,
+not converted metadata.
 
 ## Build and automated validation
 
@@ -31,7 +32,7 @@ REPRO_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ysql-auth-followers.XXXXXX")"
 DATA_DIR="$REPRO_ROOT/cluster"  # Must not exist when yb-ctl create runs.
 printf 'Reproduction files: %s\n' "$REPRO_ROOT"
 
-./yb_build.sh release daemons initdb \
+./yb_build.sh release daemons reinitdb \
   --sj --skip-pg-parquet --no-odyssey --no-ybc \
   2>&1 | tee "$REPRO_ROOT/build.log"
 
@@ -61,17 +62,13 @@ rg -n '^TEST(_F|_P)?\(' src/yb/yql/pgwrapper/pg_auth_follower_reads-test.cc
   --sj --skip-pg-parquet --no-odyssey --no-ybc \
   2>&1 | tee "$REPRO_ROOT/integration-fresh-auth.log"
 
-./yb_build.sh release --cxx-test yb-admin-test \
-  --gtest_filter AdminCliTest.YsqlCatalogFollowerReadReservationRequiresAcknowledgement \
+./yb_build.sh release --cxx-test pitr_disabled-test \
+  --gtest_filter PitrDisabledTest.PersistsAcrossFailoverAndRestart \
   --sj --skip-pg-parquet --no-odyssey --no-ybc \
-  2>&1 | tee "$REPRO_ROOT/cli-acknowledgement.log"
-./yb_build.sh release --cxx-test yb-admin-test \
-  --gtest_filter AdminCliTest.YsqlCatalogFollowerReadReservation \
-  --sj --skip-pg-parquet --no-odyssey --no-ybc \
-  2>&1 | tee "$REPRO_ROOT/cli-reservation.log"
+  2>&1 | tee "$REPRO_ROOT/pitr-disabled-persistence.log"
 ```
 
-To run all 22 PostgreSQL cases, still one per invocation:
+To run the PostgreSQL cases, still one per invocation:
 
 ```sh
 python3 - <<'PY' > "$REPRO_ROOT/pg-cases.txt"
@@ -95,18 +92,19 @@ admission, warm-cache rejection, and terminal snapshot failures. Tests also chec
 routing exclusions, normal-query cleanup, and tserver snapshot-pool saturation,
 queue deadlines, and shutdown.
 
-The initial daemon/initdb build is separate because `initdb` may not be built
-when combined with test options. No default gflag values are changed by these
-instructions.
+Build daemons and the initial snapshot separately from tests. Use `reinitdb`, not
+`initdb`, when reusing a build directory: an older cached snapshot lacks the
+creation-mode template marker needed for bootstrap failover. Use an isolated build
+if existing clusters use its binaries. No default gflag values are changed.
 
 Paging and same-T fallback tests use synchronization points available in release
 builds. Run each case separately; a skipped case is not validation.
 
-The other passing targets cover client routing (9 cases), master serving (4),
-`ysql_auth_catalog_snapshot-test` (8), clock deadlines (3), reservation CLI (2),
-and reservation, PITR, catalog-read-time, cache, and invalidation regressions (6).
+Also validate client routing, master serving, `ysql_auth_catalog_snapshot-test`,
+clock deadlines, PITR rejection, catalog-read-time, cache, and invalidation
+regressions. Use `pitr_disabled-test` for immutable creation-mode validation.
 
-## Optional manual Linux cluster (not yet executed)
+## Optional manual Linux cluster (UNEXECUTED)
 
 Use loopback addresses `127.0.0.101` through `127.0.0.103`, not a running cluster's
 addresses. On Linux these are loopback addresses without aliases. macOS requires
@@ -125,7 +123,7 @@ PY
 
 export YB_DISABLE_CALLHOME=1
 MASTERS=127.0.0.101:7100,127.0.0.102:7100,127.0.0.103:7100
-MASTER_FLAGS_OFF=limit_auto_flag_promote_for_new_universe=0,ysql_enable_auth_catalog_follower_reads=false
+MASTER_FLAGS_OFF=ysql_enable_auth_catalog_follower_reads=false
 TS_FLAGS=ysql_enable_auth=true,enable_ysql_conn_mgr=false,ysql_enable_profile=false,ysql_enable_read_request_cache_for_connection_auth=false
 ybctl() {
   bin/yb-ctl --binary_dir "$BUILD_ROOT" --data_dir "$DATA_DIR" "$@"
@@ -135,19 +133,21 @@ admin() {
 }
 
 # --binary_dir takes the build root, not its bin subdirectory.
+# This creation permanently disables PITR; DATA_DIR must be new.
 ybctl create --rf 3 --ip_start 101 \
-  --master_flags "$MASTER_FLAGS_OFF" \
+  --master_flags "disable_pitr=true,$MASTER_FLAGS_OFF" \
   --tserver_flags "$TS_FLAGS,ysql_enable_auth_catalog_follower_reads=false"
 ybctl status
 admin list_all_masters
-admin get_ysql_catalog_follower_read_reservation
+admin get_universe_config
 ```
 
-Confirm three masters and three tservers use this same build. Expected initial
-status is `reserved: false`, `reservation_pending: false`, and
-`pitr_admitted_in_term: false`, plus a leader term. Reading status must not change
-reservation state. The startup promotion limit keeps the capability unpromoted
-until the explicit step below; it is not a local capability override.
+Require the persisted `pitr_disabled` mode to be true. `get_universe_config`
+uses the existing `GetMasterClusterConfig` RPC; no reservation or promotion
+step follows creation. Confirm three masters and three tservers use the same
+compatible build. Servers reject PITR schedules (including YCQL) and
+system-catalog restores, but ordinary backup snapshots and data-only restores
+remain available.
 
 For a bootstrap credential, this new local universe uses the standard
 `yugabyte` role/password. All other credentials below are disposable fixtures.
@@ -172,42 +172,7 @@ build or environment enables that cache by default. Leave global
 `ysql_enable_read_request_caching` unchanged. Profiles, connection-manager
 backends, Unix sockets, and internal backends are outside this rollout.
 
-## Promote, verify all peers, then irreversibly reserve
-
-All peers must run compatible binaries before AutoFlag promotion. On this new
-cluster, promote through `kLocalPersisted` (this also promotes other eligible
-flags up to that class), then verify the capability is true on every master.
-Do not substitute `set_flag` or a startup override for capability promotion.
-
-```sh
-admin promote_auto_flags kLocalPersisted
-admin get_auto_flags_config
-for suffix in 101 102 103; do
-  curl --noproxy '*' -fsS "http://127.0.0.$suffix:7000/varz?raw=1" |
-    grep -Fx -- '--ysql_enable_catalog_follower_read_reservation=true'
-done
-```
-
-If a check fails, stop here and wait for propagation or investigate; recheck all
-masters before proceeding. The advertised AutoFlags configuration alone is not
-proof that every peer has applied it or runs compatible code.
-
-**The next command is the irreversible opt-in. Proceed only for this disposable
-universe and only if it will never need PITR.**
-
-```sh
-admin reserve_ysql_catalog_follower_reads acknowledge_permanent_pitr_exclusion
-admin get_ysql_catalog_follower_read_reservation
-# An acknowledged retry is idempotent.
-admin reserve_ysql_catalog_follower_reads acknowledge_permanent_pitr_exclusion
-```
-
-Require `reserved: true` and `reservation_pending: false` before enabling
-routing. `pitr_admitted_in_term` is transient admission information, not a promise
-that PITR is available. If reservation times out, inspect status and retry; do not
-assume the write was cancelled. Existing or retained PITR state blocks reservation.
-
-## Enable routing only after reservation
+## Enable routing only after confirming PITR-disabled mode
 
 The flag must be enabled on all masters and the participating tservers and
 PostgreSQL processes. `yb-admin` has no generic `set_flag` command here; the
@@ -227,14 +192,16 @@ for node in 1 2 3; do
 done
 ```
 
-Runtime master flag changes do not survive restart. For a later full restart of
-this already-reserved local universe, supply the complete flags again:
+Runtime master routing-flag changes do not survive restart. For a later full
+restart, supply the routing flags again. `disable_pitr` is omitted deliberately:
+the persisted mode cannot be removed by changing or omitting it, restart, or
+leader failover.
 
 ```sh
 ybctl restart \
-  --master_flags 'limit_auto_flag_promote_for_new_universe=0,ysql_enable_auth_catalog_follower_reads=true' \
+  --master_flags 'ysql_enable_auth_catalog_follower_reads=true' \
   --tserver_flags "$TS_FLAGS,ysql_enable_auth_catalog_follower_reads=true"
-admin get_ysql_catalog_follower_read_reservation
+admin get_universe_config  # PITR-disabled mode remains true.
 ```
 
 ## Observe admissions and exercise fresh authentication
@@ -284,7 +251,7 @@ Leader admissions are possible on fallback or when the selected replica becomes
 leader. This manual check does not prove same-T behavior under lag, timeouts, or
 failover; use the automated read-path and integration tests for those cases.
 
-If follower counters stay flat, check reservation, flags on every master/tserver,
+If follower counters stay flat, check persisted mode, flags on every master/tserver,
 postmaster restart, direct TCP, auth-response-cache selection, and profile
 exclusion before interpreting it as a routing failure. Do not disable global
 catalog caching or add test-only follower bypasses to force a metric increase.
@@ -310,14 +277,14 @@ metrics on port 9000. Measure both layers, login latency, fallback frequency, an
 leader catalog rows/bytes before considering real enablement. No throughput
 improvement is established by this reproduction.
 
-## Stop or disable without releasing the reservation
+## Stop or disable routing without enabling PITR
 
-To disable routing in this disposable cluster, restart with the original flags:
+To disable routing in this disposable cluster, restart with the original routing flags:
 
 ```sh
 ybctl restart --master_flags "$MASTER_FLAGS_OFF" \
   --tserver_flags "$TS_FLAGS,ysql_enable_auth_catalog_follower_reads=false"
-admin get_ysql_catalog_follower_read_reservation  # Still reserved: true.
+admin get_universe_config  # PITR-disabled mode remains true.
 ybctl stop
 printf 'Retained local data and logs: %s\n' "$REPRO_ROOT"
 ```
@@ -325,5 +292,4 @@ printf 'Retained local data and logs: %s\n' "$REPRO_ROOT"
 Stopping retains the unique data directory for inspection. No deletion command
 is included. Do not use `wipe_restart`, `destroy`, or remove a default data
 directory as part of this reproduction. Disabling routing is not a downgrade
-procedure: reserved data must not be opened by binaries that do not enforce
-permanent PITR exclusion.
+procedure: PITR-disabled data must not be opened by mode-unaware binaries.
