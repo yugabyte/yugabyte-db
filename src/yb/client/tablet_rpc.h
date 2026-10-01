@@ -87,6 +87,8 @@ class TabletRpc {
 
   virtual void SetRequestRaftConfigOpidIndex(int64_t opid_index) {}
 
+  virtual bool PreferFollower() const { return false; }
+
  protected:
   ~TabletRpc() {}
 };
@@ -164,6 +166,9 @@ class TabletInvoker {
   bool local_tserver_only() const { return local_tserver_only_; }
 
   bool is_consistent_prefix() const { return consistent_prefix_; }
+
+  // Includes guesses made while discovering the leader, which must use leader-only semantics.
+  bool is_leader_selection() const { return leader_selection_; }
 
   bool RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& tablet_consensus_info);
@@ -276,6 +281,8 @@ class TabletInvoker {
 
   // Should we assign new leader in meta cache when successful response is received.
   bool assign_new_leader_ = false;
+
+  bool leader_selection_ = true;
 };
 
 Status ErrorStatus(const tserver::TabletServerErrorPB* error);

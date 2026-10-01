@@ -15,6 +15,9 @@
 
 #include "yb/client/tablet_rpc.h"
 
+#include <algorithm>
+#include <set>
+
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
@@ -33,6 +36,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
@@ -108,10 +112,44 @@ void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
     }
   }
 
+  leader_selection_ = false;
+  assign_new_leader_ = false;
+  const bool prefer_follower = rpc_ && rpc_->PreferFollower();
+  std::set<std::string> blacklist;
+  if (prefer_follower) {
+    const auto* leader = tablet_->LeaderTServer();
+    const auto leader_uuid = leader ? leader->permanent_uuid() : tablet_->current_leader_uuid();
+    if (leader_uuid.empty()) {
+      SelectTabletServer();
+      return;
+    }
+    blacklist.insert(leader_uuid);
+  }
+
   std::vector<RemoteTabletServer*> candidates;
-  current_ts_ = client_->data_->SelectTServer(tablet_.get(),
-                                              YBClient::ReplicaSelection::CLOSEST_REPLICA, {},
-                                              &candidates);
+  current_ts_ = client_->data_->SelectTServer(
+      tablet_.get(), YBClient::ReplicaSelection::CLOSEST_REPLICA, blacklist, &candidates);
+  if (prefer_follower) {
+    if (!current_ts_) {
+      SelectTabletServer();
+      return;
+    }
+    // CLOSEST_REPLICA picks the first peer at the best locality. Spread authentication reads
+    // across equally close followers without changing ordinary follower-read selection.
+    if (!client_->data_->IsTabletServerLocal(*current_ts_)) {
+      const auto& cloud_info = client_->data_->cloud_info_pb_;
+      const auto locality = current_ts_->LocalityLevelWith(cloud_info);
+      std::erase_if(candidates, [&](const auto* ts) {
+        return blacklist.contains(ts->permanent_uuid()) ||
+               ts->LocalityLevelWith(cloud_info) != locality;
+      });
+      if (!candidates.empty()) {
+        current_ts_ = RandomElement(candidates);
+      }
+    }
+    // Metadata can be refreshed concurrently with selection.
+    leader_selection_ = current_ts_ == tablet_->LeaderTServer();
+  }
   VLOG(1) << "Using tserver: " << yb::ToString(current_ts_);
 }
 
@@ -126,6 +164,7 @@ void TabletInvoker::SelectTabletServer()  {
   TRACE_TO(trace_, "SelectTabletServer()");
 
   assign_new_leader_ = false;
+  leader_selection_ = true;
   // Choose a destination TS according to the following algorithm:
   // 1. Select the leader, provided:
   //    a. One exists, and
@@ -188,6 +227,7 @@ void TabletInvoker::Reset() {
   current_ts_ = nullptr;
   followers_.clear();
   assign_new_leader_ = false;
+  leader_selection_ = true;
 }
 
 void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
