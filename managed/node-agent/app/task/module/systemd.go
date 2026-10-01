@@ -29,6 +29,9 @@ var (
 	SystemdReadyPollInterval = 2 * time.Second
 	// Must exceed the collector unit's RestartSec=5 so a crash loop ticks NRestarts inside it.
 	SystemdSettleInterval = 15 * time.Second
+	// Time for SIGKILLed leftovers in a unit's cgroup to exit before start is attempted anyway.
+	SystemdLeftoverKillTimeout      = 30 * time.Second
+	SystemdLeftoverKillPollInterval = 1 * time.Second
 	// UserSystemdUnitsForUpdate maps process names to their service file source and destination paths.
 	UserSystemdUnitsForUpdate = map[string]struct {
 		Src  string
@@ -205,6 +208,16 @@ func ControlSystemdService(
 				return err
 			}
 		}
+		// Best-effort: the start can still succeed with leftovers, e.g. on systemd >= 254.
+		err = KillSystemdServiceLeftovers(ctx, username, serverName, logOut)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			util.FileLogger().
+				Warnf(ctx, "Failed to clean up leftovers of %s - %s", serverName, err.Error())
+			logOut.WriteLine("Failed to clean up leftovers of %s - %s", serverName, err.Error())
+		}
 		err = StartSystemdService(ctx, username, serverName, logOut)
 		if err != nil {
 			return err
@@ -279,6 +292,71 @@ func systemdUnitProperties(
 		}
 	}
 	return values, nil
+}
+
+// KillSystemdServiceLeftovers SIGKILLs processes left in the cgroup of a unit that has no main
+// process and waits for the cgroup to drain. A yb-tserver unit with KillMode=process (the unit
+// file is only rewritten after the stop in an upgrade) leaves postgres behind when the tserver
+// dies on SIGTERM. On cgroup v2 with systemd < 254, the leftover keeps the unit cgroup alive with
+// +cpu in cgroup.subtree_control, so systemd cannot attach new processes to it and every start
+// fails with 219/CGROUP until the leftover exits.
+func KillSystemdServiceLeftovers(
+	ctx context.Context,
+	username, serverName string,
+	logOut util.Buffer,
+) error {
+	properties := []string{"ActiveState", "SubState", "ControlGroup"}
+	values, err := systemdUnitProperties(ctx, username, serverName, properties, logOut)
+	if err != nil {
+		return err
+	}
+	// No main process is running in these states, and systemd drops ControlGroup once the cgroup
+	// is empty, so a ControlGroup here means leftovers.
+	idle := values["ActiveState"] == "inactive" || values["ActiveState"] == "failed" ||
+		values["SubState"] == "auto-restart"
+	if !idle || values["ControlGroup"] == "" {
+		return nil
+	}
+	util.FileLogger().
+		Infof(ctx, "Killing leftover processes in cgroup %s of %s", values["ControlGroup"], serverName)
+	logOut.WriteLine(
+		"Killing leftover processes in cgroup %s of %s", values["ControlGroup"], serverName)
+	cmdPrefix, cmdUser, err := getSystemdCommandPrefix(ctx, username, serverName, logOut)
+	if err != nil {
+		return err
+	}
+	// Default kill target is all processes in the unit cgroup, including sub-cgroups.
+	cmd := fmt.Sprintf("%s kill --signal=SIGKILL %s", cmdPrefix, serverName)
+	if _, err := RunShellCmd(ctx, cmdUser, "KillSystemdServiceLeftovers", cmd, logOut); err != nil {
+		// The leftovers may have exited on their own in the meantime; the poll below decides.
+		util.FileLogger().Warnf(ctx, "Failed to kill leftovers of %s - %s", serverName, err.Error())
+	}
+	deadline := time.Now().Add(SystemdLeftoverKillTimeout)
+	for {
+		values, err = systemdUnitProperties(ctx, username, serverName, properties, logOut)
+		if err != nil {
+			return err
+		}
+		if values["ControlGroup"] == "" {
+			break
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf(
+				"leftover processes in cgroup %s of %s did not exit within %s",
+				values["ControlGroup"],
+				serverName,
+				SystemdLeftoverKillTimeout,
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(SystemdLeftoverKillPollInterval):
+		}
+	}
+	cmd = fmt.Sprintf("%s reset-failed %s", cmdPrefix, serverName)
+	_, err = RunShellCmd(ctx, cmdUser, "ResetFailedSystemdService", cmd, logOut)
+	return err
 }
 
 // VerifySystemdServiceStarted confirms a unit came up and is not crash-looping.
