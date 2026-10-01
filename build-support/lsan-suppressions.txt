@@ -54,3 +54,8 @@ leak:parse_ident_line
 
 # https://github.com/yugabyte/yugabyte-db/issues/20788
 leak:call_string_check_hook
+
+# Upstream pg_isready never frees the result of PQconndefaults(). LSAN found the pointer on the stack
+# until build-support/pg_upstream_sanitizer_ignorelist.txt left pg_isready.c uninstrumented, and the
+# leak makes pg_isready exit nonzero, so callers waiting for the server to be ready never see it.
+leak:PQconndefaults

@@ -1355,6 +1355,7 @@ set_sanitizer_runtime_options() {
     # Enable leak detection even under LLVM 3.4, where it was disabled by default.
     # This flag only takes effect when running an ASAN build.
     export ASAN_OPTIONS="detect_leaks=1 disable_coredump=0"
+    ASAN_OPTIONS+=" suppressions=$YB_SRC_ROOT/build-support/asan-suppressions.txt"
 
     # Set up suppressions for LeakSanitizer
     LSAN_OPTIONS="suppressions=$YB_SRC_ROOT/build-support/lsan-suppressions.txt"

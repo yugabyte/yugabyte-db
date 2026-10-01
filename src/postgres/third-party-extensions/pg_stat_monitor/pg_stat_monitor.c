@@ -51,8 +51,6 @@ PG_MODULE_MAGIC;
 
 #define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
-#define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
-
 #define _snprintf(_str_dst, _str_src, _len, _max_len)\
   memcpy((void *)_str_dst, _str_src, _len < _max_len ? _len : _max_len)
 
@@ -201,7 +199,6 @@ DECLARE_HOOK(void pgsm_ProcessUtility, PlannedStmt *pstmt, const char *queryStri
 			 char *completionTag);
 #endif
 static uint64 pgsm_hash_string(const char *str, int len);
-char	   *unpack_sql_state(int sql_state);
 
 #define PGSM_HANDLED_UTILITY(n)  (!IsA(n, ExecuteStmt) && \
 									!IsA(n, PrepareStmt) && \
@@ -3640,22 +3637,6 @@ time_diff(struct timeval end, struct timeval start)
 	mend = ((double) end.tv_sec * 1000.0 + (double) end.tv_usec / 1000.0);
 	mstart = ((double) start.tv_sec * 1000.0 + (double) start.tv_usec / 1000.0);
 	return mend - mstart;
-}
-
-char *
-unpack_sql_state(int sql_state)
-{
-	static char buf[12];
-	int			i;
-
-	for (i = 0; i < 5; i++)
-	{
-		buf[i] = PGUNSIXBIT(sql_state);
-		sql_state >>= 6;
-	}
-
-	buf[i] = '\0';
-	return buf;
 }
 
 /* Validate histogram values and find the max number of histogram buckets that can be created */
