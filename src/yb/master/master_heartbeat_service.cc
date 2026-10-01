@@ -1654,9 +1654,12 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   }
   auto tserver_universe_uuid = *tserver_universe_uuid_res;
 
+  // Read a locked copy: tests may change this string flag concurrently.
+  std::string test_master_universe_uuid;
+  CHECK(google::GetCommandLineOption("TEST_master_universe_uuid", &test_master_universe_uuid));
   auto master_universe_uuid_res = UniverseUuid::FromString(
-      FLAGS_TEST_master_universe_uuid.empty() ? cluster_config.universe_uuid()
-                                              : FLAGS_TEST_master_universe_uuid);
+      test_master_universe_uuid.empty() ? cluster_config.universe_uuid()
+                                        : test_master_universe_uuid);
   if (!master_universe_uuid_res) {
     LOG(WARNING) << "Could not decode cluster config universe_uuid: "
                  << master_universe_uuid_res.status().ToString();
