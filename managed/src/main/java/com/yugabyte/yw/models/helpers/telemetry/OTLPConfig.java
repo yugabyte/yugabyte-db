@@ -6,6 +6,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -119,5 +121,25 @@ public class OTLPConfig extends TelemetryProviderConfig {
       throw new PlatformServiceException(
           BAD_REQUEST, "metricsEndpoint is allowed only for HTTP protocol.");
     }
+  }
+
+  @Override
+  public List<String> secretValues() {
+    List<String> secrets = new ArrayList<>();
+    if (basicAuth != null) {
+      secrets.addAll(nonEmpty(basicAuth.getPassword()));
+    }
+    if (bearerToken != null) {
+      secrets.addAll(nonEmpty(bearerToken.getToken()));
+    }
+    // Header names are user-chosen, so every value is treated as a credential, and for
+    // "<scheme> <credential>" (Bearer, Api-Token, ...) the credential on its own as well.
+    if (headers != null) {
+      for (String value : headers.values()) {
+        String credential = StringUtils.substringAfterLast(StringUtils.trim(value), " ");
+        secrets.addAll(nonEmpty(value, credential));
+      }
+    }
+    return secrets;
   }
 }

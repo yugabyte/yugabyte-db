@@ -3,8 +3,7 @@ exporters:
   splunk_hec/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$SplunkExporter
     endpoint: endpoint
     index: index
-    retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m,
-      max_interval: 1800m}
+    retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m, max_interval: 1800m}
     sending_queue: {enabled: true, storage: file_storage/queue}
     source: source
     sourcetype: some_type
@@ -12,8 +11,7 @@ exporters:
     token: apitoken
 extensions:
   file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
-    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
-      rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
+    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true, rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
     directory: /mnt/d0/otel-collector/queue
 processors:
   attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
@@ -61,12 +59,10 @@ receivers:
     include: [/home/yugabyte/tserver/logs/yb-tserver.*.WARNING.*]
     multiline: {line_start_pattern: '([A-Z]\d{4})'}
     operators:
-    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body not matches "^.*AUDIT: user:(.|\\n|\\r|\\s)*$"', type: filter}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {expr: 'body not matches "^.*AUDIT: user:(.|\\n|\\r|\\s)*$"', type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
       on_error: drop
-      regex: '(?P<log_level>\w)(?P<log_time>\d{2}\d{2} \d{2}:\d{2}:\d{2}[.]\d{6})\s*(?P<thread_id>\d+)
-        (?P<file_name>[^:]+):(?P<file_line>\d+)[]] AUDIT: user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\d+)[|]source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\d+)[|]timestamp:(?P<timestamp>\d+)[|]type:(?P<type>[^|]+)[|]category:(?P<category>[^|]+)([|]ks:(?P<keyspace>[^|]+))?([|]scope:(?P<scope>[^|]+))?[|]operation:(?P<statement>(.|\n|\r|\s)*)'
+      regex: '(?P<log_level>\w)(?P<log_time>\d{2}\d{2} \d{2}:\d{2}:\d{2}[.]\d{6})\s*(?P<thread_id>\d+) (?P<file_name>[^:]+):(?P<file_line>\d+)[]] AUDIT: user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\d+)[|]source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\d+)[|]timestamp:(?P<timestamp>\d+)[|]type:(?P<type>[^|]+)[|]category:(?P<category>[^|]+)([|]ks:(?P<keyspace>[^|]+))?([|]scope:(?P<scope>[^|]+))?[|]operation:(?P<statement>(.|\n|\r|\s)*)'
       timestamp: {layout: ms, layout_type: epoch, parse_from: attributes.timestamp}
       type: regex_parser
     start_at: beginning
@@ -85,5 +81,4 @@ service:
       readers:
       - pull:
           exporter:
-            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
-              without_units: true}
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true, without_units: true}
