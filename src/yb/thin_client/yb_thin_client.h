@@ -66,11 +66,11 @@ typedef struct {
   const char* key_path;     // client key;  NULL if not using mTLS
 } ybthin_tls_opts;
 
-// A session applies one Perform at a time, so concurrency comes from having many sessions;
-// connections spread them across tserver nodes (behind a ClusterIP VIP, each new connection may
-// land on a different one). `sessions_per_conn` sessions are packed per
-// connection, so ceil((read_sessions + write_sessions) / sessions_per_conn) are opened. Reads and
-// upserts each round-robin their own pool. A 0 field (or NULL opts) takes the default.
+// A session can have several Performs in flight. Connections spread sessions across tserver nodes
+// (behind a ClusterIP VIP, each new connection may land on a different one). `sessions_per_conn`
+// sessions are packed per connection, so ceil((read_sessions + write_sessions) / sessions_per_conn)
+// are opened. Reads and upserts each round-robin their own pool. A 0 field (or NULL opts) takes the
+// default.
 typedef struct {
   uint32_t read_sessions;     // 0 => default (4)
   uint32_t write_sessions;    // 0 => default (1); 0 sessions => upserts use the read pool
