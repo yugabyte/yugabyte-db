@@ -27,7 +27,22 @@ In YugabyteDB, indexes are sharded - they are split into tablets and distributed
 
 ### Concurrent index creation
 
-Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions).
+Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. If you specify neither keyword, the index is built concurrently, except in the following cases, where YugabyteDB automatically switches to a nonconcurrent build:
+
+- The statement runs inside a transaction block. This includes schema migration tools that wrap each migration in a transaction. The only indication of the switch is the following client notice:
+
+    ```output
+    NOTICE:  making create index for table "<table>" nonconcurrent
+    DETAIL:  Create index in transaction block cannot be concurrent.
+    HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+    ```
+
+- The table is partitioned. No notice is issued. See [Partitioned indexes](#partitioned-indexes) for how to build indexes on partitioned tables concurrently.
+- The table is temporary.
+
+A nonconcurrent build does not perform online index backfill. Unless [table-level locks](../../../../../explore/transactions/explicit-locking/#table-level-locks) are enabled, rows that other sessions write to the table while the build runs are stored in the table but can be missing from the index. When table-level locks are enabled, those writes wait until the transaction block commits instead.
+
+Specify CONCURRENTLY explicitly whenever possible. With the explicit keyword, a statement that cannot be built concurrently (inside a transaction block or on a partitioned table) fails with an error instead of silently switching to a nonconcurrent build. If an index was built nonconcurrently while the table was receiving writes, verify it using [yb_index_check()](../../../exprs/func_yb_index_check/).
 
 Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
 
@@ -168,11 +183,11 @@ Enforce that duplicate values in a table are not allowed.
 
 ### CONCURRENTLY
 
-Enable the use of online index backfill (see [Semantics](#semantics) for details), with some restrictions:
+Enable the use of online index backfill (see [Concurrent index creation](#concurrent-index-creation) for details), with some restrictions:
 
 - When creating an index on a temporary table, online schema migration is disabled.
 - CREATE INDEX CONCURRENTLY is not supported for partitioned tables.
-- CREATE INDEX CONCURRENTLY is not supported inside a transaction block.
+- CREATE INDEX CONCURRENTLY is not supported inside a transaction block. A CREATE INDEX without the CONCURRENTLY keyword inside a transaction block doesn't fail; it is converted to a nonconcurrent build (see [Concurrent index creation](#concurrent-index-creation)).
 
 ### NONCONCURRENTLY
 
