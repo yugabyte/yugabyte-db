@@ -41,7 +41,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\]'
-          if [[ "$BASE_REF" == "master" ]]; then
+          if [[ "$BASE_REF" == master || "$BASE_REF" == feature-stack/* ]]; then
             if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
               echo "::error ::Pull Request title should not specify target branch for master."
               exit 1
