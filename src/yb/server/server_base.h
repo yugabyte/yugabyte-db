@@ -251,6 +251,9 @@ class RpcAndWebServerBase : public RpcServerBase {
   std::string GetEasterEggMessage() const;
   std::string FooterHtml() const;
 
+  // Whether this server counts towards the process-wide tracing setup done by Init().
+  bool dist_trace_initialized_ = false;
+
   scoped_refptr<AtomicMillisLag> server_uptime_ms_metric_;
   scoped_refptr<AtomicGauge<int64_t>> server_hard_limit_;
   scoped_refptr<AtomicGauge<int64_t>> server_soft_limit_;

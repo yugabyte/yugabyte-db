@@ -48,6 +48,8 @@ DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_ysql);
 
+DECLARE_uint64(object_lock_fastpath_buffer_size);
+
 METRIC_DECLARE_counter(object_locking_lock_acquires);
 METRIC_DECLARE_counter(object_locking_lock_releases);
 METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_acquires);
@@ -76,6 +78,7 @@ constexpr auto kDatabase1 = 1;
 constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
+constexpr auto kObject3 = 3;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
 constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
@@ -836,6 +839,62 @@ TEST_F(TSLocalLockManagerTest, TestWaiterResumptionStateLogic) {
   ASSERT_OK(ReleaseLocksForOwner(lock_owners[1], CoarseTimePoint::max()));
   ASSERT_OK(ReleaseLocksForOwner(lock_owners[2], CoarseTimePoint::max()));
 }
+
+TEST_F(TSLocalLockManagerTest, TestTimedOutResumeSignalsNextWaiter) {
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE));
+
+  const auto head_deadline = CoarseMonoClock::Now() + 8s * kTimeMultiplier;
+  std::atomic<bool> head_gave_up{false};
+  std::atomic<bool> next_resumed_before_head_gave_up{false};
+  SyncPoint::GetInstance()->SetCallBack("WaiterEntry::Resume", [&](void* arg) {
+    const auto txn_id = *static_cast<TransactionId*>(arg);
+    if (txn_id == kTxn2.txn_id) {
+      while (CoarseMonoClock::Now() <= head_deadline) {
+        SleepFor(10ms);
+      }
+      head_gave_up.store(true);
+      return;
+    }
+    if (txn_id == kTxn3.txn_id && !head_gave_up.load()) {
+      next_resumed_before_head_gave_up.store(true);
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto disable_sync_point = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  auto head = std::async(std::launch::async, [&] {
+    return LockRelation(
+        kTxn2, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE, head_deadline);
+  });
+  ASSERT_OK(WaitFor([&]() {
+    return WaitingLocksSize() >= 1;
+  }, 5s * kTimeMultiplier, "Waiting for the head waiter to be queued"));
+  auto next = std::async(std::launch::async, [&]() {
+    return LockRelation(
+        kTxn3, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE,
+        CoarseMonoClock::Now() + 60s);
+  });
+  ASSERT_OK(WaitFor([&] {
+    return WaitingLocksSize() >= 2;
+  }, 5s * kTimeMultiplier, "Both requests should be queued behind the holder"));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  auto head_status = head.get();
+  ASSERT_NOK(head_status);
+  ASSERT_STR_CONTAINS(head_status.ToString(), "Failed to acquire object locks within deadline");
+  ASSERT_FALSE(next_resumed_before_head_gave_up.load())
+      << "Release resumed the next waiter itself; the head deadline had already expired";
+
+  ASSERT_OK(WaitFor([&] {
+    return next.wait_for(0s) == std::future_status::ready;
+  }, 5s * kTimeMultiplier, "Next waiter wasn't resumed after head waiter missed its deadline"));
+  ASSERT_OK(next.get());
+  ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+}
 #endif
 
 TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
@@ -1112,6 +1171,43 @@ TEST_F(TSLocalLockManagerTest, TestFastpathReleaseNotBlockedByUnrelatedRelease) 
   // release.
   ASSERT_OK(ReleaseLocksForOwner(kTxn2));
   ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_fastpath_buffer_size) = 1;
+
+  auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
+  auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
+
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // Shared memory is at capacity.
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject2,
+      ObjectLockFastpathLockType::kRowShare));
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject2,
+      ObjectLockFastpathLockType::kRowShare));
+
+  ASSERT_OK(LockRelation(
+      kTxn1, kDatabase1, kObject2, TableLockType::ROW_SHARE, /*deadline=*/{}));
+
+  // Shared memory buffer should have been consumed for txn1.
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject3,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // Locks were consumed for txn1, fastpath release blocked.
+  ASSERT_FALSE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+  // Locks were not consumed for txn2, fastpath release allowed.
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn2.txn_id));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
 } // namespace yb::tserver

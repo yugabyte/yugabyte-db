@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -1401,10 +1402,15 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // Create existing universe with different masterDeviceInfo
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
-    taskParams.getPrimaryCluster().userIntent.deviceInfo = new DeviceInfo();
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = 100;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    TestUtils.existingProviderInitializer(taskParams.getPrimaryCluster().userIntent)
+        .setDeviceInfo(deviceInfo);
+
     // Modify masterDeviceInfo to be different
-    taskParams.getPrimaryCluster().userIntent.masterDeviceInfo.volumeSize = 50;
+    TestUtils.updateDeviceInfo(
+        taskParams.getPrimaryCluster().userIntent, ServerType.MASTER, mdi -> mdi.volumeSize = 50);
+
     Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
     existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
 
@@ -1740,8 +1746,11 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // Create existing universe
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
-    taskParams.getPrimaryCluster().userIntent.deviceInfo = new DeviceInfo();
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = 100;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    TestUtils.existingProviderInitializer(taskParams.getPrimaryCluster().userIntent)
+        .setDeviceInfo(deviceInfo);
+
     Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
     existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
 
@@ -1877,13 +1886,18 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // primary cluster with finalized placementInfo and a userIntent with base deviceInfo.
     UserIntent userIntent = new UserIntent();
     userIntent.universeName = universeName;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    userIntent.deviceInfo.numVolumes = 1;
-    userIntent.masterDeviceInfo = new DeviceInfo();
-    userIntent.masterDeviceInfo.volumeSize = 50;
-    userIntent.masterDeviceInfo.numVolumes = 1;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    deviceInfo.numVolumes = 1;
+
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+
+    TestUtils.initUserIntent(userIntent, defaultProvider, null, deviceInfo, null)
+        .setMasterDeviceInfo(masterDeviceInfo);
+
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(userIntent, az1, az2);
 
     // Create-path: existingUniverse is null.
@@ -1945,14 +1959,19 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // without a perAZ entry will end up using (no override is added for them).
     UserIntent userIntent = new UserIntent();
     userIntent.universeName = universeName;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    userIntent.deviceInfo.numVolumes = 1;
-    userIntent.deviceInfo.storageClass = "base-tserver-sc";
-    userIntent.masterDeviceInfo = new DeviceInfo();
-    userIntent.masterDeviceInfo.volumeSize = 50;
-    userIntent.masterDeviceInfo.numVolumes = 1;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    deviceInfo.numVolumes = 1;
+    deviceInfo.storageClass = "base-tserver-sc";
+
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+
+    TestUtils.initUserIntent(userIntent, defaultProvider, null, deviceInfo, null)
+        .setMasterDeviceInfo(masterDeviceInfo);
+
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(userIntent, az1, az2);
 
     ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
@@ -1988,9 +2007,10 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
 
     // Base tserver deviceInfo on userIntent must remain untouched - that's what AZs without
     // a perAZ entry rely on.
-    assertEquals(100, resultIntent.deviceInfo.volumeSize.intValue());
-    assertEquals(1, resultIntent.deviceInfo.numVolumes.intValue());
-    assertEquals("base-tserver-sc", resultIntent.deviceInfo.storageClass);
+    DeviceInfo di = resultIntent.getBaseDeviceInfo(defaultProvider.getUuid());
+    assertEquals(100, di.volumeSize.intValue());
+    assertEquals(1, di.numVolumes.intValue());
+    assertEquals("base-tserver-sc", di.storageClass);
   }
 
   /*--- Tests for edit-flow applyKubernetesOperatorVolumeOverrides logic ---*/
@@ -2050,11 +2070,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // Existing universe has both AZs and previously stored tserver perAZ overrides.
     UserIntent existingUserIntent = new UserIntent();
     existingUserIntent.universeName = universeName;
-    existingUserIntent.provider = defaultProvider.getUuid().toString();
-    existingUserIntent.deviceInfo = new DeviceInfo();
-    existingUserIntent.deviceInfo.volumeSize = 100;
-    existingUserIntent.deviceInfo.numVolumes = 1;
-    existingUserIntent.deviceInfo.storageClass = "base-tserver-sc";
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    deviceInfo.numVolumes = 1;
+    deviceInfo.storageClass = "base-tserver-sc";
+
+    TestUtils.initUserIntent(existingUserIntent, defaultProvider, null, deviceInfo, null);
+
     seedTserverAZOverride(existingUserIntent, az1.getUuid(), 100, "az1-old-sc");
     seedTserverAZOverride(existingUserIntent, az2.getUuid(), 100, "az2-old-sc");
     Universe existingUniverse =
@@ -2087,11 +2109,14 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // (mirrors what the operator passes in on edit).
     UserIntent newUserIntent = new UserIntent();
     newUserIntent.universeName = universeName;
-    newUserIntent.provider = defaultProvider.getUuid().toString();
-    newUserIntent.deviceInfo = new DeviceInfo();
-    newUserIntent.deviceInfo.volumeSize = 100;
-    newUserIntent.deviceInfo.numVolumes = 1;
-    newUserIntent.deviceInfo.storageClass = "base-tserver-sc";
+
+    DeviceInfo newDeviceInfo = new DeviceInfo();
+    newDeviceInfo.volumeSize = 100;
+    newDeviceInfo.numVolumes = 1;
+    newDeviceInfo.storageClass = "base-tserver-sc";
+
+    TestUtils.initUserIntent(newUserIntent, defaultProvider, null, newDeviceInfo, null);
+
     seedTserverAZOverride(newUserIntent, az1.getUuid(), 100, "az1-old-sc");
     seedTserverAZOverride(newUserIntent, az2.getUuid(), 100, "az2-old-sc");
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(newUserIntent, az1, az2);
@@ -2140,14 +2165,19 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // a master override for az1 simulate the post-create / post-prior-edit state.
     UserIntent existingUserIntent = new UserIntent();
     existingUserIntent.universeName = universeName;
-    existingUserIntent.provider = defaultProvider.getUuid().toString();
-    existingUserIntent.deviceInfo = new DeviceInfo();
-    existingUserIntent.deviceInfo.volumeSize = 100;
-    existingUserIntent.deviceInfo.numVolumes = 1;
-    existingUserIntent.deviceInfo.storageClass = "base-tserver-sc";
-    existingUserIntent.masterDeviceInfo = new DeviceInfo();
-    existingUserIntent.masterDeviceInfo.volumeSize = 50;
-    existingUserIntent.masterDeviceInfo.numVolumes = 1;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    deviceInfo.numVolumes = 1;
+    deviceInfo.storageClass = "base-tserver-sc";
+
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+
+    TestUtils.initUserIntent(existingUserIntent, defaultProvider, null, deviceInfo, null)
+        .setMasterDeviceInfo(masterDeviceInfo);
+
     seedTserverAZOverride(existingUserIntent, az1.getUuid(), 200, "az1-tserver-existing");
     // Stash an existing master override for az1 so we can verify it is preserved (skipAZs).
     AZOverrides az1Existing =
@@ -2188,14 +2218,19 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // placement now contains both az1 (retained) and az2 (newly added).
     UserIntent newUserIntent = new UserIntent();
     newUserIntent.universeName = universeName;
-    newUserIntent.provider = defaultProvider.getUuid().toString();
-    newUserIntent.deviceInfo = new DeviceInfo();
-    newUserIntent.deviceInfo.volumeSize = 100;
-    newUserIntent.deviceInfo.numVolumes = 1;
-    newUserIntent.deviceInfo.storageClass = "base-tserver-sc";
-    newUserIntent.masterDeviceInfo = new DeviceInfo();
-    newUserIntent.masterDeviceInfo.volumeSize = 50;
-    newUserIntent.masterDeviceInfo.numVolumes = 1;
+
+    DeviceInfo newDeviceInfo = new DeviceInfo();
+    newDeviceInfo.volumeSize = 100;
+    newDeviceInfo.numVolumes = 1;
+    newDeviceInfo.storageClass = "base-tserver-sc";
+
+    DeviceInfo newMasterDeviceInfo = new DeviceInfo();
+    newMasterDeviceInfo.volumeSize = 50;
+    newMasterDeviceInfo.numVolumes = 1;
+
+    TestUtils.initUserIntent(newUserIntent, defaultProvider, null, newDeviceInfo, null)
+        .setMasterDeviceInfo(newMasterDeviceInfo);
+
     seedTserverAZOverride(newUserIntent, az1.getUuid(), 200, "az1-tserver-existing");
     AZOverrides az1Carried =
         newUserIntent.getUserIntentOverrides().getAzOverrides().get(az1.getUuid());

@@ -1,7 +1,6 @@
 {
   "exclude": [
      "([.]clang-tidy)",
-     "([.]csv$)",
      "([.]dump$)",
      "([.]gitignore$)",
      "([.]ipynb$)",
@@ -102,6 +101,7 @@
       "text.max-line-length": 100,
       "exclude": [
         "(/pom[.]xml$)",
+        "([.]csv$)",
         "([.]md$)",
         "([.]sql$)",
         "(^pg15_tests/.*[.](sh|tsv)$)",
@@ -123,6 +123,7 @@
         "(^cmake_modules/FindBoost[.]cmake$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
+        "(^managed/src/main/resources/federation/)",
         "(^src/postgres/)",
         "(^src/yb/integration-tests/.*[.]out$)",
         "(^[.]gitignore$)",

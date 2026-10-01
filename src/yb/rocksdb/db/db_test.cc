@@ -4535,7 +4535,8 @@ class ModelDB: public DB {
   using DB::GetPropertiesOfAllTables;
   virtual Status GetPropertiesOfAllTables(
       ColumnFamilyHandle* column_family,
-      TablePropertiesCollection* props) override {
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override {
     return Status();
   }
 
@@ -4762,6 +4763,10 @@ class ModelDB: public DB {
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override {
     return NotSupported();
+  }
+
+  std::unique_ptr<PinnedVersion> PinCurrentVersion() override {
+    LOG(FATAL) << "PinCurrentVersion is not supported.";
   }
 
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override {

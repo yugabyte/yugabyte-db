@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -70,9 +71,10 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
-          TaskType.InstanceExistCheck,
           TaskType.UpdateUniverseFields,
           TaskType.SetNodeStatus,
+          TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks, // PreNodeProvision
@@ -115,7 +117,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
-          TaskType.InstanceExistCheck,
           TaskType.UpdateUniverseFields,
           TaskType.ValidateGFlags,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -308,7 +309,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         AzureReservationGroup.of(
             region1,
             Map.of(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider.getUuid()),
                 Map.of("1", nodesByAZ.get(zone1.getUuid())))),
         AzureReservationGroup.of(
             region2,
@@ -321,7 +326,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     nonZ1Nodes.addAll(nodesByAZ.get(zone3.getUuid()));
 
     verifyNodeInteractionsCapacityReservation(
-        27,
+        30,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -382,16 +387,24 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         AzureReservationGroup.of(
             region1,
             Map.of(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider.getUuid()),
                 Map.of("1", nodesByAZ.get(zone1.getUuid())))),
         AzureReservationGroup.of(
             region2,
             Map.of(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider.getUuid()),
                 Map.of("1", nodesByAZ.get(zone2.getUuid())))));
 
     verifyNodeInteractionsCapacityReservation(
-        27,
+        30,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -485,7 +498,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         AzureReservationGroup.of(
             region1,
             Map.of(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider.getUuid()),
                 Map.of("1", nodesByAZ.get(zone1.getUuid())))));
 
     String region2Group =
@@ -504,7 +521,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             Mockito.anyMap());
 
     verifyNodeInteractionsCapacityReservation(
-        27,
+        30,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -566,7 +583,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     verifyCapacityReservationAws(
         universe.getUniverseUUID(),
         Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(defaultProvider.getUuid()),
             Map.of("1", new ZoneData("region-1", nodesByAZ.get(zone1.getUuid())))),
         Map.of(
             overridenInstanceType,
@@ -583,19 +604,31 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 universe.getUniverseUUID(),
                 UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-1",
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(defaultProvider.getUuid())),
             nodesByAZ.get(zone1.getUuid()),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
                 UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-4",
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(defaultProvider.getUuid())),
             nodesByAZ.get(zone2.getUuid()),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
                 UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-5",
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(defaultProvider.getUuid())),
             nodesByAZ.get(zone3.getUuid())));
   }
 
@@ -617,7 +650,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
     UniverseDefinitionTaskParams.UserIntent rrIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    rrIntent.instanceType = rrInstanceType;
+    TestUtils.existingProviderInitializer(rrIntent).setInstanceType(rrInstanceType);
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(zone2.getUuid(), pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(zone3.getUuid(), pi, 1, 1, true);
@@ -652,7 +685,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         AzureReservationGroup.of(
             region1,
             Map.of(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider.getUuid()),
                 Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))),
         AzureReservationGroup.of(
             region2,
@@ -664,7 +701,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                     "4", Arrays.asList(readonlyNodes.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        54,
+        60,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -698,7 +735,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
     UniverseDefinitionTaskParams.UserIntent rrIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    rrIntent.instanceType = rrInstanceType;
+
+    TestUtils.existingProviderInitializer(rrIntent).setInstanceType(rrInstanceType);
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(zone2.getUuid(), pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(zone3.getUuid(), pi, 1, 1, true);
@@ -731,7 +769,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     verifyCapacityReservationAws(
         universe.getUniverseUUID(),
         Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(defaultProvider.getUuid()),
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n3", "host-n2", "host-n1")))),
         Map.of(
             rrInstanceType,
@@ -749,7 +791,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 universe.getUniverseUUID(),
                 UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-1",
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(defaultProvider.getUuid())),
             Arrays.asList("host-n1", "host-n2", "host-n3"),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
@@ -979,7 +1025,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     verifyCapacityReservationGcp(
         universe.getUniverseUUID(),
         Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(gcpProvider.getUuid()),
             Map.of("1", new ZoneData("region-1", nodesByAZ.get(zone1.getUuid())))),
         Map.of(
             overridenInstanceType,
@@ -1031,7 +1081,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
     UniverseDefinitionTaskParams.UserIntent rrIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    rrIntent.instanceType = rrInstanceType;
+    TestUtils.existingProviderInitializer(rrIntent).setInstanceType(rrInstanceType);
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(zone2.getUuid(), pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(zone3.getUuid(), pi, 1, 1, true);
@@ -1064,7 +1114,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     verifyCapacityReservationGcp(
         universe.getUniverseUUID(),
         Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(gcpProvider.getUuid()),
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n3", "host-n2", "host-n1")))),
         Map.of(
             rrInstanceType,

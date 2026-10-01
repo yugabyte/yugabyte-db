@@ -129,7 +129,8 @@ Status TestAdminClient::WaitForTabletPostSplitCompacted(
                      << " error: " << resp.error().status().ShortDebugString();
           return false;
         }
-        return resp.tablet_status().parent_data_compacted();
+        return resp.tablet_status().rocksdb_parent_data_compacted() &&
+               resp.tablet_status().vector_indexes_parent_data_compacted();
       },
       30s * kTimeMultiplier,
       Format("Waiting for tablet $0 post split compacted on tserver $1", tablet_id, ts->id()));

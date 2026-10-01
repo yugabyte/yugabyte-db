@@ -92,6 +92,15 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Trick to allow std::make_shared with this ctor only from methods of this class.
   YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);
 
+  // Creates a transaction object for a transaction that already exists at the status tablet,
+  // described by `metadata`. The created object is usable right away, i.e. it does not register
+  // itself at the status tablet and does not send heartbeats, so its lifetime is not tied to the
+  // lifetime of the transaction it describes. It also must not be committed or aborted.
+  // Used to read data written by an already committed transaction, see
+  // TransactionMetadata::is_read_only_historical_committed_txn.
+  static YBTransactionPtr Fabricate(
+      TransactionManager* manager, const TransactionMetadata& metadata);
+
   // Creates "child" transaction.
   // Child transaction shares same metadata as parent transaction, so all writes are done
   // as part of parent transaction.

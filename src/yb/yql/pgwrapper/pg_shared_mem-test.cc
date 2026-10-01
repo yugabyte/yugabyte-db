@@ -28,6 +28,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -46,6 +47,7 @@ DECLARE_uint64(TEST_shared_exchange_big_response_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
 DECLARE_uint64(big_shared_memory_segment_session_expiration_time_ms);
 DECLARE_uint64(TEST_big_shared_memory_segment_initial_id);
+DECLARE_int32(TEST_slowdown_pgsql_aggregate_read_ms);
 
 namespace yb {
 
@@ -419,6 +421,44 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }, 5s * kTimeMultiplier, "Sessions cleanup"));
 }
 
+// The test checks PgClientService detects postgres process (with in-flight RPC) termination faster
+// than session expiration based on heartbeat and performs required session cleanup actions.
+TEST_F(PgSharedMemTest, ConnectionWithInFlightRPCShutdown) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  constexpr auto kNumIterations = 16;
+  constexpr auto kWaitTimeout = 5s * kTimeMultiplier;
+
+  {
+    // Slowdown some further queries to simulate in-flight RPC
+    auto flag_guard = ChangeFlagTemporary(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms, 5000);
+    TestThreadHolder thread_holder;
+    for ([[maybe_unused]] const auto _ : std::views::iota(0, kNumIterations)) {
+      auto aux_conn = ASSERT_RESULT(Connect());
+      const auto aux_conn_backend_pid = aux_conn.BackendPID();
+      thread_holder.AddThread(
+          [aux_conn = std::move(aux_conn)]() mutable {
+            const auto status = ResultToStatus(aux_conn.FetchRow<PGUint64>(
+                "SELECT COUNT(*) FROM t"));
+            ASSERT_TRUE(status.IsNetworkError());
+          });
+      constexpr auto kMinQueryRunningTimeMsecs = 100 * kTimeMultiplier;
+      ASSERT_OK(WaitFor(
+          [&conn, aux_conn_backend_pid] {
+            return TryTerminateBackendWithRunningQuery(
+                conn, aux_conn_backend_pid, kMinQueryRunningTimeMsecs);
+          },
+          kWaitTimeout, "Active query termination"));
+    }
+  }
+
+  auto& client_service = *cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
+  ASSERT_OK(WaitFor(
+      [&client_service] { return client_service.TEST_SessionsCount() <= 2; },
+      kWaitTimeout, "Sessions cleanup"));
+}
+
 class PgSharedMemBigSegmentOverflowTest : public PgSharedMemTest {
  protected:
   void SetUp() override {
@@ -496,7 +536,7 @@ class PgSharedMemSchedulerBlockTest : public PgSharedMemTest {
 TEST_F_EX(PgSharedMemTest, SessionShutdownBlocksScheduler, PgSharedMemSchedulerBlockTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-  const auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  const auto backend_pid = conn.BackendPID();
   std::optional<PGConn> bystander = ASSERT_RESULT(Connect());
 
   auto* client_service =

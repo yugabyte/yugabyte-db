@@ -435,6 +435,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
+  void ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
   Status ClearUniverseUuid();
@@ -489,7 +492,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   master::DbOidToHybridTimeMap GetYsqlDbOldestPinnedReadTimes();
 
   // Stores the cluster-wide per-database history retention pins aggregated by the master across
-  // all live tservers and returned in the heartbeat response locally.
+  // all live tservers and returned in the heartbeat response locally. If the response sets
+  // cluster_ysql_db_pins_ready to false, the local map is left unchanged.
   void UpdateClusterYsqlDbOldestPinnedReadTimes(const master::TSHeartbeatResponsePB& resp)
       EXCLUDES(cluster_ysql_db_oldest_pinned_read_times_mutex_);
 
@@ -534,6 +538,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
+
+  // Loads cluster_ysql_db_oldest_pinned_read_times_ in memory from the persisted pins file
+  // on disk. Called on tserver startup to prevent accidental compaction before heartbeat.
+  // Returns OK immediately if the pins file does not exist.
+  Status LoadClusterYsqlDbOldestPinnedReadTimes()
+      EXCLUDES(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+
+  // Writes pins to disk if at least history_retention_pins_persist_interval_sec has
+  // passed since the last write.
+  void PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(const master::DbOidToHybridTimeMap& pins);
 
   std::atomic<bool> initted_{false};
 
@@ -591,9 +605,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
 
-  // Highest value of SysXClusterConfigEntryPB.oid_cache_invalidations_count received from any
-  // TSHeartbeatResponsePB.  This value is bumped to invalidate all the TServer OID caches.
+  // Highest value of SysClusterConfigEntryPB.oid_cache_invalidations_count received from the
+  // master.  This value is bumped to invalidate all the TServer OID caches.
   std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
+
+  // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
+  // PropagateXClusterGuardedInfo RPCs, and guards the version below.
+  std::mutex xcluster_guarded_info_version_mutex_;
+  // (term, count) of the most recently applied copy; (0, 0) is below any real version.
+  std::pair<int64_t, uint64_t> xcluster_guarded_info_version_
+      GUARDED_BY(xcluster_guarded_info_version_mutex_){0, 0};
 
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ GUARDED_BY(lock_) = 0;
@@ -601,11 +622,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
 
   // Cluster-wide per-database history retention pins, aggregated by the master across all live
-  // tservers and refreshed on every heartbeat response. Map[db_oid] -> oldest read HybridTime that
-  // any live transaction in the cluster may still need for that database.
+  // tservers and refreshed when a heartbeat response advertises a ready cluster pin map.
+  // Map[db_oid] -> oldest read HybridTime that any live transaction in the cluster may still
+  // need for that database.
   mutable rw_spinlock cluster_ysql_db_oldest_pinned_read_times_mutex_;
   master::DbOidToHybridTimeMap cluster_ysql_db_oldest_pinned_read_times_
       GUARDED_BY(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+
+  // Unsynchronized: only touched by PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded, which runs
+  // on the single heartbeat poller thread.
+  CoarseTimePoint last_ysql_db_pins_persist_time_ = CoarseTimePoint::min();
 
   // This map represents an extended history of pg_yb_invalidation_messages except message_time
   // (i.e., db_oid, current_version, inval messages). For each db_oid, it stores a queue of

@@ -63,7 +63,6 @@ DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
 
-
 namespace yb::docdb {
 
 using dockv::KeyBytes;
@@ -81,7 +80,16 @@ constexpr char kPostApplyMetadataMarker = 0;
 // Use the canonical colocation-only helper: cotable-keyed tables never engage this cache
 // (GetTableTombstoneTime requires has_colocation_id), and a second hand-rolled recognizer would
 // drift from dockv::IsColocatedTableTombstoneKey.
+//
+// This runs for every key applied to the regular DB, and the helper builds an error Status for
+// every ordinary colocated row key. A table tombstone is written at the table's top-level key (a
+// doc key with no hash or range components and no subkeys, see dockv::IsTopLevelKey), and
+// dockv::IsTopLevelIntentKey checks that shape by size, so use it to rule out every other key
+// before calling the helper.
 bool IsTableTombstoneKey(Slice key) {
+  if (key.empty() || !dockv::IsTopLevelIntentKey(key)) {
+    return false;
+  }
   auto result = dockv::IsColocatedTableTombstoneKey(key);
   return result.ok() && *result;
 }
@@ -965,10 +973,10 @@ Status ApplyIntentsContext::Complete(
 
 Status ApplyIntentsContext::DeleteVectorIds(
     Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
-  // TODO(vector_index): do we need check ApplyToRegularDB() here?
-  RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-      handler, ids, DocHybridTime(commit_ht_, write_id_)));
-
+  if (ApplyToRegularDB()) {
+    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+        handler, ids, DocHybridTime(commit_ht_, write_id_)));
+  }
   frontiers_.Largest().SetHasVectorDeletion();
   return Status::OK();
 }
@@ -1280,11 +1288,12 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
 
   // Remaining bytes after the key-value terminator are delete_vector_ids appended by
   // xCluster consumer. Tombstone each old vector ID's reverse mapping.
-  // TODO(vector_index): do we need check ApplyToRegularDB() here?
   if (!input_value.empty()) {
-    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-        regular_write_handler, input_value,
-        DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
+    if (apply_to_storages_.TestRegularDB()) {
+      RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+          regular_write_handler, input_value,
+          DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
+    }
     frontiers_.Largest().SetHasVectorDeletion();
   }
 
@@ -1410,7 +1419,13 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
         RETURN_NOT_OK(vector_indexes_updater->Feed(
             handler, write_pair.key(), write_pair.value()));
       }
-      HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+      // GH#32797: bootstrap replay clears the regular bit when the op is already flushed to the
+      // regular DB but not to a vector index. Keep the write id sequence unchanged either way.
+      if (apply_to_storages_.TestRegularDB()) {
+        HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+      } else {
+        ++write_id;
+      }
 
       // Non-transactional regular-DB write_pairs (direct PutBatch without a transaction). Local
       // colocated TRUNCATE is always transactional, so this hook is not the YSQL truncate path;
@@ -1432,9 +1447,11 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   }
 
   if (put_batch_.has_delete_vector_ids()) {
-    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-        handler, Slice(put_batch_.delete_vector_ids()),
-        DocHybridTime(write_hybrid_time_, write_id)));
+    if (apply_to_storages_.TestRegularDB()) {
+      RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+          handler, Slice(put_batch_.delete_vector_ids()),
+          DocHybridTime(write_hybrid_time_, write_id)));
+    }
     frontiers_.Largest().SetHasVectorDeletion();
   }
 
@@ -1524,6 +1541,34 @@ bool VectorIndexesUpdater::IntentApplyShouldUpdateVectorIndex(
   return commit_ht_ > vector_index.hybrid_time() || xcluster_target_;
 }
 
+Result<bool> VectorIndexesUpdater::TableWritesVectorReverseMapping(Slice table_key_prefix) {
+  if (table_writes_vector_reverse_mapping_ && table_key_prefix_.AsSlice() == table_key_prefix) {
+    return *table_writes_vector_reverse_mapping_;
+  }
+
+  // Only reached for a key which is not a packed row, FeedPackedRow takes the value from the
+  // schema packing it resolves anyway. Such a key carries no schema version, so pick any packing
+  // of the table.
+  auto packing_result = table_key_prefix.empty()
+      ? schema_packing_provider_.CotablePacking(
+            Uuid::Nil(), kLatestSchemaVersion, HybridTime::kMax)
+      : schema_packing_provider_.ColocationPacking(
+            BigEndian::Load32(table_key_prefix.data() + 1), kLatestSchemaVersion,
+            HybridTime::kMax);
+  if (!packing_result.ok() && !packing_result.status().IsNotFound()) {
+    return packing_result.status();
+  }
+
+  // A dropped table has no packing left, its rows need no reverse mapping entries either.
+  table_key_prefix_.Assign(table_key_prefix);
+  table_writes_vector_reverse_mapping_ =
+      packing_result.ok() && packing_result->table_writes_vector_reverse_mapping;
+  schema_packing_ = nullptr;
+  schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
+  schema_packing_owns_vector_reverse_mapping_ = false;
+  return *table_writes_vector_reverse_mapping_;
+}
+
 Status VectorIndexesUpdater::Feed(
     rocksdb::DirectWriteHandler& handler, Slice key, Slice value) {
   if (value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
@@ -1557,7 +1602,8 @@ Status VectorIndexesUpdater::Feed(
       // The value entry can start with kVector only when table owns vector reverse mapping.
       const bool apply_reverse_entry = value.starts_with(ValueEntryTypeAsChar::kVector);
       bool need_reverse_entry = apply_to_storages_.TestRegularDB();
-      if (need_reverse_entry && apply_reverse_entry) {
+      if (need_reverse_entry && apply_reverse_entry &&
+          VERIFY_RESULT(TableWritesVectorReverseMapping(key.Prefix(sizes.prefix_size)))) {
         column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
         auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(sizes.prefix_size);
         DocVectorIndex::ApplyReverseEntry(
@@ -1578,13 +1624,17 @@ Status VectorIndexesUpdater::Feed(
           auto table_key_prefix = vector_index.indexed_table_key_prefix();
           if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
               IntentApplyShouldUpdateVectorIndex(vector_index)) {
+            // The vector index knows its table key prefix and column id, so the payload stores
+            // the ybctid alone.
+            auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
             if (ApplyToVectorIndex(i)) {
               batches_[i].push_back(DocVectorIndexInsertEntry {
                 .value = ValueBuffer(value.WithoutPrefix(1)),
+                .ybctid = KeyBuffer(ybctid),
               });
             }
-            if (need_reverse_entry) {
-              auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
+            if (need_reverse_entry &&
+                VERIFY_RESULT(TableWritesVectorReverseMapping(key.Prefix(sizes.prefix_size)))) {
               DocVectorIndex::ApplyReverseEntry(
                   handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
               need_reverse_entry = false; // Apply only once, not for every vector index.
@@ -1615,7 +1665,7 @@ Status VectorIndexesUpdater::FeedPackedRow(
 
   auto table_key_prefix = key.Prefix(prefix_size);
   if (schema_packing_version_ != schema_version ||
-      schema_packing_table_prefix_.AsSlice() != table_key_prefix) {
+      table_key_prefix_.AsSlice() != table_key_prefix) {
     auto packing_result = prefix_size
       ? schema_packing_provider_.ColocationPacking(
             BigEndian::Load32(key.data() + 1), schema_version, HybridTime::kMax)
@@ -1631,9 +1681,12 @@ Status VectorIndexesUpdater::FeedPackedRow(
       // Keep version and prefix to not try to pick the same schema packing again,
       // but reset the schema packing to nullptr to not use it.
       schema_packing_version_ = schema_version;
-      schema_packing_table_prefix_.Assign(table_key_prefix);
+      table_key_prefix_.Assign(table_key_prefix);
       schema_packing_ = nullptr;
       schema_packing_owns_vector_reverse_mapping_ = false;
+      // Only this packing is missing, the table property is resolved on demand via the latest
+      // packing by TableWritesVectorReverseMapping.
+      table_writes_vector_reverse_mapping_.reset();
       return Status::OK();
     }
 
@@ -1642,8 +1695,9 @@ Status VectorIndexesUpdater::FeedPackedRow(
 
     schema_packing_ = packing.schema_packing;
     schema_packing_version_ = schema_version;
-    schema_packing_table_prefix_.Assign(table_key_prefix);
+    table_key_prefix_.Assign(table_key_prefix);
     schema_packing_owns_vector_reverse_mapping_ = packing.table_owns_vector_reverse_mapping;
+    table_writes_vector_reverse_mapping_ = packing.table_writes_vector_reverse_mapping;
   } else if (!schema_packing_) {
     // Schema packing was not found, but we already processed this key-value pair,
     // so we are good to skip the processing.
@@ -1670,7 +1724,7 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
   constexpr size_t kValuePrefixToStrip =
       std::is_same_v<Decoder, dockv::PackedRowDecoderV2> ? 0 : 1;
 
-  const auto table_key_prefix = schema_packing_table_prefix_.AsSlice();
+  const auto table_key_prefix = table_key_prefix_.AsSlice();
   const auto ybctid = key.WithoutPrefix(table_key_prefix.size());
 
   for (size_t i = 0; i != schema_packing_->vector_columns_count(); ++i) {
@@ -1680,7 +1734,8 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
       continue;
     }
 
-    if (apply_to_storages_.TestRegularDB()) {
+    if (apply_to_storages_.TestRegularDB() &&
+        VERIFY_RESULT(TableWritesVectorReverseMapping(table_key_prefix))) {
       DocVectorIndex::ApplyReverseEntry(
           handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_),
           column_id, table_key_prefix);
@@ -1698,6 +1753,7 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
           ApplyToVectorIndex(index_idx)) {
         batches_[index_idx].push_back(DocVectorIndexInsertEntry {
           .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
+          .ybctid = KeyBuffer(ybctid),
         });
       }
     }
@@ -1712,7 +1768,7 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
   constexpr size_t kValuePrefixToStrip =
       std::is_same_v<Decoder, dockv::PackedRowDecoderV2> ? 0 : 1;
 
-  const auto table_key_prefix = schema_packing_table_prefix_.AsSlice();
+  const auto table_key_prefix = table_key_prefix_.AsSlice();
   const auto ybctid = key.WithoutPrefix(table_key_prefix.size());
 
   auto prev_index_column_id = kInvalidColumnId;
@@ -1737,10 +1793,12 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
     if (ApplyToVectorIndex(i)) {
       batches_[i].push_back(DocVectorIndexInsertEntry {
         .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
+        .ybctid = KeyBuffer(ybctid),
       });
     }
 
-    if (apply_to_storages_.TestRegularDB()) {
+    if (apply_to_storages_.TestRegularDB() &&
+        VERIFY_RESULT(TableWritesVectorReverseMapping(table_key_prefix))) {
       size_t column_index = schema_packing_->GetIndex(vector_index.column_id());
       columns_added_to_vector_index.resize(
           std::max(columns_added_to_vector_index.size(), column_index + 1));

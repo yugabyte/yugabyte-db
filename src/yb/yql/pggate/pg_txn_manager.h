@@ -196,7 +196,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
 
   bool IsTableLockingEnabledForCurrentTxn() const;
-  bool ShouldEnableTableLocking() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
@@ -307,7 +306,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::optional<uint64_t> priority_;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
-  bool using_table_locks_ = false;
   bool crosstxn_snapshot_read_time_is_used_ = false;
   bool has_exported_snapshots_ = false;
 

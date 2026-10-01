@@ -28,12 +28,10 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 
 using namespace std::literals;
 
-DEFINE_test_flag(int32, tablet_delay_restore_ms, 0, "Delay restore on tablet");
 DEFINE_test_flag(bool, fail_tserver_snapshot_op, false, "Fail to delete snapshot");
 
 namespace yb {
@@ -123,10 +121,6 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   auto clock = tablet_manager_->server()->Clock();
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
-
-  if (operation->request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
-    AtomicFlagRandomSleepMs(&FLAGS_TEST_tablet_delay_restore_ms);
-  }
 
   if (!operation->CheckOperationRequirements()) {
     return;

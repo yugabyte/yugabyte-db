@@ -312,6 +312,11 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       if (schema_version_txn != ddl_txns_waiting_for_schema_version.cend()) {
         LOG(INFO) << "table " << table->id() << " has no txn id but is waiting for "
                   << schema_version_txn->first << ". So it is still bound by txn " << txn;
+        // The alter may never have been sent (e.g. the helper failed after committing the new
+        // version), and this call resets a failed state, so resend it to avoid a hang.
+        if (!SendAlterTableRequestInternal(table, TransactionId::Nil(), epoch).ok()) {
+          ddl_verification_success = false;
+        }
         continue;
       }
 
@@ -594,12 +599,18 @@ Status CatalogManager::ClearYsqlDdlTxnState(
     RemoveDdlTxnVerifierStateFromIndex(pb, rollback_till_ddl_state_index);
   }
 
+  const bool xcluster_has_pending_wal_anchor_deletion =
+      pb.has_xcluster_pending_wal_anchor_deletion_source_table_id();
+
   RETURN_NOT_OK(sys_catalog_->Upsert(txn_data.epoch, txn_data.table));
   if (RandomActWithProbability(
       FLAGS_TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification)) {
     return STATUS(InternalError, "Injected random failure for testing.");
   }
   txn_data.write_lock.Commit();
+  if (xcluster_has_pending_wal_anchor_deletion) {
+    GetXClusterManager()->MarkWalAnchorDeletionPending(txn_data.table->id());
+  }
   if (final_cleanup) {
     RemoveDdlTransactionState(txn_data.table->id(), {txn_data.ddl_txn_id});
   } else {

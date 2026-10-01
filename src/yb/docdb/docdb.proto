@@ -143,9 +143,26 @@ message ConsensusFrontierPB {
   // Set only on the master for cotables.
   optional fixed64 cotables_cutoff_ht = 8;
 
+  // Vector index backfill progress: set on the largest frontier while backfill is in progress
+  // (backfill_key) or when backfill has completed (backfill_done).
   optional bool backfill_done = 9;
   optional bytes backfill_key = 10;
+
+  // Set when any vector has been deleted on this tablet. Used to decide whether vector search
+  // can skip reverse-mapping filter checks when no deletions have occurred.
   optional bool has_vector_deletion = 11;
+
+  // The tablet's split_generation recorded when split_min_chunk_serial_no was stamped. Currently
+  // used by vector index only to detect whether a new split has occurred since the last recording.
+  // Absent defaults to 0 (matching a never-split tablet), so legacy indexes are implicitly
+  // up-to-date.
+  optional uint64 split_generation = 12;
+
+  // The smallest vector index chunk serial_no that is not inherited parent data
+  // (LastSerialNo() + 1 at split). Chunks with serial_no below this value need post-split
+  // compaction. Compacted when  MinSerialNo() is at least this value. Default 0 means
+  // the index has no inherited parent data.
+  optional uint64 split_min_chunk_serial_no = 13;
 }
 
 message ApplyTransactionStatePB {

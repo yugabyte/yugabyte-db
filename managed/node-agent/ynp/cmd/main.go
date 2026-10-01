@@ -452,6 +452,7 @@ func handleCommand(
 }
 
 func main() {
+	util.VerifyFipsMode()
 	setupCommand(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
 		if !util.IsConsoleLoggerSetup() {

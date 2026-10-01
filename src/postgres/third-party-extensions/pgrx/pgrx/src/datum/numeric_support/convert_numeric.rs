@@ -13,7 +13,7 @@ use core::str::FromStr;
 
 use pgrx_pg_sys::AsPgCStr;
 
-use super::convert::{from_primitive_helper, FromPrimitiveFunc};
+use super::convert::{FromPrimitiveFunc, from_primitive_helper};
 use super::error::Error;
 use crate::datum::{AnyNumeric, Numeric};
 use crate::pg_sys;

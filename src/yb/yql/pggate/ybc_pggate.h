@@ -718,7 +718,8 @@ YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
-// Set forward/backward scan direction.
+// Set forward/backward scan direction.  Leave it unset when row order does not matter, which lets
+// pggate read tablets in parallel and skip preserving ybctid order.  Cannot be changed once set.
 YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan);
 
 // Set prefix length for distinct index scans.
@@ -899,6 +900,11 @@ void YBCClearTimeout();
 
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
 
+// The deadline pggate applies to a request when no tighter timeout is in force. A caller arms a
+// timer that fires before this deadline does, so the failure is reported by postgres rather than
+// as a transport timeout.
+int32_t YBCGetDefaultRpcTimeoutMs();
+
 bool YBCHasProcessableAbortInterrupt();
 
 //--------------------------------------------------------------------------------------------------
@@ -932,6 +938,11 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
     size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
 void YBCPgResetCatalogReadTime();
+
+void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id);
+
+void YBCPgResetHistoricalReadContext();
+
 YbcReadHybridTime YBCGetPgCatalogReadTime();
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
@@ -942,12 +953,13 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-void YBCStartSysTablePrefetchingNoCache();
+void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,
-    YbcPgSysTablePrefetcherCacheMode cache_mode);
+    YbcPgSysTablePrefetcherCacheMode cache_mode,
+    YbcPgSysTablePrefetchKind kind);
 
 void YBCStopSysTablePrefetching();
 

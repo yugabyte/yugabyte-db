@@ -1,4 +1,8 @@
 //! Memory Contexts in PostgreSQL, now with lifetimes.
+use pgrx_sql_entity_graph::metadata::{
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
+};
+
 // "Why isn't this pgrx::mem or pgrx::memcxt?"
 // Postgres actually uses all of:
 // - mcxt
@@ -6,10 +10,13 @@
 // - mctx
 // Search engines will see "memc[tx]{2}" and assume you mean memcpy!
 // And it's nice-ish to have shorter lifetime names and have 'mcx consistently mean the lifetime.
+use crate::callconv::{Arg, ArgAbi};
+use crate::nullable::Nullable;
 use crate::pg_sys;
 use core::{marker::PhantomData, ptr::NonNull};
 
 /// A borrowed memory context.
+#[repr(transparent)]
 pub struct MemCx<'mcx> {
     ptr: NonNull<pg_sys::MemoryContextData>,
     _marker: PhantomData<&'mcx pg_sys::MemoryContextData>,
@@ -29,8 +36,18 @@ impl<'mcx> MemCx<'mcx> {
 
     /// Allocate a raw byte buffer `size` bytes in length
     /// and returns a pointer to the new allocation.
-    pub fn alloc_bytes(&self, size: usize) -> *mut u8 {
-        unsafe { pg_sys::MemoryContextAlloc(self.ptr.as_ptr(), size).cast() }
+    pub fn alloc_bytes(&self, size: usize) -> Result<NonNull<u8>, OutOfMemory> {
+        let flags = (pg_sys::MCXT_ALLOC_NO_OOM) as i32;
+        let ptr = unsafe { pg_sys::MemoryContextAllocExtended(self.ptr.as_ptr(), size, flags) };
+        NonNull::new(ptr.cast()).ok_or(OutOfMemory::new())
+    }
+
+    /// Allocate a raw byte buffer `size` bytes in length
+    /// and returns a pointer to the new allocation.
+    pub fn alloc_zeroed_bytes(&self, size: usize) -> Result<NonNull<u8>, OutOfMemory> {
+        let flags = (pg_sys::MCXT_ALLOC_NO_OOM | pg_sys::MCXT_ALLOC_ZERO) as i32;
+        let ptr = unsafe { pg_sys::MemoryContextAllocExtended(self.ptr.as_ptr(), size, flags) };
+        NonNull::new(ptr.cast()).ok_or(OutOfMemory::new())
     }
 
     /// Stores the current memory context, switches to *this* memory context,
@@ -51,6 +68,16 @@ impl<'mcx> MemCx<'mcx> {
     }
 }
 
+#[derive(Debug)]
+pub struct OutOfMemory {
+    _reserve: (),
+}
+impl OutOfMemory {
+    pub fn new() -> OutOfMemory {
+        OutOfMemory { _reserve: () }
+    }
+}
+
 /// Acquire the current context and operate inside it.
 pub fn current_context<'curr, F, T>(f: F) -> T
 where
@@ -61,7 +88,7 @@ where
     f(&memcx)
 }
 
-#[cfg(all(feature = "nightly", feature = "pg16", feature = "pg17"))]
+#[cfg(all(feature = "nightly", feature = "pg16", feature = "pg17", feature = "pg18"))]
 mod nightly {
     use super::*;
     use std::slice;
@@ -115,4 +142,37 @@ mod nightly {
             }
         }
     }
+}
+
+unsafe impl<'fcx> ArgAbi<'fcx> for &MemCx<'fcx> {
+    unsafe fn unbox_arg_unchecked(_arg: Arg<'_, 'fcx>) -> Self {
+        // SAFETY: We are called to unbox an argument, which means the backend was initialized.
+        // We use this horrific expression to allow the lifetime to be extended arbitrarily
+        // and achieve an "in-place" transformation of CurrentMemoryContext's pointer.
+        // The soundness of this is riding on the lifetimes used for `unbox_arg_unchecked` in our macros,
+        // as the expanded code is designed so that `fcinfo` and each `arg` are truly "borrowed" in rustc's eyes.
+        unsafe { &*((&raw mut pg_sys::YbCurrentMemoryContext).cast()) }
+    }
+
+    unsafe fn unbox_nullable_arg(arg: Arg<'_, 'fcx>) -> Nullable<Self> {
+        // SAFETY: Should never happen in actuality, but as long as we're here...
+        if unsafe { pg_sys::YbCurrentMemoryContext.is_null() } {
+            Nullable::Null
+        } else {
+            Nullable::Valid(Self::unbox_arg_unchecked(arg))
+        }
+    }
+
+    fn is_virtual_arg() -> bool {
+        true
+    }
+}
+
+/// SAFETY: virtual argument
+unsafe impl<'mcx> SqlTranslatable for &MemCx<'mcx> {
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(MemCx<'mcx>);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = Ok(SqlMappingRef::Skip);
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> = Ok(ReturnsRef::One(SqlMappingRef::Skip));
 }

@@ -21,6 +21,7 @@ import api.v2.models.RunScriptResponse;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseCrossCloudFederationSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
@@ -43,6 +44,7 @@ import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.UniverseUpdateProxyConfig;
+import api.v2.models.UniverseVMImageUpgradeSpec;
 import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
 import api.v2.models.YBAValidationResponse;
@@ -115,6 +117,17 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags universeEditGFlags)
       throws Exception {
     return universeUpgradeHandler.editGFlags(request, cUUID, uniUUID, universeEditGFlags);
+  }
+
+  @Override
+  public YBATask editVMImage(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseVMImageUpgradeSpec universeVMImageUpgradeSpec)
+      throws Exception {
+    return universeUpgradeHandler.vmImageUpgrade(
+        request, cUUID, uniUUID, universeVMImageUpgradeSpec);
   }
 
   @Override
@@ -299,6 +312,13 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask operatorImportUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
     return universeHandler.operatorImportUniverse(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public YBATask manageCrossCloudFederation(
+      Request request, UUID cUUID, UUID uniUUID, UniverseCrossCloudFederationSpec spec)
+      throws Exception {
+    return universeHandler.manageCrossCloudFederation(request, cUUID, uniUUID, spec);
   }
 
   @Override

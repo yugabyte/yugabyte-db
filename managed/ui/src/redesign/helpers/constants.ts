@@ -44,6 +44,8 @@ export const RuntimeConfigKey = {
   ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING: 'yb.ui.xcluster.enable_skip_bootstrapping',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
   XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG: 'yb.xcluster.db_scoped.creationEnabled',
+  XCLUSTER_DB_SCOPED_AUTOMATIC_DDL_CREATION_FEATURE_FLAG:
+    'yb.xcluster.db_scoped.automatic_ddl.creationEnabled',
   PERFORMANCE_ADVISOR_UI_FEATURE_FLAG: 'yb.ui.feature_flags.perf_advisor',
   GRANULAR_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.granular_metrics',
   IS_UNIVERSE_AUTH_ENFORCED: 'yb.universe.auth.is_enforced',
@@ -91,6 +93,8 @@ export const RuntimeConfigKey = {
   CONTINUOUS_PLATFORM_BACKUPS_UI: 'yb.ui.feature_flags.continuous_platform_backups',
   METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled',
   ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.enable_new_universe_experience',
+  ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS:
+    'yb.ui.enable_new_universe_experience_for_all_users',
   ENABLE_NEW_PERF_ADVISOR_UI: 'yb.ui.feature_flags.enable_new_perf_advisor_ui',
   ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION:
     'yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option',

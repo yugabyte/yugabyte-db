@@ -25,6 +25,23 @@
 
 namespace yb::master {
 
+#define DECLARE_SINGLETON_LOADER_CLASS(name, key_type, entry_pb_name) \
+  template <typename CatalogEntityWrapper> \
+  class BOOST_PP_CAT(name, Loader) \
+      : public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
+   public: \
+    explicit BOOST_PP_CAT(name, Loader)(CatalogEntityWrapper & catalog_entity_wrapper) \
+        : catalog_entity_wrapper_(catalog_entity_wrapper) {} \
+\
+   private: \
+    Status Visit(const key_type& key, const entry_pb_name& metadata) override { \
+      catalog_entity_wrapper_.Load(metadata); \
+      return Status::OK(); \
+    } \
+    CatalogEntityWrapper& catalog_entity_wrapper_; \
+    DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
+  };
+
 #define DECLARE_MULTI_INSTANCE_LOADER_CLASS(name, key_type, entry_pb_name) \
   class BOOST_PP_CAT(name, Loader) \
       : public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \

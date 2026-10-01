@@ -844,8 +844,25 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         final int endPartition = 10 * (part_idx + 1);
 
         stmt1.execute("BEGIN");
-        stmt1.executeUpdate(String.format("INSERT INTO prt(a,b) VALUES (%d, 'abc')",
-                                          startPartition + 1));
+        // The previous iteration's DDL ran on connection 2's node and bumped the DocDB schema
+        // version of prt_default. Until its catalog version reaches this node, the insert is
+        // rejected with a retryable stale schema version error instead of reaching the commit.
+        for (int attempt = 0; ; ++attempt) {
+          try {
+            stmt1.executeUpdate(String.format("INSERT INTO prt(a,b) VALUES (%d, 'abc')",
+                                              startPartition + 1));
+            break;
+          } catch (PSQLException e) {
+            if (attempt == 30 || !e.getMessage().contains("schema version mismatch")) {
+              throw e;
+            }
+            LOG.info(String.format("Iteration %d: retrying insert after attempt %d: %s",
+                                   part_idx, attempt, e.getMessage()));
+            stmt1.execute("ROLLBACK");
+            Thread.sleep(100);
+            stmt1.execute("BEGIN");
+          }
+        }
 
         // Alternatively test creating a new partition and attaching a new partition.
         if (part_idx % 2 == 0) {

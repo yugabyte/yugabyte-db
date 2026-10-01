@@ -113,7 +113,7 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
     reValidateMode: 'onChange',
     context: { osPatchingEnabled },
     resolver: yupResolver(
-      RRInstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code)
+      RRInstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code, maxVolumeCount)
     )
   });
 

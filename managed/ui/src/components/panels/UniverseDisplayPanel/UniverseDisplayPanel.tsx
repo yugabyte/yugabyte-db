@@ -37,6 +37,7 @@ import {
   useUniverseCreationPopover
 } from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/UniverseCreationPopover';
 import { compareUniversesForDashboardDisplay } from './universeDisplaySort';
+import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 
 import './UniverseDisplayPanel.scss';
 
@@ -53,7 +54,8 @@ export const UniverseDisplayPanel = ({
     handleClose: handleUniverseCreationPopoverClose,
     handleClickAway: handleUniverseCreationPopoverClickAway
   } = useUniverseCreationPopover();
-  const isOnboardingExperienceEnabled = useOnboardingNewExperienceEnabled();
+  // Re-render when SuperAdmin banner toggle flips (in-memory feature mirror).
+  useOnboardingNewExperienceEnabled();
   const currentUser = useSelector((state: any) => state.customer.currentUser.data);
 
   const providerUuidToName = {};
@@ -127,8 +129,7 @@ export const UniverseDisplayPanel = ({
     const showNodeAgentInstallReminderBanner = isNodeAgentEnabled && hasUniverseMissingNodeAgent;
     const isNewV2CreateUniverseUIEnabled = isUniverseRevampExperienceEnabled(
       globalRuntimeConfigQuery?.data,
-      currentUser?.role,
-      isOnboardingExperienceEnabled
+      currentUser?.role
     );
 
     return (
@@ -151,9 +152,12 @@ export const UniverseDisplayPanel = ({
                   >
                     <YBButton
                       btnClass="universe-button btn btn-lg btn-orange"
-                      disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                      disabled={
+                        isDisabled(currentCustomer.data.features, 'universe.create') ||
+                        !isDefinedNotNull(isNewV2CreateUniverseUIEnabled)
+                      }
                       btnText="Create Universe"
-                      btnIcon="fa fa-plus"
+                      btnIcon={`fa ${isDefinedNotNull(isNewV2CreateUniverseUIEnabled) ? 'fa-plus' : 'fa-spinner fa-pulse'}`}
                       data-testid="Dashboard-CreateUniverse"
                     />
                   </Link>

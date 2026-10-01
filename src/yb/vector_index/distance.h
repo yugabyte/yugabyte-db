@@ -20,6 +20,7 @@
 
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/tostring.h"
 
@@ -149,10 +150,19 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 using VertexIdToVectorDistanceFunction =
     std::function<DistanceResult(VectorId vector_id, const Vector&)>;
 
+template <IndexableVectorType Vector>
+struct VectorIndexEntry;
+
+template <IndexableVectorType Vector>
+struct VectorIndexIteratorEntry;
+
 template<ValidDistanceResultType DistanceResult>
 struct VectorWithDistance {
   VectorId vector_id = VectorId::Nil();
   DistanceResult distance{};
+
+  // Payload attached to the vector at insertion time. Could be empty.
+  ValueBuffer payload;
 
   // Constructor with the wrong order. Only delete it if DistanceResult is not uint64_t.
   template <typename T = DistanceResult,
@@ -165,14 +175,33 @@ struct VectorWithDistance {
   VectorWithDistance(VectorId vector_id_, DistanceResult distance_)
       : vector_id(vector_id_), distance(distance_) {}
 
+  VectorWithDistance(VectorId vector_id_, DistanceResult distance_, ValueBuffer&& payload_)
+      : vector_id(vector_id_), distance(distance_), payload(std::move(payload_)) {}
+
+  // Copies vector id and payload from the vector index entry.
+  template <IndexableVectorType Vector>
+  VectorWithDistance(const VectorIndexEntry<Vector>& entry, DistanceResult distance_)
+      : vector_id(entry.vector_id), distance(distance_), payload(entry.payload) {}
+
+  // Copies vector id and payload from the vector index iterator entry.
+  template <IndexableVectorType Vector>
+  VectorWithDistance(const VectorIndexIteratorEntry<Vector>& entry, DistanceResult distance_)
+      : vector_id(entry.vector_id), distance(distance_), payload(entry.payload) {}
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(vector_id, distance);
   }
 
+  // Whether this entry is greater than the specified (distance, vector id) pair in the
+  // lexicographical order of (distance, vector_id).
+  bool GreaterThan(DistanceResult other_distance, const VectorId& other_vector_id) const {
+    return distance > other_distance ||
+           (distance == other_distance && other_vector_id < vector_id);
+  }
+
   // Sort in lexicographical order of (distance, vector_id).
   bool operator <(const VectorWithDistance& other) const {
-    return distance < other.distance ||
-           (distance == other.distance && vector_id < other.vector_id);
+    return other.GreaterThan(distance, vector_id);
   }
 
   bool operator>(const VectorWithDistance& other) const {

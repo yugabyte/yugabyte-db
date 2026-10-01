@@ -98,6 +98,10 @@ DEPRECATE_FLAG(int32, rpc_queue_limit, "03_2024");
 
 DEFINE_NON_RUNTIME_int32(rpc_workers_limit, 1024, "Workers limit for rpc server");
 
+DEFINE_NON_RUNTIME_int32(rpc_high_priority_workers_limit, 0,
+    "Workers limit for the high priority rpc thread pool, which serves consensus. "
+    "0 means use rpc_workers_limit.");
+
 DEFINE_NON_RUNTIME_int32(rpc_reactor_task_timeout_ms, 0,
     "Report if reactor task task takes longer that specified amount of milliseconds. "
     "0 to disable monitoring.");
@@ -430,7 +434,9 @@ const ThreadPoolPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
       high_priority_thread_pool_ = std::make_shared<rpc::ThreadPool>(
           rpc::ThreadPoolOptions {
             .name = name_ + "-high-pri",
-            .max_workers = thread_pool_workers_limit_,
+            .max_workers = FLAGS_rpc_high_priority_workers_limit > 0
+                ? static_cast<size_t>(FLAGS_rpc_high_priority_workers_limit)
+                : thread_pool_workers_limit_,
             .cgroup = system_high_cgroup_,
           });
       high_priority_thread_pool_ready_.store(true, std::memory_order_release);

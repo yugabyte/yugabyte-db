@@ -50,6 +50,9 @@ _get_headers() {
     echo "Accept: application/json"
     echo "X-AUTH-YW-API-TOKEN: ${token}"
     echo "Content-Type: application/json"
+    # Marks these calls as made by YNP. YBA rejects user driven changes to the configuration,
+    # the instance types and the node instances of a YNP managed provider.
+    echo "X-YBA-YNP-REQUEST: true"
 }
 
 # Function to determine if TLS verification should be skipped

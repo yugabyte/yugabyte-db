@@ -5821,8 +5821,9 @@ Status DBImpl::SwitchMemtable(
   return s;
 }
 
-Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
-                                        TablePropertiesCollection* props) {
+Status DBImpl::GetPropertiesOfAllTables(
+    ColumnFamilyHandle* column_family, TablePropertiesCollection* props,
+    TablePropertiesErrorHandling error_handling) {
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
@@ -5832,7 +5833,7 @@ Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
   version->Ref();
   mutex_.Unlock();
 
-  auto s = version->GetPropertiesOfAllTables(props);
+  auto s = version->GetPropertiesOfAllTables(props, error_handling);
 
   // Decrement the ref count
   mutex_.Lock();
@@ -6129,6 +6130,67 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   // Use an empty (invalid) internal key to get the middle key without a lower bound.
   const Slice kEmptyInternalKey;
   return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
+}
+
+class DBImpl::PinnedVersionImpl : public PinnedVersion {
+ public:
+  // REQUIRED: `version` has already been referenced on behalf of this object.
+  PinnedVersionImpl(DBImpl* db, Version* version) : db_(db), version_(version) {}
+
+  ~PinnedVersionImpl() {
+    // Mirrors CleanupIteratorState: dropping the last reference can leave this version's files
+    // obsolete, and nothing else scans for them until the next flush or compaction. Job id 0
+    // means a user thread rather than a background process.
+    JobContext job_context(0);
+    {
+      InstrumentedMutexLock lock(&db_->mutex_);
+      if (version_->Unref()) {
+        db_->FindObsoleteFiles(&job_context, false, true);
+      }
+    }
+    if (job_context.HaveSomethingToDelete()) {
+      db_->PurgeObsoleteFiles(job_context);
+    }
+    job_context.Clean();
+  }
+
+  yb::Result<uint64_t> TotalDataSize() override {
+    return version_->TotalDataSize();
+  }
+
+  yb::Result<uint64_t> Cross(Slice key) override {
+    auto internal_key = InternalKey::MinPossibleForUserKey(key);
+    return version_->Cross(internal_key.Encode());
+  }
+
+  yb::Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override {
+    const auto lower_internal = InternalKey::MinPossibleForUserKey(lower_bound_key);
+
+    // Exclusive bound: MaxPossibleForUserKey sorts *below* every entry for this user key, despite
+    // its name and its comment in dbformat.h -- internal keys order by decreasing sequence number.
+    std::string upper_internal_buf;
+    if (!upper_bound_key.empty()) {
+      upper_internal_buf =
+          InternalKey::MaxPossibleForUserKey(upper_bound_key).Encode().ToBuffer();
+    }
+
+    auto internal_key = VERIFY_RESULT(version_->FindTargetKey(
+        lower_internal.Encode(), upper_internal_buf, target_size));
+    return ExtractUserKey(internal_key).ToBuffer();
+  }
+
+ private:
+  DBImpl* const db_;
+  Version* const version_;
+};
+
+std::unique_ptr<PinnedVersion> DBImpl::PinCurrentVersion() {
+  InstrumentedMutexLock lock(&mutex_);
+  auto* version = default_cf_handle_->cfd()->current();
+  // Version::refs_ is not atomic, so both this and the matching Unref() need the DB mutex.
+  version->Ref();
+  return std::unique_ptr<PinnedVersion>(new PinnedVersionImpl(this, version));
 }
 
 void DBImpl::TEST_SwitchMemtable() {

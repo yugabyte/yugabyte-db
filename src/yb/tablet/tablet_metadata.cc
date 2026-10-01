@@ -76,6 +76,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
@@ -484,6 +485,8 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
         self->table_type, self->doc_read_context->schema().is_colocated()),
     .table_owns_vector_reverse_mapping =
         self->doc_read_context->schema().table_properties().owns_vector_reverse_mapping(),
+    .table_writes_vector_reverse_mapping =
+        self->doc_read_context->schema().table_properties().writes_vector_reverse_mapping(),
   };
 }
 
@@ -575,10 +578,11 @@ Status KvStoreInfo::LoadTablesFromPB(
   return Status::OK();
 }
 
-Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
-                               const KvStoreInfoPB& pb,
-                               const TableId& primary_table_id,
-                               bool local_superblock) {
+Status KvStoreInfo::LoadFromPB(
+    const std::string& tablet_log_prefix,
+    const KvStoreInfoPB& pb,
+    const TableId& primary_table_id,
+    bool local_superblock) {
   kv_store_id = KvStoreId(pb.kv_store_id());
   if (local_superblock) {
     rocksdb_dir = pb.rocksdb_dir();
@@ -598,15 +602,16 @@ Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
     if (tier_paths.empty()) {
       tier_paths.push_back({
           .path_id = 0,
-          .tier    = FsManager::kDefaultStorageTier,
+          .tier    = kDefaultStorageTier,
           .path    = rocksdb_dir,
       });
     }
   }
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
-  parent_data_compacted = pb.parent_data_compacted();
+  rocksdb_parent_data_compacted = pb.rocksdb_parent_data_compacted();
   last_full_compaction_time = pb.last_full_compaction_time();
+  split_generation = pb.split_generation();
   if (pb.has_post_split_compaction_file_number_upper_bound()) {
     post_split_compaction_file_number_upper_bound =
         pb.post_split_compaction_file_number_upper_bound();
@@ -626,8 +631,9 @@ Status KvStoreInfo::MergeWithRestored(
     dockv::OverwriteSchemaPacking overwrite) {
   lower_bound_key = snapshot_kvstoreinfo.lower_bound_key();
   upper_bound_key = snapshot_kvstoreinfo.upper_bound_key();
-  parent_data_compacted = snapshot_kvstoreinfo.parent_data_compacted();
+  rocksdb_parent_data_compacted = snapshot_kvstoreinfo.rocksdb_parent_data_compacted();
   last_full_compaction_time = snapshot_kvstoreinfo.last_full_compaction_time();
+  split_generation = snapshot_kvstoreinfo.split_generation();
   if (snapshot_kvstoreinfo.has_post_split_compaction_file_number_upper_bound()) {
     post_split_compaction_file_number_upper_bound =
         snapshot_kvstoreinfo.post_split_compaction_file_number_upper_bound();
@@ -752,7 +758,8 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
   } else {
     pb->set_upper_bound_key(upper_bound_key);
   }
-  pb->set_parent_data_compacted(parent_data_compacted);
+  pb->set_rocksdb_parent_data_compacted(rocksdb_parent_data_compacted);
+  pb->set_split_generation(split_generation);
   pb->set_last_full_compaction_time(last_full_compaction_time);
   if (post_split_compaction_file_number_upper_bound.has_value()) {
     pb->set_post_split_compaction_file_number_upper_bound(
@@ -797,7 +804,8 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
                           tier_paths,
                           lower_bound_key,
                           upper_bound_key,
-                          parent_data_compacted,
+                          rocksdb_parent_data_compacted,
+                          split_generation,
                           snapshot_schedules) &&
          MapsEqual(lhs.tables, rhs.tables, eq) &&
          MapsEqual(lhs.colocation_to_table, rhs.colocation_to_table, eq);
@@ -827,7 +835,7 @@ std::vector<TierPathInfo> BuildTierPaths(
   const auto& roots_by_tier = fs_manager->GetDataRootsByTier();
 
   // Identify the home tier by finding which tier's roots contain home_data_root.
-  std::string home_tier(FsManager::kDefaultStorageTier);
+  std::string home_tier(kDefaultStorageTier);
   for (const auto& [tier, roots] : roots_by_tier) {
     if (std::find(roots.begin(), roots.end(), home_data_root) != roots.end()) {
       home_tier = tier;
@@ -1041,7 +1049,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
-  docdb::InitRocksDBOptions(
+  docdb::InitRocksDBOptionsWithoutTableFactory(
       &rocksdb_options, log_prefix_, raft_group_id_, nullptr /* statistics */, tablet_options);
 
   // Tiered storage: the regular DB may have SSTs spread across several disks (tier_paths). Mirror
@@ -2055,6 +2063,16 @@ OpId RaftGroupMetadata::split_op_id() const {
   return split_op_id_;
 }
 
+uint64_t RaftGroupMetadata::split_generation() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.split_generation;
+}
+
+void RaftGroupMetadata::set_split_generation(uint64_t value) {
+  std::lock_guard lock(data_mutex_);
+  kv_store_.split_generation = value;
+}
+
 OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
   std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ != TabletDataState::TABLET_DATA_SPLIT_COMPLETED || hidden_) {
@@ -2259,9 +2277,13 @@ Status RaftGroupMetadata::CheckColocationPacking(
 }
 
 // Apply path: table tombstone written for this colocation id, invalidate its tombstone-time cache.
+// Invalidates under data_mutex_, which the TableInfo rebuilds that carry the cache state (schema
+// GC, backfill done) also hold, so a notify lands either on the old context before the copy or on
+// the new one.
 void RaftGroupMetadata::NotifyTableTombstoneWritten(
     ColocationId colocation_id, HybridTime write_ht) {
-  auto table_info = GetTableInfo(colocation_id);
+  std::lock_guard lock(data_mutex_);
+  auto table_info = GetTableInfoUnlocked(colocation_id);
   if (!table_info.ok()) {
     // Table may have been dropped; nothing to invalidate.
     return;
@@ -2278,7 +2300,8 @@ void RaftGroupMetadata::NotifyTableTombstoneWritten(const Uuid& cotable_id, Hybr
   if (cotable_id.IsNil()) {
     return;
   }
-  auto table_info = GetTableInfo(cotable_id.ToHexString());
+  std::lock_guard lock(data_mutex_);
+  auto table_info = GetTableInfoUnlocked(cotable_id.ToHexString());
   if (!table_info.ok()) {
     return;
   }
@@ -2302,7 +2325,10 @@ void RaftGroupMetadata::ArmColocatedTombstoneCaches(HybridTime safe_time) {
       safe_time < HybridTime::kInitial) {
     return;
   }
-  for (const auto& table_info : GetColocatedTableInfos()) {
+  // Under data_mutex_ so a concurrent schema GC cannot copy a context's cache state before this
+  // arms it and leave the replacement unarmed.
+  std::lock_guard lock(data_mutex_);
+  for (const auto& [_, table_info] : kv_store_.colocation_to_table) {
     if (table_info->doc_read_context && table_info->schema().has_colocation_id()) {
       table_info->doc_read_context->AdvanceTombstoneCacheWatermark(safe_time);
     }
@@ -2319,7 +2345,7 @@ std::string RaftGroupMetadata::GetSubRaftGroupDataDir(const RaftGroupId& raft_gr
 }
 
 // We directly init fields of a new metadata, so have to use NO_THREAD_SAFETY_ANALYSIS here.
-Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSplitChildMetadata(
     const RaftGroupId& raft_group_id, const Partition& partition,
     const std::string& lower_bound_key, const std::string& upper_bound_key)
     const NO_THREAD_SAFETY_ANALYSIS {
@@ -2337,7 +2363,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   kv_store.set_upper_bound_key(upper_bound_key);
   const std::string child_rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
   kv_store.set_rocksdb_dir(child_rocksdb_dir);
-  kv_store.set_parent_data_compacted(false);
+  kv_store.set_rocksdb_parent_data_compacted(false);
+  kv_store.set_split_generation(kv_store_.split_generation + 1);
   kv_store.set_last_full_compaction_time(kNoLastFullCompactionTime);
   kv_store.clear_post_split_compaction_file_number_upper_bound();
 
@@ -2678,9 +2705,10 @@ Status RaftGroupMetadata::OnBackfillDoneUnlocked(
 
 Status RaftGroupMetadata::SetTableInfoUnlocked(
     const TableInfoMap::iterator& it, const TableInfoPtr& new_table_info) {
-  it->second = new_table_info;
-  if (it->second->schema().has_colocation_id()) {
-    const auto colocation_id = it->second->schema().colocation_id();
+  // Validate before replacing anything: installing new_table_info in tables but not in
+  // colocation_to_table would leave a context that NotifyTableTombstoneWritten never reaches.
+  if (new_table_info->schema().has_colocation_id()) {
+    const auto colocation_id = new_table_info->schema().colocation_id();
     auto table_it = kv_store_.colocation_to_table.find(colocation_id);
     RSTATUS_DCHECK(table_it != kv_store_.colocation_to_table.end(), NotFound,
         Format("Could not find table $0 (colocation_id=$1) in colocation_to_table map",
@@ -2695,6 +2723,7 @@ Status RaftGroupMetadata::SetTableInfoUnlocked(
                colocation_id, table_it->second->schema().colocation_id()));
     table_it->second = new_table_info;
   }
+  it->second = new_table_info;
   return Status::OK();
 }
 
@@ -2702,8 +2731,8 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   std::lock_guard lock(data_mutex_);
   bool updated = false;
 
-  if (!kv_store_.parent_data_compacted) {
-    kv_store_.parent_data_compacted = true;
+  if (!kv_store_.rocksdb_parent_data_compacted) {
+    kv_store_.rocksdb_parent_data_compacted = true;
     updated = true;
   }
 

@@ -385,7 +385,7 @@ public class NodeAgentPoller {
 
     // This handles upgrade for the given node agent with exclusive access to prevent double
     // upgrade.
-    private void upgradeNodeAgentLocked(NodeAgent nodeAgent, DeployContext deployConext) {
+    private void upgradeNodeAgentLocked(NodeAgent nodeAgent, DeployContext deployContext) {
       if (HighAvailabilityConfig.isFollower()) {
         // Task may have already been submitted. This check ensures that submitted tasks are not
         // run.
@@ -397,10 +397,11 @@ public class NodeAgentPoller {
       if (nodeAgent.getState() == State.READY) {
         nodeAgent.saveState(State.UPGRADE);
       }
-      log.debug("Deploying node agent with context {} for node agent {}", deployConext, nodeAgent);
+      log.debug("Deploying node agent with context {} for node agent {}", deployContext, nodeAgent);
       if (nodeAgent.getState() == State.UPGRADE) {
         log.info("Uploading upgrade files for node agent {}", nodeAgent);
-        InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, deployConext);
+        InstallerFiles installerFiles =
+            nodeAgentManager.getInstallerFiles(nodeAgent, deployContext);
         // Upload the installer files including new cert and key to the remote node agent.
         uploadInstallerFiles(nodeAgent, installerFiles);
         log.info("Uploaded upgrade files for node agent {}", nodeAgent);
@@ -418,7 +419,8 @@ public class NodeAgentPoller {
         // So, this client has to trust both old and new certs.
         // The new key should also work on node agent.
         // Update the state atomically with the cert update.
-        nodeAgentManager.replaceCerts(nodeAgent, installerFiles.getNewCertPath());
+        nodeAgentManager.replaceCerts(
+            nodeAgent, installerFiles.getNewCertPath(), deployContext.getCertificateUuid());
         log.info("Rolled over to new certs for node agent {}", nodeAgent);
       }
       if (nodeAgent.getState() == State.UPGRADED) {
@@ -432,8 +434,7 @@ public class NodeAgentPoller {
           // If the node has restarted and loaded the new cert and key,
           // delete the local merged certs.
           nodeAgentManager.postUpgrade(nodeAgent);
-          nodeAgent.finalizeUpgrade(
-              nodeAgentHome, serverInfo.getVersion(), deployConext.getCertificateUuid());
+          nodeAgent.finalizeUpgrade(nodeAgentHome, serverInfo.getVersion());
           log.info("Node agent {} has been upgraded successfully", nodeAgent);
         }
       }
@@ -482,6 +483,16 @@ public class NodeAgentPoller {
             nodeAgent.getUuid().toString(),
             String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()))
         .set(value);
+  }
+
+  // Labels: customer_uuid, node_agent_uuid, node_address.
+  private static void removeMetrics(UUID nodeAgentUuid) {
+    String uuid = nodeAgentUuid.toString();
+    Function<List<String>, Boolean> matches =
+        labels -> labels.size() > 1 && uuid.equals(labels.get(1));
+    NODE_AGENT_VERSION_MISMATCH_GAUGE.removeIf(matches);
+    NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE.removeIf(matches);
+    NODE_AGENT_CONNECTION_GAUGE.removeIf(matches);
   }
 
   @VisibleForTesting
@@ -604,6 +615,7 @@ public class NodeAgentPoller {
         if (!nodeUuids.contains(entry.getKey())) {
           entry.getValue().cancelUpgrade();
           swamperHelper.removeNodeAgentTargetJson(entry.getKey());
+          removeMetrics(entry.getKey());
           iter.remove();
         }
       }
@@ -638,11 +650,11 @@ public class NodeAgentPoller {
     return false;
   }
 
-  // Finds the deploy type for the given node agent.
+  // Finds the deploy type for the given node agent for auto upgrade.
   // Returns null if the node agent does not need an upgrade.
   private DeployType maybeGetDeployType(NodeAgent nodeAgent) {
     DeployType deployType = null;
-    if (!versionMatched(nodeAgent)) {
+    if (nodeAgent.isUpgrading() || !versionMatched(nodeAgent)) {
       deployType = DeployType.BINARY_ONLY;
     }
     if (certExpiring(nodeAgent)) {
@@ -713,6 +725,7 @@ public class NodeAgentPoller {
       boolean waitForInFlightUpgrade,
       Function<NodeAgent, DeployContext> deployContextFn) {
     NodeAgent nodeAgent = NodeAgent.getOrBadRequest(nodeAgentUuid);
+    checkState(nodeAgent.isActive(), "Invalid state for node agent " + nodeAgent);
     Duration lifetime = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
     PollerTask pollerTask = getOrCreatePollerTask(nodeAgentUuid, lifetime);
     if (!pollerTask.isUpgrading.compareAndSet(false, true)) {

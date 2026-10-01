@@ -5,16 +5,24 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
 import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
 import io.swagger.annotations.ApiParam;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.Data;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -69,6 +77,55 @@ public class AWSCloudInfo implements CloudInfoInterface {
       accessMode = AccessMode.READ_ONLY)
   @EditableInUseProvider(name = "AWS VPC type", allowed = false)
   private VPCType vpcType = VPCType.EXISTING;
+
+  @ApiModelProperty(
+      value =
+          "Enable GCS-on-AWS cross-cloud federated IAM on this provider's DB nodes (GCP Workload"
+              + " Identity Federation). Requires the federated IAM audience below.")
+  @EditableInUseProvider(name = "Enable federated IAM", allowed = true)
+  public boolean enableFederatedIam;
+
+  /**
+   * @deprecated superseded by {@link #crossCloudFederationTargets}, which can name more than one
+   *     storage cloud. Still read so providers configured before that list keep working.
+   */
+  @Deprecated
+  @ApiModelProperty(
+      value =
+          "Deprecated: use crossCloudFederationTargets. GCP Workload Identity Federation audience"
+              + " (//iam.googleapis.com/projects/.../providers/...), used when federated IAM is"
+              + " enabled. The DB node renders the external_account credential from it.")
+  @EditableInUseProvider(name = "Federated IAM audience", allowed = true)
+  public String federatedIamAudience;
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.2.0")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Storage clouds this provider's"
+              + " DB nodes can be given federated access to, at most one entry per cloud. A node"
+              + " uses the entry for a cloud it is not itself running on.")
+  @EditableInUseProvider(name = "Federated IAM targets", allowed = true)
+  public List<CrossCloudFederationTarget> crossCloudFederationTargets;
+
+  @Override
+  @JsonIgnore
+  public boolean isFederatedIamEnabled() {
+    return enableFederatedIam;
+  }
+
+  /** Every node is on AWS, so the legacy single audience could only ever have meant GCS. */
+  @Override
+  @JsonIgnore
+  public List<CrossCloudFederationTarget> getEffectiveFederationTargets() {
+    if (CollectionUtils.isNotEmpty(crossCloudFederationTargets)) {
+      return crossCloudFederationTargets;
+    }
+    if (StringUtils.isBlank(federatedIamAudience)) {
+      return Collections.emptyList();
+    }
+    return Collections.singletonList(
+        CrossCloudFederationTarget.of(CloudType.gcp, federatedIamAudience, null));
+  }
 
   @JsonIgnore
   public Map<String, String> getEnvVars() {

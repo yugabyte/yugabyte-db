@@ -8,7 +8,9 @@ import StarIcon from '@app/redesign/assets/in-use-star.svg';
 import { ClusterSpec, ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
-import { useEditUniverseContext, useIsUniverseReady, withUniverseResource } from '../EditUniverseUtils';
+import { useEditUniverseContext, useIsUniverseEditActionDisabled, withUniverseResource } from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import {
   buildStorageOverrideModalProps,
@@ -85,7 +87,7 @@ export const StorageOverrides: FC<StorageOverridesProps> = ({ cluster, hasReadRe
   const { t } = useTranslation('translation', {
     keyPrefix: 'editUniverse.hardware.storageOverrides'
   });
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
   const { universeData } = useEditUniverseContext();
   const universeUUID = universeData?.info?.universe_uuid;
   const [isModalOpen, setModalOpen] = useToggle(false);
@@ -119,15 +121,15 @@ export const StorageOverrides: FC<StorageOverridesProps> = ({ cluster, hasReadRe
             )}
             isControl
           >
-            <YBButton
+            <K8OperatorEditBlockedTooltip><YBButton
               dataTestId="edit-storage-override"
               variant="ghost"
               startIcon={<EditIcon />}
               onClick={openModal}
-              disabled={!isUniverseReady || azList.length === 0}
+              disabled={isEditActionDisabled || azList.length === 0}
             >
               {t('edit', { keyPrefix: 'common' })}
-            </YBButton>
+            </YBButton></K8OperatorEditBlockedTooltip>
           </RbacValidator>)
         }
       </Header>
@@ -160,16 +162,16 @@ export const StorageOverrides: FC<StorageOverridesProps> = ({ cluster, hasReadRe
               )}
               isControl
             >
-              <YBButton
+              <K8OperatorEditBlockedTooltip><YBButton
                 startIcon={<AddIcon />}
                 dataTestId="add-storage-override"
                 variant="secondary"
                 color="primary"
                 onClick={openModal}
-                disabled={!isUniverseReady || azList.length === 0}
+                disabled={isEditActionDisabled || azList.length === 0}
               >
                 {t('addStorageOverride')}
-              </YBButton>
+              </YBButton></K8OperatorEditBlockedTooltip>
             </RbacValidator>
           </EmptyState>
         )}

@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -183,15 +184,14 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "default-key";
     userIntent.replicationFactor = 3;
     userIntent.regionList =
         provider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
-    userIntent.instanceType = "c3.large";
-    userIntent.providerType = providerType;
-    userIntent.provider = provider.getUuid().toString();
+
+    TestUtils.initUserIntent(
+        userIntent, provider, "c3.large", ApiUtils.getDummyDeviceInfo(1, 100), "default-key");
+
     userIntent.universeName = name;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     userIntent.useSystemd = true;
     Universe universe = ModelFactory.createUniverse(name, customer.getId(), providerType);
     universe =

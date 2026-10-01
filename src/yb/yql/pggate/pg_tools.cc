@@ -94,6 +94,13 @@ inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pgg
       IsSleepRequired(pggate_rpc));
 }
 
+// A wait event waits either on a pggate RPC or on something the caller names, never on both,
+// so one value carries whichever applies.
+uint32_t MakeAux(ash::PggateRPC pggate_rpc, uint32_t aux) {
+  DCHECK(pggate_rpc == ash::PggateRPC::kNoRPC || aux == 0);
+  return pggate_rpc != ash::PggateRPC::kNoRPC ? std::to_underlying(pggate_rpc) : aux;
+}
+
 bool IsEqual(const YbcPgTableLocalityInfo& lhs, const YbcPgTableLocalityInfo& rhs) {
   return lhs.is_region_local == rhs.is_region_local && lhs.tablespace_oid == rhs.tablespace_oid;
 }
@@ -111,9 +118,9 @@ RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params) {
 }
 
 PgWaitEventWatcher::PgWaitEventWatcher(
-    Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc)
+    Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc, uint32_t aux)
     : starter_(starter),
-      prev_wait_event_(starter_({std::to_underlying(wait_event), std::to_underlying(pggate_rpc)})) {
+      prev_wait_event_(starter_({std::to_underlying(wait_event), MakeAux(pggate_rpc, aux)})) {
   if (PREDICT_FALSE(MaybeSleepForTests(wait_event, pggate_rpc))) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms));
   }

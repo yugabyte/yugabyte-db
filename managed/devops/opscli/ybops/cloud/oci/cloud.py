@@ -17,7 +17,8 @@ import os
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.oci.command import (
-    OciNetworkCommand, OciInstanceCommand, OciAccessCommand, OciQueryCommand
+    OciNetworkCommand, OciInstanceCommand, OciAccessCommand, OciQueryCommand,
+    OciDnsCommand
 )
 from ybops.cloud.oci.utils import (
     OciCloudAdmin, OciMetadata, get_oci_config,
@@ -49,6 +50,7 @@ class OciCloud(AbstractCloud):
         self.add_subcommand(OciNetworkCommand())
         self.add_subcommand(OciAccessCommand())
         self.add_subcommand(OciQueryCommand())
+        self.add_subcommand(OciDnsCommand())
 
     def validate_credentials(self):
         super(OciCloud, self).validate_credentials()
@@ -336,6 +338,18 @@ class OciCloud(AbstractCloud):
             tags_to_remove = args.remove_tags.split(",")
 
         self.get_admin().modify_tags(host_info['id'], tags_to_add, tags_to_remove)
+
+    def list_dns_record_set(self, dns_zone_id):
+        return self.get_admin().get_dns_zone(dns_zone_id)
+
+    def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().upsert_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().upsert_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
+        return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)
 
     def get_console_output(self, args):
         host_info = self.get_host_info(args)

@@ -134,11 +134,12 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
     "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
     "a corruption. ");
 
-DECLARE_bool(enable_register_ts_from_raft);
-DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
-DECLARE_int32(heartbeat_rpc_timeout_ms);
-DECLARE_bool(skip_tserver_version_checks);
 DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
+DECLARE_bool(enable_register_ts_from_raft);
+DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
+DECLARE_bool(skip_tserver_version_checks);
+DECLARE_int32(heartbeat_rpc_timeout_ms);
 
 namespace yb::master {
 
@@ -408,15 +409,14 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     << tserver::CatalogInvalMessagesDataDebugString(resp);
 }
 
-// TODO: On master failover, the new master can temporarily return incomplete pins until every
-// tserver heartbeats master once. Need to add guard against master failover in follow-up.
 void MasterHeartbeatServiceImpl::PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp) {
   if (!FLAGS_enable_db_history_retention_pins) {
     return;
   }
-  DbOidToHybridTimeMap cluster_pins =
-    server_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes();
-  for (const auto& [db_oid, pin] : cluster_pins) {
+  auto cluster_pins = server_->ts_manager()->GetClusterYsqlDbPinsForPublishing(
+      catalog_manager_->TimeSinceElectedLeader());
+  resp.set_cluster_ysql_db_pins_ready(cluster_pins.ready);
+  for (const auto& [db_oid, pin] : cluster_pins.pins) {
     (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
       .set_db_level_oldest_read_time(pin.ToPB());
   }
@@ -482,6 +482,16 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       return;
     }
     TSDescriptorPtr& ts_desc = *desc_result;
+
+    // This is the right place to put this once we add the lease functionality in the next diff.
+    // Must stay after UpdateAndReturnTSDescriptorOrRespond.
+    // TODO(mlillibridge): adjust this comment after the lease functionality gets added.
+    auto fill_status = catalog_manager_->GetXClusterManager()->FillXClusterGuardedInfo(
+        leader_term, *resp->mutable_xcluster_guarded_info());
+    if (!fill_status.ok()) {
+      rpc.RespondFailure(fill_status.CloneAndPrepend("Failed to fill xCluster-guarded info"));
+      return;
+    }
 
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
@@ -549,7 +559,10 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
     auto cluster_config = server_->catalog_manager()->GetClusterConfig();
     if (cluster_config) {
-      resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
+      if (!FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+        resp->set_deprecated_oid_cache_invalidations_count(
+            cluster_config->oid_cache_invalidations_count());
+      }
 
       uint32_t leader_drain_version = ts_desc->pending_leader_drain_notification();
       if (leader_drain_version && FLAGS_send_leader_blacklisted_tservers_on_heartbeat) {
@@ -569,7 +582,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
         }
       }
     } else {
-      LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
+      LOG(WARNING) << "Could not get cluster config for heartbeat response: "
                    << cluster_config.status().ToUserMessage();
     }
 

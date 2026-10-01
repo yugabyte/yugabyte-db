@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common.rollback;
 
+import com.yugabyte.yw.models.helpers.TaskType;
+
 /**
  * Computes how to roll back a failed task of a specific source {@link
  * com.yugabyte.yw.models.helpers.TaskType}.
@@ -10,6 +12,23 @@ package com.yugabyte.yw.common.rollback;
  * TaskRollbackModule}.
  */
 public interface TaskRollbackComputer {
+
+  /**
+   * Whether rollback for this source task type is feature-enabled (runtime config / product gate).
+   * Used by listing {@code canRollback} and submit eligibility so the UI does not offer Rollback
+   * when the matching flag is off. Default true for computers with no separate feature flag.
+   */
+  default boolean isEnabled() {
+    return true;
+  }
+
+  /**
+   * {@link TaskType} submitted by {@link #compute} when it is 1:1 with the source type. Null when
+   * the rollback type is chosen at compute time (software upgrade VM vs Kubernetes).
+   */
+  default TaskType rollbackTaskType() {
+    return null;
+  }
 
   /**
    * Build the rollback submission for the failed task described by {@code context}.

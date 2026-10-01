@@ -12,8 +12,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -24,6 +26,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
+import com.google.common.net.HostAndPort;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -35,6 +38,9 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.SpecificationProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -350,13 +356,14 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = 3;
     userIntent.regionList = regionList;
-    userIntent.instanceType = instanceType;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.IO1;
-    userIntent.deviceInfo.numVolumes = 2;
-    userIntent.deviceInfo.diskIops = 1000;
-    userIntent.deviceInfo.volumeSize = 100;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.storageType = PublicCloudConstants.StorageType.IO1;
+    deviceInfo.numVolumes = 2;
+    deviceInfo.diskIops = 1000;
+    deviceInfo.volumeSize = 100;
+
+    TestUtils.initUserIntent(userIntent, defaultProvider, instanceType, deviceInfo, "demo-access");
 
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
     u =
@@ -410,9 +417,9 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getId());
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider =
-        Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
-    ui.providerType = CloudType.aws;
+    UUID providerUUID = Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid();
+    TestUtils.getProviderInitializerForTests(ui, providerUUID).setProviderType(CloudType.aws);
+
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
@@ -432,8 +439,10 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
     userIntent.masterGFlags = null;
-    userIntent.provider =
-        Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
+    UUID providerUUID = Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid();
+
+    TestUtils.getProviderInitializerForTests(userIntent, providerUUID)
+        .setProviderType(CloudType.aws);
 
     // SaveDetails in order to generate universeDetailsJson with null gflags
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
@@ -474,9 +483,10 @@ public class UniverseTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getId());
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider =
-        Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
-    ui.providerType = CloudType.aws;
+
+    UUID providerUUID = Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid();
+    TestUtils.getProviderInitializerForTests(ui, providerUUID).setProviderType(CloudType.aws);
+
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
@@ -511,24 +521,27 @@ public class UniverseTest extends FakeDBApplication {
     Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getBaseIntent();
-    userIntent.providerType = CloudType.aws;
-    userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    TestUtils.existingProviderInitializer(userIntent)
+        .setProviderType(CloudType.aws)
+        .setInstanceTags(ImmutableMap.of("Cust", "Test", "Dept", "Misc"));
     Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     UserIntent newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.aws;
-    newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    TestUtils.existingProviderInitializer(newUserIntent)
+        .setProviderType(CloudType.aws)
+        .setInstanceTags(ImmutableMap.of("Cust", "Test", "Dept", "Misc"));
     Cluster newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
     assertTrue(cluster.areTagsSame(newCluster));
 
     newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.aws;
+    TestUtils.existingProviderInitializer(newUserIntent)
+        .setProviderType(CloudType.aws)
+        .setInstanceTags(ImmutableMap.of("Cust", "Test"));
     newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
-    newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test");
     assertFalse(cluster.areTagsSame(newCluster));
 
     newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.aws;
+    TestUtils.existingProviderInitializer(newUserIntent).setProviderType(CloudType.aws);
     newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
     assertFalse(cluster.areTagsSame(newCluster));
   }
@@ -541,18 +554,20 @@ public class UniverseTest extends FakeDBApplication {
     Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getBaseIntent();
-    userIntent.providerType = CloudType.azu;
-    userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    TestUtils.existingProviderInitializer(userIntent)
+        .setProviderType(CloudType.azu)
+        .setInstanceTags(ImmutableMap.of("Cust", "Test", "Dept", "Misc"));
     Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     UserIntent newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.azu;
-    newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test");
+    TestUtils.existingProviderInitializer(newUserIntent)
+        .setProviderType(CloudType.azu)
+        .setInstanceTags(ImmutableMap.of("Cust", "Test"));
     Cluster newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
     assertTrue(cluster.areTagsSame(newCluster));
 
     newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.azu;
+    TestUtils.existingProviderInitializer(newUserIntent).setProviderType(CloudType.azu);
     newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
     assertTrue(cluster.areTagsSame(newCluster));
   }
@@ -561,53 +576,49 @@ public class UniverseTest extends FakeDBApplication {
   public void testAreTagsSameMulticloud() {
     UUID providerUUID = defaultProvider.getUuid();
     Map<String, String> tags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    UserIntent userIntent1 = getBaseIntent();
+    new SpecificationProviderInitializer(userIntent1, providerUUID)
+        .setProviderType(CloudType.aws)
+        .setInstanceTags(tags);
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent1);
 
-    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
-        new UniverseDefinitionTaskParams.ProviderSpecification();
-    providerSpecification.setProviderUUID(providerUUID);
-    providerSpecification.setProviderType(CloudType.aws);
-    providerSpecification.setInstanceTags(tags);
+    UserIntent userIntent2 = getBaseIntent();
+    ProviderInitializer pi =
+        new SpecificationProviderInitializer(userIntent2, providerUUID)
+            .setProviderType(CloudType.aws)
+            .setInstanceTags(tags);
+    assertTrue(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, userIntent2)));
 
-    UserIntent userIntent = getBaseIntent();
-    userIntent.providerType = CloudType.aws;
-    userIntent.providerSpecifications = List.of(providerSpecification);
-    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    // New provider.
+    new SpecificationProviderInitializer(userIntent2, UUID.randomUUID())
+        .setProviderType(CloudType.aws)
+        .setInstanceTags(ImmutableMap.of("Cust", "Test"));
 
-    UserIntent sameTagsIntent = getBaseIntent();
-    sameTagsIntent.providerType = CloudType.aws;
-    UniverseDefinitionTaskParams.ProviderSpecification sameSpec =
-        new UniverseDefinitionTaskParams.ProviderSpecification();
-    sameSpec.setProviderUUID(providerUUID);
-    sameSpec.setProviderType(CloudType.aws);
-    sameSpec.setInstanceTags(tags);
-    sameTagsIntent.providerSpecifications = List.of(sameSpec);
-    assertTrue(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, sameTagsIntent)));
+    // Still true as provider was added (existing was not modified)
+    assertTrue(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, userIntent2)));
 
-    UserIntent differentTagsIntent = getBaseIntent();
-    differentTagsIntent.providerType = CloudType.aws;
-    UniverseDefinitionTaskParams.ProviderSpecification differentSpec =
-        new UniverseDefinitionTaskParams.ProviderSpecification();
-    differentSpec.setProviderUUID(providerUUID);
-    differentSpec.setProviderType(CloudType.aws);
-    differentSpec.setInstanceTags(ImmutableMap.of("Cust", "Test"));
-    differentTagsIntent.providerSpecifications = List.of(differentSpec);
-    assertFalse(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, differentTagsIntent)));
+    pi.setInstanceTags(ImmutableMap.of("modified", "tags"));
+    // Now false (since the first provider's tags were changed)
+    assertFalse(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, userIntent2)));
   }
 
   @Test
   public void testAreTagsSameErrors() {
+    UUID providerUUID = defaultProvider.getUuid();
     Universe u = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getBaseIntent();
-    userIntent.providerType = CloudType.gcp;
-    userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    new SpecificationProviderInitializer(userIntent, providerUUID)
+        .setProviderType(CloudType.gcp)
+        .setInstanceTags(ImmutableMap.of("Cust", "Test", "Dept", "Misc"));
     Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     UserIntent newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.aws;
+    new SpecificationProviderInitializer(newUserIntent, providerUUID)
+        .setProviderType(CloudType.aws)
+        .setInstanceTags(ImmutableMap.of("Cust", "Test"));
     Cluster newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
-    newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test");
     try {
       cluster.areTagsSame(newCluster);
     } catch (IllegalArgumentException iae) {
@@ -660,13 +671,15 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = 3;
     userIntent.regionList = regionList;
-    userIntent.instanceType = instanceType;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.IO1;
-    userIntent.deviceInfo.numVolumes = 2;
-    userIntent.deviceInfo.diskIops = 1000;
-    userIntent.deviceInfo.volumeSize = 100;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.storageType = PublicCloudConstants.StorageType.IO1;
+    deviceInfo.numVolumes = 2;
+    deviceInfo.diskIops = 1000;
+    deviceInfo.volumeSize = 100;
+
+    TestUtils.initUserIntent(userIntent, defaultProvider, instanceType, deviceInfo, "demo-access");
+
     return userIntent;
   }
 
@@ -705,9 +718,12 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
-    userIntent.provider =
-        Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
     userIntent.numNodes = 3;
+
+    UUID providerUUID = Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid();
+    TestUtils.getProviderInitializerForTests(userIntent, providerUUID)
+        .setProviderType(CloudType.aws);
+
     u =
         Universe.saveDetails(
             u.getUniverseUUID(),
@@ -784,8 +800,10 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
     userIntent.regionList = new ArrayList<>();
-    userIntent.provider =
-        Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
+    UUID providerUUID = Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid();
+    TestUtils.getProviderInitializerForTests(userIntent, providerUUID)
+        .setProviderType(CloudType.aws);
+
     userIntent.numNodes = numNodes;
     userIntent.dedicatedNodes = dedicatedNodes;
     u =
@@ -916,13 +934,15 @@ public class UniverseTest extends FakeDBApplication {
     UUID az2 = UUID.randomUUID();
     overrides.setAzOverrides(constructOverrides(az1, "instType1", az2, "instType2"));
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceType = "instType";
-    userIntent.masterInstanceType = "masterInstType";
+    UUID providerUUID = UUID.randomUUID();
+    ProviderInitializer pi = TestUtils.intentProviderInitializer(userIntent, providerUUID);
+    pi.setInstanceType("instType");
+    pi.setMasterInstanceType("masterInstType");
     // No overrides
     assertEquals("instType", userIntent.getInstanceType(az1));
     assertEquals("instType", userIntent.getInstanceType(az2));
     assertEquals("instType", userIntent.getInstanceType(UUID.randomUUID()));
-    assertEquals("instType", userIntent.getBaseInstanceType());
+    assertEquals("instType", userIntent.getBaseInstanceType(providerUUID));
     assertEquals("instType", userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, null));
     assertEquals("instType", userIntent.getInstanceType(UniverseTaskBase.ServerType.MASTER, null));
     userIntent.dedicatedNodes = true;
@@ -934,7 +954,7 @@ public class UniverseTest extends FakeDBApplication {
     assertEquals("instType1", userIntent.getInstanceType(az1));
     assertEquals("instType2", userIntent.getInstanceType(az2));
     assertEquals("instType", userIntent.getInstanceType(UUID.randomUUID()));
-    assertEquals("instType", userIntent.getBaseInstanceType());
+    assertEquals("instType", userIntent.getBaseInstanceType(providerUUID));
     assertEquals("instType1", userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, az1));
     assertEquals(
         "masterInstType", userIntent.getInstanceType(UniverseTaskBase.ServerType.MASTER, az1));
@@ -1037,5 +1057,41 @@ public class UniverseTest extends FakeDBApplication {
     assertEquals(2, universeUuids.size());
     assertTrue(universeUuids.contains(universeOne.getUniverseUUID()));
     assertTrue(universeUuids.contains(universeTwo.getUniverseUUID()));
+  }
+
+  @Test
+  public void testGetMasterLeaderNodeOrThrowReturnsLeader() {
+    Universe u = createUniverse(defaultCustomer.getId());
+    final Universe universe =
+        Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    NodeDetails expectedLeader = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
+    when(mockYBClient.getLeaderMasterHostAndPort())
+        .thenReturn(
+            HostAndPort.fromParts(
+                expectedLeader.cloudInfo.private_ip, expectedLeader.masterRpcPort));
+
+    assertEquals(expectedLeader.nodeName, universe.getMasterLeaderNodeOrThrow().nodeName);
+  }
+
+  @Test
+  public void testGetMasterLeaderNodeOrThrowWithoutLeader() {
+    Universe u = createUniverse(defaultCustomer.getId());
+    final Universe universe =
+        Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
+    when(mockYBClient.getLeaderMasterHostAndPort()).thenReturn(null);
+
+    // The nullable accessor keeps its contract, the strict one fails with an actionable message.
+    assertNull(universe.getMasterLeaderNode());
+    RuntimeException re =
+        assertThrows(RuntimeException.class, () -> universe.getMasterLeaderNodeOrThrow());
+    assertThat(
+        re.getMessage(),
+        allOf(
+            containsString("Could not find the master leader node"),
+            containsString(universe.getUniverseUUID().toString())));
   }
 }

@@ -767,8 +767,8 @@ PgApiImpl::PgApiImpl(
       pg_callbacks_(callbacks),
       wait_event_watcher_(
           [starter = pg_callbacks_.PgstatReportWaitStart](
-              ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
-            return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
+              ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc, uint32_t aux) {
+            return PgWaitEventWatcher{starter, wait_event, pggate_rpc, aux};
       }),
       is_parallel_worker_(init_postgres_info.parallel_leader_session_id != nullptr),
       pg_shared_data_(*init_postgres_info.shared_data, !is_parallel_worker_),
@@ -2343,6 +2343,15 @@ Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
 
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
+}
+
+void PgApiImpl::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, const char* transaction_id) {
+  pg_session_->SetHistoricalReadContext(read_time, transaction_id ? transaction_id : "");
+}
+
+void PgApiImpl::ResetHistoricalReadContext() {
+  pg_session_->ResetHistoricalReadContext();
 }
 
 ReadHybridTime PgApiImpl::GetCatalogReadTime() const {

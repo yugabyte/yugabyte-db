@@ -118,7 +118,9 @@ export const selectionOptions = [
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
   { label: 'Tablet meta files', value: 'TabletMeta' },
   { label: 'Tablet Report', value: 'TabletReport' },
+  { label: 'Cluster Config', value: 'ClusterConfig' },
   { label: 'Node agent logs', value: 'NodeAgent' },
+  { label: 'Node health check logs', value: 'NodeHealthLogs' },
   { label: 'Core Files', value: 'CoreFiles' },
   { label: 'YB-Controller logs', value: 'YbcLogs' },
   { label: 'Kubernetes Info', value: 'K8sInfo' },
@@ -132,7 +134,8 @@ export const prometheusMetricsOptions = [
   { label: 'Prometheus', value: 'PROMETHEUS' },
   { label: 'TServer Export', value: 'TSERVER_EXPORT' },
   { label: 'YCQL Export', value: 'CQL_EXPORT' },
-  { label: 'YSQL Export', value: 'YSQL_EXPORT' }
+  { label: 'YSQL Export', value: 'YSQL_EXPORT' },
+  { label: 'Kubernetes Containers', value: 'KUBERNETES' }
 ];
 
 const ONE_GB_IN_BYTES = 1_07_37_41_824;
@@ -400,7 +403,8 @@ export const SecondStep = ({
   isK8sUniverse,
   universeStatus,
   payload,
-  universeUUID
+  universeUUID,
+  useV2Api = false
 }) => {
   const [selectedFilterType, setSelectedFilterType] = useState(filterTypes[0]);
   const [selectedFilterTypePromDump, setSelectedFilterTypePromDump] = useState(
@@ -464,7 +468,7 @@ export const SecondStep = ({
 
   const estimateSupportBundleSizeQuery = useQuery(
     'estimatedSupportBundleSize',
-    () => fetchEstimatedSupportBundleSize(universeUUID, estimatePayloadRef.current),
+    () => fetchEstimatedSupportBundleSize(universeUUID, estimatePayloadRef.current, useV2Api),
     {
       // We set enabled to false so the only time this query fires is when we
       // explicitly call estimatedSupportBundleSizeQuery.refetch().

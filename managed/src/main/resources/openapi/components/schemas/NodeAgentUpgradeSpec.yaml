@@ -9,7 +9,7 @@ properties:
   certificate_name:
     description: |
       Optional name (label) of the YBA certificate config to use for the node agent upgrade.
-      If omitted, existing certificates are used.
+      If omitted, generated self-signed certificates are used.
     type: string
     example: my-custom-ca
   node_names:

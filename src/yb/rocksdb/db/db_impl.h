@@ -505,6 +505,8 @@ class DBImpl : public DB {
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
+  std::unique_ptr<PinnedVersion> PinCurrentVersion() override;
+
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override;
 
   // Returns a table reader for the largest SST file.
@@ -512,8 +514,6 @@ class DBImpl : public DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
-
-  Result<uint64_t> TEST_Cross(Slice key) override;
 
   // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
   CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(
@@ -603,6 +603,8 @@ class DBImpl : public DB {
 
   class TaskPriorityUpdater;
   friend class TaskPriorityUpdater;
+
+  class PinnedVersionImpl;
 
   Status NewDB();
 
@@ -1065,9 +1067,9 @@ class DBImpl : public DB {
       FlushReason flush_reason);
 
   using DB::GetPropertiesOfAllTables;
-  virtual Status GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
-                                          TablePropertiesCollection* props)
-      override;
+  virtual Status GetPropertiesOfAllTables(
+      ColumnFamilyHandle* column_family, TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override;
   virtual Status GetPropertiesOfTablesInRange(
       ColumnFamilyHandle* column_family, const Range* range, std::size_t n,
       TablePropertiesCollection* props) override;

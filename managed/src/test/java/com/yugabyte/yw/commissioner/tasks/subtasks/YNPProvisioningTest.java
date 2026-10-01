@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -330,11 +331,12 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // Set primary cluster user intent with clockbound
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
     primaryUserIntent.setUseClockbound(true);
-    primaryUserIntent.providerType = CloudType.aws;
-    primaryUserIntent.provider = provider.getUuid().toString();
     // Set device info on user intent (required for getDeviceInfoForNode)
-    primaryUserIntent.deviceInfo = new DeviceInfo();
-    primaryUserIntent.deviceInfo.numVolumes = 2;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2;
+    TestUtils.getProviderInitializerForTests(primaryUserIntent, provider.getUuid())
+        .setProviderType(CloudType.aws)
+        .setDeviceInfo(deviceInfo);
 
     // Create temp file for output
     Path tempFile = Files.createTempFile("ynp-test-primary-", ".json");
@@ -663,11 +665,12 @@ public class YNPProvisioningTest extends FakeDBApplication {
     UserIntent updatedUserIntent = universeDetails.getPrimaryCluster().userIntent.clone();
     // This should not affect.
     updatedUserIntent.setUseClockbound(true);
-    updatedUserIntent.providerType = CloudType.aws;
-    updatedUserIntent.provider = provider.getUuid().toString();
     // Set device info on user intent (required for getDeviceInfoForNode)
-    updatedUserIntent.deviceInfo = new DeviceInfo();
-    updatedUserIntent.deviceInfo.numVolumes = 2; // This differs from the intent in task params;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2; // This differs from the intent in task params;
+    TestUtils.getProviderInitializerForTests(updatedUserIntent, provider.getUuid())
+        .setProviderType(CloudType.aws)
+        .setDeviceInfo(deviceInfo);
 
     // Create temp file for output
     Path tempFile = Files.createTempFile("ynp-test-primary-", ".json");
@@ -707,18 +710,22 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // Set up primary cluster user intent
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
     primaryUserIntent.setUseClockbound(false); // Different from read replica
-    primaryUserIntent.providerType = CloudType.aws;
-    primaryUserIntent.provider = provider.getUuid().toString();
+
     // Set device info on primary user intent
-    primaryUserIntent.deviceInfo = new DeviceInfo();
-    primaryUserIntent.deviceInfo.numVolumes = 2;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2;
+    TestUtils.existingProviderInitializer(primaryUserIntent)
+        .setProviderType(CloudType.aws)
+        .setDeviceInfo(deviceInfo);
 
     // Add read replica cluster
     UserIntent rrUserIntent = primaryUserIntent.clone();
     rrUserIntent.setUseClockbound(true); // Read replica has clockbound enabled
     // Set device info on read replica user intent
-    rrUserIntent.deviceInfo = new DeviceInfo();
-    rrUserIntent.deviceInfo.numVolumes = 3;
+    DeviceInfo rrDeviceInfo = new DeviceInfo();
+    rrDeviceInfo.numVolumes = 3;
+    TestUtils.existingProviderInitializer(rrUserIntent).setDeviceInfo(rrDeviceInfo);
+
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfo.PlacementAZ placementAZ = new PlacementInfo.PlacementAZ();
     placementAZ.uuid = UUID.randomUUID();
@@ -745,8 +752,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
     universeDetails = universe.getUniverseDetails();
 
     // Ensure deviceInfo is set on read replica cluster
-    universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo = new DeviceInfo();
-    universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo.numVolumes = 3;
+    DeviceInfo di = new DeviceInfo();
+    di.numVolumes = 3;
+    TestUtils.existingProviderInitializer(universeDetails.getReadOnlyClusters().get(0).userIntent)
+        .setDeviceInfo(di);
 
     // Verify read replica cluster exists
     List<UniverseDefinitionTaskParams.Cluster> readOnlyClusters =
@@ -832,18 +841,21 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // Set up primary cluster user intent
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
     primaryUserIntent.setUseClockbound(false);
-    primaryUserIntent.providerType = CloudType.aws;
-    primaryUserIntent.provider = provider.getUuid().toString();
     // Set device info on primary user intent
-    primaryUserIntent.deviceInfo = new DeviceInfo();
-    primaryUserIntent.deviceInfo.numVolumes = 2;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2;
+    TestUtils.existingProviderInitializer(primaryUserIntent)
+        .setProviderType(CloudType.aws)
+        .setDeviceInfo(deviceInfo);
 
     // Add read replica cluster
     UserIntent rrUserIntent = primaryUserIntent.clone();
     rrUserIntent.setUseClockbound(true);
     // Set device info on read replica user intent
-    rrUserIntent.deviceInfo = new DeviceInfo();
-    rrUserIntent.deviceInfo.numVolumes = 3;
+    DeviceInfo rrDeviceInfo = new DeviceInfo();
+    rrDeviceInfo.numVolumes = 3;
+    TestUtils.existingProviderInitializer(rrUserIntent).setDeviceInfo(rrDeviceInfo);
+
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfo.PlacementAZ placementAZ = new PlacementInfo.PlacementAZ();
     placementAZ.uuid = UUID.randomUUID();
@@ -870,10 +882,16 @@ public class YNPProvisioningTest extends FakeDBApplication {
     universeDetails = universe.getUniverseDetails();
 
     // Ensure deviceInfo is set on both clusters
-    universeDetails.getPrimaryCluster().userIntent.deviceInfo = new DeviceInfo();
-    universeDetails.getPrimaryCluster().userIntent.deviceInfo.numVolumes = 2;
-    universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo = new DeviceInfo();
-    universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo.numVolumes = 3;
+
+    DeviceInfo newDeviceInfo = new DeviceInfo();
+    newDeviceInfo.numVolumes = 2;
+    TestUtils.existingProviderInitializer(universeDetails.getPrimaryCluster().userIntent)
+        .setDeviceInfo(newDeviceInfo);
+
+    DeviceInfo rrNewDeviceInfo = new DeviceInfo();
+    rrNewDeviceInfo.numVolumes = 3;
+    TestUtils.existingProviderInitializer(universeDetails.getReadOnlyClusters().get(0).userIntent)
+        .setDeviceInfo(rrNewDeviceInfo);
 
     UUID primaryClusterUuid = universeDetails.getPrimaryCluster().uuid;
     UUID rrClusterUuid = universeDetails.getReadOnlyClusters().get(0).uuid;
@@ -947,5 +965,77 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // Clean up
     Files.deleteIfExists(tempFilePrimary);
     Files.deleteIfExists(tempFileRR);
+  }
+
+  @Test
+  public void testAzureLunIndexesPreserveAttachmentOrder() throws Exception {
+    provider = ModelFactory.azuProvider(customer);
+    Universe universe =
+        ModelFactory.createUniverse("test-azure-universe", customer.getId(), CloudType.azu);
+    Universe.saveDetails(
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.azu));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    NodeDetails node = universe.getNodes().iterator().next();
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    userIntent.providerType = CloudType.azu;
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.numVolumes = 2;
+    userIntent.deviceInfo.mountPoints = "/mnt/custom0, /mnt/custom1";
+
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.cloud = "azu";
+    node.cloudInfo.private_ip = "10.0.0.30";
+    node.cloudInfo.region = "westus";
+    node.cloudInfo.instance_type = "Standard_D2ads_v6";
+    // The array order is the disk-attachment order and must stay aligned with mount-path order.
+    node.cloudInfo.lun_indexes = new Integer[] {3, 4};
+
+    YNPProvisioning.Params params = new YNPProvisioning.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = node.nodeName;
+    params.deviceInfo = userIntent.deviceInfo;
+    setTaskParams(params);
+
+    Path tempFile = Files.createTempFile("ynp-test-azure-luns-", ".json");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
+    ynpProvisioning.generateProvisionConfig(
+        universe, node, provider, Paths.get("/tmp/node-agent"), null);
+
+    JsonNode extraNode = objectMapper.readTree(Files.readAllBytes(tempFile)).get("extra");
+    assertEquals("azu", extraNode.get("cloud_type").asText());
+    assertEquals("/mnt/custom0 /mnt/custom1", extraNode.get("mount_paths").asText());
+    assertEquals("3 4", extraNode.get("disk_lun_indexes").asText());
+
+    userIntent.deviceInfo.mountPoints = "/mnt/d0;$(touch /tmp/unsafe),/mnt/d1";
+    try {
+      ynpProvisioning.generateProvisionConfig(
+          universe, node, provider, Paths.get("/tmp/node-agent"), null);
+      throw new AssertionError("Expected an unsafe mount path to be rejected");
+    } catch (IllegalStateException e) {
+      assertTrue(e.getMessage().contains("Unsafe mount path"));
+    }
+
+    userIntent.deviceInfo.mountPoints = "/mnt/data,/mnt/data/logs";
+    try {
+      ynpProvisioning.generateProvisionConfig(
+          universe, node, provider, Paths.get("/tmp/node-agent"), null);
+      throw new AssertionError("Expected overlapping mount paths to be rejected");
+    } catch (IllegalStateException e) {
+      assertTrue(e.getMessage().contains("Overlapping mount paths"));
+    }
+
+    userIntent.deviceInfo.mountPoints = "/mnt/custom0, /mnt/custom1";
+    node.cloudInfo.lun_indexes = new Integer[0];
+    try {
+      ynpProvisioning.generateProvisionConfig(
+          universe, node, provider, Paths.get("/tmp/node-agent"), null);
+      throw new AssertionError("Expected missing Azure LUN metadata to be rejected");
+    } catch (IllegalStateException e) {
+      assertTrue(e.getMessage().contains("expected 2 LUNs"));
+    }
+
+    Files.deleteIfExists(tempFile);
   }
 }

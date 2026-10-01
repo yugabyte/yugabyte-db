@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <ranges>
 
 #include "yb/common/wire_protocol.h"
 
@@ -146,6 +147,9 @@ DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
     "Delay execution of UpdateConsensus() requests for specified amount of milliseconds during "
     "tests");
 
+DEFINE_test_flag(int32, delay_before_added_to_leader_ms, 0,
+    "Delay a leader round before NotifyAddedToLeader, i.e. before its hybrid time is assigned.");
+
 DEFINE_test_flag(string, delay_update_consensus_before_mark_committed_tablet_id, "",
     "If non-empty, delay UpdateConsensus before MarkOperationsAsCommitted for this tablet id.");
 
@@ -222,15 +226,15 @@ DEFINE_NON_RUNTIME_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeader
 
 DEFINE_validator(leader_lease_duration_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        FLAGS_raft_heartbeat_interval_ms < _value,
+        FINAL_FLAG_VALUE(raft_heartbeat_interval_ms) < _value,
         yb::Format("Must be strictly greater than raft_heartbeat_interval_ms: $0",
-            FLAGS_raft_heartbeat_interval_ms)));
+            FINAL_FLAG_VALUE(raft_heartbeat_interval_ms))));
 
 DEFINE_validator(raft_heartbeat_interval_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        _value < FLAGS_leader_lease_duration_ms,
+        _value < FINAL_FLAG_VALUE(leader_lease_duration_ms),
         yb::Format("Must be strictly less than leader_lease_duration_ms: $0",
-            FLAGS_leader_lease_duration_ms)));
+            FINAL_FLAG_VALUE(leader_lease_duration_ms))));
 
 DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
@@ -614,7 +618,7 @@ Status RaftConsensus::EmulateElection() {
   LOG_WITH_PREFIX(INFO) << "Emulating election...";
 
   // Assume leadership of new term.
-  RETURN_NOT_OK(IncrementTermUnlocked());
+  RETURN_NOT_OK(IncrementTermUnlocked(FlushConsensusMeta::kTrue));
   SetLeaderUuidUnlocked(state_->GetPeerUuid());
   return BecomeLeaderUnlocked();
 }
@@ -726,11 +730,10 @@ Result<LeaderElectionPtr> RaftConsensus::CreateElectionUnlocked(
   if (preelection) {
     new_term = state_->GetCurrentTermUnlocked() + 1;
   } else {
-    // Increment the term.
-    RETURN_NOT_OK(IncrementTermUnlocked());
+    // Increment the term and vote for ourselves. The vote persists both in a single flush,
+    // so the new term is durable before any vote request is sent.
+    RETURN_NOT_OK(IncrementTermUnlocked(FlushConsensusMeta::kFalse));
     new_term = state_->GetCurrentTermUnlocked();
-
-    // Vote for ourselves.
     // TODO: Consider using a separate Mutex for voting, which must sync to disk.
     RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(state_->GetPeerUuid()));
   }
@@ -792,24 +795,27 @@ Status RaftConsensus::WaitUntilLeaderForTests(const MonoDelta& timeout) {
                                      peer_uuid(), tablet_id(), timeout.ToString(), role()));
 }
 
-string RaftConsensus::ServersInTransitionMessage() {
-  string err_msg;
+Status RaftConsensus::CheckNoLiveServersInTransitionUnlocked() {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
   const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
-  auto servers_in_transition = CountServersInTransition(active_config);
-  auto committed_servers_in_transition = CountServersInTransition(committed_config);
-  LOG_WITH_PREFIX(INFO) << Format(
-      "Active config has $0 and committed has $1 servers in transition.", servers_in_transition,
-      committed_servers_in_transition);
-  if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
-    err_msg = Format(
-        "Leader not ready to step down as there are $0 active config peers"
-        " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
-        servers_in_transition, committed_servers_in_transition, active_config.ShortDebugString(),
-        committed_config.ShortDebugString());
-    LOG_WITH_PREFIX(INFO) << err_msg;
+  auto count_live_in_transition = [this](const RaftConfigPB& config) {
+    return std::ranges::count_if(config.peers(), [this](const auto& peer) {
+      return (peer.member_type() == PeerMemberType::PRE_VOTER ||
+              peer.member_type() == PeerMemberType::PRE_OBSERVER) &&
+             queue_->IsPeerLive(peer.permanent_uuid());
+    });
+  };
+  const auto live_active = count_live_in_transition(active_config);
+  const auto live_committed = count_live_in_transition(committed_config);
+  if (live_active == 0 && live_committed == 0) {
+    return Status::OK();
   }
-  return err_msg;
+  return STATUS_FORMAT(
+      IllegalState,
+      "Leader not ready to step down as there are $0 live active config peers"
+      " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
+      live_active, live_committed, active_config.ShortDebugString(),
+      committed_config.ShortDebugString());
 }
 
 Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool graceful) {
@@ -891,12 +897,13 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     return Status::OK();
   }
 
-  // The leader needs to be ready to perform a step down. There should be no PRE_VOTER in both
-  // active and committed configs - ENG-557.
-  const string err_msg = ServersInTransitionMessage();
-  if (!err_msg.empty()) {
+  // Refuse while a live PRE_VOTER/PRE_OBSERVER may still be in remote bootstrap: this leader holds
+  // the WAL anchors, and a successor may have GCed those segments. A lost transitioning peer does
+  // not block; promotion is leader-driven (#29795).
+  if (auto s = CheckNoLiveServersInTransitionUnlocked(); !s.ok()) {
+    LOG_WITH_PREFIX(INFO) << s;
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-    StatusToPB(STATUS(IllegalState, err_msg), resp->mutable_error()->mutable_status());
+    StatusToPB(s, resp->mutable_error()->mutable_status());
     return Status::OK();
   }
 
@@ -1305,8 +1312,8 @@ Status RaftConsensus::AppendNewRoundToQueueUnlocked(const scoped_refptr<Consensu
   return AppendNewRoundsToQueueUnlocked({ round }, &processed_rounds);
 }
 
-Status RaftConsensus::CheckLeasesUnlocked(const ConsensusRoundPtr& round) {
-  auto op_type = round->replicate_msg()->op_type();
+Status RaftConsensus::CheckLeasesUnlocked(const LWReplicateMsg& replicate_msg) {
+  auto op_type = replicate_msg.op_type();
   // When we do not have a hybrid time leader lease we allow 2 operation types to be added to RAFT.
   // NO_OP - because even empty heartbeat messages could be used to obtain the lease.
   // CHANGE_CONFIG_OP - because we should be able to update consensus even w/o lease.
@@ -1316,7 +1323,7 @@ Status RaftConsensus::CheckLeasesUnlocked(const ConsensusRoundPtr& round) {
   }
 
   auto lease_status = state_->GetHybridTimeLeaseStatusAtUnlocked(
-      HybridTime(round->replicate_msg()->hybrid_time()).GetPhysicalValueMicros());
+      HybridTime(replicate_msg.hybrid_time()).GetPhysicalValueMicros());
   static_assert(LeaderLeaseStatus_ARRAYSIZE == 3, "Please update logic below to adapt new state");
   if (lease_status == LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE) {
     return STATUS_FORMAT(LeaderHasNoLease,
@@ -1376,24 +1383,32 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return status;
 }
 
-Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
+bool RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
   const auto& msg = *round->replicate_msg();
   if (msg.op_type() != OperationType::WRITE_OP) {
-    return Status::OK();
+    return true;
   }
   const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
   if (!fence) {
-    return Status::OK();
+    return true;
   }
-  // clock_, not the op's own hybrid time, which AddLeaderPending has not assigned yet. Nor
-  // state_->Clock(), which is the coarse clock and not in the fence's time domain.
-  const auto now = clock_->Now();
-  if (fence > now) {
-    return Status::OK();
+  // The op's own hybrid time, assigned by NotifyAddedToLeader, is when the write takes effect.
+  // An earlier clock reading would leave an unbounded window in which the op could still be
+  // assigned a time past the fence.
+  const auto hybrid_time = HybridTime(msg.hybrid_time());
+  if (fence > hybrid_time) {
+    return true;
   }
-  return STATUS_EC_FORMAT(
+  auto status = STATUS_EC_FORMAT(
       Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
-      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, now);
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, hybrid_time);
+  // Rejection goes through ReplicaState to undo the retryable-request registration. The driver
+  // still holds the op id, so its failure path also removes the op from MVCC.
+  RollbackIdAndDeleteOpId(round->replicate_msg(), /* should_exists = */ false);
+  state_->NotifyReplicationFinishedUnlocked(
+      round, status, OpId::kUnknownTerm, /* applied_op_ids = */ nullptr);
+  round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
+  return false;
 }
 
 Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
@@ -1415,27 +1430,15 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
         round->BindToTerm(OpId::kUnknownTerm); // Mark round as non replicating
         continue;
       }
-
-      // After RegisterRetryableRequest, so a resend of an already-replicated id answers
-      // AlreadyPresent -- that write committed inside its fence -- rather than a fence rejection.
-      // Before NotifyAddedToLeader, whose side effects rolling back the op id does not undo.
-      // Rejection goes through ReplicaState, not round->NotifyReplicationFinished, to undo the
-      // registration made just above.
-      if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
-        state_->NotifyReplicationFinishedUnlocked(
-            round, s, OpId::kUnknownTerm, /* applied_op_ids = */ nullptr);
-        round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
-        continue;
-      }
     }
 
-    // Reject ops the operation filter won't allow BEFORE NotifyAddedToLeader runs, so that side
-    // effects of being added as pending don't fire for an op that will be immediately rolled back.
-    // In particular, WriteOperation::AddedAsPending synchronously invokes
-    // DoReplicated -> ApplyRowOperations for use_async_write requests, which writes intents into
-    // the intents memtable. Rolling back the op_id afterwards does not undo that memtable write, so
-    // the intents flushed_frontier can advance past split_op_id and propagate into the children via
-    // Tablet::CreateSubtablet's RocksDB checkpoint -- breaking bootstrap with
+    // NewIdUnlocked rejects ops the operation filter won't allow before NotifyAddedToLeader runs,
+    // so that side effects of being added as pending don't fire for an op that will be immediately
+    // rolled back. Side effects that rolling back the op id cannot undo must not run in this loop
+    // at all: the use_async_write apply, which writes intents into the intents memtable, waits for
+    // WriteOperation::SubmittedToLeaderQueue, which a round rejected here never reaches. Otherwise
+    // the intents flushed_frontier could advance past split_op_id and propagate into the children
+    // via Tablet::CreateSplitChildTablet's RocksDB checkpoint -- breaking bootstrap with
     // "WAL files missing, or committed op id is incorrect" (TabletBootstrap::PlaySegments).
     OpId op_id = VERIFY_RESULT(state_->NewIdUnlocked(round->replicate_msg()->op_type()));
 
@@ -1443,7 +1446,15 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_before_added_to_leader_ms);
     RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
+
+    // After NotifyAddedToLeader, so the fence is judged against the op's assigned hybrid time.
+    // After RegisterRetryableRequest, so a resend of an already-replicated id answers
+    // AlreadyPresent rather than a fence rejection.
+    if (!CheckWriteFenceUnlocked(round)) {
+      continue;
+    }
 
     auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
@@ -1459,8 +1470,9 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
   }
 
   // Could check lease just for the latest operation in batch, because it will have greatest
-  // hybrid time, so requires most advanced lease.
-  auto s = CheckLeasesUnlocked(rounds.back());
+  // hybrid time, so requires most advanced lease. The last appended message rather than the last
+  // round: a rejected round has no usable hybrid time.
+  auto s = CheckLeasesUnlocked(*replicate_msgs->back());
 
   if (s.ok()) {
     s = queue_->AppendOperations(*replicate_msgs, committed_op_id, state_->Clock().Now());
@@ -3775,6 +3787,18 @@ OpId RaftConsensus::GetLastCommittedOpId() {
   return state_->GetCommittedOpIdUnlocked();
 }
 
+RaftConsensus::WalGcRetentionOpIdInfo RaftConsensus::GetWalGcRetentionOpIdInfo() {
+  auto peer_retention = queue_->GetWalGcPeerRetentionInfo();
+  WalGcRetentionOpIdInfo result;
+  {
+    auto lock = state_->LockForRead();
+    result.committed_op_id = state_->GetCommittedOpIdUnlocked();
+  }
+  result.majority_replicated_op_id = peer_retention.majority_replicated_op_id;
+  result.min_progressing_pre_voter_op_id = peer_retention.min_progressing_pre_voter_op_id;
+  return result;
+}
+
 OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();
@@ -3824,7 +3848,12 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
   }
   if (!status.ok()) {
     // TODO: Do something with the status on failure?
-    LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status << "\n" << GetStackTrace();
+    // Aborted is routine here: rounds are aborted on shutdown and on leader change. Symbolizing a
+    // stack trace can stall the process for minutes under sanitizers, so trace only unexpected
+    // failures, or when verbose logging is requested.
+    const bool with_stack_trace = !status.IsAborted() || VLOG_IS_ON(1);
+    LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status
+                          << (with_stack_trace ? "\n" + GetStackTrace() : std::string());
 
     // Clear out the pending state (ENG-590).
     if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {
@@ -3900,11 +3929,11 @@ MonoDelta RaftConsensus::LeaderElectionExpBackoffDeltaUnlocked() {
   return MonoDelta::FromMilliseconds(timeout);
 }
 
-Status RaftConsensus::IncrementTermUnlocked() {
-  return HandleTermAdvanceUnlocked(state_->GetCurrentTermUnlocked() + 1);
+Status RaftConsensus::IncrementTermUnlocked(FlushConsensusMeta flush) {
+  return HandleTermAdvanceUnlocked(state_->GetCurrentTermUnlocked() + 1, flush);
 }
 
-Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
+Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term, FlushConsensusMeta flush) {
   if (new_term <= state_->GetCurrentTermUnlocked()) {
     return STATUS(IllegalState, Substitute("Can't advance term to: $0 current term: $1 is higher.",
                                            new_term, state_->GetCurrentTermUnlocked()));
@@ -3919,7 +3948,7 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   }
 
   LOG_WITH_PREFIX(INFO) << "Advancing to term " << new_term;
-  RETURN_NOT_OK(state_->SetCurrentTermUnlocked(new_term));
+  RETURN_NOT_OK(state_->SetCurrentTermUnlocked(new_term, flush));
   term_metric_->set_value(new_term);
   return Status::OK();
 }

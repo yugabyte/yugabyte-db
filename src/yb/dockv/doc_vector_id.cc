@@ -23,6 +23,7 @@
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/fast_varint.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
@@ -45,6 +46,10 @@ constexpr const size_t kEncodedVectorIdValueSize = 1 + kUuidSize;
 constexpr const size_t kEncodedVectorIdSize = kEncodedVectorIdValueSize + 1;
 
 constexpr const char kDocVectorMetaValueFormatVersion = 0x01;
+
+// Version of the vector payload format, see DocVectorIndexPayload.
+// 1 - ybctid only.
+constexpr const char kDocVectorIndexPayloadFormatVersion = 0x01;
 
 // kVectorIndexMetadata (1 byte) + format version (1 byte).
 constexpr const size_t kEncodedDocVectorMetaValueHeaderSize =
@@ -378,6 +383,27 @@ KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId colum
   KeyEntryValue::MakeColumnId(column_id).AppendToKey(&key);
 
   return key;
+}
+
+ValueBuffer DocVectorIndexPayload(Slice ybctid) {
+  DCHECK(!ybctid.empty());
+  char header[1 + kMaxVarIntBufferSize];
+  header[0] = kDocVectorIndexPayloadFormatVersion;
+  auto header_size = 1 + FastEncodeUnsignedVarInt(ybctid.size(), header + 1);
+  ValueBuffer result;
+  result.Assign(Slice(header, header_size), ybctid);
+  return result;
+}
+
+Result<Slice> DocVectorIndexPayloadYbctid(Slice payload) {
+  SCHECK(
+      payload.TryConsumeByte(kDocVectorIndexPayloadFormatVersion), Corruption,
+      Format("Unsupported vector payload format: $0", payload.ToDebugHexString()));
+  auto size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&payload));
+  SCHECK_LE(
+      size, payload.size(), Corruption,
+      Format("Broken vector payload: $0", payload.ToDebugHexString()));
+  return payload.Prefix(size);
 }
 
 } // namespace yb::dockv

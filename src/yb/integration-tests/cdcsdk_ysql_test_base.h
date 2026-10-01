@@ -460,7 +460,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<int64> GetChangeRecordCount(
       const xrepl::StreamId& stream_id, const YBTableName& table,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint,
+      std::map<TabletId, CDCSDKCheckpointPB>& tablet_to_checkpoint,
       const int64 expected_total_records, bool explicit_checkpointing_enabled = false,
       std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records = {});
 
@@ -596,7 +596,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0,
       int64 safe_hybrid_time = -1,
-      int wal_segment_index = 0);
+      int wal_segment_index = 0,
+      int expected_records_count = 0);
 
   Result<GetChangesResponsePB> GetChangesFromCDCWithExplictCheckpoint(
       const xrepl::StreamId& stream_id,
@@ -838,13 +839,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void AssertSafeTimeAsExpectedInTabletPeersForConsistentSnapshot(
       const TabletId& tablet_id, const HybridTime expected_safe_time);
 
+  // The default timeout must exceed FLAGS_transaction_resend_applying_interval_usec (5s): a
+  // committed txn whose apply notification was dropped pins the consistent stream safe time, and
+  // GetChanges streams nothing until the coordinator resends.
   Status WaitForGetChangesToFetchRecords(
       GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int& expected_count, bool is_explicit_checkpoint = false,
       const CDCSDKCheckpointPB* cp = nullptr, const int& tablet_idx = 0,
       const int64& safe_hybrid_time = -1, const int& wal_segment_index = 0,
-      const double& timeout_secs = 5);
+      const double& timeout_secs = 30);
 
   Status WaitForGetChangesToFetchRecordsAcrossTablets(
       const xrepl::StreamId& stream_id,

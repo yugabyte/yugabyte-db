@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -29,8 +30,10 @@ import com.yugabyte.yw.models.NodeAgent.DeployContext;
 import com.yugabyte.yw.models.NodeAgent.DeployType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -138,5 +141,34 @@ public class NodeAgentManagerTest extends FakeDBApplication {
     assertNotNull(installerFiles.getCertDir());
     assertNotNull(installerFiles.getNewCertPath());
     assertEquals(4, installerFiles.getCopyFileInfos().size());
+  }
+
+  @Test
+  public void testReplaceCertsPersistsCertificateUuidThroughFinalize() throws Exception {
+    NodeAgent nodeAgent = createReadyNodeAgent();
+    assertNull(nodeAgent.getCertificateUuid());
+    // replaceCerts rolls UPGRADE -> UPGRADED; READY -> UPGRADED is not a valid transition.
+    nodeAgent.saveState(State.UPGRADE);
+    Path currentCertDir = nodeAgent.getCertDirPath();
+    Path newCertDir = Paths.get(TestHelper.TMP_PATH, "na-rollover-" + UUID.randomUUID());
+    Files.createDirectories(newCertDir);
+    UUID certificateUuid =
+        certificateHelper.createRootCA(mockAppConfig, "na-rollover-ca", customer.getUuid());
+    assertNotNull(certificateUuid);
+
+    nodeAgentManager.replaceCerts(nodeAgent, newCertDir, certificateUuid);
+
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
+    assertEquals(State.UPGRADED, nodeAgent.getState());
+    assertEquals(certificateUuid, nodeAgent.getCertificateUuid());
+    assertEquals(newCertDir, nodeAgent.getCertDirPath());
+    assertNotEquals(currentCertDir, nodeAgent.getCertDirPath());
+
+    // Abort after UPGRADED must not lose the rolled-over certificate UUID on finalize.
+    nodeAgent.finalizeUpgrade("/home/yugabyte/node-agent", "2.13.0.0");
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
+    assertEquals(State.READY, nodeAgent.getState());
+    assertEquals(certificateUuid, nodeAgent.getCertificateUuid());
+    assertEquals(newCertDir, nodeAgent.getCertDirPath());
   }
 }

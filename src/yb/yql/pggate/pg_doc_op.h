@@ -168,16 +168,23 @@ class PgDocResponse {
   struct MetricInfo {
     MetricInfo(TableType table_type_,
                IsForWritePgDoc is_write_,
-               IsOpBuffered is_buffered_)
-        : table_type(table_type_), is_write(is_write_), is_buffered(is_buffered_) {}
+               IsOpBuffered is_buffered_,
+               PgOid relation_oid_)
+        : table_type(table_type_), is_write(is_write_), is_buffered(is_buffered_),
+          relation_oid(relation_oid_) {}
 
     TableType table_type;
     IsForWritePgDoc is_write;
     IsOpBuffered is_buffered;
+    // OID of the relation the operation is sent to
+    PgOid relation_oid;
   };
 
   struct FutureInfo {
-    FutureInfo() : metrics(TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse) {}
+    FutureInfo()
+        : metrics(
+              TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse,
+              kPgInvalidOid) {}
     FutureInfo(PerformFuture&& future_, const MetricInfo& metrics_)
         : future(std::move(future_)), metrics(metrics_) {}
 

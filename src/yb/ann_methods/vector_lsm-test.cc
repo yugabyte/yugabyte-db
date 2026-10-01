@@ -39,6 +39,7 @@
 
 #include "yb/vector_index/vector_lsm.h"
 #include "yb/vector_index/vector_lsm_metadata.h"
+#include "yb/vector_index/vector_payload_map.h"
 #include "yb/vector_index/vectorann_util.h"
 
 using namespace std::literals;
@@ -70,7 +71,7 @@ namespace yb::ann_methods {
 
 namespace {
 
-using ParamType = std::tuple<ANNMethodKind, bool>;
+using ParamType = std::tuple<ANNMethodKind, bool, vector_index::StoreVectorPayload>;
 
 ANNMethodKind GetANNMethodKind(const ParamType& param) {
   return std::get<0>(param);
@@ -80,10 +81,15 @@ bool UseYbHnsw(const ParamType& param) {
   return std::get<1>(param);
 }
 
+vector_index::StoreVectorPayload StorePayload(const ParamType& param) {
+  return std::get<2>(param);
+}
+
 std::string ParamToString(const testing::TestParamInfo<ParamType>& param_info) {
   return "k"s +
          (UseYbHnsw(param_info.param) ? "YbHnsw" : "") +
-         AsString(GetANNMethodKind(param_info.param)).substr(1);
+         AsString(GetANNMethodKind(param_info.param)).substr(1) +
+         (StorePayload(param_info.param) ? "WithPayload" : "");
 }
 
 // Loads the manifest from disk, replays add/remove updates, and returns alive chunks sorted by
@@ -271,6 +277,10 @@ class VectorLSMTest
 
   Result<std::vector<std::string>> GetFiles(FloatVectorLSM& lsm);
 
+  vector_index::StoreVectorPayload store_vector_payload() const {
+    return StorePayload(GetParam());
+  }
+
   void TestBootstrap(bool flush);
 
   void TestBackgroundCompactionSizeRatio(bool test_metrics);
@@ -315,13 +325,13 @@ class VectorLSMTest
   struct FilterProxy : public MergeFilter {
     FilterImpl filter;
     explicit FilterProxy(FilterImpl&& impl) : filter(std::move(impl)) {}
-    storage::FilterDecision Filter(VectorId vector_id) override {
-      return filter(vector_id);
+    storage::FilterDecision Filter(VectorId vector_id, Slice payload) override {
+      return filter(vector_id, payload);
     }
   };
 
   static MergeFilterPtr CreateDummyMergeFilter(storage::FilterDecision decision) {
-    auto filter = [decision](VectorId vector_id) {
+    auto filter = [decision](VectorId vector_id, Slice payload) {
       VLOG(1) << "DummyMergeFilter: " << vector_id << " => " << decision;
       return decision;
     };
@@ -364,7 +374,12 @@ static size_t GetNumDimensionsByEntries(size_t num_entries) {
   return std::ceil(std::log2(num_entries));
 }
 
-FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
+std::string PayloadForVector(const VectorId& vector_id) {
+  return "value_" + vector_id.ToString();
+}
+
+FloatVectorLSM::InsertEntries CubeInsertEntries(
+    size_t dimensions, vector_index::StoreVectorPayload store_payload) {
   FloatVectorLSM::InsertEntries result;
   for (size_t i = 1; i <= GetNumEntriesByDimensions(dimensions); ++i) {
     auto bits = i - 1;
@@ -372,22 +387,27 @@ FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
     for (size_t d = 0; d != dimensions; ++d) {
       vector[d] = 1.f * ((bits >> d) & 1);
     }
+    auto vector_id = VectorId::GenerateRandom();
     result.emplace_back(FloatVectorLSM::InsertEntry {
-      .vector_id = VectorId::GenerateRandom(),
+      .vector_id = vector_id,
       .vector = std::move(vector),
+      .payload = store_payload ? ValueBuffer(PayloadForVector(vector_id)) : ValueBuffer(),
     });
   }
   return result;
 }
 
-FloatVectorLSM::InsertEntries RandomEntries(size_t dimensions, size_t num_entries) {
+FloatVectorLSM::InsertEntries RandomEntries(
+    size_t dimensions, size_t num_entries, vector_index::StoreVectorPayload store_payload) {
   static std::uniform_real_distribution<> distribution;
 
   FloatVectorLSM::InsertEntries result;
   while (num_entries-- > 0) {
+    auto vector_id = VectorId::GenerateRandom();
     result.emplace_back(FloatVectorLSM::InsertEntry {
-      .vector_id = VectorId::GenerateRandom(),
+      .vector_id = vector_id,
       .vector = RandomFloatVector(dimensions, distribution),
+      .payload = store_payload ? ValueBuffer(PayloadForVector(vector_id)) : ValueBuffer(),
     });
   }
   return result;
@@ -405,7 +425,7 @@ auto GenerateVectorIds(size_t num) {
 Status VectorLSMTest::InsertCube(
     FloatVectorLSM& lsm, size_t dimensions, size_t block_size,
     size_t min_entry_idx) {
-  inserted_entries_ = CubeInsertEntries(dimensions);
+  inserted_entries_ = CubeInsertEntries(dimensions, store_vector_payload());
   size_t num_inserts = 0;
   for (size_t i = 0; i < inserted_entries_.size(); i += block_size) {
     auto begin = inserted_entries_.begin() + i;
@@ -433,7 +453,7 @@ Status VectorLSMTest::InsertCube(
 
 Status VectorLSMTest::InsertRandom(
     FloatVectorLSM& lsm, size_t dimensions, size_t num_entries, size_t batch_size) {
-  inserted_entries_ = RandomEntries(dimensions, num_entries);
+  inserted_entries_ = RandomEntries(dimensions, num_entries, store_vector_payload());
   size_t num_inserts = 0;
   for (size_t i = 0; i < inserted_entries_.size(); i += batch_size) {
     auto begin = inserted_entries_.begin() + i;
@@ -502,6 +522,7 @@ Status VectorLSMTest::OpenVectorLSM(
     .file_extension = "",
     .metric_entity = vector_index_metric_entity_,
     .block_cache_capacity = block_cache_->capacity(),
+    .store_vector_payload = store_vector_payload(),
   };
   auto status = lsm.Open(std::move(options));
   if (status.ok()) {
@@ -640,21 +661,29 @@ void VectorLSMTest::CheckQueryVector(
     for (size_t i = 0; i != expected_results.size(); ++i) {
       ASSERT_EQ(search_result[i].distance, expected_results[i].distance);
       ASSERT_EQ(search_result[i].vector_id, expected_results[i].vector_id);
+      ASSERT_EQ(
+          search_result[i].payload.ToStringBuffer(),
+          store_vector_payload() ? PayloadForVector(search_result[i].vector_id) : std::string());
     }
   }
 }
 
 Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
-  return path_utils::GetVectorIndexFiles(*lsm.TEST_GetEnv(), lsm.StorageDir());
+  auto files = VERIFY_RESULT(vector_index::ListVectorLSMFiles(lsm.TEST_GetEnv(), lsm.StorageDir()));
+  // Payload files are expected only when the LSM stores payloads, and only for backends based
+  // on IndexWrapperWithExternalPayload: yb_hnsw stores payloads in the chunk file itself.
+  SCHECK(!files.has_payload_files || (store_vector_payload() && !UseYbHnsw(GetParam())),
+         IllegalState, "Unexpected payload file");
+  return std::move(files.manifest_and_chunk_files);
 }
 
 MergeFilterPtr VectorLSMTest::GetMergeFilter() {
   if (!merge_filter_) {
     SetMergeFilter(storage::FilterDecision::kKeep);
   }
-  auto filter = [this](VectorId vector_id) {
+  auto filter = [this](VectorId vector_id, Slice payload) {
     std::lock_guard lock(merge_filter_mutex_);
-    return merge_filter_->Filter(vector_id);
+    return merge_filter_->Filter(vector_id, payload);
   };
   return std::make_unique<FilterProxy<decltype(filter)>>(std::move(filter));
 }
@@ -1003,9 +1032,9 @@ TEST_P(VectorLSMTest, InsertTaskRegistrationRace) {
 
   ThreadHolder threads;
   for (size_t i = 0; i != kNumThreads; ++i) {
-    threads.AddThreadFunctor([&lsm] {
+    threads.AddThreadFunctor([&lsm, store_payload = store_vector_payload()] {
       for (size_t batch = 0; batch != kBatches; ++batch) {
-        auto entries = RandomEntries(kDimensions, kBatchSize);
+        auto entries = RandomEntries(kDimensions, kBatchSize, store_payload);
         TestFrontiers frontiers(entries);
         ASSERT_OK(lsm.Insert(entries, { .frontiers = &frontiers }));
       }
@@ -1485,6 +1514,7 @@ TEST_P(VectorLSMTest, BootstrapWithFlush) {
   TestBootstrap(/* flush= */ true);
 }
 
+
 TEST_P(VectorLSMTest, NotSavedChunk) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms) =
       1000 * kTimeMultiplier;
@@ -1516,7 +1546,7 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   LOG(INFO) << "EstimateNumVectorsForBytes(" << kBytesLimit << ") = " << num_vectors;
   ASSERT_GT(num_vectors, 0u);
 
-  inserted_entries_ = RandomEntries(kDimensions, num_vectors);
+  inserted_entries_ = RandomEntries(kDimensions, num_vectors, store_vector_payload());
   for (size_t i = 0; i < inserted_entries_.size(); ++i) {
     key_value_storage_.StoreVector(inserted_entries_[i].vector_id, i + 1);
   }
@@ -1542,9 +1572,13 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
 
   ASSERT_OK(lsm.Flush(/* wait = */ true));
 
-  const uint64_t on_disk_size = lsm.TEST_LatestChunkSize();
+  // The estimate models the per-vector cost of the index itself and knows nothing about the
+  // attached payloads, so compare the budget against the index file, without the payload file.
+  const auto file_sizes = lsm.TEST_LatestChunkFileSizes();
+  const uint64_t on_disk_size = file_sizes.index_file;
   const double ratio = static_cast<double>(on_disk_size) / kBytesLimit;
-  LOG(INFO) << "On-disk chunk size: " << on_disk_size << " bytes, budget: " << kBytesLimit
+  LOG(INFO) << "On-disk chunk size: " << on_disk_size << " bytes, payload file size: "
+            << file_sizes.payload_file << " bytes, budget: " << kBytesLimit
             << " bytes, ratio: " << ratio;
 
   // The byte budget approximates in-memory consumption: it includes per-vector pointer tables
@@ -1589,7 +1623,9 @@ INSTANTIATE_TEST_SUITE_P(
     VectorLSMTest,
     testing::Combine(
         testing::ValuesIn(kANNMethodKindArray),
-        testing::Bool()),
+        testing::Bool(),
+        testing::Values(
+            vector_index::StoreVectorPayload::kTrue, vector_index::StoreVectorPayload::kFalse)),
     ParamToString);
 
 }  // namespace yb::ann_methods

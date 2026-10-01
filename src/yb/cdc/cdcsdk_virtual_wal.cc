@@ -472,6 +472,15 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
             "stream: $1",
             tablet_id, stream_id_));
 
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
+      DCHECK(tablet_checkpoint_pair.has_tablet_locations());
+      DCHECK(tablet_checkpoint_pair.tablet_locations().has_partition());
+      if (!IsTabletEligibleForVWAL(
+        tablet_id, tablet_checkpoint_pair.tablet_locations().partition())) {
+          continue;
+        }
+    }
+
     // Skip adding the tablet to the polling list if it is expired / not-of-interest, as this will
     // render the slot useless.
     if (cdc_service_->CheckTabletExpiredOrNotOfInterest(tablet_info, *entry_opt->active_time)) {
@@ -487,15 +496,6 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
                               "unqualified for stream: $1. To skip adding this tablet and proceed "
                               "enable the flag cdc_skip_unqualified_tables_for_polling.",
                               tablet_id, stream_id_));
-      }
-    }
-
-    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
-      DCHECK(tablet_checkpoint_pair.has_tablet_locations());
-      DCHECK(tablet_checkpoint_pair.tablet_locations().has_partition());
-      if (!IsTabletEligibleForVWAL(
-              tablet_id, tablet_checkpoint_pair.tablet_locations().partition())) {
-        continue;
       }
     }
 

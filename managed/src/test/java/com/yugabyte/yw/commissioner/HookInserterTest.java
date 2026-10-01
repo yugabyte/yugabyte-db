@@ -10,6 +10,8 @@ import com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverse;
 import com.yugabyte.yw.commissioner.tasks.upgrade.UpgradeTaskTest;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -129,11 +131,17 @@ public class HookInserterTest extends UpgradeTaskTest {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
-    userIntent.accessKeyCode = curIntent.accessKeyCode;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.numVolumes = 1;
-    userIntent.provider = gcpProvider.getUuid().toString();
+
+    ProviderInitializer providerInitializer =
+        TestUtils.getProviderInitializerForTests(userIntent, gcpProvider.getUuid());
+
+    providerInitializer.setAccessCode(
+        curIntent.getAccessKeyCodeForProvider(curIntent.maybeGetSingleProviderUUID().get()));
+    providerInitializer.setProviderType(gcpProvider.getCloudCode());
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 1;
+    providerInitializer.setDeviceInfo(deviceInfo);
 
     Region gcpRegion = Region.create(gcpProvider, "region-1g", "Region 1g", "yb-image-1");
     AvailabilityZone az1gcp =

@@ -23,7 +23,6 @@
 #include <boost/intrusive/list.hpp>
 
 #include "yb/util/cgroups.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
@@ -35,7 +34,8 @@
 using namespace std::literals;
 
 DEFINE_NON_RUNTIME_uint64(default_idle_timeout_ms, 15000,
-    "Default RPC YBThreadPool idle timeout value in milliseconds");
+    "Default idle timeout in milliseconds for thread pool workers. Applies to YBThreadPool and "
+    "ThreadPoolBuilder pools that do not set an explicit idle timeout.");
 
 static bool detailed_logging = true;
 namespace yb {
@@ -213,6 +213,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
       }
 #endif
       auto start = MonoTime::NowIf(has_run_metrics);
+      dist_trace::ScopedAdoptSpan parent_scope(task->trace_parent());
       if (!task->run_token()) {
         task->Run();
         task->Done(Status::OK());
@@ -648,6 +649,7 @@ YBThreadPool::~YBThreadPool() {
 }
 
 bool YBThreadPool::Enqueue(ThreadPoolTask* task) {
+  task->set_trace_parent(dist_trace::GetActiveSpanContext());
   return impl_->Enqueue(task);
 }
 

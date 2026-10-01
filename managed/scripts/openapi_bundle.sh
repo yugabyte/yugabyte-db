@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-export NPM_BIN="$(npm root -g 2>/dev/null)/../../bin"
-echo "npm bin at: $NPM_BIN"
+# Sets NPX.
+source "$(dirname "${BASH_SOURCE[0]}")/npx_path.sh"
+
 pushd ../src/main/resources/openapi
 mkdir -p tmp
 
@@ -31,7 +32,7 @@ rm -f $tmp_out_file
 # but jenkins runs node v12.22.12.
 # Faced an issue with a newly released openapi-sampler@1.5.0 on node v12.22.12.
 # So picking the older version openapi-sampler@1.4.0 explicitly.
-$NPM_BIN/npx -p openapi-sampler@1.4.0 -p @redocly/cli@1.0.2 \
+"$NPX" -p openapi-sampler@1.4.0 -p @redocly/cli@1.0.2 \
   redocly bundle openapi_split.yaml --output $tmp_out_file
 cmp -s $tmp_out_file ../openapi.yaml
 if [ $? -ne 0 ]; then

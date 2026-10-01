@@ -29,6 +29,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +46,7 @@ import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.ProcessUtil;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -60,13 +63,34 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final String DEFAULT_PG_USER = "yugabyte";
   protected static final int STATS_UPDATE_INTERVAL = 2;
   protected static final int TSERVER_IDX = 0;
+  private static final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS =
+      30000 * BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
-  private static boolean ysql_conn_mgr_enable_prep_stmt_close = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
+
+  protected static final Map<String, String> NO_WARMUP_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+        put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+      }});
+
+  protected static final Map<String, String> ROUND_ROBIN_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "round_robin");
+        put("ysql_conn_mgr_enable_multi_route_pool", "true");
+        put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+      }});
+
+  protected static final Map<String, String> SINGLE_BACKEND_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+        put("ysql_conn_mgr_max_conns_per_db", "1");
+        put("ysql_conn_mgr_enable_multi_route_pool", "false");
+      }});
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -85,8 +109,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
     builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
       Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
-    builder.addCommonTServerFlag("ysql_conn_mgr_enable_prep_stmt_close",
-      Boolean.toString(ysql_conn_mgr_enable_prep_stmt_close));
   }
 
   @Override
@@ -105,6 +127,20 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected ConnectionBuilder getConnectionBuilder() {
     return new ConnectionBuilder(miniCluster).withUser(DEFAULT_PG_USER);
+  }
+
+  protected WireConn.Builder rawConnBuilder() {
+    return WireConn.builder(miniCluster);
+  }
+
+  /**
+   * Absolute path to the shared test_certs directory used by every SSL-related test in this
+   * package (ysql.crt/key/der, ca.crt, crl files, ...). Rooted next to the build's bin directory,
+   * so it works both under the source tree and in the packaged test layout.
+   */
+  protected static String certsDir() {
+    FileSystem fs = FileSystems.getDefault();
+    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 
   protected void disableWarmupRandomMode(MiniYBClusterBuilder builder) {
@@ -177,9 +213,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void modifyExtendedQueryProtocolAndRestartCluster(
       boolean optimized_extended_query_protocol) throws Exception {
     ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
-    // ysql_conn_mgr_deallocate_prepared_statements can only be enabled if
-    // optimized_extended_query_protocol is enabled.
-    ysql_conn_mgr_enable_prep_stmt_close = optimized_extended_query_protocol;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
@@ -192,7 +225,11 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected JsonObject getConnectionStats() throws IOException {
-    String host_name = getPgHost(TSERVER_IDX);
+    return getConnectionStats(TSERVER_IDX);
+  }
+
+  protected JsonObject getConnectionStats(int tserverIndex) throws IOException {
+    String host_name = getPgHost(tserverIndex);
     MiniYBDaemon[] ts_list = miniCluster.getTabletServers()
                                         .values()
                                         .toArray(new MiniYBDaemon[0]);
@@ -222,8 +259,13 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected JsonObject getPool(String db_name, String user_name) throws Exception {
+    return getPool(db_name, user_name, TSERVER_IDX);
+  }
+
+  protected JsonObject getPool(String db_name, String user_name, int tserverIndex)
+      throws Exception {
     // Specifically fetches a non logical replication pool. Use `getRepPool()` for replication pool.
-    JsonObject obj = getConnectionStats();
+    JsonObject obj = getConnectionStats(tserverIndex);
     assertNotNull("Got a null response from the connections endpoint", obj);
     JsonArray pools = obj.getAsJsonArray("pools");
     assertNotNull("Got empty pool", pools);
@@ -565,7 +607,15 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         },
         600000);
     LOG.info("initdb has completed successfully on master");
+    // Wait for PG on every node, not just tserver 0 as the check below does, as BasePgSQLTest.
+    waitForAllTServerPgWebservers(WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS);
     verifyClusterAcceptsConnMgrConnections();
+  }
+
+  protected void waitForAllTServerPgWebservers(long timeoutMs) throws Exception {
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      TestUtils.waitForServer(ts.getLocalhostIP(), ts.getPgsqlWebPort(), timeoutMs);
+    }
   }
 
   public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
@@ -679,13 +729,39 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected static int getOdysseyPid() throws Exception {
-    Process p = Runtime.getRuntime().exec(
-        new String[]{"/bin/sh", "-c", "pgrep -f odyssey | head -1"});
+    // Exec pgrep directly (no shell). Pattern is scoped to this test run's actual base tmp dir
+    // (via TestUtils.getBaseTmpDir()) so it searches for correct host on which test is running.
+    String pattern = "odyssey.*" + quoteBracketsForEre(TestUtils.getBaseTmpDir());
+    return pgrepFirstPid(new String[]{"pgrep", "-f", pattern}, "odyssey");
+  }
+
+  /*
+   * Same shape as getOdysseyPid, but for the miniCluster's YSQL postmaster. Pattern is scoped
+   * to this test run's actual base tmp dir (via TestUtils.getBaseTmpDir()) so it searches for
+   * matches correct host on which test is running.
+   */
+  protected static int getPostmasterPid() throws Exception {
+    String pattern = "postgres -D " + quoteBracketsForEre(TestUtils.getBaseTmpDir());
+    return pgrepFirstPid(new String[]{"pgrep", "-f", pattern}, "postmaster");
+  }
+
+  /*
+   * pgrep -f matches an ERE, so brackets in the tmp dir have to be escaped before it is spliced
+   * into one: a parameterized test's TEST_TMPDIR carries the parameter index
+   * (.../<method>[0]_attempt_...), and "[0]" would otherwise be read as a bracket expression
+   * matching the character 0, so the pattern matches no real process.
+   */
+  private static String quoteBracketsForEre(String path) {
+    return path.replace("[", "\\[").replace("]", "\\]");
+  }
+
+  private static int pgrepFirstPid(String[] pgrepCmd, String name) throws Exception {
+    Process p = Runtime.getRuntime().exec(pgrepCmd);
     try (BufferedReader reader =
              new BufferedReader(new InputStreamReader(p.getInputStream()))) {
       String line = reader.readLine();
       if (line == null || line.trim().isEmpty()) {
-        throw new RuntimeException("Could not find Odyssey process via pgrep");
+        throw new RuntimeException("Could not find " + name + " process via pgrep");
       }
       return Integer.parseInt(line.trim());
     }

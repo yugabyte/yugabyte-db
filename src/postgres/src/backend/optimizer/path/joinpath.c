@@ -786,6 +786,8 @@ try_nestloop_path(PlannerInfo *root,
 	 * The latter two steps are expensive enough to make this two-phase
 	 * methodology worthwhile.
 	 */
+	yb_init_bnl_workspace(&workspace, root, joinrel,
+						  outer_path, inner_path, pathkeys, jointype, extra);
 	initial_cost_nestloop(root, &workspace, jointype,
 						  outer_path, inner_path, extra);
 
@@ -904,6 +906,8 @@ try_partial_nestloop_path(PlannerInfo *root,
 	 * Before creating a path, get a quick lower bound on what it is likely to
 	 * cost.  Bail out right away if it looks terrible.
 	 */
+	yb_init_bnl_workspace(&workspace, root, joinrel,
+						  outer_path, inner_path, pathkeys, jointype, extra);
 	initial_cost_nestloop(root, &workspace, jointype,
 						  outer_path, inner_path, extra);
 	if (!add_partial_path_precheck(joinrel, workspace.total_cost, pathkeys))

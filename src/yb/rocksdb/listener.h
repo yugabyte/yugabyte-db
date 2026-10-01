@@ -112,8 +112,8 @@ YB_DEFINE_ENUM(FlushReason,
   // `TabletVectorIndexes::Backfill` flushes regular DB before dependent steps.
   (kVectorIndexBackfill)
 
-  // `Tablet::CreateSubtablet`: sync flush before RocksDB checkpoint for the tablet split child.
-  (kSubtabletCreation)
+  // `Tablet::CreateSplitChildTablet`: sync flush before RocksDB checkpoint for the split child.
+  (kSplitChildTabletCreation)
 
   // `Tablet::ModifyFlushedFrontier`: flush before applying flushed-frontier edits for crash safety.
   (kFlushedFrontierModification)

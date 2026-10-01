@@ -20,6 +20,7 @@ import api.v2.mappers.UniverseSystemdUpgradeMapper;
 import api.v2.mappers.UniverseThirdPartySoftwareUpgradeMapper;
 import api.v2.mappers.UniverseTlsToggleParamsMapper;
 import api.v2.mappers.UniverseUpdateProxyConfigParamsMapper;
+import api.v2.mappers.UniverseVMImageUpgradeMapper;
 import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.ExportTelemetryConfigSpec;
 import api.v2.models.UniverseCertRotateSpec;
@@ -39,6 +40,7 @@ import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.UniverseUpdateProxyConfig;
+import api.v2.models.UniverseVMImageUpgradeSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -70,6 +72,7 @@ import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Release;
@@ -617,5 +620,26 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
     log.info("Started update proxy config task {}", mapper.writeValueAsString(ybaTask));
     return ybaTask;
+  }
+
+  public YBATask vmImageUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseVMImageUpgradeSpec vmImageUpgradeSpec)
+      throws JsonProcessingException {
+    log.info("Starting v2 upgrade VM Image with {}", vmImageUpgradeSpec);
+
+    // get universe from db
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    VMImageUpgradeParams v1Params = new VMImageUpgradeParams();
+    UniverseVMImageUpgradeMapper.INSTANCE.copyToV1VMImageUpgradeParams(
+        vmImageUpgradeSpec, v1Params);
+
+    // invoke v1 upgrade api UpgradeUniverseHandler.upgradeGFlags
+    UUID taskUuid = v1Handler.upgradeVMImage(v1Params, customer, universe);
+    // construct a v2 Task to return from here
+    YBATask YBATask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started vm image upgrade task {}", mapper.writeValueAsString(YBATask));
+    return YBATask;
   }
 }

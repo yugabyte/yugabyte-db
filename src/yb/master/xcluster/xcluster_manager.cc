@@ -16,6 +16,7 @@
 #include <string>
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -67,9 +68,26 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_enable_target_applied_filter, kExternal, false
     "producer's loop-prevention predicate, allowing index backfill writes to replicate "
     "end-to-end. Bi-directional and pre-existing streams are unaffected.");
 
+DEFINE_RUNTIME_AUTO_bool(enable_xcluster_wal_anchor_stream_infra, kExternal, false, true,
+    "Auto infra flag for the xCluster WAL_ANCHOR stream feature. NOTE: If you want to disable "
+    "the feature, use enable_xcluster_wal_anchor_stream instead.");
+
+DEFINE_RUNTIME_bool(enable_xcluster_wal_anchor_stream, true,
+    "In xCluster automatic DDL replication mode, create a per table WAL_ANCHOR stream during the "
+    "creation of a new table. The anchor pins the source WAL at the table's creation point so a "
+    "target retry (after a DDL/transaction rollback) can still replay the full source WAL. Once "
+    "the table is committed on the target, the anchor stream is deleted by a background task. When "
+    "false, the source stops creating anchors for new tables, and the target stops asking for "
+    "stream recreation on rollback and stops marking newly committed tables for anchor deletion. "
+    "Anchors that are already marked are still deleted, so disable this on the source first, and "
+    "on the target only once the source has no anchor streams left.");
+
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
     "xCluster replication mode.");
+
+DEFINE_test_flag(bool, return_legacy_universe_replication_info, false,
+    "Omit fields that older masters did not populate in GetUniverseReplicationInfo responses.");
 
 DEFINE_RUNTIME_AUTO_bool(ysql_auto_add_new_index_to_bidirectional_xcluster_infra, kExternal,
     false, true,
@@ -224,6 +242,20 @@ Status XClusterManager::FillHeartbeatResponse(
   RETURN_NOT_OK(XClusterTargetManager::FillHeartbeatResponse(req, resp));
 
   return xcluster_config_->FillHeartbeatResponse(req, resp);
+}
+
+Status XClusterManager::FillXClusterGuardedInfo(
+    int64_t leader_term, XClusterGuardedInfoPB& info) {
+  std::lock_guard l(xcluster_guarded_info_version_mutex_);
+  ++xcluster_guarded_info_copy_count_;
+  auto& version = *info.mutable_xcluster_guarded_info_version();
+  version.set_term(leader_term);
+  version.set_count(xcluster_guarded_info_copy_count_);
+
+  RETURN_NOT_OK(xcluster_config_->FillXClusterInfoPerNamespace(info));
+  info.set_oid_cache_invalidations_count(
+      VERIFY_RESULT(catalog_manager_.GetOidCacheInvalidationsCount()));
+  return Status::OK();
 }
 
 Status XClusterManager::SetXClusterRole(
@@ -529,7 +561,8 @@ Status XClusterManager::GetXClusterStreams(
     // Handle the table_ids case.
     std::vector<TableId> table_ids(req->source_table_ids().begin(), req->source_table_ids().end());
     ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreamsForTableIds(
-        xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_ids));
+        xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_ids,
+        req->create_stream_if_missing(), epoch));
   } else {
     // Handle the table_info case and the empty (all tables) case.
     std::vector<std::pair<TableName, PgSchemaName>> table_names;
@@ -656,6 +689,18 @@ Status XClusterManager::RepairOutboundXClusterReplicationGroupRemoveTable(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->table_id(), epoch);
 }
 
+Status XClusterManager::DeleteXClusterWalAnchorStreams(
+    const DeleteXClusterWalAnchorStreamsRequestPB* req,
+    DeleteXClusterWalAnchorStreamsResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  std::vector<TableId> source_table_ids(
+      req->source_table_ids().begin(), req->source_table_ids().end());
+  return XClusterSourceManager::DeleteXClusterWalAnchorStreams(
+      xcluster::ReplicationGroupId(req->replication_group_id()), source_table_ids);
+}
+
 Status XClusterManager::GetXClusterOutboundReplicationGroups(
     const GetXClusterOutboundReplicationGroupsRequestPB* req,
     GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,
@@ -727,7 +772,11 @@ Status XClusterManager::GetUniverseReplicationInfo(
       xcluster::ReplicationGroupId(req->replication_group_id())));
 
   resp->set_replication_type(replication_info.replication_type);
-  resp->set_source_master_addresses(replication_info.master_addrs);
+  resp->set_deprecated_source_master_addresses(replication_info.master_addrs);
+  if (!FLAGS_TEST_return_legacy_universe_replication_info) {
+    resp->mutable_source_master_addrs()->CopyFrom(replication_info.source_master_addrs);
+    resp->set_automatic_ddl_mode(replication_info.automatic_ddl_mode);
+  }
 
   for (const auto& [_, tables] : replication_info.table_statuses_by_namespace) {
     for (const auto& table_status : tables) {
@@ -794,6 +843,10 @@ XClusterManager::GetInboundTransactionalReplicationGroups() const {
 Status XClusterManager::ClearXClusterFieldsAfterYsqlDDL(
     TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) {
   return XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(table_info, table_pb, epoch);
+}
+
+void XClusterManager::MarkWalAnchorDeletionPending(const TableId& table_id) {
+  XClusterTargetManager::MarkWalAnchorDeletionPending(table_id);
 }
 
 void XClusterManager::NotifyAutoFlagsConfigChanged() {

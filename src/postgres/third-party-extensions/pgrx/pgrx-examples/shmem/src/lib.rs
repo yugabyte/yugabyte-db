@@ -15,7 +15,7 @@ use pgrx::{pg_shmem_init, warning};
 use serde::*;
 use std::sync::atomic::Ordering;
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 // types behind a `LwLock` must derive/implement `Copy` and `Clone`
 #[derive(Copy, Clone)]
@@ -29,18 +29,24 @@ pub struct Pgtest {
 
 unsafe impl PGRXSharedMemory for Pgtest {}
 
-static DEQUE: PgLwLock<heapless::Deque<Pgtest, 400>> = PgLwLock::new(c"shmem_deque");
-static VEC: PgLwLock<heapless::Vec<Pgtest, 400>> = PgLwLock::new(c"shmem_vec");
-static HASH: PgLwLock<heapless::FnvIndexMap<i32, i32, 4>> = PgLwLock::new(c"shmem_hash");
-static STRUCT: PgLwLock<Pgtest> = PgLwLock::new(c"shmem_struct");
-static PRIMITIVE: PgLwLock<i32> = PgLwLock::new(c"shmem_primtive");
-static ATOMIC: PgAtomic<std::sync::atomic::AtomicBool> = PgAtomic::new(c"shmem_atomic");
+static DEQUE: PgLwLock<AssertPGRXSharedMemory<heapless::Deque<Pgtest, 400>>> =
+    unsafe { PgLwLock::new(c"shmem_deque") };
+static VEC: PgLwLock<AssertPGRXSharedMemory<heapless::Vec<Pgtest, 400>>> =
+    unsafe { PgLwLock::new(c"shmem_vec") };
+static HASH: PgLwLock<AssertPGRXSharedMemory<heapless::FnvIndexMap<i32, i32, 4>>> =
+    unsafe { PgLwLock::new(c"shmem_hash") };
+static STRUCT: PgLwLock<Pgtest> = unsafe { PgLwLock::new(c"shmem_struct") };
+static PRIMITIVE: PgLwLock<i32> = unsafe { PgLwLock::new(c"shmem_primtive") };
+static ATOMIC: PgAtomic<std::sync::atomic::AtomicBool> = unsafe { PgAtomic::new(c"shmem_atomic") };
 
 #[pg_guard]
 pub extern "C-unwind" fn _PG_init() {
-    pg_shmem_init!(DEQUE);
-    pg_shmem_init!(VEC);
-    pg_shmem_init!(HASH);
+    if unsafe { !pgrx::pg_sys::process_shared_preload_libraries_in_progress } {
+        pgrx::error!("this extension must be loaded via shared_preload_libraries.");
+    }
+    pg_shmem_init!(DEQUE = unsafe { AssertPGRXSharedMemory::new(Default::default()) });
+    pg_shmem_init!(VEC = unsafe { AssertPGRXSharedMemory::new(Default::default()) });
+    pg_shmem_init!(HASH = unsafe { AssertPGRXSharedMemory::new(Default::default()) });
     pg_shmem_init!(STRUCT);
     pg_shmem_init!(PRIMITIVE);
     pg_shmem_init!(ATOMIC);
@@ -156,4 +162,13 @@ fn atomic_get() -> bool {
 #[pg_extern]
 fn atomic_set(value: bool) -> bool {
     ATOMIC.get().swap(value, Ordering::Relaxed)
+}
+
+#[cfg(test)]
+pub mod pg_test {
+    pub fn setup(_options: Vec<&str>) {}
+
+    pub fn postgresql_conf_options() -> Vec<&'static str> {
+        vec!["shared_preload_libraries='shmem'"]
+    }
 }

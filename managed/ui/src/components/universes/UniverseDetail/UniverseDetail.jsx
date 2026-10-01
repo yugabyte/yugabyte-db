@@ -78,6 +78,7 @@ import {
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
+import { UpdateNodeAgentModal } from '../../../redesign/features/universe/universe-actions/update-node-agent/UpdateNodeAgentModal';
 import { ReprovisionNodesWithYnpModal } from '../../../redesign/features/universe/universe-actions/reprovision-nodes-with-ynp/ReprovisionNodesWithYnpModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import {
@@ -264,9 +265,14 @@ class UniverseDetail extends Component {
       universeTables
     } = this.props;
     // Always refresh universe info on Overview tab or when universe uuid in the route changes.
-    if (
-      (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') ||
-      prevProps.params.uuid !== this.props.params.uuid
+    if (prevProps.params.uuid !== this.props.params.uuid) {
+      // Clear stale universe so we never paint the previous universe under a new route.
+      this.props.resetUniverseInfo();
+      this.props.getUniverseInfo(this.props.params.uuid);
+      this.props.getUniverseLbState(this.props.params.uuid);
+    } else if (
+      prevProps.params.tab !== this.props.params.tab &&
+      this.props.params.tab === 'overview'
     ) {
       this.props.getUniverseInfo(this.props.params.uuid);
       const isUpdateInProgress = currentUniverse?.data?.universeDetails?.updateInProgress;
@@ -442,6 +448,7 @@ class UniverseDetail extends Component {
       showTLSConfigurationModal,
       showRollingRestartModal,
       showInstallNodeAgentModal,
+      showUpdateNodeAgentModal,
       showReprovisionNodesWithYnpModal,
       showUpgradeSystemdModal,
       showThirdpartyUpgradeModal,
@@ -625,8 +632,7 @@ class UniverseDetail extends Component {
 
     const isV2EditUniverseUIEnabled = isUniverseRevampExperienceEnabled(
       runtimeConfigs?.data,
-      currentUser?.data?.role,
-      this.state.isOnboardingExperienceEnabled
+      currentUser?.data?.role
     );
 
     if (
@@ -638,6 +644,16 @@ class UniverseDetail extends Component {
       return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
+    }
+
+    const routeUuid = this.props.params?.uuid ?? this.props.uuid;
+    if (
+      getPromiseState(currentUniverse).isSuccess() &&
+      currentUniverse.data?.universeUUID &&
+      routeUuid &&
+      currentUniverse.data.universeUUID !== routeUuid
+    ) {
+      return <YBLoading />;
     }
 
     if (getPromiseState(currentUniverse).isError()) {
@@ -1830,6 +1846,27 @@ class UniverseDetail extends Component {
                     {!isReadOnlyUniverse &&
                       !universePaused &&
                       !isKubernetesUniverse &&
+                      !isNodeAgentMissing && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.UPGRADE_NODE_AGENT
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={isInstallNodeAgentDisabled}
+                            onClick={showUpdateNodeAgentModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-refresh">
+                              Update Node Agent Certificate
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
+                    {!isReadOnlyUniverse &&
+                      !universePaused &&
+                      !isKubernetesUniverse &&
                       !onPremWithoutSudoAccess && (
                         <RbacValidator
                           isControl
@@ -1898,7 +1935,13 @@ class UniverseDetail extends Component {
                             disabled={isPerfAdvisorActionDisabled}
                             onClick={showEnablePerfAdvisorModal}
                           >
-                            <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                            <YBLabelWithIcon
+                              icon={
+                                isUniverseRegisteredToPa
+                                  ? 'fa fa-trash-o fa-fw'
+                                  : 'fa fa-plus fa-fw'
+                              }
+                            >
                               {isUniverseRegisteredToPa
                                 ? 'Disable Perf Advisor Collector'
                                 : 'Enable Perf Advisor Collector'}
@@ -2260,6 +2303,19 @@ class UniverseDetail extends Component {
           isReinstall={!isNodeAgentMissing}
         />
 
+        <UpdateNodeAgentModal
+          modalProps={{
+            open: showModal && visibleModal === 'updateNodeAgentModal',
+            onClose: () => {
+              closeModal();
+              this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }
+          }}
+          universeUuid={currentUniverse.data.universeUUID}
+          isUniverseAction={true}
+        />
+
         <ReprovisionNodesWithYnpModal
           modalProps={{
             open: showModal && visibleModal === 'reprovisionNodesWithYnpModal',
@@ -2272,11 +2328,12 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
         />
 
-        <UniverseSupportBundleModal
-          currentUniverse={currentUniverse.data}
-          modal={modal}
-          closeModal={closeModal}
-        />
+        {showModal && visibleModal === 'supportBundleModal' && (
+          <UniverseSupportBundleModal
+            currentUniverse={currentUniverse.data}
+            closeModal={closeModal}
+          />
+        )}
 
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel

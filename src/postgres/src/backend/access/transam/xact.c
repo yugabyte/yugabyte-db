@@ -2306,6 +2306,9 @@ StartTransaction(void)
 	/* Mark xactStopTimestamp as unset. */
 	xactStopTimestamp = 0;
 
+	if (IsYugaByteEnabled())
+		YBCSetObjectLockingInfraForCurrTxn();
+
 	/*
 	 * initialize other subsystems for new transaction
 	 */

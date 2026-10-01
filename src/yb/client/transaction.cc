@@ -712,6 +712,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     VLOG_WITH_PREFIX(2) << "Abort";
     TRACE_TO(trace_, __func__);
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
+      return;
+    }
     {
       UniqueLock lock(mutex_);
       auto state = state_.load(std::memory_order_acquire);
@@ -1104,6 +1108,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       const SubtxnSet& aborted_sub_txn_set,
       SendHeartbeatToNewTablet send_to_new_tablet) {
     DCHECK(status_tablet);
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
+      return MakeFuture<Status>([s](auto callback) { callback(s); });
+    }
 
     if (PREDICT_FALSE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet) &&
         !send_to_new_tablet) {
@@ -1285,6 +1293,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
     log_prefix_.tag.store(LogPrefixTag(&name.Get(), id), boost::memory_order_release);
     VLOG_WITH_PREFIX(2) << "Log prefix tag changed";
+  }
+
+  void MarkHistoricalReadReady() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    ready_ = true;
   }
 
   bool OldTransactionAborted() const {
@@ -1626,10 +1639,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
     }
 
+    auto* status_tablet = status_tablet_.get();
+    auto old_status_tablet = old_status_tablet_;
+    lock.unlock();
+
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
             deadline,
-            status_tablet_.get(),
+            status_tablet,
             manager_->client(),
             &req,
             [this, transaction](const auto& status, const auto& req, const auto& resp) {
@@ -1637,8 +1654,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             }),
         &commit_handle_);
 
-    auto old_status_tablet = old_status_tablet_;
-    lock.unlock();
     SendAbortToOldStatusTabletIfNeeded(deadline, transaction, old_status_tablet);
   }
 
@@ -1875,6 +1890,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
     VLOG_WITH_PREFIX(2) << "RequestStatusTablet()";
+    initial_heartbeat_deadline_.store(AdjustDeadline(deadline), std::memory_order_release);
     auto transaction = transaction_->shared_from_this();
     if (metadata_.status_tablet.empty()) {
       manager_->PickStatusTablet(
@@ -1946,6 +1962,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     } else {
       std::weak_ptr<YBTransaction> weak_transaction = transaction;
       auto send_new_heartbeat = [this, weak_transaction, status, promoting](const Status&) {
+        // TODO(#16670): start an independent span here, linked to the originating span.
+        auto detach_token = dist_trace::DetachTraceContext();
         if (auto transaction = weak_transaction.lock()) {
           SendHeartbeat(status, metadata_.transaction_id, transaction,
                         SendHeartbeatToNewTablet(promoting));
@@ -2114,6 +2132,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (!transaction) {
       // Cannot use LOG_WITH_PREFIX here, since this was actually destroyed.
       VLOG(1) << id << ": Transaction destroyed";
+      return;
+    }
+
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
       return;
     }
 
@@ -2323,9 +2346,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", txn state: " << state;
 
       if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress() ||
-          manager_->IsClosing()) {
+          status.IsDeleted() || manager_->IsClosing()) {
         // IsAborted/IsShutdownInProgress - Service is shutting down, no reason to retry.
         // IsExpired - Transaction expired.
+        // IsDeleted - Transaction was aborted remotely, and then status tablet was deleted.
         // We want to notify waiters for RUNNING if we are in kPromoting state -- this is heartbeat
         // to old status tablet during promotion, and SetError will cause the PROMOTED heartbeat to
         // new status tablet to be skipped if it has not started yet. It's OK even if it actually
@@ -2338,7 +2362,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           SetError(status, "Heartbeat");
         }
         // If state is committed, then we should not cleanup.
-        if (status.IsExpired() &&
+        if ((status.IsExpired() || status.IsDeleted()) &&
             (state == TransactionState::kRunning || state == TransactionState::kPromoting)) {
            std::function<void(void)> remote_abort_callback;
           {
@@ -2359,6 +2383,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             << "PgSessionRequestVersion changed from " << pg_session_req_version_
             << " to " << *new_pg_session_req_version;
         pg_session_req_version_ = *new_pg_session_req_version;
+      }
+      // The CREATED heartbeat gates ready_, so retrying it forever leaves every waiter (the first
+      // write, the commit) blocked with no way to observe its own deadline. Give up once the
+      // requester that asked for the status tablet has run out of time.
+      if (transaction_status == TransactionStatus::CREATED && !send_to_new_tablet &&
+          CoarseMonoClock::now() >= initial_heartbeat_deadline_.load(std::memory_order_acquire)) {
+        NotifyWaiters(status, "Heartbeat", SetReady::kTrue);
+        return;
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
@@ -2639,8 +2671,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     callback(child_txn_data_pb);
   }
 
+  Status CheckNotHistoricalReadTxn() const {
+    RSTATUS_DCHECK(
+        !metadata_.is_read_only_historical_committed_txn, IllegalState,
+        "Commit, abort, and heartbeat are not allowed on a historical read-only transaction $0",
+        metadata_.transaction_id);
+    return Status::OK();
+  }
+
   Status CheckCouldCommitUnlocked(SealOnly seal_only) REQUIRES(mutex_) {
     RETURN_NOT_OK(CheckRunningUnlocked());
+    RETURN_NOT_OK(CheckNotHistoricalReadTxn());
     if (child_) {
       return STATUS(IllegalState, "Commit of child transaction is not allowed");
     }
@@ -2685,6 +2726,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       subtxn_table_mutation_counter_map_ GUARDED_BY(mutation_count_mutex_);
 
   std::atomic<bool> requested_status_tablet_{false};
+  // Deadline of the requester that triggered the initial status tablet request. Bounds the retries
+  // of the CREATED heartbeat, which gates ready_.
+  std::atomic<CoarseTimePoint> initial_heartbeat_deadline_{CoarseTimePoint::max()};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
   internal::RemoteTabletPtr old_status_tablet_ GUARDED_BY(mutex_);
   std::atomic<TransactionState> state_{TransactionState::kRunning};
@@ -2788,6 +2832,15 @@ YBTransaction::YBTransaction(
 
 YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData data)
     : impl_(new Impl(manager, this, std::move(data))) {
+}
+
+YBTransactionPtr YBTransaction::Fabricate(
+    TransactionManager* manager, const TransactionMetadata& metadata) {
+  auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
+  if (metadata.is_read_only_historical_committed_txn) {
+    result->impl_->MarkHistoricalReadReady();
+  }
+  return result;
 }
 
 YBTransaction::~YBTransaction() {

@@ -237,8 +237,17 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   }
 
   public KmsConfig createAuthConfig(UUID customerUUID, String configName, ObjectNode config) {
+    return createAuthConfig(customerUUID, configName, config, null /* presetConfigUUID */);
+  }
+
+  /**
+   * {@code presetConfigUUID} is the UUID minted for the new row, or null to let the DB assign one.
+   */
+  public KmsConfig createAuthConfig(
+      UUID customerUUID, String configName, ObjectNode config, UUID presetConfigUUID) {
     KmsConfig result =
-        KmsConfig.createKMSConfig(customerUUID, this.keyProvider, config, configName);
+        KmsConfig.createKMSConfig(
+            customerUUID, this.keyProvider, config, configName, presetConfigUUID);
     UUID configUUID = result.getConfigUUID();
     ObjectNode existingConfig = getAuthConfig(configUUID);
     ObjectNode updatedConfig = createAuthConfigWithService(configUUID, existingConfig);

@@ -566,10 +566,10 @@ Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
   tablet_options.block_cache = block_cache_;
   docdb::InitRocksDBOptions(
       &regular_db_options_, yb::Format("[R] $0", tablet_id), tablet_id,
-      regular_db_options_.statistics, tablet_options);
+      regular_db_options_.statistics, tablet_options, StorageDbType::kRegular);
   docdb::InitRocksDBOptions(
       &intents_db_options_, yb::Format("[I] $0", tablet_id), tablet_id,
-      intents_db_options_.statistics, tablet_options);
+      intents_db_options_.statistics, tablet_options, StorageDbType::kIntents);
   regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
       retention_policy_, &KeyBounds::kNoBounds,
       [this](const std::vector<rocksdb::FileMetaData*>&) {

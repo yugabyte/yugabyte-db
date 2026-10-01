@@ -48,6 +48,7 @@ DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -1306,8 +1307,11 @@ class PgReadTimeBaseTest
   void SetUp() override {
     const auto concurrent_ddl = IsConcurrentDdl();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = concurrent_ddl;
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = concurrent_ddl;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = concurrent_ddl;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = concurrent_ddl;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
     PgReadTimeTest::SetUp();
@@ -1325,7 +1329,8 @@ class PgReadTimeBaseTest
   void StartConcurrentInserts(
       TestThreadHolder* threads, const std::string& table, int start_key) {
     threads->AddThreadFunctor([this, &stop = threads->stop_flag(), table, start_key] {
-      auto conn = ASSERT_RESULT(Connect());
+      // _FAST: SUCCEED() would race with HasFatalFailure() in RunFor on the main thread.
+      auto conn = ASSERT_RESULT_FAST(Connect());
       LoopUntilStop(stop, [&conn, table, start_key] {
         for (int k = start_key; k < start_key + kChurnBatch; ++k) {
           (void)conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, 1)", table, k);
@@ -1731,7 +1736,8 @@ TEST_P(PgCatalogReadTimeTest, ConflictsWithRestartRead) {
 
   TestThreadHolder threads;
   threads.AddThreadFunctor([this, &stop = threads.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
+    // _FAST: SUCCEED() would race with HasFatalFailure() in RunFor on the main thread.
+    auto conn = ASSERT_RESULT_FAST(Connect());
     int i = 0;
     LoopUntilStop(stop, [&conn, &i] {
       const auto create_status =

@@ -246,9 +246,13 @@ class SysCatalogTable {
   }
 
   using ReadRestartFn = std::function<Status (const ReadHybridTime &, HybridTime *)>;
+  // If 'out_read_ht' is set, it receives the hybrid time the read was finally served at (after
+  // any read restarts). Callers that cache what they read use it to order snapshots against each
+  // other; see CatalogManager::InstallPgCatalogVersionsSnapshot.
   Status ReadWithRestarts(
       const ReadRestartFn& fn,
-      tablet::RequireLease require_lease = tablet::RequireLease::kTrue) const;
+      tablet::RequireLease require_lease = tablet::RequireLease::kTrue,
+      HybridTime* out_read_ht = nullptr) const;
 
   // Read the global ysql catalog version info from the pg_yb_catalog_version catalog table.
   Status ReadYsqlCatalogVersion(const TableId& ysql_catalog_table_id,
@@ -263,7 +267,8 @@ class SysCatalogTable {
   // catalog table.
   Status ReadYsqlAllDBCatalogVersions(
       const TableId& ysql_catalog_table_id,
-      DbOidToCatalogVersionMap* versions);
+      DbOidToCatalogVersionMap* versions,
+      HybridTime* out_read_ht = nullptr);
   // Read the ysql catalog cache invalidation messages info for all databases from the
   // pg_yb_invalidation_messages catalog table.
   Result<DbOidVersionToMessageListMap> ReadYsqlCatalogInvalationMessages();
@@ -435,7 +440,8 @@ class SysCatalogTable {
       uint32_t db_oid,
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,
-      DbOidToCatalogVersionMap* versions);
+      DbOidToCatalogVersionMap* versions,
+      HybridTime* out_read_ht = nullptr);
   Status ReadYsqlDBCatalogVersionImplWithReadTime(
       const TableId& ysql_catalog_table_id,
       uint32_t db_oid,
@@ -515,7 +521,11 @@ class SysCatalogTable {
 
   scoped_refptr<Counter> peer_write_count;
 
-  std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
+  // Visit() runs concurrently on the leader initialization thread and on background task threads,
+  // so the lazily populated metric map needs its own lock.
+  std::mutex visitor_duration_metrics_mutex_;
+  std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_
+      GUARDED_BY(visitor_duration_metrics_mutex_);
 
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
 

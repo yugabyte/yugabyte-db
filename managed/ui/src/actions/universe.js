@@ -157,9 +157,32 @@ export function createUniverseResponse(response) {
   };
 }
 
+let cancelInFlightUniverseInfo = null;
+// Latest universe UUID requested via fetchUniverseInfo. Used to drop stale
+// FETCH_UNIVERSE_INFO_RESPONSE from any caller (incl. TaskDetailBanner's api.fetchUniverse).
+let latestUniverseInfoUuid = null;
+
 export function fetchUniverseInfo(universeUUID) {
+  latestUniverseInfoUuid = universeUUID;
+  if (cancelInFlightUniverseInfo) {
+    cancelInFlightUniverseInfo();
+  }
+  const source = axios.CancelToken.source();
+  cancelInFlightUniverseInfo = source.cancel;
+
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`);
+  const request = axios
+    .get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`, {
+      cancelToken: source.token
+    })
+    .catch((error) => {
+      if (axios.isCancel(error)) {
+        // Drop aborted responses so redux-promise does not touch currentUniverse.
+        return new Promise(() => {});
+      }
+      throw error;
+    });
+
   return {
     type: FETCH_UNIVERSE_INFO,
     payload: request
@@ -187,17 +210,38 @@ export function resetUniverseInfo() {
 }
 
 export function fetchUniverseInfoResponse(response) {
+  const responseUUID = response?.data?.universeUUID;
+  if (responseUUID && latestUniverseInfoUuid && responseUUID !== latestUniverseInfoUuid) {
+    return { type: 'IGNORE_STALE_UNIVERSE_INFO' };
+  }
   return {
     type: FETCH_UNIVERSE_INFO_RESPONSE,
     payload: response
   };
 }
 
+let cancelInFlightUniverseLbState = null;
+
 export function fetchUniverseLbState(universeUUID) {
+  if (cancelInFlightUniverseLbState) {
+    cancelInFlightUniverseLbState();
+  }
+  const source = axios.CancelToken.source();
+  cancelInFlightUniverseLbState = source.cancel;
+
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(
-    `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/master_lb_state`
-  );
+  const request = axios
+    .get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/master_lb_state`, {
+      cancelToken: source.token
+    })
+    .catch((error) => {
+      if (axios.isCancel(error)) {
+        // Drop aborted responses so redux-promise does not touch universeLbState.
+        return new Promise(() => {});
+      }
+      throw error;
+    });
+
   return {
     type: FETCH_UNIVERSE_LB_STATE,
     payload: request

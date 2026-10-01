@@ -52,13 +52,16 @@ class CountDownLatch {
   // Decrement the count of this latch by 'amount'
   // If the new count is less than or equal to zero, then all waiting threads are woken up.
   // If the count is already zero, this has no effect.
-  void CountDown(uint64_t amount);
+  // Returns true iff this call is the one that brought the count to zero, so that concurrent
+  // callers can elect exactly one of themselves to run a follow-up action.
+  bool CountDown(uint64_t amount);
 
   // Decrement the count of this latch.
   // If the new count is zero, then all waiting threads are woken up.
   // If the count is already zero, this has no effect.
-  void CountDown() {
-    CountDown(1);
+  // Returns true iff this call is the one that brought the count to zero.
+  bool CountDown() {
+    return CountDown(1);
   }
 
   // Wait until the count on the latch reaches zero.

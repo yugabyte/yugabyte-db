@@ -521,6 +521,50 @@ func (handler *GetNodeAgentHandler) Result() *model.NodeAgent {
 	return handler.result
 }
 
+type GetCertificateUuidHandler struct {
+	apiToken        string
+	certificateName string
+	result          string
+}
+
+func NewGetCertificateUuidHandler(apiToken, certificateName string) *GetCertificateUuidHandler {
+	return &GetCertificateUuidHandler{apiToken: apiToken, certificateName: certificateName}
+}
+
+func (handler *GetCertificateUuidHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithAuth(ctx, config, handler.apiToken)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodGet,
+		util.PlatformGetCertificateEndpoint(
+			config.String(util.CustomerIdKey),
+			handler.certificateName,
+		),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	var certUuid string
+	_, err = UnmarshalResponse(ctx, &certUuid, res)
+	if err != nil {
+		return nil, err
+	}
+	handler.result = certUuid
+	return handler.result, nil
+}
+
+func (handler *GetCertificateUuidHandler) Result() string {
+	return handler.result
+}
+
 // Unmarshals the response body to the provided target.
 // Tries to unmarshal the response into model.ResponseError if
 // the response status code is not 200.

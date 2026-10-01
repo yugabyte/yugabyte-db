@@ -45,6 +45,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -80,6 +81,9 @@ public abstract class KubernetesManager {
   private static final long DEFAULT_HELM_TEMPLATE_TIMEOUT_SECS = 1;
 
   private static final long HELM_UNINSTALL_RETRY = 5;
+
+  // 'info.status' reported by 'helm status -o json' for a release helm considers healthy.
+  private static final String HELM_STATUS_DEPLOYED = "deployed";
 
   protected BiFunction<ObjectMeta, Boolean, ServerType> serverTypeLabelConverter =
       (oM, newNamingStyle) ->
@@ -119,6 +123,29 @@ public abstract class KubernetesManager {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
 
+    // A release may already exist here when a task that got aborted or failed mid-way is retried.
+    // Tearing it down and reinstalling is only safe while the release is in a state helm cannot
+    // converge on its own. A healthy 'deployed' release may be serving live masters/tservers that
+    // are already part of the quorum -- 'helm uninstall --wait' would delete those pods. Converge
+    // it with 'helm upgrade' instead, which is a no-op when nothing changed. See PLAT-22307.
+    Optional<String> releaseStatus = getHelmReleaseStatus(config, helmReleaseName, namespace);
+    if (releaseStatus.isPresent() && HELM_STATUS_DEPLOYED.equals(releaseStatus.get())) {
+      LOG.info(
+          "Helm release {} in namespace {} is already deployed, upgrading it in place instead of"
+              + " reinstalling",
+          helmReleaseName,
+          namespace);
+      helmUpgrade(
+          universeUUID,
+          ybSoftwareVersion,
+          config,
+          helmReleaseName,
+          namespace,
+          overridesFile,
+          postRendererPath);
+      return;
+    }
+
     int currentTry = 0;
     boolean helmReleaseExists = false;
     // Helm uninstall can fail or timeout.
@@ -126,19 +153,16 @@ public abstract class KubernetesManager {
     // completed with 1 error(s): context deadline exceeded
     // This block does a retry with a generous timeout to give it time to finish
     while (currentTry < HELM_UNINSTALL_RETRY) {
-      // List Helm releases to check if the release already exists
-      List<String> listCmd = ImmutableList.of("helm", "list", "--short", "--namespace", namespace);
-      ShellResponse responseList = execCommand(config, listCmd);
-
-      responseList.processErrors();
-
-      String output = responseList.getMessage();
-      LOG.info("helm list command output: {}", output);
-
-      helmReleaseExists = output.contains(helmReleaseName);
+      helmReleaseExists = helmReleaseExists(config, helmReleaseName, namespace);
 
       if (helmReleaseExists) {
-        // The release already exists, uninstall it
+        // The release exists but is not in a healthy deployed state (failed, pending-*, unknown),
+        // so it cannot be converged with an upgrade. Uninstall it and install from scratch.
+        LOG.info(
+            "Helm release {} in namespace {} is in state '{}', uninstalling it before reinstalling",
+            helmReleaseName,
+            namespace,
+            releaseStatus.orElse("unknown"));
         List<String> deleteCmd =
             ImmutableList.of(
                 "helm",
@@ -359,6 +383,63 @@ public abstract class KubernetesManager {
     List<String> commandList = commandBuilder.build();
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, helmReleaseName, namespace, response);
+  }
+
+  /**
+   * Returns whether a helm release with exactly this name exists in the namespace.
+   *
+   * <p>'helm list --short' prints one release name per line, so the output must be matched line by
+   * line. A substring match reports release 'yb-az1' as present when only 'yb-az10' is deployed.
+   *
+   * @param config the kubeconfig environment for the AZ
+   * @param helmReleaseName the release to look for
+   * @param namespace the namespace to list releases in
+   * @return true if a release named helmReleaseName exists
+   */
+  public boolean helmReleaseExists(
+      Map<String, String> config, String helmReleaseName, String namespace) {
+    List<String> listCmd = ImmutableList.of("helm", "list", "--short", "--namespace", namespace);
+    ShellResponse responseList = execCommand(config, listCmd);
+    responseList.processErrors();
+
+    String output = responseList.getMessage();
+    LOG.info("helm list command output: {}", output);
+
+    return output.lines().map(String::trim).anyMatch(helmReleaseName::equals);
+  }
+
+  /**
+   * Returns the 'info.status' helm reports for a release, e.g. 'deployed', 'failed',
+   * 'pending-install'.
+   *
+   * @param config the kubeconfig environment for the AZ
+   * @param helmReleaseName the release to query
+   * @param namespace the namespace the release lives in
+   * @return the status, or empty if the release does not exist or its status could not be read
+   */
+  public Optional<String> getHelmReleaseStatus(
+      Map<String, String> config, String helmReleaseName, String namespace) {
+    List<String> commandList =
+        ImmutableList.of("helm", "status", helmReleaseName, "-n", namespace, "-o", "json");
+    ShellResponse response = execCommand(config, commandList, false);
+    if (response == null || !response.isSuccess()) {
+      // Also the expected path when the release simply does not exist yet.
+      LOG.debug(
+          "Could not get helm status for release {} in namespace {}: {}",
+          helmReleaseName,
+          namespace,
+          response == null ? "no response" : response.getMessage());
+      return Optional.empty();
+    }
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      JsonNode statusJson = mapper.readTree(response.getMessage());
+      String status = statusJson.path("info").path("status").asText();
+      return StringUtils.isBlank(status) ? Optional.empty() : Optional.of(status);
+    } catch (Exception e) {
+      LOG.error("Error parsing helm status response for release {}", helmReleaseName, e);
+      return Optional.empty();
+    }
   }
 
   public void checkAndRecoverFromHelmPendingState(

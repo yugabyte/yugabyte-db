@@ -124,9 +124,12 @@ Status AddTableToXClusterTargetTask::FirstStep() {
     RSTATUS_DCHECK(
         is_automatic_ddl_mode_, IllegalState,
         "Automatic DDL mode is not enabled but received source table id");
+    // The source needs to recreate the stream if the table does not have one (usually due to
+    // rolling back create DDLs on the target).
     return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
         universe_->ReplicationGroupId(), producer_namespace_id,
-        {xcluster_table_info.xcluster_source_table_id()}, std::move(callback));
+        {xcluster_table_info.xcluster_source_table_id()}, /*create_stream_if_missing=*/true,
+        std::move(callback));
   }
 
   SCHECK(

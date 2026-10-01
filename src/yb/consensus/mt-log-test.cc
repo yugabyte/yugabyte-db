@@ -171,12 +171,11 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   }
   ASSERT_OK(log_->Close());
 
-  std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(
+  auto reader = ASSERT_RESULT(LogReader::Open(
       fs_manager_->env(), /*index=*/nullptr,
       "Log reader: ", fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
       /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &reader));
+      /*read_wal_mem_tracker=*/nullptr));
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 

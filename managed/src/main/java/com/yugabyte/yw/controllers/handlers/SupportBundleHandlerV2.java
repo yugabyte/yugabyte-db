@@ -231,9 +231,11 @@ public class SupportBundleHandlerV2 {
       bundleData.ybAdminComponentSpecs.forEach(
           spec -> {
             if (spec == null
-                || org.apache.commons.lang3.StringUtils.isBlank(spec.getYbAdminCommand())) {
+                || spec.getYbAdminCommands() == null
+                || spec.getYbAdminCommands().isEmpty()) {
               throw new PlatformServiceException(
-                  BAD_REQUEST, "Each YbAdminComponent spec requires 'ybAdminCommand'.");
+                  BAD_REQUEST,
+                  "Each YbAdminComponent spec requires a non-empty 'ybAdminCommands'.");
             }
             String specLabel =
                 org.apache.commons.lang3.StringUtils.defaultIfBlank(
@@ -242,7 +244,7 @@ public class SupportBundleHandlerV2 {
                 "YbAdminComponent", "componentName", spec.getComponentName());
             specValidator.validateFileNameSegment(
                 specLabel, "outputFileName", spec.getOutputFileName());
-            specValidator.validateYbAdminCommands(specLabel, List.of(spec.getYbAdminCommand()));
+            specValidator.validateYbAdminCommands(specLabel, spec.getYbAdminCommands());
           });
     }
 

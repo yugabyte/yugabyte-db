@@ -121,6 +121,11 @@ func (h *DestroyServerHandler) cleanInstance(ctx context.Context) error {
 		}
 		deleteFn(path)
 	}
+	// Federation artifacts (creds/env) live under ~/.yugabyte, outside the standard cleanup
+	// subpaths; remove them explicitly so credentials never linger on a released/reused node.
+	if federationPathExists(federationDir(ybHomeDir)) {
+		deleteFn(federationDir(ybHomeDir))
+	}
 	if len(failedPaths) > 0 {
 		return fmt.Errorf(
 			"Failed to clean the following paths: %s",

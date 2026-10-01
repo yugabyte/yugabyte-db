@@ -8,7 +8,7 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 //! Wrapper around Postgres' `pg_config` command-line tool
-use eyre::{eyre, WrapErr};
+use eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -21,6 +21,8 @@ use std::process::{Command, Stdio};
 use std::str::FromStr;
 use thiserror::Error;
 use url::Url;
+
+mod decoding;
 
 pub mod cargo;
 
@@ -61,6 +63,8 @@ pub fn get_c_locale_flags() -> &'static [&'static str] {
 mod path_methods;
 pub use path_methods::{get_target_dir, prefix_path};
 
+use crate::decoding::decode_from_bytes;
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum PgMinorVersion {
     Latest,
@@ -72,10 +76,10 @@ pub enum PgMinorVersion {
 impl Display for PgMinorVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            PgMinorVersion::Latest => write!(f, ".LATEST"),
-            PgMinorVersion::Release(v) => write!(f, ".{v}"),
-            PgMinorVersion::Beta(v) => write!(f, "beta{v}"),
-            PgMinorVersion::Rc(v) => write!(f, "rc{v}"),
+            Self::Latest => write!(f, ".LATEST"),
+            Self::Release(v) => write!(f, ".{v}"),
+            Self::Beta(v) => write!(f, "beta{v}"),
+            Self::Rc(v) => write!(f, "rc{v}"),
         }
     }
 }
@@ -83,10 +87,8 @@ impl Display for PgMinorVersion {
 impl PgMinorVersion {
     fn version(&self) -> Option<u16> {
         match self {
-            PgMinorVersion::Latest => None,
-            PgMinorVersion::Release(v) | PgMinorVersion::Beta(v) | PgMinorVersion::Rc(v) => {
-                Some(*v)
-            }
+            Self::Latest => None,
+            Self::Release(v) | Self::Beta(v) | Self::Rc(v) => Some(*v),
         }
     }
 }
@@ -99,8 +101,8 @@ pub struct PgVersion {
 }
 
 impl PgVersion {
-    pub const fn new(major: u16, minor: PgMinorVersion, url: Option<Url>) -> PgVersion {
-        PgVersion { major, minor, url }
+    pub const fn new(major: u16, minor: PgMinorVersion, url: Option<Url>) -> Self {
+        Self { major, minor, url }
     }
 
     pub fn minor(&self) -> Option<u16> {
@@ -121,6 +123,7 @@ pub struct PgConfig {
     known_props: Option<BTreeMap<String, String>>,
     base_port: u16,
     base_testing_port: u16,
+    test_port_override: Option<u16>,
 }
 
 impl Display for PgConfig {
@@ -131,40 +134,43 @@ impl Display for PgConfig {
 
 impl Default for PgConfig {
     fn default() -> Self {
-        PgConfig {
+        Self {
             version: None,
             pg_config: None,
             known_props: None,
             base_port: BASE_POSTGRES_PORT_NO,
             base_testing_port: BASE_POSTGRES_TESTING_PORT_NO,
+            test_port_override: None,
         }
     }
 }
 
 impl From<PgVersion> for PgConfig {
     fn from(version: PgVersion) -> Self {
-        PgConfig { version: Some(version), pg_config: None, ..Default::default() }
+        Self { version: Some(version), pg_config: None, ..Default::default() }
     }
 }
 
 impl PgConfig {
     pub fn new(pg_config: PathBuf, base_port: u16, base_testing_port: u16) -> Self {
-        PgConfig {
+        Self {
             version: None,
             pg_config: Some(pg_config),
             known_props: None,
             base_port,
             base_testing_port,
+            test_port_override: None,
         }
     }
 
     pub fn new_with_defaults(pg_config: PathBuf) -> Self {
-        PgConfig {
+        Self {
             version: None,
             pg_config: Some(pg_config),
             known_props: None,
             base_port: BASE_POSTGRES_PORT_NO,
             base_testing_port: BASE_POSTGRES_TESTING_PORT_NO,
+            test_port_override: None,
         }
     }
 
@@ -198,6 +204,7 @@ impl PgConfig {
                 known_props: Some(known_props),
                 base_port: 0,
                 base_testing_port: 0,
+                test_port_override: None,
             })
         }
     }
@@ -276,7 +283,23 @@ impl PgConfig {
 
     pub fn get_version(&self) -> eyre::Result<PgVersion> {
         let version_string = self.run("--version")?;
-        let (major, minor) = Self::parse_version_str(&version_string)?;
+        let (major, minor) = match Self::parse_version_str(&version_string) {
+            Ok(version) => version,
+            Err(e) => {
+                if let Some(path) = self.path()
+                    && let Some(file_name) = path.file_name()
+                    && !file_name.to_string_lossy().contains("pg_config")
+                {
+                    // shouldn't this path be named pg_config?
+                    return Err(e).wrap_err(format!(
+                        "path apparently not to pg_config binary: {}",
+                        path.display()
+                    ));
+                } else {
+                    return Err(e);
+                }
+            }
+        };
         Ok(PgVersion::new(major, minor, None))
     }
 
@@ -318,7 +341,16 @@ impl PgConfig {
     }
 
     pub fn test_port(&self) -> eyre::Result<u16> {
-        Ok(self.base_testing_port + self.major_version()?)
+        match self.test_port_override {
+            Some(port) => Ok(port),
+            None => Ok(self.base_testing_port + self.major_version()?),
+        }
+    }
+
+    /// Return a clone of this config that always returns `port` from [`test_port()`].
+    pub fn with_test_port(mut self, port: u16) -> Self {
+        self.test_port_override = Some(port);
+        self
     }
 
     pub fn host(&self) -> &'static str {
@@ -367,6 +399,21 @@ impl PgConfig {
         let mut path = self.bin_dir()?;
         path.push(format!("psql{EXE_SUFFIX}"));
         Ok(path)
+    }
+
+    pub fn pg_regress_path(&self) -> eyre::Result<PathBuf> {
+        let mut pgxs_path = self.pgxs_path()?;
+        pgxs_path.pop(); // pop the `pgxs.mk` file at the end
+        pgxs_path.pop(); // pop the `makefiles` directory in which it lives
+        let mut pgregress_path = pgxs_path;
+        pgregress_path.push("test");
+        pgregress_path.push("regress");
+        pgregress_path.push("pg_regress");
+        Ok(pgregress_path)
+    }
+
+    pub fn pgxs_path(&self) -> eyre::Result<PathBuf> {
+        self.run("--pgxs").map(PathBuf::from)
     }
 
     pub fn data_dir(&self) -> eyre::Result<PathBuf> {
@@ -455,7 +502,7 @@ impl PgConfig {
             });
 
             match Command::new(&pg_config).arg(arg).output() {
-                Ok(output) => Ok(String::from_utf8(output.stdout).unwrap().trim().to_string()),
+                Ok(output) => Ok(decode_from_bytes(&output.stdout).trim().to_string()),
                 Err(e) => match e.kind() {
                     ErrorKind::NotFound => Err(e).wrap_err_with(|| {
                         let pg_config_str = pg_config.display().to_string();
@@ -512,11 +559,7 @@ pub enum PgConfigSelector<'a> {
 
 impl<'a> PgConfigSelector<'a> {
     pub fn new(label: &'a str) -> Self {
-        if label == "all" {
-            PgConfigSelector::All
-        } else {
-            PgConfigSelector::Specific(label)
-        }
+        if label == "all" { PgConfigSelector::All } else { PgConfigSelector::Specific(label) }
     }
 }
 
@@ -534,12 +577,8 @@ pub enum PgrxHomeError {
 impl From<PgrxHomeError> for std::io::Error {
     fn from(value: PgrxHomeError) -> Self {
         match value {
-            PgrxHomeError::NoHomeDirectory => {
-                std::io::Error::new(ErrorKind::NotFound, value.to_string())
-            }
-            PgrxHomeError::MissingPgrxHome(_) => {
-                std::io::Error::new(ErrorKind::NotFound, value.to_string())
-            }
+            PgrxHomeError::NoHomeDirectory => Self::new(ErrorKind::NotFound, value.to_string()),
+            PgrxHomeError::MissingPgrxHome(_) => Self::new(ErrorKind::NotFound, value.to_string()),
             PgrxHomeError::IoError(e) => e,
         }
     }
@@ -547,20 +586,20 @@ impl From<PgrxHomeError> for std::io::Error {
 
 impl Pgrx {
     pub fn new(base_port: u16, base_testing_port: u16) -> Self {
-        Pgrx { pg_configs: vec![], base_port, base_testing_port }
+        Self { pg_configs: vec![], base_port, base_testing_port }
     }
 
     pub fn from_config() -> eyre::Result<Self> {
         match std::env::var("PGRX_PG_CONFIG_PATH") {
             Ok(pg_config) => {
                 // we have an environment variable that tells us the pg_config to use
-                let mut pgrx = Pgrx::default();
+                let mut pgrx = Self::default();
                 pgrx.push(PgConfig::new(pg_config.into(), pgrx.base_port, pgrx.base_testing_port));
                 Ok(pgrx)
             }
             Err(_) => {
                 // we'll get what we need from cargo-pgrx' config.toml file
-                let path = Pgrx::config_toml()?;
+                let path = Self::config_toml()?;
                 if !path.try_exists()? {
                     return Err(eyre!(
                         "{} not found.  Have you run `{}` yet?",
@@ -571,7 +610,7 @@ impl Pgrx {
 
                 match toml::from_str::<ConfigToml>(&std::fs::read_to_string(&path)?) {
                     Ok(configs) => {
-                        let mut pgrx = Pgrx::new(
+                        let mut pgrx = Self::new(
                             configs.base_port.unwrap_or(BASE_POSTGRES_PORT_NO),
                             configs.base_testing_port.unwrap_or(BASE_POSTGRES_TESTING_PORT_NO),
                         );
@@ -648,7 +687,7 @@ impl Pgrx {
     pub fn home() -> Result<PathBuf, PgrxHomeError> {
         let pgrx_home = std::env::var("PGRX_HOME").map_or_else(
             |_| {
-                let mut pgrx_home = match home::home_dir() {
+                let mut pgrx_home = match std::env::home_dir() {
                     Some(home) => home,
                     None => return Err(PgrxHomeError::NoHomeDirectory),
                 };
@@ -678,7 +717,7 @@ impl Pgrx {
     }
 
     pub fn config_toml() -> Result<PathBuf, std::io::Error> {
-        let mut path = Pgrx::home()?;
+        let mut path = Self::home()?;
         path.push("config.toml");
         Ok(path)
     }
@@ -692,6 +731,7 @@ pub fn SUPPORTED_VERSIONS() -> Vec<PgVersion> {
         PgVersion::new(15, PgMinorVersion::Latest, None),
         PgVersion::new(16, PgMinorVersion::Latest, None),
         PgVersion::new(17, PgMinorVersion::Latest, None),
+        PgVersion::new(18, PgMinorVersion::Latest, None),
     ]
 }
 
@@ -710,7 +750,7 @@ pub fn createdb(
         return Ok(false);
     }
 
-    println!("{} database {}", "     Creating".bold().green(), dbname);
+    println!("{} database {}", "    Creating".bold().green(), dbname.bold().cyan());
     let createdb_path = pg_config.createdb_path()?;
     let mut command = if let Some(runas) = runas {
         let mut cmd = Command::new("sudo");
@@ -752,8 +792,69 @@ pub fn createdb(
         return Err(eyre!(
             "problem running createdb: {}\n\n{}{}",
             command_str,
-            String::from_utf8(output.stdout).unwrap(),
-            String::from_utf8(output.stderr).unwrap()
+            decode_from_bytes(&output.stdout),
+            decode_from_bytes(&output.stderr)
+        ));
+    }
+
+    Ok(true)
+}
+
+pub fn dropdb(
+    pg_config: &PgConfig,
+    dbname: &str,
+    is_test: bool,
+    runas: Option<String>,
+) -> eyre::Result<bool> {
+    if !does_db_exist(pg_config, dbname)? {
+        return Ok(false);
+    }
+
+    println!("{} database {}", "    Dropping".bold().green(), dbname.bold().cyan());
+    let createdb_path = pg_config.dropdb_path()?;
+    let mut command = if let Some(runas) = runas {
+        let mut cmd = Command::new("sudo");
+        cmd.arg("-u").arg(runas).arg(createdb_path);
+        cmd
+    } else {
+        Command::new(createdb_path)
+    };
+    command
+        .env_remove("PGDATABASE")
+        .env_remove("PGHOST")
+        .env_remove("PGPORT")
+        .env_remove("PGUSER")
+        .arg("-h")
+        .arg(pg_config.host())
+        .arg("-p")
+        .arg(if is_test {
+            pg_config.test_port()?.to_string()
+        } else {
+            pg_config.port()?.to_string()
+        })
+        .arg("--force")
+        .arg(dbname)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let command_str = format!("{command:?}");
+
+    let child = command.spawn().wrap_err_with(|| {
+        format!("Failed to spawn process for dropping database using command: '{command_str}': ")
+    })?;
+
+    let output = child.wait_with_output().wrap_err_with(|| {
+        format!(
+            "failed waiting for spawned process to drop database using command: '{command_str}': "
+        )
+    })?;
+
+    if !output.status.success() {
+        return Err(eyre!(
+            "problem running dropdb: {}\n\n{}{}",
+            command_str,
+            decode_from_bytes(&output.stdout),
+            decode_from_bytes(&output.stderr)
         ));
     }
 
@@ -769,12 +870,12 @@ fn does_db_exist(pg_config: &PgConfig, dbname: &str) -> eyre::Result<bool> {
         .arg(pg_config.host())
         .arg("-p")
         .arg(pg_config.port()?.to_string())
-        .arg("template1")
         .arg("-c")
         .arg(format!(
             "select count(*) from pg_database where datname = '{}';",
             dbname.replace('\'', "''")
         ))
+        .arg("template1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -786,11 +887,11 @@ fn does_db_exist(pg_config: &PgConfig, dbname: &str) -> eyre::Result<bool> {
             "problem checking if database '{}' exists: {}\n\n{}{}",
             dbname,
             command_str,
-            String::from_utf8(output.stdout).unwrap(),
-            String::from_utf8(output.stderr).unwrap()
+            decode_from_bytes(&output.stdout),
+            decode_from_bytes(&output.stderr)
         ))
     } else {
-        let count = i32::from_str(String::from_utf8(output.stdout).unwrap().trim())
+        let count = i32::from_str(decode_from_bytes(&output.stdout).trim())
             .wrap_err("result is not a number")?;
         Ok(count > 0)
     }
@@ -819,13 +920,13 @@ fn parse_version() {
     // Check some invalid version strings
     let _ = PgConfig::parse_version_str("10.22").expect_err("Parsed invalid version string");
     let _ =
-        PgConfig::parse_version_str("PostgresSQL 10").expect_err("Parsed invalid version string");
+        PgConfig::parse_version_str("PostgreSQL 10").expect_err("Parsed invalid version string");
     let _ =
-        PgConfig::parse_version_str("PostgresSQL 10.").expect_err("Parsed invalid version string");
+        PgConfig::parse_version_str("PostgreSQL 10.").expect_err("Parsed invalid version string");
     let _ =
-        PgConfig::parse_version_str("PostgresSQL 12.f").expect_err("Parsed invalid version string");
+        PgConfig::parse_version_str("PostgreSQL 12.f").expect_err("Parsed invalid version string");
     let _ =
-        PgConfig::parse_version_str("PostgresSQL .53").expect_err("Parsed invalid version string");
+        PgConfig::parse_version_str("PostgreSQL .53").expect_err("Parsed invalid version string");
 }
 
 #[test]
@@ -834,11 +935,14 @@ fn from_empty_env() -> eyre::Result<()> {
     let pg_config = PgConfig::from_env();
     assert!(pg_config.is_err());
 
-    // but now we can
-    std::env::set_var("PGRX_PG_CONFIG_AS_ENV", "true");
-    std::env::set_var("PGRX_PG_CONFIG_VERSION", "PostgresSQL 15.1");
-    std::env::set_var("PGRX_PG_CONFIG_INCLUDEDIR-SERVER", "/path/to/server/headers");
-    std::env::set_var("PGRX_PG_CONFIG_CPPFLAGS", "some cpp flags");
+    // SAFETY: set_var in 2024th edition requires unsafe due to sync issues
+    unsafe {
+        // but now we can
+        std::env::set_var("PGRX_PG_CONFIG_AS_ENV", "true");
+        std::env::set_var("PGRX_PG_CONFIG_VERSION", "PostgreSQL 15.1");
+        std::env::set_var("PGRX_PG_CONFIG_INCLUDEDIR-SERVER", "/path/to/server/headers");
+        std::env::set_var("PGRX_PG_CONFIG_CPPFLAGS", "some cpp flags");
+    }
 
     let pg_config = PgConfig::from_env().unwrap();
     assert_eq!(pg_config.major_version()?, 15, "Major version should match");

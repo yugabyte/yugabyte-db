@@ -380,6 +380,12 @@ func (perf PerfAdvisor) PreUpgrade() error              { return nil }
 func (perf PerfAdvisor) Upgrade() error {
 	log.Info("Starting Perf Advisor upgrade")
 	perf.perfAdvisorDirectories = newPerfAdvisorDirectories(perf.version)
+	// Before the template, which renders this into overrides.properties: FixConfigValues does not
+	// run on upgrade, so a config predating the key would render empty and then disagree with the
+	// keystore ensurePerfAdvisorTLSKeystore builds below - "MAC calculation failed" on every start.
+	if _, err := common.EnsureGeneratedPassword("perfAdvisor.tls.keystorePassword"); err != nil {
+		return err
+	}
 	if err := template.GenerateTemplate(perf); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
@@ -465,9 +471,13 @@ func ensurePerfAdvisorTLSKeystore() error {
 	if _, err := os.Stat(keyPath); err != nil {
 		return fmt.Errorf("platform server key not found at %s: %w", keyPath, err)
 	}
-	// FixConfigValues() in common.Install() (and reconfigure) generates this password when empty
-	// and calls InitViper(), so it is already set by the time we run here.
-	password := viper.GetString("perfAdvisor.tls.keystorePassword")
+	// Generated here rather than relied upon: FixConfigValues() fills this in on install and
+	// reconfigure, but not on upgrade, so an install upgrading from a release that predates the
+	// key reaches this with an empty string - which keytool rejects outright.
+	password, err := common.EnsureGeneratedPassword("perfAdvisor.tls.keystorePassword")
+	if err != nil {
+		return err
+	}
 	return common.GeneratePerfAdvisorTLSKeystore(certPath, keyPath, common.GetPerfAdvisorCertsDir(), password)
 }
 

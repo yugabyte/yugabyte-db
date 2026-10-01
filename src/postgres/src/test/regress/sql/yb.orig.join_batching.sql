@@ -1447,3 +1447,257 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT t.* FROM generate_series(1, 100) i, generate_series(1, 100) j, t_multi_tablet t WHERE h1 = i AND h2 = j;
 
 DROP TABLE t_multi_tablet;
+
+-- First batch sizing under a pushed-down LIMIT.  EXPLAIN DEBUG shows the
+-- outer rows the planner sized the first batch to (First Batch Size) and the
+-- size the executor used (Actual First Batch Size); they differ only when the
+-- LIMIT was not known at plan time.  The DEBUG fields print only with the
+-- non-deterministic-field guard off; the storage counters, estimates and
+-- sort memory are masked, so the plan shape and the batch sizes are the
+-- assertion.
+CREATE FUNCTION explain_first_batch(query text) RETURNS SETOF text
+LANGUAGE plpgsql AS $$
+DECLARE
+    line text;
+BEGIN
+    FOR line IN EXECUTE 'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, TIMING OFF) ' || query
+    LOOP
+        CONTINUE WHEN line ~ '^\s*Metric ';
+        RETURN NEXT regexp_replace(line, '^(\s*(Storage|Estimated|Sort Method)[^:]*: ).*$', '\1#');
+    END LOOP;
+END;
+$$;
+
+CREATE TABLE fb_outer (k int, v int, PRIMARY KEY (k ASC));
+CREATE TABLE fb_inner (k int, s int, PRIMARY KEY (k ASC, s ASC));
+-- four inner rows per outer row
+INSERT INTO fb_outer SELECT i, i FROM generate_series(1, 1000) i;
+INSERT INTO fb_inner SELECT i, j FROM generate_series(1, 1000) i, generate_series(1, 4) j;
+ANALYZE fb_outer, fb_inner;
+
+SET yb_enable_base_scans_cost_model = on;
+SET yb_explain_hide_non_deterministic_fields = off;
+SET yb_bnl_batch_size = 1024;
+
+-- no LIMIT: no first batch sizing
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v');
+-- LIMIT 10 at four rows per outer row: 3 outer rows sized and used
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10');
+-- OFFSET counts toward the rows the LIMIT needs: 30 rows, 8 outer rows
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10 OFFSET 20');
+-- sorted BNL: the ordered outer lets the LIMIT stop after the first batch
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v ORDER BY o.k LIMIT 10');
+-- a Sort between the LIMIT and the join: the planner sizes the first batch,
+-- the executor cannot trim it
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v ORDER BY i.s, o.k LIMIT 10');
+-- the estimate needs more than a full batch for the LIMIT: the planner does
+-- not size the first batch, the executor still trims it to the LIMIT count
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v AND i.s = 4 AND i.k % 500 = 0 LIMIT 10');
+
+-- parameterized LIMIT and OFFSET: a custom plan sees the values and sizes the
+-- first batch; a generic plan cannot, so only the executor's trim shows
+PREPARE fb_limit(int) AS /*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT $1;
+PREPARE fb_offset(int) AS /*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10 OFFSET $1;
+SET plan_cache_mode = force_custom_plan;
+SELECT explain_first_batch('EXECUTE fb_limit(10)');
+SELECT explain_first_batch('EXECUTE fb_offset(20)');
+SET plan_cache_mode = force_generic_plan;
+SELECT explain_first_batch('EXECUTE fb_limit(10)');
+SELECT explain_first_batch('EXECUTE fb_limit(40)');
+SELECT explain_first_batch('EXECUTE fb_offset(20)');
+RESET plan_cache_mode;
+DEALLOCATE fb_limit;
+DEALLOCATE fb_offset;
+
+-- without the first batch optimization the planner does not size the first
+-- batch; the executor still trims it to the LIMIT count
+SET yb_bnl_optimize_first_batch = off;
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10');
+RESET yb_bnl_optimize_first_batch;
+
+RESET yb_explain_hide_non_deterministic_fields;
+RESET yb_enable_base_scans_cost_model;
+DROP FUNCTION explain_first_batch(text);
+DROP TABLE fb_outer;
+DROP TABLE fb_inner;
+
+-------------------------------------------------------------------------
+-- #33788: a join clause that references the batched outer relation, the
+-- inner relation and a third relation that only supplies a scalar parameter
+-- to the inner index scan: w3.v < w1.b + w2.c, with w1 batched into the w3
+-- index condition and w2 joined above the batched join.  The clause has no
+-- batched form, so it is withheld from the inner scan and must be applied by
+-- the batched nested loop join right above, where w1's values are available
+-- per tuple.  Without it, every row satisfying the other two conditions is
+-- returned (36 instead of 19).  Baselines with batching disabled and with a
+-- hash join produce the same rows.
+-------------------------------------------------------------------------
+CREATE TABLE w1 (a INT PRIMARY KEY, b INT);
+CREATE TABLE w2 (j INT PRIMARY KEY, c INT);
+CREATE TABLE w3 (k INT, j INT, v INT, PRIMARY KEY (k ASC, j ASC));
+CREATE TABLE w4 (j INT PRIMARY KEY, c INT);
+INSERT INTO w1 SELECT g, g % 3 FROM generate_series(1, 8) g;
+INSERT INTO w2 SELECT g, g % 2 FROM generate_series(1, 8) g;
+INSERT INTO w3 SELECT g, g, 1 FROM generate_series(1, 8) g;
+INSERT INTO w4 SELECT g, g % 2 FROM generate_series(1, 8) g;
+ANALYZE w1, w2, w3, w4;
+
+-- The scalar parameter (w2) comes from the join directly above the batched
+-- join.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+
+-- Baseline: same join order with batching disabled.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 1)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 1)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+
+-- Baseline: hash join between w1 and w3 under a plain nested loop for w2,
+-- which has no equality condition to hash on.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin on)
+  Set(enable_mergejoin off)
+  Set(enable_nestloop off)
+  Set(enable_material off)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((w2 (w1 w3)))
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin on)
+  Set(enable_mergejoin off)
+  Set(enable_nestloop off)
+  Set(enable_material off)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((w2 (w1 w3)))
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+
+-- The scalar parameter (w2) comes from two joins above the batched join; the
+-- withheld clause passes through the intermediate batched join on w4.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w4.j = w1.a AND w3.v < w1.b + w2.c;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w4.j = w1.a AND w3.v < w1.b + w2.c;
+
+-- The scalar parameter comes from the intermediate relation (w4) itself.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
+
+DROP TABLE w1, w2, w3, w4;

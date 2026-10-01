@@ -339,7 +339,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     // Replace wal_dir in the received superblock with our assigned wal_dir.
     superblock_->set_wal_dir(meta_->wal_dir());
 
-    RETURN_NOT_OK(CheckDiskSpace(*superblock_, meta_->data_root_dir()));
+    RETURN_NOT_OK(CheckDiskSpace(*superblock_, meta_->data_root_dir(), meta_->wal_root_dir()));
 
     // This will flush to disk, but we set the data state to COPYING above.
     RETURN_NOT_OK_PREPEND(meta_->ReplaceSuperBlock(*superblock_),
@@ -382,7 +382,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
 
     auto tablet_assigned_root_data_dir = VERIFY_RESULT(fs_manager().GetTabletPath(tablet_id_));
-    auto status = CheckDiskSpace(*superblock_, tablet_assigned_root_data_dir);
+    auto status = CheckDiskSpace(*superblock_, tablet_assigned_root_data_dir, wal_root_dir);
     if (!status.ok()) {
       if (ts_manager) {
         ts_manager->UnregisterDataWalDir(table_id, tablet_id_, data_root_dir, wal_root_dir);
@@ -654,6 +654,8 @@ Status RemoteBootstrapClient::DownloadWALs() {
                           Substitute("Failed to sync WAL table directory $0", wal_table_top_dir));
   }
 
+  RETURN_NOT_OK(CheckFreeDiskSpace());
+
   downloaded_wal_ = true;
   return Status::OK();
 }
@@ -683,6 +685,7 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   DataIdPB data_id;
   data_id.set_type(DataIdPB::ROCKSDB_FILE);
   for (auto const& file_pb : new_superblock_.kv_store().rocksdb_files()) {
+    RETURN_NOT_OK(CheckFreeDiskSpace());
     auto start = MonoTime::Now();
     RETURN_NOT_OK(downloader_.DownloadFile(
         file_pb, rocksdb_dir, &data_id,
@@ -700,12 +703,15 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
     // Persist directory so that recently downloaded files are accessible.
     RETURN_NOT_OK(env.SyncDir(rocksdb_dir));
   }
+  RETURN_NOT_OK(CheckFreeDiskSpace());
+
   downloaded_rocksdb_files_ = true;
   return Status::OK();
 }
 
 Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   VLOG_WITH_PREFIX(1) << "Downloading WAL segment with seqno " << wal_segment_seqno;
+  RETURN_NOT_OK(CheckFreeDiskSpace());
   DataIdPB data_id;
   data_id.set_type(DataIdPB::LOG_SEGMENT);
   data_id.set_wal_segment_seqno(wal_segment_seqno);
@@ -798,7 +804,15 @@ uint64_t RemoteBootstrapClient::GetTotalDataSizeBytes(
 }
 
 Status RemoteBootstrapClient::CheckDiskSpace(
-    const tablet::RaftGroupReplicaSuperBlockPB& superblock, const string& rocksdb_dir) {
+    const tablet::RaftGroupReplicaSuperBlockPB& superblock, const string& rocksdb_dir,
+    const string& wal_root_dir) {
+  // Apply the same thresholds that reject writes when the disk is close to full.
+  // TODO: May check the free space with the data size to be downloaded accounted for, so that
+  // the download can be avoided if the disk would be close to full after downloading.
+  data_disk_checker_.emplace(fs_manager().env(), rocksdb_dir, /* always_check_disk = */ true);
+  wal_disk_checker_.emplace(fs_manager().env(), wal_root_dir, /* always_check_disk = */ true);
+  RETURN_NOT_OK(CheckFreeDiskSpace());
+
   const auto max_size_ratio = FLAGS_rbs_data_size_to_disk_space_ratio_threshold;
   if (PREDICT_FALSE(max_size_ratio <= 0)) {
     return Status::OK();
@@ -811,6 +825,17 @@ Status RemoteBootstrapClient::CheckDiskSpace(
     return STATUS_FORMAT(IOError, "Not enough disk space for bootstrap. path: $0, "
                          "free spaces: $1 bytes, need $2 bytes",
                          rocksdb_dir, free_space_bytes, total_data_size_bytes);
+  }
+  return Status::OK();
+}
+
+Status RemoteBootstrapClient::CheckFreeDiskSpace() {
+  for (auto* checker : {&data_disk_checker_, &wal_disk_checker_}) {
+    if (*checker && !(*checker)->HasSufficientDiskSpace()) {
+      return STATUS_FORMAT(
+          IOError, "Not enough disk space for bootstrap. Path $0 has insufficient disk space",
+          (*checker)->path());
+    }
   }
   return Status::OK();
 }

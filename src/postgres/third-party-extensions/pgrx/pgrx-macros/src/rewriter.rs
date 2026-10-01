@@ -9,6 +9,7 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 extern crate proc_macro;
 
+use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use std::mem;
 use std::ops::Deref;
@@ -31,14 +32,20 @@ macro_rules! format_ident {
 pub fn extern_block(block: ItemForeignMod) -> proc_macro2::TokenStream {
     let mut stream = proc_macro2::TokenStream::new();
 
+    let unsafety = &block.unsafety;
+    let abi = &block.abi;
+    let abi = quote! { #unsafety #abi };
     for item in block.items.into_iter() {
-        stream.extend(foreign_item(item, &block.abi));
+        stream.extend(foreign_item(item, &abi));
     }
 
     stream
 }
 
-pub fn item_fn_without_rewrite(mut func: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
+pub fn item_fn_without_rewrite(
+    mut func: ItemFn,
+    attr: TokenStream,
+) -> syn::Result<proc_macro2::TokenStream> {
     // remember the original visibility and signature classifications as we want
     // to use those for the outer function
     let input_func_name = func.sig.ident.to_string();
@@ -46,6 +53,9 @@ pub fn item_fn_without_rewrite(mut func: ItemFn) -> syn::Result<proc_macro2::Tok
     let vis = func.vis.clone();
     let attrs = mem::take(&mut func.attrs);
     let generics = func.sig.generics.clone();
+
+    // looking for this pattern: #[pg_guard(unsafe_entry_thread)]
+    let unsafe_entry_thread = attr.into_iter().any(|tt| tt.to_string() == "unsafe_entry_thread");
 
     if sig.abi.clone().and_then(|abi| abi.name).is_none_or(|name| name.value() != "C-unwind") {
         panic!("#[pg_guard] must be combined with extern \"C-unwind\"");
@@ -58,7 +68,9 @@ pub fn item_fn_without_rewrite(mut func: ItemFn) -> syn::Result<proc_macro2::Tok
             GenericParam::Const(_) => true,
         })
     {
-        panic!("#[pg_guard] for function with generic parameters must not be combined with #[no_mangle]");
+        panic!(
+            "#[pg_guard] for function with generic parameters must not be combined with #[unsafe(no_mangle)]"
+        );
     }
 
     // but for the inner function (the one we're wrapping) we don't need any kind of
@@ -74,21 +86,16 @@ pub fn item_fn_without_rewrite(mut func: ItemFn) -> syn::Result<proc_macro2::Tok
     let func_name = func.sig.ident.clone();
     let func_name = format_ident!("{}", func_name);
 
-    let prolog = if input_func_name == "__pgrx_private_shmem_hook"
-        || input_func_name == "__pgrx_private_shmem_request_hook"
-    {
-        // we do not want "no_mangle" on these functions
-        quote! {}
-    } else if input_func_name == "_PG_init" || input_func_name == "_PG_fini" {
+    let prolog = if input_func_name == "_PG_init" || input_func_name == "_PG_fini" {
         quote! {
             #[allow(non_snake_case)]
-            #[no_mangle]
+            #[unsafe(no_mangle)]
         }
     } else {
         quote! {}
     };
 
-    let body = if generics.params.is_empty() {
+    let mut body = if generics.params.is_empty() {
         quote! { #func_name(#arg_list) }
     } else {
         let ty = generics
@@ -103,6 +110,18 @@ pub fn item_fn_without_rewrite(mut func: ItemFn) -> syn::Result<proc_macro2::Tok
         quote! { #func_name::<#ty>(#arg_list) }
     };
 
+    if unsafe_entry_thread {
+        body = quote! {
+            pgrx::pg_sys::submodules::thread_check::active_thread::clear();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| { #body }));
+            pgrx::pg_sys::submodules::thread_check::active_thread::clear();
+            match result {
+                Ok(result) => result,
+                Err(e) => std::panic::resume_unwind(e),
+            }
+        }
+    }
+
     let synthetic = proc_macro2::Span::mixed_site().located_at(func.span());
 
     Ok(quote_spanned! {synthetic=>
@@ -115,13 +134,16 @@ pub fn item_fn_without_rewrite(mut func: ItemFn) -> syn::Result<proc_macro2::Tok
             #[allow(unused_unsafe)]
             unsafe {
                 // NB: this is purposely not spelled `::pgrx` as pgrx itself uses #[pg_guard]
-                pgrx::pg_sys::submodules::panic::pgrx_extern_c_guard(move || #body )
+                pgrx::pg_sys::submodules::panic::pgrx_extern_c_guard(move || { #body } )
             }
         }
     })
 }
 
-fn foreign_item(item: ForeignItem, abi: &syn::Abi) -> syn::Result<proc_macro2::TokenStream> {
+fn foreign_item(
+    item: ForeignItem,
+    abi: &proc_macro2::TokenStream,
+) -> syn::Result<proc_macro2::TokenStream> {
     match item {
         ForeignItem::Fn(func) => {
             if func.sig.variadic.is_some() {
@@ -135,7 +157,10 @@ fn foreign_item(item: ForeignItem, abi: &syn::Abi) -> syn::Result<proc_macro2::T
     }
 }
 
-fn foreign_item_fn(func: &ForeignItemFn, abi: &syn::Abi) -> syn::Result<proc_macro2::TokenStream> {
+fn foreign_item_fn(
+    func: &ForeignItemFn,
+    abi: &proc_macro2::TokenStream,
+) -> syn::Result<proc_macro2::TokenStream> {
     let func_name = func.sig.ident.clone();
     let arg_list = rename_arg_list(&func.sig)?;
     let arg_list_with_types = rename_arg_list_with_types(&func.sig)?;
@@ -170,7 +195,7 @@ fn foreign_item_fn(func: &ForeignItemFn, abi: &syn::Abi) -> syn::Result<proc_mac
 
 fn foreign_item_static(
     variable: &ForeignItemStatic,
-    abi: &syn::Abi,
+    abi: &proc_macro2::TokenStream,
 ) -> syn::Result<proc_macro2::TokenStream> {
     let link = quote! { #[cfg_attr(target_os = "windows", link(name = "postgres"))] };
     Ok(quote! {
@@ -204,7 +229,7 @@ fn build_arg_list(sig: &Signature, suffix_arg_name: bool) -> syn::Result<proc_ma
                 return Err(syn::Error::new(
                     a.span(),
                     "#[pg_guard] doesn't support external functions with 'self' as the argument",
-                ))
+                ));
             }
         }
     }
@@ -233,7 +258,7 @@ fn rename_arg_list(sig: &Signature) -> syn::Result<proc_macro2::TokenStream> {
                 return Err(syn::Error::new(
                     a.span(),
                     "#[pg_guard] doesn't support external functions with 'self' as the argument",
-                ))
+                ));
             }
         }
     }
@@ -263,7 +288,7 @@ fn rename_arg_list_with_types(sig: &Signature) -> syn::Result<proc_macro2::Token
                 return Err(syn::Error::new(
                     a.span(),
                     "#[pg_guard] doesn't support external functions with 'self' as the argument",
-                ))
+                ));
             }
         }
     }

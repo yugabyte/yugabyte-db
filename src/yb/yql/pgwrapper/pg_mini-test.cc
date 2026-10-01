@@ -48,6 +48,7 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/statistics.h"
 
 #include "yb/server/skewed_clock.h"
 
@@ -105,6 +106,7 @@ DECLARE_bool(TEST_tablet_pause_apply_write_ops);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_colocated_table_tombstone_cache);
+DECLARE_bool(enable_schema_packing_gc);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(flush_rocksdb_on_shutdown);
@@ -112,6 +114,8 @@ DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_bootstrap_intent_ht_filter);
 DECLARE_bool(ysql_allow_duplicating_repeatable_read_queries);
+DECLARE_bool(ysql_disable_index_backfill);
+DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -277,9 +281,8 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
       cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
   // The first Connect() to a fresh DB spawns an internal libpq backend
   // (TriggerRelcacheInitConnection) whose session lingers in sessions_
-  // for the platform's ListenConnectionShutdown delay (up to 250ms on
-  // macOS, 1s under sanitizers). Poll until it drains instead of
-  // asserting immediately.
+  // for the platform's ListenConnectionShutdown delay.
+  // Poll until it drains instead of asserting immediately.
   ASSERT_OK(WaitFor([client_service, expected_count = connections.size() + kAshConnection]() {
     return client_service->TEST_SessionsCount() == expected_count;
   }, 5s, "relcache-init session cleanup"));
@@ -2212,6 +2215,55 @@ TEST(DocReadContextTombstoneCacheTest, RejectTombstoneAboveWatermark) {
   ASSERT_EQ(*ctx.table_tombstone_time(), DocHybridTime::kInvalid);
 }
 
+// The TableInfo rebuilds that keep the table's data (schema GC, backfill done) carry the
+// tombstone-cache state over, including what a tombstone notify did to the old context before the
+// rebuild. The plain copy, used for same-version rebuilds, still resets it.
+TEST(DocReadContextTombstoneCacheTest, RebuildCarriesCacheState) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+  ASSERT_EQ(
+      docdb::DocReadContext(ctx, SchemaVersion{0}).tombstone_cache_watermark(), HybridTime::kMax);
+
+  const auto kWatermark = HybridTime::FromMicros(100);
+  const auto kReadHt = HybridTime::FromMicros(150);
+  ctx.AdvanceTombstoneCacheWatermark(kWatermark);
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, ctx.tombstone_cache_generation());
+  ASSERT_TRUE(ctx.GetCachedTableTombstoneTime(kReadHt).has_value());
+
+  {
+    const docdb::DocReadContext filtered(ctx, SchemaVersion{0});
+    const docdb::DocReadContext replaced(ctx, ctx.schema());
+    for (const auto* rebuilt : {&filtered, &replaced}) {
+      SCOPED_TRACE(rebuilt == &filtered ? "schema GC rebuild" : "backfill-done rebuild");
+      ASSERT_EQ(rebuilt->tombstone_cache_watermark(), kWatermark);
+      ASSERT_EQ(rebuilt->tombstone_cache_generation(), ctx.tombstone_cache_generation());
+      auto cached = rebuilt->GetCachedTableTombstoneTime(kReadHt);
+      ASSERT_TRUE(cached.has_value());
+      ASSERT_EQ(*cached, DocHybridTime::kInvalid);
+    }
+    ASSERT_EQ(docdb::DocReadContext(ctx).tombstone_cache_watermark(), HybridTime::kMax);
+  }
+
+  // A tombstone applied before the rebuild: the raised watermark and the dropped entry carry over,
+  // and a populate stamped before the notify still misses in the rebuilt context.
+  const auto generation_before_notify = ctx.tombstone_cache_generation();
+  const auto kTombstoneHt = HybridTime::FromMicros(200);
+  ctx.OnTableTombstoneWritten(kTombstoneHt);
+  const docdb::DocReadContext filtered(ctx, SchemaVersion{0});
+  const docdb::DocReadContext replaced(ctx, ctx.schema());
+  for (const auto* rebuilt : {&filtered, &replaced}) {
+    SCOPED_TRACE(rebuilt == &filtered ? "schema GC rebuild" : "backfill-done rebuild");
+    ASSERT_EQ(rebuilt->tombstone_cache_watermark(), kTombstoneHt);
+    ASSERT_FALSE(rebuilt->IsTombstoneCacheEligible(kReadHt));
+    ASSERT_FALSE(rebuilt->table_tombstone_time().has_value());
+    rebuilt->set_table_tombstone_time(DocHybridTime::kInvalid, generation_before_notify);
+    ASSERT_FALSE(rebuilt->table_tombstone_time().has_value());
+  }
+}
+
 // #32724 (f): RF3. A replica that held a warm cache while it was a follower must still see the
 // legacy TRUNCATE. Followers never run ApplyTruncateColocated (leader-side batch assembly), so
 // only the apply-path notify invalidates them; without it, moving leadership onto such a replica
@@ -2232,8 +2284,26 @@ TEST_F(PgMiniTest, TruncateColocatedInvalidatesTombstoneCacheOnFollower) {
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
-  auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
-  ASSERT_EQ(peers.size(), NumTabletServers());
+  // CREATE TABLE returns once the leader has applied the colocated ADD_TABLE op; followers apply
+  // it asynchronously and only report the table afterwards, so poll instead of sampling once.
+  std::vector<tablet::TabletPeerPtr> peers;
+  ASSERT_OK(WaitFor(
+      [&] {
+        peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+        if (peers.size() != NumTabletServers()) {
+          return false;
+        }
+        // Arming happens later in the same apply, so wait for it too.
+        for (const auto& peer : peers) {
+          auto table_info = peer->tablet_metadata()->GetTableInfo(kColocationId);
+          if (!table_info.ok() || !(*table_info)->doc_read_context ||
+              (*table_info)->doc_read_context->tombstone_cache_watermark() == HybridTime::kMax) {
+            return false;
+          }
+        }
+        return true;
+      },
+      30s * kTimeMultiplier, "Every replica of the colocated tablet armed the table"));
   const auto tablet_id = peers.front()->tablet_id();
 
   auto doc_read_context = [&](const tablet::TabletPeerPtr& peer) {
@@ -2309,6 +2379,232 @@ TEST_F(PgMiniTest, TruncateColocatedInvalidatesTombstoneCacheOnFollower) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 1);
+}
+
+// A colocated table's DocReadContext starts unarmed (tombstone-cache watermark kMax: the cache is
+// neither consumed nor populated), so every path that installs a new TableInfo has to arm it or
+// carry over the old context's cache state. A path that does neither leaves the table's cache off
+// until the next ALTER or restart, and every scan of the table then does a full table-tombstone
+// lookup (an IntentAwareIterator plus a seek) that the cache exists to avoid. These tests cover
+// old-schema-version GC, which runs after compactions, and the index backfill-done metadata update.
+YB_STRONGLY_TYPED_BOOL(WithIndex);
+YB_STRONGLY_TYPED_BOOL(IndexAfterRows);
+
+class PgMiniTombstoneCacheRebuildTest : public PgMiniTest {
+ protected:
+  void SetUp() override {
+    // Packed rows default to off in debug builds, and schema GC only sees schema versions recorded
+    // for packed rows.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+    PgMiniTest::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  // PgMiniTestBase turns online index backfill off; production has it on, and the backfill-done
+  // metadata update is one of the rebuild paths under test.
+  void BeforePgProcessStart() override {
+    PgMiniTest::BeforePgProcessStart();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
+  }
+
+  static constexpr int kTableColocationId = 30001;
+  static constexpr int kIndexColocationId = 30002;
+  static constexpr int kNumRows = 100;
+  static constexpr int kNumUpdates = 200;
+
+  // Creates colocated table t(k PK, v, w), optionally with an index on v (which bumps t's schema
+  // version) created before or after the rows, and warms t's tombstone-time cache with a
+  // base-table scan.
+  Status SetUpTable(
+      WithIndex with_index, IndexAfterRows index_after_rows = IndexAfterRows::kFalse) {
+    const std::string kDbName = "tombstone_cache_rebuild_db";
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+    conn_.emplace(VERIFY_RESULT(ConnectToDB(kDbName)));
+    RETURN_NOT_OK(conn_->ExecuteFormat(
+        "CREATE TABLE t (k int PRIMARY KEY, v int, w int) WITH (colocation_id=$0)",
+        kTableColocationId));
+    auto create_index_stmt = Format(
+        "CREATE INDEX t_v_idx ON t (v) WITH (colocation_id=$0)", kIndexColocationId);
+    if (with_index && !index_after_rows) {
+      RETURN_NOT_OK(conn_->Execute(create_index_stmt));
+    }
+    RETURN_NOT_OK(conn_->ExecuteFormat(
+        "INSERT INTO t SELECT i, i, 0 FROM generate_series(1, $0) i", kNumRows));
+    if (with_index && index_after_rows) {
+      RETURN_NOT_OK(conn_->Execute(create_index_stmt));
+    }
+    // w is not in the index, so this scans the base table.
+    RETURN_NOT_OK(conn_->FetchRow<int64_t>("SELECT sum(w) FROM t"));
+
+    auto table_id = VERIFY_RESULT(GetTableIDFromTableName("t"));
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one colocated tablet leader");
+    peer_ = peers.front();
+    return Status::OK();
+  }
+
+  Result<tablet::TableInfoPtr> ColocatedTableInfo(ColocationId colocation_id) {
+    auto table_info = VERIFY_RESULT(peer_->tablet_metadata()->GetTableInfo(colocation_id));
+    SCHECK(table_info && table_info->doc_read_context, IllegalState, "No DocReadContext");
+    return table_info;
+  }
+
+  // Regular-DB seeks issued by kNumUpdates single-row primary-key UPDATEs of the non-indexed
+  // column. Each UPDATE reads its row through one DocRowwiseIterator; with the cache off that
+  // iterator also does the table-tombstone lookup, i.e. one more regular-DB seek per UPDATE.
+  Result<uint64_t> RegularDbSeeksForUpdates() {
+    auto tablet = VERIFY_RESULT(peer_->shared_tablet());
+    const auto& stats = tablet->regulardb_statistics();
+    const auto before = stats->getTickerCount(rocksdb::NUMBER_DB_SEEK);
+    for (int i = 0; i < kNumUpdates; ++i) {
+      RETURN_NOT_OK(conn_->ExecuteFormat("UPDATE t SET w = w + 1 WHERE k = $0", i % kNumRows + 1));
+    }
+    return stats->getTickerCount(rocksdb::NUMBER_DB_SEEK) - before;
+  }
+
+  // Compacts and checks that t's TableInfo was not replaced and its warm cache was left alone: same
+  // watermark and generation, entry still cached before any further read could refill it.
+  void CompactAndCheckCacheUntouched(const tablet::TableInfoPtr& before) {
+    const auto& ctx = *before->doc_read_context;
+    const auto watermark_before = ctx.tombstone_cache_watermark();
+    const auto generation_before = ctx.tombstone_cache_generation();
+    ASSERT_NE(watermark_before, HybridTime::kMax);
+    ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+    const auto seeks_before = ASSERT_RESULT(RegularDbSeeksForUpdates());
+
+    FlushAndCompactTablets();
+
+    ASSERT_EQ(ASSERT_RESULT(ColocatedTableInfo(kTableColocationId)), before);
+    ASSERT_EQ(ctx.tombstone_cache_watermark(), watermark_before);
+    ASSERT_EQ(ctx.tombstone_cache_generation(), generation_before);
+    ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+    const auto seeks_after = ASSERT_RESULT(RegularDbSeeksForUpdates());
+    LOG(INFO) << "Regular-DB seeks for " << kNumUpdates << " PK UPDATEs: " << seeks_before
+              << " before compaction, " << seeks_after << " after";
+  }
+
+  std::optional<PGConn> conn_;
+  tablet::TabletPeerPtr peer_;
+};
+
+// CREATE INDEX bumps the indexed table's schema version, so the first compaction afterwards finds
+// t's packing storage holding a version below the minimum in use and rebuilds t's TableInfo. The
+// rebuilt DocReadContext must keep the old one's tombstone-cache state, warm entry included.
+TEST_F_EX(PgMiniTest, TombstoneCacheArmedAfterSchemaGC, PgMiniTombstoneCacheRebuildTest) {
+  ASSERT_OK(SetUpTable(WithIndex::kTrue));
+
+  auto before_gc = ASSERT_RESULT(ColocatedTableInfo(kTableColocationId));
+  // Trigger guard: CREATE INDEX bumped t's schema version, and the old packing is still there for
+  // the GC to drop.
+  ASSERT_GT(before_gc->schema_version, 0U);
+  ASSERT_TRUE(before_gc->doc_read_context->schema_packing_storage.HasVersionBelow(
+      before_gc->schema_version))
+      << before_gc->doc_read_context->schema_packing_storage.VersionsToString();
+  // The AlterSchema that applied the bump armed the cache, and the scan in SetUpTable filled it.
+  const auto watermark_before_gc = before_gc->doc_read_context->tombstone_cache_watermark();
+  const auto generation_before_gc = before_gc->doc_read_context->tombstone_cache_generation();
+  ASSERT_NE(watermark_before_gc, HybridTime::kMax);
+  ASSERT_TRUE(before_gc->doc_read_context->table_tombstone_time().has_value());
+  const auto seeks_before_gc = ASSERT_RESULT(RegularDbSeeksForUpdates());
+
+  FlushAndCompactTablets();
+
+  // Trigger guard: the compaction's old-schema-version GC replaced t's TableInfo and dropped the
+  // old packing.
+  tablet::TableInfoPtr after_gc;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        after_gc = VERIFY_RESULT(ColocatedTableInfo(kTableColocationId));
+        return after_gc != before_gc;
+      },
+      30s * kTimeMultiplier, "Old-schema-version GC rebuilt the TableInfo"));
+  const auto& ctx = *after_gc->doc_read_context;
+  ASSERT_FALSE(ctx.schema_packing_storage.HasVersionBelow(after_gc->schema_version))
+      << ctx.schema_packing_storage.VersionsToString();
+  // A late AlterSchema would also replace the TableInfo, but with a new schema version.
+  ASSERT_EQ(after_gc->schema_version, before_gc->schema_version);
+
+  // Checked before any further read, which could refill a cache the rebuild dropped.
+  const auto watermark_after_gc = ctx.tombstone_cache_watermark();
+  const auto generation_after_gc = ctx.tombstone_cache_generation();
+  const auto cached_after_gc = ctx.table_tombstone_time().has_value();
+
+  const auto seeks_after_gc = ASSERT_RESULT(RegularDbSeeksForUpdates());
+  LOG(INFO) << "Regular-DB seeks for " << kNumUpdates << " PK UPDATEs: " << seeks_before_gc
+            << " before schema GC, " << seeks_after_gc << " after";
+
+  const auto diag = Format(
+      "TOMBSTONE CACHE STATE LOST: old-schema-version GC rebuilt the table's DocReadContext "
+      "(packings now $0). Watermark $1 -> $2, generation $3 -> $4, cached entry kept: $5. "
+      "Regular-DB seeks for $6 single-row PK UPDATEs: $7 before the GC, $8 after.",
+      ctx.schema_packing_storage.VersionsToString(), watermark_before_gc, watermark_after_gc,
+      generation_before_gc, generation_after_gc, cached_after_gc, kNumUpdates, seeks_before_gc,
+      seeks_after_gc);
+  ASSERT_EQ(watermark_after_gc, watermark_before_gc) << diag;
+  ASSERT_EQ(generation_after_gc, generation_before_gc) << diag;
+  ASSERT_TRUE(cached_after_gc) << diag;
+}
+
+// Control for TombstoneCacheArmedAfterSchemaGC: the same compaction with schema GC disabled does
+// not rebuild t's TableInfo, and the cache stays armed and filled.
+TEST_F_EX(
+    PgMiniTest, TombstoneCacheArmedAfterCompactionWithoutSchemaGC,
+    PgMiniTombstoneCacheRebuildTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_schema_packing_gc) = false;
+  ASSERT_OK(SetUpTable(WithIndex::kTrue));
+
+  auto before = ASSERT_RESULT(ColocatedTableInfo(kTableColocationId));
+  ASSERT_TRUE(before->doc_read_context->schema_packing_storage.HasVersionBelow(
+      before->schema_version));
+  ASSERT_NO_FATALS(CompactAndCheckCacheUntouched(before));
+}
+
+// Control for TombstoneCacheArmedAfterSchemaGC: a table with a single schema version has nothing
+// for the GC to drop, so compaction leaves its TableInfo and cache alone.
+TEST_F_EX(
+    PgMiniTest, TombstoneCacheArmedAfterCompactionSingleSchemaVersion,
+    PgMiniTombstoneCacheRebuildTest) {
+  ASSERT_OK(SetUpTable(WithIndex::kFalse));
+
+  auto before = ASSERT_RESULT(ColocatedTableInfo(kTableColocationId));
+  ASSERT_FALSE(before->doc_read_context->schema_packing_storage.HasVersionBelow(
+      before->schema_version));
+  ASSERT_NO_FATALS(CompactAndCheckCacheUntouched(before));
+}
+
+// The index backfill-done metadata update (Tablet::MarkBackfillDone) rebuilds the index's
+// TableInfo to clear retain_delete_markers. The index's DocReadContext must still be able to use
+// the tombstone-time cache afterwards. In a YSQL CREATE INDEX the index-permission AlterSchema that
+// follows also arms every colocated table in the tablet, so this does not isolate the carry-over
+// in the backfill-done rebuild; DocReadContextTombstoneCacheTest.RebuildCarriesCacheState does.
+TEST_F_EX(PgMiniTest, TombstoneCacheArmedAfterIndexBackfill, PgMiniTombstoneCacheRebuildTest) {
+  StringWaiterLogSink backfill_done("Setting backfill as done");
+  ASSERT_OK(SetUpTable(WithIndex::kTrue, IndexAfterRows::kTrue));
+
+  // Trigger guard: the backfill-done op was applied and cleared retain_delete_markers.
+  ASSERT_OK(backfill_done.WaitFor(30s * kTimeMultiplier));
+  tablet::TableInfoPtr index_info;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        index_info = VERIFY_RESULT(ColocatedTableInfo(kIndexColocationId));
+        return !index_info->schema().table_properties().retain_delete_markers();
+      },
+      30s * kTimeMultiplier, "Backfill done cleared retain_delete_markers on the index"));
+
+  // Read through the index, which would fill an armed index cache.
+  ASSERT_OK(conn_->Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>("SELECT v FROM t WHERE v = 5")), 5);
+  index_info = ASSERT_RESULT(ColocatedTableInfo(kIndexColocationId));
+  const auto& ctx = *index_info->doc_read_context;
+  const auto diag = Format(
+      "TOMBSTONE CACHE LEFT OFF: the backfill-done update rebuilt the index's DocReadContext and "
+      "nothing re-armed it (watermark $0)", ctx.tombstone_cache_watermark());
+  ASSERT_NE(ctx.tombstone_cache_watermark(), HybridTime::kMax) << diag;
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value()) << diag;
 }
 
 TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
@@ -3627,6 +3923,12 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   LOG(INFO) << "Creating table";
   ASSERT_OK(conn1.Execute("CREATE TABLE test(a int) SPLIT INTO 1 TABLETS"));
 
+  // The transaction status tablets are created before every tablet server has registered, so the
+  // load balancer is still adding their third replica. Restarting one of the two voters they have
+  // until then costs those tablets their quorum and stalls applies for seconds.
+  ASSERT_OK(WaitAllReplicasReady(cluster_.get(), 120s * kTimeMultiplier, UserTabletsOnly::kFalse));
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(120s * kTimeMultiplier));
+
   const auto& pg_ts_uuid = cluster_->mini_tablet_server(kPgTsIndex)->server()->permanent_uuid();
   tablet::TabletPeerPtr tablet_peer = nullptr;
   tablet::TabletPtr tablet = nullptr;
@@ -3668,16 +3970,13 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());
 
-  // The recently applied transactions map only retains a staircase of (first_write_ht,
-  // apply_op_id) pairs, so an apply landing out of first write order subsumes the entry of an
-  // earlier transaction. Applies are asynchronous with respect to commit, so let each transaction
-  // apply, i.e. leave the participant, before committing the next one.
+  // Every peer must report exactly the expected number of transactions: a peer that has not
+  // replicated them yet, or has not loaded them back after the restart, reports none of its own and
+  // would satisfy a check on the total vacuously.
   const auto& tablet_id = tablet_peer->tablet_id();
-  auto commit_and_wait_apply = [this, tablet_id, kApplyWait](
-      PGConn* conn, size_t expected_running) -> Status {
-    RETURN_NOT_OK(conn->CommitTransaction());
+  auto wait_running = [this, &tablet_id, kApplyWait](size_t expected_running) -> Status {
     return WaitFor([this, &tablet_id, expected_running]() -> Result<bool> {
-      size_t running = 0;
+      size_t peers_done = 0;
       for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
         if (peer->tablet_id() != tablet_id) {
           continue;
@@ -3686,14 +3985,31 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
         if (!peer_tablet) {
           return false;
         }
-        running += peer_tablet->transaction_participant()->GetNumRunningTransactions();
+        if (peer_tablet->transaction_participant()->GetNumRunningTransactions() !=
+            expected_running) {
+          return false;
+        }
+        ++peers_done;
       }
-      return running <= expected_running;
-    }, kApplyWait, Format("$0 running transactions left", expected_running));
+      return peers_done == NumTabletServers();
+    }, kApplyWait, Format("$0 running transactions left on every peer", expected_running));
   };
 
-  ASSERT_OK(commit_and_wait_apply(&conn1, 6));
-  ASSERT_OK(commit_and_wait_apply(&conn2, 3));
+  // Catching up with the tablet leader and loading the transactions back from the flushed intents
+  // are both asynchronous with the restart.
+  ASSERT_OK(wait_running(3));
+
+  // The recently applied transactions map only retains a staircase of (first_write_ht,
+  // apply_op_id) pairs, so an apply landing out of first write order subsumes the entry of an
+  // earlier transaction. Applies are asynchronous with respect to commit, so let each transaction
+  // apply, i.e. leave the participant, before committing the next one.
+  auto commit_and_wait_apply = [&wait_running](PGConn* conn, size_t expected_running) -> Status {
+    RETURN_NOT_OK(conn->CommitTransaction());
+    return wait_running(expected_running);
+  };
+
+  ASSERT_OK(commit_and_wait_apply(&conn1, 2));
+  ASSERT_OK(commit_and_wait_apply(&conn2, 1));
   ASSERT_OK(commit_and_wait_apply(&conn3, 0));
 
   std::unordered_map<std::string, uint64_t> metric_values;

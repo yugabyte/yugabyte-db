@@ -466,7 +466,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
 
   if (is_transactional_snapshot) {
     rocksdb::Options rocksdb_options;
-    tablet().InitRocksDBOptions(&rocksdb_options, LogPrefix());
+    tablet().InitRocksDBOptions(
+        &rocksdb_options, LogPrefix(), docdb::StorageDbType::kRegular);
     docdb::RocksDBPatcher patcher(tmp_snapshot_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
@@ -592,6 +593,9 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
       operation->op_id());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
+  if (s.ok()) {
+    tablet().vector_indexes().ScheduleBackfillAfterRestore();
+  }
   int32 delay_time_secs = FLAGS_TEST_delay_tablet_split_metadata_restore_secs;
   if (delay_time_secs > 0) {
     SleepFor(MonoDelta::FromSeconds(delay_time_secs));
@@ -636,7 +640,8 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
     std::string log_prefix = LogPrefix();
     // Remove ": " to patch suffix.
     log_prefix.erase(log_prefix.size() - 2);
-    tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+    tablet().InitRocksDBOptions(
+        &rocksdb_options, log_prefix + " [TMP]: ", docdb::StorageDbType::kRegular);
     rocksdb_options.compaction_style = rocksdb::kCompactionStyleNone;
     auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
     auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
@@ -741,7 +746,8 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   {
     rocksdb::Options rocksdb_options;
-    tablet().InitRocksDBOptions(&rocksdb_options, LogPrefix());
+    tablet().InitRocksDBOptions(
+        &rocksdb_options, LogPrefix(), docdb::StorageDbType::kRegular);
     docdb::RocksDBPatcher patcher(db_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
@@ -805,6 +811,12 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
+  // The restore replaced the vector index storages together with the regular DB, but the patcher
+  // above moved only the regular DB's flushed frontier to the restore op id. Stamp the same op id
+  // on the vector indexes, otherwise they keep their snapshot time OpId and bootstrap replays the
+  // rolled back writes back into them.
+  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(frontier));
+
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
   s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);
@@ -836,7 +848,8 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
 
   {
     rocksdb::Options rocksdb_options;
-    tablet().InitRocksDBOptions(&rocksdb_options, LogPrefix());
+    tablet().InitRocksDBOptions(
+        &rocksdb_options, LogPrefix(), docdb::StorageDbType::kRegular);
     docdb::RocksDBPatcher patcher(dest_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
