@@ -1337,12 +1337,15 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
   VLOG_WITH_FUNC(2) << "doc key: " << doc_key_;
 
+  char highest = dockv::KeyEntryTypeAsChar::kHighest;
+  KeyBuffer upperbound_buffer(encoded_doc_key_.as_slice(), Slice(&highest, 1));
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
       BloomFilterOptions::Fixed(encoded_doc_key_.as_slice()),
       rocksdb::kDefaultQueryId,
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), iter.get());
 
   VLOG_WITH_FUNC(4) << "whole row: " << doc_key_;
   DocHybridTime oldest_past_min_dht = VERIFY_RESULT(
