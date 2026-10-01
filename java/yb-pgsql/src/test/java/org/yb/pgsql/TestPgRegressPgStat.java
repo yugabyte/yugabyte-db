@@ -13,6 +13,8 @@
 
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -25,6 +27,15 @@ public class TestPgRegressPgStat extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // The io worker pool resizes with load, so its rows in pg_stat_activity
+    // would make the expected output nondeterministic.
+    appendToYsqlPgConf(flagMap, "io_method=sync");
+    return flagMap;
   }
 
   @Test

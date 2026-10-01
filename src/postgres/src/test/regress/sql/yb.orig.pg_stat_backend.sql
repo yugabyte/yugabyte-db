@@ -1,8 +1,8 @@
 --
 -- Test pg_stat backend functions.
 --
--- Avoid outputting pid, dbid, catalog_version since those can vary between
--- runs.
+-- Avoid outputting beid, pid, dbid, catalog_version since those can vary
+-- between runs.
 --
 
 -- Test pg_stat_activity view.  The four rows correspond to checkpointer,
@@ -12,16 +12,15 @@ SELECT datname, usename, state, query, backend_type,
     FROM pg_stat_activity ORDER BY usename;
 
 -- Test yb_pg_stat_get_backend_catalog_version.
-SELECT beid,
-       backend_type,
+SELECT backend_type,
        yb_pg_stat_get_backend_catalog_version(beid) IS NOT NULL AS has_catalog_snapshot
 FROM pg_stat_get_backend_idset() beid
-JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid;
+JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid
+ORDER BY 1, 2;
 
 -- Test that yb_pg_stat_get_backend_catalog_version for this backend matches
 -- yb_catalog_version.
-SELECT beid,
-       backend_type,
+SELECT backend_type,
        yb_catalog_version() - be_catalog_version AS catalog_version_diff
 FROM pg_stat_get_backend_idset() AS beid
 JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid
@@ -29,8 +28,7 @@ CROSS JOIN yb_pg_stat_get_backend_catalog_version(beid) AS be_catalog_version
 WHERE be_catalog_version IS NOT NULL;
 
 -- Test pg_stat_get_backend_dbid for backends with yugabyte database.
-SELECT beid,
-       backend_type,
+SELECT backend_type,
        d.datname AS database_name
 FROM pg_stat_get_backend_idset() AS beid
 JOIN pg_database d ON pg_stat_get_backend_dbid(beid) = d.oid
@@ -41,8 +39,7 @@ ORDER BY beid;
 -- Test pg_stat_get_backend_dbid for backends with postgres database after
 -- switching current connection to postgres database.
 \c postgres
-SELECT beid,
-       backend_type,
+SELECT backend_type,
        d.datname AS database_name
 FROM pg_stat_get_backend_idset() AS beid
 JOIN pg_database d ON pg_stat_get_backend_dbid(beid) = d.oid
