@@ -51,6 +51,11 @@ struct AgeBands {
 
 using AgeBandCounts = std::array<uint64_t, AgeBands::kNumBands>;
 
+// Counts measured at a file's anchor, re-expressed as ages elapsed_micros later. Each band moves by
+// its youngest edge, so no entry lands in a band older than it is and a sum of the bands past a
+// cutoff stays a lower bound.
+AgeBandCounts AgeBandsAfter(const AgeBandCounts& counts, int64_t elapsed_micros);
+
 // Per-coprefix (cotable / colocation id) subtotals for colocated tablets.
 struct CoprefixSubtotal {
   uint64_t entries = 0;

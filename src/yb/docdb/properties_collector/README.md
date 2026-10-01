@@ -185,7 +185,14 @@ event -- DB open, remote bootstrap, snapshot restore, split inheritance.
 
 The distributions do not aggregate this way. Bucket-wise merging is exact, but a set of files that
 shrinks needs subtraction, and five resident 145-bucket vectors cost ~5.8 KB per tablet against
-~250 bytes for the scalars, so tablet-level distributions are built on demand instead.
+~250 bytes for the scalars, so tablet-level distributions are built on demand instead: the tablet's
+`/sst-stats` page reads every live file's properties block per request and merges what it finds.
+Its merged lengths are per file -- a row written across three files is three chains there, not one
+-- so the byte- and entry-weighted distributions read low, while the row- and stretch-counted ones,
+which gain a sample per piece, can move either way. Each file's age bands are moved from its anchor
+to the time of the request before they are added. The aggregate's bands never are: it keeps sums,
+not anchors, so a file's garbage stays in the band it was in when the file was written. That is
+conservative for a consumer applying a cutoff, but it is not an age as of now.
 
 ## Boundaries
 
