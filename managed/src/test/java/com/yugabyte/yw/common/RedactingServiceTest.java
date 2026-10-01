@@ -10,6 +10,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
 import org.junit.Test;
 import play.libs.Json;
 
@@ -303,5 +306,35 @@ public class RedactingServiceTest {
     jsonNode.put("awsAccessKeyID", "AW*************ID");
 
     return jsonNode;
+  }
+
+  @Test
+  public void testRedactValuesCoversRenderedForms() {
+    String secret = "s3cr3t\"with\\quote";
+    String base64 = Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8));
+    String input =
+        "token: "
+            + secret
+            + "\nenvValue: "
+            + base64
+            + "\n{\"password\":\"s3cr3t\\\"with\\\\quote\"}\nsite: datadoghq.com";
+    String redacted = RedactingService.redactValues(input, List.of(secret));
+    assertEquals(
+        "token: REDACTED\nenvValue: REDACTED\n{\"password\":\"REDACTED\"}\nsite: datadoghq.com",
+        redacted);
+  }
+
+  @Test
+  public void testRedactValuesReplacesContainingSecretWhole() {
+    String input = "Authorization: Basic dXNlcjpwYXNzd29yZDE= password: password1";
+    assertEquals(
+        "Authorization: Basic REDACTED password: REDACTED",
+        RedactingService.redactValues(input, List.of("password1", "user:password1")));
+  }
+
+  @Test
+  public void testRedactValuesIgnoresShortValues() {
+    String input = "key: abc, other: abc";
+    assertEquals(input, RedactingService.redactValues(input, List.of("abc")));
   }
 }

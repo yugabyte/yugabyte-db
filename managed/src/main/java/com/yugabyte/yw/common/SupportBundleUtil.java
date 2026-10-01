@@ -476,8 +476,13 @@ public class SupportBundleUtil {
 
   public boolean writeStringToFile(String message, String localFilePath, boolean append) {
     try {
+      // Bundle files hold raw kubectl/helm output -- "helm get values" and the pod specs both
+      // inline the telemetry exporter credentials (PLAT-22613).
       FileUtils.writeStringToFile(
-          new File(localFilePath), message, Charset.forName("UTF-8"), append);
+          new File(localFilePath),
+          RedactingService.redactTelemetryCredentials(message),
+          Charset.forName("UTF-8"),
+          append);
       return true;
     } catch (IOException e) {
       log.error("Failed writing output string to file: ", e);
