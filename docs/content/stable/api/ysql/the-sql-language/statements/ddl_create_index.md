@@ -27,7 +27,7 @@ In YugabyteDB, indexes are sharded - they are split into tablets and distributed
 
 ### Concurrent index creation
 
-Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. If you specify neither keyword, the index is built concurrently, except in the following cases, where YugabyteDB automatically switches to a nonconcurrent build:
+Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. If you specify neither keyword, the index is built concurrently. In certain cases, though, concurrent index creation is not possible and the default mode is nonconcurrent index creation. Some of the common cases are:
 
 - The statement runs inside a transaction block. This includes schema migration tools that wrap each migration in a transaction. The only indication of the switch is the following client notice:
 
