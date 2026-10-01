@@ -56,10 +56,14 @@
       "recommended": "Recommended",
       "reviewAndCreate": "Next: Review and Create",
       "duration": {
-        "seconds": "Seconds",
-        "minutes": "Minutes",
-        "hours": "Hours",
-        "days": "Days"
+        "seconds_one": "second",
+        "seconds_other": "seconds",
+        "minutes_one": "minute",
+        "minutes_other": "minutes",
+        "hours_one": "hour",
+        "hours_other": "hours",
+        "days_one": "day",
+        "days_other": "days"
       },
       "unitAbbreviation": {
         "milliseconds": "ms",
@@ -3194,7 +3198,7 @@
         "button": {
           "remove": "Remove"
         },
-        "backupIntervalValue": "Every {{backupFrequencyMinutes}} minutes",
+        "backupIntervalValue": "Every {{backupFrequency}} {{unit}}",
         "noRecentBackupError": "No backups have been created in the past 24 hours."
       },
       "configureContinuousBackupModal": {
@@ -3213,8 +3217,8 @@
         },
         "error": {
           "backupFrequencyMustBePositiveInteger": "Please enter a positive integer.",
-          "backupFrequencyMustBeGreaterThanOrEqualTo2": "Minimum 2 minutes.",
-          "backupFrequencyMustBeLessThanOrEqualTo1440": "Maximum 1440 minutes (24 hours)."
+          "backupFrequencyBelowMinimum": "Minimum {{min}} {{unit}}.",
+          "backupFrequencyAboveMaximum": "Maximum {{max}} {{unit}}."
         },
         "tip": {
           "performanceImpact": "Platform backups don't significantly impact performance.",
