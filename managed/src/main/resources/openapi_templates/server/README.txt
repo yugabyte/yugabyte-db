@@ -129,3 +129,11 @@ the time the flow reaches the handler, Play Framework closes the InputStream cha
 
 Example: 
                 x-java-type: Http.MultipartFormData.FilePart<TemporaryFile>
+
+8. x-yba-api-block-operator-resource (at operation level)
+Adds @BlockOperatorResource to the generated controller method so requests for resources owned by
+the Kubernetes operator are rejected before request-body parsing. Valid values are universe and
+provider.
+
+Example:
+x-yba-api-block-operator-resource: universe

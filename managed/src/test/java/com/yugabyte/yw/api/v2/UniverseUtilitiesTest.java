@@ -1,9 +1,11 @@
 package com.yugabyte.yw.api.v2;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
@@ -15,6 +17,7 @@ import com.yugabyte.yba.v2.client.models.UniverseRestart;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.models.Customer;
@@ -128,5 +131,48 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
         apiClient.restartUniverse(customer.getUuid(), k8sUniverse.getUniverseUUID(), payload);
     assertEquals(taskUUID, resp.getTaskUuid());
     verify(mockUpgradeUniverseHandler).restartUniverse(any(), eq(customer), eq(k8sUniverse));
+  }
+
+  @Test
+  public void testV2RestartOperatorControlledUniverseBlocked() {
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.blockOperatorApiResources.getKey()))
+        .thenReturn(true);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    UniverseRestart payload = new UniverseRestart();
+    payload.setRestartType(UniverseRestart.RestartTypeEnum.SERVICE);
+
+    ApiException exception =
+        assertThrows(
+            ApiException.class,
+            () ->
+                apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload));
+
+    assertEquals(403, exception.getCode());
+    verifyNoInteractions(mockUpgradeUniverseHandler);
+  }
+
+  @Test
+  public void testV2RestartOperatorControlledUniverseAllowedWhenBlockingDisabled()
+      throws ApiException {
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.blockOperatorApiResources.getKey()))
+        .thenReturn(false);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.restartUniverse(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseRestart payload = new UniverseRestart();
+    payload.setRestartType(UniverseRestart.RestartTypeEnum.SERVICE);
+
+    YBATask response =
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
+
+    assertEquals(taskUUID, response.getTaskUuid());
+    verify(mockUpgradeUniverseHandler).restartUniverse(any(), eq(customer), eq(universe));
   }
 }
