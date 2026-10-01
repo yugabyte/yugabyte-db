@@ -710,10 +710,9 @@ Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metada
 ////////////////////////////////////////////////////////////
 
 Status SysConfigLoader::Visit(const std::string& config_type, const SysConfigEntryPB& metadata) {
-  if (config_type == kYsqlCatalogFollowerReadReservation) {
-    // The snapshot coordinator loads this reservation on every replica, not only the leader.
-    return Status::OK();
-  }
+  SCHECK(config_type != "ysql_catalog_follower_read_reservation", NotSupported,
+         "The old catalog follower-read reservation prototype is not supported; "
+         "create a new universe");
   SysConfigInfo* const config = new SysConfigInfo(config_type);
   {
     auto l = config->LockForWrite();

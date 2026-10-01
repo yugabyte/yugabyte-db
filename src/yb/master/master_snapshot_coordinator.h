@@ -223,11 +223,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // snapshot schedules present.
   bool IsPitrActive();
 
-  // Irreversible reservation; does not enable follower routing. Requires no PITR state.
-  Status ReserveYsqlCatalogFollowerReads(int64_t leader_term, CoarseTimePoint deadline);
-  bool YsqlCatalogFollowerReadsReserved() const;
-  void GetYsqlCatalogFollowerReadReservation(
-      int64_t leader_term, GetYsqlCatalogFollowerReadReservationResponsePB* resp) const;
+  // The immutable universe mode, loaded/applied on every master replica.
+  bool PitrDisabled() const;
 
   Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info);
 

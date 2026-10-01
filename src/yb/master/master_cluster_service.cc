@@ -23,7 +23,6 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base-internal.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/ts_descriptor.h"
@@ -382,27 +381,6 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
     rpc::RpcContext rpc) override {
     HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, SetClusterConfig);
-  }
-
-  void ReserveYsqlCatalogFollowerReads(
-      const ReserveYsqlCatalogFollowerReadsRequestPB* req,
-      ReserveYsqlCatalogFollowerReadsResponsePB* resp, rpc::RpcContext rpc) override {
-    HandleOnLeader(resp, &rpc, [&](const LeaderEpoch& epoch) -> Status {
-      SCHECK(req->acknowledge_permanent_pitr_exclusion(), InvalidArgument,
-             "Must acknowledge permanent PITR exclusion before reserving catalog follower reads");
-      return server_->snapshot_coordinator().ReserveYsqlCatalogFollowerReads(
-          epoch.leader_term, rpc.GetClientDeadline());
-    }, __FILE__, __LINE__, __func__, HoldCatalogLock::kTrue);
-  }
-
-  void GetYsqlCatalogFollowerReadReservation(
-      const GetYsqlCatalogFollowerReadReservationRequestPB* req,
-      GetYsqlCatalogFollowerReadReservationResponsePB* resp, rpc::RpcContext rpc) override {
-    HandleOnLeader(resp, &rpc, [&](const LeaderEpoch& epoch) {
-      server_->snapshot_coordinator().GetYsqlCatalogFollowerReadReservation(
-          epoch.leader_term, resp);
-      return Status::OK();
-    }, __FILE__, __LINE__, __func__, HoldCatalogLock::kTrue);
   }
 
   void GetMasterClusterConfig(

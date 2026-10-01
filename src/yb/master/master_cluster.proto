@@ -214,27 +214,6 @@ message ChangeMasterClusterConfigResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message ReserveYsqlCatalogFollowerReadsRequestPB {
-  // Required acknowledgement: PITR cannot be re-enabled in this universe by disabling reads.
-  optional bool acknowledge_permanent_pitr_exclusion = 1 [default = false];
-}
-
-message ReserveYsqlCatalogFollowerReadsResponsePB {
-  optional MasterErrorPB error = 1;
-}
-
-message GetYsqlCatalogFollowerReadReservationRequestPB {
-}
-
-message GetYsqlCatalogFollowerReadReservationResponsePB {
-  optional MasterErrorPB error = 1;
-  optional bool reserved = 2;
-  // Pending admissions apply only to the returned leader term, not to a durable reservation.
-  optional bool reservation_pending = 3;
-  optional bool pitr_admitted_in_term = 4;
-  optional int64 leader_term = 5;
-}
-
 // Get the percentage of tablet data that got moved as part of a blacklist config change.
 // Handled by the master leader and picked up by new leader on failover.
 message GetLoadMovePercentRequestPB {
@@ -405,10 +384,6 @@ service MasterCluster {
       returns (GetMasterXClusterConfigResponsePB);
   rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)
       returns (ChangeMasterClusterConfigResponsePB);
-  rpc ReserveYsqlCatalogFollowerReads(ReserveYsqlCatalogFollowerReadsRequestPB)
-      returns (ReserveYsqlCatalogFollowerReadsResponsePB);
-  rpc GetYsqlCatalogFollowerReadReservation(GetYsqlCatalogFollowerReadReservationRequestPB)
-      returns (GetYsqlCatalogFollowerReadReservationResponsePB);
   rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)
       returns (GetLoadMovePercentResponsePB);
   rpc GetLeaderBlacklistCompletion(GetLeaderBlacklistPercentRequestPB)
