@@ -68,7 +68,7 @@ FOREIGN KEY and REFERENCES specifies that the set of columns can only contain va
 
 A foreign key can reference a partitioned table, and a partitioned table can declare a foreign key.
 
-For how to create and manage partitioned tables, see [Table partitioning](../../../../../explore/ysql-language-features/advanced-features/partitions/).
+For information on how to create and manage partitioned tables, see [Table partitioning](/stable/explore/ysql-language-features/advanced-features/partitions/).
 
 ### Unique
 
