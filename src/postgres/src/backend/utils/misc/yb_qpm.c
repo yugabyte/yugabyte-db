@@ -329,7 +329,14 @@ qpmReadFile()
 		YbQpmHashEntry entry;
 
 		if (fread(&entry, entrySize, 1, file) != 1)
-			return -1;
+		{
+			/* The entries read so far have no LRU slot yet, so drop them. */
+			for (int j = 0; j < cnt; j++)
+				(void) hash_search(qpmHashTable, &(entries[j]->key), HASH_REMOVE,
+								   NULL);
+			pfree(entries);
+			goto read_error;
+		}
 
 		/*
 		 * Insert the entry into the hash table.
