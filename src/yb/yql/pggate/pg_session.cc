@@ -30,6 +30,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/tablespace_parser.h"
+#include "yb/common/transaction.h"
 
 #include "yb/docdb/object_lock_shared_state.h"
 
@@ -736,10 +737,12 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(
 
 Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
   VLOG(3) << "Loading table descriptor for " << table_id;
-  // When loading table description and yb_read_time is set, return the table properties even if the
-  // table is hidden. For instance, this is required for succesful return of yb_table_properties()
-  // when yb_read_time is set and the table was hidden at yb_read_time.
-  master::IncludeHidden include_hidden = master::IncludeHidden(yb_read_time != 0);
+  // When loading table description and yb_read_time/historical_read_context_ is set, return the
+  // table properties even if the table is hidden. For instance, this is required for succesful
+  // return of yb_table_properties() when yb_read_time/historical_read_context_ is set and the table
+  // was hidden at that time.
+  master::IncludeHidden include_hidden =
+      master::IncludeHidden(yb_read_time != 0 || historical_read_context_.has_value());
   return DoLoadTable(table_id, /* fail_on_cache_hit */ false, include_hidden);
 }
 
@@ -922,14 +925,15 @@ Status PgSession::SetReadTimeIfPresent(
     RETURN_NOT_OK(UpdateReadTime(*options.mutable_read_time_options(), ops_read_time));
   }
 
-  if (yb_read_time != 0) {
+  if (historical_read_context_) {
+    historical_read_context_->read_time.ToPB(
+        options.mutable_read_time_options()->mutable_read_time());
+  } else if (yb_read_time != 0) {
     RETURN_NOT_OK(CheckConflictWithYbReadTime(operations));
-    auto& read_time_pb = *options.mutable_read_time_options()->mutable_read_time();
-    if (yb_is_read_time_ht) {
-      ReadHybridTime::FromUint64(yb_read_time).ToPB(&read_time_pb);
-    } else {
-      ReadHybridTime::FromMicros(yb_read_time).ToPB(&read_time_pb);
-    }
+    const auto read_ht = yb_is_read_time_ht
+        ? ReadHybridTime::FromUint64(yb_read_time)
+        : ReadHybridTime::FromMicros(yb_read_time);
+    read_ht.ToPB(options.mutable_read_time_options()->mutable_read_time());
   }
   return Status::OK();
 }
@@ -965,6 +969,15 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
         IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.has_catalog_ops)));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
+    }
+  }
+
+  if (historical_read_context_) {
+    options.set_use_historical_read_session(true);
+    if (!historical_read_context_->transaction_id.empty()) {
+      auto txn_id = VERIFY_RESULT(
+          TransactionId::FromString(historical_read_context_->transaction_id));
+      options.set_historical_read_transaction_id(txn_id.data(), txn_id.size());
     }
   }
 
@@ -1110,6 +1123,16 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   if (read_ht) {
     catalog_read_time_ = read_ht;
   }
+}
+
+void PgSession::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, std::string transaction_id) {
+  historical_read_context_ = HistoricalReadContext{
+      .read_time = read_time, .transaction_id = std::move(transaction_id)};
+}
+
+void PgSession::ResetHistoricalReadContext() {
+  historical_read_context_.reset();
 }
 
 Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options) {

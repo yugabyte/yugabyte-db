@@ -317,7 +317,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
     ASSERT_OK(pconn.Execute("CREATE TABLE tbl(key int)"));
     ASSERT_OK(pconn.Execute("INSERT INTO tbl SELECT i FROM generate_series(1, 100) as i"));
   }
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name, namespace_name2}));
   for (auto db_name : {namespace_name, namespace_name2}) {
     ASSERT_OK(VerifyWrittenRecords({"tbl"}, db_name));
   }
@@ -328,7 +328,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
     ASSERT_OK(pconn.Execute("ALTER TABLE tbl ADD COLUMN a int"));
     ASSERT_OK(pconn.Execute("INSERT INTO tbl SELECT i FROM generate_series(101, 200) as i"));
   }
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name, namespace_name2}));
   for (auto db_name : {namespace_name, namespace_name2}) {
     ASSERT_OK(VerifyWrittenRecords({"tbl"}, db_name));
   }
@@ -5056,7 +5056,17 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PartmanExtension) {
 
   // Make sure we can drop the extension, but we cannot recreate it while the database is in
   // automatic mode.
-  ASSERT_OK(producer_conn_->Execute("DROP EXTENSION pg_partman"));
+  // The cron run_maintenance job can deadlock with the DROP, so retry if it picks us as victim.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        auto s = producer_conn_->Execute("DROP EXTENSION pg_partman");
+        if (!s.ok() && s.ToString().find("deadlock") != std::string::npos) {
+          return false;
+        }
+        RETURN_NOT_OK(s);
+        return true;
+      },
+      MonoDelta::FromMinutes(2), "Drop pg_partman"));
   ASSERT_NOK_STR_CONTAINS(
       producer_conn_->Execute("CREATE EXTENSION pg_partman WITH SCHEMA partman"),
       "Extension pg_partman is not supported because it contains unsupported DDLs within the "

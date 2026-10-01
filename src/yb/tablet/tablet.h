@@ -824,8 +824,24 @@ class Tablet : public AbstractTablet,
   // Potentially takes a long time. Used for testing/debugging.
   Status ReadIntents(std::vector<std::string>* resp);
 
+  using LogIndexFactorCallback = std::function<
+      void(const std::string& name, int64_t index, const std::string& extra)>;
+
+  // Flushes storages idle for too long, then returns the lowest Raft index that is not yet
+  // flushed by some storage, so WAL entries from it on must be retained. Returns the max int64
+  // value when all storages are flushed. Reports each storage's bound via `add_factor`.
+  Result<int64_t> EarliestNeededLogIndex(
+      const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor);
+
   // Flushed intents db if necessary.
   void FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id);
+
+  // The vector index part of EarliestNeededLogIndex: the lowest Raft index some vector index holds
+  // only in memory. Along the way flushes every index whose oldest such operation is more than
+  // vector_index_num_raft_ops_to_force_flush behind the log tail, so an index that stopped
+  // receiving vectors does not retain WAL segments indefinitely.
+  Result<int64_t> EarliestNeededLogIndexForVectorIndexes(
+      const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor);
 
   // May modify the flushed op_id of intents db.
   Status MayModifyIntentsDbFlushedOpId();
@@ -1523,6 +1539,9 @@ class Tablet : public AbstractTablet,
   // readers are running.
   mutable std::mutex sst_stats_mutex_;
   std::shared_ptr<docdb::SstStatsAggregator> sst_stats_ GUARDED_BY(sst_stats_mutex_);
+  // The docdb_sst_* gauges over sst_stats_. CompleteShutdownStorages resets this before clearing
+  // the tablet's current aggregator so the entity cannot expose values from a destroyed DB.
+  std::unique_ptr<docdb::SstStatsMetrics> sst_stats_metrics_;
 
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;

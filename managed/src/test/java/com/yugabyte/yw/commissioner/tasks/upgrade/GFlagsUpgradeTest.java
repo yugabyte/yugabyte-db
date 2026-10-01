@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -53,7 +54,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -139,14 +139,11 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
+    TestUtils.copyProviderFields(curIntent, userIntent, confGetter);
+
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
-    userIntent.accessKeyCode = curIntent.accessKeyCode;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = curIntent.providerType;
-    userIntent.provider = curIntent.provider;
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.numVolumes = 2;
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);

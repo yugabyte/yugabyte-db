@@ -78,7 +78,8 @@ TEST(TestSchema, TestSchema) {
                    "is_ysql_catalog_table: false "
                    "retain_delete_markers: false "
                    "partitioning_version: $0 "
-                   "owns_vector_reverse_mapping: false",
+                   "owns_vector_reverse_mapping: false "
+                   "skip_vector_reverse_mapping: false",
                    kCurrentPartitioningVersion),
             schema.ToString());
   EXPECT_EQ("key[string NOT NULL RANGE_ASC_NULL_FIRST]", schema.column(0).ToString());
@@ -219,7 +220,8 @@ TEST(TestSchema, TestCreateProjection) {
                    "is_ysql_catalog_table: false "
                    "retain_delete_markers: false "
                    "partitioning_version: $0 "
-                   "owns_vector_reverse_mapping: false",
+                   "owns_vector_reverse_mapping: false "
+                   "skip_vector_reverse_mapping: false",
                    kCurrentPartitioningVersion),
             partial_schema.ToString());
 
@@ -236,7 +238,8 @@ TEST(TestSchema, TestCreateProjection) {
                    "is_ysql_catalog_table: false "
                    "retain_delete_markers: false "
                    "partitioning_version: $3 "
-                   "owns_vector_reverse_mapping: false",
+                   "owns_vector_reverse_mapping: false "
+                   "skip_vector_reverse_mapping: false",
                    schema_with_ids.column_id(0),
                    schema_with_ids.column_id(1),
                    schema_with_ids.column_id(3),
@@ -263,7 +266,8 @@ TEST(TestSchema, TestCreateProjection) {
                    "is_ysql_catalog_table: false "
                    "retain_delete_markers: false "
                    "partitioning_version: $3 "
-                   "owns_vector_reverse_mapping: false",
+                   "owns_vector_reverse_mapping: false "
+                   "skip_vector_reverse_mapping: false",
                    schema_with_ids.column_id(0),
                    schema_with_ids.column_id(1),
                    schema_with_ids.column_id(3),

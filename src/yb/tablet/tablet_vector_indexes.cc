@@ -131,17 +131,6 @@ class IndexContext : public docdb::DocVectorIndexContext {
     return reader;
   }
 
-  Result<docdb::DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReaderAtHistoryCutoff()
-      const override {
-    // The same cutoff regular compactions use, see HistoryCutoff for the fields description.
-    auto cutoff =
-        tablet_.RetentionPolicy()->GetRetentionDirective().history_cutoff.primary_cutoff_ht;
-    if (!cutoff.is_valid()) {
-      cutoff = HybridTime::kMin;
-    }
-    return CreateReverseMappingReader(ReadHybridTime::SingleTime(cutoff), nullptr);
-  }
-
   Result<docdb::DocRowwiseIteratorPtr> CreateVectorColumnIterator(
       HybridTime read_ht, std::optional<Slice> start_key) const {
     auto result = VERIFY_RESULT(tablet_.NewUninitializedDocRowIterator(
@@ -274,6 +263,18 @@ Status TabletVectorIndexes::Open(const docdb::ConsensusFrontier* frontier)
            "Indexed table not found: $0", table_info->index_info->indexed_table_id());
     RETURN_NOT_OK(DoCreateIndex(*table_info, *it, /* bootstrap = */ true));
   }
+
+  // A backfill aborted by the operation pause of the storage replacement this Open() completes
+  // asked for a retry that could have fired while the indexes were gone. Re-arm it, now that they
+  // are back, or drop the request when no index is left to backfill, e.g. after the index was
+  // dropped or restored away.
+  if (backfill_retry_pending_.load(std::memory_order_acquire)) {
+    if (has_vector_indexes_.load(std::memory_order_acquire)) {
+      ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
+    } else {
+      backfill_retry_pending_.store(false, std::memory_order_release);
+    }
+  }
   return Status::OK();
 }
 
@@ -351,6 +352,8 @@ Status TabletVectorIndexes::DoCreateIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().vector_index_dir(index_table.index_info->vector_idx_options()),
       vector_index_thread_pool_provider, indexed_table->doc_read_context->table_key_prefix(),
+      docdb::TableWritesReverseMapping(
+          indexed_table->schema().table_properties().writes_vector_reverse_mapping()),
       index_table.hybrid_time, metadata().split_generation(),
       *index_table.index_info, std::move(index_context),
       block_cache_, MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
@@ -413,15 +416,15 @@ using ReverseMappingBackfillerPtr = std::unique_ptr<ReverseMappingBackfiller>;
 
 class VectorIndexBackfillContext {
  public:
-  VectorIndexBackfillContext(HybridTime backfill_ht, bool store_ybctid)
-      : backfill_ht_(backfill_ht), store_ybctid_(store_ybctid) {
+  VectorIndexBackfillContext(HybridTime backfill_ht, bool store_payload)
+      : backfill_ht_(backfill_ht), store_payload_(store_payload) {
   }
 
   void Add(Slice ybctid, Slice value) {
     ybctids_.push_back(arena_.DupSlice(ybctid));
     entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
       .value = ValueBuffer(value),
-      .ybctid = store_ybctid_ ? KeyBuffer(ybctid) : KeyBuffer(),
+      .ybctid = store_payload_ ? KeyBuffer(ybctid) : KeyBuffer(),
     });
   }
 
@@ -445,7 +448,7 @@ class VectorIndexBackfillContext {
 
  private:
   const HybridTime backfill_ht_;
-  const bool store_ybctid_;
+  const bool store_payload_;
   docdb::DocVectorIndexInsertEntries entries_;
   std::vector<Slice> ybctids_;
   Arena arena_;
@@ -454,9 +457,10 @@ class VectorIndexBackfillContext {
 class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
  public:
   VectorIndexBackfillHelper(
-      HybridTime backfill_ht, bool store_ybctid,
+      HybridTime backfill_ht, OpId op_id, bool store_payload,
       ReverseMappingBackfillerPtr reverse_mapping_backfiller)
-      : VectorIndexBackfillContext(backfill_ht, store_ybctid),
+      : VectorIndexBackfillContext(backfill_ht, store_payload),
+        op_id_(op_id),
         reverse_mapping_backfiller_(std::move(reverse_mapping_backfiller)) {
   }
 
@@ -485,6 +489,11 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     } else {
       frontiers.Largest().SetBackfillPosition(next_ybctid);
     }
+    // The backfill covers every write up to the op that created the index and later ones reach it
+    // live, so that OpId is the flushed OpId of a backfill chunk; it bounds bootstrap replay.
+    // Largest only: the entries come from the regular DB, so the chunk pins no WAL entry, see
+    // Tablet::EarliestNeededLogIndexForVectorIndexes.
+    frontiers.Largest().set_op_id(op_id_);
     docdb::InsertOptions options {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
@@ -502,6 +511,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   }
 
  private:
+  const OpId op_id_;
   size_t chunk_size_ = 0;
   size_t num_chunks_ = 0;
   ReverseMappingBackfillerPtr reverse_mapping_backfiller_ = nullptr;
@@ -561,13 +571,13 @@ Status TabletVectorIndexes::Backfill(
   IndexedTableReader reader(*vector_index);
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
-  // The per-index decision keeps storing ybctid in the entries, skipping the reverse mapping
-  // backfill and the payload mode of the index chunks consistent with each other.
-  const bool store_ybctid = vector_index->StoresYbctid();
+  // The per-index decision keeps the ybctid in the entries, the reverse mapping backfill and
+  // the payload mode of the chunks consistent with each other.
+  const bool store_payload = vector_index->StoresPayload();
   ReverseMappingBackfillerPtr reverse_mapping_backfiller;
   const bool skip_reverse_mapping_backfill =
       TEST_vector_index_skip_reverse_mapping_backfill.value_or(
-          store_ybctid ||
+          store_payload ||
           indexed_table.schema().table_properties().owns_vector_reverse_mapping());
   if (!skip_reverse_mapping_backfill) {
     reverse_mapping_backfiller = std::make_unique<ReverseMappingBackfiller>(op_id);
@@ -575,7 +585,7 @@ Status TabletVectorIndexes::Backfill(
 
   // Expecting one row at most.
   VectorIndexBackfillHelper helper(
-      backfill_ht, store_ybctid, std::move(reverse_mapping_backfiller));
+      backfill_ht, op_id, store_payload, std::move(reverse_mapping_backfiller));
 
   // Convert the byte budget into a vector count using the index implementation's own per-vector
   // memory layout. The same number of vectors with different numbers of dimensions can consume
@@ -601,6 +611,10 @@ Status TabletVectorIndexes::Backfill(
       return Status::OK();
     }
     if (!shutdown_controller_.IsRunning()) {
+      // Reachable only on tablet shutdown, which the check above already covers: the controller is
+      // stopped by StartShutdownStorages after the blocking operation pause, and that pause waits
+      // for the operation the reader's iterator holds for this whole loop. So a truncate or a
+      // restore cannot stop it from under a running backfill, and no retry has to be asked for.
       LOG_WITH_FUNC(INFO) << "Vector index shutdown: " << AsString(*vector_index);
       return Status::OK();
     }
@@ -643,11 +657,17 @@ Status TabletVectorIndexes::Backfill(
 }
 
 void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
+  backfills_launched_.store(true);
   auto list = List();
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "list: " << AsString(list);
   if (!list) {
+    // The storages are being replaced: the indexes are torn down and not re-created yet. Leave the
+    // retry request pending for Open() to re-arm once they are back.
     return;
   }
+  // Cleared only here, where the indexes have actually been observed, and before the TryAgain path
+  // below can set it again.
+  backfill_retry_pending_.store(false, std::memory_order_release);
   std::shared_ptr<ScopedRWOperation> read_op;
   for (const auto& vector_index : *list) {
     if (vector_index->BackfillDone()) {
@@ -698,7 +718,7 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
       LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to create operation for backfill: " << status;
       if (status.IsTryAgain()) {
         // The storages are still being replaced, so no backfill task will run to ask for a retry.
-        ScheduleBackfillRetry();
+        ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
       }
       return;
     }
@@ -723,7 +743,7 @@ void TabletVectorIndexes::ScheduleBackfill(
         // The replacement re-creates the vector indexes, so retry through
         // LaunchBackfillsIfNecessary rather than resuming this task: this index object is gone by
         // then.
-        ScheduleBackfillRetry();
+        ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
       }
     } else {
       LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
@@ -737,24 +757,39 @@ void TabletVectorIndexes::SetScheduler(rpc::Scheduler* scheduler) {
   backfill_retry_task_.Bind(scheduler);
 }
 
-void TabletVectorIndexes::ScheduleBackfillRetry() {
+void TabletVectorIndexes::ScheduleBackfillAfterRestore() {
+  // Before Tablet::Start, e.g. a restore replayed by bootstrap, Start launches the backfills.
+  if (backfills_launched_.load()) {
+    ScheduleBackfillRetry(0ms);
+  }
+}
+
+void TabletVectorIndexes::ScheduleBackfillRetry(std::chrono::steady_clock::duration delay) {
   if (!scheduler_) {
     // No tablet peer, so no scheduler: only tests that drive a bare tablet get here.
     LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Scheduler is not set, backfill retry skipped";
     return;
   }
+  backfill_retry_pending_.store(true, std::memory_order_release);
   // A single retry covers every index of the tablet, so replacing the pending one is enough.
+  std::lock_guard lock(backfill_retry_mutex_);
   backfill_retry_task_.Schedule([this](const Status& status) {
     if (!status.ok()) {
       VLOG_WITH_PREFIX_AND_FUNC(1) << "Backfill retry cancelled: " << status;
       return;
     }
     LaunchBackfillsIfNecessary();
-  }, FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
+  }, delay);
 }
 
 void TabletVectorIndexes::StopBackfillRetry() {
-  backfill_retry_task_.Shutdown();
+  {
+    std::lock_guard lock(backfill_retry_mutex_);
+    backfill_retry_task_.StartShutdown();
+  }
+  // A running retry can ask for another one, taking backfill_retry_mutex_, so wait for it outside
+  // the mutex. Scheduling is disabled by StartShutdown above, so that request is a no-op.
+  backfill_retry_task_.CompleteShutdown();
 }
 
 void TabletVectorIndexes::StartShutdown() {
@@ -906,13 +941,27 @@ auto TabletVectorIndexes::FinishedBackfills()
   return result;
 }
 
+Status TabletVectorIndexes::ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
+  auto list = List();
+  if (!list) {
+    return Status::OK();
+  }
+  for (const auto& vector_index : *list) {
+    LOG_WITH_PREFIX(INFO)
+        << "Stamping flushed frontier of vector index " << vector_index->table_id() << ": "
+        << frontier.ToString();
+    RETURN_NOT_OK(vector_index->ModifyFlushedFrontier(frontier));
+  }
+  return Status::OK();
+}
+
 void TabletVectorIndexes::FillMaxPersistentOpIds(
     boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data) {
+  out.clear();
   auto list = List();
   if (!list) {
     return;
   }
-  out.clear();
   for (const auto& vector_index : *list) {
     out.push_back(MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data));
   }

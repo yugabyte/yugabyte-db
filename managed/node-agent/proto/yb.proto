@@ -203,16 +203,23 @@ message InstallOtelCollectorOutput {
     int32 pid = 1;
 }
 
-// Input to set up cross-cloud federated IAM on a DB node, so YBC can reach GCS
-// backup storage using the node's own AWS identity.
+// Input to set up cross-cloud federated IAM on a DB node, so YBC can reach backup
+// storage in a cloud the node does not run on, using the node's own identity.
 message ConfigureCloudFederationInput {
-    // Federation direction; computed per node by YBA.
-    enum FlowDirection {
-        FLOW_DIRECTION_UNSPECIFIED = 0;
-        GCS_ON_AWS = 1;  // AWS DB node -> GCS storage
-        S3_ON_GCP = 2;   // GCP DB node -> S3 storage
+    // Clouds are named individually rather than as one direction enum: a direction is an
+    // ordered pair, so enumerating them grows with the square of the number of clouds,
+    // while this grows with the number of clouds.
+    enum CloudProvider {
+        CLOUD_PROVIDER_UNSPECIFIED = 0;
+        AWS = 1;
+        GCP = 2;
     }
-    FlowDirection flowDirection = 1;
+    // Cloud this node runs on. For an on-prem provider YBA detects it from the node's
+    // metadata service; it is not the provider type.
+    CloudProvider sourceCloud = 1;
+    // Cloud the backup storage lives in. Always differs from sourceCloud: same-cloud
+    // access is native and needs no federation. Both are unset when enabled is false.
+    CloudProvider targetCloud = 8;
     string ybHomeDir = 2;
     // When false, federation artifacts on this node are torn down.
     bool enabled = 3;
@@ -220,17 +227,18 @@ message ConfigureCloudFederationInput {
     bool isAirgap = 4;
     // Writable temp dir provided by YBA (some nodes have a non-writable /tmp).
     string remoteTmp = 7;
+    // Settings for targetCloud.
     oneof config {
-        GcsOnAwsConfig gcsOnAws = 5;
-        S3OnGcpConfig s3OnGcp = 6;
+        GcsConfig gcs = 5;
+        S3Config s3 = 6;
     }
 }
 
-// GCP Workload Identity Federation audience for an AWS node writing to GCS.
-// The node renders the full external_account JSON from this audience; the rest
-// of the credential (type, token_url, IMDS credential_source) is fixed in the
-// gcp-fed-creds.json.j2 template. The audience comes from provider YNP config.
-message GcsOnAwsConfig {
+// GCP Workload Identity Federation audience for a node writing to GCS. The node
+// renders the full external_account JSON from this audience; the rest of the
+// credential (type, token_url, credential_source) is fixed in the
+// gcp-fed-creds.json.j2 template. The audience comes from the provider config.
+message GcsConfig {
     string audience = 1;
 }
 
@@ -239,7 +247,7 @@ message GcsOnAwsConfig {
 // audience against STS) and an ~/.aws/config credential_process profile. All three
 // values come from the provider's federated-IAM config; profileName is a fixed
 // internal name YBC references via AWS_PROFILE.
-message S3OnGcpConfig {
+message S3Config {
     string roleArn = 1;
     string audience = 2;
     string profileName = 3;

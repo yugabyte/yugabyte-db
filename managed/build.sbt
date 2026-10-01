@@ -1072,7 +1072,7 @@ runPlatform := {
 dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
 dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.122-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.123-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b11"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
@@ -1180,9 +1180,17 @@ val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")
 // Include some CPU headroom in the divisor.
 // Max depends on the IP range.
-def defaultTestParallelForks: Int =
-  math.min(7,
-    math.max(1, (java.lang.Runtime.getRuntime.availableProcessors().toDouble / 1.5).toInt))
+// Also bound by the physical memory: a local provider fork takes ~4GB (3GB heap plus the processes
+// of its universe), and running more forks than the memory fits makes the OOM killer and the
+// thrashing without swap fail tests at random.
+val testForkMemoryGb = 6
+def defaultTestParallelForks: Int = {
+  val memoryGb = java.lang.management.ManagementFactory.getOperatingSystemMXBean
+    .asInstanceOf[com.sun.management.OperatingSystemMXBean]
+    .getTotalMemorySize / (1L << 30)
+  val cpuForks = (java.lang.Runtime.getRuntime.availableProcessors().toDouble / 1.5).toInt
+  math.min(7, math.max(1, math.min(cpuForks, (memoryGb / testForkMemoryGb).toInt)))
+}
 testParallelForks := defaultTestParallelForks
 val testShardSize = SettingKey[Int]("testShardSize",
   "Number of test classes, executed by each forked JVM")

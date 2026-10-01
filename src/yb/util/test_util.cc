@@ -46,6 +46,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/crash_point.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
@@ -436,6 +437,16 @@ Status ForkAndRunToCrashPoint(const std::function<void(void)>& child,
     child();
     FAIL() << "Child process did not reach crash point";
   }, parent);
+}
+
+Status StoppableWait(
+    CountDownLatch& latch, std::atomic<bool>& stop_flag, MonoDelta stop_check_interval) {
+  while(!stop_flag.load(std::memory_order_acquire)) {
+    if (latch.WaitFor(stop_check_interval)) {
+      return Status::OK();
+    }
+  }
+  return STATUS(Aborted, "Stop requested");
 }
 
 } // namespace yb

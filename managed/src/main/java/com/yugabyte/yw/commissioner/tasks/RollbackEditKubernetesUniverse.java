@@ -8,10 +8,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
-import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseDetailsFromDelta;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -234,18 +232,5 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
     // Resync YBA's view of the surviving pods.
     createSingleKubernetesExecutorTask(
         universe.getName(), CommandType.POD_INFO, beforePI, isReadOnlyCluster);
-  }
-
-  private void createRestoreUniverseDetailsFromDeltaTask(StateTransitionDetails details) {
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("RestoreUniverseDetailsFromDelta", SubTaskGroupType.ConfigureUniverse);
-    RestoreUniverseDetailsFromDelta.Params params = new RestoreUniverseDetailsFromDelta.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.stateTransitionDetails = details;
-    RestoreUniverseDetailsFromDelta task = createTask(RestoreUniverseDetailsFromDelta.class);
-    task.initialize(params);
-    task.setUserTaskUUID(getUserTaskUUID());
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

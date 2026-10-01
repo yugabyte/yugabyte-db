@@ -287,6 +287,8 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
 
   WARN_NOT_OK(master_->clone_state_manager().Run(), "Failed to run CloneStateManager: ");
 
+  catalog_manager_->RemoveDeletedTabletsFromTables(to_delete);
+
   if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
     catalog_manager_->CleanUpDeletedTables(epoch);
   }

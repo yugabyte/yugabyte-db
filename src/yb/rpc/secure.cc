@@ -23,6 +23,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/flags.h"
 
 using std::string;
@@ -157,6 +158,14 @@ Result<std::unique_ptr<SecureContext>> SetupSecureContext(
 Result<std::unique_ptr<SecureContext>> CreateSecureContext(
     const std::string& certs_dir, UseClientCerts use_client_certs, const std::string& node_name,
     const std::string& required_uid) {
+  // Without a node name only ca.crt is read, so a context that also claims a client certificate
+  // would offer one it never loaded and index an empty vector on its first connection. The
+  // cross-universe xCluster clients pass an empty name by design, which is how this is reached
+  // whenever --node_to_node_encryption_use_client_certificates is on.
+  SCHECK_FORMAT(
+      !use_client_certs || !node_name.empty(), InvalidArgument,
+      "Client certificates requested from $0 without a node name to load them by", certs_dir);
+
   auto result = std::make_unique<SecureContext>(
       RequireClientCertificate(use_client_certs), UseClientCertificate(use_client_certs),
       required_uid);

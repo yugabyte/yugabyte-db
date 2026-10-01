@@ -192,6 +192,9 @@ public class CustomerTask extends Model {
     @EnumValue("RollbackEditUniverse")
     RollbackEditUniverse,
 
+    @EnumValue("RollbackAddNodeToUniverse")
+    RollbackAddNodeToUniverse,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -229,6 +232,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("ResizeNode")
     ResizeNode,
+
+    @EnumValue("RollbackResizeNode")
+    RollbackResizeNode,
 
     @Deprecated
     @EnumValue("UpdateCert")
@@ -488,6 +494,8 @@ public class CustomerTask extends Model {
           return completed ? "Decommissioned" : "Decommissioning";
         case ResizeNode:
           return completed ? "Resized Node" : "Resizing Node";
+        case RollbackResizeNode:
+          return completed ? "Rolled back node resize" : "Rolling back node resize";
         case Replace:
           return completed ? "Replaced Node" : "Replacing Node";
         case Resume:
@@ -518,6 +526,8 @@ public class CustomerTask extends Model {
           return completed ? "Rolled back upgrade" : "Rolling back upgrade";
         case RollbackEditUniverse:
           return completed ? "Rolled back edit universe" : "Rolling back edit universe";
+        case RollbackAddNodeToUniverse:
+          return completed ? "Rolled back add node" : "Rolling back add node";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd" : "Upgrading to Systemd";
         case GFlagsUpgrade:
@@ -1108,6 +1118,14 @@ public class CustomerTask extends Model {
         .orElse("Unknown");
   }
 
+  private boolean isOriginalTaskOf(@Nullable UUID ownerTaskUUID) {
+    return TaskInfo.maybeGet(ownerTaskUUID)
+        .map(TaskInfo::getTaskParams)
+        .map(params -> params.path("originalTaskUUID").asText())
+        .filter(taskUUID.toString()::equals)
+        .isPresent();
+  }
+
   @JsonIgnore
   public boolean isDeletable() {
     if (targetType.isUniverseTarget()) {
@@ -1115,8 +1133,10 @@ public class CustomerTask extends Model {
       if (!optional.isPresent()) {
         return true;
       }
-      if (upgradeCustomerTasksSet.contains(type)) {
-        LOG.debug("Universe task {} is not deletable as it is an upgrade task.", targetUUID);
+      // The UI reads the latest upgrade, finalize and rollback task of a universe, and a successful
+      // upgrade can stay in PreFinalize longer than the task retention period.
+      if (upgradeCustomerTasksSet.contains(type) && isLatestOfTypeForTarget()) {
+        LOG.debug("Universe task {} is not deletable as it is the latest {} task.", taskUUID, type);
         return false;
       }
       UniverseDefinitionTaskParams taskParams = optional.get().getUniverseDetails();
@@ -1126,6 +1146,13 @@ public class CustomerTask extends Model {
       }
       if (taskUUID.equals(taskParams.placementModificationTaskUuid)) {
         LOG.debug("Universe task {} is not deletable", targetUUID);
+        return false;
+      }
+      // An owning retry or rollback may read the first task of its chain through
+      // originalTaskUUID, as RollbackResizeNode does for the gflag baseline.
+      if (isOriginalTaskOf(taskParams.updatingTaskUUID)
+          || isOriginalTaskOf(taskParams.placementModificationTaskUuid)) {
+        LOG.debug("Universe task {} is not deletable as it starts the owning task chain", taskUUID);
         return false;
       }
     } else if (targetType == TargetType.Provider) {
@@ -1144,6 +1171,18 @@ public class CustomerTask extends Model {
       }
     }
     return true;
+  }
+
+  private boolean isLatestOfTypeForTarget() {
+    return find.query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", type)
+        .orderBy("create_time desc")
+        .setMaxRows(1)
+        .findOneOrEmpty()
+        .map(latest -> latest.getTaskUUID().equals(taskUUID))
+        .orElse(true);
   }
 
   public static List<CustomerTask> findByTargetUUIDsAndTypesSince(

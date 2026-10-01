@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.time.Duration;
@@ -34,8 +35,10 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -73,12 +76,17 @@ import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsResponse;
 import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeSubnetsResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesModificationsRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesModificationsResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesResponse;
 import software.amazon.awssdk.services.ec2.model.DescribeVpcsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeVpcsResponse;
 import software.amazon.awssdk.services.ec2.model.Ec2Exception;
 import software.amazon.awssdk.services.ec2.model.Filter;
 import software.amazon.awssdk.services.ec2.model.Image;
 import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.ec2.model.InstanceBlockDeviceMapping;
 import software.amazon.awssdk.services.ec2.model.InstanceTypeOffering;
 import software.amazon.awssdk.services.ec2.model.LocationType;
 import software.amazon.awssdk.services.ec2.model.Reservation;
@@ -86,6 +94,8 @@ import software.amazon.awssdk.services.ec2.model.ResourceType;
 import software.amazon.awssdk.services.ec2.model.SecurityGroup;
 import software.amazon.awssdk.services.ec2.model.Subnet;
 import software.amazon.awssdk.services.ec2.model.TagSpecification;
+import software.amazon.awssdk.services.ec2.model.Volume;
+import software.amazon.awssdk.services.ec2.model.VolumeModification;
 import software.amazon.awssdk.services.ec2.model.Vpc;
 import software.amazon.awssdk.services.elasticloadbalancingv2.ElasticLoadBalancingV2Client;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.Action;
@@ -1366,5 +1376,150 @@ public class AWSCloudImpl implements CloudAPI {
       throw new PlatformServiceException(
           BAD_REQUEST, "Capacity reservation deletion failed: " + e.getMessage());
     }
+  }
+
+  /**
+   * Current instance type plus IOPS/throughput/size of attached data EBS volumes (root excluded)
+   * and the latest {@code DescribeVolumesModifications} startTime. No modification records means a
+   * first modify: {@code lastModificationStart} is {@link Instant#EPOCH} so the cooldown has
+   * already expired.
+   */
+  @Override
+  public Optional<CloudAPI.NodeDiskSpec> describeNodeDataDiskSpec(
+      Provider provider, NodeDetails node) {
+    if (node == null || node.cloudInfo == null || StringUtils.isBlank(node.cloudInfo.region)) {
+      throw new PlatformServiceException(BAD_REQUEST, "node is missing an AWS region");
+    }
+    Ec2Client ec2Client = getEC2Client(provider, node.cloudInfo.region);
+    String instanceId = resolveInstanceId(ec2Client, node);
+    Instance instance = describeInstance(ec2Client, instanceId);
+    List<String> volumeIds = dataVolumeIds(instance);
+    if (volumeIds.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "node " + node.nodeName + " has no data EBS volumes");
+    }
+    DescribeVolumesResponse volumes =
+        ec2Client.describeVolumes(DescribeVolumesRequest.builder().volumeIds(volumeIds).build());
+    Set<String> missing = new HashSet<>(volumeIds);
+    if (volumes.volumes() != null) {
+      for (Volume volume : volumes.volumes()) {
+        missing.remove(volume.volumeId());
+      }
+    }
+    if (!missing.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "DescribeVolumes did not return every data volume for "
+              + node.nodeName
+              + ": missing "
+              + missing);
+    }
+    List<CloudAPI.NodeDiskSpec> perVolume = new ArrayList<>(volumes.volumes().size());
+    for (Volume volume : volumes.volumes()) {
+      perVolume.add(
+          new CloudAPI.NodeDiskSpec(
+              null,
+              volume.iops(),
+              volume.throughput(),
+              volume.size(),
+              latestModificationStart(ec2Client, volume.volumeId())));
+    }
+    String instanceType =
+        instance.instanceTypeAsString() != null
+            ? instance.instanceTypeAsString()
+            : (instance.instanceType() == null ? null : instance.instanceType().toString());
+    return Optional.of(CloudAPI.NodeDiskSpec.mergeDataDisks(instanceType, perVolume));
+  }
+
+  private String resolveInstanceId(Ec2Client ec2Client, NodeDetails node) {
+    if (StringUtils.isNotBlank(node.cloudInfo.id)) {
+      return node.cloudInfo.id;
+    }
+    String uuid = node.nodeUuid == null ? null : node.nodeUuid.toString();
+    List<String> ids =
+        getInstanceIDs(ec2Client, Collections.singletonList(new NodeID(node.nodeName, uuid)));
+    return ids.get(0);
+  }
+
+  private static Instance describeInstance(Ec2Client ec2Client, String instanceId) {
+    DescribeInstancesRequest request =
+        DescribeInstancesRequest.builder().instanceIds(instanceId).build();
+    List<Reservation> reservations = ec2Client.describeInstances(request).reservations();
+    if (reservations != null) {
+      for (Reservation reservation : reservations) {
+        if (CollectionUtils.isNotEmpty(reservation.instances())) {
+          return reservation.instances().get(0);
+        }
+      }
+    }
+    throw new PlatformServiceException(
+        BAD_REQUEST, "AWS instance " + instanceId + " was not found");
+  }
+
+  private static List<String> dataVolumeIds(Instance instance) {
+    String rootDeviceName = instance.rootDeviceName();
+    if (StringUtils.isBlank(rootDeviceName)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "AWS instance " + instance.instanceId() + " has no root device name");
+    }
+    List<String> volumeIds = new ArrayList<>();
+    if (instance.blockDeviceMappings() == null) {
+      return volumeIds;
+    }
+    for (InstanceBlockDeviceMapping mapping : instance.blockDeviceMappings()) {
+      if (rootDeviceName.equals(mapping.deviceName())) {
+        continue;
+      }
+      if (mapping.ebs() == null || StringUtils.isBlank(mapping.ebs().volumeId())) {
+        continue;
+      }
+      volumeIds.add(mapping.ebs().volumeId());
+    }
+    return volumeIds;
+  }
+
+  /**
+   * Latest modification start for one volume. {@code InvalidVolumeModification.NotFound} (or no
+   * records) means the volume has never been modified: return {@link Instant#EPOCH} so the cooldown
+   * is already expired. A modification record without {@code startTime} is treated as now (fail
+   * closed).
+   */
+  private static Instant latestModificationStart(Ec2Client ec2Client, String volumeId) {
+    Instant latest = Instant.EPOCH;
+    String token = null;
+    try {
+      do {
+        DescribeVolumesModificationsRequest.Builder request =
+            DescribeVolumesModificationsRequest.builder().volumeIds(volumeId);
+        if (StringUtils.isNotBlank(token)) {
+          request.nextToken(token);
+        }
+        DescribeVolumesModificationsResponse response =
+            ec2Client.describeVolumesModifications(request.build());
+        if (response.volumesModifications() != null) {
+          for (VolumeModification modification : response.volumesModifications()) {
+            Instant start =
+                modification.startTime() == null ? Instant.now() : modification.startTime();
+            if (start.isAfter(latest)) {
+              latest = start;
+            }
+          }
+        }
+        token = response.nextToken();
+      } while (StringUtils.isNotBlank(token));
+    } catch (Ec2Exception e) {
+      if (isVolumeModificationNotFound(e)) {
+        return latest;
+      }
+      throw e;
+    }
+    return latest;
+  }
+
+  private static boolean isVolumeModificationNotFound(Ec2Exception e) {
+    if (e.awsErrorDetails() == null || e.awsErrorDetails().errorCode() == null) {
+      return false;
+    }
+    return "InvalidVolumeModification.NotFound".equals(e.awsErrorDetails().errorCode());
   }
 }

@@ -125,6 +125,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -1087,7 +1088,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               UpgradeTaskParams.UpgradeTaskType.GFlags,
               null /* taskSubType */);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1219,8 +1220,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
 
-    if (primaryCluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes)
-        && taskParams().useNewHelmNamingStyle) {
+    if (Util.isKubernetesBased(primaryCluster) && taskParams().useNewHelmNamingStyle) {
       // Create Pod Disruption Budget policy for the universe pods using the new Helm naming style.
       createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
           .setSubTaskGroupType(SubTaskGroupType.CreatePodDisruptionBudgetPolicy);
@@ -1281,7 +1281,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add device info.
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Set numVolumes if user did not set it
       if (params.deviceInfo.numVolumes == null) {
         params.deviceInfo.numVolumes =
@@ -1289,7 +1289,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 .getUniverseDetails()
                 .getPrimaryCluster()
                 .userIntent
-                .getDeviceInfoForNode(node)
+                .evaluateDeviceInfoForNode(node)
                 .numVolumes;
       }
 
@@ -1406,7 +1406,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleSetupServer.Params params, Cluster cluster, NodeDetails node) {
     UserIntent userIntent = cluster.userIntent;
     CloudSpecificInfo cloudInfo = node.cloudInfo;
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
@@ -1443,7 +1443,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void fillCreateParamsForNode(
       AnsibleCreateServer.Params params, UserIntent userIntent, NodeDetails node) {
     CloudSpecificInfo cloudInfo = node.cloudInfo;
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
@@ -1533,11 +1533,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /**
    * Fans out per-node {@link ManageCloudFederation} tasks to configure ({@code enabled=true}) or
-   * tear down ({@code enabled=false}) cross-cloud federated IAM on the given nodes: AWS/on-prem
-   * (AWS-backed) nodes write to GCS, GCP nodes write to S3. The audience (and, for GCP, the role
-   * ARN) comes from the provider's federated-IAM config. The caller decides when to invoke this:
-   * the provider flag at create, the universe's {@code federationConfigured} flag at edit/add-node,
-   * or the v2 enable/disable API.
+   * tear down ({@code enabled=false}) cross-cloud federated IAM on the given nodes: a node running
+   * on AWS writes to GCS, a node running on GCP writes to S3. Each subtask picks its own direction
+   * from the cloud its node actually runs on, so one on-prem universe can mix both. The caller
+   * decides when to invoke this: the provider flag at create, the universe's {@code
+   * federationConfigured} flag at edit/add-node, or the v2 enable/disable API.
    */
   protected void createConfigureCloudFederationTasks(
       UniverseDefinitionTaskParams.UserIntent userIntent,
@@ -1546,27 +1546,25 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (nodes == null || nodes.isEmpty()) {
       return;
     }
-    Common.CloudType nodeCloud = userIntent.providerType;
-    if ((nodeCloud != Common.CloudType.aws
-            && nodeCloud != Common.CloudType.onprem
-            && nodeCloud != Common.CloudType.gcp)
-        || !NodeAgentClient.isCloudTypeSupported(nodeCloud)) {
+    Common.CloudType providerCloud = userIntent.providerType;
+    if ((providerCloud != Common.CloudType.aws
+            && providerCloud != Common.CloudType.onprem
+            && providerCloud != Common.CloudType.gcp)
+        || !NodeAgentClient.isCloudTypeSupported(providerCloud)) {
       return;
     }
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-    String audience = CloudInfoInterface.getCrossCloudFederationAudience(provider);
-    if (enabled && StringUtils.isBlank(audience)) {
+    // Every configured target is passed down rather than one resolved here: a provider can carry
+    // several, and which one a given node needs depends on the cloud that node physically runs on,
+    // which ManageCloudFederation only learns when it probes the node.
+    List<CrossCloudFederationTarget> targets =
+        CloudInfoInterface.getCrossCloudFederationTargets(provider);
+    if (enabled && targets.isEmpty()) {
       log.warn(
-          "Federated IAM requested but not enabled / no audience on provider {}; skipping",
+          "Federated IAM requested on provider {} but no target is configured; skipping",
           provider.getUuid());
       return;
     }
-    // S3-on-GCP additionally needs the AWS role ARN to assume; getCrossCloudFederationAudience
-    // already returns null for a GCP provider missing it, so audience non-blank implies it is set.
-    String s3RoleArn =
-        (nodeCloud == Common.CloudType.gcp)
-            ? CloudInfoInterface.getCrossCloudFederationRoleArn(provider)
-            : null;
 
     SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureCloudFederation");
     for (NodeDetails node : nodes) {
@@ -1574,8 +1572,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeName = node.nodeName;
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.azUuid = node.azUuid;
-      params.audience = audience;
-      params.s3RoleArn = s3RoleArn;
+      params.targets = targets;
       params.enabled = enabled;
       ManageCloudFederation task = createTask(ManageCloudFederation.class);
       task.initialize(params);
@@ -1606,7 +1603,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                             Provider p =
                                 Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
                             configured =
-                                CloudInfoInterface.getCrossCloudFederationAudience(p) != null;
+                                !CloudInfoInterface.getCrossCloudFederationTargets(p).isEmpty();
                           }
                           c.userIntent.setFederationConfigured(configured);
                         }))
@@ -1639,7 +1636,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           getBaseAnsibleServerTaskParams(
               userIntent, node, null /* processType */, null /* type */, null /* taskSubType */);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1736,7 +1733,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       NodeTaskParams params = new NodeTaskParams();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
@@ -1802,7 +1799,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNumNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
 
-      if (cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes)) {
+      if (Util.isKubernetesBased(cluster)) {
         if (opType == UniverseOpType.EDIT
             && KubernetesUtil.needsFullMove(univCluster, cluster)
             && !KubernetesUtil.isFullMoveSupported(univCluster.userIntent.ybSoftwareVersion)) {
@@ -2230,7 +2227,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                               UserIntent userIntent = cluster.userIntent;
                               params.nodeName = node.nodeName;
                               params.nodeUuid = node.nodeUuid;
-                              params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+                              params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
                               params.azUuid = node.azUuid;
                               params.placementUuid = node.placementUuid;
                               params.isMaster = node.isMaster;
@@ -2479,12 +2476,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         n -> {
           UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
           YNPProvisioning.Params params = new YNPProvisioning.Params();
-          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          params.deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
           Provider provider = providerGetter.apply(n);
           if (imageBundleUtil != null) {
             params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
           }
-          params.deviceInfo = userIntent.getDeviceInfoForNode(n);
+          params.deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
           params.nodeName = n.nodeName;
           params.azUuid = n.azUuid;
           params.customerUuid = customer.getUuid();
@@ -3342,9 +3339,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           continue;
         }
         DeviceInfo taskDeviceInfo =
-            cluster.userIntent.getDeviceInfoForAz(nodeDetails.azUuid, serverType);
+            cluster.userIntent.evaluateDeviceInfoForAz(nodeDetails.azUuid, serverType);
         DeviceInfo existingDeviceInfo =
-            existingUserIntent.getDeviceInfoForAz(nodeDetails.azUuid, serverType);
+            existingUserIntent.evaluateDeviceInfoForAz(nodeDetails.azUuid, serverType);
 
         if (taskDeviceInfo != null
             && existingDeviceInfo != null
@@ -3924,15 +3921,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         shellContext);
   }
 
-  protected <X> void addParallelTasks(
+  protected <X> SubTaskGroup addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
       String subTaskGroupName,
       UserTaskDetails.SubTaskGroupType subTaskGroupType) {
-    addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
+    return addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
   }
 
-  protected <X> void addParallelTasks(
+  protected <X> SubTaskGroup addParallelTasks(
       Collection<X> vals,
       Function<X, ITask> taskInitializer,
       String subTaskGroupName,
@@ -3946,6 +3943,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    return subTaskGroup;
   }
 
   protected RollMaxBatchSize getCurrentRollBatchSize(
@@ -4566,7 +4564,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               continue;
             }
             CheckDuplicateInstance.Params params = new CheckDuplicateInstance.Params();
-            params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+            params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
             params.azUuid = node.azUuid;
             params.placementUuid = node.placementUuid;
             params.nodeName = node.nodeName;

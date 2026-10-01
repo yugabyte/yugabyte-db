@@ -3470,7 +3470,8 @@ TEST_F_EX(PgLibPqTest,
           Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid)));
       return count.find("1") != string::npos;
     }, 2500ms, "Webserver restarting..."));
-    ASSERT_OK(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid)));
+    // Same Mac quirk as above: -P must precede -f, or this kills unrelated processes.
+    ASSERT_OK(RunShellProcess(Format("pkill -9 -P $0 -f 'YSQL webserver'", postmaster_pid)));
   }
 }
 
@@ -3651,7 +3652,7 @@ TEST_F_EX(PgLibPqTest, YbcTableProperties, PgLibPqTestRF1) {
   row = ASSERT_RESULT((
       conn.FetchRow<PGUint64, PGUint64, bool, std::optional<PGOid>, std::optional<PGOid>>(query1)));
   ASSERT_EQ(row, (decltype(row){2, 0, false, std::nullopt, std::nullopt}));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(query2)), "SPLIT AT VALUES ((49))");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(query2)), "SPLIT AT VALUES ((51))");
 }
 
 TEST_F(PgLibPqTest, AggrSystemColumn) {

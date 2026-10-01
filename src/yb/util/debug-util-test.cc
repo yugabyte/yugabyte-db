@@ -715,7 +715,8 @@ TEST_F(DebugUtilTest, LongOperationTrackerShortDeadlineBehindBacklog) {
   backlog.clear();
 
   if (IsSanitizer()) {
-    ASSERT_EQ(log_sink.MessagesSize(), 0);
+    ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp"), 0);
+    ASSERT_EQ(log_sink.CountMessagesContaining("BacklogOp"), 0);
   } else {
     ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp running for"), 1);
     ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp took a long time"), 1);

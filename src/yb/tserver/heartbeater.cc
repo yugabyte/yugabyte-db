@@ -99,6 +99,7 @@ DEFINE_test_flag(bool, tserver_disable_catalog_refresh_on_heartbeat, false,
     "When set, disable trigger of catalog cache refresh from tserver-master heartbeat path.");
 
 DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
 
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
@@ -467,7 +468,20 @@ Status HeartbeatPoller::TryHeartbeat() {
       RETURN_NOT_OK(server_.SetUniverseKeyRegistry(resp.universe_key_registry()));
     }
 
-    server_.set_oid_cache_invalidations_count(resp.oid_cache_invalidations_count());
+    if (resp.has_xcluster_guarded_info()) {
+      server_.ApplyXClusterGuardedInfoIfNewer(resp.xcluster_guarded_info());
+    } else if (!FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+      // To handle upgrades promoting auto flag skip_fields_moved_to_xcluster_guarded_info, before
+      // the flag is promoted we apply (here and in XClusterHandleMasterHeartbeatResponse below) the
+      // now deprecated fields that were moved into XClusterGuardedInfoPB unless the new
+      // XClusterGuardedInfoPB structure is present.  That is, we never apply both a deprecated
+      // field and its replacement in xcluster_guarded_info from the same heartbeat response.
+      //
+      // Put another way, during the upgrade master may be sending both the deprecated fields and
+      // the xcluster_guarded_info or just the deprecated fields.  We want to apply only one of
+      // them, giving preference to the new xcluster_guarded_info if present.
+      server_.set_oid_cache_invalidations_count(resp.deprecated_oid_cache_invalidations_count());
+    }
 
     RETURN_NOT_OK(server_.ClusterConfigHandleMasterHeartbeatResponse(resp));
 

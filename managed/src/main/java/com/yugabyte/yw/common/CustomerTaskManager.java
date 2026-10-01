@@ -930,6 +930,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
       case ResizeNode:
+      case RollbackResizeNode:
         taskParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
         break;
       case DestroyKubernetesUniverse:
@@ -1052,6 +1053,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, ExportTelemetryConfigParams.class);
         break;
       case AddNodeToUniverse:
+      case RollbackAddNodeToUniverse:
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:

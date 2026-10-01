@@ -62,6 +62,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
@@ -1133,4 +1134,50 @@ TEST_P(FlushTabletsTest, VectorIndexExcluded) {
   }
 }
 
-} // namespace yb::tserver
+TEST_F(TabletServerTest, ApplyXClusterGuardedInfoIfNewer) {
+  // The fixture's TServer has no master, so nothing else applies xCluster-guarded info.
+  auto* server = mini_server_->server();
+  const NamespaceId kNamespace = "namespace";
+
+  auto make_info = [&](int64_t term, uint64_t count, XClusterNamespaceInfoPB::XClusterRole role,
+                       uint32_t oid_cache_invalidations_count) {
+    XClusterGuardedInfoPB info;
+    info.mutable_xcluster_guarded_info_version()->set_term(term);
+    info.mutable_xcluster_guarded_info_version()->set_count(count);
+    (*info.mutable_xcluster_info_per_namespace())[kNamespace].set_role(role);
+    info.set_oid_cache_invalidations_count(oid_cache_invalidations_count);
+    return info;
+  };
+  auto get_role = [&]() { return server->GetXClusterContext().GetXClusterRole(kNamespace); };
+
+  server->ApplyXClusterGuardedInfoIfNewer(
+      make_info(2, 5, XClusterNamespaceInfoPB::AUTOMATIC_SOURCE, 10));
+  EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
+  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+
+  // An earlier version is ignored, even with a higher count.
+  server->ApplyXClusterGuardedInfoIfNewer(
+      make_info(1, 6, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
+  EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
+  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+
+  // The same version is ignored.
+  server->ApplyXClusterGuardedInfoIfNewer(
+      make_info(2, 5, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
+  EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
+  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+
+  // A higher count in the same term is applied.
+  server->ApplyXClusterGuardedInfoIfNewer(
+      make_info(2, 6, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
+  EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_TARGET);
+  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 11);
+
+  // A higher term is applied, even with a lower count.
+  server->ApplyXClusterGuardedInfoIfNewer(
+      make_info(3, 0, XClusterNamespaceInfoPB::AUTOMATIC_SOURCE, 12));
+  EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
+  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 12);
+}
+
+}  // namespace yb::tserver

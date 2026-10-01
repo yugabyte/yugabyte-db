@@ -347,6 +347,12 @@ DEFINE_test_flag(bool, consider_all_local_transaction_tables_local, false,
 DEFINE_RUNTIME_bool(master_enable_metrics_snapshotter, false,
     "Should metrics snapshotter be enabled");
 
+DEFINE_NON_RUNTIME_bool(master_enable_deleted_tablet_cleanup, true,
+    "Whether the master drops DELETED tablets from its in-memory maps, including when loading "
+    "the sys catalog, keeping only a split parent's children so a lookup for it still returns "
+    "them. Sys catalog entries are untouched. Set to false to keep DELETED tablets in memory "
+    "until their table is dropped.");
+
 DEFINE_RUNTIME_int32(metrics_snapshots_table_num_tablets, 0,
     "Number of tablets to use when creating the metrics snapshots table."
     "0 to use the same default num tablets as for regular tables.");
@@ -647,6 +653,15 @@ DEFINE_validator(vector_index_backend,
 
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
+
+DEFINE_RUNTIME_bool(vector_index_store_payload, false,
+    "Whether newly created tables and vector indexes replace the vector reverse mapping "
+    "with a payload attached to every vector in the index chunks. The payload carries the ybctid, "
+    "so search resolves rows without the reverse mapping, and such a table writes no reverse "
+    "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
+    "for an index when it is created, and indexes of a table that writes no reverse mapping always "
+    "store the payload. Disabled by default, because deleted vectors are not removed from such an "
+    "index yet, see #33912.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
@@ -1660,6 +1675,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   hidden_tablets_.clear();
 
   deleted_tablets_.clear();
+  deleted_split_parents_.clear();
 
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state));
   RETURN_NOT_OK(Load<TableLoader>("tables", state));
@@ -3626,12 +3642,32 @@ Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(TabletIdView tablet_
     REQUIRES_SHARED(mutex_) {
   const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
   if (tablet_info == nullptr) {
+    // Carry the split children, as BuildLocationsForTablet does for a DELETED tablet still in
+    // tablet_map_, so a client holding a stale parent location can find them.
+    auto split_parent_it = deleted_split_parents_.find(tablet_id);
+    if (split_parent_it != deleted_split_parents_.end()) {
+      return STATUS_EC_FORMAT(
+          Deleted, SplitChildTabletIdsData(split_parent_it->second.child_ids),
+          "Tablet $0 deleted", tablet_id);
+    }
     if (deleted_tablets_.contains(tablet_id)) {
       return STATUS_FORMAT(Deleted, "Tablet $0 deleted", tablet_id);
     }
     return STATUS_FORMAT(NotFound, "Tablet $0 not found", tablet_id);
   }
   return tablet_info;
+}
+
+std::vector<std::pair<TabletId, DeletedSplitParent>> CatalogManager::GetDeletedSplitParents(
+    const TableId& table_id) const {
+  std::vector<std::pair<TabletId, DeletedSplitParent>> result;
+  SharedLock lock(mutex_);
+  for (const auto& [parent_id, parent] : deleted_split_parents_) {
+    if (parent.table_id == table_id) {
+      result.emplace_back(parent_id, parent);
+    }
+  }
+  return result;
 }
 
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
@@ -4705,6 +4741,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (is_vector_index) {
       auto& vector_index_options = *index_info.mutable_vector_idx_options();
       vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
+      // An index on a table that does not write the reverse mapping must store the payload, it is
+      // the only way for its search to resolve rows.
+      auto indexed_table_lock = indexed_table->LockForRead();
+      vector_index_options.set_store_payload(
+          FLAGS_vector_index_store_payload ||
+          indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
       auto backend = FLAGS_vector_index_backend;
       if (backend == kHnswlib) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::HNSWLIB);
@@ -6266,9 +6308,15 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   SchemaToPB(schema, metadata->mutable_schema());
 
   // Skipping the cases where the parameter is not required.
-  if (req.table_type() == PGSQL_TABLE_TYPE && !req.is_pg_catalog_table() && !IsIndex(req)
-      && EnableTableOwnedVectorReverseMapping()) {
-    metadata->mutable_schema()->mutable_table_properties()->set_owns_vector_reverse_mapping(true);
+  if (req.table_type() == PGSQL_TABLE_TYPE && !req.is_pg_catalog_table() && !IsIndex(req)) {
+    auto& table_properties = *metadata->mutable_schema()->mutable_table_properties();
+    if (EnableTableOwnedVectorReverseMapping()) {
+      table_properties.set_owns_vector_reverse_mapping(true);
+    }
+    // Fixed for the lifetime of the table: a table created while payloads are enabled never writes
+    // the reverse mapping, so all its vector indexes resolve search results via the payload. This
+    // keeps the reverse mapping entries and the chunks that replace them from ever mixing.
+    table_properties.set_skip_vector_reverse_mapping(FLAGS_vector_index_store_payload);
   }
 
   if (FLAGS_TEST_create_table_with_empty_pgschema_name) {
@@ -6789,9 +6837,8 @@ Status CatalogManager::BackfillIndex(
               IndexPermissions_Name(index_permissions)));
     }
 
-    s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-        this, indexed_table, current_version, epoch, requester_txn,
-        /* respect_backfill_deferrals */ false, /* update_ysql_to_backfill */ true);
+    s = MultiStageAlterTable::AdvanceYsqlIndexToBackfill(
+        this, indexed_table, current_version, epoch, requester_txn);
     if (!s.IsAlreadyPresent()) {
       break;
     }
@@ -6984,9 +7031,8 @@ Status CatalogManager::LaunchBackfillIndexForTable(
     current_version = l->pb.version();
   }
 
-  auto s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-      this, indexed_table, current_version, epoch, std::nullopt,
-      /* respect_backfill_deferrals */ false);
+  auto s = MultiStageAlterTable::AdvanceYcqlIndexPermissions(
+      this, indexed_table, current_version, epoch);
   if (!s.ok()) {
     VLOG(3) << __func__ << " Done failed " << s;
     return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
@@ -7936,10 +7982,85 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
         deleted_tablets_.insert(tablet_id);
       }
     }
+    // With the tables gone, no lookup needs redirecting from their split parents anymore.
+    std::unordered_set<TableId> removed_table_ids;
+    for (const auto* table : tables_to_remove_from_map) {
+      removed_table_ids.insert(table->id());
+    }
+    std::erase_if(deleted_split_parents_, [&removed_table_ids](const auto& entry) {
+      return removed_table_ids.contains(entry.second.table_id);
+    });
   }
   // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
   // TODO: SysCatalog::DeleteItem() if we've DELETED all user tables in a DELETING namespace.
   // TODO: Also properly handle RemoveNamespaceFromMaps
+}
+
+void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidates) {
+  if (!FLAGS_master_enable_deleted_tablet_cleanup || candidates.empty()) {
+    return;
+  }
+
+  // Handles tablets deleted while their table lives on, which is every split parent, and DELETED
+  // tablets the loader put back in tablet_map_ after a restart. CleanUpDeletedTables covers the
+  // tablets of a table that goes away.
+  std::vector<std::pair<TabletId, DeletedSplitParent>> tablets_to_erase;
+  for (const auto& tablet : candidates) {
+    auto table = tablet->table();
+    // A colocated tablet is listed in every colocated table's tablets_ and is never split, so it is
+    // left to CleanUpDeletedTables.
+    if (!table || table->IsColocationParentTable()) {
+      continue;
+    }
+    DeletedSplitParent split_parent;
+    split_parent.table_id = table->id();
+    {
+      auto tablet_lock = tablet->LockForRead();
+      if (!tablet_lock->is_deleted()) {
+        continue;
+      }
+      split_parent.child_ids.assign(
+          tablet_lock->pb.split_tablet_ids().begin(), tablet_lock->pb.split_tablet_ids().end());
+      split_parent.state_msg = tablet_lock->pb.state_msg();
+    }
+    // Vector indexes share their indexed table's tablets and list them in their own tablets_ too.
+    // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
+    // weak pointers, which would otherwise dangle.
+    std::vector<TableInfoPtr> tables{table};
+    for (const auto& index_id : table->GetVectorIndexIds()) {
+      if (auto index = GetTableInfo(index_id)) {
+        tables.push_back(std::move(index));
+      }
+    }
+    // Tablets of a table that is going away are left alone, in tablets_ and tablet_map_. That keeps
+    // AreAllTabletsDeleted / AreAllTabletsHidden meaningful, and snapshot, PITR and clone flows can
+    // still look the tablets up; CleanUpDeletedTables removes them with the table.
+    if (!table->LockForRead()->started_hiding_or_deleting() &&
+        std::ranges::all_of(tables, [&tablet](const auto& t) {
+          return t->RemoveInactiveTablet(tablet);
+        })) {
+      tablets_to_erase.emplace_back(tablet->tablet_id(), std::move(split_parent));
+    }
+  }
+
+  if (tablets_to_erase.empty()) {
+    return;
+  }
+  {
+    LockGuard lock(mutex_);
+    auto tablet_map_checkout = tablet_map_.CheckOut();
+    for (auto& [tablet_id, split_parent] : tablets_to_erase) {
+      tablet_map_checkout->erase(tablet_id);
+      deleted_tablets_.insert(tablet_id);
+      // Lets a lookup for a deleted split parent still return its children, see
+      // GetTabletInfoUnlocked and ReplaceSplitTabletsAndGetLocations.
+      if (!split_parent.child_ids.empty()) {
+        deleted_split_parents_.insert_or_assign(tablet_id, std::move(split_parent));
+      }
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Removed " << tablets_to_erase.size()
+                        << " deleted tablet(s) from the catalog manager's maps";
 }
 
 Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
@@ -9588,6 +9709,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // catalogs are being prepared will switch into state PREPARING. This is safe because DDLs are
     // not allowed during the upgrade.
     metadata->set_state(SysNamespaceEntryPB::PREPARING);
+    if (is_ysql_major_upgrade_in_progress && db_type == YQL_DATABASE_PGSQL) {
+      // Distinguishes this PREPARING from an abandoned creation's, which the loader must reap.
+      metadata->set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_PREPARING);
+    }
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
     // for the database that need to be copied.
@@ -10702,6 +10827,11 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
   resp->set_colocated(ns->colocated());
   if (ns->colocated()) {
     resp->set_legacy_colocated_database(IsColocatedNamespace(ns->id()));
+  }
+  {
+    auto l = ns->LockForRead();
+    resp->set_state(l->pb.state());
+    resp->set_ysql_next_major_version_state(l->pb.ysql_next_major_version_state());
   }
   return Status::OK();
 }
@@ -12130,8 +12260,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
         table->id(), table->EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(version));
   }
 
-  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-      this, table, version, epoch, std::nullopt);
+  return MultiStageAlterTable::HandleSchemaVersionReported(this, table, version, epoch);
 }
 
 Status CatalogManager::ProcessPendingAssignmentsPerTable(
@@ -13383,6 +13512,12 @@ Result<int32_t> CatalogManager::GetClusterConfigVersion() {
   SCHECK_NOTNULL(cluster_config);
   auto l = cluster_config->LockForRead();
   return l->pb.version();
+}
+
+Result<uint32_t> CatalogManager::GetOidCacheInvalidationsCount() {
+  auto cluster_config = ClusterConfig();
+  SCHECK_NOTNULL(cluster_config);
+  return cluster_config->LockForRead()->pb.oid_cache_invalidations_count();
 }
 
 Status CatalogManager::ValidateReplicationInfo(

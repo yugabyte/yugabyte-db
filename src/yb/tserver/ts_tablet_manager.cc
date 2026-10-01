@@ -638,7 +638,6 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   CHECK_OK(ThreadPoolBuilder("append")
                .set_min_threads(1)
                .unlimited_threads()
-               .set_idle_timeout(MonoDelta::FromMilliseconds(10000))
                .Build(&append_pool_));
   CHECK_OK(ThreadPoolBuilder("log-alloc")
                .set_min_threads(1)
@@ -1610,8 +1609,8 @@ Status TSTabletManager::DoApplyCloneTablet(
       source_table->table_type,
       /* Fixed by restore, but we need it to get partition_schema so might as well set it. */
       target_schema,
-      // TODO(GH31935): this may not be fixed in the case of vector indexes.
-      *source_table->index_map, /* fixed by restore */
+      // Cloned index IDs from the master. The source index_map still names the clone source.
+      qlexpr::IndexMap(request->target_indexes()),
       std::move(target_table_index_info),
       source_table->schema_version, /* fixed by restore */
       target_partition_schema,

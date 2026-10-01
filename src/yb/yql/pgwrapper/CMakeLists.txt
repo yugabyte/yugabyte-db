@@ -145,6 +145,7 @@ ADD_YB_TEST(pg_call_home-test)
 ADD_YB_TEST(pg_cancel_transaction-test)
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
+ADD_YB_TEST(pg_catcache_preload_mem-test)
 ADD_YB_TEST(pg_read_time_response_cache-test)
 ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_skip_intents_metrics-test)
@@ -202,6 +203,7 @@ ADD_YB_TEST(pg_row_lock-test)
 ADD_YB_TEST(pg_server_restart-test)
 ADD_YB_TEST(pg_shared_mem-test)
 ADD_YB_TEST(pg_single_tserver-test)
+ADD_YB_TEST(pg_startup_client_disconnect-test)
 ADD_YB_TEST(pg_stat_activity-test)
 ADD_YB_TEST(pg_stat_statements-test)
 ADD_YB_TEST(pg_table_size-test)
@@ -256,6 +258,10 @@ add_dependencies(
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"
   gen_auto_flags_json
   postgres)
+
+# Without the snapshot, the mini cluster runs initdb itself, which is too slow for this test's
+# clone scenarios under sanitizers.
+ADD_YB_TEST_DEPENDENCIES(pg_vector_index-test initial_sys_catalog_snapshot)
 
 add_custom_target(
   update_ysql_migrations ALL

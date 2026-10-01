@@ -312,6 +312,11 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       if (schema_version_txn != ddl_txns_waiting_for_schema_version.cend()) {
         LOG(INFO) << "table " << table->id() << " has no txn id but is waiting for "
                   << schema_version_txn->first << ". So it is still bound by txn " << txn;
+        // The alter may never have been sent (e.g. the helper failed after committing the new
+        // version), and this call resets a failed state, so resend it to avoid a hang.
+        if (!SendAlterTableRequestInternal(table, TransactionId::Nil(), epoch).ok()) {
+          ddl_verification_success = false;
+        }
         continue;
       }
 

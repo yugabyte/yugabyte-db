@@ -1601,7 +1601,12 @@ Result<OpId> GetLastOpIdForReplica(
 
 Status WaitForTabletIsDeletedOrHidden(
     master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout) {
-  auto tablet_info = VERIFY_RESULT(catalog_manager->GetTabletInfo(tablet_id));
+  auto tablet_info_result = catalog_manager->GetTabletInfo(tablet_id);
+  // A DELETED tablet can already be gone from the catalog manager's tablet map.
+  if (!tablet_info_result.ok() && tablet_info_result.status().IsDeleted()) {
+    return Status::OK();
+  }
+  auto tablet_info = VERIFY_RESULT(std::move(tablet_info_result));
   return LoggedWaitFor([&tablet_info] {
       const auto tablet_lock = tablet_info->LockForRead();
       return tablet_lock->is_deleted() || tablet_lock->is_hidden();

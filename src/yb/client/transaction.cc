@@ -703,6 +703,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     VLOG_WITH_PREFIX(2) << "Abort";
     TRACE_TO(trace_, __func__);
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
+      return;
+    }
     {
       UniqueLock lock(mutex_);
       auto state = state_.load(std::memory_order_acquire);
@@ -1094,6 +1098,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       rpc::Rpcs::Handle* handle,
       const SubtxnSet& aborted_sub_txn_set) {
     DCHECK(status_tablet);
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
+      return MakeFuture<Status>([s](auto callback) { callback(s); });
+    }
 
     return MakeFuture<Status>([&, handle](auto callback) {
       manager_->rpcs().RegisterAndStart(
@@ -1258,6 +1266,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
     log_prefix_.tag.store(LogPrefixTag(&name.Get(), id), boost::memory_order_release);
     VLOG_WITH_PREFIX(2) << "Log prefix tag changed";
+  }
+
+  void MarkHistoricalReadReady() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    ready_ = true;
   }
 
   bool OldTransactionAborted() const {
@@ -2095,6 +2108,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
 
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
+      return;
+    }
+
     auto current_state = state_.load(std::memory_order_acquire);
 
     if (!AllowHeartbeat(current_state, status)) {
@@ -2625,8 +2643,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     callback(child_txn_data_pb);
   }
 
+  Status CheckNotHistoricalReadTxn() const {
+    RSTATUS_DCHECK(
+        !metadata_.is_read_only_historical_committed_txn, IllegalState,
+        "Commit, abort, and heartbeat are not allowed on a historical read-only transaction $0",
+        metadata_.transaction_id);
+    return Status::OK();
+  }
+
   Status CheckCouldCommitUnlocked(SealOnly seal_only) REQUIRES(mutex_) {
     RETURN_NOT_OK(CheckRunningUnlocked());
+    RETURN_NOT_OK(CheckNotHistoricalReadTxn());
     if (child_) {
       return STATUS(IllegalState, "Commit of child transaction is not allowed");
     }
@@ -2777,6 +2804,15 @@ YBTransaction::YBTransaction(
 
 YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData data)
     : impl_(new Impl(manager, this, std::move(data))) {
+}
+
+YBTransactionPtr YBTransaction::Fabricate(
+    TransactionManager* manager, const TransactionMetadata& metadata) {
+  auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
+  if (metadata.is_read_only_historical_committed_txn) {
+    result->impl_->MarkHistoricalReadReady();
+  }
+  return result;
 }
 
 YBTransaction::~YBTransaction() {

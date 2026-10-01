@@ -96,8 +96,10 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.rollback.TaskRollbackModule;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -285,12 +287,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RollbackKubernetesUpgrade,
           TaskType.RollbackEditUniverse,
           TaskType.RollbackEditKubernetesUniverse,
+          TaskType.RollbackAddNodeToUniverse,
+          TaskType.RollbackResizeNode,
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
           TaskType.ThirdpartySoftwareUpgrade,
           TaskType.CertsRotate,
           TaskType.TlsToggle,
+          TaskType.TlsToggleKubernetes,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
           TaskType.PauseUniverse,
@@ -639,15 +644,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
         builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
       }
-      // 1:1 with EditUniverseRollbackComputer / TaskType.EditUniverse.
-      if (lockedTaskType == TaskType.EditUniverse) {
-        builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditUniverse));
-      }
-      // 1:1 with EditKubernetesUniverseRollbackComputer / TaskType.EditKubernetesUniverse. Additive
-      // with the rerun path below (EditKubernetesUniverse is rerunnable), so both roll back and
-      // rerun are allowed on a failed K8s edit.
-      if (lockedTaskType == TaskType.EditKubernetesUniverse) {
-        builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditKubernetesUniverse));
+      // 1:1 placement rollback types live next to the Guice bindings. Additive with the rerun
+      // path below (EditKubernetesUniverse is rerunnable), so both roll back and rerun stay
+      // allowed on a failed K8s edit.
+      TaskType rollbackType = TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.get(lockedTaskType);
+      if (rollbackType != null) {
+        builder.taskTypes(ImmutableSet.of(rollbackType));
       }
       if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
         builder.rerun(true);
@@ -1513,7 +1515,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
 
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the az uuid.
@@ -1617,6 +1619,47 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     createMarkRollbackUnsafeTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     markRollbackUnsafeAdded = true;
+  }
+
+  protected SubTaskGroup createRestoreUniverseDetailsFromDeltaTask(
+      StateTransitionDetails stateTransitionDetails) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("RestoreUniverseDetailsFromDelta", SubTaskGroupType.ConfigureUniverse);
+    RestoreUniverseDetailsFromDelta.Params params = new RestoreUniverseDetailsFromDelta.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.stateTransitionDetails = stateTransitionDetails;
+    RestoreUniverseDetailsFromDelta task = createTask(RestoreUniverseDetailsFromDelta.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * When {@code rollbackSafe}, confirm master cluster config (including server_blacklist) is
+   * reachable. Do not trust the YBA flag alone.
+   */
+  protected void confirmMasterServerBlacklistReadable(Universe universe) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
+      org.yb.client.GetMasterClusterConfigResponse configResponse = client.getMasterClusterConfig();
+      if (configResponse == null || configResponse.getConfig() == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Cannot roll back: master cluster config is unavailable to confirm server_blacklist");
+      }
+      int blacklistSize = configResponse.getConfig().getServerBlacklist().getHostsCount();
+      log.info(
+          "Rollback precheck: master server_blacklist has {} host(s) for universe {}",
+          blacklistSize,
+          universe.getUniverseUUID());
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot roll back: failed to read master server_blacklist - " + e.getMessage());
+    }
   }
 
   /** Create a task to mark the change on a universe as success. */
@@ -2320,7 +2363,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = universe.getCluster(node.placementUuid);
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -2654,7 +2697,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = universe.getCluster(node.placementUuid);
       DeleteRootVolumes.Params params = new DeleteRootVolumes.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       params.azUuid = node.azUuid;
       params.nodeName = node.nodeName;
       params.nodeUuid = node.nodeUuid;
@@ -2688,7 +2731,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       PauseServer.Params params = new PauseServer.Params();
       Cluster cluster = universe.getCluster(node.placementUuid);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -2728,7 +2771,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = universe.getCluster(node.placementUuid);
       ResumeServer.Params params = new ResumeServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -5314,6 +5357,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param processes set of processes to stop.
    * @param removeMasterFromQuorum true if this stop is a for long time.
    * @param deconfigure true if the server needs to be deconfigured (stopped permanently).
+   * @param flushTablets true if tablets should be flushed before stopping tserver.
+   * @param ignoreStopError true to ignore stop failures (e.g. process already stopped / node agent
+   *     unreachable on retry).
    * @param subTaskGroupType subtask group type.
    */
   protected void stopProcessesOnNodes(
@@ -5322,6 +5368,36 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean removeMasterFromQuorum,
       boolean deconfigure,
       boolean flushTablets,
+      boolean ignoreStopError,
+      SubTaskGroupType subTaskGroupType) {
+    stopProcessesOnNodes(
+        nodes,
+        processes,
+        removeMasterFromQuorum,
+        deconfigure,
+        params -> {
+          params.flushTabletsOnStopTserver = flushTablets;
+          params.isIgnoreError = ignoreStopError;
+        },
+        subTaskGroupType);
+  }
+
+  /**
+   * Creates tasks to gracefully stop processes on node.
+   *
+   * @param nodes a list of nodes to stop processes.
+   * @param processes set of processes to stop.
+   * @param removeMasterFromQuorum true if this stop is a for long time.
+   * @param deconfigure true if the server needs to be deconfigured (stopped permanently).
+   * @param paramsCustomizer Callback to update params for server control task.
+   * @param subTaskGroupType subtask group type.
+   */
+  protected void stopProcessesOnNodes(
+      List<NodeDetails> nodes,
+      Set<ServerType> processes,
+      boolean removeMasterFromQuorum,
+      boolean deconfigure,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer,
       SubTaskGroupType subTaskGroupType) {
     if (processes.contains(ServerType.TSERVER)) {
       addLeaderBlackListIfAvailable(nodes, subTaskGroupType);
@@ -5344,7 +5420,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               "stop",
               params -> {
                 params.deconfigure = deconfigure;
-                params.flushTabletsOnStopTserver = flushTablets;
+                if (paramsCustomizer != null) {
+                  paramsCustomizer.accept(params);
+                }
               })
           .setSubTaskGroupType(subTaskGroupType);
       if (processType == ServerType.MASTER && removeMasterFromQuorum) {
@@ -5364,7 +5442,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param subGroupType subtask group type.
    * @param addMasterToQuorum true if started for the first time (or after long stop).
    * @param wasStopped true if process was stopped before.
-   * @param sleepTimeFunction if not null - function to calculate time to wait for process.
+   * @param waitForServerReady whether to wait for server ready.
    */
   protected void startProcessesOnNode(
       NodeDetails node,
@@ -5372,7 +5450,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       SubTaskGroupType subGroupType,
       boolean addMasterToQuorum,
       boolean wasStopped,
-      @Nullable Function<ServerType, Integer> sleepTimeFunction) {
+      boolean waitForServerReady) {
     for (ServerType processType : processTypes) {
       createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
       createWaitForServersTasks(Collections.singletonList(node), processType)
@@ -5381,11 +5459,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         // Add stopped master to the quorum.
         createChangeConfigTasks(node, true /* isAdd */, subGroupType);
       }
-      if (sleepTimeFunction != null) {
+      if (waitForServerReady) {
         createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
       }
       if (wasStopped && processType == ServerType.TSERVER) {
         removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
+      }
+      if (wasStopped && processType == ServerType.MASTER) {
+        if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+          createSetActiveUniverseKeysTask()
+              .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+        }
       }
     }
   }
@@ -6280,7 +6364,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  protected SubTaskGroup createRebootTasks(List<NodeDetails> nodes, boolean isHardReboot) {
+  protected SubTaskGroup createRebootTasks(Collection<NodeDetails> nodes, boolean isHardReboot) {
     Class<? extends NodeTaskBase> taskClass =
         isHardReboot ? HardRebootServer.class : RebootServer.class;
     SubTaskGroup subTaskGroup = createSubTaskGroup(taskClass.getSimpleName());
@@ -7696,7 +7780,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (!node.disksAreMountedByUUID) {
         UniverseDefinitionTaskParams.Cluster cluster = clusterMap.get(node.placementUuid);
         createUpdateMountedDisksTask(
-            node, node.getInstanceType(), cluster.userIntent.getDeviceInfoForNode(node));
+            node, node.getInstanceType(), cluster.userIntent.evaluateDeviceInfoForNode(node));
       }
     }
     boolean isNextFallThrough =

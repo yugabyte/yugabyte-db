@@ -6893,6 +6893,15 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
   auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table.table_id()}, 10 /* expected_dml_records */, true /* init_virtual_wal */));
 
+  // The VWAL advances the sys_catalog explicit checkpoint past the initial barrier only on a
+  // GetChanges sent after the restart LSN is acknowledged, so keep polling until that lands.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(GetConsistentChangesFromCDC(stream_id));
+        return leader_tablet_peer->get_cdc_min_replicated_index() > initial_wal_barrier;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier), "Sys catalog WAL barrier did not advance"));
+
   // Wait for CDCMasterBgTask to propagate barriers to all masters.
   SleepFor(
       MonoDelta::FromSeconds(
