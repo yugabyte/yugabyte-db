@@ -4271,14 +4271,14 @@ TerminateChildren(int signal)
 }
 
 /*
- * SetOomScoreAdjForPid - sets /proc/<pid>/oom_score_adj for the given PID
+ * YbSetOomScoreAdjForPid - sets /proc/<pid>/oom_score_adj for the given PID
  *
  * oom_score_adj varies from -1000 to 1000. The lower the value, the lower the
  * chance that it's going to be killed. A high value is more likely to be
  * killed by the OOM killer.
  */
-static void
-SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
+void
+YbSetOomScoreAdjForPid(pid_t pid, const char *oom_score_adj)
 {
 #ifdef __linux__
 	if (oom_score_adj[0] == 0)
@@ -4395,7 +4395,7 @@ BackendStartup(ClientSocket *client_sock)
 	 * of backends.
 	 */
 	bn->pid = pid;
-	SetOomScoreAdjForPid(pid, YbBackendOomScoreAdj);
+	YbSetOomScoreAdjForPid(pid, YbBackendOomScoreAdj);
 
 	return STATUS_OK;
 }
@@ -4978,13 +4978,6 @@ StartBackgroundWorker(RegisteredBgWorker *rw)
 		/* mark entry as crashed, so we'll try again later */
 		rw->rw_crashed_at = GetCurrentTimestamp();
 		return false;
-		/*
-		 * YB_TODO_PG19MERGE: upstream PG commit
-		 * aafc05de1bf5c0324cb5e690c6742118c1ac4af6 removed the fork and the
-		 * switch and replaced it with postmaster_child_launch above. YB added a
-		 * SetOomScoreAdjForPid(MyProcPid, rw->rw_worker.bgw_oom_score_adj)
-		 * call that needs to be ported.
-		 */
 	}
 
 	/* in postmaster, fork successful ... */

@@ -784,6 +784,9 @@ BackgroundWorkerMain(const void *startup_data, size_t startup_data_len)
 	MyBgworkerEntry = worker;
 	init_ps_display(worker->bgw_name);
 
+	/* YB: set in the child so the worker never runs with the inherited score */
+	YbSetOomScoreAdjForPid(MyProcPid, worker->bgw_oom_score_adj);
+
 	Assert(GetProcessingMode() == InitProcessing);
 
 	/* Apply PostAuthDelay */

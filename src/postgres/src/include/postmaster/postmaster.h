@@ -106,6 +106,8 @@ extern bool PostmasterMarkPIDForWorkerNotify(int);
 extern int YbProcessStartupPacket(struct Port *port, bool ssl_done,
 								  bool gss_done);
 
+extern void YbSetOomScoreAdjForPid(pid_t pid, const char *oom_score_adj);
+
 #ifdef EXEC_BACKEND
 extern pid_t postmaster_forkexec(int argc, char *argv[]);
 extern void SubPostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();
