@@ -7051,6 +7051,10 @@ Status DestroyDB(const std::string& db_name, const Options& options) {
 Status DBImpl::WriteOptionsFile() {
   mutex_.AssertHeld();
 
+  if (!db_options_.persist_options_file) {
+    return Status::OK();
+  }
+
   std::vector<std::string> cf_names;
   std::vector<ColumnFamilyOptions> cf_opts;
 

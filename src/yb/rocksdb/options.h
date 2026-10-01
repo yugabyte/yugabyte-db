@@ -1346,6 +1346,12 @@ struct DBOptions {
   // DEFAULT: false
   bool fail_if_options_file_error;
 
+  // If false, DB::Open / CreateColumnFamily / SetOptions do not write the OPTIONS file.
+  // Existing OPTIONS files are left alone; nothing in the DB reads them.
+  //
+  // DEFAULT: true
+  bool persist_options_file;
+
   // Initial value for seqno generator.
   // Used only during creation of new DB.
   SequenceNumber initial_seqno = 0;

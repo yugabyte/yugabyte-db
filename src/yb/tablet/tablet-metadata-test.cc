@@ -339,6 +339,21 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   ASSERT_FALSE(env_->DirExists(tier_dir));
 }
 
+// Nothing reads the RocksDB OPTIONS file, so tablets are opened without writing it.
+TEST_F(TestRaftGroupMetadata, NoRocksDbOptionsFiles) {
+  auto metadata = harness_->tablet()->metadata();
+  for (const auto& dir : {metadata->rocksdb_dir(), metadata->intents_rocksdb_dir()}) {
+    if (!Env::Default()->FileExists(dir)) {
+      continue;
+    }
+    std::vector<std::string> children;
+    ASSERT_OK(Env::Default()->GetChildren(dir, &children));
+    for (const auto& name : children) {
+      ASSERT_FALSE(name.starts_with("OPTIONS-")) << dir << "/" << name;
+    }
+  }
+}
+
 // The CDC barrier setters rewrite the superblock only when the value changes.
 TEST_F(TestRaftGroupMetadata, CdcBarrierSettersFlushOnlyOnChange) {
   auto metadata = harness_->tablet()->metadata();
