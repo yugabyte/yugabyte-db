@@ -36,6 +36,7 @@ ERRORS = [
     'ThreadSanitizer: lock-order-inversion',
     'Leak check XYZ detected leaks',
     'Segmentation fault: ',
+    'WARNING:  problem in alloc set ExprContext: detected write past chunk end in block 0x1',
     '[  FAILED  ]',
     random.choice(SIGNALS),
     'Check failed: ',
@@ -129,6 +130,10 @@ SANITIZER_REPORTS = [
     '==12==ERROR: LeakSanitizer: detected memory leaks',
     'WARNING: ThreadSanitizer: data race (pid=13)',
     'SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior int.c:1:2',
+    'WARNING:  detected write past chunk end in ExprContext 0x1',
+    'WARNING:  problem in alloc set ExprContext: detected write past chunk end in block 0x1',
+    'WARNING:  problem in slab Change: bogus slab link in block 0x1, chunk 0x2',
+    'I0930 17:40:02.421000 594514 generation.c:704] detected write past chunk end in Tuples 0x1',
 ]
 
 
@@ -150,6 +155,7 @@ def test_sanitizer_reports_of_passing_test(mocked_post_processor: Postprocessor,
         'LeakSanitizer': 1,
         'ThreadSanitizer': 1,
         'UndefinedBehaviorSanitizer': 1,
+        'MemoryContextCheck': 4,
     }
     assert test_kvs['sanitizer_report_lines'][:len(SANITIZER_REPORTS)] == SANITIZER_REPORTS
 

@@ -13,7 +13,6 @@
 package org.yb.pgsql;
 
 import static org.junit.Assume.assumeTrue;
-import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
@@ -118,19 +117,31 @@ public class TestPgMemoryErrorDetection extends BasePgSQLTest {
     waitForAndClearErrorLogLine("LeakSanitizer: detected memory leaks");
   }
 
+  /**
+   * MEMORY_CONTEXT_CHECKING reports corruption as a WARNING and carries on, so the query succeeds
+   * and only the log listener can fail the test.
+   */
   @Test
   @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
-  public void testMemoryContextCorruptionFailsQuery() throws Exception {
+  public void testMemoryContextCorruptionIsDetected() throws Exception {
+    // Context kind, whether to free the chunk, and the start of the expected WARNING.
+    String[][] cases = {
+        {"aset", "true", "detected write past chunk end in yb_test_aset "},
+        {"aset", "false", "problem in alloc set yb_test_aset: detected write past chunk end"},
+        {"generation", "true", "detected write past chunk end in yb_test_generation "},
+        {"generation", "false",
+         "problem in Generation yb_test_generation: detected write past chunk end"},
+        {"slab", "true", "detected write past chunk end in yb_test_slab "},
+        {"slab", "false", "problem in slab yb_test_slab: detected write past chunk end"},
+    };
     try (Connection conn = getConnectionBuilder().connect();
          Statement stmt = conn.createStatement()) {
       assumeTrue("Requires a build with PG assertions (and so MEMORY_CONTEXT_CHECKING)",
                  getSingleRow(stmt, "SHOW debug_assertions").getString(0).equals("on"));
       createExtension(stmt);
-      try {
-        stmt.execute("SELECT yb_test_write_past_chunk_end()");
-        fail("Expected memory context checking to fail the query");
-      } catch (SQLException e) {
-        assertTrue(e.getMessage(), e.getMessage().contains("detected write past chunk end"));
+      for (String[] c : cases) {
+        stmt.execute(String.format("SELECT yb_test_write_past_chunk_end('%s', %s)", c[0], c[1]));
+        waitForAndClearErrorLogLine(c[2]);
       }
     }
   }

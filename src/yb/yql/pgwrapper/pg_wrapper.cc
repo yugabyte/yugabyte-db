@@ -927,6 +927,12 @@ Result<vector<string>> WritePgConfigFiles(const PgProcessConf& conf) {
   return args;
 }
 
+// Whether postgres, and the backends that initdb runs, log to files in log_dir rather than to
+// stderr.
+bool PgLogsToFile(const PgProcessConf& conf) {
+  return !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf.force_disable_log_file;
+}
+
 }  // namespace
 
 // Basic gflag validators -- only CSV/newline validation.
@@ -942,7 +948,8 @@ string GetPostgresInstallRoot() {
 
 Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     const std::string& bind_addresses,
-    const std::string& data_dir) {
+    const std::string& data_dir,
+    bool force_disable_log_file) {
   PgProcessConf conf;
   if (!bind_addresses.empty()) {
     auto pg_host_port = VERIFY_RESULT(HostPort::FromString(
@@ -951,6 +958,7 @@ Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     conf.pg_port = pg_host_port.port();
   }
   conf.data_dir = data_dir;
+  conf.force_disable_log_file = force_disable_log_file;
   PgWrapper pg_wrapper(conf);
   RETURN_NOT_OK(pg_wrapper.PreflightCheck());
   RETURN_NOT_OK(pg_wrapper.InitDbLocalOnlyIfNeeded());
@@ -977,7 +985,7 @@ Status PgWrapper::Start() {
   auto postgres_executable = PgWrapper::GetPostgresExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(postgres_executable));
 
-  bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;
+  bool log_to_file = PgLogsToFile(conf_);
   VLOG(1) << "Deciding whether the child postgres process should to file: "
           << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
               FLAGS_logtostderr,
@@ -1165,10 +1173,11 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
 
+  // Tests scan stderr for reports of memory errors, so where postgres logs to stderr, as in tests,
+  // so must initdb's backends.
   std::string initdb_log_path;
-  const auto& log_dir = FLAGS_log_dir;
-  if (!log_dir.empty()) {
-    initdb_log_path = Format("$0/$1", log_dir, "initdb.log");
+  if (PgLogsToFile(conf_)) {
+    initdb_log_path = Format("$0/$1", FLAGS_log_dir, "initdb.log");
     initdb_subprocess.SetEnv("YB_INITDB_LOG_FILE_PATH", initdb_log_path);
   }
 

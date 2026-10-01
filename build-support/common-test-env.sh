@@ -1422,6 +1422,8 @@ did_test_succeed() {
     ['UndefinedBehaviorSanitizer: undefined-behavior']='Detected UBSAN undefined behavior'
     ['ThreadSanitizer']='ThreadSanitizer failures'
     ['Segmentation fault: ']='Segmentation fault'
+    ['detected write past chunk end in ']='Memory context corruption'
+    ['problem in (alloc set|slab|Generation) ']='Memory context corruption'
     ['Check failed: ']='Check failed'
     ['^\[INFO\] BUILD FAILURE$']='Java build or tests failed'
     ['^\[  FAILED  \]']='GTest failures'

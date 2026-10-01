@@ -20,6 +20,7 @@
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
+#include "utils/memutils.h"
 
 PG_MODULE_MAGIC;
 
@@ -40,14 +41,18 @@ require_address_sanitizer(void)
 }
 
 /*
- * Overwrite the MEMORY_CONTEXT_CHECKING sentinel byte just past the requested
- * size of a chunk, then free the chunk, which checks the sentinel.  The write
- * stays within the chunk's allocated size, so only the sentinel check can see
- * it.
+ * Allocate a chunk in a new context of the given kind (aset, generation or
+ * slab), and overwrite the MEMORY_CONTEXT_CHECKING sentinel byte just past the
+ * chunk's requested size.  The write stays within the chunk's allocated size,
+ * so only the sentinel check can see it.  That check runs when the chunk is
+ * freed if free_chunk is true, and otherwise when the context is deleted.
  */
 Datum
 yb_test_write_past_chunk_end(PG_FUNCTION_ARGS)
 {
+	char	   *kind = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	bool		free_chunk = PG_GETARG_BOOL(1);
+	MemoryContext context;
 	char	   *volatile p;
 
 #ifndef MEMORY_CONTEXT_CHECKING
@@ -55,9 +60,26 @@ yb_test_write_past_chunk_end(PG_FUNCTION_ARGS)
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("this function requires a build with MEMORY_CONTEXT_CHECKING")));
 #endif
-	p = palloc(60);
+	if (strcmp(kind, "aset") == 0)
+		context = AllocSetContextCreate(CurrentMemoryContext, "yb_test_aset",
+										ALLOCSET_DEFAULT_SIZES);
+	else if (strcmp(kind, "generation") == 0)
+		context = GenerationContextCreate(CurrentMemoryContext,
+										  "yb_test_generation",
+										  ALLOCSET_DEFAULT_SIZES);
+	else if (strcmp(kind, "slab") == 0)
+		context = SlabContextCreate(CurrentMemoryContext, "yb_test_slab",
+									SLAB_DEFAULT_BLOCK_SIZE, 60);
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("unknown memory context kind \"%s\"", kind)));
+
+	p = MemoryContextAlloc(context, 60);
 	p[60] = 'x';
-	pfree((void *) p);
+	if (free_chunk)
+		pfree((void *) p);
+	MemoryContextDelete(context);
 	PG_RETURN_VOID();
 }
 

@@ -29,7 +29,12 @@ public class ExternalDaemonLogErrorListener implements LogErrorListener {
       "AddressSanitizer: ",
       "ThreadSanitizer: ",
       "Segmentation fault: ",
-      "UndefinedBehaviorSanitizer: "
+      "UndefinedBehaviorSanitizer: ",
+      // PG's MEMORY_CONTEXT_CHECKING reports memory corruption only as a WARNING like these.
+      "detected write past chunk end in ",
+      "problem in alloc set ",
+      "problem in slab ",
+      "problem in Generation "
   };
 
   // TODO: consider collecting all matching lines here, up to a certain number.

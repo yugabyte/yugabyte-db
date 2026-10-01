@@ -55,6 +55,31 @@ public class TestExternalDaemonLogErrorListener extends BaseYBTest {
     assertReportsError(listener, ASAN_REPORT);
   }
 
+  // One line for each kind of MEMORY_CONTEXT_CHECKING report.  A PG backend logs it with a
+  // "WARNING:" prefix; PG code in the tserver (ybgate) logs it at INFO severity without one.
+  private static final String[] MEMORY_CONTEXT_REPORTS = {
+      "2026-09-30 17:40:02.421 UTC [594514] WARNING:  detected write past chunk end in " +
+          "ExprContext 0x7dbe9d830210",
+      "2026-09-30 17:40:02.421 UTC [594514] WARNING:  problem in alloc set ExprContext: " +
+          "detected write past chunk end in block 0x7dbe9d830000, chunk 0x7dbe9d830210",
+      "2026-09-30 17:40:02.421 UTC [594514] WARNING:  problem in slab Change: number of free " +
+          "chunks 3 in block 0x7dbe9d830000 does not match freelist 2",
+      "2026-09-30 17:40:02.421 UTC [594514] WARNING:  problem in Generation Tuples: bogus " +
+          "chunk size in block 0x7dbe9d830000, chunk 0x7dbe9d830210",
+      "I0930 17:40:02.421000 594514 aset.c:1153] detected write past chunk end in " +
+          "YbgMemoryContext 0x7dbe9d830210",
+  };
+
+  @Test
+  public void testMemoryContextReports() throws Exception {
+    for (String report : MEMORY_CONTEXT_REPORTS) {
+      ExternalDaemonLogErrorListener listener = new ExternalDaemonLogErrorListener("ts1");
+      listener.handleLine(SERVER_STARTED);
+      listener.handleLine(report);
+      assertReportsError(listener, report);
+    }
+  }
+
   @Test
   public void testNoReport() throws Exception {
     ExternalDaemonLogErrorListener listener = new ExternalDaemonLogErrorListener("ts1");

@@ -48,3 +48,15 @@ def test_clean_log(tmp_path: pathlib.Path) -> None:
 ])
 def test_address_sanitizer_report_fails_test(report: str, tmp_path: pathlib.Path) -> None:
     assert not did_test_succeed(f'ts1|pid5| ==123==ERROR: AddressSanitizer: {report}\n', tmp_path)
+
+
+@pytest.mark.parametrize('report', [
+    'WARNING:  detected write past chunk end in ExprContext 0x7dbe9d830210',
+    'WARNING:  problem in alloc set ExprContext: bogus aset link in block 0x1, chunk 0x2',
+    'WARNING:  problem in slab Change: bogus slab link in block 0x1, chunk 0x2',
+    'WARNING:  problem in Generation Tuples: bogus chunk size in block 0x1, chunk 0x2',
+    # PG code in the tserver (ybgate) logs the report at INFO severity, with no WARNING prefix.
+    'I0930 17:40:02.421000 594514 aset.c:1153] detected write past chunk end in Ybg 0x1',
+])
+def test_memory_context_check_report_fails_test(report: str, tmp_path: pathlib.Path) -> None:
+    assert not did_test_succeed(f'ts1|pid5| {report}\n', tmp_path)

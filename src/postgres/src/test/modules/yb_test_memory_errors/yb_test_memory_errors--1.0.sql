@@ -3,9 +3,10 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION yb_test_memory_errors" to load this file. \quit
 
-CREATE FUNCTION yb_test_write_past_chunk_end()
+CREATE FUNCTION yb_test_write_past_chunk_end(context_kind pg_catalog.text,
+											 free_chunk pg_catalog.bool)
 	RETURNS pg_catalog.void
-	AS 'MODULE_PATHNAME' LANGUAGE C;
+	AS 'MODULE_PATHNAME' LANGUAGE C STRICT;
 
 CREATE FUNCTION yb_test_heap_buffer_overflow()
 	RETURNS pg_catalog.void
