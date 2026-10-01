@@ -1158,6 +1158,12 @@
     srcdir = "docs"
 
 [[headers]]
+  for = "/*.md"
+  [headers.values]
+    Content-Type = "text/markdown; charset=utf-8"
+    X-Robots-Tag = "noindex"
+
+[[headers]]
   #
   # https://docs.netlify.com/configure-builds/file-based-configuration/#headers
   # CSP
