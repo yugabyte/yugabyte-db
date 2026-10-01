@@ -101,6 +101,24 @@ class DriveIoStats {
   // without this the gauge would only ever climb.
   void ReleaseUnsyncedBytes(uint64_t bytes);
 
+  // Marks the sync just recorded as one a background durability sweep asked for, rather than one
+  // some append path needed, and attributes `elapsed` of device time to it. Called by whoever
+  // initiated the sync and not by the file, because a file has no way to know why it is being
+  // synced.
+  //
+  // Recorded as a subset of sync_count()/sync_micros() rather than as separate totals, so
+  // sync_count() - proactive_sync_count() is the rate the workload itself demanded and
+  // sync_micros() - proactive_sync_micros() is the device time it demanded. That second
+  // subtraction is what a throttle needs: it has to back off on how busy the workload is making
+  // the device, and if it measures the raw total it is also measuring itself, which turns pacing
+  // into oscillation.
+  //
+  // `elapsed` is measured by the caller rather than taken from the file's own RecordSync, because
+  // the caller is the only one that knows both how long its sync took and that the sync was its.
+  // The two measurements are of the same fsync at different scopes and will differ slightly; like
+  // everything here they are approximate.
+  void RecordProactiveSync(MonoDelta elapsed);
+
   // Relaxed like every other access to these counters: see the note on the members below.
   uint64_t bytes_written() const { return bytes_written_.load(std::memory_order_relaxed); }
   uint64_t write_micros() const { return write_micros_.load(std::memory_order_relaxed); }
@@ -109,6 +127,12 @@ class DriveIoStats {
   uint64_t range_sync_count() const { return range_sync_count_.load(std::memory_order_relaxed); }
   uint64_t range_sync_micros() const { return range_sync_micros_.load(std::memory_order_relaxed); }
   uint64_t bytes_unsynced() const { return bytes_unsynced_.load(std::memory_order_relaxed); }
+  uint64_t proactive_sync_count() const {
+    return proactive_sync_count_.load(std::memory_order_relaxed);
+  }
+  uint64_t proactive_sync_micros() const {
+    return proactive_sync_micros_.load(std::memory_order_relaxed);
+  }
 
  private:
   friend class DriveIoStatsRegistry;
@@ -140,6 +164,8 @@ class DriveIoStats {
   std::atomic<uint64_t> range_sync_count_{0};
   std::atomic<uint64_t> range_sync_micros_{0};
   std::atomic<uint64_t> bytes_unsynced_{0};
+  std::atomic<uint64_t> proactive_sync_count_{0};
+  std::atomic<uint64_t> proactive_sync_micros_{0};
 };
 
 // Process-global map from drive root to its counters.

@@ -68,6 +68,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_validators.h"
@@ -715,6 +716,11 @@ Log::Log(
       min_start_ht_running_txns_callback_(std::move(min_start_ht_running_txns_callback)),
       disk_space_checker_(options_.env, wal_dir_) {
   set_wal_retention_secs(options_.retention_secs);
+  // Resolved once. FsManager registers every usable root before any tablet is opened, and the
+  // registry never removes an entry, so this is either the right drive for the whole life of the
+  // Log or null - the latter when --export_drive_io_metrics is off, or when this root was dropped
+  // for failing the startup write check, in which case nothing should be flushed here anyway.
+  drive_io_stats_ = DriveIoStatsRegistry::Instance().Find(wal_dir_);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
     // The tablet entity outlives any one Log and is reused when the tablet is opened again on this
@@ -1280,10 +1286,26 @@ Status Log::DoSync() {
   Status status;
   periodic_sync_needed_.store(0, std::memory_order_release);
   periodic_sync_unsynced_bytes_.store(0, std::memory_order_release);
+
+  // Whether a durability sweep is what asked for the fsync about to happen. Read before rather
+  // than after, so that the duration measured below can be attributed to it: the drive's proactive
+  // time counter only means anything if it is the time of the syncs the count refers to.
+  const bool proactive = drive_io_stats_ != nullptr &&
+                         proactive_sync_pending_.exchange(false, std::memory_order_acq_rel);
+  const auto sync_start = proactive ? MonoTime::Now() : MonoTime::kUninitialized;
+
   LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, /* log at most one slow execution every 1 sec */ 1,
                                   50, "Fsync log took a long time") {
     SCOPED_LATENCY_METRIC(metrics_, sync_latency);
     status = active_segment_->Sync();
+  }
+
+  // Counted as an fsync performed, not an fsync requested, so it lines up with drive_sync_count -
+  // the counter it is only meaningful beside. On failure the label is dropped rather than
+  // reattributed: DoSyncAndResetTaskInQueue re-arms periodic_sync_needed_, so the sweep will come
+  // back for this tablet and the retry gets its own label.
+  if (proactive && status.ok()) {
+    drive_io_stats_->RecordProactiveSync(MonoTime::Now() - sync_start);
   }
 
   return status;
@@ -1376,13 +1398,18 @@ SyncType Log::FindSyncType() {
   return sync_type;
 }
 
-bool Log::SubmitBackgroundSync() {
+bool Log::SubmitBackgroundSync(bool proactive) {
   // Return if a sync task already exists in the queue.
   bool expected = false;
   if (!fsync_task_in_queue_.compare_exchange_strong(expected, true)) {
     return false;
   }
   auto reset_task_in_queue = CancelableScopeExit([this] { fsync_task_in_queue_.store(false); });
+
+  // Set before the submission rather than after, so the label is already there when the task runs.
+  if (proactive) {
+    proactive_sync_pending_.store(true, std::memory_order_release);
+  }
 
   Status status;
   {
@@ -1421,6 +1448,20 @@ bool Log::MaybeSyncInBackground() {
   // No UpdateSegmentReadableOffset() here: nothing has been appended on this path, so the
   // appender has already published the current offset and watermark.
   return SubmitBackgroundSync();
+}
+
+bool Log::SyncInBackgroundIfPending() {
+  // Same two early outs as ::MaybeSyncInBackground, for the same reasons.
+  if (durable_wal_write_ || sync_disabled_) {
+    return false;
+  }
+  if (!periodic_sync_needed_.load(std::memory_order_acquire)) {
+    return false;
+  }
+
+  // And then, unlike that function, no FindSyncType() call: something is unsynced, so sync it. The
+  // caller has already decided the device can afford this.
+  return SubmitBackgroundSync(/* proactive= */ true);
 }
 
 // Finds type of sync that needs to be done and either spawns a task to execute

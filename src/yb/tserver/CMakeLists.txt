@@ -301,6 +301,7 @@ set(TSERVER_SRCS
   tserver-path-handlers.cc
   tserver_auto_flags_manager.cc
   tserver_metrics_heartbeat_data_provider.cc
+  wal_sync_sweeper.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
   stateful_services/pg_auto_analyze_table.cc
@@ -456,6 +457,7 @@ ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_local_lock_manager-test)
 ADD_YB_TEST(ts_tablet_manager-test)
+ADD_YB_TEST(wal_sync_sweeper-test)
 if (NOT APPLE)
   # We disable this test when running on Apple platform as it does not support cgroups.
   ADD_YB_TEST(tserver_cgroup_manager-test)

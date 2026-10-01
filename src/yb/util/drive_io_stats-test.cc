@@ -48,6 +48,8 @@ METRIC_DEFINE_entity(drive);
 METRIC_DECLARE_gauge_uint64(drive_bytes_written);
 METRIC_DECLARE_gauge_uint64(drive_sync_count);
 METRIC_DECLARE_gauge_uint64(drive_bytes_unsynced);
+METRIC_DECLARE_gauge_uint64(drive_proactive_sync_count);
+METRIC_DECLARE_gauge_uint64(drive_proactive_sync_time);
 METRIC_DECLARE_event_stats(drive_sync_latency);
 
 DECLARE_bool(never_fsync);
@@ -346,6 +348,52 @@ TEST_F(DriveIoStatsTest, ExportsMetricsOnDriveEntity) {
 
   // The metrics are declared counter-like so that a rate() over them is meaningful.
   ASSERT_EQ(MetricType::kCounter, METRIC_drive_bytes_written.type());
+}
+
+// Proactive syncs are a labelled subset of sync_count, not a parallel total, because the question
+// they answer is "how much of this drive's fsync load did we choose to add" - which only means
+// anything as a fraction of the whole.
+TEST_F(DriveIoStatsTest, ProactiveSyncsAreASubsetOfAllSyncs) {
+  const auto root = GetTestPath("drive");
+  ASSERT_OK(env_->CreateDir(root));
+
+  MetricEntity::AttributeMap attrs;
+  attrs["drive_path"] = root;
+  auto entity = METRIC_ENTITY_drive.Instantiate(&metric_registry_, "drive:" + root, attrs);
+  RegisterDriveIoMetrics(entity, root);
+  auto* stats = DriveIoStatsRegistry::Instance().Find(root);
+  ASSERT_NE(stats, nullptr);
+
+  ASSERT_EQ(0, stats->proactive_sync_count());
+
+  // Two syncs, one of which some background sweep asked for. RecordProactiveSync only labels; it
+  // must not invent a sync of its own.
+  stats->RecordSync(4096, MonoDelta::FromMicroseconds(30));
+  stats->RecordSync(4096, MonoDelta::FromMicroseconds(10));
+  stats->RecordProactiveSync(MonoDelta::FromMicroseconds(10));
+
+  ASSERT_EQ(2, stats->sync_count());
+  ASSERT_EQ(1, stats->proactive_sync_count());
+
+  // Both halves of the label matter. The count is what a reader divides to get a share; the micros
+  // are what the sweeper's own throttle subtracts, and subtracting the wrong quantity is what makes
+  // a proactive flusher throttle on itself.
+  ASSERT_EQ(40, stats->sync_micros());
+  ASSERT_EQ(10, stats->proactive_sync_micros());
+  ASSERT_EQ(30, stats->sync_micros() - stats->proactive_sync_micros())
+      << "workload-demanded device time is the difference of the two";
+
+  auto proactive =
+      entity->FindOrNull<FunctionGauge<uint64_t>>(METRIC_drive_proactive_sync_count);
+  ASSERT_NE(proactive, nullptr);
+  ASSERT_EQ(1, proactive->value());
+  ASSERT_EQ(MetricType::kCounter, METRIC_drive_proactive_sync_count.type());
+
+  auto proactive_time =
+      entity->FindOrNull<FunctionGauge<uint64_t>>(METRIC_drive_proactive_sync_time);
+  ASSERT_NE(proactive_time, nullptr);
+  ASSERT_EQ(10, proactive_time->value());
+  ASSERT_EQ(MetricType::kCounter, METRIC_drive_proactive_sync_time.type());
 }
 
 // A second MetricRegistry for the same root happens when a mini-cluster restarts a server. The

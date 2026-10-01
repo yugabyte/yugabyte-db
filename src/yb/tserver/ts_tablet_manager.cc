@@ -113,6 +113,7 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/wal_sync_sweeper.h"
 
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
@@ -326,6 +327,12 @@ DEFINE_RUNTIME_bool(reject_rbs_for_deleted_tablet, true,
 
 DEFINE_UNKNOWN_int32(flush_bootstrap_state_pool_max_threads, -1,
     "The maximum number of threads used to flush retryable requests");
+
+DEFINE_NON_RUNTIME_int32(log_sync_pool_max_threads, 0,
+    "Maximum number of threads in the log-sync pool, which performs background WAL fsyncs. 0 "
+    "means unlimited, which is the historical behavior: on a stalled drive with many tablets that "
+    "is one parked thread per tablet. Setting a bound makes the excess queue instead, which for "
+    "these already-coalesced fsyncs costs only latency.");
 
 DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
     "Whether to disable flushing memtable on shutdown.");
@@ -616,10 +623,22 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_max_threads(FLAGS_snapshot_cleanup_pool_size)
                .Build(&snapshot_cleanup_pool_));
 
-  CHECK_OK(ThreadPoolBuilder("log-sync")
-               .set_min_threads(1)
-               .unlimited_threads()
-               .Build(&log_sync_pool_));
+  // Per-tablet SERIAL tokens plus Log::fsync_task_in_queue_ already cap this at one outstanding
+  // fsync task per tablet, so a sweep cannot pile up on any single tablet. Across a few thousand
+  // tablet peers it can still ask for a lot of concurrent fsyncs at once, and with unlimited
+  // threads each of those becomes a real thread parked in fdatasync() on a degraded drive.
+  // --log_sync_pool_max_threads bounds that; the excess queues on the pool instead, which for
+  // already-coalesced background fsyncs only costs latency. 0 preserves the historical behavior.
+  {
+    ThreadPoolBuilder log_sync_pool_builder("log-sync");
+    log_sync_pool_builder.set_min_threads(1);
+    if (FLAGS_log_sync_pool_max_threads > 0) {
+      log_sync_pool_builder.set_max_threads(FLAGS_log_sync_pool_max_threads);
+    } else {
+      log_sync_pool_builder.unlimited_threads();
+    }
+    CHECK_OK(log_sync_pool_builder.Build(&log_sync_pool_));
+  }
   auto num_flush_threads = FLAGS_flush_bootstrap_state_pool_max_threads;
   if (num_flush_threads < 0) {
     num_flush_threads = NumEffectiveCPUs();
@@ -955,6 +974,9 @@ Status TSTabletManager::Init() {
         MonoDelta::FromSeconds(bg_superblock_flush_interval_secs).ToChronoMilliseconds()));
     RETURN_NOT_OK(superblock_flush_bg_task_->Init());
   }
+
+  wal_sync_sweeper_ = std::make_unique<WalSyncSweeper>(this, server_->metric_entity());
+  RETURN_NOT_OK(wal_sync_sweeper_->Init());
 
   RETURN_NOT_OK(mem_manager_->Init());
 
@@ -2762,6 +2784,9 @@ void TSTabletManager::StartShutdown() {
   if (superblock_flush_bg_task_) {
     superblock_flush_bg_task_->StartShutdown();
   }
+  if (wal_sync_sweeper_) {
+    wal_sync_sweeper_->StartShutdown();
+  }
   if (metadata_cache_holder_) {
     metadata_cache_holder_->Shutdown();
   }
@@ -2774,6 +2799,12 @@ void TSTabletManager::StartShutdown() {
 
 void TSTabletManager::CompleteShutdown() {
   tablet_metadata_validator_->CompleteShutdown();
+
+  // Before the peers are torn down and before log_sync_pool_ is shut down below, so the sweeper is
+  // never mid-pass over peers that are going away and never submits into a retired pool.
+  if (wal_sync_sweeper_) {
+    wal_sync_sweeper_->CompleteShutdown();
+  }
 
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
     peer->CompleteShutdown();

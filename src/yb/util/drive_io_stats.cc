@@ -90,6 +90,22 @@ METRIC_DEFINE_gauge_uint64(drive, drive_bytes_unsynced, "Drive Bytes Unsynced",
     "spotting a drive whose backlog grows without bound relative to its peers, not as an absolute "
     "figure.");
 
+METRIC_DEFINE_gauge_uint64(drive, drive_proactive_sync_count, "Drive Proactive Sync Count",
+    yb::MetricUnit::kOperations,
+    "Of drive_sync_count, how many fsyncs a background durability sweep asked for rather than an "
+    "append path. Subtract from drive_sync_count to get the rate the workload itself demanded. "
+    "This is the metric to watch when deciding whether proactive WAL flushing is buying "
+    "durability for free or is competing with real work for the device.",
+    yb::EXPOSE_AS_COUNTER);
+
+METRIC_DEFINE_gauge_uint64(drive, drive_proactive_sync_time, "Drive Proactive Sync Time",
+    yb::MetricUnit::kMicroseconds,
+    "Of drive_sync_time, how much was spent in fsyncs a background durability sweep asked for. "
+    "drive_sync_time minus this is the device time the workload itself demanded, which is the "
+    "quantity a proactive flusher has to throttle on: throttling on the raw total means measuring "
+    "its own previous pass, which produces alternating sweep-then-back-off rather than pacing.",
+    yb::EXPOSE_AS_COUNTER);
+
 METRIC_DEFINE_event_stats(drive, drive_sync_latency, "Drive Sync Latency",
     yb::MetricUnit::kMicroseconds,
     "Latency of individual fsync()/fdatasync() calls for files on this drive. Unlike the "
@@ -164,6 +180,11 @@ void DriveIoStats::RecordRangeSync(MonoDelta elapsed) {
 
 void DriveIoStats::ReleaseUnsyncedBytes(uint64_t bytes) {
   SubtractSaturating(bytes_unsynced_, bytes);
+}
+
+void DriveIoStats::RecordProactiveSync(MonoDelta elapsed) {
+  proactive_sync_count_.fetch_add(1, std::memory_order_relaxed);
+  proactive_sync_micros_.fetch_add(Micros(elapsed), std::memory_order_relaxed);
 }
 
 DriveIoStatsRegistry& DriveIoStatsRegistry::Instance() {
@@ -243,6 +264,10 @@ void RegisterDriveIoMetrics(const scoped_refptr<MetricEntity>& entity, const std
       entity, Bind(&DriveIoStats::range_sync_micros, Unretained(&stats))));
   entity->NeverRetire(METRIC_drive_bytes_unsynced.InstantiateFunctionGauge(
       entity, Bind(&DriveIoStats::bytes_unsynced, Unretained(&stats))));
+  entity->NeverRetire(METRIC_drive_proactive_sync_count.InstantiateFunctionGauge(
+      entity, Bind(&DriveIoStats::proactive_sync_count, Unretained(&stats))));
+  entity->NeverRetire(METRIC_drive_proactive_sync_time.InstantiateFunctionGauge(
+      entity, Bind(&DriveIoStats::proactive_sync_micros, Unretained(&stats))));
 }
 
 } // namespace yb
