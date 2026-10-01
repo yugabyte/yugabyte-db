@@ -132,9 +132,8 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       if (taskParams().rootCARotationType == CertsRotateParams.CertRotationType.ServerCert) {
         // The root CA is unchanged, so the pod template is too and a HELM_UPGRADE roll would
         // restart nothing. Re-render the cert secrets without a restart, then delete the pods in
-        // rolling order. Root CA rotation must stay on HELM_UPGRADE: it is the only path that
-        // honors useExistingServerCert.
-        createNonRestartUpgradeTask(universe, upgradeContext);
+        // rolling order.
+        createNonRestartUpgradeTask(universe, getUpgradeContext(rootCAUUID));
         rollCommandType = CommandType.POD_DELETE;
       }
       createUpgradeTask(
