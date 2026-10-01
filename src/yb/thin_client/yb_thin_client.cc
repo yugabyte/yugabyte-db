@@ -106,7 +106,7 @@ static constexpr uint16_t kDefaultTserverRpcPort = 9100;
 static constexpr int kKeepaliveIntervalMs = 10000;
 static constexpr int kDefaultRpcTimeoutMs = 60000;
 static constexpr int kDefaultNumReactors = 4;
-// Concurrency comes from multiple sessions, packed 4 per connection so a small pool opens one.
+// Sessions are packed 4 per connection, so a small pool opens one.
 static constexpr uint32_t kDefaultReadSessions = 4;
 static constexpr uint32_t kDefaultWriteSessions = 1;
 static constexpr uint32_t kDefaultSessionsPerConn = 4;
@@ -140,6 +140,8 @@ struct ybthin_session {
 struct ybthin_client {
   std::unique_ptr<rpc::SecureContext> secure_context;  // null for plaintext; shared by all conns
   std::vector<std::unique_ptr<ybthin_connection>> connections;
+  // Fixed at create. A dead session keeps its slot and is reopened in place, since paging states
+  // and calls in flight refer to it.
   std::vector<std::unique_ptr<ybthin_session>> read_sessions;
   std::vector<std::unique_ptr<ybthin_session>> write_sessions;
   // Round-robin cursors for picking the next session out of each pool.
@@ -1393,9 +1395,11 @@ void ybthin_read_async(
   bool dispatch = false;
   {
     std::lock_guard<std::mutex> lock(session.mutex);
-    if (read_call->has_continuation && (!IsSessionUsable(*client, session) ||
-                                        session.generation != read_call->pinned_generation)) {
-      early = MakeStatus(YBTHIN_READ_RESTART, "pinned read session was dropped or reopened");
+    if (read_call->has_continuation && !IsSessionUsable(*client, session)) {
+      early = MakeStatus(YBTHIN_READ_RESTART, "pinned read session is no longer open");
+    } else if (read_call->has_continuation &&
+               session.generation != read_call->pinned_generation) {
+      early = MakeStatus(YBTHIN_READ_RESTART, "pinned read session was reopened");
     } else if (Status open = EnsureSessionOpen(*client, session); !open.ok()) {
       early = FromStatus(open);
     } else {
