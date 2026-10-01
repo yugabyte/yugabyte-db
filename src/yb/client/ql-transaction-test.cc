@@ -2023,6 +2023,7 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
   auto sync_point_cleanup = ScopeExit([&sync_point] {
     sync_point.DisableProcessing();
     sync_point.ClearAllCallBacks();
+    sync_point.ClearTrace();
   });
 
   sync_point.EnableProcessing();
