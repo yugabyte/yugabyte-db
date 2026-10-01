@@ -39,6 +39,7 @@
 DECLARE_bool(disable_pitr);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
 
 using namespace std::literals;
 
@@ -140,6 +141,7 @@ class PitrDisabledTest : public YBMiniClusterTestBase<MiniCluster> {
 TEST_F(PitrDisabledTest, RejectsYsqlAndYcqlPitr) {
   ASSERT_TRUE(ASSERT_RESULT(Config()).pitr_disabled());
   ASSERT_FALSE(ASSERT_RESULT(Config()).is_initial_sys_catalog_snapshot());
+  ASSERT_FALSE(FLAGS_ysql_enable_auth_catalog_follower_reads);
   ASSERT_NOK_STR_CONTAINS(CreateSchedule(), "PITR is disabled for this universe");
   ASSERT_NOK_STR_CONTAINS(
       CreateSchedule(YQL_DATABASE_PGSQL, "yugabyte"), "PITR is disabled for this universe");
@@ -159,6 +161,7 @@ TEST_F(PitrDisabledTest, RejectsYsqlAndYcqlPitr) {
 
 TEST_F(PitrDisabledTest, PersistsAcrossFailoverAndRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = false;
+  ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, false));
   const auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   std::string target;
   for (size_t i = 0; i < cluster_->num_masters(); ++i) {
@@ -333,7 +336,7 @@ TEST_F(PitrDisabledFlaglessBootstrapTest, CommittedModeSurvivesFlaglessInitdbRet
     options.master_rpc_ports = {interrupted.master(0)->bound_rpc_addr().port()};
   }
 
-  options.extra_master_flags.clear();
+  options.extra_master_flags = {"--ysql_enable_auth_catalog_follower_reads=true"};
   ExternalMiniCluster recovered(options);
   ASSERT_OK(recovered.Start());
   auto proxy = recovered.GetLeaderMasterProxy<MasterClusterProxy>();
@@ -345,6 +348,14 @@ TEST_F(PitrDisabledFlaglessBootstrapTest, CommittedModeSurvivesFlaglessInitdbRet
   ASSERT_FALSE(config_response.has_error()) << config_response.ShortDebugString();
   ASSERT_TRUE(config_response.cluster_config().pitr_disabled());
   ASSERT_FALSE(config_response.cluster_config().is_initial_sys_catalog_snapshot());
+
+  GetYsqlAuthCatalogReadTimeRequestPB auth_request;
+  GetYsqlAuthCatalogReadTimeResponsePB auth_response;
+  rpc.Reset();
+  rpc.set_timeout(30s * kTimeMultiplier);
+  ASSERT_OK(proxy.GetYsqlAuthCatalogReadTime(auth_request, &auth_response, &rpc));
+  ASSERT_FALSE(auth_response.has_error()) << auth_response.ShortDebugString();
+  ASSERT_TRUE(auth_response.has_read_time());
 
   auto backup = recovered.GetLeaderMasterProxy<MasterBackupProxy>();
   CreateSnapshotScheduleRequestPB schedule_request;

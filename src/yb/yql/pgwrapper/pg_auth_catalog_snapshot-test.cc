@@ -14,7 +14,7 @@
 #include "yb/common/ysql_auth_catalog_snapshot.h"
 
 #include "yb/master/master.h"
-#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/service_pool.h"
@@ -38,10 +38,10 @@
 
 DECLARE_bool(TEST_enable_pg_client_mock);
 DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(disable_pitr);
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_enable_catalog_follower_read_reservation);
 
 METRIC_DECLARE_counter(tserver_ysql_auth_snapshot_deadline_expirations);
 METRIC_DECLARE_counter(tserver_ysql_auth_snapshot_task_limit_rejections);
@@ -55,9 +55,9 @@ class PgAuthSnapshotPoolTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_conn_mgr) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auth_catalog_follower_reads) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_catalog_follower_read_reservation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
     auto* sync = SyncPoint::GetInstance();
@@ -71,14 +71,8 @@ class PgAuthSnapshotPoolTest : public PgMiniTestBase {
     sync->EnableProcessing();
     ASSERT_NO_FATAL_FAILURE(PgMiniTestBase::SetUp());
 
-    auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
-    master::ReserveYsqlCatalogFollowerReadsRequestPB req;
-    req.set_acknowledge_permanent_pitr_exclusion(true);
-    master::ReserveYsqlCatalogFollowerReadsResponsePB resp;
-    rpc::RpcController rpc;
-    rpc.set_timeout(30s * kTimeMultiplier);
-    ASSERT_OK(proxy.ReserveYsqlCatalogFollowerReads(req, &resp, &rpc));
-    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+    auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+    ASSERT_TRUE(leader->master()->snapshot_coordinator().PitrDisabled());
   }
 
   void DoTearDown() override {

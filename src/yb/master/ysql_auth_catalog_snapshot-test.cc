@@ -49,8 +49,8 @@
 #include "yb/util/thread.h"
 
 DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(disable_pitr);
 DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
-DECLARE_bool(ysql_enable_catalog_follower_read_reservation);
 
 METRIC_DECLARE_counter(master_ysql_auth_snapshot_deadline_expirations);
 METRIC_DECLARE_counter(master_ysql_auth_snapshot_task_limit_rejections);
@@ -92,26 +92,15 @@ class MasterAuthSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     return STATUS(NotFound, "No master follower");
   }
 
-  Status ReserveAuthCatalogReads() {
-    auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<MasterClusterProxy>());
-    ReserveYsqlCatalogFollowerReadsRequestPB req;
-    req.set_acknowledge_permanent_pitr_exclusion(true);
-    ReserveYsqlCatalogFollowerReadsResponsePB resp;
-    rpc::RpcController rpc;
-    rpc.set_timeout(30s * kTimeMultiplier);
-    RETURN_NOT_OK(proxy.ReserveYsqlCatalogFollowerReads(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
+  Status WaitForPitrDisabledMode() {
     return WaitFor([&] {
       for (size_t i = 0; i < cluster_->num_masters(); ++i) {
-        if (!cluster_->mini_master(i)->master()->snapshot_coordinator()
-                 .YsqlCatalogFollowerReadsReserved()) {
+        if (!cluster_->mini_master(i)->master()->snapshot_coordinator().PitrDisabled()) {
           return false;
         }
       }
       return true;
-    }, 30s * kTimeMultiplier, "Wait for local catalog follower-read reservations");
+    }, 30s * kTimeMultiplier, "Wait for local PITR-disabled mode");
   }
 
   Result<HybridTime> AuthReadTime(
@@ -134,13 +123,20 @@ class MasterAuthSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
 };
 
-class MasterAuthSnapshotTaskPoolTest : public MasterAuthSnapshotTest {
+class MasterAuthSnapshotPitrDisabledModeTest : public MasterAuthSnapshotTest {
  public:
   void SetUp() override {
-    MasterAuthSnapshotTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = true;
+    ASSERT_NO_FATAL_FAILURE(MasterAuthSnapshotTest::SetUp());
+    ASSERT_OK(WaitForPitrDisabledMode());
+  }
+};
+
+class MasterAuthSnapshotTaskPoolTest : public MasterAuthSnapshotPitrDisabledModeTest {
+ public:
+  void SetUp() override {
+    ASSERT_NO_FATAL_FAILURE(MasterAuthSnapshotPitrDisabledModeTest::SetUp());
     ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
-    ASSERT_OK(SET_FLAG(ysql_enable_catalog_follower_read_reservation, true));
-    ASSERT_OK(ReserveAuthCatalogReads());
   }
 
  protected:
@@ -309,15 +305,22 @@ class MasterAuthSnapshotTaskPoolTest : public MasterAuthSnapshotTest {
   std::atomic<MasterClusterIf*> snapshot_service_{nullptr};
 };
 
-TEST_F(MasterAuthSnapshotTest, AuthSnapshotRequiresLeaderFlagAndReservation) {
+TEST_F(MasterAuthSnapshotTest, AuthSnapshotRequiresPitrDisabledMode) {
+  ASSERT_FALSE(FLAGS_disable_pitr);
+  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  ASSERT_FALSE(leader->master()->snapshot_coordinator().PitrDisabled());
+  ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
+  ASSERT_NOK_STR_CONTAINS(
+      AuthReadTime(leader),
+      "Authentication catalog follower reads require a universe created with PITR disabled");
+}
+
+TEST_F(MasterAuthSnapshotPitrDisabledModeTest, AuthSnapshotRequiresLeaderAndRoutingFlag) {
   auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   auto* follower = ASSERT_RESULT(RestartFollower());
   ASSERT_NOK(AuthReadTime(follower));
   ASSERT_NOK_STR_CONTAINS(AuthReadTime(leader), "disabled");
   ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
-  ASSERT_NOK_STR_CONTAINS(AuthReadTime(leader), "durable reservation");
-  ASSERT_OK(SET_FLAG(ysql_enable_catalog_follower_read_reservation, true));
-  ASSERT_OK(ReserveAuthCatalogReads());
   const auto propagated = leader->Now().AddMilliseconds(100);
   const auto read_time = ASSERT_RESULT(AuthReadTime(leader, propagated));
   ASSERT_GE(read_time, propagated);
@@ -329,7 +332,7 @@ TEST_F(MasterAuthSnapshotTest, AuthSnapshotRequiresLeaderFlagAndReservation) {
   ASSERT_NOK(AuthReadTime(follower));
 }
 
-TEST_F(MasterAuthSnapshotTaskPoolTest, SaturationAndQueuedCapabilityRecheck) {
+TEST_F(MasterAuthSnapshotTaskPoolTest, SaturationAndQueuedRoutingFlagRecheck) {
   auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   MasterClusterProxy proxy(&cluster_->proxy_cache(), leader->bound_rpc_addr());
   CountDownLatch entered(1), resume(1), enqueued(2);
