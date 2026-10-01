@@ -31,6 +31,7 @@
 //
 
 #include <algorithm>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -38,20 +39,26 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/clock.h"
+
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using std::vector;
+using namespace std::chrono_literals;
 
-DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);
+DECLARE_uint64(max_clock_sync_error_usec);
+DECLARE_uint64(wait_hybrid_time_sleep_interval_us);
 
 namespace yb {
 namespace server {
@@ -127,6 +134,41 @@ TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
   ASSERT_EQ(logical + 1, now2.GetLogicalValue());
   ASSERT_EQ(now.GetPhysicalValueMicros() + 200000,
             now2.GetPhysicalValueMicros());
+}
+
+TEST_F(HybridClockTest, WaitUntilPhysicalGapIsBoundedByDeadline) {
+  const auto target = clock_->Now().AddSeconds(5 * kTimeMultiplier);
+  const auto start = CoarseMonoClock::Now();
+  const auto result = WaitUntil(clock_.get(), target, start + 20ms * kTimeMultiplier);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsTimedOut()) << result.status();
+  ASSERT_LT(CoarseMonoClock::Now() - start, 1s * kTimeMultiplier);
+}
+
+TEST_F(HybridClockTest, WaitUntilPollingIntervalIsBoundedByDeadline) {
+  ASSERT_OK(SET_FLAG(
+      wait_hybrid_time_sleep_interval_us,
+      static_cast<decltype(FLAGS_wait_hybrid_time_sleep_interval_us)>(5000000) * kTimeMultiplier));
+  MockClock mock_clock;
+  mock_clock.Set(PhysicalTime{1000000, 0});
+  scoped_refptr<HybridClock> clock(new HybridClock(mock_clock.AsClock()));
+  ASSERT_OK(clock->Init());
+  const auto target = HybridTime::FromMicrosecondsAndLogicalValue(1000000, 1);
+  const auto start = CoarseMonoClock::Now();
+  const auto result = WaitUntil(clock.get(), target, start + 20ms * kTimeMultiplier);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsTimedOut()) << result.status();
+  ASSERT_LT(CoarseMonoClock::Now() - start, 1s * kTimeMultiplier);
+}
+
+TEST_F(HybridClockTest, WaitUntilPreservesLogicalComponent) {
+  MockClock mock_clock;
+  mock_clock.Set(PhysicalTime{1000000, 0});
+  scoped_refptr<HybridClock> clock(new HybridClock(mock_clock.AsClock()));
+  ASSERT_OK(clock->Init());
+  const auto target = HybridTime::FromMicrosecondsAndLogicalValue(1000000, 3);
+  ASSERT_EQ(ASSERT_RESULT(WaitUntil(
+      clock.get(), target, CoarseMonoClock::Now() + 5s * kTimeMultiplier)), target);
 }
 
 // Thread which loops polling the clock and updating it slightly
