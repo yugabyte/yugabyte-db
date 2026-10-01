@@ -394,6 +394,10 @@ class Loader {
     auto& info = op_info_.back();
     auto& req = info.operation->read_request();
     SetupPaging(&req);
+    // All catalog reads of one round go to the sys catalog tablet in a single RPC, and DocDB
+    // checks each read's size limit against the whole RPC response. The same limit on every
+    // read therefore caps the combined response of the round.
+    req.set_size_limit(options_.fetch_size_limit);
     PgTable target(table);
     auto ordered_columns = OrderColumns(target.columns(), item.fetch_ybctid);
     info.targets.reserve(ordered_columns.size());
@@ -427,13 +431,6 @@ class Loader {
   Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
     while (!op_info_.empty()) {
-      const auto fetch_size_limit = options_.fetch_size_limit
-          ? std::max<uint64_t>(options_.fetch_size_limit / op_info_.size(), 1)
-          : 0;
-      for (auto& op_info : op_info_) {
-        auto& req = op_info.operation->read_request();
-        req.set_size_limit(fetch_size_limit);
-      }
       if (yb_debug_log_catcache_events) {
         std::set<std::string> table_names;
         for (const auto& op : op_info_) {

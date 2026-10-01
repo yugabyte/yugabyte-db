@@ -401,7 +401,7 @@ constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 7;
 constexpr uint64_t kFirstConnectionRPCCountWithPreloadCatalogList = 6;
 constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
-constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 6;
+constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 4;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
 // Helper class to fetch number of client connection via pgsql proxy webserver.
@@ -463,7 +463,7 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithoutPartitionTables) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 3);
+  ASSERT_EQ(cache_refresh_rpc_count, 1);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -487,7 +487,7 @@ TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithPartitionTables) {
       kTableWithCastInPartitioning));
 
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 4);
+  ASSERT_EQ(cache_refresh_rpc_count, 2);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
