@@ -34,6 +34,12 @@
 
 using std::string;
 
+DEFINE_NON_RUNTIME_bool(disable_pitr, false,
+    "Create a universe with PITR and system-catalog restore permanently disabled. "
+    "Only valid when creating a new universe. The persisted mode survives flag changes and "
+    "restarts. Required for authentication catalog follower reads; does not enable routing.");
+TAG_FLAG(disable_pitr, experimental);
+
 DEFINE_UNKNOWN_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
     "is done.");
@@ -45,6 +51,9 @@ DEFINE_UNKNOWN_bool(create_initial_sys_catalog_snapshot, false,
 
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
 TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
+
+DEFINE_test_flag(bool, fail_initdb_after_cluster_config, false,
+                 "Kill the first master leader after persisting the initial cluster config.");
 
 DEFINE_test_flag(bool, fail_initdb_after_snapshot_restore, false,
                  "Kill the master process after successfully restoring the sys catalog snapshot.");

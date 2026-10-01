@@ -439,6 +439,13 @@ message SysClusterConfigEntryPB {
   // This field is bumped to invalidate all the TServer OID caches.
   // Note that this is for every database and applies only to YSQL.
   optional uint32 oid_cache_invalidations_count = 9 [default = 0];
+
+  // Immutable after universe creation. Missing means PITR remains supported.
+  optional bool pitr_disabled = 10 [default = false];
+
+  // Only prebuilt initdb snapshots carry this marker. It lets an interrupted first boot
+  // distinguish template metadata from an existing universe's configuration.
+  optional bool is_initial_sys_catalog_snapshot = 11 [default = false];
 }
 
 message SysObjectLockEntryPB {
@@ -581,6 +588,8 @@ message SysTransactionTablesConfigEntryPB {
 
 // Various cluster configuration.
 message SysConfigEntryPB {
+  reserved 4;
+  reserved "ysql_catalog_follower_reads_reserved";
   oneof config {
     SysSecurityConfigEntryPB security_config = 1;
     SysYSQLCatalogConfigEntryPB ysql_catalog_config = 2;

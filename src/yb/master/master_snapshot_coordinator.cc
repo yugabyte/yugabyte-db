@@ -33,6 +33,7 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_types.pb.h"
@@ -43,6 +44,7 @@
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
 #include "yb/master/state_with_tablets.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -414,8 +416,32 @@ class MasterSnapshotCoordinator::Impl {
         tablet, SysRowEntryType::SNAPSHOT, &snapshots_));
     RETURN_NOT_OK(LoadEntryOfType<SnapshotScheduleOptionsPB>(
         tablet, SysRowEntryType::SNAPSHOT_SCHEDULE, &schedules_));
-    return LoadEntryOfType<SysRestorationEntryPB>(
-        tablet, SysRowEntryType::SNAPSHOT_RESTORATION, &restorations_);
+    RETURN_NOT_OK(LoadEntryOfType<SysRestorationEntryPB>(
+        tablet, SysRowEntryType::SNAPSHOT_RESTORATION, &restorations_));
+    RETURN_NOT_OK(EnumerateSysCatalog(
+        tablet, context_.schema(), SysRowEntryType::SYS_CONFIG,
+        [](const Slice& id, const Slice&) -> Status {
+          SCHECK(id != "ysql_catalog_follower_read_reservation", NotSupported,
+                 "The old catalog follower-read reservation prototype is not supported; "
+                 "create a new universe");
+          return Status::OK();
+        }));
+    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::CLUSTER_CONFIG,
+        [this](const Slice&, const Slice& data) REQUIRES(mutex_) {
+          return ApplyPitrMode(VERIFY_RESULT(DecodePitrMode(data)));
+        });
+  }
+
+  static Result<bool> DecodePitrMode(const Slice& data) {
+    const auto config = VERIFY_RESULT(pb_util::ParseFromSlice<SysClusterConfigEntryPB>(data));
+    return config.pitr_disabled() && !config.is_initial_sys_catalog_snapshot();
+  }
+
+  Status ApplyPitrMode(bool disabled) REQUIRES(mutex_) {
+    SCHECK(!pitr_disabled_ || disabled, Corruption,
+           "The persisted PITR-disabled mode cannot be cleared");
+    pitr_disabled_ = disabled;
+    return Status::OK();
   }
 
   Status ApplyWritePair(Slice key, const Slice& value) {
@@ -441,6 +467,17 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     switch (first_key.GetInt32()) {
+      case SysRowEntryType::CLUSTER_CONFIG: {
+        dockv::Value decoded_value;
+        RETURN_NOT_OK(decoded_value.Decode(value));
+        SCHECK_EQ(decoded_value.primitive_value().value_type(), dockv::ValueEntryType::kString,
+                  Corruption, "Invalid universe configuration");
+        const auto disabled =
+            VERIFY_RESULT(DecodePitrMode(decoded_value.primitive_value().GetString()));
+        std::lock_guard lock(mutex_);
+        return ApplyPitrMode(disabled);
+      }
+
       case SysRowEntryType::SNAPSHOT:
         return DoApplyWrite<SysSnapshotEntryPB>(
             sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
@@ -685,6 +722,7 @@ class MasterSnapshotCoordinator::Impl {
     std::string_view ns_id{table.get().namespace_().id()};
     {
       std::lock_guard lock(mutex_);
+      RETURN_NOT_OK(CheckPitrAllowed());
       const auto& existing_schedule = FindSnapshotScheduleByNamespaceId(ns_id);
       if (existing_schedule.has_value()) {
         return STATUS(
@@ -884,6 +922,10 @@ class MasterSnapshotCoordinator::Impl {
   Status RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at,
       RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
+    {
+      std::lock_guard lock(mutex_);
+      RETURN_NOT_OK(CheckPitrAllowed());
+    }
     const auto snapshot_id = VERIFY_RESULT(
         GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline));
     TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
@@ -1240,6 +1282,16 @@ class MasterSnapshotCoordinator::Impl {
     auto tablet_lock = tablet_info.LockForRead();
     return ShouldRetain(
         tablet_info, tablet_lock->pb, table_hide_hybrid_time, schedule_to_min_restore_time);
+  }
+
+  Status CheckPitrAllowed() const REQUIRES(mutex_) {
+    SCHECK(!pitr_disabled_, NotSupported, "PITR is disabled for this universe");
+    return Status::OK();
+  }
+
+  bool PitrDisabled() const {
+    std::lock_guard lock(mutex_);
+    return pitr_disabled_;
   }
 
   bool IsPitrActive() {
@@ -2216,6 +2268,7 @@ class MasterSnapshotCoordinator::Impl {
         }
       }
       if (restore_sys_catalog) {
+        RETURN_NOT_OK(CheckPitrAllowed());
         RETURN_NOT_OK(ForwardRestoreCheck(snapshot.schedule_id(), restore_at));
       }
       // Get the restoration state. Construct if in initial phase.
@@ -2421,6 +2474,7 @@ class MasterSnapshotCoordinator::Impl {
   Restorations restorations_ GUARDED_BY(mutex_);
   HybridTime last_restorations_update_ht_ GUARDED_BY(mutex_);
   Schedules schedules_ GUARDED_BY(mutex_);
+  bool pitr_disabled_ GUARDED_BY(mutex_) = false;
   // Stores tablets and their associated snapshots that are preventing the tablet
   // from getting deleted. A snapshot covers a tablet iff:
   // 1. The tablet is a part of that snapshot
@@ -2693,6 +2747,10 @@ Result<docdb::KeyValuePairPB> MasterSnapshotCoordinator::UpdateRestorationAndGet
 
 bool MasterSnapshotCoordinator::IsPitrActive() {
   return impl_->IsPitrActive();
+}
+
+bool MasterSnapshotCoordinator::PitrDisabled() const {
+  return impl_->PitrDisabled();
 }
 
 bool MasterSnapshotCoordinator::TEST_IsTabletCoveredBySnapshot(

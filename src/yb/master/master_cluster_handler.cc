@@ -93,6 +93,21 @@ Status MasterClusterHandler::SetClusterConfig(
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
   }
 
+  if ((config.has_pitr_disabled() && config.pitr_disabled() != l->pb.pitr_disabled()) ||
+      (config.has_is_initial_sys_catalog_snapshot() &&
+       config.is_initial_sys_catalog_snapshot() != l->pb.is_initial_sys_catalog_snapshot())) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG,
+        STATUS(InvalidArgument, "Universe creation settings cannot be updated"));
+  }
+  // Older clients omit these fields when replacing cluster configuration.
+  if (l->pb.has_pitr_disabled()) {
+    config.set_pitr_disabled(l->pb.pitr_disabled());
+  }
+  if (l->pb.has_is_initial_sys_catalog_snapshot()) {
+    config.set_is_initial_sys_catalog_snapshot(l->pb.is_initial_sys_catalog_snapshot());
+  }
+
   // TODO(bogdan): should this live here?
   const ReplicationInfoPB& replication_info = config.replication_info();
   for (auto& read_replica : replication_info.read_replicas()) {

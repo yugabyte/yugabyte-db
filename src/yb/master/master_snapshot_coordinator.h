@@ -23,6 +23,7 @@
 
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_cluster.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_types.h"
@@ -221,6 +222,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // Returns true if there are one or more non-deleted
   // snapshot schedules present.
   bool IsPitrActive();
+
+  // The immutable universe mode, loaded/applied on every master replica.
+  bool PitrDisabled() const;
 
   Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info);
 

@@ -686,7 +686,9 @@ DEFINE_test_flag(bool, cdcsdk_disable_stream_drop_during_db_drop, false,
 DEFINE_test_flag(int32, delay_at_start_of_schedule_post_tablet_create_tasks_ms, 0,
     "Sleep at the start of SchedulePostTabletCreationTasks.");
 
+DECLARE_bool(TEST_fail_initdb_after_cluster_config);
 DECLARE_bool(create_initial_sys_catalog_snapshot);
+DECLARE_bool(disable_pitr);
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_ysql);
@@ -1395,6 +1397,11 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
       FLAGS_create_initial_sys_catalog_snapshot) {
     return Status::OK();
   }
+  if (cluster_config_ && cluster_config_->LockForRead()->pb.pitr_disabled()) {
+    // Do not overwrite the immutable mode after a crash between cluster-config creation and
+    // SetInitDbDone. The normal pg_proc check completes initdb recovery without restoring again.
+    return Status::OK();
+  }
   if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
     // Since this field is not set, this means that is an existing cluster created without
     // D19510. So skip restoring sys catalog.
@@ -1433,6 +1440,9 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
   LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
   cluster_config_.reset();
   RETURN_NOT_OK(PrepareDefaultClusterConfig(state->epoch.leader_term));
+  if (FLAGS_TEST_fail_initdb_after_cluster_config && state->epoch.leader_term == 1) {
+    LOG(FATAL) << "Simulate failover after initial cluster configuration";
+  }
 
   LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
   RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(
@@ -1551,6 +1561,11 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
 
     // Clear internal maps and run data loaders.
     RETURN_NOT_OK(RunLoaders(state));
+    if (FLAGS_disable_pitr && cluster_config_) {
+      auto config = cluster_config_->LockForRead();
+      SCHECK(config->pb.pitr_disabled() || config->pb.is_initial_sys_catalog_snapshot(),
+             NotSupported, "--disable_pitr can only be set when creating a new universe");
+    }
 
     // Prepare various default system configurations.
     RETURN_NOT_OK(PrepareDefaultSysConfig(term));
@@ -1749,6 +1764,14 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   // Create default.
   SysClusterConfigEntryPB config;
   config.set_version(0);
+  SCHECK(!FLAGS_disable_pitr || !FLAGS_create_initial_sys_catalog_snapshot, InvalidArgument,
+         "--disable_pitr cannot be used to create an initial catalog snapshot");
+  if (FLAGS_disable_pitr) {
+    config.set_pitr_disabled(true);
+  }
+  if (FLAGS_create_initial_sys_catalog_snapshot) {
+    config.set_is_initial_sys_catalog_snapshot(true);
+  }
 
   std::string cluster_uuid_source;
   if (!FLAGS_cluster_uuid.empty()) {
