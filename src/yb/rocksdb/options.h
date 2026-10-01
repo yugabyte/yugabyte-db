@@ -1647,6 +1647,13 @@ struct FlushOptions {
 
   int64_t ignore_if_flushed_after_tick = kNeverIgnore;
 
+  // Switching the memtable takes the write thread. If false and a writer holds it, do not wait:
+  // leave a switch request that the next write performs, and return at once. The flush then starts
+  // later than the return, so this only makes sense with wait = false. Meant for callers that
+  // must not block on this DB's writers, such as a flush job of another DB.
+  // Default: true
+  bool wait_for_writers = true;
+
   // Best-effort tag for observability (listeners, EVENT_LOG_v1, schedule VLOG(2) in `db_impl.cc`).
   // Production DocDB/tablet code must pass an explicit reason via `FlushOptions(FlushReason)` (see
   // `listener.h`). Default `kUnknown` is for legacy RocksDB tests and callers that intentionally

@@ -3204,6 +3204,9 @@ FlushAbility DBImpl::GetFlushAbility() {
 
 Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
                              const FlushOptions& flush_options) {
+  if (flush_options.wait && !flush_options.wait_for_writers) {
+    return STATUS(InvalidArgument, "Cannot wait for a flush without waiting for writers");
+  }
   Status s;
   {
     WriteContext context;
@@ -3218,10 +3221,21 @@ Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
       return Status::OK();
     }
 
+    WriteThread::Writer w;
+    if (!flush_options.wait_for_writers && !write_thread_.TryEnterUnbatched(&w)) {
+      // A writer holds the write thread. Leave the switch to the next write leader, which performs
+      // it before checking the write stall (PerformRequestedSwitches); a retry of this call takes
+      // the write thread itself once it is idle.
+      cfd->request_switch(flush_options.flush_reason);
+      switch_request_pending_ = true;
+      return Status::OK();
+    }
+
     last_flush_at_tick_ = FlushTick();
 
-    WriteThread::Writer w;
-    write_thread_.EnterUnbatched(&w, &mutex_);
+    if (flush_options.wait_for_writers) {
+      write_thread_.EnterUnbatched(&w, &mutex_);
+    }
 
     // SwitchMemtable() will release and reacquire mutex
     // during execution
@@ -5396,6 +5410,10 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     status = ScheduleFlushes(&context);
   }
 
+  if (UNLIKELY(status.ok() && switch_request_pending_)) {
+    status = PerformRequestedSwitches(&context);
+  }
+
   if (UNLIKELY(status.ok() && (write_controller_.IsStopped() ||
                                write_controller_.NeedsDelay()))) {
     PERF_TIMER_STOP(write_pre_and_post_process_time);
@@ -5704,6 +5722,42 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
   return bg_error_;
 }
 
+// REQUIRES: mutex_ is held
+// REQUIRES: this thread is currently at the front of the writer queue
+Status DBImpl::PerformRequestedSwitches(WriteContext* context) {
+  mutex_.AssertHeld();
+  switch_request_pending_ = false;
+  // Collect first: SwitchMemtable releases the mutex. No refcount is needed because drops and
+  // creates happen in the write thread, which this thread holds. A column family dropped earlier
+  // is skipped here: its last reference may go away while the mutex is released below.
+  autovector<ColumnFamilyData*> requested;
+  for (auto cfd : *versions_->GetColumnFamilySet()) {
+    if (!cfd->switch_requested()) {
+      continue;
+    }
+    if (cfd->IsDropped()) {
+      cfd->clear_switch_request();
+      continue;
+    }
+    requested.push_back(cfd);
+  }
+  for (auto cfd : requested) {
+    const auto reason = cfd->switch_requested_reason();
+    cfd->clear_switch_request();
+    if (cfd->mem()->IsEmpty()) {
+      continue;
+    }
+    // Counts as the flush the request stood for: a later flush that ignores anything flushed after
+    // its tick is skipped, as after the direct path in FlushMemTable.
+    last_flush_at_tick_ = FlushTick();
+    RETURN_NOT_OK(SwitchMemtable(cfd, context, reason));
+    cfd->imm()->FlushRequested();
+    SchedulePendingFlush(cfd, reason);
+    MaybeScheduleFlushOrCompaction();
+  }
+  return Status::OK();
+}
+
 Status DBImpl::ScheduleFlushes(WriteContext* context) {
   ColumnFamilyData* cfd;
   while ((cfd = flush_scheduler_.TakeNextColumnFamily()) != nullptr) {
@@ -5815,6 +5869,8 @@ Status DBImpl::SwitchMemtable(
   cfd->imm()->Add(cfd->mem(), &context->memtables_to_free_);
   new_mem->Ref();
   cfd->SetMemtable(new_mem);
+  // Any switch satisfies a pending switch request.
+  cfd->clear_switch_request();
   context->superversions_to_free_.push_back(
       InstallSuperVersionAndScheduleWork(cfd, new_superversion, mutable_cf_options, flush_reason));
 

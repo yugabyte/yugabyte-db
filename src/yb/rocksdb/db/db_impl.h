@@ -649,6 +649,10 @@ class DBImpl : public DB {
 
   Status ScheduleFlushes(WriteContext* context);
 
+  // Performs the memtable switches requested by FlushMemTable calls that must not wait for
+  // writers (FlushOptions::wait_for_writers = false) and found the write thread busy.
+  Status PerformRequestedSwitches(WriteContext* context);
+
   Status SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context, FlushReason flush_reason);
 
   // Force current memtable contents to be flushed.
@@ -886,6 +890,10 @@ class DBImpl : public DB {
   uint64_t last_batch_group_size_;
 
   FlushScheduler flush_scheduler_;
+
+  // Protected by mutex_. True while some column family has a switch request
+  // (ColumnFamilyData::switch_requested) that no write leader has looked at yet.
+  bool switch_request_pending_ = false;
 
   SnapshotList snapshots_;
 

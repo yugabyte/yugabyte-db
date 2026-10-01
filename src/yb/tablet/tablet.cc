@@ -1104,6 +1104,11 @@ Result<bool> Tablet::IntentsDbFlushFilter(
         if (idx == 0) {
           rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
           options.wait = false;
+          // This runs under the intents DB mutex, which the regular DB's flush listeners take. So
+          // never wait for the regular DB's writers here: a parked writer is only woken after those
+          // listeners run.
+          options.wait_for_writers = false;
+          DEBUG_ONLY_TEST_SYNC_POINT("Tablet::IntentsDbFlushFilter:BeforeRegularDbFlush");
           RETURN_NOT_OK(regular_db_->Flush(options));
         } else {
           RETURN_NOT_OK((*state->vector_indexes)[idx - 1]->Flush());
