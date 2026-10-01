@@ -350,6 +350,7 @@ public class KubernetesOperator {
                   Thread telemetryProviderReconcilerThread = null;
                   Thread kmsConfigReconcilerThread = null;
                   Thread universeKeyRotationReconcilerThread = null;
+                  Thread universeServerCertRotationReconcilerThread = null;
 
                   if (!ossMode) {
                     YBCertificateReconciler ybCertificateReconciler =
@@ -375,6 +376,8 @@ public class KubernetesOperator {
                         reconcilerFactory.getKMSConfigReconciler(client);
                     UniverseKeyRotationReconciler universeKeyRotationReconciler =
                         reconcilerFactory.getUniverseKeyRotationReconciler(client);
+                    UniverseServerCertRotationReconciler universeServerCertRotationReconciler =
+                        reconcilerFactory.getUniverseServerCertRotationReconciler(client);
 
                     scheduledBackupReconcilerThread =
                         new Thread(() -> scheduledBackupReconciler.run());
@@ -386,6 +389,8 @@ public class KubernetesOperator {
                     kmsConfigReconcilerThread = new Thread(() -> kmsConfigReconciler.run());
                     universeKeyRotationReconcilerThread =
                         new Thread(() -> universeKeyRotationReconciler.run());
+                    universeServerCertRotationReconcilerThread =
+                        new Thread(() -> universeServerCertRotationReconciler.run());
                   }
 
                   if (confGetter.getGlobalConf(
@@ -403,6 +408,8 @@ public class KubernetesOperator {
                       kmsConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                       universeKeyRotationReconcilerThread.setUncaughtExceptionHandler(
                           exceptionHandler);
+                      universeServerCertRotationReconcilerThread.setUncaughtExceptionHandler(
+                          exceptionHandler);
                     }
                   }
 
@@ -416,6 +423,7 @@ public class KubernetesOperator {
                     telemetryProviderReconcilerThread.start();
                     kmsConfigReconcilerThread.start();
                     universeKeyRotationReconcilerThread.start();
+                    universeServerCertRotationReconcilerThread.start();
                   }
 
                   ybUniverseReconcilerThread.join();
@@ -428,6 +436,7 @@ public class KubernetesOperator {
                     telemetryProviderReconcilerThread.join();
                     kmsConfigReconcilerThread.join();
                     universeKeyRotationReconcilerThread.join();
+                    universeServerCertRotationReconcilerThread.join();
                   }
 
                   LOG.info(
