@@ -863,10 +863,10 @@ Status ApplyIntentsContext::Complete(
 
 Status ApplyIntentsContext::DeleteVectorIds(
     Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
-  // TODO(vector_index): do we need check ApplyToRegularDB() here?
-  RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-      handler, ids, DocHybridTime(commit_ht_, write_id_)));
-
+  if (ApplyToRegularDB()) {
+    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+        handler, ids, DocHybridTime(commit_ht_, write_id_)));
+  }
   frontiers_.Largest().SetHasVectorDeletion();
   return Status::OK();
 }
@@ -1165,11 +1165,12 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
 
   // Remaining bytes after the key-value terminator are delete_vector_ids appended by
   // xCluster consumer. Tombstone each old vector ID's reverse mapping.
-  // TODO(vector_index): do we need check ApplyToRegularDB() here?
   if (!input_value.empty()) {
-    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-        regular_write_handler, input_value,
-        DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
+    if (apply_to_storages_.TestRegularDB()) {
+      RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+          regular_write_handler, input_value,
+          DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
+    }
     frontiers_.Largest().SetHasVectorDeletion();
   }
 
@@ -1295,7 +1296,13 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
         RETURN_NOT_OK(vector_indexes_updater->Feed(
             handler, write_pair.key(), write_pair.value()));
       }
-      HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+      // GH#32797: bootstrap replay clears the regular bit when the op is already flushed to the
+      // regular DB but not to a vector index. Keep the write id sequence unchanged either way.
+      if (apply_to_storages_.TestRegularDB()) {
+        HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+      } else {
+        ++write_id;
+      }
 
       RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
     }
@@ -1306,9 +1313,11 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   }
 
   if (put_batch_.has_delete_vector_ids()) {
-    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-        handler, Slice(put_batch_.delete_vector_ids()),
-        DocHybridTime(write_hybrid_time_, write_id)));
+    if (apply_to_storages_.TestRegularDB()) {
+      RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+          handler, Slice(put_batch_.delete_vector_ids()),
+          DocHybridTime(write_hybrid_time_, write_id)));
+    }
     frontiers_.Largest().SetHasVectorDeletion();
   }
 

@@ -148,6 +148,11 @@ DEFINE_UNKNOWN_int32(intents_flush_max_delay_ms, 2000,
     "Max time to wait for regular db to flush during flush of intents. "
     "After this time flush of regular db will be forced.");
 
+DEFINE_RUNTIME_int32(vector_index_num_raft_ops_to_force_flush, 10000,
+    "When the oldest unflushed Raft operation of a vector index is more than this many operations "
+    "behind the log tail, the index is flushed. Bounds both the WAL a vector index retains and the "
+    "entries tablet bootstrap replays into it. Entries inserted by backfill do not count.");
+
 DEFINE_UNKNOWN_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
     "When writes to intents RocksDB are stopped and the number of Raft operations after "
     "the last write to the intents RocksDB "
@@ -4208,6 +4213,11 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   RETURN_NOT_OK(ModifyFlushedFrontier(
       frontier, rocksdb::FrontierModificationMode::kUpdate,
       FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
+  // The vector indexes were replaced together with the regular DB. Without this stamp the new
+  // ones start from an empty frontier, and bootstrap replays the truncated writes back into them.
+  // Stamped here rather than in ModifyFlushedFrontier: every snapshot op goes through that one, and
+  // each stamp adds a chunk to the index manifest.
+  RETURN_NOT_OK(vector_indexes_->ModifyFlushedFrontier(frontier));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -4258,6 +4268,79 @@ Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const 
   result.intents = docdb::MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data);
   vector_indexes_->FillMaxPersistentOpIds(result.vector_indexes, invalid_if_no_new_data);
   return result;
+}
+
+Result<int64_t> Tablet::EarliestNeededLogIndex(
+    const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
+  FlushIntentsDbIfNecessary(latest_log_entry_op_id);
+  auto max_persistent_op_id = VERIFY_RESULT(MaxPersistentOpId(true /* invalid_if_no_new_data */));
+  int64_t min_index = std::numeric_limits<int64_t>::max();
+  auto add_storage = [&min_index, &add_factor](const char* name, const OpId& op_id) {
+    if (!op_id.valid()) {
+      return;
+    }
+    min_index = std::min(min_index, op_id.index);
+    add_factor(name, op_id.index, std::string());
+  };
+  add_storage("max persistent regular op ID idx", max_persistent_op_id.regular);
+  add_storage("max persistent intents op ID idx", max_persistent_op_id.intents);
+  return std::min(
+      min_index,
+      VERIFY_RESULT(EarliestNeededLogIndexForVectorIndexes(latest_log_entry_op_id, add_factor)));
+}
+
+Result<int64_t> Tablet::EarliestNeededLogIndexForVectorIndexes(
+    const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
+  int64_t min_index = std::numeric_limits<int64_t>::max();
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  auto vector_indexes = vector_indexes_->List();
+  if (!vector_indexes) {
+    return min_index;
+  }
+
+  // Vector indexes are reduced to one factor, naming each index and its OpId, so that a tablet
+  // with several of them does not emit a row per index with no way to tell them apart.
+  std::string details;
+  for (const auto& vector_index : *vector_indexes) {
+    auto flush_ability = vector_index->GetFlushAbility();
+    if (flush_ability == rocksdb::FlushAbility::kNoNewData) {
+      continue;
+    }
+    // Bound by the oldest operation the index holds in memory rather than by its flushed OpId: a
+    // backfill chunk is stamped with the OpId of the index creation while its entries come from
+    // the regular DB, so a backfilled index lags the log tail without needing the WAL. Backfill
+    // entries carry no OpId, so an empty smallest in-memory OpId means all unflushed entries are
+    // from backfill.
+    auto frontier = vector_index->GetInMemoryFrontier(rocksdb::UpdateUserValueType::kSmallest);
+    if (!frontier) {
+      continue;
+    }
+    auto op_id = down_cast<const docdb::ConsensusFrontier&>(*frontier).op_id();
+    if (op_id.empty()) {
+      continue;
+    }
+    min_index = std::min(min_index, op_id.index);
+    if (!details.empty()) {
+      details += ", ";
+    }
+    details += Format("$0: $1", vector_index->table_id(), op_id.index);
+
+    auto index_delta = latest_log_entry_op_id.index - op_id.index;
+    if (index_delta > FLAGS_vector_index_num_raft_ops_to_force_flush &&
+        flush_ability == rocksdb::FlushAbility::kHasNewData) {
+      LOG_WITH_PREFIX(INFO)
+          << "Force flushing vector index " << vector_index->table_id() << ", it holds operations "
+          << index_delta << " behind the log tail, while only "
+          << FLAGS_vector_index_num_raft_ops_to_force_flush << " is allowed";
+      WARN_NOT_OK(vector_index->Flush(), "Flush vector index failed");
+    }
+  }
+  if (min_index != std::numeric_limits<int64_t>::max()) {
+    add_factor("min unflushed vector index op ID idx", min_index, Format(" ($0)", details));
+  }
+  return min_index;
 }
 
 void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) {

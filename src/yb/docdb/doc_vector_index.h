@@ -151,6 +151,19 @@ class DocVectorIndex {
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
 
+  // Persists `frontier` as part of the flushed state without inserting any vector. Stamps an OpId
+  // on an index that is known to reflect everything up to it, but cannot reach it by flushing,
+  // because a truncate or a restore replaced its storage.
+  //
+  // The stamp only moves the flushed OpId forward: the flushed frontier is the maximum over the
+  // index chunks. That covers a truncate and a restore within the same Raft group, whose chunks
+  // carry lower OpIds. It cannot bring an index back from OpIds of another Raft group, the way
+  // RocksDBPatcher::ModifyFlushedFrontier resets the per file OpIds of the SST files.
+  //
+  // Each stamp adds a frontier only chunk that stays in the manifest until a full compaction, so
+  // it is reserved for storage replacement and not used to advance an idle index.
+  virtual Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) = 0;
+
   // Computes the requested frontiers (flushed and/or in-memory) atomically, so the views are
   // mutually consistent. This is the single primitive subclasses override; the accessors below are
   // expressed in terms of it.
