@@ -61,7 +61,7 @@ Some of the factors that the CBO considers in the cost estimation are as follows
 
     When an index is used, any additional columns needed for the query must be retrieved from the corresponding row in the main table, which can be more costly than scanning only the base table. However, this isn't an issue if the index is a covering index. To determine the most efficient execution plan, the CBO compares the cost of an index scan with that of a main table scan.
 
-    Starting in v2025.2.2, for a temporal join the planner can choose a parallel index scan on the range predicate and a batched nested loop for the primary key lookup. See [Enable a parallel index scan for a temporal join](../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-temporal-join/).
+    Starting in v2025.2.3, the planner can choose a parallel index scan on a range-sharded index of the temporal table and a [batched nested loop join](https://github.com/architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl) for primary key lookups into the joined table. See [Enable a parallel index scan for a temporal join](../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-temporal-join/).
 
 1. **Pushdown to storage layer**
 

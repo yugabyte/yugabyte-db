@@ -10,7 +10,9 @@ menu:
 type: docs
 ---
 
-The planner can choose a parallel index scan for a temporal join. When that plan applies, the settings that enable it, and what to look for in `EXPLAIN` are in [Enable a parallel index scan for a temporal join](../../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-temporal-join/).
+[YSQL](../../../../api/ysql/) supports native [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html) (PQ) for a common temporal join pattern used in analytics. This example counts rows in a time window on `entity_validity` and joins them to `entity_payload` by primary key. The planner can scan the range-sharded `tt_to` index in parallel and look up that primary key with a batched nested loop.
+
+For more information about when the planner chooses that plan, see [Enable a parallel index scan for a temporal join](../../../../launch-and-manage/monitor-and-alert/query-tuning/parallel-temporal-join/).
 
 ## Before you begin
 
