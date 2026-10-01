@@ -192,6 +192,7 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_query_api, false
     "When set to true, enables the query API for logical replication in YSQL via the "
     "pg_logical_slot_get/peek_changes functions.");
 
+DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
@@ -299,6 +300,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_conn_mgr_stats_interval,
       .ysql_enable_read_request_cache_for_connection_auth =
           &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
+      .ysql_enable_auth_catalog_follower_reads = &FLAGS_ysql_enable_auth_catalog_follower_reads,
       .timestamp_history_retention_interval_sec =
           &FLAGS_timestamp_history_retention_interval_sec,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,

@@ -910,6 +910,10 @@ message PgPerformOptionsPB {
   // until that statement.
   // Only applicable when use_historical_read_session is true.
   bytes historical_read_transaction_id = 36;
+
+  // Uncached authentication scope. All operations use the explicit, exact read_time; only
+  // allowlisted pure catalog reads may be routed to followers.
+  bool ysql_auth_catalog_read = 37;
 }
 
 message PgRequestSequenceNumPB {

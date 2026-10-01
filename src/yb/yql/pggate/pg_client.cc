@@ -552,11 +552,16 @@ struct PerformData : public PgClientData<tserver::LWPgPerformRequestPB,
                                          tserver::PgSharedExchangeReqType::PERFORM> {
   PgsqlOps operations;
   PgDocMetrics& metrics;
+  const ReadHybridTime auth_catalog_read_time;
 
   PerformData(
       const tserver::LWPgPerformRequestPB& req_, ThreadSafeArena* arena, PgsqlOps&& operations_,
       PgDocMetrics& metrics_)
-      : PgClientData(req_, arena), operations(std::move(operations_)), metrics(metrics_) {}
+      : PgClientData(req_, arena), operations(std::move(operations_)), metrics(metrics_),
+        auth_catalog_read_time(
+            req_.options().ysql_auth_catalog_read()
+                ? ReadHybridTime::FromPB(req_.options().read_time_options().read_time())
+                : ReadHybridTime()) {}
 
   Status Process() {
     auto& responses = *resp.mutable_responses();
@@ -614,6 +619,12 @@ Status DoProcessResponse(
     PerformData& data, PerformResult& result, const rpc::CallResponsePtr& response) {
   result.response = response;
   RETURN_NOT_OK(ResponseStatus(data.resp));
+  if (data.auth_catalog_read_time) {
+    SCHECK(
+        data.resp.has_catalog_read_time() &&
+            ReadHybridTime::FromPB(data.resp.catalog_read_time()) == data.auth_catalog_read_time,
+        IllegalState, "Authentication catalog response did not preserve the fixed snapshot");
+  }
   RETURN_NOT_OK(data.Process());
   if (data.resp.has_catalog_read_time()) {
     VLOG(2) << "Got catalog_read_time: " << data.resp.catalog_read_time().ShortDebugString();
@@ -1361,6 +1372,18 @@ class PgClient::Impl : public BigDataFetcher {
     RETURN_NOT_OK(proxy_.GetCatalogMasterVersion(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.version();
+  }
+
+  Result<HybridTime> GetYsqlAuthCatalogReadTime() {
+    tserver::PgGetYsqlAuthCatalogReadTimeRequestPB req;
+    tserver::PgGetYsqlAuthCatalogReadTimeResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::GetYsqlAuthCatalogReadTime, req, resp,
+        ash::WaitStateCode::kWaitingOnTServer));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    const auto read_time = HybridTime::FromPB(resp.read_time());
+    SCHECK(!read_time.is_special(), IllegalState, "Invalid authentication catalog read time");
+    return read_time;
   }
 
   // Assert to make sure YbcXClusterReplicationRole is updated when new roles are added.
@@ -2289,6 +2312,10 @@ Result<bool> PgClient::IsInitDbDone() {
 
 Result<uint64_t> PgClient::GetCatalogMasterVersion() {
   return impl_->GetCatalogMasterVersion();
+}
+
+Result<HybridTime> PgClient::GetYsqlAuthCatalogReadTime() {
+  return impl_->GetYsqlAuthCatalogReadTime();
 }
 
 Result<uint32_t> PgClient::GetXClusterRole(uint32_t db_oid) {
