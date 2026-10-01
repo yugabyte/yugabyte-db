@@ -3,7 +3,9 @@
 package com.yugabyte.yw.common.audit.otel;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -15,6 +17,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -42,6 +46,8 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
@@ -537,6 +543,82 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
       assertThat(result, equalTo(expected));
     } catch (IOException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  @Test
+  public void otelHelmValuesExporterCredentialsAreRedactedInShellOutput() {
+    DataDogConfig dataDog = new DataDogConfig();
+    dataDog.setType(ProviderType.DATA_DOG);
+    dataDog.setSite("datadoghq.com");
+    dataDog.setApiKey("dd-0123456789abcdef0123456789abcdef");
+
+    SplunkConfig splunk = new SplunkConfig();
+    splunk.setType(ProviderType.SPLUNK);
+    splunk.setEndpoint("https://splunk:8088");
+    splunk.setToken("splunk-11111111-2222-3333-4444-555555555555");
+
+    DynatraceConfig dynatrace = new DynatraceConfig();
+    dynatrace.setType(ProviderType.DYNATRACE);
+    dynatrace.setEndpoint("https://test.live.dynatrace.com/api/v2/otlp");
+    dynatrace.setApiToken("dt0c01.DYNATRACESECRETAPITOKEN");
+
+    LokiConfig loki = new LokiConfig();
+    loki.setType(ProviderType.LOKI);
+    loki.setEndpoint("http://loki:3100");
+    loki.setAuthType(LokiConfig.LokiAuthType.BasicAuth);
+    loki.setBasicAuth(new LokiConfig.BasicAuthCredentials("loki-user", "loki-basic-auth-secret"));
+
+    AWSCloudWatchConfig aws = new AWSCloudWatchConfig();
+    aws.setType(ProviderType.AWS_CLOUDWATCH);
+    aws.setAccessKey("AKIAIOSFODNN7EXAMPLE");
+    aws.setSecretKey("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    aws.setLogGroup("logGroup");
+    aws.setLogStream("logStream");
+    aws.setRegion("us-west-2");
+
+    Map<TelemetryProviderConfig, String> secretsByConfig = new LinkedHashMap<>();
+    secretsByConfig.put(dataDog, dataDog.getApiKey());
+    secretsByConfig.put(splunk, splunk.getToken());
+    secretsByConfig.put(dynatrace, dynatrace.getApiToken());
+    // Loki auth is header-based: the rendered credential is base64("user:password").
+    secretsByConfig.put(
+        loki,
+        Base64.getEncoder()
+            .encodeToString(
+                (loki.getBasicAuth().getUsername() + ":" + loki.getBasicAuth().getPassword())
+                    .getBytes()));
+    // AWS keys go to secretEnv base64-encoded.
+    secretsByConfig.put(aws, Base64.getEncoder().encodeToString(aws.getSecretKey().getBytes()));
+
+    int i = 0;
+    for (Map.Entry<TelemetryProviderConfig, String> entry : secretsByConfig.entrySet()) {
+      TelemetryProviderConfig config = entry.getKey();
+      String secret = entry.getValue();
+      TelemetryProvider telemetryProvider =
+          createTelemetryProvider(
+              new UUID(0, i++), config.getType().name(), ImmutableMap.of("tag", "value"), config);
+      // Redaction reads the credentials to redact from the DB, not from the mocked service.
+      telemetryProvider.save();
+
+      Map<String, Object> overrides =
+          generator.getOtelHelmValues(
+              createAuditLogConfigWithYSQL(telemetryProvider.getUuid(), ImmutableMap.of()),
+              "%m [%p] ");
+      String rendered = new Yaml(new SkipNullRepresenter()).dump(overrides);
+
+      assertThat(
+          "test is only meaningful if the renderer inlines the credential",
+          rendered,
+          containsString(secret));
+
+      for (String line : rendered.split("\\n")) {
+        String redacted =
+            RedactingService.redactShellProcessOutput(line, RedactionTarget.HELM_VALUES);
+        assertFalse(
+            config.getType() + " credential leaked into shell output: " + redacted,
+            redacted.contains(secret));
+      }
     }
   }
 

@@ -7,7 +7,12 @@ import com.yugabyte.yw.common.ApiHelper;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.Data;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
@@ -26,5 +31,17 @@ public class TelemetryProviderConfig {
 
   public void validate(ApiHelper apiHelper) {
     // To be overridden in child classes if validation is required.
+  }
+
+  /**
+   * Credential values as configured, so they can be redacted by value wherever they are rendered.
+   * Not a bean property, so it is neither serialized nor documented.
+   */
+  public List<String> secretValues() {
+    return Collections.emptyList();
+  }
+
+  protected static List<String> nonEmpty(String... values) {
+    return Arrays.stream(values).filter(StringUtils::isNotEmpty).collect(Collectors.toList());
   }
 }

@@ -121,4 +121,11 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
         .setApplicationName("service-accounts")
         .build();
   }
+
+  @Override
+  public List<String> secretValues() {
+    // Rendered only as base64 of this compact JSON, in secretEnv.
+    JsonNode creds = getCredentials();
+    return creds == null ? Collections.emptyList() : nonEmpty(creds.toString());
+  }
 }

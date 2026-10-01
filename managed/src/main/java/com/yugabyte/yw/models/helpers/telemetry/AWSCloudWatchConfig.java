@@ -4,6 +4,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import play.data.validation.Constraints;
@@ -41,5 +42,10 @@ public class AWSCloudWatchConfig extends TelemetryProviderConfig {
 
   public AWSCloudWatchConfig() {
     setType(ProviderType.AWS_CLOUDWATCH);
+  }
+
+  @Override
+  public List<String> secretValues() {
+    return nonEmpty(accessKey, secretKey);
   }
 }
