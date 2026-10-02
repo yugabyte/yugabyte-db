@@ -104,7 +104,7 @@ The Write Ahead Log (or WAL) is used to write and persist updates to disk on eac
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
 | `log_sync_latency` | microseconds | counter | Time spent to flush (fsync) the WAL entries to disk. |
-| `log_wal_sync_overdue_ms` | milliseconds | gauge | How far the oldest unsynced WAL entry is past [`interval_durable_wal_write_ms`](../../../../reference/configuration/yb-tserver/#interval-durable-wal-write-ms). 0 when the WAL is keeping up. |
+| `log_wal_sync_overdue_ms` | milliseconds | gauge | How far the oldest unsynced WAL entry is past [interval_durable_wal_write_ms](../../../../reference/configuration/yb-tserver/#interval-durable-wal-write-ms). 0 when the WAL is keeping up. |
 | `log_append_latency` | microseconds | counter | Time spent on appending a batch of values to the WAL. |
 | `log_group_commit_latency` | microseconds | counter | Time spent on committing an entire group. |
 | `log_bytes_logged`| bytes | counter | Number of bytes written to the WAL after the tablet starts. |
@@ -120,7 +120,7 @@ These metrics are reported per data or WAL directory, with a `drive_path` label 
 
 Read them as rates. Write throughput is the rate of `drive_bytes_written`, and average sync cost is the rate of `drive_sync_time` divided by the rate of `drive_sync_count`. If sync time per byte written rises on one drive but not on its peers, suspect that drive.
 
-The metrics are enabled by default. Set [`export_drive_io_metrics`](../../../../reference/configuration/yb-tserver/#export-drive-io-metrics) to `false` to disable them.
+The metrics are enabled by default. Set [export_drive_io_metrics](../../../../reference/configuration/yb-tserver/#export-drive-io-metrics) to `false` to disable them.
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
