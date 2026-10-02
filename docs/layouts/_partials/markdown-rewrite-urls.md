@@ -22,5 +22,9 @@
     {{- end -}}
   {{- end -}}
 {{- end -}}
-{{- $content = replaceRE `\[\]\([^)\n]*\)` "" $content -}}
+{{- /* Drop empty-text links, such as heading anchors. The [^!] guard keeps
+     images with no alt text, ![](src). A second pass removes a following
+     empty link, whose preceding character was consumed by the first match. */ -}}
+{{- $content = replaceRE `(^|[^!])\[\]\([^)\n]*\)` "$1" $content -}}
+{{- $content = replaceRE `(^|[^!])\[\]\([^)\n]*\)` "$1" $content -}}
 {{- $content -}}
