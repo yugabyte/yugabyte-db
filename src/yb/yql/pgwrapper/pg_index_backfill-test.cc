@@ -13,7 +13,9 @@
 #include <atomic>
 #include <cmath>
 #include <map>
+#include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -196,7 +198,17 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
   void TestLargeBackfill(const int num_rows);
   void TestRetainDeleteMarkers(const std::string& db_name);
   void TestRetainDeleteMarkersRecovery(const std::string& db_name, bool use_multiple_requests);
-  Status TestInsertsWhileCreatingIndex(bool expect_missing_row);
+  Status TestInsertsWhileCreatingIndex(bool expect_missing_row, bool txn_blocks);
+
+  // Starts writers on thread_holder that insert into kTableName until the holder stops them, and
+  // returns once every writer is connected.  Each iteration is one autocommit INSERT, or with
+  // txn_blocks, a transaction block of one INSERT ... RETURNING over the extended query protocol.
+  // Writer t's n-th commit inserts n * counts.size() + t, retried with the same value after a
+  // failure, so counts enumerates the committed values exactly.  The writers update counts until
+  // the holder joins them.  A failure must carry a message from allowed_msgs.
+  void StartConcurrentWriters(
+      TestThreadHolder* thread_holder, std::span<int> counts,
+      const std::vector<std::string>& allowed_msgs, bool txn_blocks);
 
   const int kTabletsPerServer = RegularBuildVsSanitizers(8, 2);
 
@@ -215,7 +227,6 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
     return split_clause;
   }
 
- private:
   Result<IndexStateFlags> GetIndexStateFlags(const std::string& index_name) {
     const std::string quoted_index_name = PqEscapeLiteral(index_name);
 
@@ -245,6 +256,7 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
     return index_state_flags;
   }
 
+ private:
   template <class T, class... Args>
   Status WaitForIndexProgressOutputImpl(const std::string& columns, const T& expected) {
     const auto query = Format("SELECT $0 FROM pg_stat_progress_create_index", columns);
@@ -594,6 +606,68 @@ TEST_P(PgIndexBackfillTest, NonexistentDelete) {
   ASSERT_TRUE(values.empty());
 }
 
+namespace {
+
+// Transient errors that concurrent DMLs may hit during index DDL.  A caller that expects the DDL to
+// bump the indexed table's schema version adds "schema version mismatch" itself.
+const std::vector<std::string> kIndexDdlConcurrentDmlAllowedMsgs{
+  "Errors occurred while reaching out to the tablet servers",
+  "expired or aborted by a conflict",
+  "Resource unavailable",
+  "Transaction aborted",
+  "Transaction was recently aborted",
+};
+
+bool MessageAllowed(const std::string& msg, const std::vector<std::string>& allowed_msgs) {
+  return std::any_of(
+      allowed_msgs.begin(), allowed_msgs.end(),
+      [&msg](const std::string& allowed_msg) {
+        return msg.find(allowed_msg) != std::string::npos;
+      });
+}
+
+}  // namespace
+
+// Characterize DMLs in explicit transaction blocks concurrent with DROP INDEX on the same table:
+// the indexed table's schema version bump on index removal may abort them with "schema version
+// mismatch".  In addition, a backend that has not yet seen the drop keeps maintaining the index and
+// can hit the index table's tablets as they are deleted, because the schema version bump fence
+// races with the deletion.  Every committed transaction must be fully reflected in the table.
+TEST_P(PgIndexBackfillTest, ConcurrentTxnBlocksDuringDropIndex) {
+  std::vector<std::string> allowed_msgs = kIndexDdlConcurrentDmlAllowedMsgs;
+  allowed_msgs.emplace_back("schema version mismatch");
+  // A backend that has not yet seen the drop keeps writing to the index table while its tablets are
+  // deleted, and the lookup fails one of these two ways (#20942).
+  allowed_msgs.emplace_back("Tablet deleted");
+  allowed_msgs.emplace_back("OBJECT_NOT_FOUND");
+  constexpr int kNumThreads = 3;
+  constexpr int kInitialRows = 100;
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(-$1, -1))", kTableName, kInitialRows));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+
+  std::array<int, kNumThreads> commit_counts;
+  commit_counts.fill(0);
+  // After commit_counts, so the holder's join runs before the array the writers update goes away.
+  TestThreadHolder thread_holder;
+  StartConcurrentWriters(&thread_holder, commit_counts, allowed_msgs, true /* txn_blocks */);
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  thread_holder.Stop();
+
+  uint64_t expected_rows = kInitialRows;
+  for (const int count : commit_counts) {
+    expected_rows += count;
+  }
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchRow<PGUint64>(Format("SELECT count(*) FROM $0", kTableName))),
+      expected_rows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchRow<PGUint64>(Format(
+          "SELECT count(*) FROM pg_class WHERE relname = '$0'", kIndexName))),
+      0);
+}
+
 // Make sure that index backfill on large tables backfills all data.
 TEST_P(PgIndexBackfillTest, Large) {
   constexpr int kNumRows = 10000;
@@ -603,52 +677,67 @@ TEST_P(PgIndexBackfillTest, Large) {
   ASSERT_GE(actual_calls, expected_calls);
 }
 
-// Cousin of TestIndexBackfill#insertsWhileCreatingIndex java test.
-Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_row) {
+void PgIndexBackfillTest::StartConcurrentWriters(
+    TestThreadHolder* thread_holder, std::span<int> counts,
+    const std::vector<std::string>& allowed_msgs, bool txn_blocks) {
+  const int num_threads = narrow_cast<int>(counts.size());
+  // Shared with the writers: Wait can return on its lock-free path while the last CountDown still
+  // holds the latch's mutex, so the latch must outlive that call.
+  auto latch = std::make_shared<CountDownLatch>(num_threads);
+  for (int thread_idx = 0; thread_idx < num_threads; ++thread_idx) {
+    thread_holder->AddThreadFunctor([this, thread_idx, num_threads, counts, allowed_msgs,
+                                     txn_blocks, latch, &stop = thread_holder->stop_flag()] {
+      LOG(INFO) << "Begin writer thread " << thread_idx;
+      auto conn = ASSERT_RESULT(Connect());
+      latch->CountDown();
+      while (!stop.load(std::memory_order_acquire)) {
+        const int i = counts[thread_idx] * num_threads + thread_idx;
+        Status s;
+        if (txn_blocks) {
+          s = conn.Execute("BEGIN");
+          if (s.ok()) {
+            s = ResultToStatus(conn.FetchRow<int32_t>(Format(
+                "INSERT INTO $0 VALUES ($1) RETURNING i", kTableName, i)));
+          }
+          if (s.ok()) {
+            s = conn.Execute("COMMIT");
+          }
+        } else {
+          s = conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, i);
+        }
+        if (s.ok()) {
+          counts[thread_idx]++;
+        } else {
+          // Ignore transient errors that likely occur when changing index permissions.
+          ASSERT_TRUE(s.IsNetworkError()) << s;
+          const std::string msg = s.message().ToBuffer();
+          ASSERT_TRUE(MessageAllowed(msg, allowed_msgs)) << s;
+          LOG(INFO) << "transient error on i=" << i << ", msg: " << msg;
+          if (txn_blocks) {
+            ASSERT_OK(conn.RollbackTransaction());
+          }
+        }
+      }
+    });
+  }
+  latch->Wait();
+}
+
+// Cousin of TestIndexBackfill#insertsWhileCreatingIndex java test.  Writers insert while CREATE
+// INDEX runs, autocommit or in transaction blocks.
+Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(
+    bool expect_missing_row, bool txn_blocks) {
   RETURN_NOT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
 
-  TestThreadHolder thread_holder;
   constexpr int kNumThreads = 4;
   std::array<int, kNumThreads> counts;
   counts.fill(0);
-  CountDownLatch latch(kNumThreads);
-  // TODO(jason): no longer expect schema version mismatch errors after closing issue #3979.
-  const std::vector<std::string> allowed_msgs{
-    "expired or aborted by a conflict",
-    "Resource unavailable",
-    "schema version mismatch",
-    "Transaction aborted",
-    "Transaction was recently aborted",
-  };
-  for (int thread_idx = 0; thread_idx < kNumThreads; thread_idx++) {
-    thread_holder.AddThreadFunctor([this, thread_idx, &latch, &counts, &allowed_msgs,
-                                    &stop = thread_holder.stop_flag()] {
-          LOG(INFO) << "Begin writer thread " << thread_idx;
-          auto conn = ASSERT_RESULT(Connect());
-          latch.CountDown();
-          while (!stop.load(std::memory_order_acquire)) {
-            const int i = counts[thread_idx] * kNumThreads + thread_idx;
-            Status s = conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, i);
-            if (s.ok()) {
-              counts[thread_idx]++;
-            } else {
-              // Ignore transient errors that likely occur when changing index permissions.
-              ASSERT_TRUE(s.IsNetworkError()) << s;
-              std::string msg = s.message().ToBuffer();
-              ASSERT_TRUE(std::find_if(
-                  std::begin(allowed_msgs),
-                  std::end(allowed_msgs),
-                  [&msg] (const std::string allowed_msg) {
-                    return msg.find(allowed_msg) != std::string::npos;
-                  }) != std::end(allowed_msgs))
-                << s;
-              LOG(INFO) << "transient error on i=" << i << ", msg: " << msg;
-            }
-          }
-        });
-  }
-
-  latch.Wait();
+  std::vector<std::string> allowed_msgs = kIndexDdlConcurrentDmlAllowedMsgs;
+  // TODO(#33037): drop this when CREATE INDEX stops bumping the indexed table's schema version.
+  allowed_msgs.emplace_back("schema version mismatch");
+  // After counts, so the holder's join runs before the array the writers update goes away.
+  TestThreadHolder thread_holder;
+  StartConcurrentWriters(&thread_holder, counts, allowed_msgs, txn_blocks);
   RETURN_NOT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (i ASC)", kTableName));
   thread_holder.Stop();
 
@@ -706,7 +795,12 @@ class PgIndexBackfillTestEnableWait : public PgIndexBackfillTest {
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillTestEnableWait, ::testing::Bool());
 
 TEST_P(PgIndexBackfillTestEnableWait, InsertsWhileCreatingIndexEnableWait) {
-  ASSERT_OK(TestInsertsWhileCreatingIndex(false /* expect_missing_row */));
+  ASSERT_OK(TestInsertsWhileCreatingIndex(false /* expect_missing_row */, false /* txn_blocks */));
+}
+
+// Every row a transaction block committed during CREATE INDEX is in the index.
+TEST_P(PgIndexBackfillTest, TxnBlockInsertsWhileCreatingIndex) {
+  ASSERT_OK(TestInsertsWhileCreatingIndex(false /* expect_missing_row */, true /* txn_blocks */));
 }
 
 class PgIndexBackfillTestDisableWait : public PgIndexBackfillTest {
@@ -730,7 +824,7 @@ TEST_P(PgIndexBackfillTestDisableWait,
   constexpr auto kNumTries = 5;
 
   for (int i = 0; i < kNumTries; ++i) {
-    Status s = TestInsertsWhileCreatingIndex(true /* expect_missing_row */);
+    Status s = TestInsertsWhileCreatingIndex(true /* expect_missing_row */, false /* txn_blocks */);
     if (s.ok()) {
       return;
     }
@@ -1751,9 +1845,12 @@ TEST_P(PgIndexBackfillBlockIndisready, YB_DISABLE_TEST_IN_TSAN(Permissions)) {
 TEST_P(PgIndexBackfillSlow, CreateUniqueIndexWithOnlineWrites) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
 
+  std::vector<std::string> allowed_msgs = kIndexDdlConcurrentDmlAllowedMsgs;
+  // TODO(#33037): drop this when CREATE INDEX stops bumping the indexed table's schema version.
+  allowed_msgs.emplace_back("schema version mismatch");
   // Start a thread that continuously inserts distinct values.  The hope is that this would cause
   // inserts to happen at all permissions.
-  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+  thread_holder_.AddThreadFunctor([this, allowed_msgs, &stop = thread_holder_.stop_flag()] {
     LOG(INFO) << "Begin write thread";
     PGConn insert_conn = ASSERT_RESULT(Connect());
     int i = 0;
@@ -1761,24 +1858,9 @@ TEST_P(PgIndexBackfillSlow, CreateUniqueIndexWithOnlineWrites) {
       Status status = insert_conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, ++i);
       if (!status.ok()) {
         // Ignore transient errors that likely occur when changing index permissions.
-        // TODO(jason): no longer expect schema version mismatch errors after closing issue #3979.
         ASSERT_TRUE(status.IsNetworkError()) << status;
-        std::string msg = status.message().ToBuffer();
-        const std::vector<std::string> allowed_msgs{
-          "Errors occurred while reaching out to the tablet servers",
-          "Resource unavailable",
-          "schema version mismatch",
-          "Transaction aborted",
-          "expired or aborted by a conflict",
-          "Transaction was recently aborted",
-        };
-        ASSERT_TRUE(std::find_if(
-            std::begin(allowed_msgs),
-            std::end(allowed_msgs),
-            [&msg] (const std::string allowed_msg) {
-              return msg.find(allowed_msg) != std::string::npos;
-            }) != std::end(allowed_msgs))
-          << status;
+        const std::string msg = status.message().ToBuffer();
+        ASSERT_TRUE(MessageAllowed(msg, allowed_msgs)) << status;
         LOG(WARNING) << "ignoring transient error: " << status.message().ToBuffer();
       }
     }
@@ -2255,7 +2337,10 @@ TEST_P(PgIndexBackfillFastDefaultClientTimeout, LowerDefaultClientTimeout) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
 }
 
-// Override the index backfill fast client timeout test class to have more than one master.
+// Three masters, for failover tests.  The 30 second BackfillIndex client timeout bounds how long
+// a failover test can hang inside CREATE INDEX when the backfill fails to resume: the call then
+// returns an error and the test fails, instead of waiting out the default 60 minute timeout and
+// being killed at the test timeout without an assertion.
 class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
  public:
   int GetNumMasters() const override { return 3; }
@@ -2263,47 +2348,95 @@ class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillMultiMaster, ::testing::Bool());
 
-// Make sure that master leader change during backfill causes the index backfill to continue and
-// doesn't cause any weird hangups or other issues.  Simulate the following:
-//   Session A                                    Session B
-//   --------------------------                   ----------------------
-//   CREATE INDEX
-//   - indislive
-//   - indisready
-//   - backfill
-//     - get safe time for read
-//                                                master leader stepdown
-TEST_P(PgIndexBackfillMultiMaster, MasterLeaderStepdown) {
+// Master leader failover at each block point of an online index build: block CREATE INDEX, step
+// down the master leader, check the build is still blocked at the same point, unblock, and require
+// the build to complete with a consistent index.
+TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
+  constexpr int kNumRows = 10;
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1))", kTableName, kNumRows));
 
-  // conn_ should be used by at most one thread for thread safety.
-  thread_holder_.AddThreadFunctor([this] {
-    LOG(INFO) << "Begin create thread";
-    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    // The CREATE INDEX should get master leader change during backfill. We expect
-    // that the new master will continue the backfill, and it should succeed.
-    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
-    ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(
-        kIndexName, IndexStateFlags{
-                        IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady,
-                        IndexStateFlag::kIndIsValid})));
-  });
-  thread_holder_.AddThreadFunctor([this] {
-    LOG(INFO) << "Begin master leader stepdown thread";
-    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+  std::vector<ExternalDaemon*> tablet_servers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    tablet_servers.push_back(cluster_->tablet_server(i));
+  }
 
-    LOG(INFO) << "Doing master leader stepdown";
+  struct Phase {
+    std::string name;
+    // Postgres side block: the tserver log line to wait for.  Empty for the master side block.
+    std::string log_msg;
+    // What other sessions see in pg_index while blocked.  nullopt: the transaction that creates the
+    // index has not committed, so they do not see it at all.
+    std::optional<IndexStateFlags> flags_while_blocked;
+  };
+  const IndexStateFlags kLiveAndReady{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady};
+  const std::vector<Phase> phases = {
+      {"indislive", "blocking index state change indislive=true", std::nullopt},
+      {"indisready", "blocking index state change indisready=true",
+       IndexStateFlags{IndexStateFlag::kIndIsLive}},
+      // Blocked before the BackfillIndex request is sent.
+      {"backfill", "blocking concurrent index backfill", kLiveAndReady},
+      // TEST_block_do_backfill blocks the master after it has chosen the backfill read time.
+      {"master backfill", "", kLiveAndReady},
+      {"postbackfill", "blocking operations after concurrent index backfill", kLiveAndReady},
+      {"indisvalid", "blocking index state change indisvalid=true", kLiveAndReady},
+  };
+  int index_suffix = 0;
+  for (const auto& phase : phases) {
+    const bool master_side = phase.log_msg.empty();
+    const std::string index_name = Format("$0_$1", kIndexName, index_suffix++);
+    LOG(INFO) << "Testing master failover while blocked at " << phase.name;
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", master_side ? "true" : "false"));
+    ASSERT_OK(cluster_->SetFlagOnTServers(
+        "ysql_yb_test_block_index_phase", master_side ? "none" : phase.name));
+    std::optional<LogWaiter> log_waiter;
+    if (!master_side) {
+      log_waiter.emplace(tablet_servers, phase.log_msg);
+    }
+
+    TestThreadHolder thread_holder;
+    // Runs before the holder joins the create thread, so an assertion that fires while the thread
+    // is blocked fails the test instead of hanging it.
+    auto unblock = ScopeExit([this] {
+      WARN_NOT_OK(
+          cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"), "unblock master");
+      WARN_NOT_OK(
+          cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"), "unblock pg");
+    });
+    thread_holder.AddThreadFunctor([this, &index_name] {
+      LOG(INFO) << "Begin create thread";
+      auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      ASSERT_OK(create_conn.ExecuteFormat(
+          "CREATE INDEX $0 ON $1 (i ASC)", index_name, kTableName));
+    });
+    if (master_side) {
+      ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+    } else {
+      ASSERT_OK(log_waiter->WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+    }
+
+    LOG(INFO) << "Doing master leader stepdown while blocked at " << phase.name;
     tserver::TabletServerErrorPB::Code error_code;
     ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+    // The failover neither advanced nor aborted the build.
+    if (phase.flags_while_blocked) {
+      ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(index_name, *phase.flags_while_blocked)));
+    } else {
+      const auto flags = GetIndexStateFlags(index_name);
+      ASSERT_NOK(flags);
+      ASSERT_TRUE(flags.status().IsNotFound()) << flags.status();
+    }
 
-    // It should still be in the backfill stage.
-    ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(
-        kIndexName, IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady})));
-
-    // Unblock DoBackfill.
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
-  });
-  thread_holder_.JoinAll();
+    ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+    thread_holder.JoinAll();
+
+    const std::string query = Format("SELECT count(*) FROM $0 WHERE i > 0", kTableName);
+    ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<PGUint64>(query)), kNumRows);
+    ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", index_name));
+  }
 }
 
 // Make sure that a tablet schema version report arriving during backfill does not strand the
