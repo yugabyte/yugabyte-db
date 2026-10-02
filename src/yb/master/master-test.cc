@@ -122,8 +122,7 @@ DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_uint32(initial_tserver_registration_duration_secs);
 
-METRIC_DECLARE_counter(block_cache_misses);
-METRIC_DECLARE_counter(block_cache_hits);
+METRIC_DECLARE_gauge_uint64(block_cache_usage);
 
 namespace yb {
 namespace master {
@@ -1079,22 +1078,15 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
   faststring buf;
 
   ASSERT_OK(curl.FetchURL(url, &buf));
-  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_misses");
-  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_hits");
+  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_usage");
 
-  // Check block cache metrics directly and verify
-  // that the counters are greater than 0
+  // Check block cache usage metric directly and verify usage is greater than 0.
   const auto metric_map = mini_master_->master()->metric_entity()->TEST_UsageMetricsMap();
 
-  scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(
-      FindOrDie(metric_map,
-                &METRIC_block_cache_misses).get());
-  scoped_refptr<Counter> cache_hits_counter = down_cast<Counter *>(
-      FindOrDie(metric_map,
-                &METRIC_block_cache_hits).get());
+  auto cache_usage = down_cast<AtomicGauge<uint64_t>*>(
+      FindOrDie(metric_map, &METRIC_block_cache_usage).get());
 
-  ASSERT_GT(cache_misses_counter->value(), 0);
-  ASSERT_GT(cache_hits_counter->value(), 0);
+  ASSERT_GT(cache_usage->value(), 0);
 }
 
 TEST_F(MasterTest, TestTablegroups) {
