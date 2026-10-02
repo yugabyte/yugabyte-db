@@ -285,7 +285,7 @@ SET hnsw.ef_search = 100;
 
 ## Upgrade vector indexes
 
-Vector indexes are generally available in v2026.1.1.0 and later and v2025.2.6.0 and later; v2026.1.2.0 or later is recommended. These releases store the vector reverse mapping (which maps each vector back to its table row) once per indexed table, instead of once per vector index.
+Vector indexes are generally available in v2026.1.1.0 and later; v2026.1.2.0 or later is recommended. Starting with v2026.1.1.0 and v2025.2.6.0, YugabyteDB stores the vector reverse mapping (which maps each vector back to its table row) once per indexed table, instead of once per vector index.
 
 Tables created on earlier releases continue to work and return correct results. However, each time a vector index is created or dropped on such a table, reverse-mapping data is left behind and its storage is never reclaimed. To avoid this, recreate the tables that have vector indexes as part of the upgrade.
 
@@ -344,21 +344,31 @@ Use this option if the vector tables can be offline for the duration of the upgr
 
 #### Option 2: Rebuild after the upgrade
 
-Use this option to keep the tables available during the upgrade. Nothing is required before upgrading. After the upgrade is finalized, do the following for each vector table. Stop writes to the table while the data is copied, as rows written to the old table after the copy starts are lost.
+Use this option to keep the tables available during the upgrade. Nothing is required before upgrading. After the upgrade is finalized, do the following for each vector table. Stop writes to the table from the start of the copy (step 3) until the tables are swapped (step 6). Rows written to the old table in that window are lost.
 
 1. Drop the vector indexes on the table.
-1. Create a new empty table using the original DDL, under a new name such as `items_new`.
-1. Copy the data, using `INSERT INTO items_new SELECT * FROM items;`.
+1. Create a new empty table, such as `items_new`, using the original DDL under the new name (for example, from `ysql_dump --schema-only -t items`). Don't create the vector indexes yet.
+1. Copy the data, using `INSERT INTO items_new SELECT * FROM items;`. If the table has a `GENERATED ALWAYS AS IDENTITY` column, use `INSERT INTO items_new OVERRIDING SYSTEM VALUE SELECT * FROM items;`.
 1. Create the vector indexes on the new table.
-1. Swap the tables:
+1. Save the definitions of the objects that depend on the old table, such as views and foreign keys in other tables that reference it, and then drop them. Renaming a table doesn't move these objects to the new table, and they would block dropping the old one.
+1. Swap the tables, fix the sequence for any serial or identity column, and drop the old table:
 
     ```sql
     ALTER TABLE items RENAME TO items_old;
     ALTER TABLE items_new RENAME TO items;
+
+    -- If the new table reuses the original sequence (as ysql_dump output does),
+    -- move its ownership so that dropping items_old doesn't drop it.
+    ALTER SEQUENCE items_id_seq OWNED BY items.id;
+
+    -- If the new table created its own sequence (for example, from a serial or
+    -- identity column), advance it past the copied values.
+    SELECT setval(pg_get_serial_sequence('items', 'id'), (SELECT max(id) FROM items));
+
     DROP TABLE items_old;
     ```
 
-1. Recreate any objects that referenced the old table, such as views, foreign keys from other tables, triggers, grants, and sequence ownership.
+1. Recreate the views and foreign keys that you dropped in step 5, and any grants or triggers that weren't part of the DDL you used in step 2.
 
 Alternatively, you can create and populate the new table in one step using `CREATE TABLE items_new AS TABLE items;`. This form doesn't copy constraints, defaults, grants, or other indexes, so you must add them before swapping the tables.
 
