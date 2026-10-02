@@ -775,7 +775,7 @@ BOOST_PP_SEQ_FOR_EACH(YB_CREATE_COMPRESSOR_CASE, kIndex, YB_COMPRESSION_ALGORITH
 
 class CompressedRefiner : public StreamRefiner {
  public:
-  CompressedRefiner() = default;
+  explicit CompressedRefiner(const Protocol* protocol) : protocol_(protocol) {}
 
  private:
   void Start(RefinedStream* stream) override {
@@ -833,7 +833,7 @@ class CompressedRefiner : public StreamRefiner {
   }
 
   const Protocol* GetProtocol() override {
-    return CompressedStreamProtocol();
+    return protocol_;
   }
 
   std::string ToString() const override {
@@ -844,22 +844,24 @@ class CompressedRefiner : public StreamRefiner {
     return stream_->LogPrefix();
   }
 
+  const Protocol* const protocol_;
   RefinedStream* stream_ = nullptr;
   std::unique_ptr<Compressor> compressor_ = nullptr;
 };
 
 } // namespace
 
-const Protocol* CompressedStreamProtocol() {
-  static Protocol result("tcpc");
-  return &result;
+const Protocol* CompressedStreamProtocol(Encrypted encrypted) {
+  return StreamProtocol(Compressed::kTrue, encrypted);
 }
 
 StreamFactoryPtr CompressedStreamFactory(
-    StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker) {
+    StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
+    const Protocol* protocol) {
   return std::make_shared<RefinedStreamFactory>(
-      std::move(lower_layer_factory), buffer_tracker, [](const StreamCreateData& data) {
-    return std::make_unique<CompressedRefiner>();
+      std::move(lower_layer_factory), buffer_tracker,
+      [protocol](const StreamCreateData& data) {
+    return std::make_unique<CompressedRefiner>(protocol);
   });
 }
 
