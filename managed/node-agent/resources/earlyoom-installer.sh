@@ -37,6 +37,8 @@ main() {
     if ! sudo grep -q "^DefaultLimitMEMLOCK=50M" /etc/systemd/user.conf; then
         echo 'DefaultLimitMEMLOCK=50M' | sudo tee -a /etc/systemd/user.conf
     fi
+    # umask 0027 hosts / hardened AMIs may leave these 640; yugabyte must read them.
+    sudo chmod 644 /etc/systemd/system.conf /etc/systemd/user.conf
   fi
 
   YB_USER_HOME=$(find_yb_user_home)
