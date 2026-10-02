@@ -40,6 +40,13 @@ spec:
                   type: string
             spec:
               type: object
+              x-kubernetes-validations:
+                - rule: >
+                    !((has(self.keyspace) && size(self.keyspace) > 0) &&
+                      (has(self.restoreKeyspaces) && size(self.restoreKeyspaces) > 0))
+                  message: >
+                    spec.keyspace and spec.restoreKeyspaces cannot both be set.
+                    spec.keyspace is deprecated; use spec.restoreKeyspaces.
               properties:
                 actionType:
                   description: Type of action to be taken. Allowed values - RESTORE
@@ -64,8 +71,45 @@ spec:
                   type: string
                 keyspace:
                   description: >
-                    Destination YSQL database or YCQL keyspace name.
-                    Omit to restore each backup piece to its original name.
-                    Setting this field is a rename and is only valid when the
-                    backup contains a single keyspace.
+                    DEPRECATED: Use restoreKeyspaces instead. Still supported to
+                    rename the only YSQL database or YCQL keyspace of a
+                    single-keyspace backup; rejected for a multi-keyspace backup.
+                    Mutually exclusive with restoreKeyspaces.
                   type: string
+                restoreKeyspaces:
+                  description: >
+                    YSQL databases or YCQL keyspaces to restore from the backup.
+                    If empty, every keyspace is restored as its original name.
+                    When set, only listed keyspaces are restored. If newName is
+                    provided for a keyspace, it is restored with that name. If
+                    newName is empty, the original name is used.
+                  type: array
+                  # Bounds keep the pairwise uniqueness rule under the API server's
+                  # CEL cost budget; without them the CRD is rejected on apply.
+                  maxItems: 256
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - name
+                  items:
+                    type: object
+                    required:
+                      - name
+                    properties:
+                      name:
+                        description: Name of the keyspace in the backup.
+                        type: string
+                        minLength: 1
+                        maxLength: 63
+                      newName:
+                        description: >
+                          Optional destination name. Omit to restore under the
+                          original name.
+                        type: string
+                        minLength: 1
+                        maxLength: 63
+                  x-kubernetes-validations:
+                    - rule: >
+                        self.all(a, self.all(b, a.name == b.name ||
+                          (has(a.newName) ? a.newName : a.name) !=
+                          (has(b.newName) ? b.newName : b.name)))
+                      message: restoreKeyspaces destination names must be unique

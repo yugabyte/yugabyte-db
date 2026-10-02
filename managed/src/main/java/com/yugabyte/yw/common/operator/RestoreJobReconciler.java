@@ -19,6 +19,7 @@ import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Backup;
 import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.RestoreJobStatus;
+import io.yugabyte.operator.v1alpha1.restorejobspec.RestoreKeyspaces;
 import java.util.*;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -81,6 +82,58 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     resourceClient.inNamespace(namespace).resource(restoreJob).replaceStatus();
   }
 
+  /**
+   * Validates the keyspace selection and returns the original-to-destination name of each keyspace
+   * to restore, or null when every piece is restored (spec.restoreKeyspaces unset).
+   */
+  private Map<String, String> resolveRestoreKeyspaces(
+      List<BackupTableParams> backupList,
+      List<RestoreKeyspaces> restoreKeyspaces,
+      boolean selective)
+      throws Exception {
+    if (!selective) {
+      return null;
+    }
+
+    Set<String> distinctKeyspaces = new LinkedHashSet<>();
+    for (BackupTableParams bTP : backupList) {
+      if (StringUtils.isNotBlank(bTP.getKeyspace())) {
+        distinctKeyspaces.add(bTP.getKeyspace());
+      }
+    }
+
+    Map<String, String> selected = new LinkedHashMap<>();
+    Map<String, String> destinationToSource = new HashMap<>();
+    for (RestoreKeyspaces entry : restoreKeyspaces) {
+      String name = entry.getName();
+      if (StringUtils.isBlank(name)) {
+        throw new Exception("RestoreJob spec.restoreKeyspaces has an entry with an empty name");
+      }
+      if (!distinctKeyspaces.contains(name)) {
+        throw new Exception(
+            "RestoreJob spec.restoreKeyspaces names '"
+                + name
+                + "', which is not a keyspace in this backup");
+      }
+      String destination = StringUtils.isNotBlank(entry.getNewName()) ? entry.getNewName() : name;
+      if (selected.put(name, destination) != null) {
+        throw new Exception("RestoreJob spec.restoreKeyspaces lists '" + name + "' more than once");
+      }
+      String previous = destinationToSource.put(destination, name);
+      if (previous != null) {
+        throw new Exception(
+            "RestoreJob spec.restoreKeyspaces maps '"
+                + previous
+                + "' and '"
+                + name
+                + "' to the same destination '"
+                + destination
+                + "'");
+      }
+    }
+    return selected;
+  }
+
   public RestoreBackupParams getRestoreBackupParamsFromCr(RestoreJob restoreJob) throws Exception {
 
     ObjectMapper objectMapper = new ObjectMapper();
@@ -130,28 +183,45 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     }
 
     String specKeyspace = restoreJob.getSpec().getKeyspace();
-    boolean rename = StringUtils.isNotBlank(specKeyspace);
-    if (rename) {
-      Set<String> distinctKeyspaces = new HashSet<>();
-      for (BackupTableParams bTP : backupList) {
-        if (StringUtils.isNotBlank(bTP.getKeyspace())) {
-          distinctKeyspaces.add(bTP.getKeyspace());
-        }
-      }
-      if (distinctKeyspaces.size() > 1) {
+    List<RestoreKeyspaces> restoreKeyspaces = restoreJob.getSpec().getRestoreKeyspaces();
+    boolean renameAll = StringUtils.isNotBlank(specKeyspace);
+    boolean selective = CollectionUtils.isNotEmpty(restoreKeyspaces);
+    if (renameAll && selective) {
+      throw new Exception(
+          "RestoreJob spec.keyspace and spec.restoreKeyspaces are mutually exclusive."
+              + " spec.keyspace is deprecated; use spec.restoreKeyspaces.");
+    }
+    if (renameAll) {
+      long keyspaceCount =
+          backupList.stream()
+              .map(BackupTableParams::getKeyspace)
+              .filter(StringUtils::isNotBlank)
+              .distinct()
+              .count();
+      if (keyspaceCount > 1) {
         throw new Exception(
             "RestoreJob spec.keyspace is a destination rename and is only valid for"
                 + " backups with a single keyspace; this backup has "
-                + distinctKeyspaces.size()
-                + " keyspaces. Omit spec.keyspace to restore each to its original name.");
+                + keyspaceCount
+                + " keyspaces. Use spec.restoreKeyspaces to choose and rename keyspaces,"
+                + " or omit spec.keyspace to restore each to its original name.");
       }
     }
+    // Restore creates the destination database. A multi-keyspace backup that includes a
+    // database already present on the target cannot land under that name, so that piece
+    // needs a new destination or has to be left out.
+    Map<String, String> selected = resolveRestoreKeyspaces(backupList, restoreKeyspaces, selective);
 
     List<BackupStorageInfo> bSIList = new ArrayList<>();
     for (BackupTableParams bTP : backupList) {
       BackupStorageInfo bSI = new BackupStorageInfo();
-      if (rename) {
+      if (renameAll) {
         bSI.keyspace = specKeyspace;
+      } else if (selected != null) {
+        if (!selected.containsKey(bTP.getKeyspace())) {
+          continue;
+        }
+        bSI.keyspace = selected.get(bTP.getKeyspace());
       } else {
         if (StringUtils.isBlank(bTP.getKeyspace())) {
           throw new Exception(
@@ -174,8 +244,11 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     log.info("Creating restore job{} ", restoreJob);
     RestoreJobStatus status = restoreJob.getStatus();
 
+    // The informer replays every existing RestoreJob on YBA start and HA failover. A job with a
+    // status was already scheduled or rejected; resubmitting would re-run the restore.
     if (status != null) {
       log.info("Early return because we already started this restore once");
+      return;
     }
 
     RestoreBackupParams restoreBackupParams = null;
@@ -185,7 +258,7 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
       cust = operatorUtils.getOperatorCustomer();
     } catch (Exception e) {
       log.error("Got Exception in converting to restore params {}", e);
-      updateStatus(restoreJob, "", "Failed in scheduling restore Job" + e.getMessage());
+      updateStatus(restoreJob, "", "Failed in scheduling restore job: " + e.getMessage());
       return;
     }
 
@@ -195,7 +268,7 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
       taskUUID = backupHelper.createRestoreTask(customerUUID, restoreBackupParams);
     } catch (Exception e) {
       log.error("Got Error in launching restore Job {}", e);
-      updateStatus(restoreJob, "", "Failed in scheduling restore Job" + e.getMessage());
+      updateStatus(restoreJob, "", "Failed in scheduling restore job: " + e.getMessage());
       return;
     }
     updateStatus(restoreJob, taskUUID.toString(), "scheduled restoreJob task");

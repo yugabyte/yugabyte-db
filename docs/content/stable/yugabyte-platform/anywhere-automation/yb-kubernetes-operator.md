@@ -517,8 +517,15 @@ spec:
   actionType: RESTORE
   universe:  <name of universe>
   backup: <name of backup to restore>
-  keyspace: <keyspace overide>
+  restoreKeyspaces:
+    - name: <database to restore under a new name>
+      newName: <new database name>
+    - name: <database to restore under its original name>
 ```
+
+Use `spec.restoreKeyspaces` to choose which databases to restore. If you omit it, every database in the backup is restored under its original name. If you set it, only the listed databases are restored; add `newName` to restore a database under a different name. Restore creates each destination database and can't restore into a database that already exists on the target universe, so rename any database whose name is already in use.
+
+`spec.keyspace` is deprecated. It still renames the database of a single-database backup, but you can't use it with a multi-database backup or together with `spec.restoreKeyspaces`.
 
 #### Service account for backup
 
