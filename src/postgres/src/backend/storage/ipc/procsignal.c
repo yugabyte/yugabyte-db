@@ -229,14 +229,20 @@ ProcSignalInit(const uint8 *cancel_key, int cancel_key_len)
 	on_shmem_exit(CleanupProcSignalState, (Datum) 0);
 }
 
-/* YB_TODO_PG19MERGE: review YbCleanupProcSignalStateInternal for PG19 compatibility */
-
-/* YbCleanupProcSignalStateInternal
- * 		Remove the given process from ProcSignalSlots
+/*
+ * YbCleanupProcSignalStateForProc
+ *		Remove the given process from ProcSignalSlots
+ *
+ * YB: This function is called via CleanupProcSignalState() during backend
+ * shutdown, and from reaper() when the parent is notified that its child died
+ * unexpectedly.
  */
-static void
-YbCleanupProcSignalStateInternal(PGPROC *proc, int pss_idx, ProcSignalSlot *slot)
+void
+YbCleanupProcSignalStateForProc(PGPROC *proc)
 {
+	/* YB: Derive the slot from proc rather than MyProcSignalSlot. */
+	int			pss_idx = GetNumberFromPGProc(proc);
+	ProcSignalSlot *slot = &ProcSignal->psh_slot[pss_idx];
 	pid_t		old_pid;
 
 	/* sanity check */
@@ -278,8 +284,6 @@ YbCleanupProcSignalStateInternal(PGPROC *proc, int pss_idx, ProcSignalSlot *slot
 static void
 CleanupProcSignalState(int status, Datum arg)
 {
-	ProcSignalSlot *slot = MyProcSignalSlot;
-
 	/*
 	 * Clear MyProcSignalSlot, so that a SIGUSR1 received after this point
 	 * won't try to access it after it's no longer ours (and perhaps even
@@ -288,25 +292,7 @@ CleanupProcSignalState(int status, Datum arg)
 	Assert(MyProcSignalSlot != NULL);
 	MyProcSignalSlot = NULL;
 
-	YbCleanupProcSignalStateInternal(MyProc, (int) (slot - ProcSignal->psh_slot), slot);
-}
-
-/*
- * YbCleanupProcSignalStateForProc
- *		Remove the given process from ProcSignalSlots
- *
- * This function is called from reaper() when the parent is notified that its
- * child died unexpectedly.
- */
-void
-YbCleanupProcSignalStateForProc(PGPROC *proc)
-{
-	int			pss_idx = proc->vxid.procNumber;
-	ProcSignalSlot *slot;
-
-	slot = &ProcSignal->psh_slot[pss_idx];
-
-	YbCleanupProcSignalStateInternal(proc, pss_idx, slot);
+	YbCleanupProcSignalStateForProc(MyProc);
 }
 
 /*

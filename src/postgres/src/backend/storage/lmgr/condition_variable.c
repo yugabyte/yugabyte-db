@@ -258,9 +258,6 @@ ConditionVariableCancelSleep(void)
  * during transaction abort to clean up any unfinished CV sleep.
  *
  * TODO(#23274): Rewrite / delete YbConditionVariableCancelSleepForProc
- * YB_TODO_PG19MERGE: this function seems to be adapated from the one above. It
- * looks like PG changed some stuff, so adding a todo to check if the YB function
- * needs an update.
  */
 void
 YbConditionVariableCancelSleepForProc(volatile PGPROC *proc)
@@ -271,8 +268,8 @@ YbConditionVariableCancelSleepForProc(volatile PGPROC *proc)
 		return;
 
 	SpinLockAcquire(&cv->mutex);
-	if (proclist_contains(&cv->wakeup, proc->vxid.procNumber, cvWaitLink))
-		proclist_delete(&cv->wakeup, proc->vxid.procNumber, cvWaitLink);
+	if (proclist_contains(&cv->wakeup, GetNumberFromPGProc(proc), cvWaitLink))
+		proclist_delete(&cv->wakeup, GetNumberFromPGProc(proc), cvWaitLink);
 	SpinLockRelease(&cv->mutex);
 	cv_sleep_target = NULL;
 }
@@ -318,7 +315,8 @@ void
 YbConditionVariableBroadcastForProc(ConditionVariable *cv,
 									volatile PGPROC *given_proc)
 {
-	int			pgprocno = given_proc->vxid.procNumber;
+	/* YB: given_proc's equivalent of MyProcNumber. */
+	int			pgprocno = GetNumberFromPGProc(given_proc);
 	PGPROC	   *proc = NULL;
 	bool		have_sentinel = false;
 

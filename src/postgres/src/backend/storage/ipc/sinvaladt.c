@@ -329,11 +329,13 @@ YbCleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
 	ProcState  *stateP;
 	int			i;
 
+	ProcNumber	yb_procno = GetNumberFromPGProc(proc);
+
 	Assert(segP);
 
 	LWLockAcquire(SInvalWriteLock, LW_EXCLUSIVE);
 
-	stateP = &segP->procState[proc->vxid.procNumber];
+	stateP = &segP->procState[yb_procno];
 
 	/* Update next local transaction ID for next holder of this proc number */
 	stateP->nextLXID = nextLocalTransactionId;
@@ -346,7 +348,7 @@ YbCleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
 
 	for (i = segP->numProcs - 1; i >= 0; i--)
 	{
-		if (segP->pgprocnos[i] == proc->vxid.procNumber)
+		if (segP->pgprocnos[i] == yb_procno)
 		{
 			if (i != segP->numProcs - 1)
 				segP->pgprocnos[i] = segP->pgprocnos[segP->numProcs - 1];
@@ -382,6 +384,11 @@ CleanupInvalidationState(int status, Datum arg)
  *
  * This function is called from reaper() when the parent is notified that its
  * child died unexpectedly.
+ *
+ * YB_TODO_PG19MERGE: Not yet correct for a process other than the caller:
+ * YbCleanupInvalidationStateInternal stores the caller's own
+ * nextLocalTransactionId into the given process's slot.  Its only caller,
+ * CleanupKilledProcess, is currently under #if 0.
  */
 void
 YbCleanupInvalidationStateForProc(PGPROC *proc)
