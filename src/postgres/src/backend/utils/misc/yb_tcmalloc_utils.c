@@ -45,6 +45,8 @@
 #include "yb_tcmalloc_utils.h"
 
 int			yb_log_heap_snapshot_on_exit_threshold = -1;
+bool		yb_enable_tcmalloc_background_thread = false;
+int			yb_tcmalloc_background_release_rate = 10 * 1024 * 1024;
 
 static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
@@ -311,6 +313,13 @@ void
 YbSetupHeapSnapshotProcExit(void)
 {
 	on_proc_exit(YbLogHeapSnapshotProcExit, 0);
+}
+
+void
+YbMaybeStartTCMallocBackgroundThread(void)
+{
+	if (yb_enable_tcmalloc_background_thread)
+		HandleYBStatus(YBCStartTCMallocBackgroundThread());
 }
 
 static void

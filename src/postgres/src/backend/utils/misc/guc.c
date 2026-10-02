@@ -324,6 +324,7 @@ static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSo
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
 static void assign_tcmalloc_sample_period(int newval, void *extra);
+static void yb_assign_tcmalloc_background_release_rate(int newval, void *extra);
 static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 static void check_reserved_prefixes(const char *varName);
@@ -3629,6 +3630,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_tcmalloc_background_thread", PGC_SU_BACKEND, RESOURCES_MEM,
+			gettext_noop("Run a TCMalloc background thread in each backend that "
+						 "drains idle allocator caches and returns free memory "
+						 "to the OS at yb_tcmalloc_background_release_rate."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_tcmalloc_background_thread,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
 						 "when types mismatch."),
@@ -6295,6 +6309,19 @@ static struct config_int ConfigureNamesInt[] =
 		&yb_max_num_invalidation_messages,
 		8192, 0, INT_MAX,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_background_release_rate", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("Rate in bytes per second at which the TCMalloc "
+						 "background thread returns free page heap memory to "
+						 "the OS."),
+			NULL,
+			GUC_UNIT_BYTE | GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_background_release_rate,
+		10 * 1024 * 1024, 0, INT_MAX,
+		NULL, yb_assign_tcmalloc_background_release_rate, NULL
 	},
 
 	{
@@ -17757,6 +17784,12 @@ static void
 assign_tcmalloc_sample_period(int newval, void *extra)
 {
 	YBCSetTCMallocSamplingPeriod(newval);
+}
+
+static void
+yb_assign_tcmalloc_background_release_rate(int newval, void *extra)
+{
+	YBCSetTCMallocBackgroundReleaseRate(newval);
 }
 
 static bool
