@@ -6690,6 +6690,9 @@ PostgresMain(const char *dbname, const char *username)
 
 	YbSetupHeapSnapshotProcExit();
 
+	if (IsYugaByteEnabled())
+		YbMaybeStartTCMallocBackgroundThread();
+
 	pgstat_report_connect(MyDatabaseId);
 
 	/* Perform initialization specific to a WAL sender process. */
