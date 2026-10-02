@@ -721,8 +721,8 @@ void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   SetTCMallocSamplingPeriod(sample_period_bytes);
 }
 
-void YBCTCMallocReleaseMemoryToSystem(int64_t bytes) {
-  TCMallocReleaseMemoryToSystem(bytes);
+void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
+  TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
 YbcStatus YBCGetHeapSnapshot(
