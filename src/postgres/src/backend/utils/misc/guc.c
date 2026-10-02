@@ -6330,11 +6330,11 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("When a backend finishes connection startup, return "
 						 "the free memory held by TCMalloc to the operating "
 						 "system if it is at least this amount."),
-			gettext_noop("0 always releases. -1 (the default) disables the release."),
+			gettext_noop("0 (the default) always releases. -1 disables the release."),
 			GUC_UNIT_KB
 		},
 		&yb_startup_free_memory_release_threshold,
-		-1,
+		0,
 		-1,
 		INT_MAX,
 		NULL, NULL, NULL

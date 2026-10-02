@@ -456,12 +456,12 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_log_heap_snapshot_on_exit_threshold, -1,
     "approximate memory usage of each malloc call stack if its peak RSS "
     "is greater than or equal to this threshold in KB. Set to -1 to disable.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_startup_free_memory_release_threshold, -1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_startup_free_memory_release_threshold, 0,
     "When a backend finishes connection startup, if the TCMalloc page heap holds at least this "
     "much free memory in KB, return that memory to the operating system. Connection startup "
     "frees most of the memory it allocates (fetched catalog data, relation cache build scratch), "
     "and without this the freed pages stay resident for the life of the connection. "
-    "Set to 0 to always release. -1 (the default) disables the release.");
+    "Set to 0 (the default) to always release, or -1 to disable the release.");
 
 const char* const AUTH_METHOD_MD5 = "md5";
 const char* const AUTH_METHOD_SCRAM = "scram-sha-256";

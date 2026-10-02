@@ -45,7 +45,7 @@
 #include "yb_tcmalloc_utils.h"
 
 int			yb_log_heap_snapshot_on_exit_threshold = -1;
-int			yb_startup_free_memory_release_threshold = -1;
+int			yb_startup_free_memory_release_threshold = 0;
 
 static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
