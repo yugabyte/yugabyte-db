@@ -44,12 +44,14 @@
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(quick_leader_election_on_create);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(use_create_table_leader_hint);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(ht_lease_duration_ms);
@@ -369,7 +371,7 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
     return total;
   }
 
-  void LeaderStepDownAfterWriteAckTest(bool perform_read);
+  void LeaderStepDownAfterWriteAckTest(bool perform_read, bool with_ddl = false);
   void LeaderStepDownBeforeWriteAckTest(bool use_pk);
 
   std::unique_ptr<pgwrapper::PGConn> conn_;
@@ -447,7 +449,8 @@ TEST_F(YSqlAsyncWriteTest, LeaderStepDownAfterWriteAckWithRead) {
   ASSERT_NO_FATALS(LeaderStepDownAfterWriteAckTest(/* perform_read */ true));
 }
 
-void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
+void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read, bool with_ddl) {
+  constexpr auto kDdlTableName = "ddl_tbl";
   constexpr auto create_table =
       "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS";
   ASSERT_OK(conn_->ExecuteFormat(create_table, kTableName));
@@ -460,6 +463,12 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
   // queue_->AppendOperations and BreakConnectivityWithAll.
   auto followers = ASSERT_RESULT(RejectFollowerUpdates(tablet_id, old_leader_idx));
 
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  if (with_ddl) {
+    // Run the DDL before arming the sync point, so that its own writes are not blocked.
+    ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (key INT)", kDdlTableName));
+  }
+
   // Block the WriteOperation such that the WAL is not replicated.
   auto sync_point = SyncPoint::GetInstance();
   sync_point->LoadDependency({
@@ -467,7 +476,6 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
   });
   sync_point->EnableProcessing();
 
-  ASSERT_OK(conn_->Execute("BEGIN"));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'A')", kTableName));
   // Client has received the async write ack, but it is not yet replicated to followers.
 
@@ -496,12 +504,21 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
     // COMMIT of a failed transaction internally performs a ROLLBACK in pg.
     ASSERT_OK(conn_->CommitTransaction());
   } else {
+    const auto start = MonoTime::Now();
     ASSERT_NOK(conn_->CommitTransaction());
+    if (with_ddl) {
+      // Ensure the abort happens immediately, instead of waiting for DDL verification to time out.
+      ASSERT_LT(MonoTime::Now() - start, 10s * kTimeMultiplier);
+    }
   }
 
   // Reset the connection and make sure the transaction was aborted.
   conn_ = std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(Connect()));
   ASSERT_EQ(ASSERT_RESULT(get_row_count()), 0);
+  if (with_ddl) {
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM pg_class WHERE relname = '$0'", kDdlTableName))), 0);
+  }
 
   // Go back to the old leader and make sure aborted data is not visible.
   ASSERT_OK(StepDown(new_leader_idx, old_leader_idx, tablet_id));
@@ -1723,6 +1740,22 @@ TEST_F(YSqlAsyncWriteLongLeaseTest, GracefulStepDownWithExtendedProtegeSyncWait)
   const auto rows =
       ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
   ASSERT_EQ(rows, "1, A; 2, B");
+}
+
+class YSqlAsyncWriteDdlTest : public YSqlAsyncWriteTest {
+ public:
+  void SetTestFlags() override {
+    YSqlAsyncWriteTest::SetTestFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  }
+};
+
+// A DDL transaction whose async write fails at commit must be aborted before the commit waits for
+// master DDL verification. Otherwise the wait keeps the transaction alive until it times out,
+// while the DDL holds its exclusive object locks.
+TEST_F(YSqlAsyncWriteDdlTest, LeaderStepDownAfterWriteAckInDdlTransaction) {
+  ASSERT_NO_FATALS(LeaderStepDownAfterWriteAckTest(/* perform_read */ false, /* with_ddl */ true));
 }
 
 class YSqlAsyncWriteSplitTest : public YSqlAsyncWriteTest {

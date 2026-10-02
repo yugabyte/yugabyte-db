@@ -619,21 +619,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       auto status = async_write_status_;
       if (!status.ok()) {
         lock.unlock();
+        // Abort before invoking the callback, since the callback may wait for the txn to finish.
+        Abort(TransactionRpcDeadline());
         callback(status);
         return;
       }
       if (!inflight_async_writes_.empty()) {
         async_write_commit_waiter_ = [transaction, seal_only, deadline,
                                       wait_state = ash::WaitStateInfo::CurrentWaitState(),
-                                      callback = std::move(callback)](const Status& status) {
+                                      callback = std::move(callback)](const Status&) {
           ADOPT_WAIT_STATE(wait_state);
           SCOPED_WAIT_STATUS(OnCpu_Active);
           TRACE_TO(transaction->trace(), "YBTransaction::Commit Async writes completed");
-          if (status.ok()) {
-            transaction->Commit(deadline, seal_only, std::move(callback));
-          } else {
-            callback(status);
-          }
+          transaction->Commit(deadline, seal_only, std::move(callback));
         };
         // The commit stays blocked after we return and resumes on the thread that completes the
         // last async write.
@@ -653,13 +651,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (!status.ok()) {
         auto should_abort = state_.load(std::memory_order_acquire) == TransactionState::kRunning;
         lock.unlock();
-        callback(status);
         // Since the backend cannot recover from this commit failure, abort explicitly so the
-        // status tablet is notified immediately; otherwise the transaction could remain alive until
-        // all strong references drop and the status tablet expires it due to missed heartbeats.
+        // status tablet is notified immediately. Abort before invoking the callback, since the
+        // callback may wait for the transaction to finish.
         if (should_abort) {
           Abort(TransactionRpcDeadline());
         }
+        callback(status);
         return;
       }
       state_.store(seal_only ? TransactionState::kSealed : TransactionState::kCommitted,
