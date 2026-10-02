@@ -7723,9 +7723,10 @@ static struct config_string ConfigureNamesString[] =
 		{"yb_test_catalog_preload_cache_list", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Catalog caches to fill when preloading the catalog."),
 			gettext_noop("A comma separated list of catalogs, catalog caches, or "
-						 "indexes of catalog caches. If set, it replaces "
+						 "indexes of catalog caches. If set, "
 						 "ysql_catalog_preload_additional_tables and "
-						 "ysql_catalog_preload_additional_table_list."),
+						 "ysql_catalog_preload_additional_table_list are "
+						 "ignored for prefetch and prefill."),
 			GUC_LIST_INPUT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_catalog_preload_cache_list_string,

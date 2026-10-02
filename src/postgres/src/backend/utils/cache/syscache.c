@@ -1506,6 +1506,8 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					break;
 				}
 			default:
+				/* YbGetPreloadListCache returns only the caches above. */
+				Assert(false);
 				is_add_to_list_required = false;
 				break;
 		}

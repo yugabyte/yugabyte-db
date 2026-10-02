@@ -4766,13 +4766,14 @@ class PgCatalogPreloadCacheListTestBase : public PgLibPqTest {
     return delta;
   }
 
-  // The caches the relcache build needs are filled whatever the flag says.
+  // The caches the catalog preload looks up itself are filled whatever the flag says.
   static void AssertNoRequiredCacheMisses(std::unordered_map<std::string, int64_t>& misses) {
     for (const auto* index : {
-             "pg_am_oid_index", "pg_amproc_fam_proc_index", "pg_opclass_oid_index",
-             "pg_database_oid_index", "pg_index_indexrelid_index",
+             "pg_am_oid_index", "pg_amproc_fam_proc_index", "pg_authid_oid_index",
+             "pg_opclass_oid_index", "pg_collation_oid_index", "pg_database_oid_index",
+             "pg_index_indexrelid_index", "pg_namespace_nspname_index",
              "pg_partitioned_table_partrelid_index", "pg_class_oid_index",
-             "pg_rewrite_rel_rulename_index"}) {
+             "pg_rewrite_rel_rulename_index", "pg_type_oid_index"}) {
       ASSERT_EQ(misses[index], 0) << index;
     }
   }
@@ -4819,6 +4820,8 @@ class PgCatalogPreloadCacheListTest
 
 INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCacheListTest, ::testing::Values(
     CatalogPreloadCacheListParam{"", true, true},
+    // A value of only whitespace counts as empty.
+    CatalogPreloadCacheListParam{" ", true, true},
     CatalogPreloadCacheListParam{"pg_attribute", true, true},
     CatalogPreloadCacheListParam{"pg_attribute_relid_attnam_index", true, false},
     CatalogPreloadCacheListParam{"attnum", false, true},
@@ -4998,6 +5001,7 @@ TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListInvalidValues, PgCatalogPreloadCac
            "-ATTNAME",             // no exclusions
            "default",              // no keywords
            "pg_trigger",           // has no catalog cache
+           "pg_inherits",          // its cache is always filled
            "LANGOID"}) {           // on a catalog that is not preloadable
     ASSERT_OK(cluster_->SetFlagOnTServers(
         "ysql_yb_test_catalog_preload_cache_list", invalid_value));

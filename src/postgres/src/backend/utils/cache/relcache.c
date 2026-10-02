@@ -2441,7 +2441,7 @@ typedef struct YbTablePrefetcherState
 	 * partitioned tables.  All their caches are filled whatever
 	 * yb_test_catalog_preload_cache_list says.
 	 */
-	bool		requested[YB_PFETCH_TABLES_COUNT];
+	bool		prefill_needed[YB_PFETCH_TABLES_COUNT];
 	/* The catalog caches filled so far. */
 	bool		cache_filled[SysCacheSize];
 } YbTablePrefetcherState;
@@ -2547,19 +2547,19 @@ YbRegisterTables(YbTablePrefetcherState *prefetcher,
 
 /*
  * Register tables the relcache build needs for its own use.  See the
- * requested field of YbTablePrefetcherState.
+ * prefill_needed field of YbTablePrefetcherState.
  */
 static void
-YbRequestTables(YbTablePrefetcherState *prefetcher,
-				const YbPFetchTable *table,
-				size_t count)
+YbRegisterTablesForPrefill(YbTablePrefetcherState *prefetcher,
+						   const YbPFetchTable *table,
+						   size_t count)
 {
 	for (const YbPFetchTable *end = table + count; table != end; ++table)
 	{
 		YbPFetchTableState *ts = prefetcher->tables + *table;
 
 		YbRegisterTable(prefetcher, *table);
-		prefetcher->requested[*table] = true;
+		prefetcher->prefill_needed[*table] = true;
 		/*
 		 * If yb_test_catalog_preload_cache_list selected only some of its
 		 * caches, the next YbFillCaches fills the rest.
@@ -2570,21 +2570,30 @@ YbRequestTables(YbTablePrefetcherState *prefetcher,
 }
 
 /*
- * Catalog caches the relcache build looks up while the prefetcher is active.
- * They are always filled: leaving one unfilled would save no memory, because
- * the build loads its entries anyway, each with a scan of all prefetched rows
- * of the table.  The pg_inherits cache, which is not a catalog cache, is
- * always filled for the same reason.
+ * Catalog caches the preload looks up while the prefetcher is active, in the
+ * relcache build and right after it.  They are always filled, because each
+ * lookup in an unfilled cache scans all prefetched rows of its table.  The
+ * pg_inherits cache, which is not a catalog cache, is always filled for the
+ * same reason.
+ *
+ * Besides the caches the build looks up for every relation, these are
+ * TYPEOID and COLLOID for the partition keys and bounds of partitioned
+ * tables, and AUTHOID and NAMESPACENAME for the lookup of the user's
+ * namespace at the end of the preload.
  */
 static const int yb_required_preload_caches[] = {
 	AMOID,
 	AMPROCNUM,
+	AUTHOID,
 	CLAOID,
+	COLLOID,
 	DATABASEOID,
 	INDEXRELID,
+	NAMESPACENAME,
 	PARTRELID,
 	RELOID,
-	RULERELNAME
+	RULERELNAME,
+	TYPEOID
 };
 
 /*
@@ -2686,6 +2695,12 @@ YbSelectCatalogPreloadItem(const char *name, YbCatalogPreloadCacheList *list)
 			GUC_check_errdetail("Catalog \"%s\" has no catalog cache.", name);
 			return false;
 		}
+		if (cache->type == YB_TABLE_CACHE_TYPE_CUSTOM_CACHE)
+		{
+			GUC_check_errdetail("The cache of catalog \"%s\" is always filled.",
+								name);
+			return false;
+		}
 		num_cache_ids = YbGetPrefetchTableCacheIds(table->pfetchTable, cache_ids);
 		for (int i = 0; i < num_cache_ids; ++i)
 			list->selected[cache_ids[i]] = true;
@@ -2715,8 +2730,13 @@ YbSelectCatalogPreloadItem(const char *name, YbCatalogPreloadCacheList *list)
 	return false;
 }
 
+/*
+ * Parse yb_test_catalog_preload_cache_list into list, setting *is_empty if it
+ * names nothing, as a value of only whitespace does.
+ */
 static bool
-YbParseCatalogPreloadCacheList(const char *value, YbCatalogPreloadCacheList *list)
+YbParseCatalogPreloadCacheList(const char *value, YbCatalogPreloadCacheList *list,
+							   bool *is_empty)
 {
 	char	   *rawstring = pstrdup(value);
 	List	   *items;
@@ -2729,6 +2749,7 @@ YbParseCatalogPreloadCacheList(const char *value, YbCatalogPreloadCacheList *lis
 		GUC_check_errdetail("List syntax is invalid.");
 		result = false;
 	}
+	*is_empty = items == NIL;
 	foreach(lc, items)
 	{
 		if (!result)
@@ -2746,11 +2767,12 @@ yb_check_test_catalog_preload_cache_list(char **newval, void **extra,
 {
 	YbCatalogPreloadCacheList list;
 	YbCatalogPreloadCacheList *result;
+	bool		is_empty;
 
-	if (**newval == '\0')
-		return true;
-	if (!YbParseCatalogPreloadCacheList(*newval, &list))
+	if (!YbParseCatalogPreloadCacheList(*newval, &list, &is_empty))
 		return false;
+	if (is_empty)
+		return true;
 
 	result = malloc(sizeof(YbCatalogPreloadCacheList));
 	if (!result)
@@ -2779,16 +2801,16 @@ YbCatalogPreloadCacheListIsSet(void)
 
 /*
  * Whether to fill a catalog cache when its table is prefetched.  If
- * yb_test_catalog_preload_cache_list is set, only the caches it names are
- * filled, besides the caches the relcache build needs and those of tables
- * the build requested.
+ * yb_test_catalog_preload_cache_list is not set, every catalog cache is
+ * filled.  If it is set, only the caches it names are filled, besides the
+ * required caches and those of tables the relcache build needs.
  */
 static bool
-YbCatalogCachePreloadSelected(int cache_id, bool requested)
+YbCatalogCachePreloadSelected(int cache_id, bool prefill_needed)
 {
 	const YbCatalogPreloadCacheList *list = yb_catalog_preload_cache_list;
 
-	return (!list || list->selected[cache_id] || requested ||
+	return (!list || list->selected[cache_id] || prefill_needed ||
 			YbIsRequiredPreloadCache(cache_id));
 }
 
@@ -2859,7 +2881,7 @@ YbFillCache(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 		case YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX:
 		case YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX:
 			{
-				const bool	requested = prefetcher->requested[table];
+				const bool	prefill_needed = prefetcher->prefill_needed[table];
 				int			cache_ids[2];
 				int			num_cache_ids = YbGetPrefetchTableCacheIds(table, cache_ids);
 				int			selected[2];
@@ -2868,7 +2890,7 @@ YbFillCache(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 				for (int i = 0; i < num_cache_ids; ++i)
 				{
 					if (!prefetcher->cache_filled[cache_ids[i]] &&
-						YbCatalogCachePreloadSelected(cache_ids[i], requested))
+						YbCatalogCachePreloadSelected(cache_ids[i], prefill_needed))
 					{
 						selected[num_selected++] = cache_ids[i];
 						prefetcher->cache_filled[cache_ids[i]] = true;
@@ -3315,7 +3337,7 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 			YB_PFETCH_TABLE_PG_PROC,
 		};
 
-		YbRequestTables(prefetcher, tables, lengthof(tables));
+		YbRegisterTablesForPrefill(prefetcher, tables, lengthof(tables));
 	}
 
 	YbcStatus	status = YbPrefetch(prefetcher);
@@ -3550,7 +3572,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 			YB_PFETCH_TABLE_PG_CAST
 		};
 
-		YbRequestTables(prefetcher, tables, lengthof(tables));
+		YbRegisterTablesForPrefill(prefetcher, tables, lengthof(tables));
 	}
 
 	YbcStatus	status = YbPrefetch(prefetcher);
@@ -3580,6 +3602,8 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_CLASS);
 	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_ATTRIBUTE);
 	YbFillCaches(prefetcher);
+
+	long		misses_before PG_USED_FOR_ASSERTS_ONLY = YbNumCatalogCacheMisses;
 
 	{
 		MemoryContext saved_context = CurrentMemoryContext;
@@ -3660,6 +3684,13 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	 */
 	if (!YbUseMinimalCatalogCachesPreload())
 		get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
+
+	/*
+	 * The required caches must cover every catalog cache lookup above, so
+	 * that none of them scans the prefetched rows of a table.
+	 */
+	Assert(!YbCatalogPreloadCacheListIsSet() ||
+		   YbNumCatalogCacheMisses == misses_before);
 
 	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 	elog(log_level, "Preloading relcache complete");
@@ -9289,15 +9320,15 @@ RelationGetIndexAttOptions(Relation relation, bool copy)
 	{
 		/*
 		 * YB: Skip the pg_attribute lookup for a column whose opclass has no
-		 * options procedure: index creation rejects options for such a
-		 * column, so there is nothing to find.  A full catalog cache refresh
+		 * options procedure, with the check RelationGetIndexRawAttOptions
+		 * does: index creation rejects options for such a column, so there
+		 * is nothing to find.  A full catalog cache refresh
 		 * does this for every index column, and without the pg_attribute
 		 * catcaches preloaded each lookup scans the whole prefetched
 		 * pg_attribute.
 		 */
 		if (IsYugaByteEnabled() &&
 			(relation->rd_indam->amoptsprocnum == 0 ||
-			 i >= IndexRelationGetNumberOfKeyAttributes(relation) ||
 			 !OidIsValid(index_getprocid(relation, i + 1,
 										 relation->rd_indam->amoptsprocnum))))
 			continue;

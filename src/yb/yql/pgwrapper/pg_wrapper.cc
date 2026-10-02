@@ -381,11 +381,12 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_test_catalog_preload_cache_list, "",
     "the index of a catalog cache as the CatalogCacheMisses metric labels it "
     "(pg_attribute_relid_attnam_index). Setting it turns on catalog preloading, at connection "
     "start-up and on every full catalog cache refresh, as ysql_catalog_preload_additional_tables "
-    "does, and replaces ysql_catalog_preload_additional_tables and "
-    "ysql_catalog_preload_additional_table_list. The core catalogs and the catalogs of the listed "
-    "caches are prefetched; only the listed caches are filled, plus the caches the relation cache "
-    "build needs, which are always filled. A change applies to new connections and to the next "
-    "full catalog cache refresh of existing ones. For testing only.");
+    "does. If set, ysql_catalog_preload_additional_tables and "
+    "ysql_catalog_preload_additional_table_list are ignored for prefetch and prefill. The core "
+    "catalogs and the catalogs of the listed caches are prefetched; only the listed caches are "
+    "filled, plus the caches the catalog preload looks up itself, which are always filled. A "
+    "change applies to new connections and to the next full catalog cache refresh of existing "
+    "ones. For testing only.");
 TAG_FLAG(ysql_yb_test_catalog_preload_cache_list, hidden);
 TAG_FLAG(ysql_yb_test_catalog_preload_cache_list, unsafe);
 
