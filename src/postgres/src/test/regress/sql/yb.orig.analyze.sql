@@ -176,3 +176,25 @@ SELECT relname, attname, reltuples, stadistinct, stanullfrac
     ORDER BY starelid, attnum;
 
 DROP TABLE t_part;
+
+-- pg_stat_user_tables last_analyze vs last_autoanalyze.
+-- Manual ANALYZE updates last_analyze; YB auto-analyze (simulated via the
+-- internal-connection GUC) updates last_autoanalyze.
+CREATE TABLE pgstat_analyze_stats (k int PRIMARY KEY);
+SELECT last_analyze IS NOT NULL AS has_last_analyze,
+       last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
+       analyze_count, autoanalyze_count
+  FROM pg_stat_user_tables WHERE relname = 'pgstat_analyze_stats';
+ANALYZE pgstat_analyze_stats;
+SELECT last_analyze IS NOT NULL AS has_last_analyze,
+       last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
+       analyze_count, autoanalyze_count
+  FROM pg_stat_user_tables WHERE relname = 'pgstat_analyze_stats';
+SET yb_use_internal_auto_analyze_service_conn = true;
+ANALYZE pgstat_analyze_stats;
+RESET yb_use_internal_auto_analyze_service_conn;
+SELECT last_analyze IS NOT NULL AS has_last_analyze,
+       last_autoanalyze IS NOT NULL AS has_last_autoanalyze,
+       analyze_count, autoanalyze_count
+  FROM pg_stat_user_tables WHERE relname = 'pgstat_analyze_stats';
+DROP TABLE pgstat_analyze_stats;
