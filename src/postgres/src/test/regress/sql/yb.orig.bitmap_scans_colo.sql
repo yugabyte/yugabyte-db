@@ -380,6 +380,14 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
 SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
 /*+ BitmapScan(t) */
 SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+/*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)  /*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */
 SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;
@@ -401,6 +409,14 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
 SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
 /*+ BitmapScan(t) */
 SELECT COUNT(*) FROM recheck_test t WHERE int4_col = 2147483648;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+/*+ BitmapScan(t) */
+SELECT int4_col FROM recheck_test t WHERE int4_col > 2147483648;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE int4_col > 2147483648;
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)  /*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */
 SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;
