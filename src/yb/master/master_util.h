@@ -91,8 +91,6 @@ Status SetupError(MasterErrorPB* error, MasterErrorPB_Code code, const Status& s
 
 bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist);
 
-bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hp);
-
 BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist);
 
 } // namespace master

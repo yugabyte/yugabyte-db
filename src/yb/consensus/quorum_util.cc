@@ -85,19 +85,6 @@ Status GetRaftConfigLeader(const ConsensusStatePB& cstate, RaftPeerPB* peer_pb) 
   return GetRaftConfigMember(cstate.config(), cstate.leader_uuid(), peer_pb);
 }
 
-Status GetHostPortFromConfig(const RaftConfigPB& config, const std::string& uuid,
-                             const CloudInfoPB& from, HostPort* hp) {
-  if (!hp) {
-    return STATUS(InvalidArgument, "Need a non-null hostport.");
-  }
-  for (const RaftPeerPB& peer : config.peers()) {
-    if (peer.permanent_uuid() == uuid) {
-      *hp = HostPortFromPB(DesiredHostPort(peer, from));
-      return Status::OK();
-    }
-  }
-  return STATUS(NotFound, Substitute("Consensus config did not find $0.", uuid));
-}
 
 bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req) {
   RepeatedPtrField<RaftPeerPB> modified_peers;
@@ -117,8 +104,7 @@ bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req
   for (const RaftPeerPB& peer : config->peers()) {
     bool matches;
     if (use_host) {
-      matches = HasHostPortPB(peer.last_known_private_addr(), *hp) ||
-                HasHostPortPB(peer.last_known_broadcast_addr(), *hp);
+      matches = IsRunningOn(peer, *hp);
     } else {
       matches = peer.permanent_uuid() == uuid;
     }

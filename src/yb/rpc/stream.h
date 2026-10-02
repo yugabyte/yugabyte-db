@@ -175,5 +175,10 @@ class Protocol {
   std::string id_;
 };
 
+// The protocol at a point in the (compression, encryption) space. A stream reports its own
+// protocol from GetProtocol() and connections are cached by what they report, so a stream must
+// be built with the protocol naming the layers it actually has.
+const Protocol* StreamProtocol(Compressed compressed, Encrypted encrypted);
+
 } // namespace rpc
 } // namespace yb

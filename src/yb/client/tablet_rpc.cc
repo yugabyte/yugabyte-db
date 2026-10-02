@@ -351,6 +351,16 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
 
+    // A server that advertised several addresses is only unreachable once every one of them
+    // has failed, so exhaust them before demoting it. Only a connect failure says anything
+    // about the address; any other error came back over a working connection.
+    if (rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed &&
+        current_ts_->FailToNextAddress(client_->data_->cloud_info_pb_)) {
+      YB_LOG_EVERY_N_SECS(INFO, 1) << "Retrying " << current_ts_->ToString()
+                                   << " on another advertised address after " << reason;
+      return retrier_->DelayedRetry(command_, reason);
+    }
+
     if (FLAGS_update_all_tablets_upon_network_failure &&
         rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed) {
       YB_LOG_EVERY_N_SECS(WARNING, 1) << "Marking TServer " << current_ts_->ToString()
