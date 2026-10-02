@@ -59,7 +59,7 @@ The number of nodes in a cluster running YB-Masters must equal the replication f
 Run the yb-master server on each of the three nodes as follows.
 
 ```sh
-$ ./bin/yb-master \
+$ GLIBC_TUNABLES=glibc.pthread.rseq=0 ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130:7100 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
@@ -74,6 +74,8 @@ The number of comma-separated addresses in `--master_addresses` should equal the
 You can specify multiple directories using the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
 
 Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
+
+`GLIBC_TUNABLES=glibc.pthread.rseq=0` lets TCMalloc use per-CPU caches. Don't set it on Linux kernels 6.19.0 through 7.0.13; see [Enable TCMalloc per-CPU caches](../system-config/#enable-tcmalloc-per-cpu-caches).
 
 For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
@@ -91,7 +93,7 @@ Alternatively, you can also create a `master.conf` file with the following flags
 ```
 
 ```sh
-$ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
+$ GLIBC_TUNABLES=glibc.pthread.rseq=0 ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 ```
 
 ### Verify Master health
@@ -131,7 +133,7 @@ The number of nodes in a cluster running YB-TServers must equal or exceed the re
 Run the yb-tserver server on each of the six nodes as follows.
 
 ```sh
-$ ./bin/yb-tserver \
+$ GLIBC_TUNABLES=glibc.pthread.rseq=0 ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130:9100 \
   --enable_ysql \
@@ -147,6 +149,8 @@ $ ./bin/yb-tserver \
 Provide all of the master addresses using the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
 
 Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
+
+`GLIBC_TUNABLES=glibc.pthread.rseq=0` lets TCMalloc use per-CPU caches. Don't set it on Linux kernels 6.19.0 through 7.0.13; see [Enable TCMalloc per-CPU caches](../system-config/#enable-tcmalloc-per-cpu-caches).
 
 For the full list of configuration flags, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
 
@@ -167,7 +171,7 @@ Alternatively, you can also create a `tserver.conf` file with the following flag
 ```
 
 ```sh
-$ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
+$ GLIBC_TUNABLES=glibc.pthread.rseq=0 ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
 ```
 
 ### Set replica placement policy
