@@ -25,7 +25,7 @@ The action applies the following OS settings:
 
 ## When to reprovision
 
-YugabyteDB Anywhere applies these settings when it provisions a node. After that, a person or a script can change them. An operator might edit a limit or sysctl by hand, or a configuration-management job might overwrite a file or stop a service. If the new value is incompatible with YugabyteDB, the node is misconfigured even though the database software and data are unchanged.
+YugabyteDB Anywhere applies these settings when it provisions a node. These settings can change later if an operator updates a limit or sysctl manually, or if a configuration-management process overwrites a file or stops a service. If a change is incompatible with YugabyteDB, the node is misconfigured even though the database software and data remain unchanged.
 
 Universe health checks report that drift. For example:
 
@@ -35,7 +35,7 @@ Universe health checks report that drift. For example:
 
 Reprovisioning writes the current settings back and reinstalls node agent as part of provisioning. You can also run it proactively, before a health check reports a problem. After you upgrade YugabyteDB Anywhere, the OS settings it expects may have changed, and existing nodes can be out of date until you reprovision them.
 
-On a supported universe, **Actions > More > Reprovision Universe Nodes** is available whenever no other universe task is running, just like **Reinstall Node Agent**. Reinstall Node Agent reinstalls node agent. Reprovision Universe Nodes re-applies the OS settings above and reinstalls node agent as part of that provisioning.
+In YugabyteDB Anywhere v2026.1.2.0 and later, **Actions > More > Reprovision Universe Nodes** is available for supported public cloud and on-premises universes whenever no other universe task is running, just like **Reinstall Node Agent**. Reinstall Node Agent reinstalls node agent. Reprovision Universe Nodes re-applies the OS settings above and reinstalls node agent as part of that provisioning.
 
 Reprovisioning performs a rolling restart, the same as a node resize or VM image upgrade. Perform it during a low-traffic period and avoid scheduled backup windows.
 
