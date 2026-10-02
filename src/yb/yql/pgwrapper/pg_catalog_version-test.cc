@@ -3635,7 +3635,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   // Because latest master catalog version is used to do prefetch when rebuilding
   // relcache init file, we see the same number of master RPCs regardless of
   // whether connection manager is used or not.
-  ASSERT_EQ(master_read_count_after - master_read_count_before, 6);
+  ASSERT_EQ(master_read_count_after - master_read_count_before, 4);
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
