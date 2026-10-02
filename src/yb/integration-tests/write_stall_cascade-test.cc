@@ -178,6 +178,56 @@ class WriteStallCascadeTest : public integration_tests::YBTableTestBase {
     }, 10s * kTimeMultiplier, Format("Waiting for ts-$0 to become leader for $1",
                                      target_ts_idx, tablet_id));
   }
+
+  // Steps down the original leader to trigger an election, if it is still leader.
+  // Doesn't use GetLeaderPeerForTablet(): that requires LEADER_AND_READY, and while the other
+  // follower shuts down the leader may lose its lease (no acks from the stalled follower) or
+  // lose leadership to the stalled follower. In the latter case, the step down is skipped.
+  Status StepDownOriginalLeaderIfStillLeader(
+      const TabletId& tablet_id, const TabletLayout& layout) {
+    auto leader_peer = mini_cluster()->mini_tablet_server(layout.leader_idx)->server()
+        ->tablet_manager()->LookupTablet(tablet_id);
+    SCHECK_NOTNULL(leader_peer);
+    auto is_leader = [&leader_peer] {
+      auto consensus = leader_peer->GetConsensus();
+      return consensus.ok() &&
+             (*consensus)->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+    };
+    auto describe_leader_peer = [&leader_peer] {
+      auto consensus = leader_peer->GetConsensus();
+      if (!consensus.ok()) {
+        return AsString(consensus.status());
+      }
+      auto cstate = (*consensus)->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+      return Format("leader status: $0, term: $1, known leader: $2",
+                    (*consensus)->GetLeaderStatus(), cstate.current_term(),
+                    cstate.has_leader_uuid() ? cstate.leader_uuid() : "<none>");
+    };
+    LOG(INFO) << "=== After shutdown, old leader (ts-" << layout.leader_idx << "): "
+              << describe_leader_peer() << "; stalled follower uuid: "
+              << layout.stalled_peer->permanent_uuid() << " ===";
+
+    if (!is_leader()) {
+      LOG(INFO) << "=== Old leader (ts-" << layout.leader_idx << ") already lost leadership, "
+                << "skipping step down ===";
+      return Status::OK();
+    }
+
+    LOG(INFO) << "=== Stepping down leader (ts-" << layout.leader_idx << ") ===";
+    auto step_down_status = StepDown(leader_peer, std::string(), ForceStepDown::kTrue);
+    if (!step_down_status.ok()) {
+      if (is_leader()) {
+        return step_down_status;
+      }
+      LOG(INFO) << "=== Step down failed and old leader is no longer leader: "
+                << step_down_status << " ===";
+    }
+
+    RETURN_NOT_OK(WaitFor([&] { return !is_leader(); },
+                          5s * kTimeMultiplier, "Waiting for old leader to step down"));
+    LOG(INFO) << "=== Old leader is no longer leader, waiting for election ===";
+    return Status::OK();
+  }
 };
 
 // Verifies that leader election succeeds even when a follower is in a hard write stop.
@@ -244,18 +294,7 @@ TEST_F(WriteStallCascadeTest, ElectionSucceedsDespiteFollowerWriteStall) {
   LOG(INFO) << "=== Shutting down ts-" << layout.other_follower_idx << " ===";
   mini_cluster()->mini_tablet_server(layout.other_follower_idx)->Shutdown();
 
-  // Step down the leader to trigger an election.
-  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(mini_cluster(), tablet_id));
-  LOG(INFO) << "=== Stepping down leader (ts-" << layout.leader_idx << ") ===";
-  ASSERT_OK(StepDown(leader_peer, std::string(), ForceStepDown::kTrue));
-
-  ASSERT_OK(WaitFor([&]() {
-    auto consensus = leader_peer->GetConsensus();
-    return consensus.ok() &&
-           (*consensus)->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
-  }, 5s * kTimeMultiplier, "Waiting for old leader to step down"));
-
-  LOG(INFO) << "=== Old leader stepped down, waiting for new leader election ===";
+  ASSERT_OK(StepDownOriginalLeaderIfStillLeader(tablet_id, layout));
 
   // Wait for a new leader. We use RequireLeaderIsReady::kFalse because the new leader
   // cannot reach LEADER_AND_READY when the only reachable follower rejects ops.
@@ -326,49 +365,7 @@ TEST_F(WriteStallCascadeTest, WriteStallCanBlockElection) {
   LOG(INFO) << "=== Shutting down ts-" << layout.other_follower_idx << " ===";
   mini_cluster()->mini_tablet_server(layout.other_follower_idx)->Shutdown();
 
-  // Don't use GetLeaderPeerForTablet() here: it requires LEADER_AND_READY, and while the
-  // shutdown above runs the leader may lose its lease (no acks from the stalled follower) or
-  // lose leadership to the stalled follower.
-  auto leader_peer = mini_cluster()->mini_tablet_server(layout.leader_idx)->server()
-      ->tablet_manager()->LookupTablet(tablet_id);
-  ASSERT_NE(leader_peer, nullptr);
-  auto is_leader = [&leader_peer] {
-    auto consensus = leader_peer->GetConsensus();
-    return consensus.ok() &&
-           (*consensus)->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
-  };
-  auto describe_leader_peer = [&leader_peer] {
-    auto consensus = leader_peer->GetConsensus();
-    if (!consensus.ok()) {
-      return AsString(consensus.status());
-    }
-    auto cstate = (*consensus)->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
-    return Format("leader status: $0, term: $1, known leader: $2",
-                  (*consensus)->GetLeaderStatus(), cstate.current_term(),
-                  cstate.has_leader_uuid() ? cstate.leader_uuid() : "<none>");
-  };
-  LOG(INFO) << "=== After shutdown, old leader (ts-" << layout.leader_idx << "): "
-            << describe_leader_peer() << "; stalled follower uuid: "
-            << layout.stalled_peer->permanent_uuid() << " ===";
-
-  if (is_leader()) {
-    LOG(INFO) << "=== Stepping down leader (ts-" << layout.leader_idx << ") ===";
-    auto step_down_status = StepDown(leader_peer, std::string(), ForceStepDown::kTrue);
-    if (!step_down_status.ok()) {
-      if (is_leader()) {
-        ASSERT_OK(step_down_status);
-      }
-      LOG(INFO) << "=== Step down failed and old leader is no longer leader: "
-                << step_down_status << " ===";
-    }
-
-    ASSERT_OK(WaitFor([&] { return !is_leader(); },
-                      5s * kTimeMultiplier, "Waiting for old leader to step down"));
-    LOG(INFO) << "=== Old leader is no longer leader, waiting for election ===";
-  } else {
-    LOG(INFO) << "=== Old leader (ts-" << layout.leader_idx << ") already lost leadership, "
-              << "skipping step down ===";
-  }
+  ASSERT_OK(StepDownOriginalLeaderIfStillLeader(tablet_id, layout));
 
   auto election_result = WaitUntilTabletHasLeader(
       mini_cluster(), tablet_id,
