@@ -35,9 +35,10 @@
 using std::string;
 
 DEFINE_NON_RUNTIME_bool(disable_pitr, false,
-    "Create a universe with PITR and system-catalog restore permanently disabled. "
-    "Only valid when creating a new universe. The persisted mode survives flag changes and "
-    "restarts. Required for authentication catalog follower reads; does not enable routing.");
+    "Permanently disable PITR and system-catalog restore at master startup. Existing universes "
+    "require a coordinated master restart with no remaining PITR schedules, schedule snapshots, "
+    "or unfinished restores. The persisted mode survives flag changes and restarts. "
+    "Does not enable authentication catalog follower-read routing.");
 TAG_FLAG(disable_pitr, experimental);
 
 DEFINE_UNKNOWN_string(initial_sys_catalog_snapshot_path, "",
@@ -57,6 +58,13 @@ DEFINE_test_flag(bool, fail_initdb_after_cluster_config, false,
 
 DEFINE_test_flag(bool, fail_initdb_after_snapshot_restore, false,
                  "Kill the master process after successfully restoring the sys catalog snapshot.");
+
+DEFINE_test_flag(bool, fail_pitr_disable_after_persist, false,
+                 "Kill the master after persisting PITR-disabled mode on an existing universe.");
+
+DEFINE_test_flag(int32, pitr_disable_write_error, 0,
+                 "Fail PITR disablement before its write (1) or after persistence but before "
+                 "updating the catalog-manager copy (2).");
 
 DECLARE_bool(enable_ysql);
 

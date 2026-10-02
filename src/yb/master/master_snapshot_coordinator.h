@@ -226,6 +226,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // The immutable universe mode, loaded/applied on every master replica.
   bool PitrDisabled() const;
 
+  // A read-only check, not an admission claim. The caller must keep catalog admission blocked
+  // from this check until the durable mode write completes.
+  Status CheckPitrDisableEligibility() const;
+
   Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info);
 
   void Start();

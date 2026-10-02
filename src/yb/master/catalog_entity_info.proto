@@ -440,7 +440,7 @@ message SysClusterConfigEntryPB {
   // Note that this is for every database and applies only to YSQL.
   optional uint32 oid_cache_invalidations_count = 9 [default = 0];
 
-  // Immutable after universe creation. Missing means PITR remains supported.
+  // Immutable once true. Missing or false means PITR remains supported.
   optional bool pitr_disabled = 10 [default = false];
 
   // Only prebuilt initdb snapshots carry this marker. It lets an interrupted first boot

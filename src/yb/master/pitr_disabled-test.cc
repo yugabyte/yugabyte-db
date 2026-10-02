@@ -10,12 +10,19 @@
 // or implied. See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <set>
+#include <vector>
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
+#include "yb/client/yb_op.h"
 
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -34,11 +41,16 @@
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(disable_pitr);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
 using namespace std::literals;
 
@@ -123,6 +135,34 @@ class PitrDisabledTest : public YBMiniClusterTestBase<MiniCluster> {
     }, kRpcTimeout, "Wait for persisted PITR mode on every master");
   }
 
+  Status RestartMasters(bool request_disable) {
+    std::vector<uint16_t> ports;
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      ports.push_back(cluster_->mini_master(i)->bound_rpc_addr().port());
+    }
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      cluster_->mini_master(i)->Shutdown();
+    }
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = request_disable;
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      RETURN_NOT_OK(cluster_->mini_master(i)->StartDistributedMaster(ports));
+    }
+    RETURN_NOT_OK(WaitForInitDb(cluster_.get()));
+    return Status::OK();
+  }
+
+  Status Eligibility() {
+    return VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master()
+        ->snapshot_coordinator().CheckPitrDisableEligibility();
+  }
+
+  Status WriteMetadata(int8_t type, const std::string& id, const google::protobuf::Message& pb) {
+    auto& cm = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+    return cm.sys_catalog()->ForceWrite(
+        type, id, pb, QLWriteRequestPB::QL_STMT_INSERT, cm.GetLeaderEpochInternal().leader_term);
+  }
+
+
   Result<TableId> CreateTable() {
     client::YBSchemaBuilder builder;
     builder.AddColumn("k")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
@@ -191,10 +231,10 @@ TEST_F(PitrDisabledTest, ClusterConfigCannotClearMode) {
   ASSERT_OK(WaitForMode(true));
 
   config.set_pitr_disabled(false);
-  ASSERT_NOK_STR_CONTAINS(SetConfig(config), "Universe creation settings cannot be updated");
+  ASSERT_NOK_STR_CONTAINS(SetConfig(config), "Universe startup settings cannot be updated");
   config = ASSERT_RESULT(Config());
   config.set_is_initial_sys_catalog_snapshot(true);
-  ASSERT_NOK_STR_CONTAINS(SetConfig(config), "Universe creation settings cannot be updated");
+  ASSERT_NOK_STR_CONTAINS(SetConfig(config), "Universe startup settings cannot be updated");
   ASSERT_NOK_STR_CONTAINS(CreateSchedule(), "PITR is disabled for this universe");
 }
 
@@ -228,24 +268,153 @@ TEST_F(PitrEnabledTest, DefaultModeSupportsPitrRestore) {
   ASSERT_FALSE(ASSERT_RESULT(Config()).pitr_disabled());
 }
 
-TEST_F(PitrEnabledTest, CannotEnableModeOnExistingUniverse) {
+TEST_F(PitrEnabledTest, RuntimeFlagAndConfigChangesCannotActivateMode) {
   auto config = ASSERT_RESULT(Config());
   ASSERT_FALSE(config.pitr_disabled());
   config.set_pitr_disabled(true);
-  ASSERT_NOK_STR_CONTAINS(SetConfig(config), "Universe creation settings cannot be updated");
+  ASSERT_NOK_STR_CONTAINS(SetConfig(config), "Universe startup settings cannot be updated");
 
-  // Exercise the startup loader directly: a rejected leader startup otherwise calls LOG(FATAL).
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
   SysCatalogLoadingState state(catalog_manager.GetLeaderEpochInternal());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = true;
   const auto status = catalog_manager.VisitSysCatalog(&state);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = false;
-  ASSERT_TRUE(status.IsNotSupported()) << status;
-  ASSERT_STR_CONTAINS(
-      status.ToString(), "--disable_pitr can only be set when creating a new universe");
+  ASSERT_OK(status);
   ASSERT_FALSE(ASSERT_RESULT(Config()).pitr_disabled());
   ASSERT_OK(WaitForMode(false));
   ASSERT_RESULT(CreateSchedule());
+}
+
+TEST_F(PitrEnabledTest, ExistingUniverseActivatesAcrossCoordinatedMasterRestart) {
+  const auto table_id = ASSERT_RESULT(CreateTable());
+  client::TableHandle table;
+  ASSERT_OK(table.Open(client::YBTableName(YQL_DATABASE_CQL, kNamespace, "t1"), client_.get()));
+  auto session = client_->NewSession(kRpcTimeout);
+  for (int key : {7, 42}) {
+    auto write = table.NewInsertOp(session->arena());
+    QLAddInt32HashValue(write->mutable_request(), key);
+    ASSERT_OK(session->TEST_ApplyAndFlush(write));
+  }
+  auto check_rows = [&] {
+    std::set<int32_t> keys;
+    for (const auto& row : client::TableRange(table)) {
+      keys.insert(row.column(0).int32_value());
+    }
+    ASSERT_EQ(keys, (std::set<int32_t>{7, 42}));
+  };
+  client::SnapshotTestUtil snapshots(*cluster_, cluster_->proxy_cache());
+  const auto snapshot = ASSERT_RESULT(snapshots.CreateSnapshot(table_id));
+  ASSERT_OK(snapshots.RestoreSnapshot(snapshot));
+  ASSERT_OK(WaitFor(
+      [&] { return Eligibility().ok(); }, kRpcTimeout, "Wait for restore finalization"));
+  ASSERT_NO_FATAL_FAILURE(check_rows());
+  auto custom = ASSERT_RESULT(Config());
+  custom.set_oid_cache_invalidations_count(123);
+  ASSERT_OK(SetConfig(custom));
+  const auto before = ASSERT_RESULT(Config());
+
+  ASSERT_OK(RestartMasters(true));
+  ASSERT_OK(WaitForMode(true));
+  const auto after = ASSERT_RESULT(Config());
+  ASSERT_TRUE(after.pitr_disabled());
+  ASSERT_EQ(after.cluster_uuid(), before.cluster_uuid());
+  ASSERT_EQ(after.universe_uuid(), before.universe_uuid());
+  ASSERT_GT(after.version(), before.version());
+  auto expected = before;
+  expected.set_pitr_disabled(true);
+  expected.set_version(after.version());
+  ASSERT_EQ(after.SerializeAsString(), expected.SerializeAsString());
+  ASSERT_NO_FATAL_FAILURE(check_rows());
+  ASSERT_EQ(
+      ASSERT_RESULT(client_->GetYBTableInfo(
+          client::YBTableName(YQL_DATABASE_CQL, kNamespace, "t1"))).table_id, table_id);
+  ASSERT_NOK_STR_CONTAINS(CreateSchedule(), "PITR is disabled for this universe");
+
+  ASSERT_OK(RestartMasters(false));
+  ASSERT_OK(WaitForMode(true));
+  ASSERT_EQ(ASSERT_RESULT(Config()).SerializeAsString(), expected.SerializeAsString());
+  ASSERT_NO_FATAL_FAILURE(check_rows());
+  const auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+    auto* follower = cluster_->mini_master(i);
+    if (follower != leader) {
+      ASSERT_OK(cluster_->StepDownMasterLeader(follower->permanent_uuid()));
+      break;
+    }
+  }
+  ASSERT_NOK_STR_CONTAINS(CreateSchedule(), "PITR is disabled for this universe");
+}
+
+TEST_F(PitrEnabledTest, StartupBlocksAdmissionBeforeModeCommit) {
+  std::vector<HostPort> addresses;
+  for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+    addresses.push_back(cluster_->mini_master(i)->bound_rpc_addr());
+  }
+  CountDownLatch entered(1), release(1);
+  Status restart_status;
+  TestThreadHolder threads;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("CatalogManager::DisablePitr:BeforeWrite", [&](void*) {
+    entered.CountDown();
+    release.Wait();
+  });
+  sync->EnableProcessing();
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThread([&] { restart_status = RestartMasters(true); });
+  ASSERT_TRUE(entered.WaitFor(kRpcTimeout));
+  for (const auto& address : addresses) {
+    MasterBackupProxy proxy(&cluster_->proxy_cache(), address);
+    CreateSnapshotScheduleRequestPB request;
+    request.mutable_options()->set_interval_sec(600);
+    request.mutable_options()->set_retention_duration_sec(3600);
+    auto* ns = request.mutable_options()->mutable_filter()->mutable_tables()
+                   ->add_tables()->mutable_namespace_();
+    ns->set_name(kNamespace);
+    ns->set_database_type(YQL_DATABASE_CQL);
+    CreateSnapshotScheduleResponsePB response;
+    rpc::RpcController rpc;
+    rpc.set_timeout(100ms * kTimeMultiplier);
+    const auto status = proxy.CreateSnapshotSchedule(request, &response, &rpc);
+    ASSERT_TRUE(!status.ok() || response.has_error()) << response.ShortDebugString();
+  }
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(restart_status);
+  ASSERT_OK(WaitForMode(true));
+  ASSERT_NOK_STR_CONTAINS(CreateSchedule(), "PITR is disabled for this universe");
+}
+
+TEST_F(PitrEnabledTest, PastPitrHistoryAllowsActivationAfterCleanup) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 100;
+  ASSERT_RESULT(CreateTable());
+  const auto schedule =
+      ASSERT_RESULT(FullyDecodeSnapshotScheduleId(ASSERT_RESULT(CreateSchedule())));
+  client::SnapshotTestUtil snapshots(*cluster_, cluster_->proxy_cache());
+  const auto snapshot = ASSERT_RESULT(snapshots.WaitScheduleSnapshot(schedule));
+  const auto restore_at = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->Now() >= restore_at;
+  }, kRpcTimeout, "Wait for restorable snapshot time"));
+  ASSERT_OK(snapshots.RestoreSnapshotSchedule(schedule, restore_at));
+
+  auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<MasterBackupProxy>());
+  DeleteSnapshotScheduleRequestPB request;
+  request.set_snapshot_schedule_id(schedule.AsSlice().ToBuffer());
+  DeleteSnapshotScheduleResponsePB response;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kRpcTimeout);
+  ASSERT_OK(proxy.DeleteSnapshotSchedule(request, &response, &rpc));
+  ASSERT_FALSE(response.has_error()) << response.ShortDebugString();
+  ASSERT_OK(WaitFor([&] { return Eligibility().ok(); },
+                    60s * kTimeMultiplier, "Wait for PITR schedule and snapshot cleanup"));
+  ASSERT_OK(RestartMasters(true));
+  ASSERT_OK(WaitForMode(true));
+  ASSERT_TRUE(ASSERT_RESULT(Config()).pitr_disabled());
 }
 
 TEST_F(PitrEnabledTest, RejectsLegacyReservationMetadataBeforeAndAfterReplay) {
@@ -275,6 +444,102 @@ TEST_F(PitrEnabledTest, RejectsLegacyReservationMetadataBeforeAndAfterReplay) {
   ASSERT_OK(catalog_manager.VisitSysCatalog(&clean_state));
   ASSERT_NOK_STR_CONTAINS(bootstrap_status, "old catalog follower-read reservation prototype");
   ASSERT_NOK_STR_CONTAINS(leader_status, "old catalog follower-read reservation prototype");
+}
+
+
+TEST_F(PitrDisabledTest, IncompleteOrdinaryRestoreDoesNotBlockDisabledUniverseRestart) {
+  const auto table_id = ASSERT_RESULT(CreateTable());
+  client::SnapshotTestUtil snapshots(*cluster_, cluster_->proxy_cache());
+  const auto snapshot_id = ASSERT_RESULT(snapshots.CreateSnapshot(table_id));
+  const auto snapshot_list = ASSERT_RESULT(snapshots.ListSnapshots(snapshot_id));
+  ASSERT_EQ(snapshot_list.size(), 1);
+  ASSERT_EQ(snapshot_list[0].entry().tablet_snapshots_size(), 1);
+  for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+    cluster_->mini_master(i)->master()->snapshot_coordinator().Shutdown();
+  }
+  const auto restoration_id = TxnSnapshotRestorationId::GenerateRandom();
+  SysRestorationEntryPB restoration;
+  restoration.set_state(SysSnapshotEntryPB::RESTORING);
+  restoration.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
+  restoration.set_schedule_id(SnapshotScheduleId::Nil().AsSlice().ToBuffer());
+  restoration.set_is_sys_catalog_restored(true);
+  restoration.set_version(1);
+  auto* tablet = restoration.add_tablet_restorations();
+  tablet->set_id(snapshot_list[0].entry().tablet_snapshots(0).id());
+  tablet->set_state(SysSnapshotEntryPB::RESTORING);
+  ASSERT_OK(WriteMetadata(
+      SysRowEntryType::SNAPSHOT_RESTORATION, restoration_id.AsSlice().ToBuffer(), restoration));
+  ASSERT_NOK_STR_CONTAINS(Eligibility(), "unfinished or incomplete state");
+  ASSERT_OK(RestartMasters(true));
+  ASSERT_OK(WaitForMode(true));
+  ASSERT_OK(snapshots.WaitRestorationInState(restoration_id, SysSnapshotEntryPB::RESTORED));
+}
+
+class PitrDisableEligibilityTest : public PitrEnabledTest {
+ protected:
+  void SetUp() override {
+    ASSERT_NO_FATAL_FAILURE(PitrEnabledTest::SetUp());
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      cluster_->mini_master(i)->master()->snapshot_coordinator().Shutdown();
+    }
+  }
+};
+
+TEST_F(PitrDisableEligibilityTest, RetainedScheduleSnapshotBlocksActivation) {
+  const auto id = TxnSnapshotId::GenerateRandom();
+  SysSnapshotEntryPB snapshot;
+  snapshot.set_state(SysSnapshotEntryPB::CREATING);
+  snapshot.set_snapshot_hybrid_time(
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Now().ToUint64());
+  snapshot.set_version(1);
+  ASSERT_OK(WriteMetadata(SysRowEntryType::SNAPSHOT, id.AsSlice().ToBuffer(), snapshot));
+  ASSERT_OK(Eligibility());
+  snapshot.set_schedule_id(SnapshotScheduleId::GenerateRandom().AsSlice().ToBuffer());
+  snapshot.set_version(2);
+  ASSERT_OK(WriteMetadata(SysRowEntryType::SNAPSHOT, id.AsSlice().ToBuffer(), snapshot));
+  ASSERT_NOK_STR_CONTAINS(Eligibility(), "retained schedule snapshot " + id.ToString());
+}
+
+TEST_F(PitrDisableEligibilityTest, RestorationLifecycleMustBeFinalized) {
+  const auto id = TxnSnapshotRestorationId::GenerateRandom();
+  SysRestorationEntryPB restoration;
+  restoration.set_state(SysSnapshotEntryPB::RESTORING);
+  restoration.set_snapshot_id(TxnSnapshotId::GenerateRandom().AsSlice().ToBuffer());
+  restoration.set_schedule_id(SnapshotScheduleId::Nil().AsSlice().ToBuffer());
+  auto write = [&]() {
+    restoration.set_version(restoration.version() + 1);
+    return WriteMetadata(
+        SysRowEntryType::SNAPSHOT_RESTORATION, id.AsSlice().ToBuffer(), restoration);
+  };
+  ASSERT_OK(write());
+  ASSERT_NOK_STR_CONTAINS(Eligibility(), "restoration " + id.ToString());
+  restoration.set_is_sys_catalog_restored(true);
+  auto* tablet = restoration.add_tablet_restorations();
+  tablet->set_id("test_tablet");
+  tablet->set_state(SysSnapshotEntryPB::RESTORED);
+  ASSERT_OK(write());
+  ASSERT_NOK_STR_CONTAINS(Eligibility(), "unfinished or incomplete state");
+
+  restoration.set_complete_time_ht(
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Now().ToUint64());
+  ASSERT_OK(write());
+  ASSERT_OK(Eligibility());
+  tablet->set_state(SysSnapshotEntryPB::FAILED);
+  auto* pending = restoration.add_tablet_restorations();
+  pending->set_id("pending_tablet");
+  pending->set_state(SysSnapshotEntryPB::RESTORING);
+  ASSERT_OK(write());
+  ASSERT_NOK_STR_CONTAINS(Eligibility(), "unfinished or incomplete state");
+  pending->set_state(SysSnapshotEntryPB::FAILED);
+  ASSERT_OK(write());
+  ASSERT_OK(Eligibility());
+
+  restoration.set_schedule_id(SnapshotScheduleId::GenerateRandom().AsSlice().ToBuffer());
+  ASSERT_OK(write());
+  ASSERT_OK(Eligibility());
+  restoration.set_is_sys_catalog_restored(false);
+  ASSERT_OK(write());
+  ASSERT_NOK_STR_CONTAINS(Eligibility(), "unfinished or incomplete state");
 }
 
 
@@ -364,5 +629,130 @@ TEST_F(PitrDisabledFlaglessBootstrapTest, CommittedModeSurvivesFlaglessInitdbRet
       schedule_response.error().status().message(), "PITR is disabled for this universe");
 }
 
+
+class PitrExistingStartupTest : public YBTest, public ::testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override {
+    YBTest::SetUp();
+    options_.num_masters = 1;
+    options_.num_tablet_servers = 0;
+    options_.replication_factor = 1;
+    options_.enable_ysql = true;
+    options_.wait_for_tservers_to_accept_ysql_connections = false;
+    options_.data_root = GetTestPath("existing-universe");
+    ASSERT_OK(Start({}));
+  }
+
+  void TearDown() override {
+    cluster_.reset();
+    YBTest::TearDown();
+  }
+
+  Status Start(std::vector<std::string> flags) {
+    cluster_.reset();
+    flags.push_back("--snapshot_coordinator_poll_interval_ms=600000");
+    options_.extra_master_flags = std::move(flags);
+    cluster_ = std::make_unique<ExternalMiniCluster>(options_);
+    auto status = cluster_->Start();
+    if (cluster_->num_masters() == 1) {
+      options_.master_rpc_ports = {cluster_->master(0)->bound_rpc_addr().port()};
+    }
+    return status;
+  }
+
+  Result<SysClusterConfigEntryPB> Config() {
+    auto proxy = cluster_->GetLeaderMasterProxy<MasterClusterProxy>();
+    GetMasterClusterConfigRequestPB request;
+    GetMasterClusterConfigResponsePB response;
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s * kTimeMultiplier);
+    RETURN_NOT_OK(proxy.GetMasterClusterConfig(request, &response, &rpc));
+    if (response.has_error()) {
+      return StatusFromPB(response.error().status());
+    }
+    return response.cluster_config();
+  }
+
+  ExternalMiniClusterOptions options_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
+};
+
+TEST_P(PitrExistingStartupTest, RejectsActiveAndDeletedSchedulesWithoutChangingMode) {
+  const auto before = ASSERT_RESULT(Config());
+  ASSERT_FALSE(before.pitr_disabled());
+  {
+    auto proxy = cluster_->GetLeaderMasterProxy<MasterBackupProxy>();
+    CreateSnapshotScheduleRequestPB request;
+    request.mutable_options()->set_interval_sec(600);
+    request.mutable_options()->set_retention_duration_sec(3600);
+    auto* ns = request.mutable_options()->mutable_filter()->mutable_tables()
+                   ->add_tables()->mutable_namespace_();
+    ns->set_name("yugabyte");
+    ns->set_database_type(YQL_DATABASE_PGSQL);
+    CreateSnapshotScheduleResponsePB response;
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s * kTimeMultiplier);
+    ASSERT_OK(proxy.CreateSnapshotSchedule(request, &response, &rpc));
+    ASSERT_FALSE(response.has_error()) << response.ShortDebugString();
+    if (GetParam()) {
+      DeleteSnapshotScheduleRequestPB remove;
+      remove.set_snapshot_schedule_id(response.snapshot_schedule_id());
+      DeleteSnapshotScheduleResponsePB removed;
+      rpc.Reset();
+      rpc.set_timeout(30s * kTimeMultiplier);
+      ASSERT_OK(proxy.DeleteSnapshotSchedule(remove, &removed, &rpc));
+      ASSERT_FALSE(removed.has_error()) << removed.ShortDebugString();
+    }
+  }
+
+  ASSERT_NOK(Start({"--disable_pitr=true"}));
+  ASSERT_OK(Start({}));
+  const auto after = ASSERT_RESULT(Config());
+  ASSERT_FALSE(after.pitr_disabled());
+  ASSERT_EQ(after.cluster_uuid(), before.cluster_uuid());
+  auto recovered = cluster_->GetLeaderMasterProxy<MasterBackupProxy>();
+  ListSnapshotSchedulesRequestPB list;
+  ListSnapshotSchedulesResponsePB listed;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s * kTimeMultiplier);
+  ASSERT_OK(recovered.ListSnapshotSchedules(list, &listed, &rpc));
+  ASSERT_FALSE(listed.has_error()) << listed.ShortDebugString();
+  ASSERT_EQ(listed.schedules_size(), 1);
+}
+
+INSTANTIATE_TEST_CASE_P(ActiveOrDeleted, PitrExistingStartupTest, ::testing::Bool());
+
+class PitrExistingCrashTest : public PitrExistingStartupTest {};
+
+TEST_F(PitrExistingCrashTest, PersistedActivationSurvivesCrashAndFlaglessRestart) {
+  const auto before = ASSERT_RESULT(Config());
+  ASSERT_FALSE(before.pitr_disabled());
+  ASSERT_NOK(Start({"--disable_pitr=true", "--TEST_fail_pitr_disable_after_persist=true"}));
+  ASSERT_OK(Start({}));
+  const auto after = ASSERT_RESULT(Config());
+  ASSERT_TRUE(after.pitr_disabled());
+  ASSERT_EQ(after.cluster_uuid(), before.cluster_uuid());
+  ASSERT_GT(after.version(), before.version());
+}
+
+
+class PitrExistingWriteErrorTest : public PitrExistingStartupTest {};
+
+TEST_P(PitrExistingWriteErrorTest, WriteFailureKeepsTheDurableOutcome) {
+  const auto before = ASSERT_RESULT(Config());
+  const bool committed = GetParam();
+  ASSERT_NOK(Start({"--disable_pitr=true", committed
+      ? "--TEST_pitr_disable_write_error=2" : "--TEST_pitr_disable_write_error=1"}));
+  ASSERT_OK(Start({}));
+  const auto after = ASSERT_RESULT(Config());
+  auto expected = before;
+  if (committed) {
+    expected.set_pitr_disabled(true);
+    expected.set_version(before.version() + 1);
+  }
+  ASSERT_EQ(after.SerializeAsString(), expected.SerializeAsString());
+}
+
+INSTANTIATE_TEST_CASE_P(BeforeOrAfter, PitrExistingWriteErrorTest, ::testing::Bool());
 
 }  // namespace yb::master

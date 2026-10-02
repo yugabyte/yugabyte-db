@@ -2079,6 +2079,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   //
   // Sets the version field of the SysClusterConfigEntryPB to 0.
   Status PrepareDefaultClusterConfig(int64_t term) REQUIRES(mutex_);
+  Status DisablePitrIfRequested(const LeaderEpoch& epoch) REQUIRES(mutex_, leader_mutex_);
 
   // Sets up various system configs.
   Status PrepareDefaultSysConfig(int64_t term) REQUIRES(mutex_);
@@ -2659,6 +2660,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   HistoryRetentionPinInfo ysql_history_retention_pin_;
 
   Master* const master_;
+  // Generic SetFlag(force=true) must not turn a startup request into live activation.
+  const bool disable_pitr_requested_at_startup_;
   Atomic32 closing_;
 
   SysCatalogTable* sys_catalog_;

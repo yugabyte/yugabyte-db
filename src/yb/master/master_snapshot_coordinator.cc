@@ -1294,6 +1294,35 @@ class MasterSnapshotCoordinator::Impl {
     return pitr_disabled_;
   }
 
+  Status CheckPitrDisableEligibility() const {
+    std::lock_guard lock(mutex_);
+    if (!schedules_.empty()) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Cannot disable PITR: snapshot schedule $0 remains (including deleted state)",
+          (*schedules_.begin())->id());
+    }
+    for (const auto& snapshot : snapshots_) {
+      SCHECK_FORMAT(
+          snapshot->schedule_id().IsNil(), IllegalState,
+          "Cannot disable PITR: retained schedule snapshot $0 remains", snapshot->id());
+    }
+    for (const auto& restoration : restorations_) {
+      SCHECK_FORMAT(
+          restoration->IsSysCatalogRestorationDone() && restoration->AllTabletsDone() &&
+              !restoration->complete_time().is_special(),
+          IllegalState, "Cannot disable PITR: restoration $0 has unfinished or incomplete state",
+          restoration->restoration_id());
+      const auto state = VERIFY_RESULT(restoration->AggregatedState());
+      SCHECK_FORMAT(
+          state == SysSnapshotEntryPB::RESTORED || state == SysSnapshotEntryPB::FAILED,
+          IllegalState, "Cannot disable PITR: restoration $0 is not terminal",
+          restoration->restoration_id());
+    }
+    return Status::OK();
+  }
+
+
   bool IsPitrActive() {
     std::lock_guard lock(mutex_);
     for (const auto& schedule : schedules_) {
@@ -2751,6 +2780,10 @@ bool MasterSnapshotCoordinator::IsPitrActive() {
 
 bool MasterSnapshotCoordinator::PitrDisabled() const {
   return impl_->PitrDisabled();
+}
+
+Status MasterSnapshotCoordinator::CheckPitrDisableEligibility() const {
+  return impl_->CheckPitrDisableEligibility();
 }
 
 bool MasterSnapshotCoordinator::TEST_IsTabletCoveredBySnapshot(

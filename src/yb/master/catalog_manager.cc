@@ -687,6 +687,8 @@ DEFINE_test_flag(int32, delay_at_start_of_schedule_post_tablet_create_tasks_ms, 
     "Sleep at the start of SchedulePostTabletCreationTasks.");
 
 DECLARE_bool(TEST_fail_initdb_after_cluster_config);
+DECLARE_bool(TEST_fail_pitr_disable_after_persist);
+DECLARE_int32(TEST_pitr_disable_write_error);
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(disable_pitr);
 DECLARE_bool(enable_pg_cron);
@@ -1116,6 +1118,7 @@ std::vector<scoped_refptr<NamespaceInfo>> CatalogManager::NamespaceNameMapper::G
 
 CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
     : master_(DCHECK_NOTNULL(master)),
+      disable_pitr_requested_at_startup_(FLAGS_disable_pitr),
       sys_catalog_(DCHECK_NOTNULL(sys_catalog)),
       tablet_exists_(false),
       state_(kConstructed),
@@ -1561,11 +1564,6 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
 
     // Clear internal maps and run data loaders.
     RETURN_NOT_OK(RunLoaders(state));
-    if (FLAGS_disable_pitr && cluster_config_) {
-      auto config = cluster_config_->LockForRead();
-      SCHECK(config->pb.pitr_disabled() || config->pb.is_initial_sys_catalog_snapshot(),
-             NotSupported, "--disable_pitr can only be set when creating a new universe");
-    }
 
     // Prepare various default system configurations.
     RETURN_NOT_OK(PrepareDefaultSysConfig(term));
@@ -1586,6 +1584,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     // If this is the first time we start up, we have no config information as default. We write an
     // empty version 0.
     RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
+    RETURN_NOT_OK(DisablePitrIfRequested(state->epoch));
 
     RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ false));
 
@@ -1764,9 +1763,9 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   // Create default.
   SysClusterConfigEntryPB config;
   config.set_version(0);
-  SCHECK(!FLAGS_disable_pitr || !FLAGS_create_initial_sys_catalog_snapshot, InvalidArgument,
-         "--disable_pitr cannot be used to create an initial catalog snapshot");
-  if (FLAGS_disable_pitr) {
+  SCHECK(!disable_pitr_requested_at_startup_ || !FLAGS_create_initial_sys_catalog_snapshot,
+         InvalidArgument, "--disable_pitr cannot be used to create an initial catalog snapshot");
+  if (disable_pitr_requested_at_startup_) {
     config.set_pitr_disabled(true);
   }
   if (FLAGS_create_initial_sys_catalog_snapshot) {
@@ -1805,6 +1804,41 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
 
   return Status::OK();
 }
+
+Status CatalogManager::DisablePitrIfRequested(const LeaderEpoch& epoch) {
+  if (!disable_pitr_requested_at_startup_) {
+    return Status::OK();
+  }
+  SCHECK(!FLAGS_create_initial_sys_catalog_snapshot, InvalidArgument,
+         "--disable_pitr cannot be used to create an initial catalog snapshot");
+  auto lock = cluster_config_->LockForWrite();
+  auto& config = lock.mutable_data()->pb;
+  if (config.pitr_disabled()) {
+    return Status::OK();
+  }
+  SCHECK(!config.is_initial_sys_catalog_snapshot(), IllegalState,
+         "Cannot disable PITR in initial snapshot template metadata");
+
+  // Startup intent is captured before RPCs start, and this process cannot become ready until
+  // this write commits. Do not reuse this check/write sequence for live activation.
+  RETURN_NOT_OK(master_->snapshot_coordinator().CheckPitrDisableEligibility());
+  TEST_SYNC_POINT("CatalogManager::DisablePitr:BeforeWrite");
+  if (FLAGS_TEST_pitr_disable_write_error == 1) {
+    return STATUS(IOError, "Injected failure before persisting PITR-disabled mode");
+  }
+  config.set_pitr_disabled(true);
+  config.set_version(config.version() + 1);
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
+  if (FLAGS_TEST_pitr_disable_write_error == 2) {
+    return STATUS(TimedOut, "Injected timeout after persisting PITR-disabled mode");
+  }
+  lock.Commit();
+  if (FLAGS_TEST_fail_pitr_disable_after_persist) {
+    LOG(FATAL) << "Simulate crash after persisting PITR-disabled mode";
+  }
+  return Status::OK();
+}
+
 
 Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
   if (!FLAGS_master_enable_universe_uuid_heartbeat_check) {

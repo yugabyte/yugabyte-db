@@ -98,7 +98,7 @@ Status MasterClusterHandler::SetClusterConfig(
        config.is_initial_sys_catalog_snapshot() != l->pb.is_initial_sys_catalog_snapshot())) {
     return SetupError(
         resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG,
-        STATUS(InvalidArgument, "Universe creation settings cannot be updated"));
+        STATUS(InvalidArgument, "Universe startup settings cannot be updated through this RPC"));
   }
   // Older clients omit these fields when replacing cluster configuration.
   if (l->pb.has_pitr_disabled()) {
