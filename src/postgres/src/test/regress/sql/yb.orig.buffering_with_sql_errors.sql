@@ -526,6 +526,70 @@ SELECT * FROM t_other ORDER BY k;
 SELECT * FROM t_temp ORDER BY k;
 SELECT * FROM t_audit ORDER BY k;
 
+-- A "SELECT expr INTO var" must not flush in Read Committed even if a replan
+-- changes the expression from immutable to stable, or makes it non-simple
+-- (here, a set-returning function).
+CREATE SCHEMA s_imm;
+CREATE SCHEMA s_stb;
+CREATE SCHEMA s_srf;
+CREATE FUNCTION s_imm.enc() RETURNS text LANGUAGE sql IMMUTABLE
+	AS $$ SELECT 'UTF8'::text $$;
+CREATE FUNCTION s_stb.enc() RETURNS text LANGUAGE sql STABLE
+	AS $$ SELECT current_setting('client_encoding') $$;
+CREATE FUNCTION s_srf.enc() RETURNS SETOF text LANGUAGE internal IMMUTABLE
+	AS 'pg_listening_channels';
+CREATE TABLE t_replan (k INT PRIMARY KEY);
+CREATE TABLE t_replan_audit (k INT);
+CREATE FUNCTION replan_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+	vtext TEXT;
+BEGIN
+	SELECT enc() INTO vtext;
+	INSERT INTO public.t_replan_audit VALUES (NEW.k);
+	RETURN NEW;
+END; $$;
+CREATE TRIGGER replan_ai AFTER INSERT ON t_replan
+	FOR EACH ROW EXECUTE FUNCTION replan_trigger();
+
+SET search_path TO s_imm, public;
+INSERT INTO t_replan VALUES (0);
+BEGIN ISOLATION LEVEL READ COMMITTED;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_replan VALUES (1), (2);
+COMMIT;
+
+SET search_path TO s_stb, public;
+SELECT enc() IS NOT NULL AS stable_enc;
+BEGIN ISOLATION LEVEL READ COMMITTED;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_replan VALUES (3), (4);
+COMMIT;
+
+-- Start over from an immutable simple expression, then make it non-simple.
+CREATE OR REPLACE FUNCTION public.replan_trigger() RETURNS trigger
+	LANGUAGE plpgsql AS $$
+DECLARE
+	vtext TEXT;
+BEGIN
+	SELECT enc() INTO vtext;
+	INSERT INTO public.t_replan_audit VALUES (NEW.k);
+	RETURN NEW;
+END; $$;
+SET search_path TO s_imm, public;
+INSERT INTO t_replan VALUES (10);
+SET search_path TO s_srf, public;
+SELECT count(*) FROM enc();
+-- enc() returns no rows, so SELECT INTO assigns a NULL of type unknown.  Look
+-- up the cast it needs beforehand, so that the catalog read does not flush.
+DO $$ DECLARE v text; BEGIN SELECT 'x' INTO v WHERE false; END $$;
+BEGIN ISOLATION LEVEL READ COMMITTED;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_replan VALUES (5), (6);
+COMMIT;
+
+RESET search_path;
+SELECT * FROM t_replan_audit ORDER BY k;
+
 RESET yb_speculatively_execute_pl_statements;
 
 -- GH-28101: Test that a user of yb_db_admin role can set the speculative execution flags

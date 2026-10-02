@@ -4282,6 +4282,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	int			too_many_rows_level = 0;
 	SPIExecuteOptions yb_options;
 	CommandTag	yb_flush_before_command_tag = CMDTAG_UNKNOWN;
+	bool		yb_reuse_snapshot;
 
 	memset(&yb_options, 0, sizeof(yb_options));
 
@@ -4340,6 +4341,15 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 		YBFlushBufferedOperations(YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(GetCommandTagName(yb_flush_before_command_tag), estate->func->fn_signature));
 
 	/*
+	 * YB: Whether SPI would keep the current snapshot for this statement.
+	 * The shortcut below and the SPI path must agree, or a statement SPI
+	 * would have batched takes a fresh snapshot and flushes.
+	 */
+	yb_reuse_snapshot = (yb_speculatively_execute_pl_statements &&
+						 YbIsReadCommittedTxn() &&
+						 !stmt->yb_flush_before_stmt);
+
+	/*
 	 * Some users write "SELECT expr INTO var" instead of "var := expr".  If
 	 * the expression is simple and the INTO target is a single variable, we
 	 * can bypass SPI and call ExecEvalExpr() directly.  (exec_eval_expr would
@@ -4348,8 +4358,22 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	 * The potential performance win is small if it's non-simple, and any
 	 * errors we might issue would likely look different, so avoid using this
 	 * code path for non-simple cases.)
+	 *
+	 * YB: In Read Committed isolation, trigger writes can only be batched with
+	 * the parent statement if all statements in the trigger share a single
+	 * snapshot.
+	 *
+	 * The SPI execution path preserves this snapshot. However, the fast path
+	 * exec_eval_simple_expr() takes a fresh snapshot for mutable expressions
+	 * (e.g., SELECT current_setting('x') INTO v), forcing an immediate flush
+	 * of the write batch.
+	 *
+	 * Because expression characteristics (simple vs. mutable) can change
+	 * dynamically upon query replanning, we cannot rely on expression
+	 * properties. Instead, we completely disable the exec_eval_simple_expr()
+	 * shortcut whenever snapshot preservation is required.
 	 */
-	if (expr->expr_simple_expr && stmt->into)
+	if (expr->expr_simple_expr && stmt->into && !yb_reuse_snapshot)
 	{
 		PLpgSQL_datum *target = estate->datums[stmt->target->dno];
 
@@ -4454,10 +4478,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	 * writes across plans in the statement. This is a potential source of
 	 * inefficiency and needs more investigation.
 	 */
-	yb_options.yb_reuse_existing_snapshot_in_read_committed =
-		yb_speculatively_execute_pl_statements &&
-		YbIsReadCommittedTxn() &&
-		!stmt->yb_flush_before_stmt;
+	yb_options.yb_reuse_existing_snapshot_in_read_committed = yb_reuse_snapshot;
 	rc = SPI_execute_plan_extended(expr->plan, &yb_options);
 
 	/*
