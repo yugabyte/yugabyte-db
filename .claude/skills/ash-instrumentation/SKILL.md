@@ -96,7 +96,7 @@ Real examples (these files are large — grep for the macros instead of reading 
 5. **Instrument the code path** — use the decision tree above at the actual wait site.
 6. **Test (two parts)** — (a) add the code to `INSTANTIATE_TEST_SUITE_P(...)` in
    `src/yb/integration-tests/wait_states-itest.cc` to prove the state is entered (extend the per-code
-   switches at lines ~110 / ~718 / ~950 if a special workload is needed); **and (b)** add a
+   `switch` statements in that file if a special workload is needed); **and (b)** add a
    `pg_ash-test.cc` test asserting the ASH sample carries the correct `query_id` for the new path
    (see "Test it" below). Both are required.
 
@@ -192,9 +192,9 @@ and `src/yb/master/async_rpc_tasks.{cc,h}`):
 ## Instrumenting a wait event in the pg_client service layer (`Perform` path)
 
 The collector filters out the high-frequency control RPCs before sampling. `ShouldIgnoreCall(...)`
-in `src/yb/tserver/pg_client_service.cc` (~2398) drops any call whose `aux_info().method()` is
+in `src/yb/tserver/pg_client_service.cc` drops any call whose `aux_info().method()` is
 `ActiveSessionHistory`, `AcquireAdvisoryLock`, or `Perform` when `req.ignore_ash_and_perform_calls()`
-is set. The real ASH sampler **always** sets that flag (`pg_client.cc:1756`), so in production these
+is set. The real ASH sampler **always** sets that flag (`set_ignore_ash_and_perform_calls` in `pg_client.cc`), so in production these
 RPCs are filtered.
 
 `Perform` is the main YSQL data path, so most pg_client service-layer work runs under a `Perform`
@@ -236,7 +236,7 @@ also add a test in `src/yb/yql/pgwrapper/pg_ash-test.cc` that confirms the ASH s
 wait event carries the **expected query_id**. Pick the pattern that matches the path:
 
 - **User-driven (RPC) path** — assert the sample carries the real query id from the user statement
-  (pattern: `TestTServerMetadataSerializer`, ~line 990):
+  (pattern: `TestTServerMetadataSerializer`):
 
   ```cpp
   auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
@@ -249,7 +249,7 @@ wait event carries the **expected query_id**. Pick the pattern that matches the 
   ```
 
 - **Background / non-RPC task** — assert the sample carries the chosen `FixedQueryId`
-  (pattern: `TestMinRunningHybridTimeWaitEventHasTabletId`, ~line 1013):
+  (pattern: `TestMinRunningHybridTimeWaitEventHasTabletId`):
 
   ```cpp
   const auto query_id = std::to_underlying(ash::FixedQueryId::kQueryIdFor<...>);

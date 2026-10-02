@@ -50,7 +50,7 @@ fixtures, golden output, or filenames:**
   roadmap, internal SLAs, embargoed security findings, internal infra
   hostnames.
 
-applies to the test code and test data you write too** — `.cc`, `.py`,
+**This applies to the test code and test data you write too** — `.cc`, `.py`,
   `.java`, `.sql`, golden `.out` files, YAML fixtures, mock responses.
   If a customer's reproducer uses `acme_orders` with a `customer_email`
   column populated with real addresses, rewrite it as `t1`/`email` with
@@ -245,7 +245,7 @@ Pre-fill the message file with:
 - **Test Plan**: ask the user for one if not obvious from the branch.
   Keep it to what was actually run — it is not a place for prose.
 - **Reviewers**: (as provided)
-- **Subscribers**: `ybase` and/or `yugaware` per Step 4
+- **Subscribers**: `ybase` and/or `yugaware` per Step 5
 
 If tests were added or considered important to verify the change works,
 add the commands for running those tests to the test plan.
