@@ -1,20 +1,18 @@
 # Local reproduction: YSQL authentication catalog follower reads
 
-Validated with a macOS arm64 release build and 79 selected test cases, without
-skips, including all 19 authentication integration cases and 10 creation-mode
-cases. The manual Linux cluster procedure below is **UNEXECUTED**. No Linux, debug,
-sanitizer, mixed-binary, or throughput validation is claimed.
+Use the automated tests for a self-contained reproduction. The manual Linux
+procedures below are **UNEXECUTED**. No Linux, debug, sanitizer, mixed-binary, or
+throughput validation is claimed.
 
-**Use only a new, disposable local universe, created with the non-runtime master
-flag `--disable_pitr=true`. This permanently excludes PITR schedules, including
-YCQL, and system-catalog restore. Existing default-mode universes cannot opt in,
-even if PITR was never used. Do not point these commands at a real deployment.**
+**Use only disposable local data. `--disable_pitr=true` is a new experimental
+master flag in this stack. It permanently excludes PITR schedules, including
+YCQL, and system-catalog restore. Do not point these commands at a real deployment.**
 
-All masters and participating tserver/PostgreSQL processes must use compatible
-binaries before creation. The [design](ysql-catalog-follower-reads.md) describes
-the immutable mode, fixed-snapshot contract, and downgrade restrictions. Old
-experimental reservation universes are unsupported: use new data directories,
-not converted metadata.
+All masters must use compatible binaries before opt-in. Participating tserver/
+PostgreSQL processes must be compatible before routing is enabled. The
+[design](ysql-catalog-follower-reads.md) describes eligibility, permanent policy,
+snapshot guarantees, and downgrade restrictions. Old experimental reservation
+data remains unsupported; do not convert it.
 
 ## Build and automated validation
 
@@ -94,7 +92,7 @@ queue deadlines, and shutdown.
 
 Build daemons and the initial snapshot separately from tests. Use `reinitdb`, not
 `initdb`, when reusing a build directory: an older cached snapshot lacks the
-creation-mode template marker needed for bootstrap failover. Use an isolated build
+initial-snapshot template marker used by bootstrap recovery. Use an isolated build
 if existing clusters use its binaries. No default gflag values are changed.
 
 Paging and same-T fallback tests use synchronization points available in release
@@ -102,7 +100,38 @@ builds. Run each case separately; a skipped case is not validation.
 
 Also validate client routing, master serving, `ysql_auth_catalog_snapshot-test`,
 clock deadlines, PITR rejection, catalog-read-time, cache, and invalidation
-regressions. Use `pitr_disabled-test` for immutable creation-mode validation.
+regressions. Use `pitr_disabled-test` for startup-mode and recovery validation.
+
+## Existing-universe activation (manual procedure UNEXECUTED)
+
+Start with an existing disposable PITR-capable universe, not the reserved data
+from an older prototype. No data-directory replacement or migration is required.
+
+1. Install compatible binaries on all masters, leaving the request and routing
+   flags false. Keep routing off until the durable mode is confirmed.
+2. Inspect `yb-admin list_snapshot_schedules`, `list_snapshots SHOW_DELETED`, and
+   `list_snapshot_restorations`. These summaries aid preflight; they do not replace
+   the startup check of retained metadata and restoration finalization. Ordinary
+   snapshots and finalized restore history do not block activation.
+3. Resolve blockers explicitly through supported operations and allow cleanup to
+   finish. Do not delete backup history merely to make a test pass.
+4. Stop all masters before restarting any. Start them with `--disable_pitr=true`
+   and routing still false. Do not use rolling `restart_node` operations for this
+   transition. Expect temporary master/control-plane unavailability.
+5. Require successful readiness and `pitrDisabled=true` from
+   `yb-admin get_universe_config`, then follow the routing steps below.
+
+A blocker fails startup without changing the policy. Recover by restarting
+without the request, completing or cleaning up the work, and retrying the
+coordinated restart. An interrupted write may already have committed: read the
+persisted mode after recovery. Once true, flag removal cannot restore PITR.
+
+Automated coverage includes
+`PitrEnabledTest.ExistingUniverseActivatesAcrossCoordinatedMasterRestart`,
+`PitrEnabledTest.StartupBlocksAdmissionBeforeModeCommit`, and the
+`PitrExistingStartupTest`, `PitrExistingCrashTest`, and `PitrExistingWriteErrorTest`
+cases. Select one exact case per `yb_build.sh` invocation.
+
 
 ## Optional manual Linux cluster (UNEXECUTED)
 
