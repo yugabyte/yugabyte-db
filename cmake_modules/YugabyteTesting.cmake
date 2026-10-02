@@ -276,12 +276,12 @@ function(ADD_YB_BENCHMARK REL_BENCHMARK_NAME)
     PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${YB_BUILD_ROOT}/benchmarks-${DIR_PREFIX}")
   target_link_libraries(${BINARY_NAME} yb_benchmark_main ${ARG_DEPS})
-
-  if(NOT TARGET benchmarks)
-    add_custom_target(benchmarks)
-  endif()
   add_dependencies(benchmarks ${BINARY_NAME})
 endfunction()
+
+# Builds every benchmark added with ADD_YB_BENCHMARK. Created unconditionally so that
+# `--target benchmarks` works, and builds nothing, when tests are disabled or filtered out.
+add_custom_target(benchmarks)
 
 function(ADD_YB_FUZZ_TARGET REL_TEST_NAME)
   if(NOT YB_BUILD_FUZZ_TARGETS)

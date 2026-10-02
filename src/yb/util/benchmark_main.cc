@@ -56,8 +56,8 @@ bool DefaultBenchmarkInit(int argc, char** argv) {
 
   int other_argc = narrow_cast<int>(other_args.size() - 1);
   char** other_argv = other_args.data();
-  // Same flag setup as test_main.cc, including AutoFlag promotion, so that benchmarks exercise
-  // the same code paths as the tests.
+  // Parses flags the same way test_main.cc does, including AutoFlag promotion. The per-test flag
+  // overrides in YBTest::SetUp() (e.g. never_fsync) are deliberately not applied.
   ParseCommandLineFlagsForTests(&other_argc, &other_argv);
   InitGoogleLoggingSafeBasic(argv[0]);
   if (other_argc > 1) {
