@@ -131,6 +131,12 @@ static char *IsoLocaleName(const char *);	/* MSVC specific */
 static void icu_set_collation_attributes(UCollator *collator, const char *loc);
 #endif
 
+/* YB declarations */
+#ifdef HAVE_LOCALE_T
+static void yb_check_unsupported_libc_locale_or_free(const char *localebuf,
+													 locale_t loc);
+#endif
+
 /*
  * pg_perm_setlocale
  *
@@ -1594,7 +1600,7 @@ pg_newlocale_from_collation(Oid collid)
 				if (!loc)
 					report_newlocale_failure(collcollate);
 				else
-					YbCheckUnsupportedLibcLocale(collcollate);
+					yb_check_unsupported_libc_locale_or_free(collcollate, loc);
 			}
 			else
 			{
@@ -1607,13 +1613,13 @@ pg_newlocale_from_collation(Oid collid)
 				if (!loc1)
 					report_newlocale_failure(collcollate);
 				else
-					YbCheckUnsupportedLibcLocale(collcollate);
+					yb_check_unsupported_libc_locale_or_free(collcollate, loc1);
 				errno = 0;
 				loc = newlocale(LC_CTYPE_MASK, collctype, loc1);
 				if (!loc)
 					report_newlocale_failure(collctype);
 				else
-					YbCheckUnsupportedLibcLocale(collctype);
+					yb_check_unsupported_libc_locale_or_free(collctype, loc);
 #else
 
 				/*
@@ -2231,3 +2237,17 @@ char2wchar(wchar_t *to, size_t tolen, const char *from, size_t fromlen,
 
 	return result;
 }
+
+#ifdef HAVE_LOCALE_T
+/*
+ * Raise YbCheckUnsupportedLibcLocale's error for an unsupported locale, first
+ * freeing the locale_t already created for it, which nothing else would free.
+ */
+static void
+yb_check_unsupported_libc_locale_or_free(const char *localebuf, locale_t loc)
+{
+	if (IsYugaByteEnabled() && !YBIsSupportedLibcLocale(localebuf))
+		freelocale(loc);
+	YbCheckUnsupportedLibcLocale(localebuf);
+}
+#endif
