@@ -2,9 +2,8 @@
 # git-push: run the linter, pick a push mode from the PR's review state, and
 #            push HEAD to the user's fork (or, for a stack branch, upstream).
 #
-# Designed as the common "publish to GitHub" step for create-pr.sh and
-# backport-commit.sh -- both have to lint and both have to keep the push off
-# upstream. Run standalone to push any branch you have queued up.
+# Designed as the "publish to GitHub" step for create-pr.sh. Run standalone
+# to push any branch you have queued up.
 #
 # Two things decide what this script does:
 #
@@ -115,6 +114,7 @@ fi
 # actually admits, and refusing a name it would have accepted is the worse
 # failure. If the push does bounce off "Block Creations", this warning is
 # already on screen to explain why.
+upstream_owner="${GH_REPO%%/*}"
 is_stack_branch=false
 if [[ "$current_branch" == feature-stack/* ]]; then
   is_stack_branch=true
@@ -131,6 +131,7 @@ if $is_stack_branch; then
   # sanctioned upstream push. Skip fork detection entirely -- the user may
   # not even have a fork remote configured.
   push_remote="$UPSTREAM_REMOTE"
+  push_owner="$upstream_owner"
   push_target_desc="$GH_REPO"
   echo ">>> stack branch: pushing to upstream ($GH_REPO)"
 else
@@ -173,6 +174,7 @@ else
     exit 1
   fi
   push_remote="$FORK_REMOTE"
+  push_owner="$fork_owner"
   push_target_desc="${fork_owner}/${GH_REPO#*/}"
 fi
 
@@ -184,15 +186,24 @@ if [[ -n "$(git status --porcelain | grep -v '^??' || true)" ]]; then
 fi
 
 # Look the PR up once: its draft state picks the push mode below, and its
-# number/title/url drive the summary-sync reminder at the end.
+# number/title/url drive the summary-sync reminder at the end. `--head`
+# matches the branch name across every fork, so keep only PRs whose head is
+# in the repo we push to. A failed lookup aborts: guessing "no PR" would
+# rebase and force-push a branch that may be under review.
 pr_num=""
 pr_title=""
 pr_url=""
 pr_is_draft=""
-pr_info=$(gh pr list -R "$GH_REPO" --head "$current_branch" \
-            --state open --json number,url,title,isDraft \
-            --jq '.[0] | select(. != null) | "\(.number)\t\(.isDraft)\t\(.title)\t\(.url)"' \
-            2>/dev/null || true)
+if ! pr_info=$(gh pr list -R "$GH_REPO" --head "$current_branch" \
+                 --state open --json number,url,title,isDraft,headRepositoryOwner \
+                 --jq "[.[] | select(.headRepositoryOwner.login == \"${push_owner}\")][0]
+                       | select(. != null)
+                       | \"\(.number)\t\(.isDraft)\t\(.title)\t\(.url)\""); then
+  echo "error: could not look up the PR for ${current_branch} on ${GH_REPO}," >&2
+  echo "       so the push mode (rebase vs append-only) is unknown." >&2
+  echo "       Check 'gh auth status' and network, then re-run." >&2
+  exit 1
+fi
 if [[ -n "$pr_info" ]]; then
   IFS=$'\t' read -r pr_num pr_is_draft pr_title pr_url <<< "$pr_info"
 fi
@@ -222,11 +233,16 @@ if git ls-remote --exit-code --heads "$push_remote" "$current_branch" \
      >/dev/null 2>&1; then
   remote_branch_exists=true
   echo ">>> fetching ${push_remote}/${current_branch}"
-  git fetch "$push_remote" "$current_branch"
+  git fetch "$push_remote" \
+    "+refs/heads/${current_branch}:refs/remotes/${push_remote}/${current_branch}"
 fi
 
+# Explicit destinations: a plain `git fetch <remote> <branch>` only updates
+# the remote-tracking ref when the configured refspec covers that branch, and
+# everything below reads the tracking refs.
 echo ">>> fetching ${UPSTREAM_REMOTE}/${base_branch}"
-git fetch "$UPSTREAM_REMOTE" "$base_branch"
+git fetch "$UPSTREAM_REMOTE" \
+  "+refs/heads/${base_branch}:refs/remotes/${UPSTREAM_REMOTE}/${base_branch}"
 
 if $append_only; then
   # No rebase. Just prove the push is a fast-forward; anything else needs a
@@ -262,10 +278,6 @@ if $append_only; then
          "${UPSTREAM_REMOTE}/${base_branch}."
     echo "    To pick up the base: git merge ${UPSTREAM_REMOTE}/${base_branch}"
   fi
-
-  # Lint the branch's own changes. Without the rebase, linting against the
-  # moving base branch would drag in everything it gained since we forked.
-  lint_rev=$(git merge-base "${UPSTREAM_REMOTE}/${base_branch}" HEAD)
 else
   # Integrate any commits already on the remote branch (e.g. pushed from
   # another machine or another agent), then rebase onto the latest
@@ -289,14 +301,13 @@ else
     echo "       run 'git rebase --continue', then re-run this script." >&2
     exit 2
   fi
-
-  lint_rev="${UPSTREAM_REMOTE}/${base_branch}"
 fi
 
 # Ensure the linter is happy. Never push if lint isn't clean.
 # Resolve the repo root so `build-support/lint.sh` works regardless of
 # the caller's cwd (a subdirectory invocation otherwise hits "no such file").
 repo_root=$(git rev-parse --show-toplevel)
+lint_rev="${UPSTREAM_REMOTE}/${base_branch}"
 echo ">>> running ${repo_root}/build-support/lint.sh --rev ${lint_rev}"
 if ! "${repo_root}/build-support/lint.sh" --rev "$lint_rev"; then
   echo "" >&2
