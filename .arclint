@@ -241,15 +241,6 @@
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
     },
-    "pg_upstream_sanitizer_ignorelist": {
-      "type": "script-and-regex",
-      "include": [
-        "(^src/postgres/.+[.][ch]$)"
-      ],
-      "script-and-regex.script": "src/lint/pg_upstream_sanitizer_ignorelist.sh",
-      "script-and-regex.regex":
-        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+)/m"
-    },
     "unique_sort": {
       "type": "script-and-regex",
       "include": [
