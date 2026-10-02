@@ -12,17 +12,30 @@
 
 #include "yb/util/tcmalloc_util.h"
 
+#if defined(__linux__)
+#include <dlfcn.h>
+#include <sys/syscall.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+#endif
+
+#include <cerrno>
 #include <cstdint>
+#include <cstdio>
+#include <tuple>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tcmalloc_impl_util.h"
 
@@ -274,6 +287,60 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
 #elif YB_GPERFTOOLS_TCMALLOC
   MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
 #endif
+}
+
+bool TCMallocPerCpuCachesActive() {
+#if YB_GOOGLE_TCMALLOC
+  return ::tcmalloc::MallocExtension::PerCpuCachesActive();
+#else
+  return false;
+#endif
+}
+
+bool IsKernelUnsafeForTCMallocPerCpuCaches(const std::string& kernel_release) {
+  int major = 0, minor = 0, patch = 0;
+  if (sscanf(kernel_release.c_str(), "%d.%d.%d", &major, &minor, &patch) < 2) {
+    return false;
+  }
+  const auto version = std::make_tuple(major, minor, patch);
+  return version >= std::make_tuple(6, 19, 0) && version < std::make_tuple(7, 0, 14);
+}
+
+Status CheckTCMallocPerCpuCaches() {
+#if YB_GOOGLE_TCMALLOC && defined(__linux__)
+  if (TCMallocPerCpuCachesActive()) {
+    struct utsname uts;
+    if (uname(&uts) != 0) {
+      LOG(WARNING) << "Failed to get the kernel release: " << ErrnoToString(errno);
+      return Status::OK();
+    }
+    if (IsKernelUnsafeForTCMallocPerCpuCaches(uts.release)) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "TCMalloc per-CPU caches are active on Linux $0. They can crash or corrupt memory on "
+          "Linux 6.19.0 through 7.0.13. Upgrade the kernel to 7.0.14 or later, or remove "
+          "glibc.pthread.rseq=0 from GLIBC_TUNABLES.",
+          uts.release);
+    }
+    return Status::OK();
+  }
+
+  // __rseq_size is only exported by glibc 2.35+ (and backports such as RHEL 9's glibc 2.34).
+  const auto* glibc_rseq_size =
+      static_cast<const unsigned int*>(dlsym(RTLD_DEFAULT, "__rseq_size"));
+  if (glibc_rseq_size && *glibc_rseq_size > 0) {
+    LOG(WARNING) << "TCMalloc per-CPU caches are inactive because glibc registered rseq. Set "
+                 << "GLIBC_TUNABLES=glibc.pthread.rseq=0 in the environment to enable them.";
+#ifdef __NR_rseq
+  } else if (syscall(__NR_rseq, nullptr, 0, 0, 0) == -1 && errno == ENOSYS) {
+    LOG(WARNING) << "TCMalloc per-CPU caches are inactive because the kernel does not support "
+                 << "rseq. They require Linux 4.18 or later.";
+#endif
+  } else {
+    LOG(WARNING) << "TCMalloc per-CPU caches are inactive";
+  }
+#endif  // YB_GOOGLE_TCMALLOC && defined(__linux__)
+  return Status::OK();
 }
 
 }  // namespace yb
