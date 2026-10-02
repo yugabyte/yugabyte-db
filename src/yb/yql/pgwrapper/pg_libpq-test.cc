@@ -4948,6 +4948,45 @@ TEST_P(PgCatalogPreloadCacheSplitTest, ListMisses) {
   ASSERT_EQ(misses[GetParam().list_index] == 0, GetParam().fills_list);
 }
 
+// With a partitioned table, the relcache build requests pg_proc and fills all its caches, also when
+// the list names only one of them or none.
+class PgCatalogPreloadCachePartitionedTest
+    : public PgCatalogPreloadCacheListTestBase,
+      public ::testing::WithParamInterface<std::string> {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_yb_test_catalog_preload_cache_list=" + GetParam()};
+  }
+
+  static void AssertNoPgProcMisses(std::unordered_map<std::string, int64_t>& misses) {
+    ASSERT_EQ(misses["pg_proc_oid_index"], 0);
+    ASSERT_EQ(misses["pg_proc_proname_args_nsp_index"], 0);
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCachePartitionedTest,
+                        ::testing::Values("PROCOID", "PROCNAMEARGSNSP", "pg_database"));
+
+TEST_P(PgCatalogPreloadCachePartitionedTest, PgProcMisses) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE p (k INT, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE p1 PARTITION OF p FOR VALUES FROM (0) TO (10)"));
+  }
+  auto ddl_conn = ASSERT_RESULT(Connect());
+
+  // The first statement also reports the misses of the connection start-up.
+  auto conn = ASSERT_RESULT(Connect());
+  auto misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
+  ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
+
+  ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
+  WaitForCatalogVersionToPropagate();
+  misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
+  ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
+}
+
 // Postgres rejects an invalid value on reload and keeps the previous one.
 TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListInvalidValues, PgCatalogPreloadCacheListTestBase) {
   constexpr auto kValidValue = "pg_attribute";

@@ -2442,6 +2442,8 @@ typedef struct YbTablePrefetcherState
 	 * yb_test_catalog_preload_cache_list says.
 	 */
 	bool		requested[YB_PFETCH_TABLES_COUNT];
+	/* The catalog caches filled so far. */
+	bool		cache_filled[SysCacheSize];
 } YbTablePrefetcherState;
 
 static const YbPFetchTableInfo *
@@ -2554,8 +2556,16 @@ YbRequestTables(YbTablePrefetcherState *prefetcher,
 {
 	for (const YbPFetchTable *end = table + count; table != end; ++table)
 	{
+		YbPFetchTableState *ts = prefetcher->tables + *table;
+
 		YbRegisterTable(prefetcher, *table);
 		prefetcher->requested[*table] = true;
+		/*
+		 * If yb_test_catalog_preload_cache_list selected only some of its
+		 * caches, the next YbFillCaches fills the rest.
+		 */
+		if (*ts == YB_PFETCH_STATE_CACHE_FILLED)
+			*ts = YB_PFETCH_STATE_LOADED;
 	}
 }
 
@@ -2857,8 +2867,12 @@ YbFillCache(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 
 				for (int i = 0; i < num_cache_ids; ++i)
 				{
-					if (YbCatalogCachePreloadSelected(cache_ids[i], requested))
+					if (!prefetcher->cache_filled[cache_ids[i]] &&
+						YbCatalogCachePreloadSelected(cache_ids[i], requested))
+					{
 						selected[num_selected++] = cache_ids[i];
+						prefetcher->cache_filled[cache_ids[i]] = true;
+					}
 				}
 				if (num_selected > 0)
 					YbPreloadCatalogCache(selected[0],
