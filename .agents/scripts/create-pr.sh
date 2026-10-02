@@ -3,9 +3,10 @@
 #         to the user's fork, and open a cross-repo PR with reviewers.
 #
 # A "feature-stack/<feature>/<change>" branch is the exception: it lives in
-# the main repo (GitHub can only chain PRs whose head branches it owns), so
-# the push goes upstream and the PR is same-repo, with -b naming the parent
-# change in the stack.
+# the main repo (GitHub can only stack PRs whose head branches it owns), so
+# the push goes upstream and the PR is same-repo. Its base is the layer below
+# it in the local gh stack, and once opened the PR is linked into the native
+# GitHub stack with `gh stack link`.
 #
 # Designed to be invoked from the /create-pr Claude Code skill once metadata
 # (issue, title, body, reviewers) has been gathered. Usable standalone too.
@@ -40,8 +41,8 @@
 #                  arrive as "org/slug"; the org/ prefix is stripped before
 #                  routing the slug to team_reviewers[].
 #   -b base        Base branch on the upstream repo (default: master).
-#                  For a stacked PR, the parent "feature-stack/<feature>/
-#                  <change>" branch that this change builds on.
+#                  Not needed for a stacked PR, whose base comes from
+#                  `gh stack`; if given, it must match.
 #   -D             Open the PR as a GitHub draft. Useful when you want to
 #                  read the rendered PR before notifications fire and before
 #                  reviewers are auto-pinged. Convert with
@@ -58,6 +59,8 @@
 #   1  pre-flight failure (bad args, dirty tree, missing remote, etc.)
 #   2  rebase conflict -- resolve, `git rebase --continue`, then re-run
 #   3  lint failed -- fix as a NEW commit (do not amend), then re-run
+#   5  stack branch: `gh stack push` failed -- read its message
+#   6  stack branch: the PR was opened as a draft but `gh stack link` failed
 
 set -euo pipefail
 
@@ -68,6 +71,7 @@ test_plan_file=""
 upgrade_file=""
 reviewers=""
 base_branch="master"
+base_given=0
 draft=0
 GH_REPO="${GH_REPO:-yugabyte/yugabyte-db}"
 
@@ -89,8 +93,8 @@ Optional:
                  and Test plan. **Required when the branch changes any
                  .proto file** -- the script aborts otherwise.
   -r reviewers   Comma-separated handles and/or team slugs (org/slug)
-  -b base        Base branch (default: master). For a stacked PR, the
-                 parent feature-stack/<feature>/<change> branch.
+  -b base        Base branch (default: master). A stacked PR takes the
+                 layer below it from \`gh stack\`; -b, if given, must match.
   -D             Open the PR as a GitHub draft (\`gh pr create --draft\`).
                  Convert with \`gh pr ready <num>\` when ready for review.
 
@@ -110,7 +114,7 @@ while getopts ":i:t:d:T:U:r:b:Dh" opt; do
     T) test_plan_file="$OPTARG" ;;
     U) upgrade_file="$OPTARG" ;;
     r) reviewers="$OPTARG" ;;
-    b) base_branch="$OPTARG" ;;
+    b) base_branch="$OPTARG"; base_given=1 ;;
     D) draft=1 ;;
     h) usage ;;
     \?) echo "error: unknown option -$OPTARG" >&2; usage ;;
@@ -262,6 +266,66 @@ current_branch=$(git symbolic-ref --short HEAD 2>/dev/null) || {
 is_stack_branch=false
 [[ "$current_branch" =~ ^feature-stack/ ]] && is_stack_branch=true
 
+# A stack layer's base is the unmerged layer below it, or the trunk for the
+# bottom one. Layers get their PRs bottom-up: `gh stack link` would open a PR
+# with a generated title for a lower layer that has none, and that title
+# fails the pr-title check.
+if $is_stack_branch; then
+  if ! gh stack --help >/dev/null 2>&1; then
+    echo "error: stacked PRs need the gh-stack extension, which is not" >&2
+    echo "       installed. See the gh-stack skill." >&2
+    exit 1
+  fi
+  if ! stack_json=$(gh stack view --json); then
+    echo "error: ${current_branch} is not in a local gh stack; see the" >&2
+    echo "       gh-stack skill to create or adopt one." >&2
+    exit 1
+  fi
+  mapfile -t _stack < <(python3 -c 'import json, sys
+s = json.load(sys.stdin)
+cur = sys.argv[1]
+live = [b for b in s["branches"] if not b.get("isMerged")]
+names = [b["name"] for b in live]
+if cur not in names:
+    sys.exit(1)
+i = names.index(cur)
+below, above = live[:i], live[i + 1:]
+def has_pr(b):
+    return (b.get("pr") or {}).get("state") in ("OPEN", "QUEUED")
+print(s["trunk"])
+print(below[-1]["name"] if below else s["trunk"])
+print(" ".join(b["name"] for b in below if not has_pr(b)))
+print(" ".join(str(b["pr"]["number"]) for b in below if has_pr(b)))
+print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
+      <<< "$stack_json")
+  if (( ${#_stack[@]} != 5 )); then
+    echo "error: ${current_branch} is not an unmerged layer of the local gh stack." >&2
+    exit 1
+  fi
+  stack_trunk="${_stack[0]}"
+  stack_parent="${_stack[1]}"
+  stack_below_without_pr="${_stack[2]}"
+  stack_below_prs="${_stack[3]}"
+  stack_above_with_pr="${_stack[4]}"
+  if (( base_given )) && [[ "$base_branch" != "$stack_parent" ]]; then
+    echo "error: -b ${base_branch} does not match the layer below" >&2
+    echo "       ${current_branch} in the stack (${stack_parent}). Drop -b." >&2
+    exit 1
+  fi
+  base_branch="$stack_parent"
+  if [[ -n "$stack_below_without_pr" ]]; then
+    echo "error: open PRs bottom-up. These lower layers have no PR yet:" >&2
+    echo "         ${stack_below_without_pr}" >&2
+    exit 1
+  fi
+  if [[ -n "$stack_above_with_pr" ]]; then
+    echo "error: layers above ${current_branch} already have PRs" >&2
+    echo "       (${stack_above_with_pr}). Open PRs bottom-up; see the" >&2
+    echo "       gh-stack skill to restructure the stack." >&2
+    exit 1
+  fi
+fi
+
 # Targeting a feature-stack branch from a fork produces a PR that looks like a
 # stack member but does not build. Catch it here rather than after CI fails.
 if [[ "$base_branch" == feature-stack/* ]]; then
@@ -325,9 +389,15 @@ UPSTREAM_REMOTE="$UPSTREAM_REMOTE" FORK_REMOTE="$FORK_REMOTE" GH_REPO="$GH_REPO"
 # detect those mechanically -- the proto-file rule is the hard gate. Run
 # this *after* git-push.sh so the upstream tracking ref is current; the
 # diff above the rebase + push relied on a possibly-stale base.
+# A stack layer is compared with the layer below it, which git-push.sh has
+# just pushed from the local branch of the same name.
+proto_base="${UPSTREAM_REMOTE}/${base_branch}"
+if $is_stack_branch && [[ "$base_branch" != "$stack_trunk" ]]; then
+  proto_base="$base_branch"
+fi
 if [[ -z "$upgrade_file" ]]; then
   proto_changed=$(git diff --name-only \
-                    "${UPSTREAM_REMOTE}/${base_branch}" HEAD -- '*.proto' \
+                    "${proto_base}...HEAD" -- '*.proto' \
                     2>/dev/null || true)
   if [[ -n "$proto_changed" ]]; then
     echo "" >&2
@@ -386,7 +456,9 @@ trap 'rm -f "$combined_body"' EXIT
 } > "$combined_body"
 gh_pr_create_args=(-R "$GH_REPO" -B "$base_branch" -H "$pr_head"
                    -t "$full_title" -F "$combined_body")
-if (( draft )); then
+# A stack layer always opens as a draft and is marked ready only after it is
+# linked, so the CI it triggers sees the stack metadata (bld-*.yml).
+if (( draft )) || $is_stack_branch; then
   gh_pr_create_args+=(--draft)
 fi
 pr_url=$(gh pr create "${gh_pr_create_args[@]}")
@@ -415,6 +487,23 @@ if [[ -n "$reviewers" && "$pr_num" =~ ^[0-9]+$ ]]; then
            "${api_args[@]}" >/dev/null; then
       echo "warn: failed to add reviewers to PR #${pr_num} (continuing): ${reviewers}" >&2
     fi
+  fi
+fi
+
+if $is_stack_branch; then
+  echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
+  if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
+         $stack_below_prs "$pr_num"; then
+    echo "" >&2
+    echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
+    echo "       stack failed. Fix the cause above, then link it with" >&2
+    echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
+         "${stack_below_prs} ${pr_num}" >&2
+    (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
+    exit 6
+  fi
+  if (( ! draft )); then
+    gh pr ready "$pr_num" -R "$GH_REPO"
   fi
 fi
 

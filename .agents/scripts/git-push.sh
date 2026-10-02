@@ -21,12 +21,19 @@
 #   rebases onto fresh upstream/<base> and force-pushes as before. `-f` forces
 #   the rebase path when the author and reviewer agree it is worth the churn.
 #
+#   A stack branch is the exception here too. GitHub merges a stack only when
+#   its history is linear, and keeps it linear by cascading rebases, so every
+#   layer above a change is rewritten whatever its review state. This script
+#   lints the whole stack and hands the push to `gh stack push`, which
+#   force-pushes each layer with a lease. Rebasing and syncing are gh-stack's
+#   job; see the gh-stack skill.
+#
 # usage: git-push [-b <base>] [-r <fork-remote>] [-f]
 #
 # Optional inputs:
 #   -b base   Base branch on the upstream repo to lint against
-#             (default: master). For a stacked PR this is the parent
-#             `feature-stack/...` branch, not master.
+#             (default: master). Ignored for a feature-stack branch, whose
+#             base comes from `gh stack`.
 #   -r remote Override fork-remote auto-detection. Useful for unusual
 #             remote layouts; otherwise leave unset. Ignored for a
 #             feature-stack branch, which always pushes to upstream.
@@ -45,6 +52,7 @@
 #      then re-run
 #   4  append-only push is not a fast-forward -- integrate the remote branch
 #      with a merge (not a rebase), or re-run with -f to rewrite anyway
+#   5  stack branch: `gh stack push` failed -- read its message
 
 set -euo pipefail
 
@@ -60,10 +68,11 @@ usage: $(basename "$0") [-b <base>] [-r <fork-remote>] [-f]
 Lint the current branch and push it. Pushes to your fork, except for a
 feature-stack/<feature>/<change> branch, which goes to the upstream repo.
 Rebases and force-pushes until the PR leaves draft; appends after that.
+A stack branch is linted whole and pushed with \`gh stack push\`.
 
 Options:
   -b base    Upstream base branch to lint against (default: master).
-             For a stacked PR, the parent feature-stack/... branch.
+             Ignored for a stack branch.
   -r remote  Override fork-remote auto-detection.
   -f         Rebase and force-push even after the PR is ready for review.
 
@@ -114,7 +123,6 @@ fi
 # actually admits, and refusing a name it would have accepted is the worse
 # failure. If the push does bounce off "Block Creations", this warning is
 # already on screen to explain why.
-upstream_owner="${GH_REPO%%/*}"
 is_stack_branch=false
 if [[ "$current_branch" == feature-stack/* ]]; then
   is_stack_branch=true
@@ -126,15 +134,9 @@ if [[ "$current_branch" == feature-stack/* ]]; then
   fi
 fi
 
-if $is_stack_branch; then
-  # Stacked PRs are assembled from branches in the main repo, so this is the
-  # sanctioned upstream push. Skip fork detection entirely -- the user may
-  # not even have a fork remote configured.
-  push_remote="$UPSTREAM_REMOTE"
-  push_owner="$upstream_owner"
-  push_target_desc="$GH_REPO"
-  echo ">>> stack branch: pushing to upstream ($GH_REPO)"
-else
+# A stack branch pushes to upstream, so it skips fork detection entirely --
+# the user may not even have a fork remote configured.
+if ! $is_stack_branch; then
   # Resolve the fork remote: -r > $FORK_REMOTE > auto-detect.
   FORK_REMOTE="${fork_remote_arg:-${FORK_REMOTE:-}}"
   if [[ -z "$FORK_REMOTE" ]]; then
@@ -183,6 +185,59 @@ if [[ -n "$(git status --porcelain | grep -v '^??' || true)" ]]; then
   echo "error: working tree has uncommitted tracked changes; commit first" >&2
   git status --short >&2
   exit 1
+fi
+
+# Ensure the linter is happy. Never push if lint isn't clean.
+# Resolve the repo root so `build-support/lint.sh` works regardless of
+# the caller's cwd (a subdirectory invocation otherwise hits "no such file").
+repo_root=$(git rev-parse --show-toplevel)
+run_lint() {
+  echo ">>> running ${repo_root}/build-support/lint.sh --rev $1"
+  if ! "${repo_root}/build-support/lint.sh" --rev "$1"; then
+    echo "" >&2
+    echo "error: lint failed. Fix issues as a NEW commit" >&2
+    echo "       (do not amend a pushed commit), then re-run this script." >&2
+    exit 3
+  fi
+}
+
+if $is_stack_branch; then
+  if ! gh stack --help >/dev/null 2>&1; then
+    echo "error: stack branches are pushed with the gh-stack extension, which" >&2
+    echo "       is not installed. See the gh-stack skill." >&2
+    exit 1
+  fi
+  if ! stack_json=$(gh stack view --json); then
+    echo "error: ${current_branch} is not in a local gh stack. Track the" >&2
+    echo "       existing layers, bottom first, with" >&2
+    echo "         gh stack init <bottom-branch> ... ${current_branch}" >&2
+    exit 1
+  fi
+  read -r trunk top_branch < <(python3 -c 'import json, sys
+s = json.load(sys.stdin)
+live = [b["name"] for b in s["branches"] if not b.get("isMerged")]
+print(s["trunk"], live[-1] if live else "")' <<< "$stack_json")
+
+  echo ">>> fetching ${UPSTREAM_REMOTE}/${trunk}"
+  git fetch "$UPSTREAM_REMOTE" \
+    "+refs/heads/${trunk}:refs/remotes/${UPSTREAM_REMOTE}/${trunk}"
+
+  # `gh stack push` sends every layer, and only the top layer's tree holds
+  # all of them, so lint there.
+  if [[ -n "$top_branch" && "$top_branch" != "$current_branch" ]]; then
+    if ! git checkout --quiet "$top_branch"; then
+      echo "error: could not check out the top layer '${top_branch}' to lint" >&2
+      echo "       the stack. If another worktree has it, run this there." >&2
+      exit 1
+    fi
+    trap 'git checkout --quiet "$current_branch"' EXIT
+  fi
+  run_lint "${UPSTREAM_REMOTE}/${trunk}"
+
+  echo ">>> gh stack push --remote ${UPSTREAM_REMOTE} (${GH_REPO})"
+  gh stack push --remote "$UPSTREAM_REMOTE" || exit 5
+  echo ">>> pushed stack ${trunk} <- ... <- ${top_branch} to ${GH_REPO}"
+  exit 0
 fi
 
 # Look the PR up once: its draft state picks the push mode below, and its
@@ -303,18 +358,7 @@ else
   fi
 fi
 
-# Ensure the linter is happy. Never push if lint isn't clean.
-# Resolve the repo root so `build-support/lint.sh` works regardless of
-# the caller's cwd (a subdirectory invocation otherwise hits "no such file").
-repo_root=$(git rev-parse --show-toplevel)
-lint_rev="${UPSTREAM_REMOTE}/${base_branch}"
-echo ">>> running ${repo_root}/build-support/lint.sh --rev ${lint_rev}"
-if ! "${repo_root}/build-support/lint.sh" --rev "$lint_rev"; then
-  echo "" >&2
-  echo "error: lint failed. Fix issues as a NEW commit" >&2
-  echo "       (do not amend a pushed commit), then re-run this script." >&2
-  exit 3
-fi
+run_lint "${UPSTREAM_REMOTE}/${base_branch}"
 
 # Capture the pre-push remote SHA (empty on first push) so we can list the
 # new commits afterwards and remind the user/agent to keep the PR summary in sync.
