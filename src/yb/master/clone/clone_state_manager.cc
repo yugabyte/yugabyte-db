@@ -687,6 +687,21 @@ Status CloneStateManager::UpdateCloneStateWithSnapshotInfo(
       }
       index_info.set_indexed_table_id(it->second.new_table_id);
     }
+    // Snapshot indexes still name source tables. Remap so the cloned tablet does not inherit
+    // those IDs.
+    for (auto& index : *added_table.table_entry_pb.mutable_indexes()) {
+      auto index_it = table_snapshot_data.find(index.table_id());
+      if (index_it == table_snapshot_data.end()) {
+        return STATUS_FORMAT(NotFound, "Did not find index table $0", index.table_id());
+      }
+      index.set_table_id(index_it->second.new_table_id);
+      auto indexed_it = table_snapshot_data.find(index.indexed_table_id());
+      if (indexed_it == table_snapshot_data.end()) {
+        return STATUS_FORMAT(
+            NotFound, "Did not find indexed table $0", index.indexed_table_id());
+      }
+      index.set_indexed_table_id(indexed_it->second.new_table_id);
+    }
   }
 
   for (const auto& [_, table_data] : table_snapshot_data) {
@@ -793,6 +808,7 @@ Status CloneStateManager::ScheduleCloneOps(
     }
     *req.mutable_target_schema() = target_table_lock->pb.schema();
     *req.mutable_target_partition_schema() = target_table_lock->pb.partition_schema();
+    *req.mutable_target_indexes() = target_table_lock->pb.indexes();
     for (const auto& colocated_table_data : tablet_data.colocated_tables_data) {
       const auto& source_pb = colocated_table_data.table_entry_pb;
       auto& pb = *req.add_colocated_tables();
@@ -804,6 +820,7 @@ Status CloneStateManager::ScheduleCloneOps(
       if (source_pb.has_index_info()) {
         *pb.mutable_index_info() = source_pb.index_info();
       }
+      *pb.mutable_indexes() = source_pb.indexes();
     }
     RETURN_NOT_OK(external_funcs_->ScheduleCloneTabletCall(
         source_tablet, clone_state->Epoch(), std::move(req)));
