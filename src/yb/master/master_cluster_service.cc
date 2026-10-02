@@ -568,7 +568,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       SCHECK(FLAGS_ysql_enable_auth_catalog_follower_reads, NotSupported,
              "Authentication catalog follower reads are disabled");
       SCHECK(server_->snapshot_coordinator().PitrDisabled(), IllegalState,
-             "Authentication catalog follower reads require a universe created with PITR disabled");
+             "Authentication catalog follower reads require persisted PITR-disabled mode");
       if (req.has_propagated_hybrid_time()) {
         SCHECK(!HybridTime(req.propagated_hybrid_time()).is_special(), InvalidArgument,
                "Invalid propagated hybrid time");

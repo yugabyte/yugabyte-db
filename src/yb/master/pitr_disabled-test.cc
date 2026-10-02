@@ -337,6 +337,17 @@ TEST_F(PitrEnabledTest, ExistingUniverseActivatesAcrossCoordinatedMasterRestart)
   ASSERT_OK(WaitForMode(true));
   ASSERT_EQ(ASSERT_RESULT(Config()).SerializeAsString(), expected.SerializeAsString());
   ASSERT_NO_FATAL_FAILURE(check_rows());
+  ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
+  {
+    auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<MasterClusterProxy>());
+    GetYsqlAuthCatalogReadTimeRequestPB request;
+    GetYsqlAuthCatalogReadTimeResponsePB response;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kRpcTimeout);
+    ASSERT_OK(proxy.GetYsqlAuthCatalogReadTime(request, &response, &rpc));
+    ASSERT_FALSE(response.has_error()) << response.ShortDebugString();
+    ASSERT_TRUE(response.has_read_time());
+  }
   const auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   for (size_t i = 0; i < cluster_->num_masters(); ++i) {
     auto* follower = cluster_->mini_master(i);
