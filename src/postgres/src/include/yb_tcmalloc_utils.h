@@ -48,5 +48,6 @@ extern void YbReleaseFreeMemoryAfterStartup(void);
  * is set.
  */
 extern void YbMaybeStartTCMallocBackgroundThread(void);
+extern void YbSetTCMallocBackgroundReleaseIdle(bool idle);
 
 #endif							/* YB_TCMALLOC_UTILS_H */

@@ -7030,6 +7030,8 @@ PostgresMain(const char *dbname, const char *username)
 				MyProc->yb_is_ash_metadata_set = false;
 			}
 
+			YbSetTCMallocBackgroundReleaseIdle(true);
+
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
 
@@ -7052,6 +7054,8 @@ PostgresMain(const char *dbname, const char *username)
 		 * (3) read a command (loop blocks here)
 		 */
 		firstchar = ReadCommand(&input_message);
+
+		YbSetTCMallocBackgroundReleaseIdle(false);
 
 		/*
 		 * (4) turn off the idle-in-transaction and idle-session timeouts if
