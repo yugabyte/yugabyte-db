@@ -5013,6 +5013,13 @@ class ControlScript(object):
     def set_env_vars(self):
         # Sets YW metrics to use local database.
         os.environ["USE_NATIVE_METRICS"] = "true"
+        # TCMalloc cannot use per-CPU caches if glibc has already registered rseq
+        # (glibc 2.35+, RHEL 9's 2.34), and silently falls back to per-thread caches.
+        if sys.platform.startswith('linux'):
+            tunables = os.environ.get("GLIBC_TUNABLES", "")
+            if "glibc.pthread.rseq=" not in tunables:
+                os.environ["GLIBC_TUNABLES"] = ":".join(
+                    t for t in (tunables, "glibc.pthread.rseq=0") if t)
 
     # Returns true if the system has been configured for clock bound.
     # Runs `configure_clockbound.sh --validate` and returns true if it returns 0.
