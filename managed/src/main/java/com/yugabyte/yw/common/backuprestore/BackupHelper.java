@@ -1082,9 +1082,10 @@ public class BackupHelper {
 
     UUID backupUUID = preflightParams.getBackupUUID();
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
-    return restorePreflightWithBackupObject(customerUUID, backup, preflightParams).toBuilder()
-        .loggingID(loggingID)
-        .build();
+    RestorePreflightResponse preflightResponse =
+        restorePreflightWithBackupObject(customerUUID, backup, preflightParams);
+    BackupUtil.validateRestoreFipsMode(preflightResponse.getFipsEnabled(), universe);
+    return preflightResponse.toBuilder().loggingID(loggingID).build();
   }
 
   public RestorePreflightResponse generateAdvancedRestorePreflightAPIResponse(
@@ -1102,10 +1103,10 @@ public class BackupHelper {
     CustomerConfig storageConfig =
         customerConfigService.getOrBadRequest(customerUUID, preflightParams.getStorageConfigUUID());
 
-    return restorePreflightWithoutBackupObject(customerUUID, preflightParams, storageConfig, true)
-        .toBuilder()
-        .loggingID(loggingID)
-        .build();
+    RestorePreflightResponse preflightResponse =
+        restorePreflightWithoutBackupObject(customerUUID, preflightParams, storageConfig, true);
+    BackupUtil.validateRestoreFipsMode(preflightResponse.getFipsEnabled(), universe);
+    return preflightResponse.toBuilder().loggingID(loggingID).build();
   }
 
   /**
@@ -1148,6 +1149,11 @@ public class BackupHelper {
 
     // Whether backup has KMS history
     preflightResponseBuilder.hasKMSHistory(restorableBackup.isHasKMSHistory());
+
+    preflightResponseBuilder.fipsEnabled(
+        BackupUtil.getBackupFipsMode(
+            restorableBackup.getBackupInfo().fipsEnabled,
+            Collections.singletonList(restorableBackup.getUniverseUUID())));
 
     // Whether selective restore would be supported for this Universe
     boolean selectiveRestoreYbcCheck = false;
@@ -1245,7 +1251,12 @@ public class BackupHelper {
               .generateYBBackupRestorePreflightResponseWithoutBackupObject(
                   preflightParams, storageConfig.getDataObject());
     }
-    return preflightResponse;
+    return preflightResponse.toBuilder()
+        .fipsEnabled(
+            BackupUtil.getBackupFipsMode(
+                preflightResponse.getFipsEnabled(),
+                BackupUtil.getSourceUniverseUUIDs(preflightParams.getBackupLocations())))
+        .build();
   }
 
   /**
