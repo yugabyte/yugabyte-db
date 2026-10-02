@@ -421,7 +421,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_t2, yb_locks_t W
 ---------------------------------------------------------------------------------------
  LockRows (actual rows=4.00 loops=1)
    ->  YB Batched Nested Loop Join (actual rows=4.00 loops=1)
-         Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
+         Join Filter: (yb_locks_t.k = yb_locks_t2.k1)
          ->  Seq Scan on yb_locks_t2 (actual rows=4.00 loops=1)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 3
@@ -457,7 +457,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_t JOIN yb_locks_
 ---------------------------------------------------------------------------------------
  LockRows (actual rows=2.00 loops=1)
    ->  YB Batched Nested Loop Join (actual rows=2.00 loops=1)
-         Join Filter: (yb_locks_t.k = yb_locks_t2.k1)
+         Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
          ->  Seq Scan on yb_locks_t2 (actual rows=4.00 loops=1)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 3
@@ -491,7 +491,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_t JOIN (SELECT *
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=2.00 loops=1)
-   Join Filter: (yb_locks_t.k = z.k1)
+   Join Filter: (z.k1 = yb_locks_t.k)
    ->  Subquery Scan on z (actual rows=4.00 loops=1)
          ->  LockRows (actual rows=4.00 loops=1)
                ->  Seq Scan on yb_locks_t2 (actual rows=4.00 loops=1)
@@ -906,7 +906,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_t2, yb_locks_t W
 -----------------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=4.00 loops=1)
    ->  YB Batched Nested Loop Join (actual rows=4.00 loops=1)
-         Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
+         Join Filter: (yb_locks_t.k = yb_locks_t2.k1)
          ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t2 (actual rows=4.00 loops=1)
                Storage Table Read Requests: 1
                Storage Table Read Ops: 3
@@ -1206,17 +1206,28 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
        "Parallel Aware": false,           +
        "Async Capable": false,            +
        "Lock Type": "FOR UPDATE",         +
-       "Scan Direction": "Forward",       +
+       "Scan Direction": "Default",       +
        "Index Name": "yb_locks_t_pkey",   +
        "Relation Name": "yb_locks_t",     +
        "Alias": "yb_locks_t",             +
-       "Actual Rows": 1,                  +
+       "Actual Rows": 1.00,               +
        "Actual Loops": 1,                 +
+       "Disabled": false,                 +
        "Index Cond": "(k = 5)",           +
        "Rows Removed by Index Recheck": 0,+
        "Storage Table Read Requests": 1,  +
        "Storage Table Read Ops": 1,       +
-       "Storage Table Rows Scanned": 1    +
+       "Storage Table Rows Scanned": 1,   +
+       "Shared Hit Blocks": 0,            +
+       "Shared Read Blocks": 0,           +
+       "Shared Dirtied Blocks": 0,        +
+       "Shared Written Blocks": 0,        +
+       "Local Hit Blocks": 0,             +
+       "Local Read Blocks": 0,            +
+       "Local Dirtied Blocks": 0,         +
+       "Local Written Blocks": 0,         +
+       "Temp Read Blocks": 0,             +
+       "Temp Written Blocks": 0           +
      },                                   +
      "Triggers": [                        +
      ],                                   +
@@ -1301,8 +1312,19 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, FORMAT JSON)
        "Parallel Aware": false,               +
        "Async Capable": false,                +
        "Executes": false,                     +
-       "Actual Rows": 1,                      +
+       "Actual Rows": 1.00,                   +
        "Actual Loops": 1,                     +
+       "Disabled": false,                     +
+       "Shared Hit Blocks": 0,                +
+       "Shared Read Blocks": 0,               +
+       "Shared Dirtied Blocks": 0,            +
+       "Shared Written Blocks": 0,            +
+       "Local Hit Blocks": 0,                 +
+       "Local Read Blocks": 0,                +
+       "Local Dirtied Blocks": 0,             +
+       "Local Written Blocks": 0,             +
+       "Temp Read Blocks": 0,                 +
+       "Temp Written Blocks": 0,              +
        "Plans": [                             +
          {                                    +
            "Node Type": "Index Scan",         +
@@ -1310,17 +1332,28 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, FORMAT JSON)
            "Parallel Aware": false,           +
            "Async Capable": false,            +
            "Lock Type": "FOR UPDATE",         +
-           "Scan Direction": "Forward",       +
+           "Scan Direction": "Default",       +
            "Index Name": "yb_locks_t_pkey",   +
            "Relation Name": "yb_locks_t",     +
            "Alias": "yb_locks_t",             +
-           "Actual Rows": 1,                  +
+           "Actual Rows": 1.00,               +
            "Actual Loops": 1,                 +
+           "Disabled": false,                 +
            "Index Cond": "(k = $1)",          +
            "Rows Removed by Index Recheck": 0,+
            "Storage Table Read Requests": 1,  +
            "Storage Table Read Ops": 1,       +
-           "Storage Table Rows Scanned": 1    +
+           "Storage Table Rows Scanned": 1,   +
+           "Shared Hit Blocks": 0,            +
+           "Shared Read Blocks": 0,           +
+           "Shared Dirtied Blocks": 0,        +
+           "Shared Written Blocks": 0,        +
+           "Local Hit Blocks": 0,             +
+           "Local Read Blocks": 0,            +
+           "Local Dirtied Blocks": 0,         +
+           "Local Written Blocks": 0,         +
+           "Temp Read Blocks": 0,             +
+           "Temp Written Blocks": 0           +
          }                                    +
        ]                                      +
      },                                       +

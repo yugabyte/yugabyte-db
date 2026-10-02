@@ -73,8 +73,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_w
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1.00 loops=1)
+   Disabled: true
    Storage Filter: (cbrt((a)::double precision) < '1.2'::double precision)
-(2 rows)
+(3 rows)
 
 SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
  cbrt 
@@ -90,8 +91,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_w
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1.00 loops=1)
+   Disabled: true
    Storage Filter: (cbrt((a)::double precision) = '1'::double precision)
-(2 rows)
+(3 rows)
 
 SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
  cbrt 
@@ -220,8 +222,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1.00 loops=1)
+   Disabled: true
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
-(2 rows)
+(3 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
@@ -237,8 +240,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1.00 loops=1)
+   Disabled: true
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
-(2 rows)
+(3 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
@@ -601,8 +605,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1.00 loops=1)
+   Disabled: true
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
-(2 rows)
+(3 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 

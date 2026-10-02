@@ -524,10 +524,10 @@ FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.rela
      relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id 
 ------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
  attno_test_table | a       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      1 |         3
- attno_test_table |         | row      | {STRONG_READ}              | {1,1}     | {1}        |        |          
- attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |          
- attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |          
  attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |          
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |          
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |          
+ attno_test_table |         | row      | {STRONG_READ}              | {1,1}     | {1}        |        |          
 (5 rows)
 
 ABORT;
@@ -538,10 +538,10 @@ FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.rela
      relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id 
 ------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
  attno_test_table | c       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      3 |         4
- attno_test_table |         | row      | {STRONG_READ}              | {1,1}     | {1}        |        |          
- attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |          
- attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |          
  attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |          
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |          
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |          
+ attno_test_table |         | row      | {STRONG_READ}              | {1,1}     | {1}        |        |          
 (5 rows)
 
 ABORT;
@@ -553,10 +553,10 @@ FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.rela
      relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id 
 ------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
  attno_test_table | d       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      4 |         5
- attno_test_table |         | row      | {STRONG_READ}              | {1,1}     | {1}        |        |          
- attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |          
- attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |          
  attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |          
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |          
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |          
+ attno_test_table |         | row      | {STRONG_READ}              | {1,1}     | {1}        |        |          
 (5 rows)
 
 ABORT;
@@ -568,10 +568,10 @@ FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.rela
      relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id 
 ------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
  attno_test_table | c       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      7 |         6
- attno_test_table |         | row      | {STRONG_READ}              | {1,1}     | {1}        |        |          
- attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |          
- attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |          
  attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |          
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |          
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |          
+ attno_test_table |         | row      | {STRONG_READ}              | {1,1}     | {1}        |        |          
 (5 rows)
 
 ABORT;

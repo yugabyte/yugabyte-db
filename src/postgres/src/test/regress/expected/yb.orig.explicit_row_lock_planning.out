@@ -459,7 +459,7 @@ SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
        "Parallel Aware": false,        +
        "Async Capable": false,         +
        "Lock Type": "FOR UPDATE",      +
-       "Scan Direction": "Forward",    +
+       "Scan Direction": "Default",    +
        "Index Name": "yb_locks_t_pkey",+
        "Relation Name": "yb_locks_t",  +
        "Alias": "yb_locks_t",          +
@@ -533,7 +533,7 @@ EXECUTE yb_locks_plan_rr(1);
            "Parallel Aware": false,        +
            "Async Capable": false,         +
            "Lock Type": "FOR UPDATE",      +
-           "Scan Direction": "Forward",    +
+           "Scan Direction": "Default",    +
            "Index Name": "yb_locks_t_pkey",+
            "Relation Name": "yb_locks_t",  +
            "Alias": "yb_locks_t",          +

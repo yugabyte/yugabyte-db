@@ -175,13 +175,13 @@ CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');
 SELECT yb_hash_code('sad'::mood);
  yb_hash_code 
 --------------
-         6308
+        39617
 (1 row)
 
 SELECT yb_hash_code('happy'::mood);
  yb_hash_code 
 --------------
-         1243
+        64877
 (1 row)
 
 CREATE TABLE test_table_mood (x mood, y INT, PRIMARY KEY((x,y) HASH));
@@ -190,11 +190,11 @@ INSERT INTO test_table_mood VALUES ('sad'::mood, 1), ('happy'::mood, 4),
 SELECT yb_hash_code(x,y), * FROM test_table_mood;
  yb_hash_code |   x   | y  
 --------------+-------+----
-         7098 | ok    |  4
-        19471 | ok    | 23
-        43113 | happy |  4
-        46345 | sad   |  1
-        60656 | sad   | 34
+        29832 | sad   |  1
+        31028 | sad   | 34
+        40205 | happy |  4
+        48953 | ok    | 23
+        57040 | ok    |  4
 (5 rows)
 
 DROP TABLE test_table_mood;
@@ -1229,12 +1229,13 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1, h3;
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
- Sort (actual rows=2.00 loops=1)
+ Incremental Sort (actual rows=2.00 loops=1)
    Sort Key: h1, h3
-   Sort Method: quicksort
+   Presorted Key: h1
+   Full-sort Groups: 1  Sort Method: quicksort
    ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=2.00 loops=1)
          Index Cond: (yb_hash_code(h1, h2, h3) = 7)
-(5 rows)
+(6 rows)
 
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1, h3;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
@@ -1676,9 +1677,9 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) > 600 AND
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 6000 AND h1 = 48;
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
- Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=1 loops=1)
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=1.00 loops=1)
    Index Cond: ((yb_hash_code(h1, h2, h3) < 6000) AND (h1 = 48))
    Rows Removed by Index Recheck: 953
 (3 rows)
@@ -1999,8 +2000,9 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on tt
+   Disabled: true
    Filter: ((yb_hash_code(i))::numeric > '9223372036854775808'::numeric)
-(2 rows)
+(3 rows)
 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808;
  i | j 
@@ -2015,8 +2017,9 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >=
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Seq Scan on tt
+   Disabled: true
    Filter: ((yb_hash_code(i))::numeric >= '9223372036854775809'::numeric)
-(2 rows)
+(3 rows)
 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809;
  i | j 
@@ -2031,8 +2034,9 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on tt
+   Disabled: true
    Filter: ((yb_hash_code(i))::numeric = '9223372036854775810'::numeric)
-(2 rows)
+(3 rows)
 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810;
  i | j 
@@ -2047,8 +2051,9 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on tt
+   Disabled: true
    Filter: ((yb_hash_code(i))::numeric < '9223372036854775811'::numeric)
-(2 rows)
+(3 rows)
 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811;
  i | j 
@@ -2064,8 +2069,9 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <=
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Seq Scan on tt
+   Disabled: true
    Filter: ((yb_hash_code(i))::numeric <= '9223372036854775812'::numeric)
-(2 rows)
+(3 rows)
 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812;
  i | j 
@@ -2081,8 +2087,9 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 
                         QUERY PLAN                         
 -----------------------------------------------------------
  Seq Scan on tt
+   Disabled: true
    Filter: ((yb_hash_code(i))::numeric > '-0.01'::numeric)
-(2 rows)
+(3 rows)
 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -0.01;
  i | j 
@@ -2098,8 +2105,9 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >=
                      QUERY PLAN                      
 -----------------------------------------------------
  Seq Scan on tt
+   Disabled: true
    Filter: ((yb_hash_code(i))::numeric >= 123456.78)
-(2 rows)
+(3 rows)
 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78;
  i | j 
@@ -2114,8 +2122,9 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 
                   QUERY PLAN                   
 -----------------------------------------------
  Seq Scan on tt
+   Disabled: true
    Filter: ((yb_hash_code(i))::numeric = 3.14)
-(2 rows)
+(3 rows)
 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;
  i | j 
