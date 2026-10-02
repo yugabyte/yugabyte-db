@@ -395,6 +395,10 @@ class Loader {
     auto& info = op_info_.back();
     auto& req = info.operation->read_request();
     SetupPaging(&req);
+    // All catalog reads of one round go to the sys catalog tablet in a single RPC, and DocDB
+    // checks each read's size limit against the whole RPC response. The same limit on every
+    // read therefore caps the combined response of the round.
+    req.set_size_limit(options_.fetch_size_limit);
     PgTable target(table);
     auto ordered_columns = OrderColumns(target.columns(), item.fetch_ybctid);
     info.targets.reserve(ordered_columns.size());
@@ -428,18 +432,18 @@ class Loader {
   Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
     while (!op_info_.empty()) {
-    if (yb_debug_log_catcache_events) {
-      std::set<std::string> table_names;
-      for (const auto& op : op_info_) {
-        table_names.insert(op.table->table_name().table_name());
+      if (yb_debug_log_catcache_events) {
+        std::set<std::string> table_names;
+        for (const auto& op : op_info_) {
+          table_names.insert(op.table->table_name().table_name());
+        }
+        LOG(INFO) << "Initiating prefetching for tables " << yb::ToString(table_names);
       }
-      LOG(INFO) << "Initiating prefetching for tables " << yb::ToString(table_names);
-    }
       auto response = VERIFY_RESULT(Run(arena_.get(), session_, op_info_, options_));
       Status remove_predicate_status;
       ResultFunctorAdapter<bool, OperationInfo&> remove_predicate(
           &remove_predicate_status,
-          [&response, data_container](OperationInfo& op_info) -> Result<bool> {
+          [&response, data_container, &options = options_](OperationInfo& op_info) -> Result<bool> {
             if (yb_debug_log_catcache_events) {
               LOG(INFO) << "Completed prefetch for op for table "
                         << op_info.table->table_name().table_name();
@@ -452,7 +456,11 @@ class Loader {
                        op_info.index ? op_info.index->relfilenode_id() : PgObjectId(),
                        &op_info.index_targets,
                        std::move(sidecar));
-            return !VERIFY_RESULT(PrepareNextRequest(*op_info.table, op_info.operation.get()));
+            if (!VERIFY_RESULT(PrepareNextRequest(*op_info.table, op_info.operation.get()))) {
+              return true;
+            }
+            op_info.operation->read_request().set_limit(options.fetch_row_limit);
+            return false;
           }, true /* bad_status_value */);
       std::erase_if(op_info_, remove_predicate);
       RETURN_NOT_OK(remove_predicate_status);
@@ -484,7 +492,7 @@ std::string PrefetcherOptions::CachingInfo::ToString() const {
 }
 
 std::string PrefetcherOptions::ToString() const {
-  return YB_STRUCT_TO_STRING(caching_info, fetch_row_limit);
+  return YB_STRUCT_TO_STRING(caching_info, fetch_row_limit, fetch_size_limit);
 }
 
 class PgSysTablePrefetcher::Impl {

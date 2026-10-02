@@ -3259,19 +3259,22 @@ TEST_P(PgCatalogVersionConnManagerTest,
   master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  // conn3 connects right after 200 version bumps and rebuilds its relcache init
-  // file. With #32063 the regular-backend connection-auth prefetch is served from
-  // the response cache when its version-keyed slot is warm; conn3's timing makes
-  // that a hit (-1) or a miss, so the regular count is 5 or 6. The conn mgr control
-  // backend already cached auth (#28144, #32063), (unless the conns version-keyed
-  // slot is not warm), so the CM count is usually 6 but can be 7 depending on timings.
+  // #32063: the regular-backend auth prefetch is served from the response cache
+  // when its version-keyed slot is warm. conn3 connects right after 200 version
+  // bumps, so the slot's warmth is timing-dependent -> 3 (hit) or 4 (miss).
+  // #30148: in CM Auth Passthrough mode (default) the first auth prefetches at
+  // the global (template1) shared catalog version but rebuilds the relcache at
+  // the per-DB master version; the differing versions cost one extra master RPC
+  // -> 4 (hit) or 5 (miss).
+  // Both modes include one read for the default global views (#30591), and catalog
+  // prefetch batching (#34114) reduces the relcache-rebuild reads.
   auto rebuild_delta = master_read_count_after - master_read_count_before;
   if (enable_ysql_conn_mgr) {
-    ASSERT_GE(rebuild_delta, 7);
-    ASSERT_LE(rebuild_delta, 8);
+    ASSERT_GE(rebuild_delta, 4);
+    ASSERT_LE(rebuild_delta, 5);
   } else {
-    ASSERT_GE(rebuild_delta, 6);
-    ASSERT_LE(rebuild_delta, 7);
+    ASSERT_GE(rebuild_delta, 3);
+    ASSERT_LE(rebuild_delta, 4);
   }
 }
 
