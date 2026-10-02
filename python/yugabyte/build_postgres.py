@@ -804,7 +804,6 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib'),
             os.path.join(self.pg_build_root, 'src/test/modules/dummy_seclabel'),
             os.path.join(self.pg_build_root, 'src/test/modules/test_rls_hooks'),
-            os.path.join(self.pg_build_root, 'src/test/modules/yb_test_memory_errors'),
             os.path.join(self.pg_build_root, 'src/tools/pg_bsd_indent'),
         ] + external_extension_dirs
 

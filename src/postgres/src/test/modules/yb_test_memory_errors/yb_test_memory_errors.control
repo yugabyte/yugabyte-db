@@ -1,4 +1,0 @@
-comment = 'Test code that injects memory errors, to check that they are detected'
-default_version = '1.0'
-module_pathname = '$libdir/yb_test_memory_errors'
-relocatable = true

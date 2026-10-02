@@ -259,10 +259,6 @@ public class MiniYBDaemon {
     return logPrinter;
   }
 
-  public ExternalDaemonLogErrorListener getLogErrorListener() {
-    return logListener;
-  }
-
   public MiniYBDaemonType getType() {
     return type;
   }
