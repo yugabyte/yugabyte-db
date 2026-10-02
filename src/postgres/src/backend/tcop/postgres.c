@@ -6619,12 +6619,7 @@ PostgresMain(const char *dbname, const char *username)
 		proc_exit(0);
 	}
 
-	/*
-	 * YB: InitPostgres has freed the memory it used to preload the catalog
-	 * caches and build the relcache.
-	 */
-	if (IsYugaByteEnabled())
-		YbReleaseFreeMemoryAfterStartup();
+	YbReleaseFreeMemoryAfterStartup();
 
 	/*
 	 * Also set up handler to log session end; we have to wait till now to be
