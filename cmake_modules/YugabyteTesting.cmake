@@ -240,6 +240,49 @@ function(ADD_YB_TEST_LIBRARY LIB_NAME)
   endif()
 endfunction()
 
+# Add a microbenchmark executable written with google/benchmark (BENCHMARK(...) registrations, no
+# main() of its own). REL_BENCHMARK_NAME is the source file path without the .cc extension, relative
+# to the current CMakeLists.txt, e.g. mutex-benchmark. DEPS lists additional libraries to link.
+#
+# Benchmarks are built whenever tests are built (YB_BUILD_TESTS, YB_TEST_FILTER_RE), so that they
+# keep compiling, but they are not registered with ctest: the test runner never runs them. The
+# binary goes to ${YB_BUILD_ROOT}/benchmarks-<dir>/<name>, next to the tests-<dir> directories.
+# The "benchmarks" target builds all of them. To customize process setup or teardown, define the
+# hooks declared in src/yb/util/benchmark_main.h in the benchmark source.
+function(ADD_YB_BENCHMARK REL_BENCHMARK_NAME)
+  cmake_parse_arguments(ARG "" "" "DEPS" ${ARGN})
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  yb_check_if_test_is_enabled(${REL_BENCHMARK_NAME})
+  if(NOT yb_test_enabled)
+    return()
+  endif()
+
+  set(SOURCE_PATH "${CMAKE_CURRENT_LIST_DIR}/${REL_BENCHMARK_NAME}.cc")
+  if(NOT EXISTS "${SOURCE_PATH}")
+    message(FATAL_ERROR "Benchmark source '${SOURCE_PATH}' does not exist.")
+  endif()
+  GET_TEST_PREFIX_AND_BINARY_NAME(DIR_PREFIX BINARY_NAME ${REL_BENCHMARK_NAME})
+
+  # Benchmarks are test-like executables: keep them out of the executable count and out of
+  # YB_EXECUTABLE_FILTER_RE filtering, like tests.
+  set(YB_ADDING_TEST_EXECUTABLE "TRUE" CACHE INTERNAL "" FORCE)
+  add_executable("${BINARY_NAME}" "${SOURCE_PATH}")
+  set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "" FORCE)
+
+  set_target_properties(${BINARY_NAME}
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${YB_BUILD_ROOT}/benchmarks-${DIR_PREFIX}")
+  target_link_libraries(${BINARY_NAME} yb_benchmark_main ${ARG_DEPS})
+
+  if(NOT TARGET benchmarks)
+    add_custom_target(benchmarks)
+  endif()
+  add_dependencies(benchmarks ${BINARY_NAME})
+endfunction()
+
 function(ADD_YB_FUZZ_TARGET REL_TEST_NAME)
   if(NOT YB_BUILD_FUZZ_TARGETS)
     return()
