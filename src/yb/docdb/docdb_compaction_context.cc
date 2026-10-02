@@ -51,6 +51,13 @@ DECLARE_uint64(ysql_packed_row_size_limit);
 DEFINE_test_flag(bool, keep_intent_doc_ht, false,
                  "Whether to keep intent doc hybrid time when packing column during compaction.");
 
+DEFINE_RUNTIME_bool(docdb_keep_unmerged_column_tombstones_over_packed_row, true,
+    "During compaction, keep a column tombstone that was not merged into the packed row it "
+    "shadows when that packed row participates in the same compaction (e.g. the merge is "
+    "skipped because packed row is disabled via flags). Setting this to false reverts to the "
+    "old behavior of garbage-collecting such tombstones, which resurrects deleted column "
+    "values.");
+
 namespace yb::docdb {
 
 using dockv::Expiration;
@@ -171,6 +178,19 @@ class PackedRowData {
     return active() && repack_allowed_;
   }
 
+  // Whether the active row is being built from individual columns (StartPacking), as opposed to
+  // being picked up from an existing packed row (ProcessPackedRow). Only meaningful while a row
+  // is active.
+  bool packing_from_individual_columns() const {
+    DCHECK(active());
+    return packing_from_individual_columns_;
+  }
+
+  // Write time of the active packed row.
+  const EncodedDocHybridTime& packed_row_doc_ht() const {
+    return encoded_doc_ht_;
+  }
+
   bool ColumnDeleted(ColumnId column_id) const {
     return new_packing_.deleted_cols.count(column_id) != 0;
   }
@@ -221,6 +241,7 @@ class PackedRowData {
     control_fields_size_ = control_fields_size;
     encoded_doc_ht_ = encoded_row_doc_ht;
     repack_allowed_ = repack_allowed;
+    packing_from_individual_columns_ = false;
 
     old_value_.Assign(full_value);
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
@@ -247,6 +268,7 @@ class PackedRowData {
     encoded_doc_ht_ = encoded_doc_ht;
     old_value_slice_ = Slice();
     repack_allowed_ = true;
+    packing_from_individual_columns_ = true;
     return InitPacker();
   }
 
@@ -538,6 +560,8 @@ class PackedRowData {
 
   bool packing_started_ = false; // Whether we have started packing the row.
   bool repack_allowed_ = false;
+  // See packing_from_individual_columns().
+  bool packing_from_individual_columns_ = false;
 
   // Use fake coprefix as default value.
   // So we will trigger table change on the first record.
@@ -1418,9 +1442,39 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
   // TODO(vector_index): optimization https://github.com/yugabyte/yugabyte-db/issues/28755.
+  //
+  // Exception: a column tombstone can shadow a value stored inside a packed row rather than a
+  // standalone entry. The overwrite logic above never rewrites the packed row itself, so removing
+  // such a tombstone is only safe when it was merged into the packed row (ProcessColumn consumed
+  // the entry above and we never get here) or when no live packed row for this doc key
+  // participates in the compaction (packed_row_ is not active). If the row is packed but the
+  // merge did not happen -- e.g. packing is disabled via gflags so can_start_packing() is false,
+  // or repack is not allowed for this row -- dropping the tombstone would resurrect the
+  // pre-delete column value. Keep it; a later compaction that performs the merge collects it.
   if (value_type == dockv::ValueEntryType::kTombstone && !CanHaveOtherDataBefore(encoded_doc_ht)) {
-    DVLOG_WITH_FUNC(4) << "Skipping due to Tombstoned value and no data before";
-    return Status::OK();
+    if (!packed_row_.active() ||
+        !FLAGS_docdb_keep_unmerged_column_tombstones_over_packed_row) {
+      DVLOG_WITH_FUNC(4) << "Skipping due to Tombstoned value and no data before";
+      return Status::OK();
+    }
+    // A tombstone shadows a carried packed row, never the other way around: the packed row put
+    // its own write time on the overwrite stack at the doc key level (see overwrite_ handling
+    // above), so a tombstone the packed row overwrites -- one written before it, e.g. before a
+    // row delete + re-insert -- was already dropped by the encoded_doc_ht < prev_overwrite_ht
+    // check. A row being built from individual columns by StartPacking is exempt: there the
+    // tombstone can legitimately be older (e.g. a YCQL upsert rewrote the liveness column after
+    // the column delete), and keeping it is still correct since a newer-or-equal entry wins on
+    // read.
+    RSTATUS_DCHECK(
+        packed_row_.packing_from_individual_columns() ||
+            encoded_doc_ht > packed_row_.packed_row_doc_ht(),
+        Corruption,
+        "Column tombstone older than the packed row it should shadow: $0 ($1) vs $2",
+        dockv::SubDocKey::DebugSliceToString(key), encoded_doc_ht.ToString(),
+        packed_row_.packed_row_doc_ht().ToString());
+    VLOG_WITH_FUNC(3)
+        << "Keeping unmerged column tombstone over active packed row: "
+        << dockv::SubDocKey::DebugSliceToString(key);
   }
 
   // If the entry has the TTL flag, delete the entry.
