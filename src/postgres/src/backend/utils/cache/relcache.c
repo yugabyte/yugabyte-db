@@ -2696,20 +2696,6 @@ YbSelectCatalogPreloadItem(const char *name, YbCatalogPreloadCacheList *list)
 			return false;
 		}
 
-		/*
-		 * Filling PROCOID or CONSTROID also builds the lists of the other
-		 * cache of the table (see YbPreloadCatalogCache), so these pairs are
-		 * filled together.
-		 */
-		if (cache_id == PROCOID || cache_id == PROCNAMEARGSNSP ||
-			cache_id == CONSTROID || cache_id == YBCONSTRAINTRELIDTYPIDNAME)
-		{
-			GUC_check_errdetail("Catalog cache %s is filled together with the other catalog cache on \"%s\"; name the catalog instead.",
-								YbGetCatalogCacheName(cache_id),
-								YbGetCatalogCacheTableNameFromCacheId(cache_id));
-			return false;
-		}
-
 		list->selected[cache_id] = true;
 		return true;
 	}
