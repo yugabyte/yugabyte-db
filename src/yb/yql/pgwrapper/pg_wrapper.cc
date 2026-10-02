@@ -375,22 +375,19 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
-DEFINE_RUNTIME_PG_FLAG(string, yb_catalog_preload_caches, "default",
-    "The catalog caches YSQL fills whenever it preloads the catalog: at connection start-up when "
-    "preloading is forced, and on every full catalog cache refresh. A comma separated list that "
-    "starts with 'default' (the caches of the catalogs preloaded by default), 'all' (every "
-    "preloadable catalog cache) or 'none', followed by items that add caches, or exclude them when "
-    "prefixed with '-'. An item is a catalog (pg_proc, for all its caches), a catalog cache "
-    "(ATTNAME), or the index of a catalog cache as the CatalogCacheMisses metric labels it "
-    "(pg_attribute_relid_attnam_index). For example, 'default,-ATTNAME,-ATTNUM,pg_operator'. "
-    "Caches the relation cache build needs are always filled. Selecting a cache of a catalog that "
-    "is not preloaded by default has the same effect as listing the catalog in "
-    "ysql_catalog_preload_additional_table_list: connections preload the catalog at start-up "
-    "instead of using the relcache init file. The catalogs of "
-    "ysql_catalog_preload_additional_tables and "
-    "ysql_catalog_preload_additional_table_list are added unless this flag excludes them. A "
-    "change applies to new connections and to the next full catalog cache refresh of existing "
-    "ones.");
+DEFINE_RUNTIME_PG_FLAG(string, yb_test_catalog_preload_cache_list, "",
+    "If set, a comma separated list of the catalog caches YSQL fills whenever it preloads the "
+    "catalog. An item is a catalog (pg_proc, for all its caches), a catalog cache (ATTNAME), or "
+    "the index of a catalog cache as the CatalogCacheMisses metric labels it "
+    "(pg_attribute_relid_attnam_index). Setting it turns on catalog preloading, at connection "
+    "start-up and on every full catalog cache refresh, as ysql_catalog_preload_additional_tables "
+    "does, and replaces ysql_catalog_preload_additional_tables and "
+    "ysql_catalog_preload_additional_table_list. The core catalogs and the catalogs of the listed "
+    "caches are prefetched; only the listed caches are filled, plus the caches the relation cache "
+    "build needs, which are always filled. A change applies to new connections and to the next "
+    "full catalog cache refresh of existing ones. For testing only.");
+TAG_FLAG(ysql_yb_test_catalog_preload_cache_list, hidden);
+TAG_FLAG(ysql_yb_test_catalog_preload_cache_list, unsafe);
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_sample_period, 1024 * 1024, // 1MB
     "Sets the interval at which TCMalloc should sample allocations. "
