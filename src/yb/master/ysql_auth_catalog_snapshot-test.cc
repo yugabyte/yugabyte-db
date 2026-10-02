@@ -312,7 +312,7 @@ TEST_F(MasterAuthSnapshotTest, AuthSnapshotRequiresPitrDisabledMode) {
   ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
   ASSERT_NOK_STR_CONTAINS(
       AuthReadTime(leader),
-      "Authentication catalog follower reads require a universe created with PITR disabled");
+      "Authentication catalog follower reads require persisted PITR-disabled mode");
 }
 
 TEST_F(MasterAuthSnapshotPitrDisabledModeTest, AuthSnapshotRequiresLeaderAndRoutingFlag) {
