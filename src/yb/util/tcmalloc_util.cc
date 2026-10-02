@@ -289,14 +289,22 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
 #endif
 }
 
-bool IsKernelUnsafeForTCMallocPerCpuCaches(const std::string& kernel_release) {
+#if YB_GOOGLE_TCMALLOC && defined(__linux__)
+namespace {
+
+// Linux 6.19.0 through 7.0.13 do not rewrite rseq cpu_id_start on every return to user space, which
+// TCMalloc per-CPU caches rely on, so they can crash or corrupt memory there.
+bool IsKernelUnsafeForTCMallocPerCpuCaches(const char* kernel_release) {
   int major = 0, minor = 0, patch = 0;
-  if (sscanf(kernel_release.c_str(), "%d.%d.%d", &major, &minor, &patch) < 2) {
+  if (sscanf(kernel_release, "%d.%d.%d", &major, &minor, &patch) < 2) {
     return false;
   }
   const auto version = std::make_tuple(major, minor, patch);
   return version >= std::make_tuple(6, 19, 0) && version < std::make_tuple(7, 0, 14);
 }
+
+}  // namespace
+#endif  // YB_GOOGLE_TCMALLOC && defined(__linux__)
 
 Status CheckTCMallocPerCpuCaches() {
 #if YB_GOOGLE_TCMALLOC && defined(__linux__)
