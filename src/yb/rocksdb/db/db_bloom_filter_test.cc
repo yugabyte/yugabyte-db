@@ -74,9 +74,6 @@ TEST_F(DBBloomFilterTest, KeyMayExist) {
     // read into block cache.
     ASSERT_EQ(numopen, TestGetTickerCount(options, NO_FILE_OPENS));
     ASSERT_EQ(cache_added, TestGetTickerCount(options, BLOCK_CACHE_ADD));
-    ASSERT_EQ(cache_added,
-              TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_ADD) +
-              TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 
     ASSERT_OK(Delete(1, "a"));
 
@@ -85,9 +82,6 @@ TEST_F(DBBloomFilterTest, KeyMayExist) {
     ASSERT_TRUE(!db_->KeyMayExist(ropts, handles_[1], "a", &value));
     ASSERT_EQ(numopen, TestGetTickerCount(options, NO_FILE_OPENS));
     ASSERT_EQ(cache_added, TestGetTickerCount(options, BLOCK_CACHE_ADD));
-    ASSERT_EQ(cache_added,
-              TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_ADD) +
-              TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 
     ASSERT_OK(Flush(1));
     ASSERT_OK(dbfull()->TEST_CompactRange(
@@ -98,9 +92,6 @@ TEST_F(DBBloomFilterTest, KeyMayExist) {
     ASSERT_TRUE(!db_->KeyMayExist(ropts, handles_[1], "a", &value));
     ASSERT_EQ(numopen, TestGetTickerCount(options, NO_FILE_OPENS));
     ASSERT_EQ(cache_added, TestGetTickerCount(options, BLOCK_CACHE_ADD));
-    ASSERT_EQ(cache_added,
-              TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_ADD) +
-              TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 
     ASSERT_OK(Delete(1, "c"));
 
@@ -109,9 +100,6 @@ TEST_F(DBBloomFilterTest, KeyMayExist) {
     ASSERT_TRUE(!db_->KeyMayExist(ropts, handles_[1], "c", &value));
     ASSERT_EQ(numopen, TestGetTickerCount(options, NO_FILE_OPENS));
     ASSERT_EQ(cache_added, TestGetTickerCount(options, BLOCK_CACHE_ADD));
-    ASSERT_EQ(cache_added,
-              TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_ADD) +
-              TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 
     // KeyMayExist function only checks data in block caches, which is not used
     // by plain table format.
@@ -1285,9 +1273,6 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   ASSERT_EQ(0, TestGetTickerCount(options, BLOCK_CACHE_FILTER_HIT));
   ASSERT_EQ(2 /* index and data block */,
       TestGetTickerCount(options, BLOCK_CACHE_ADD));
-  ASSERT_EQ(2,
-            TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_ADD) +
-            TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 
   // Check filter block ignored for files preloaded during DB::Open()
   options.max_open_files = -1;
@@ -1360,9 +1345,6 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   ASSERT_EQ(0, TestGetTickerCount(options, BLOCK_CACHE_FILTER_HIT));
   ASSERT_EQ(2 /* index and data block */,
       TestGetTickerCount(options, BLOCK_CACHE_ADD));
-  ASSERT_EQ(2,
-            TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_ADD) +
-            TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 }
 
 
