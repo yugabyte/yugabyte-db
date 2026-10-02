@@ -23,6 +23,7 @@
 
 #include <benchmark/benchmark.h>
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -34,6 +35,21 @@
 
 namespace yb {
 
+namespace {
+
+// Whether gflags takes the next argument as the value of `arg`, i.e. `arg` is "--flag" or "-flag"
+// without "=" for a registered gflag that is not a bool.
+bool TakesSeparateValue(std::string_view arg) {
+  if (!arg.starts_with('-') || arg.find('=') != std::string_view::npos) {
+    return false;
+  }
+  arg.remove_prefix(arg.starts_with("--") ? 2 : 1);
+  google::CommandLineFlagInfo info;
+  return google::GetCommandLineFlagInfo(std::string(arg).c_str(), &info) && info.type != "bool";
+}
+
+} // namespace
+
 bool DefaultBenchmarkInit(int argc, char** argv) {
   // Both google/benchmark and gflags parse the command line, and each rejects the other's flags.
   // Give --benchmark_* flags to google/benchmark and everything else to gflags. Splitting also
@@ -42,8 +58,16 @@ bool DefaultBenchmarkInit(int argc, char** argv) {
   std::vector<char*> other_args = {argv[0]};
   for (int i = 1; i < argc; ++i) {
     std::string_view arg(argv[i]);
-    auto& args = arg.starts_with("--benchmark_") || arg == "--help" ? benchmark_args : other_args;
-    args.push_back(argv[i]);
+    if (arg.starts_with("--benchmark_") || arg == "--help") {
+      benchmark_args.push_back(argv[i]);
+      continue;
+    }
+    other_args.push_back(argv[i]);
+    // gflags also accepts "--flag value". Keep such a value with its flag, even if the value itself
+    // looks like a --benchmark_* flag.
+    if (i + 1 < argc && TakesSeparateValue(arg)) {
+      other_args.push_back(argv[++i]);
+    }
   }
   benchmark_args.push_back(nullptr);
   other_args.push_back(nullptr);
