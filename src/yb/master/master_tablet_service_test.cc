@@ -335,11 +335,11 @@ TEST_F(MasterTabletServiceMultiMasterTest, AuthFollowerReadsRequirePitrDisabledM
   auto req = AuthCatalogReadRequest(leader->Now());
   ASSERT_NOK_STR_CONTAINS(
       ReadAuthCatalog(follower, req),
-      "Authentication catalog follower reads require a universe created with PITR disabled");
+      "Authentication catalog follower reads require persisted PITR-disabled mode");
   req.set_consistency_level(YBConsistencyLevel::STRONG);
   ASSERT_NOK_STR_CONTAINS(
       ReadAuthCatalog(leader, req),
-      "Authentication catalog follower reads require a universe created with PITR disabled");
+      "Authentication catalog follower reads require persisted PITR-disabled mode");
 }
 
 TEST_F(MasterTabletServicePitrDisabledModeTest, AuthFollowerServingAndFixedTimeLeaderFallback) {

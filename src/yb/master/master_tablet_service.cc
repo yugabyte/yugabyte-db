@@ -162,7 +162,7 @@ void MasterTabletServiceImpl::Read(const tserver::ReadRequestMsg* req,
       SCHECK(!follower_read || FLAGS_ysql_enable_auth_catalog_follower_reads, IllegalState,
              "Authentication catalog follower reads are disabled");
       SCHECK(master_->snapshot_coordinator().PitrDisabled(), IllegalState,
-             "Authentication catalog follower reads require a universe created with PITR disabled");
+             "Authentication catalog follower reads require persisted PITR-disabled mode");
       auto peer_tablet = VERIFY_RESULT(tserver::LookupTabletPeer(
           master_->tablet_server(), req->tablet_id()));
       auto tablet = VERIFY_RESULT(GetTabletForRead(
