@@ -7035,6 +7035,9 @@ PostgresMain(const char *dbname, const char *username)
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
 
+			/* ReadyForQuery flushed the reply, so the client is not waiting. */
+			YbReleaseTCMallocMemoryAfterStatement();
+
 			yb_refresh_stats_before_exec = true;
 
 			YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);

@@ -50,6 +50,10 @@ void TCMallocReleaseMemoryToSystem(int64_t bytes);
 // would otherwise keep mapped to cover the peak demand of the last few minutes.
 void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes);
 
+// Drains every per-CPU cache and then returns all free page heap memory to the operating system,
+// including free pages inside partially used hugepages.
+void TCMallocReleaseAllFreeMemory();
+
 void SetTCMallocTotalThreadCacheSize(int64_t max_size);
 
 // Sets tcmalloc properties based on the flags, as well as default values of some tcmalloc-related

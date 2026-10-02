@@ -723,6 +723,10 @@ void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
   TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
+void YBCTCMallocReleaseAllFreeMemory() {
+  TCMallocReleaseAllFreeMemory();
+}
+
 YbcStatus YBCStartTCMallocBackgroundThread() {
   return ToYBCStatus(WithMaskedYsqlSignals(StartTCMallocBackgroundThread));
 }

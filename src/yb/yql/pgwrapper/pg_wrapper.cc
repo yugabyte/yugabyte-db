@@ -430,13 +430,17 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_sample_period, 1024 * 1024, // 1MB
     "Sets the interval at which TCMalloc should sample allocations. "
     "Sampling is disabled if this is set to 0.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_tcmalloc_background_thread, false,
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_tcmalloc_background_thread, true,
     "Run a TCMalloc background thread in each new YSQL backend that drains idle allocator caches "
     "and returns free memory to the OS at ysql_yb_tcmalloc_background_release_rate.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_background_release_rate, 10 * 1024 * 1024, // 10MB
+DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_background_release_rate, 1024 * 1024 * 1024, // 1GB
     "Rate in bytes per second at which the TCMalloc background thread of a YSQL backend returns "
     "free page heap memory to the OS while the backend is idle.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_tcmalloc_release_after_statement, true,
+    "After each statement, drain the TCMalloc per-CPU caches of the YSQL backend and return all "
+    "of its free page heap memory to the OS, including free pages in partially used hugepages.");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");

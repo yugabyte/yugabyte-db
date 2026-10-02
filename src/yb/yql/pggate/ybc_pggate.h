@@ -160,6 +160,7 @@ YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 int64_t YBCGetTCMallocSamplingPeriod();
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
 void YBCTCMallocReleaseFreeMemory(int64_t bytes);
+void YBCTCMallocReleaseAllFreeMemory();
 YbcStatus YBCStartTCMallocBackgroundThread();
 void YBCSetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
 YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,

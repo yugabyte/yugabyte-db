@@ -3694,7 +3694,21 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_tcmalloc_background_thread,
-		false,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_release_after_statement", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("After each statement, drain the TCMalloc per-CPU "
+						 "caches and return all free page heap memory to the "
+						 "OS, including free pages in partially used "
+						 "hugepages."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_release_after_statement,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -6476,7 +6490,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_BYTE | GUC_NOT_IN_SAMPLE
 		},
 		&yb_tcmalloc_background_release_rate,
-		10 * 1024 * 1024, 0, INT_MAX,
+		1024 * 1024 * 1024, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

@@ -130,13 +130,13 @@ TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYsqlHeapSnap
 
 TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TCMallocBackgroundThread)) {
   {
-    auto conn = ASSERT_RESULT(Connect());
+    auto settings = MakeConnSettings();
+    settings.options = "-c yb_enable_tcmalloc_background_thread=off";
+    auto conn = ASSERT_RESULT(PGConnBuilder(settings).Connect());
     ASSERT_EQ(ASSERT_RESULT(TCMallocBackgroundThreadSigBlk(conn)), std::nullopt);
   }
 
-  auto settings = MakeConnSettings();
-  settings.options = "-c yb_enable_tcmalloc_background_thread=on";
-  auto conn = ASSERT_RESULT(PGConnBuilder(settings).Connect());
+  auto conn = ASSERT_RESULT(Connect());
   const auto sig_blk = ASSERT_RESULT(TCMallocBackgroundThreadSigBlk(conn));
   ASSERT_TRUE(sig_blk.has_value());
   // Postgres signal handlers must only run on the main thread.

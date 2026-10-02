@@ -13,7 +13,9 @@
 #include "yb/util/tcmalloc_util.h"
 
 #include <cstdint>
+#include <limits>
 #include <mutex>
+#include <thread>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
@@ -193,6 +195,18 @@ void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes) {
 #else
   TCMallocReleaseMemoryToSystem(bytes);
 #endif
+}
+
+void TCMallocReleaseAllFreeMemory() {
+#if YB_GOOGLE_TCMALLOC
+  if (tcmalloc::MallocExtension::PerCpuCachesActive()) {
+    static const int num_cpus = static_cast<int>(std::thread::hardware_concurrency());
+    for (int cpu = 0; cpu < num_cpus; ++cpu) {
+      tcmalloc::MallocExtension::ReleaseCpuMemory(cpu);
+    }
+  }
+#endif
+  TCMallocReleaseMemoryToSystemIgnoringRecentDemand(std::numeric_limits<int64_t>::max());
 }
 
 #if YB_GOOGLE_TCMALLOC
