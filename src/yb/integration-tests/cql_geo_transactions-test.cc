@@ -32,6 +32,7 @@ DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(load_balancer_max_concurrent_removals);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(load_balancer_max_concurrent_moves_per_table);
+DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -110,7 +111,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     MakePlacementInfo(replication_info.mutable_live_replicas(), region);
     ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
 
-    WaitForStatusTabletsVersion(current_version + 1);
+    WaitForStatusTabletsVersionForCreate(current_version);
   }
 
   void SetupTables() {
@@ -131,7 +132,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     }
 
     // Wait for system.transactions to be created.
-    WaitForStatusTabletsVersion(1);
+    WaitForStatusTabletsVersionForCreate(0);
   }
 
   void WaitForStatusTabletsVersion(uint64_t version) {
@@ -141,6 +142,13 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
         [this, version] { return GetCurrentVersion() == version; },
         kStatusTabletCacheRefreshTimeout,
         strings::Substitute(error, version)));
+  }
+
+  uint64_t WaitForStatusTabletsVersionForCreate(uint64_t current_version) {
+    // 1 status table + its tablets.
+    current_version += 1 + FLAGS_transaction_table_num_tablets;
+    WaitForStatusTabletsVersion(current_version);
+    return current_version;
   }
 
   void WaitForLoadBalanceCompletion() {
