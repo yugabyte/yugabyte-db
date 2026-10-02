@@ -183,7 +183,9 @@ class WriteStallCascadeTest : public integration_tests::YBTableTestBase {
   // Doesn't use GetLeaderPeerForTablet(): that requires LEADER_AND_READY, and while the other
   // follower shuts down the leader may lose its lease (no acks from the stalled follower) or
   // lose leadership to the stalled follower. In the latter case, the step down is skipped.
-  Status StepDownOriginalLeaderIfStillLeader(
+  // Returns true if this step down triggered the election, false if the old leader had already
+  // lost leadership.
+  Result<bool> StepDownOriginalLeaderIfStillLeader(
       const TabletId& tablet_id, const TabletLayout& layout) {
     auto leader_peer = mini_cluster()->mini_tablet_server(layout.leader_idx)->server()
         ->tablet_manager()->LookupTablet(tablet_id);
@@ -210,7 +212,7 @@ class WriteStallCascadeTest : public integration_tests::YBTableTestBase {
     if (!is_leader()) {
       LOG(INFO) << "=== Old leader (ts-" << layout.leader_idx << ") already lost leadership, "
                 << "skipping step down ===";
-      return Status::OK();
+      return false;
     }
 
     LOG(INFO) << "=== Stepping down leader (ts-" << layout.leader_idx << ") ===";
@@ -221,12 +223,13 @@ class WriteStallCascadeTest : public integration_tests::YBTableTestBase {
       }
       LOG(INFO) << "=== Step down failed and old leader is no longer leader: "
                 << step_down_status << " ===";
+      return false;
     }
 
     RETURN_NOT_OK(WaitFor([&] { return !is_leader(); },
                           5s * kTimeMultiplier, "Waiting for old leader to step down"));
     LOG(INFO) << "=== Old leader is no longer leader, waiting for election ===";
-    return Status::OK();
+    return true;
   }
 };
 
@@ -294,7 +297,12 @@ TEST_F(WriteStallCascadeTest, ElectionSucceedsDespiteFollowerWriteStall) {
   LOG(INFO) << "=== Shutting down ts-" << layout.other_follower_idx << " ===";
   mini_cluster()->mini_tablet_server(layout.other_follower_idx)->Shutdown();
 
-  ASSERT_OK(StepDownOriginalLeaderIfStillLeader(tablet_id, layout));
+  if (!ASSERT_RESULT(StepDownOriginalLeaderIfStillLeader(tablet_id, layout))) {
+    // The old leader lost leadership before the step down, most likely to the stalled follower's
+    // own candidacy. The stalled follower's vote handling, which this test covers, isn't
+    // exercised in that case.
+    GTEST_SKIP() << "Old leader lost leadership before the forced step down";
+  }
 
   // Wait for a new leader. We use RequireLeaderIsReady::kFalse because the new leader
   // cannot reach LEADER_AND_READY when the only reachable follower rejects ops.
@@ -365,7 +373,7 @@ TEST_F(WriteStallCascadeTest, WriteStallCanBlockElection) {
   LOG(INFO) << "=== Shutting down ts-" << layout.other_follower_idx << " ===";
   mini_cluster()->mini_tablet_server(layout.other_follower_idx)->Shutdown();
 
-  ASSERT_OK(StepDownOriginalLeaderIfStillLeader(tablet_id, layout));
+  ASSERT_RESULT(StepDownOriginalLeaderIfStillLeader(tablet_id, layout));
 
   auto election_result = WaitUntilTabletHasLeader(
       mini_cluster(), tablet_id,
