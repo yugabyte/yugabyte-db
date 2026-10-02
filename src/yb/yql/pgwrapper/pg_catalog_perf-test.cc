@@ -60,6 +60,7 @@ DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_bool(ysql_enable_read_request_cache_for_connection_auth);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
+DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
@@ -435,15 +436,21 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
         FLAGS_TEST_pg_response_cache_catalog_read_time_usec) = kHistoryCutoffInitialValue - 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms) =
         ReleaseVsDebugVsAsanVsTsan(1000, 5000, 5000, 10000);
+    // Page the relcache preload's prefetch so that the 'Snapshot too old' error hits one of its
+    // later pages, before any relcache entry is built. A retry after relcache entries exist trips
+    // an assert in the relcache preload (GH#34493).
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_prefetch_row_limit) = kStaleCachePrefetchRowLimit;
     PgCatalogWithUnlimitedCachePerfTest::SetUp();
   }
+
+  static constexpr uint64_t kStaleCachePrefetchRowLimit = 1024;
 };
 
-constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
-constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 7;
-constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
+constexpr uint64_t kFirstConnectionRPCCountDefault = 3;
+constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 4;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 3;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
-constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 6;
+constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 4;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
 // Helper class to fetch number of client connection via pgsql proxy webserver.
@@ -505,7 +512,7 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithoutPartitionTables) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 3);
+  ASSERT_EQ(cache_refresh_rpc_count, 1);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -529,7 +536,7 @@ TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithPartitionTables) {
       kTableWithCastInPartitioning));
 
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 4);
+  ASSERT_EQ(cache_refresh_rpc_count, 2);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
@@ -607,7 +614,7 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheEfficiency, PgCatalogWithUnlimitedCach
   constexpr auto kExpectedColumns = kAlterTableCount + 2;
   ASSERT_OK(conn.FetchMatrix(select_all, kExpectedRows, kExpectedColumns));
   ASSERT_OK(aux_conn.FetchMatrix(select_all, kExpectedRows, kExpectedColumns));
-  constexpr size_t kUniqueQueriesPerRefresh = 4;
+  constexpr size_t kUniqueQueriesPerRefresh = 1;
   constexpr auto kUniqueQueries = kAlterTableCount * kUniqueQueriesPerRefresh;
   constexpr auto kTotalQueries = kConnectionCount * kUniqueQueries;
   ASSERT_EQ(metrics.cache.queries, kTotalQueries);
@@ -623,8 +630,8 @@ TEST_F_EX(PgCatalogPerfTest,
     RETURN_NOT_OK(Connect());
     return static_cast<Status>(Status::OK());
   }));
-  ASSERT_EQ(metrics.cache.queries, 5);
-  ASSERT_EQ(metrics.cache.hits, 5);
+  ASSERT_EQ(metrics.cache.queries, 2);
+  ASSERT_EQ(metrics.cache.hits, 2);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
