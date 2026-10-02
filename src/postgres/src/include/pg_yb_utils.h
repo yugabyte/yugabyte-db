@@ -328,11 +328,12 @@ extern YbObjectLockMode YBGetObjectLockMode();
  */
 extern bool YbNeedAdditionalCatalogTables();
 
-/* yb_catalog_preload_caches, implemented in relcache.c. */
-extern bool yb_check_catalog_preload_caches(char **newval, void **extra,
-											GucSource source);
-extern void yb_assign_catalog_preload_caches(const char *newval, void *extra);
-extern bool YbCatalogPreloadCachesNeedAdditionalTables(void);
+/* yb_test_catalog_preload_cache_list, implemented in relcache.c. */
+extern bool yb_check_test_catalog_preload_cache_list(char **newval, void **extra,
+													 GucSource source);
+extern void yb_assign_test_catalog_preload_cache_list(const char *newval,
+													  void *extra);
+extern bool YbCatalogPreloadCacheListIsSet(void);
 
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified

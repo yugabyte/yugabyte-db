@@ -908,7 +908,7 @@ static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
-static char *yb_catalog_preload_caches_string;
+static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
@@ -7720,17 +7720,18 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"yb_catalog_preload_caches", PGC_SIGHUP, DEVELOPER_OPTIONS,
-			gettext_noop("Catalog caches filled when preloading the catalog."),
-			gettext_noop("A comma separated list that starts with \"default\", \"all\" "
-						 "or \"none\", followed by catalogs or catalog caches to add, "
-						 "or to exclude when prefixed with \"-\"."),
-			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
+		{"yb_test_catalog_preload_cache_list", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Catalog caches to fill when preloading the catalog."),
+			gettext_noop("A comma separated list of catalogs, catalog caches, or "
+						 "indexes of catalog caches. If set, it replaces "
+						 "ysql_catalog_preload_additional_tables and "
+						 "ysql_catalog_preload_additional_table_list."),
+			GUC_LIST_INPUT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&yb_catalog_preload_caches_string,
-		"default",
-		yb_check_catalog_preload_caches,
-		yb_assign_catalog_preload_caches, NULL
+		&yb_test_catalog_preload_cache_list_string,
+		"",
+		yb_check_test_catalog_preload_cache_list,
+		yb_assign_test_catalog_preload_cache_list, NULL
 	},
 
 	{
