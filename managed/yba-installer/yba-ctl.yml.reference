@@ -23,8 +23,7 @@ server_key_path: ""
 # FIPS 140-3 mode.
 # When true, the platform JVM runs BouncyCastle in approved-only mode
 # (-Dorg.bouncycastle.fips.approved_only=true) and YBA enforces the FIPS password policy.
-# The TLS keystore is written in BCFKS format either way, so this can be turned on later
-# without regenerating certificates.
+# Cannot be modified after installation.
 fips:
    enabled: false
 

@@ -51,8 +51,7 @@ func loadLegacyConfig() (*viper.Viper, error) {
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 	viper.SetDefault("as_root", common.HasSudoAccess())
 
-	// FIPS mode is opt-in. The BCFKS keystore is written either way, so turning this on later
-	// only changes how the JVM behaves, not what is on disk.
+	// FIPS mode is opt-in and fixed at install; reconfigure and upgrade refuse to change it.
 	viper.SetDefault("fips.enabled", false)
 	viper.SetDefault("perfAdvisor.enabled", true)
 	viper.SetDefault("perfAdvisor.port", 8443)
