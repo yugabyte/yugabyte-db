@@ -2367,6 +2367,7 @@ Status CatalogManager::ImportTableEntry(
   table = std::move(*table_result);
 
   std::optional<int> schema_version;
+  bool notify_ts_for_schema_change = false;
 
   // Don't do schema validation/column updates on the parent colocated table.
   // However, still do the validation for regular colocated tables.
@@ -2465,9 +2466,6 @@ Status CatalogManager::ImportTableEntry(
       RETURN_NOT_OK(UpdateColocatedUserTableInfo(
           table, parent_table_id, table_data, epoch, is_clone, add_table_waiter));
     }
-
-    // Table schema update depending on different conditions.
-    bool notify_ts_for_schema_change = false;
 
     // Update the table column ids if it's not equal to the stored ids. Note: this only
     // applies to regular tables. We cannot reach here for indexes because their column ids have
@@ -2620,48 +2618,51 @@ Status CatalogManager::ImportTableEntry(
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the current schema version of the target table
-    // CQL index tables always have schema version 0 because we do not support dropping or
-    // renaming columns on CQL indexes. CQL index writes depend on this because they implicitly
-    // use a schema_version of 0 (by not setting the field in the protobuf write request). This is
-    // checked against the table schema_version when applying the write. Therefore we must never
-    // bump the schema version for CQL index tables.
-    if (meta.table_type() == TableType::YQL_TABLE_TYPE && table_data->is_index()) {
-      SCHECK_EQ(meta.version(), 0, IllegalState, "CQL index table should have version 0");
-    } else if (is_clone) {
-      // Bump the schema version to 1 + the current schema version of source table. This ensures
-      // that the current schema version is greater than all schema versions that might exist in the
-      //  snapshot used for clone.
-      TRACE("Looking up source table");
-      TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
-      auto source_table_lock = source_table->LockForRead();
-      schema_version = source_table_lock->pb.version() + 1;
-    } else if (meta.version() >= table->LockForRead()->pb.version()) {
-      // Restoring a backup: bump the schema version to 1 + the schema version of SysTableEntryPB
-      // found in the SnapshotInfoPB if the latter is >= the current version. It is guaranteed that
-      // the schema version in snapshotInfo is the maximum version that can be found in the snapshot
-      // at backup time. The extra bump avoids conflicts with the snapshot's older schema packings
-      // at tserver side. At the tserver, all schema packings from the snapshot will be used in
-      // tablet-meta and the last schema will have the correct committed schema created at restore
-      // side as part of executing the SQL dump. The last schema is sent from master to tservers
-      // during ImportSnapshot.
-      schema_version = meta.version() + 1;
-    }
+  }
 
-    if (schema_version) {
-      VLOG_WITH_FUNC(1) << Format(
-          "Bump up schema version of table $0 to: $1", table_data->new_table_id, schema_version);
-      auto l = table->LockForWrite();
-      l.mutable_data()->pb.set_version(schema_version.value());
-      RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
-      l.Commit();
-      notify_ts_for_schema_change = true;
-    }
+  // Bump up the current schema version of the target table. This includes the parent colocated
+  // table: a clone bumps its version, so a backup of a cloned database carries a parent table
+  // schema version > 0 that the restored parent table must not be behind.
+  // CQL index tables always have schema version 0 because we do not support dropping or
+  // renaming columns on CQL indexes. CQL index writes depend on this because they implicitly
+  // use a schema_version of 0 (by not setting the field in the protobuf write request). This is
+  // checked against the table schema_version when applying the write. Therefore we must never
+  // bump the schema version for CQL index tables.
+  if (meta.table_type() == TableType::YQL_TABLE_TYPE && table_data->is_index()) {
+    SCHECK_EQ(meta.version(), 0, IllegalState, "CQL index table should have version 0");
+  } else if (is_clone) {
+    // Bump the schema version to 1 + the current schema version of source table. This ensures
+    // that the current schema version is greater than all schema versions that might exist in the
+    //  snapshot used for clone.
+    TRACE("Looking up source table");
+    TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
+    auto source_table_lock = source_table->LockForRead();
+    schema_version = source_table_lock->pb.version() + 1;
+  } else if (meta.version() >= table->LockForRead()->pb.version()) {
+    // Restoring a backup: bump the schema version to 1 + the schema version of SysTableEntryPB
+    // found in the SnapshotInfoPB if the latter is >= the current version. It is guaranteed that
+    // the schema version in snapshotInfo is the maximum version that can be found in the snapshot
+    // at backup time. The extra bump avoids conflicts with the snapshot's older schema packings
+    // at tserver side. At the tserver, all schema packings from the snapshot will be used in
+    // tablet-meta and the last schema will have the correct committed schema created at restore
+    // side as part of executing the SQL dump. The last schema is sent from master to tservers
+    // during ImportSnapshot.
+    schema_version = meta.version() + 1;
+  }
 
-    // Update the new table schema in tablets.
-    if (notify_ts_for_schema_change) {
-      RETURN_NOT_OK(SendAlterTableRequest(table, epoch));
-    }
+  if (schema_version) {
+    VLOG_WITH_FUNC(1) << Format(
+        "Bump up schema version of table $0 to: $1", table_data->new_table_id, schema_version);
+    auto l = table->LockForWrite();
+    l.mutable_data()->pb.set_version(schema_version.value());
+    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+    l.Commit();
+    notify_ts_for_schema_change = true;
+  }
+
+  // Update the new table schema in tablets.
+  if (notify_ts_for_schema_change) {
+    RETURN_NOT_OK(SendAlterTableRequest(table, epoch));
   }
 
   // Set the type of the table in the response pb (default is TABLE so only set if colocated).
