@@ -94,8 +94,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 
       WaitForLoadBalanceCompletion();
       if (wait_for_version) {
-        WaitForStatusTabletsVersion(current_version + 1);
-        ++current_version;
+        current_version = WaitForStatusTabletsVersionForCreate(current_version);
       }
     }
   }
@@ -329,7 +328,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
           ]
         }')
     )#"));
-    WaitForStatusTabletsVersion(current_version + num_tablespaces);
+    WaitForStatusTabletsVersionForCreate(current_version, num_tablespaces);
     return Status::OK();
   }
 
@@ -727,7 +726,7 @@ TEST_F(GeoTransactionsTest, TestTransactionTableDeletionRemoteAbort) {
 
     auto current_version = GetCurrentVersion();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
-    WaitForStatusTabletsVersion(current_version + 1);
+    WaitForStatusTabletsVersionForCreate(current_version);
   }
 }
 
@@ -791,7 +790,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
   auto tablet_uuid_set = ListTabletIdsForTable(cluster_.get(), table_id);
   auto table_uuids = std::vector<TabletId>(tablet_uuid_set.begin(), tablet_uuid_set.end());
 
-  WaitForStatusTabletsVersion(++current_version);
+  current_version = WaitForStatusTabletsVersionForCreate(current_version);
   WaitForLoadBalanceCompletion();
 
   auto status_tablet_ids = ASSERT_RESULT(GetStatusTablets(1, ExpectedLocality::kLocal));
@@ -800,7 +799,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
 
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE tablespace2", table_name));
 
-  WaitForStatusTabletsVersion(++current_version);
+  current_version = WaitForStatusTabletsVersionForCreate(current_version);
   WaitForLoadBalanceCompletion();
 
   status_tablet_ids = ASSERT_RESULT(GetStatusTablets(2, ExpectedLocality::kLocal));
@@ -1119,14 +1118,14 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
         CREATE TABLE $1(value int REFERENCES $2(value))
         TABLESPACE $0
     )#", kTablespace1, kTableNameFK, kTableName));
-    WaitForStatusTabletsVersion(version + 1);
+    version = WaitForStatusTabletsVersionForCreate(version);
 
     // Dummy table to create transaction tables.
     ASSERT_OK(conn.ExecuteFormat(R"#(
         CREATE TABLE __$0_dummy_table(value int)
         TABLESPACE $0
     )#", kTablespace2));
-    WaitForStatusTabletsVersion(version + 2);
+    version = WaitForStatusTabletsVersionForCreate(version);
     WaitForLoadBalanceCompletion();
   }
 };
@@ -1488,7 +1487,7 @@ class GeoTransactionsMultiTabletTest : public GeoTransactionsTest {
           SPLIT INTO 3 TABLETS
       )#", kTablespace, kTableNamePrefix, i));
     }
-    WaitForStatusTabletsVersion(version + 1);
+    WaitForStatusTabletsVersionForCreate(version);
   }
 };
 
