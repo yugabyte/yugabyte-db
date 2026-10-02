@@ -45,7 +45,7 @@
 #include "yb_tcmalloc_utils.h"
 
 int			yb_log_heap_snapshot_on_exit_threshold = -1;
-int			yb_startup_free_memory_release_threshold = 16 * 1024;
+int			yb_startup_free_memory_release_threshold = 0;
 
 static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
@@ -335,8 +335,8 @@ YbLogHeapSnapshotProcExit(int status, Datum arg)
  * Connection startup frees most of what it allocates (fetched catalog data,
  * relcache build scratch), but TCMalloc keeps the freed pages in its page
  * heap, so an idle connection would hold them for its whole lifetime.  A
- * backend that freed little is left alone: releasing costs syscalls and the
- * first queries would fault the pages back in.
+ * positive threshold leaves alone a backend that freed little, which saves the
+ * release syscalls.
  *
  * Startup is the backend's recent demand peak, so a plain release would keep
  * free pages mapped to cover that peak.  Request more than is free: TCMalloc
