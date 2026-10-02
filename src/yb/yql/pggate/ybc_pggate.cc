@@ -58,7 +58,6 @@
 #include "yb/util/flags.h"
 #include "yb/util/jwt_util.h"
 #include "yb/util/logging.h"
-#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/signal_util.h"
 #include "yb/util/slice.h"
@@ -97,7 +96,6 @@ DECLARE_int32(delay_alter_sequence_sec);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 
 DECLARE_uint64(rpc_max_message_size);
-DECLARE_uint64(ysql_catalog_prefetch_cold_buffer_bytes);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
@@ -289,9 +287,6 @@ void YBCStartSysTablePrefetchingImpl(
   const auto* flags = YBCGetGFlags();
   const auto configured_size_limit = *flags->ysql_catalog_prefetch_size_limit;
   const auto max_size_limit = YBCGetMaxRpcResponseSize();
-  if (FLAGS_ysql_catalog_prefetch_cold_buffer_bytes) {
-    SetRefCntBufferColdAllocationThreshold(FLAGS_ysql_catalog_prefetch_cold_buffer_bytes);
-  }
   pgapi->StartSysTablePrefetching({
       caching_info,
       *flags->ysql_catalog_prefetch_row_limit,
@@ -2550,7 +2545,6 @@ void YBCStartSysTablePrefetching(
 
 void YBCStopSysTablePrefetching() {
   pgapi->StopSysTablePrefetching();
-  SetRefCntBufferColdAllocationThreshold(std::numeric_limits<size_t>::max());
 }
 
 bool YBCIsSysTablePrefetchingStarted() {

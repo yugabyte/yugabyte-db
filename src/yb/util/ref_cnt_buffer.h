@@ -29,11 +29,6 @@ namespace yb {
 
 class faststring;
 
-// Buffers of at least this many bytes are allocated from TCMalloc's cold heap, whose pages are not
-// shared with other allocations, so freeing such buffers leaves whole hugepages that can be
-// released. SIZE_MAX (the default) disables it.
-void SetRefCntBufferColdAllocationThreshold(size_t bytes);
-
 // Byte buffer with reference counting. It embeds reference count, size and data in a single block.
 class RefCntBuffer {
  public:
