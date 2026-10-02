@@ -3425,12 +3425,24 @@ class ControlScript(object):
                 continue
         return (None, False)
 
+    # TCMalloc cannot use per-CPU caches if glibc has already registered rseq
+    # (glibc 2.35+, RHEL 9's 2.34), and silently falls back to per-thread caches.
+    # On kernels where TCMalloc's own registration crashes, keep glibc's instead.
+    def set_glibc_tunables(self):
+        tunables = os.environ.get("GLIBC_TUNABLES", "")
+        if "glibc.pthread.rseq=" not in tunables:
+            rseq = "glibc.pthread.rseq={}".format(1 if kernel_breaks_tcmalloc_rseq() else 0)
+            os.environ["GLIBC_TUNABLES"] = ":".join(t for t in (tunables, rseq) if t)
+
     # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
         prereqs_failed = set()
         prereqs_warn = set()
         prereqs_failed_flag = False
         prereqs_warn_flag = False
+
+        # Before the Docker early return: containers need the tunable too.
+        self.set_glibc_tunables()
 
         if os.path.exists("/.dockerenv"):
             Output.log("Running in a Docker container. Skipping pre-requisite checks.")
@@ -5031,15 +5043,6 @@ class ControlScript(object):
     def set_env_vars(self):
         # Sets YW metrics to use local database.
         os.environ["USE_NATIVE_METRICS"] = "true"
-        # TCMalloc cannot use per-CPU caches if glibc has already registered rseq
-        # (glibc 2.35+, RHEL 9's 2.34), and silently falls back to per-thread caches.
-        # On kernels where TCMalloc's own registration crashes, keep glibc's instead.
-        if sys.platform.startswith('linux'):
-            tunables = os.environ.get("GLIBC_TUNABLES", "")
-            if "glibc.pthread.rseq=" not in tunables:
-                rseq = "glibc.pthread.rseq={}".format(
-                    1 if kernel_breaks_tcmalloc_rseq() else 0)
-                os.environ["GLIBC_TUNABLES"] = ":".join(t for t in (tunables, rseq) if t)
 
     # Returns true if the system has been configured for clock bound.
     # Runs `configure_clockbound.sh --validate` and returns true if it returns 0.
