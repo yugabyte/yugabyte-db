@@ -13,6 +13,20 @@
  */
 package org.yb.minicluster;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +94,34 @@ public class ExternalDaemonLogErrorListener implements LogErrorListener {
   /** Forgets a matched line that the test expected, so that it does not fail the test. */
   public void clearErrorLogLine() {
     errorLogLine = null;
+  }
+
+  /**
+   * Matches the error patterns against every file under {@code dir}, following symlinks, for
+   * daemons whose output goes to log files instead of a stream that a listener sees.  Throws an
+   * AssertionError for the first file with a matching line.
+   */
+  public static void checkLogFiles(Path dir, String processDescription) throws IOException {
+    List<Path> files;
+    try (Stream<Path> paths = Files.walk(dir, FileVisitOption.FOLLOW_LINKS)) {
+      files = paths.filter(Files::isRegularFile).sorted().collect(Collectors.toList());
+    }
+    Set<Path> seen = new HashSet<>();
+    for (Path file : files) {
+      // glog's yb-tserver.INFO and the like are symlinks to files also in the walk.
+      if (!seen.add(file.toRealPath())) {
+        continue;
+      }
+      ExternalDaemonLogErrorListener listener = new ExternalDaemonLogErrorListener(
+          processDescription + " " + dir.relativize(file));
+      try (BufferedReader reader = new BufferedReader(
+               new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8))) {
+        reader.lines().forEach(listener::handleLine);
+      } catch (UncheckedIOException e) {
+        throw e.getCause();
+      }
+      listener.reportErrorsAtEnd();
+    }
   }
 
   public void waitForServerStartingLogLine(long deadlineMs) throws InterruptedException {

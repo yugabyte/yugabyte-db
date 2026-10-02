@@ -15,13 +15,21 @@ package org.yb.minicluster;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.yb.BaseYBTest;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
 public class TestExternalDaemonLogErrorListener extends BaseYBTest {
+  @Rule
+  public TemporaryFolder tmp = new TemporaryFolder();
+
   private static final String SERVER_STARTED =
       "I0929 17:34:23.000779 rpc_server.cc:179] RPC server started. Bound to: 127.0.0.1:9100";
 
@@ -78,6 +86,39 @@ public class TestExternalDaemonLogErrorListener extends BaseYBTest {
       listener.handleLine(report);
       assertReportsError(listener, report);
     }
+  }
+
+  // Lays out a log directory as yugabyted does: process stdout/stderr files at the top, and each
+  // process's own log directory linked in.
+  private Path makeLogDir(String postgresLogLine) throws Exception {
+    Path logs = tmp.newFolder("logs").toPath();
+    Path tserverLogs = tmp.newFolder("data", "yb-data", "tserver", "logs").toPath();
+    Files.write(logs.resolve("tserver.out"), "Starting tserver\n".getBytes());
+    Files.write(logs.resolve("tserver.err"), new byte[0]);
+    Files.createSymbolicLink(logs.resolve("tserver"), tserverLogs);
+    Files.write(tserverLogs.resolve("postgresql-2026-10-02_000000.log"),
+                ("LOG:  database system is ready to accept connections\n" + postgresLogLine + "\n")
+                    .getBytes());
+    return logs;
+  }
+
+  @Test
+  public void testLogFilesWithReport() throws Exception {
+    Path logs = makeLogDir(ASAN_REPORT);
+    try {
+      ExternalDaemonLogErrorListener.checkLogFiles(logs, "node1");
+    } catch (AssertionError e) {
+      assertTrue(e.getMessage(), e.getMessage().contains(ASAN_REPORT));
+      assertTrue(e.getMessage(), e.getMessage().contains("node1 tserver/postgresql-"));
+      return;
+    }
+    fail("Expected a report in a file under a linked directory to be found");
+  }
+
+  @Test
+  public void testLogFilesWithoutReport() throws Exception {
+    Path logs = makeLogDir("LOG:  received fast shutdown request");
+    ExternalDaemonLogErrorListener.checkLogFiles(logs, "node1");
   }
 
   @Test
