@@ -430,6 +430,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         other->metadata_.start_time = other->read_point_.Now();
       }
       other->metadata_.pg_txn_start_us = metadata_.pg_txn_start_us;
+      other->SetOriginationInfo(origination_info_);
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
     DoAbort(TransactionRpcDeadline(), transaction);
@@ -1471,6 +1472,23 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     origin_id_ = origin_id;
   }
 
+  void SetOriginationInfo(const OriginationInfo& origination_info) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    if (!origination_info_.IsSet()) {
+      origination_info_ = origination_info;
+      return;
+    }
+    LOG_WITH_PREFIX(DFATAL) << "Origination info already set to " << origination_info_.ToString()
+                            << ", new value " << origination_info.ToString();
+    origination_info_.origination_ht =
+        std::min(origination_info_.origination_ht, origination_info.origination_ht);
+  }
+
+  OriginationInfo GetOriginationInfo() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return origination_info_;
+  }
+
   void RemoteAbortCallback(std::function<void(void)> callback) {
     std::lock_guard lock(mutex_);
     remote_abort_callback_ = std::move(callback);
@@ -1645,6 +1663,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     state.mutable_tablets()->Reserve(narrow_cast<int>(tablets_.size()));
     if (origin_id_) {
       state.set_xrepl_origin_id(origin_id_);
+    }
+    if (origination_info_.IsSet()) {
+      origination_info_.ToPB(state.mutable_origination_info());
     }
     for (const auto& tablet : tablets_) {
       // If tablet does not have metadata it should not participate in commit.
@@ -2852,6 +2873,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
 
+  OriginationInfo origination_info_ GUARDED_BY(mutex_);
+
   std::function<void(void)> remote_abort_callback_ GUARDED_BY(mutex_);
 };
 
@@ -3055,6 +3078,14 @@ bool YBTransaction::HasSubTransaction(SubTransactionId id) {
 
 Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
   return impl_->SetPgTxnStart(pg_txn_start_us, using_table_locks);
+}
+
+void YBTransaction::SetOriginationInfo(const OriginationInfo& origination_info) {
+  impl_->SetOriginationInfo(origination_info);
+}
+
+OriginationInfo YBTransaction::GetOriginationInfo() const {
+  return impl_->GetOriginationInfo();
 }
 
 void YBTransaction::IncreaseMutationCounts(

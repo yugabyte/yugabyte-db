@@ -760,7 +760,7 @@ YbcStatus YBCSRFGetNext(YbcPgFunction handle, uint64_t *values, bool *is_nulls, 
 YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 
 // Transaction control -----------------------------------------------------------------------------
-YbcStatus YBCPgBeginTransaction(int64_t start_time);
+YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
 YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);

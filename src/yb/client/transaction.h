@@ -23,6 +23,7 @@
 #include "yb/ash/ash_fwd.h"
 
 #include "yb/common/consistent_read_point.h"
+#include "yb/common/origination_info.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -201,6 +202,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   SubTransactionId GetActiveSubTransactionId() const;
 
   Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks);
+
+  // Stamp carried by the transaction's commit.  Set once, when the transaction is created.
+  OriginationInfo GetOriginationInfo() const;
+  void SetOriginationInfo(const OriginationInfo& origination_info);
 
   Status RollbackToSubTransaction(
       SubTransactionId id, CoarseTimePoint deadline,

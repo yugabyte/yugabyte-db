@@ -575,7 +575,7 @@ Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
   bool* isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
 
   // Execute select statement.
-  YBCPgBeginTransaction(0);
+  YBCPgBeginTransaction(/*start_time=*/0, /*origination_time=*/0);
 
   auto status = Status(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */), AddRef::kFalse);
 
