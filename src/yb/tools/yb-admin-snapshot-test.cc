@@ -555,6 +555,31 @@ TEST_F(AdminCliTest, TestRestoreSnapshotInterval) {
   ASSERT_NOK(select2);
 }
 
+TEST_F(AdminCliTest, TestRestoreSnapshotFutureTimeFails) {
+  CreateTable(Transactional::kFalse);
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  ASSERT_OK(WriteRow(CreateSession(), 1, 1));
+
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+  const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot());
+  ASSERT_RESULT(WaitForAllSnapshots());
+
+  // Get a timestamp strictly after the snapshot's creation time.
+  std::this_thread::sleep_for(2s);
+  auto future_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+
+  // Restoring to a time after the snapshot was created should fail with the new validation error.
+  std::string error_msg;
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(
+      &error_msg, "restore_snapshot", snapshot_id,
+      std::to_string(future_ht.GetPhysicalValueMicros())));
+  ASSERT_STR_CONTAINS(
+      error_msg, Format("Snapshot $0 contains data only up to", snapshot_id));
+  ASSERT_STR_CONTAINS(error_msg, "cannot restore it to the later time");
+}
+
 void AdminCliTest::CheckImportedTableWithIndex(
     const string& keyspace, const string& table_name, const string& index_name, bool same_ids) {
   const YBTableName yb_table_name(YQL_DATABASE_CQL, keyspace, table_name);
