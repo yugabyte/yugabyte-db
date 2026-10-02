@@ -20,7 +20,6 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
-#include <pthread.h>
 
 /*
  * To provide as much functionality as possible on a variety of platforms,
@@ -761,9 +760,6 @@ typedef struct pg_ctype_cache
 
 static YB_THREAD_LOCAL pg_ctype_cache *pg_ctype_cache_list = NULL;
 
-/* YB declarations */
-static void yb_track_ctype_cache_for_thread_exit(void);
-
 /*
  * Add a chr or range to pcc->cv; return false if run out of memory
  */
@@ -952,7 +948,6 @@ pg_ctype_get_cache(pg_wc_probefunc probefunc, int cclasscode)
 	 */
 	pcc->next = pg_ctype_cache_list;
 	pg_ctype_cache_list = pcc;
-	yb_track_ctype_cache_for_thread_exit();	/* YB */
 
 	return &pcc->cv;
 
@@ -967,44 +962,4 @@ out_of_memory:
 	free(pcc);
 
 	return NULL;
-}
-
-/*
- * pg_ctype_cache_list is thread-local, so in multi-threaded mode each thread
- * that evaluates a pushed-down regex builds its own list.  Free it when the
- * thread exits.
- */
-static pthread_key_t yb_ctype_cache_key;
-static pthread_once_t yb_ctype_cache_key_once = PTHREAD_ONCE_INIT;
-
-static void
-yb_free_ctype_cache(void *head)
-{
-	pg_ctype_cache *pcc = head;
-
-	while (pcc != NULL)
-	{
-		pg_ctype_cache *next = pcc->next;
-
-		free(pcc->cv.chrs);
-		free(pcc->cv.ranges);
-		free(pcc);
-		pcc = next;
-	}
-}
-
-static void
-yb_create_ctype_cache_key(void)
-{
-	if (pthread_key_create(&yb_ctype_cache_key, yb_free_ctype_cache) != 0)
-		elog(FATAL, "could not create the regex ctype cache thread key");
-}
-
-static void
-yb_track_ctype_cache_for_thread_exit(void)
-{
-	if (!IsMultiThreadedMode())
-		return;
-	pthread_once(&yb_ctype_cache_key_once, yb_create_ctype_cache_key);
-	pthread_setspecific(yb_ctype_cache_key, pg_ctype_cache_list);
 }

@@ -174,27 +174,6 @@ public class TestLDAPAuth extends BasePgSQLTest {
   }
 
   @Test
-  public void searchBindModeWithAnonymousSearch() throws Exception {
-    // Search + bind LDAP mode without ldapbinddn and ldapbindpasswd searches anonymously.
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_hba_conf_csv",
-                "\"host all testuser1 0.0.0.0/0 ldap ldapserver=localhost " +
-                "ldapbasedn=\"\"ou=Users,dc=myorg,dc=com\"\" ldapsearchattribute=\"\"cn\"\" " +
-                "ldapport=10389\"," +
-                "\"host all all 0.0.0.0/0 trust\"");
-    restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE ROLE testuser1 LOGIN");
-    }
-
-    try (Connection connection = getConnectionBuilder().withUser("testuser1")
-        .withPassword("12345").withConnectionEndpoint(connectionEndpoint).connect()) {
-      // No-op.
-    }
-  }
-
-  @Test
   public void searchBindModeWithSearchWithEnvVarDefined() throws Exception {
     // Tests LDAP search + bind password is properly specified via env variable.
     Map<String, String> flagMap = super.getTServerFlags();

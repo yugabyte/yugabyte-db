@@ -619,10 +619,8 @@ void PgApiImpl::TupleIdBuilder::Prepare() {
 Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     PgSession* session, const YbcPgYBTupleIdDescriptor& descr) {
   Prepare();
-  // Converting a datum below calls into PG, whose ERROR longjmps past this frame's destructors, so
-  // hold no reference to the table here.  The session's table cache keeps it alive.
-  const auto* target_desc = VERIFY_RESULT(session->LoadTable(
-      PgObjectId(descr.database_oid, descr.table_relfilenode_oid))).get();
+  auto target_desc = VERIFY_RESULT(session->LoadTable(
+      PgObjectId(descr.database_oid, descr.table_relfilenode_oid)));
   const auto num_keys = target_desc->num_key_columns();
   SCHECK_EQ(
       descr.nattrs, num_keys,
