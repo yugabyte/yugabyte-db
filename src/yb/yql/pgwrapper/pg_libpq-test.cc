@@ -4894,6 +4894,60 @@ TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListOverridesOldFlags,
   ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kAttnameQuery))[kAttnameIndex], 0);
 }
 
+struct CatalogPreloadCacheSplitParam {
+  std::string value;
+  std::string query;
+  std::string list_index;
+  bool fills_list;
+};
+
+// Each catalog cache of pg_proc and pg_constraint can be filled on its own. The by-name function
+// lists and the foreign key lists are built only when the cache that holds them is filled.
+class PgCatalogPreloadCacheSplitTest
+    : public PgCatalogPreloadCacheListTestBase,
+      public ::testing::WithParamInterface<CatalogPreloadCacheSplitParam> {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_yb_test_catalog_preload_cache_list=" + GetParam().value};
+  }
+};
+
+// Function lookup by name.
+constexpr auto kFunctionNameQuery = "SELECT lower('A')";
+// Planning a join of two tables reads the foreign keys of each.
+constexpr auto kForeignKeyQuery = "SELECT * FROM fk JOIN t ON fk.k = t.k";
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCacheSplitTest, ::testing::Values(
+    CatalogPreloadCacheSplitParam{
+        "PROCOID", kFunctionNameQuery, "pg_proc_proname_args_nsp_index", false},
+    CatalogPreloadCacheSplitParam{
+        "PROCNAMEARGSNSP", kFunctionNameQuery, "pg_proc_proname_args_nsp_index", true},
+    CatalogPreloadCacheSplitParam{
+        "CONSTROID", kForeignKeyQuery, "pg_constraint_conrelid_contypid_conname_index", false},
+    CatalogPreloadCacheSplitParam{
+        "YBCONSTRAINTRELIDTYPIDNAME", kForeignKeyQuery,
+        "pg_constraint_conrelid_contypid_conname_index", true}));
+
+TEST_P(PgCatalogPreloadCacheSplitTest, ListMisses) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, a INT)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE fk (k INT REFERENCES t (k))"));
+  }
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  auto misses = ASSERT_RESULT(MissesFor(conn, GetParam().query));
+  ASSERT_EQ(misses[GetParam().list_index] == 0, GetParam().fills_list);
+
+  // A full catalog cache refresh fills the same caches again.
+  ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
+  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  misses = ASSERT_RESULT(MissesFor(conn, GetParam().query));
+  ASSERT_EQ(misses[GetParam().list_index] == 0, GetParam().fills_list);
+}
+
 // Postgres rejects an invalid value on reload and keeps the previous one.
 TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListInvalidValues, PgCatalogPreloadCacheListTestBase) {
   constexpr auto kValidValue = "pg_attribute";
@@ -4904,7 +4958,6 @@ TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListInvalidValues, PgCatalogPreloadCac
            "pg_class,pg_nosuch",   // unknown name after a valid one
            "-ATTNAME",             // no exclusions
            "default",              // no keywords
-           "PROCOID",              // filled together with PROCNAMEARGSNSP
            "pg_trigger",           // has no catalog cache
            "LANGOID"}) {           // on a catalog that is not preloadable
     ASSERT_OK(cluster_->SetFlagOnTServers(
