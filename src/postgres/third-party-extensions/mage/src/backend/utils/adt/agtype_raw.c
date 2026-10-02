@@ -214,15 +214,8 @@ void write_container(agtype_build_state *bstate, agtype *agtype)
     /* padding */
     length += BUFFER_WRITE_PAD();
 
-    /*
-     * Copy the inner agtype_container only, NOT the outer varlena header.
-     * VARSIZE(agtype) reports the total varlena size (including the 4-byte
-     * vl_len_ header), but we are starting our copy at &agtype->root, which
-     * is already past that header. Subtracting VARHDRSZ avoids reading
-     * VARHDRSZ bytes past the source allocation (caught by ASan as
-     * heap-buffer-overflow in __interceptor_memcpy from write_pointer).
-     */
-    length += write_ptr((char *) &agtype->root, VARSIZE(agtype) - VARHDRSZ);
+    /* varlen data */
+    length += write_ptr((char *) &agtype->root, VARSIZE(agtype));
 
     /* agtentry */
     write_agt(AGTENTRY_IS_CONTAINER | length);

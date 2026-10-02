@@ -16,10 +16,6 @@ CREATE FUNCTION yb_test_leak_malloc()
 	RETURNS pg_catalog.void
 	AS 'MODULE_PATHNAME' LANGUAGE C;
 
-CREATE FUNCTION yb_test_json_parse_exact(pg_catalog.text)
-	RETURNS pg_catalog.bool
-	AS 'MODULE_PATHNAME' LANGUAGE C STRICT;
-
 CREATE FUNCTION yb_test_use_after_pfree()
 	RETURNS pg_catalog.int4
 	AS 'MODULE_PATHNAME' LANGUAGE C;

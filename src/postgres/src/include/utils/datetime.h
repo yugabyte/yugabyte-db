@@ -185,11 +185,7 @@ struct tzEntry;
  * Bit mask definitions for time parsing.
  */
 
-/*
- * YB: Shift an unsigned value, since callers evaluate DTK_M(UNKNOWN_FIELD),
- * and shifting a signed 1 into the sign bit is undefined behavior.
- */
-#define DTK_M(t)		((int) (0x01U << (t)))
+#define DTK_M(t)		(0x01 << (t))
 
 /* Convenience: a second, plus any fractional component */
 #define DTK_ALL_SECS_M	(DTK_M(SECOND) | DTK_M(MILLISECOND) | DTK_M(MICROSECOND))
