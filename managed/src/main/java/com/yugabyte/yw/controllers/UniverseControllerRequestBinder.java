@@ -51,6 +51,31 @@ import play.mvc.Http;
 @Slf4j
 public class UniverseControllerRequestBinder {
 
+  /**
+   * On a FIPS YBA every universe is created with FIPS enabled. A request that omits fipsEnabled
+   * gets it enforced; one that explicitly turns it off is rejected rather than silently overridden.
+   */
+  static void rejectFipsDisabledOnFipsYba(Http.Request request) {
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    rejectFipsDisabledOnFipsYba(
+        request.body().asJson(),
+        runtimeConfGetter.getStaticConf().getBoolean(CommonUtils.FIPS_ENABLED));
+  }
+
+  static void rejectFipsDisabledOnFipsYba(JsonNode body, boolean ybaFipsEnabled) {
+    JsonNode fipsEnabled = body == null ? null : body.get("fipsEnabled");
+    if (ybaFipsEnabled
+        && fipsEnabled != null
+        && !fipsEnabled.isNull()
+        && !fipsEnabled.asBoolean()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "YugabyteDB Anywhere is running in FIPS mode, so universes must be created with FIPS"
+              + " enabled. Remove fipsEnabled from the request or set it to true.");
+    }
+  }
+
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
       Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
