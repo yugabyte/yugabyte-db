@@ -289,14 +289,6 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
 #endif
 }
 
-bool TCMallocPerCpuCachesActive() {
-#if YB_GOOGLE_TCMALLOC
-  return ::tcmalloc::MallocExtension::PerCpuCachesActive();
-#else
-  return false;
-#endif
-}
-
 bool IsKernelUnsafeForTCMallocPerCpuCaches(const std::string& kernel_release) {
   int major = 0, minor = 0, patch = 0;
   if (sscanf(kernel_release.c_str(), "%d.%d.%d", &major, &minor, &patch) < 2) {
@@ -308,7 +300,7 @@ bool IsKernelUnsafeForTCMallocPerCpuCaches(const std::string& kernel_release) {
 
 Status CheckTCMallocPerCpuCaches() {
 #if YB_GOOGLE_TCMALLOC && defined(__linux__)
-  if (TCMallocPerCpuCachesActive()) {
+  if (::tcmalloc::MallocExtension::PerCpuCachesActive()) {
     struct utsname uts;
     if (uname(&uts) != 0) {
       LOG(WARNING) << "Failed to get the kernel release: " << ErrnoToString(errno);

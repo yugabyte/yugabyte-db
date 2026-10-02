@@ -86,11 +86,6 @@ METRIC_DEFINE_gauge_uint64(server, tcmalloc_current_total_thread_cache_bytes,
     "A measure of some of the memory TCMalloc is using (for small objects)."
     TCMALLOC_DISABLED_MSG);
 
-METRIC_DEFINE_gauge_uint64(server, tcmalloc_per_cpu_caches_active,
-    "TCMalloc Per-CPU Caches Active", yb::MetricUnit::kUnits,
-    "1 if TCMalloc per-CPU caches are active, 0 if TCMalloc uses per-thread caches instead."
-    TCMALLOC_DISABLED_MSG);
-
 #undef TCMALLOC_DISABLED_MSG
 
 namespace yb {
@@ -102,10 +97,6 @@ static uint64_t GetTCMallocPropValue(const char* prop) {
   value = ::yb::GetTCMallocProperty(prop);
 #endif
   return value;
-}
-
-static uint64_t GetTCMallocPerCpuCachesActive() {
-  return TCMallocPerCpuCachesActive() ? 1 : 0;
 }
 
 #define REGISTER_TCMALLOC_METRIC(name1, name2) \
@@ -122,8 +113,6 @@ void RegisterMetrics(const scoped_refptr<MetricEntity>& entity) {
   REGISTER_TCMALLOC_METRIC(tcmalloc, pageheap_unmapped_bytes);
   REGISTER_TCMALLOC_METRIC(tcmalloc, max_total_thread_cache_bytes);
   REGISTER_TCMALLOC_METRIC(tcmalloc, current_total_thread_cache_bytes);
-  entity->NeverRetire(METRIC_tcmalloc_per_cpu_caches_active.InstantiateFunctionGauge(
-      entity, Bind(GetTCMallocPerCpuCachesActive)));
 }
 
 #undef REGISTER_TCMALLOC_METRIC

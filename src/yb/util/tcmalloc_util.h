@@ -60,9 +60,6 @@ int64_t GetTCMallocSamplingPeriod();
 
 void SetTCMallocSamplingPeriod(int64_t sample_period_bytes);
 
-// Returns false unless Google TCMalloc is used and its per-CPU caches are active.
-bool TCMallocPerCpuCachesActive();
-
 // Whether the given kernel release (as reported by uname) is in the Linux 6.19.0 through 7.0.13
 // range. These kernels do not rewrite rseq cpu_id_start on every return to user space, which
 // TCMalloc per-CPU caches rely on, so they can crash or corrupt memory there.
