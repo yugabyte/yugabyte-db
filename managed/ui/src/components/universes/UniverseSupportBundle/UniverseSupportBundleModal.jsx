@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { connect, useDispatch, useSelector } from 'react-redux';
 import { useQuery, useQueryClient } from 'react-query';
+import { usePrevious } from 'react-use';
 
 import { FirstStep } from './FirstStep/FirstStep';
 import {
@@ -71,6 +72,15 @@ export const UniverseSupportBundleModal = (props) => {
       }
     }
   );
+  // Registering with PA is a universe task, so a bundle opened while it runs checks too early;
+  // check again once the task completes.
+  const isUpdateInProgress = !!universeDetails.updateInProgress;
+  const wasUpdateInProgress = usePrevious(isUpdateInProgress);
+  useEffect(() => {
+    if (wasUpdateInProgress && !isUpdateInProgress) {
+      getUniversePaRegistrationStatus.refetch();
+    }
+  }, [isUpdateInProgress]);
 
   const resetSteps = () => {
     if (supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
