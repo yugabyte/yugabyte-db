@@ -25,7 +25,7 @@
 #pragma once
 
 #include "access/amapi.h"
-#include "access/yb_scan.h"
+#include "access/yb_scan_core.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "src/vector.h"
@@ -35,7 +35,7 @@
 typedef struct YbVectorScanOpaqueData
 {
 	/* The internal YB scan descriptor for the underlying Select statement. */
-	YbScanDesc yb_scan_desc;
+	YbOpaque yb_scan_desc;
 
 	/* The query vector on which we will do ANN. */
 	Datum query_vector;
