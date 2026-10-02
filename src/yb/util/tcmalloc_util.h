@@ -44,6 +44,10 @@ int64_t GetTCMallocPageHeapUnmappedBytes();
 // Attempts to return the given number of bytes to the operating system.
 void TCMallocReleaseMemoryToSystem(int64_t bytes);
 
+// Like TCMallocReleaseMemoryToSystem, but Google TCMalloc also releases the free pages that it
+// would otherwise keep mapped to cover the peak demand of the last few minutes.
+void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes);
+
 void SetTCMallocTotalThreadCacheSize(int64_t max_size);
 
 // Sets tcmalloc properties based on the flags, as well as default values of some tcmalloc-related

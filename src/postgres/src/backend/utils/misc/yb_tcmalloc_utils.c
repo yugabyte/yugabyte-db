@@ -338,8 +338,10 @@ YbLogHeapSnapshotProcExit(int status, Datum arg)
  * backend that freed little is left alone: releasing costs syscalls and the
  * first queries would fault the pages back in.
  *
- * Request more than is free: TCMalloc subtracts from each request what earlier
- * releases returned beyond their request.
+ * Startup is the backend's recent demand peak, so a plain release would keep
+ * free pages mapped to cover that peak.  Request more than is free: TCMalloc
+ * subtracts from each request what earlier releases returned beyond their
+ * request.
  */
 void
 YbReleaseFreeMemoryAfterStartup(void)
@@ -352,5 +354,5 @@ YbReleaseFreeMemoryAfterStartup(void)
 	HandleYBStatus(YBCGetHeapConsumption(&stats));
 	if (stats.pageheap_free_bytes >=
 		(int64) yb_startup_free_memory_release_threshold * 1024)
-		YBCTCMallocReleaseMemoryToSystem(PG_INT64_MAX);
+		YBCTCMallocReleaseFreeMemory(PG_INT64_MAX);
 }
