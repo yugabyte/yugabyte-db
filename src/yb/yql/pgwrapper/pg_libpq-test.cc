@@ -4734,7 +4734,8 @@ class PgCatalogPreloadCacheListTestBase : public PgLibPqTest {
     RETURN_NOT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, a INT, b INT)"));
     RETURN_NOT_OK(conn.Execute("CREATE INDEX ON t (a, b)"));
     RETURN_NOT_OK(conn.Execute("CREATE VIEW v AS SELECT * FROM t"));
-    RETURN_NOT_OK(conn.Execute("CREATE TABLE p (k INT, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k)"));
+    RETURN_NOT_OK(
+        conn.Execute("CREATE TABLE p (k INT, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k)"));
     return conn.Execute("CREATE TABLE p1 PARTITION OF p FOR VALUES FROM (0) TO (10)");
   }
 
