@@ -32,7 +32,7 @@ The number of nodes in a cluster running YB-Masters must equal the replication f
 Run the yb-master server on each of the three nodes as follows.
 
 ```sh
-$ GLIBC_TUNABLES=glibc.pthread.rseq=0 ./bin/yb-master \
+$ ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130:7100 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
@@ -48,7 +48,7 @@ You can specify multiple directories using the [`--fs_data_dirs`](../../../refer
 
 {{<tags/feature/tp idea="1807">}} Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
 
-`GLIBC_TUNABLES=glibc.pthread.rseq=0` lets TCMalloc use per-CPU caches. Don't set it on Linux kernels 6.19.0 through 7.0.13; see [Enable TCMalloc per-CPU caches](../system-config/#enable-tcmalloc-per-cpu-caches).
+If you [enabled TCMalloc per-CPU caches](../system-config/#enable-tcmalloc-per-cpu-caches) during system configuration, put `GLIBC_TUNABLES=glibc.pthread.rseq=0` before the command.
 
 For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
@@ -66,7 +66,7 @@ Alternatively, you can also create a `master.conf` file with the following flags
 ```
 
 ```sh
-$ GLIBC_TUNABLES=glibc.pthread.rseq=0 ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
+$ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 ```
 
 ## Verify health
