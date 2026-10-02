@@ -63,7 +63,7 @@ Commit the resulting fixes -- amend Step 1's commit or add a new one -- before S
 
 ### Step 2: Base branch
 
-The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` always rebases and pushes against `master`. Backports are not opened with this skill — use `/backport-commit` instead.
+The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` always pushes against `master`. Backports are not opened with this skill — use `/backport-commit` instead.
 
 ### Step 3: Gather PR metadata
 
@@ -128,7 +128,7 @@ git diff <upstream>/master...HEAD -- '*.md'   # doc prose; also skim added comme
 Land any resulting edits as a new commit before Step 5 — the script refuses to run against
 a dirty tree.
 
-### Step 5: Run `create-pr.sh` to rebase, lint, push, and open the PR
+### Step 5: Run `create-pr.sh` to lint, push, and open the PR
 
 > **Confidentiality — final scrub before publishing.** The repo and every PR are public. Before invoking the script, re-read the description, test plan, upgrade-rollback notes, the commit messages on the branch, **the branch name itself** (it becomes the public PR head ref), **and the test code being added**, and confirm none of the following appear: customer names or identifiers (universe UUIDs, account IDs, support cases, environment names, region/zone names); PII (real names / emails / phone numbers / postal addresses / IP addresses — use RFC 5737/3849 documentation ranges in tests); unanonymized customer schemas (table / column / query text / query plans / sample rows from a real customer — reconstruct a synthetic reproducer); credentials, tokens, certificates, private keys, or license keys; internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths; unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames). See the top of this skill and `src/AGENTS.md` § Confidentiality for the full rule. If unsure whether a string is sensitive, don't write it down — ask the user.
 
@@ -147,7 +147,7 @@ Say **why**, always — a reviewer who has to reverse-engineer the motivation is
   -r <reviewers>
 ```
 
-The script rebases on `<upstream>/master`, runs `lint.sh --rev <upstream>/master` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), runs `gh pr create`, and adds reviewers via the REST `requested_reviewers` endpoint (which correctly routes user logins to `reviewers[]` and team slugs to `team_reviewers[]`). It auto-detects the upstream and fork remotes.
+The script runs `lint.sh --rev <upstream>/master` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), runs `gh pr create`, and adds reviewers via the REST `requested_reviewers` endpoint (which correctly routes user logins to `reviewers[]` and team slugs to `team_reviewers[]`). It auto-detects the upstream and fork remotes.
 
 Inputs:
 - **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `,` so the title renders as `[#31151,#31152] <Component>: <Title>`. The list must be all GH or all JIRA — see Step 4.
@@ -160,20 +160,18 @@ Inputs:
 
 Exit codes:
 - `0` — PR created. Last stdout line is the PR URL.
-- `2` — rebase conflict; resolve, `git rebase --continue`, then re-run.
 - `3` — lint failed; fix as a NEW commit (do not amend a pushed commit, per `src/AGENTS.md`), then re-run.
 - `1` — pre-flight failure (dirty tree, missing remote, etc.).
 
 Confirm the title and body with the user before invoking the script.
 
-### Step 5b (optional): Auto-recover from trivial rebase conflicts and lint errors
+### Step 5b (optional): Auto-recover from lint errors
 
-If Step 5 exits `2` (rebase conflict) or `3` (lint), inspect the failure and try once to fix automatically before going back to the user:
+If Step 5 exits `3` (lint), inspect the failure and try once to fix automatically before going back to the user:
 
-- **Rebase conflicts** — only auto-resolve **trivial** conflicts (whitespace-only differences, adjacent-but-non-overlapping hunks, conflicts where both sides are byte-identical after whitespace normalization). For each such file, accept the resolution that preserves the branch's intent, `git add` it, and `git rebase --continue`. Anything involving renamed identifiers, signature changes, or refactors must be escalated to the user — do not guess.
 - **Lint errors** — if the linter reports auto-fixable issues (e.g. trailing whitespace, missing newlines), apply the fix as a **new commit** (`Fix lint`), not an amend. If the errors require judgment (logic changes, unused-variable removal that might be load-bearing), escalate.
 
-After the auto-fix, re-run Step 5 once. If it fails again, stop and surface the conflict/lint output to the user.
+After the auto-fix, re-run Step 5 once. If it fails again, stop and surface the lint output to the user.
 
 ### Step 6: Report back to the user
 

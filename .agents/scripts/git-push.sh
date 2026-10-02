@@ -126,39 +126,24 @@ if [[ -n "$(git status --porcelain | grep -v '^??' || true)" ]]; then
   exit 1
 fi
 
-# Always integrate any commits already on the fork branch (e.g. pushed
-# from another machine or another agent), then rebase onto the latest
-# upstream/<base>. Force-with-lease at push time is the planned outcome
-# -- this script rewrites SHAs every run by design so each push lands on
-# top of fresh master. Reviewers' line comments may show as "outdated"
-# after a rebase that touches their lines; that's the accepted tradeoff
-# for keeping the branch current.
+# Never rewrite the branch: whether and how to pick up newer upstream/<base>
+# (rebase, merge, or not at all) is the user's call. Don't fetch the fork
+# branch either, so --force-with-lease below checks against the last state
+# the user saw and rejects the push if commits landed there since (e.g. from
+# another machine).
 remote_branch_exists=false
 if git rev-parse --verify --quiet "refs/remotes/${FORK_REMOTE}/${current_branch}" \
      >/dev/null 2>&1; then
   remote_branch_exists=true
-  echo ">>> fetching ${FORK_REMOTE}/${current_branch}"
-  git fetch "$FORK_REMOTE" "$current_branch"
-  echo ">>> rebasing onto ${FORK_REMOTE}/${current_branch}"
-  if ! git rebase "${FORK_REMOTE}/${current_branch}"; then
-    echo "" >&2
-    echo "error: rebase onto ${FORK_REMOTE}/${current_branch} failed." >&2
-    echo "       Resolve the conflicts, 'git add' the resolved files," >&2
-    echo "       run 'git rebase --continue', then re-run this script." >&2
-    exit 2
-  fi
 fi
 
 echo ">>> fetching ${UPSTREAM_REMOTE}/${base_branch}"
 git fetch "$UPSTREAM_REMOTE" "$base_branch"
 
-echo ">>> rebasing onto ${UPSTREAM_REMOTE}/${base_branch}"
-if ! git rebase "${UPSTREAM_REMOTE}/${base_branch}"; then
-  echo "" >&2
-  echo "error: rebase onto ${UPSTREAM_REMOTE}/${base_branch} failed." >&2
-  echo "       Resolve the conflicts, 'git add' the resolved files," >&2
-  echo "       run 'git rebase --continue', then re-run this script." >&2
-  exit 2
+behind=$(git rev-list --count "HEAD..${UPSTREAM_REMOTE}/${base_branch}")
+if (( behind > 0 )); then
+  echo ">>> note: ${current_branch} is ${behind} commit(s) behind" \
+       "${UPSTREAM_REMOTE}/${base_branch}, pushing it as is"
 fi
 
 # Ensure the linter is happy. Never push if lint isn't clean.
