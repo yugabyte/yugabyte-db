@@ -389,6 +389,9 @@ DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
 DEFINE_test_flag(bool, hang_on_namespace_transition, false,
     "Used in tests to simulate a lapse between issuing a namespace op and final processing.");
 
+DEFINE_test_flag(bool, skip_persistence_block_erase_on_drop, false,
+    "Skip erasing a YSQL database's persistence block map entry when its drop finishes.");
+
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
@@ -1436,6 +1439,8 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
   LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
   RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(
       state->epoch.leader_term, /* recreate = */ true));
+  RETURN_NOT_OK(xcluster_manager_->PrepareDefaultPersistenceBlockMap(
+      state->epoch.leader_term, /*recreate=*/true));
 
   LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
   RETURN_NOT_OK(ysql_manager_->SetInitDbDone(state->epoch));
@@ -1572,6 +1577,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
     RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ false));
+    RETURN_NOT_OK(xcluster_manager_->PrepareDefaultPersistenceBlockMap(term, /*recreate=*/false));
 
     permissions_manager_->BuildRecursiveRoles();
 
@@ -6258,6 +6264,7 @@ std::string CatalogManager::GenerateIdUnlocked(std::optional<const SysRowEntryTy
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::PERSISTENCE_BLOCK_MAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -10356,6 +10363,15 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     // A DELETED Namespace has finished but was tombstoned to avoid immediately reusing the same ID.
     // We consider a restart enough time, so we just need to remove it from the SysCatalog.
     if (metadata.state() == SysNamespaceEntryPB::DELETED) {
+      // Backstop for the erase when the drop finished, which may have been lost or failed.  Must
+      // precede deleting the tombstone, which keeps the database's OID from being reused.
+      if (auto erase_status = xcluster_manager_->ErasePersistenceBlock(epoch, database->id());
+          !erase_status.ok()) {
+        LOG(WARNING) << "Failed to erase the persistence block map entry of "
+                     << database->ToString() << "; keeping its tombstone to retry: "
+                     << erase_status;
+        return;
+      }
       Status s = sys_catalog_->Delete(leader_ready_term(), database);
       WARN_NOT_OK(s, "SysCatalog DeleteItem for Namespace");
       return;
@@ -10451,6 +10467,15 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
 
   TRACE("Committing in-memory state");
   l.Commit();
+
+  // No need to propagate: the dropped database has no more writes to block.  If this erase is
+  // lost or fails, the tombstone pass at the top of this function retries it on the next leader
+  // load.
+  if (!FLAGS_TEST_skip_persistence_block_erase_on_drop) {
+    WARN_NOT_OK(
+        xcluster_manager_->ErasePersistenceBlock(epoch, database->id()),
+        Format("Failed to erase the persistence block map entry of $0", database->ToString()));
+  }
 
   // The verification-failure path may already have released this name so a CREATE retry could
   // proceed. Tolerate that, and do not steal a name now owned by a different namespace.

@@ -1101,6 +1101,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::PERSISTENCE_BLOCK_MAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
