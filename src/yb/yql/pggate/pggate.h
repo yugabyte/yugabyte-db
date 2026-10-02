@@ -125,6 +125,7 @@ class PgApiImpl {
   void Shutdown();
 
   void SetupPgBackendCgroup(YbcPgOid dboid);
+  void SetConnectedDatabaseOid(YbcPgOid dboid);
 
   const YbcPgCallbacks* pg_callbacks() const { return &pg_callbacks_; }
 

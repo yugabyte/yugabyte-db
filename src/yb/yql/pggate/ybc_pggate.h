@@ -56,6 +56,9 @@ YbcStatus YBCInitPgGate(
 
 void YBCSetupPgBackendCgroup(YbcPgOid dboid);
 
+// Sent with every request so PG client service can tell which database the backend serves.
+void YBCPgSetConnectedDatabaseOid(YbcPgOid dboid);
+
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 

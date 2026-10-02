@@ -237,6 +237,8 @@ class LockablePgClientSession {
 
  public:
   auto id() const { return session_.id(); }
+  pid_t pid() const { return session_.pid(); }
+  PgOid TEST_database_oid() const { return session_.TEST_database_oid(); }
 
   template <class... Args>
   explicit LockablePgClientSession(
@@ -2955,6 +2957,15 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return session_registry_.Count();
   }
 
+  std::optional<PgOid> TEST_SessionDatabaseOid(pid_t pid) {
+    for (const auto& session_info : session_registry_.Snapshot()) {
+      if (session_info->session().pid() == pid) {
+        return session_info->session().TEST_database_oid();
+      }
+    }
+    return std::nullopt;
+  }
+
   std::unordered_map<PgOid, HybridTime> GetDatabasePins() {
     const uint64_t min_txn_age_micros =
         static_cast<uint64_t>(FLAGS_db_history_retention_pin_min_txn_age_sec) * 1000000;
@@ -3225,6 +3236,10 @@ std::unordered_map<PgOid, HybridTime> PgClientServiceImpl::GetDatabasePins() {
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
+
+std::optional<PgOid> PgClientServiceImpl::TEST_SessionDatabaseOid(pid_t pid) {
+  return impl_->TEST_SessionDatabaseOid(pid);
+}
 
 size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
   return impl_->TEST_ExchangeThreadPoolWorkersCreated();

@@ -962,6 +962,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       }
     }
     options.set_use_legacy_catalog_session(true);
+    // SetupPerformOptions sets this in the other branch.
+    options.set_connected_database_oid(pg_txn_manager_->connected_database_oid());
   } else {
     RETURN_NOT_OK(SetupPerformOptions(
         {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
@@ -1149,11 +1151,12 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
       SkipReadTimeOptions::kTrue);
 }
 
-void PgSession::SetupDeferReadPointOptionForSeparateDdlTxn(
+void PgSession::SetupPerformOptionsForSeparateDdlTxn(
     tserver::PgPerformOptionsPB* options) const {
   if (pg_txn_manager_->ShouldDeferReadPoint()) {
     options->mutable_read_time_options()->set_defer_read_point(true);
   }
+  options->set_connected_database_oid(pg_txn_manager_->connected_database_oid());
 }
 
 void PgSession::SetTransactionHasWrites() {

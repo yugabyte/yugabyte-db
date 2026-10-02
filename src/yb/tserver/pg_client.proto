@@ -900,6 +900,9 @@ message PgPerformOptionsPB {
   // until that statement.
   // Only applicable when use_historical_read_session is true.
   bytes historical_read_transaction_id = 36;
+
+  // OID of the database the backend is connected to; 0 until the backend knows it.
+  uint32 connected_database_oid = 37;
 }
 
 message PgRequestSequenceNumPB {

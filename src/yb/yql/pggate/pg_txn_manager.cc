@@ -932,6 +932,7 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_active_sub_transaction_id(active_sub_transaction_id_);
   options.set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
   options.set_pg_txn_start_us(pg_txn_start_us_);
+  options.set_connected_database_oid(connected_database_oid_);
   options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);

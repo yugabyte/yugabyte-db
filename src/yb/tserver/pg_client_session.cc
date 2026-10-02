@@ -1667,6 +1667,9 @@ class PgClientSession::Impl {
         read_point_history_(PrefixLogger(id_, pid_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
+  [[nodiscard]] pid_t pid() const { return pid_; }
+
+  PgOid TEST_database_oid() const { return database_oid_.load(std::memory_order_acquire); }
 
   void SetupSharedData(const PgClientSession::SharedDataDescriptor& descriptor) {
     if (object_lock_shared_state_) {
@@ -3444,6 +3447,17 @@ class PgClientSession::Impl {
 
     MaybePauseReadWithPagingStateForTesting(data->req);
 
+    const auto database_oid = EnsureSessionDatabase(options);
+    // Only the session's own exchange thread may be moved into the database's cgroup, never an RPC
+    // worker thread, which is shared by every session.  A Perform runs on the exchange thread
+    // exactly when it arrived through the shared memory exchange, which is the only path that
+    // calls DoPerform without an RpcContext; Performs arriving over TCP (shared memory exchange
+    // off, or not yet set up for this session) run on worker threads and must not move.
+    if (database_oid && !moved_to_database_cgroup_ && context == nullptr) {
+      moved_to_database_cgroup_ = true;
+      WARN_NOT_OK(MoveSessionToDatabaseCgroup(*database_oid), "Setting cgroup of PgClientSession");
+    }
+
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
           << "Executing read from response cache for session " << data->req.session_id();
@@ -3739,10 +3753,7 @@ class PgClientSession::Impl {
       const OptionsPB& options, CoarseTimePoint deadline, const ThreadSafeArenaPtr& arena,
       HybridTime in_txn_limit = {},
       TransactionFullLocality locality = TransactionFullLocality::RegionLocal()) {
-    if (!options.namespace_id().empty()) {
-      WARN_NOT_OK(EnsureClientSessionCgroup(options.namespace_id()),
-                  "Setting cgroup of PgClientSession");
-    }
+    EnsureSessionDatabase(options);
     auto kind = PgClientSessionKind::kPlain;
     if (options.use_historical_read_session()) {
       kind = PgClientSessionKind::kHistoricalRead;
@@ -4072,6 +4083,7 @@ class PgClientSession::Impl {
   Status SetupSessionForDdl(
       bool use_regular_transaction_block, const PgPerformOptionsPB& options,
       CoarseTimePoint deadline) {
+    EnsureSessionDatabase(options);
     if (!use_regular_transaction_block) {
       // Separate DDL transactions do not need to setup the session. They will create the
       // transaction in GetDdlTransactionMetadata().
@@ -4672,13 +4684,24 @@ class PgClientSession::Impl {
     return shared_this_.lock();
   }
 
-  Status EnsureClientSessionCgroup(NamespaceIdView namespace_id) {
-    if (database_oid_.load(std::memory_order_relaxed) != kInvalidOid) {
-      return Status::OK();
+  // Records the backend's database from the request if not yet recorded.  Returns the recorded
+  // database, or nullopt while it is unknown (template1 backends stay unrecorded).
+  template <class OptionsPB>
+  std::optional<PgOid> EnsureSessionDatabase(const OptionsPB& options) {
+    if (const auto recorded = database_oid_.load(std::memory_order_relaxed);
+        recorded != kInvalidOid) {
+      return recorded;
     }
-    const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    const auto database_oid = options.connected_database_oid();
+    if (database_oid == kInvalidOid || database_oid == kTemplate1Oid) {
+      return std::nullopt;
+    }
     // Release: lock-free GetDbHistoryRetentionPin acquires this before attributing a pin HT.
     database_oid_.store(database_oid, std::memory_order_release);
+    return database_oid;
+  }
+
+  Status MoveSessionToDatabaseCgroup(PgOid database_oid) {
 #ifdef __linux__
     if (context_.cgroup_manager && FLAGS_enable_qos) {
       auto& cgroup = VERIFY_RESULT_REF(context_.cgroup_manager->CgroupForDb(database_oid));
@@ -4726,6 +4749,10 @@ class PgClientSession::Impl {
 
   // Written once under the session lock; read lock-free by the heartbeat pin path.
   std::atomic<PgOid> database_oid_{kInvalidOid};
+  // Whether a Perform has moved this session's thread into the database's cgroup; see DoPerform.
+  // Only accessed under the session lock.
+  bool moved_to_database_cgroup_ = false;
+
   std::optional<SubTransactionId> subtxn_with_session_object_locks_;
 
   std::atomic<uint64_t> history_retention_pin_read_time_{0};
@@ -4753,6 +4780,14 @@ PgClientSession::~PgClientSession() = default;
 
 uint64_t PgClientSession::id() const {
   return impl_->id();
+}
+
+pid_t PgClientSession::pid() const {
+  return impl_->pid();
+}
+
+PgOid PgClientSession::TEST_database_oid() const {
+  return impl_->TEST_database_oid();
 }
 
 void PgClientSession::SetupSharedData(const SharedDataDescriptor& descriptor) {

@@ -1541,7 +1541,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	MyDatabaseId = dboid;
 
 	if (IsYugaByteEnabled())
+	{
 		YBCSetupPgBackendCgroup(MyDatabaseId);
+		YBCPgSetConnectedDatabaseOid(MyDatabaseId);
+	}
 
 	/*
 	 * Now we can mark our PGPROC entry with the database ID.

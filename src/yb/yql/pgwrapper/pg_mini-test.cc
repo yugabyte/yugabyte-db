@@ -269,6 +269,22 @@ class PgMiniPgClientServiceCleanupTest : public PgMiniTestSingleNode {
   }
 };
 
+// A freshly connected backend's session has recorded the backend's database, although the backend
+// has not yet touched any of the database's relations.
+TEST_F(PgMiniTest, SessionRecordsConnectedDatabase) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  const auto db_oid = ASSERT_RESULT(setup_conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+
+  // This is not the first connection to this database, which makes the test stronger: the first
+  // connection to a database does extra work building the relcache init file via reading catalogs,
+  // which later connections do not do; PG client service could infer the database from those reads
+  // alone, so only a later connection shows it is recorded without them.
+  auto conn = ASSERT_RESULT(Connect());
+  auto* client_service = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
+  ASSERT_EQ(client_service->TEST_SessionDatabaseOid(conn.BackendPID()), db_oid);
+}
+
 TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCleanupTest) {
   constexpr size_t kTotalConnections = 30;
   constexpr size_t kAshConnection = 1;

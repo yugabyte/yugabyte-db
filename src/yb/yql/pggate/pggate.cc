@@ -813,6 +813,10 @@ void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
 #endif
 }
 
+void PgApiImpl::SetConnectedDatabaseOid(YbcPgOid dboid) {
+  pg_txn_manager_->SetConnectedDatabaseOid(dboid);
+}
+
 void PgApiImpl::Interrupt() {
   interrupter_->Interrupt();
 }
