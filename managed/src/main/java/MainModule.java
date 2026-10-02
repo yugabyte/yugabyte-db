@@ -65,6 +65,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.certmgmt.HostPreservingSSLSocketFactory;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -117,6 +118,7 @@ import java.security.SecureRandom;
 import java.security.Security;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -222,6 +224,9 @@ public class MainModule extends AbstractModule {
     }
 
     TLSConfig.modifyTLSDisabledAlgorithms(config);
+    // After the BC providers and TLS properties are in place, so the default context is BCJSSE's.
+    HttpsURLConnection.setDefaultSSLSocketFactory(
+        HostPreservingSSLSocketFactory.wrap(HttpsURLConnection.getDefaultSSLSocketFactory()));
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CustomerConfKeys());
     install(new ProviderConfKeys());
@@ -355,8 +360,10 @@ public class MainModule extends AbstractModule {
           SecureRandom secureRandom = new SecureRandom();
           SSLContext sslContext = SSLContext.getInstance("TLS");
           sslContext.init(null, ybaJavaTrustManagers, secureRandom);
-          HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
-          HTTPRequest.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+          SSLSocketFactory socketFactory =
+              HostPreservingSSLSocketFactory.wrap(sslContext.getSocketFactory());
+          HttpsURLConnection.setDefaultSSLSocketFactory(socketFactory);
+          HTTPRequest.setDefaultSSLSocketFactory(socketFactory);
         } catch (Exception e) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());
