@@ -176,3 +176,39 @@ SELECT relname, attname, reltuples, stadistinct, stanullfrac
     ORDER BY starelid, attnum;
 
 DROP TABLE t_part;
+
+-- ANALYZE is allowed in a read-only transaction, including the catalog version
+-- increment it performs.
+\set db_oid 'CASE WHEN (SELECT count(*) FROM pg_yb_catalog_version) = 1 THEN 1 ELSE (SELECT oid FROM pg_database WHERE datname = current_database()) END'
+\set get_version 'SELECT current_version AS version_before FROM pg_yb_catalog_version WHERE db_oid = :db_oid'
+\set check_version 'SELECT current_version > :version_before AS version_incremented FROM pg_yb_catalog_version WHERE db_oid = :db_oid'
+CREATE TABLE t_read_only (a int);
+INSERT INTO t_read_only SELECT generate_series(1, 10);
+:get_version \gset
+BEGIN READ ONLY;
+ANALYZE t_read_only;
+COMMIT;
+:check_version;
+SELECT reltuples FROM pg_class WHERE relname = 't_read_only';
+
+:get_version \gset
+SET default_transaction_read_only = on;
+ANALYZE t_read_only;
+RESET default_transaction_read_only;
+:check_version;
+
+-- In a SERIALIZABLE READ ONLY transaction, DocDB uses snapshot isolation.
+:get_version \gset
+BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY;
+ANALYZE t_read_only;
+COMMIT;
+:check_version;
+
+-- Other writes are still rejected in a read-only transaction.
+BEGIN READ ONLY;
+ANALYZE t_read_only;
+INSERT INTO t_read_only VALUES (11);
+ROLLBACK;
+SELECT count(*) FROM t_read_only;
+
+DROP TABLE t_read_only;
