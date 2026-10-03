@@ -6619,6 +6619,8 @@ PostgresMain(const char *dbname, const char *username)
 		proc_exit(0);
 	}
 
+	YbReleaseFreeMemoryAfterStartup();
+
 	/*
 	 * Also set up handler to log session end; we have to wait till now to be
 	 * sure Log_disconnections has its final value.
