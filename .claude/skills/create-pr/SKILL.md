@@ -163,7 +163,7 @@ Inputs:
 Exit codes:
 - `0` — PR created. Last stdout line is the PR URL.
 - `3` — lint failed; fix as a NEW commit (do not amend a pushed commit, per `src/AGENTS.md`), then re-run.
-- `4` — the branch has an open PR and the push is not a fast-forward. Recover without rewriting, as the message says, then re-run. See [Pushing follow-up commits](#pushing-follow-up-commits). Never happens for a stack branch.
+- `4` — the PR is ready for review and the push is not a fast-forward. Recover without rewriting, as the message says, then re-run. See [Pushing follow-up commits](#pushing-follow-up-commits). Never happens for a stack branch.
 - `5` — stack branch only: `gh stack push` failed; its message says why.
 - `6` — stack branch only: the PR was opened as a draft but `gh stack link` failed. The message names the command to retry.
 - `1` — pre-flight failure (dirty tree, missing remote, etc.).
@@ -192,13 +192,13 @@ Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-
 
 This section is for ordinary PRs. A stack branch follows [Stacked PRs](#stacked-prs) instead.
 
-**Never rewrite an open PR's history** — no rebase, amend, reset, or force-push once the PR exists, draft or not. A rewrite renews the SHAs under reviewers' line comments, marking them "outdated", and destroys the diff-since-their-last-look. Add new commits instead.
+**Never rewrite a PR's history once it is ready for review** — no rebase, amend, reset, or force-push after the PR leaves draft. A rewrite renews the SHAs under reviewers' line comments, marking them "outdated", and destroys the diff-since-their-last-look. Add new commits instead. While the PR is a draft, nobody is reviewing it yet, so rewriting is fine.
 
-`git-push.sh` never rebases. With an open PR it pushes only a fast-forward; without one, it force-pushes a rewritten branch with `--force-with-lease`.
+`git-push.sh` never rebases. For a ready PR it pushes only a fast-forward; with no PR, or a draft one, it force-pushes a rewritten branch with `--force-with-lease`.
 
 **On exit `4`,** follow the message. It distinguishes *the remote is ahead of you* (`git merge --ff-only`) from *the branch was rewritten* (put the published commits back with `git reset --soft` or `--hard`, then redo the change as new commits). There is no override; if a rewrite truly seems necessary, stop and ask the user.
 
-**To pick up newer `master` on a live PR, merge — don't rebase:**
+**To pick up newer `master` on a ready PR, merge — don't rebase:**
 
 ```
 git merge upstream/master
@@ -222,7 +222,7 @@ A stack is for a feature that splits into several dependent changes. Reach for i
 
 - **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script. (A `feature-stack/<feature>/<change>` branch does go to upstream, through `git-push.sh` and `gh stack`. That is the sanctioned stacked-PR path; see [Stacked PRs](#stacked-prs).)
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
-- **Never rewrite an open PR's history** (see [Pushing follow-up commits](#pushing-follow-up-commits)); `git-push.sh` refuses such a push. Stack branches are the exception; see [Stacked PRs](#stacked-prs).
+- **Never rewrite a PR's history once it is ready for review** (see [Pushing follow-up commits](#pushing-follow-up-commits)); `git-push.sh` refuses such a push. Stack branches are the exception; see [Stacked PRs](#stacked-prs).
 - CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill). Note that a **draft PR runs only the cheap checks** — `bld-*.yml` all gate on `github.event.pull_request.draft == false` — so leaving a PR in draft until it's genuinely ready is a real cost saving, not just a notification setting.
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
 - **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:

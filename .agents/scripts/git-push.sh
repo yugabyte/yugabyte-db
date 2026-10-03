@@ -14,11 +14,11 @@
 #   assembled out of fork branches). Nothing else may target upstream.
 #
 #   Whether it may rewrite history.  This script never rebases; picking up a
-#   newer base is the user's call. Once a PR is open, rewriting its history
-#   (rebase, amend, reset) is not allowed at all: it renews the SHAs under
-#   reviewers' comments and loses their diff-since-last-look. So with an open
-#   PR the push must be a fast-forward and is never forced. Without one, a
-#   rewritten branch is force-pushed with a lease.
+#   newer base is the user's call. Once a PR is ready for review, rewriting
+#   its history (rebase, amend, reset) is not allowed at all: it renews the
+#   SHAs under reviewers' comments and loses their diff-since-last-look. So
+#   for a ready PR the push must be a fast-forward and is never forced. With
+#   no PR, or a draft one, a rewritten branch is force-pushed with a lease.
 #
 #   A stack branch is the exception here too. GitHub merges a stack only when
 #   its history is linear, and keeps it linear by cascading rebases, so every
@@ -47,7 +47,7 @@
 #   1  pre-flight failure (no remotes, fork == upstream, dirty tree, etc.)
 #   3  lint failed -- fix as a NEW commit (do not amend a pushed commit),
 #      then re-run
-#   4  the branch has an open PR and the push is not a fast-forward -- the
+#   4  the PR is ready for review and the push is not a fast-forward -- the
 #      message says how to recover without rewriting the PR's history
 #   5  stack branch: `gh stack push` failed -- read its message
 
@@ -63,8 +63,8 @@ usage: $(basename "$0") [-b <base>] [-r <fork-remote>]
 
 Lint the current branch and push it. Pushes to your fork, except for a
 feature-stack/<feature>/<change> branch, which goes to the upstream repo.
-Never rebases. With an open PR the push must be a fast-forward; without
-one, a rewritten branch is force-pushed with a lease. A stack branch is
+Never rebases. Once the PR is ready for review the push must be a
+fast-forward; before that, a rewritten branch is force-pushed with a lease. A stack branch is
 linted whole and pushed with \`gh stack push\`.
 
 Options:
@@ -235,27 +235,31 @@ print(s["trunk"], live[-1] if live else "")' <<< "$stack_json")
   exit 0
 fi
 
-# Look the PR up before pushing: an open PR forbids rewriting the branch, and
-# its number/title/url drive the summary-sync reminder at the end. `--head`
+# Look the PR up before pushing: a PR that is ready for review forbids
+# rewriting the branch, and its number/title/url drive the summary-sync
+# reminder at the end. `--head`
 # matches the branch name across every fork, so keep only PRs whose head is
 # in the fork. A failed lookup aborts: guessing "no PR" would force-push over
 # a branch that may be under review.
 pr_num=""
 pr_title=""
 pr_url=""
+pr_is_draft=""
 if ! pr_info=$(gh pr list -R "$GH_REPO" --head "$current_branch" \
-                 --state open --json number,url,title,headRepositoryOwner \
+                 --state open --json number,url,title,isDraft,headRepositoryOwner \
                  --jq "[.[] | select(.headRepositoryOwner.login == \"${push_owner}\")][0]
                        | select(. != null)
-                       | \"\(.number)\t\(.title)\t\(.url)\""); then
+                       | \"\(.number)\t\(.isDraft)\t\(.title)\t\(.url)\""); then
   echo "error: could not look up the PR for ${current_branch} on ${GH_REPO}," >&2
   echo "       so whether the branch may be force-pushed is unknown." >&2
   echo "       Check 'gh auth status' and network, then re-run." >&2
   exit 1
 fi
 if [[ -n "$pr_info" ]]; then
-  IFS=$'\t' read -r pr_num pr_title pr_url <<< "$pr_info"
+  IFS=$'\t' read -r pr_num pr_is_draft pr_title pr_url <<< "$pr_info"
 fi
+pr_ready=false
+[[ -n "$pr_num" && "$pr_is_draft" == "false" ]] && pr_ready=true
 
 # Don't fetch the fork branch, so --force-with-lease below checks against the
 # last state the user saw and rejects the push if commits landed there since
@@ -266,13 +270,14 @@ if git rev-parse --verify --quiet "refs/remotes/${push_remote}/${current_branch}
   remote_branch_exists=true
 fi
 
-# With an open PR, HEAD must still contain what was last pushed.
-if [[ -n "$pr_num" ]] && $remote_branch_exists; then
+# Once the PR is ready for review, HEAD must still contain what was last
+# pushed.
+if $pr_ready && $remote_branch_exists; then
   pushed="${push_remote}/${current_branch}"
   if ! git merge-base --is-ancestor "$pushed" HEAD; then
     echo "" >&2
     echo "error: ${current_branch} does not contain ${pushed}, and PR #${pr_num}" >&2
-    echo "       is open. Rewriting an open PR's history is not allowed." >&2
+    echo "       is ready for review. Rewriting its history is not allowed." >&2
     if git merge-base --is-ancestor HEAD "$pushed"; then
       echo "       ${pushed} is ahead of you. Integrate it:" >&2
       echo "         git merge --ff-only ${pushed}" >&2
@@ -301,7 +306,7 @@ behind=$(git rev-list --count "HEAD..${UPSTREAM_REMOTE}/${base_branch}")
 if (( behind > 0 )); then
   echo ">>> note: ${current_branch} is ${behind} commit(s) behind" \
        "${UPSTREAM_REMOTE}/${base_branch}, pushing it as is"
-  if [[ -n "$pr_num" ]]; then
+  if $pr_ready; then
     echo "    To pick it up without rewriting PR #${pr_num}:" \
          "git merge ${UPSTREAM_REMOTE}/${base_branch}"
   fi
@@ -314,9 +319,9 @@ run_lint "${UPSTREAM_REMOTE}/${base_branch}"
 pre_push_sha=$(git rev-parse --verify --quiet \
                  "${push_remote}/${current_branch}" 2>/dev/null || true)
 
-if [[ -n "$pr_num" ]]; then
+if $pr_ready; then
   echo ">>> pushing ${current_branch} -> ${push_remote} (${push_target_desc})," \
-       "fast-forward only: PR #${pr_num} is open"
+       "fast-forward only: PR #${pr_num} is ready for review"
   if ! git push -u "$push_remote" HEAD; then
     echo "" >&2
     echo "error: push rejected. If ${push_remote}/${current_branch} has commits" >&2
