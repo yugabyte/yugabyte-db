@@ -17,4 +17,11 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_SHA: ${{ github.event.pull_request.head.sha }}
-        run: ybbld "$PR_NUMBER" "$PR_SHA" DOCS
+          # A stacked PR builds only at the bottom (it lands next) and the top
+          # (its tree holds every layer); layers between run NO-BLD. GitHub
+          # rebases the next layer once the bottom merges, which rebuilds it.
+          BLD_TYPE: ${{ (github.event.pull_request.stack
+            && github.event.pull_request.stack.base.ref != github.event.pull_request.base.ref
+            && github.event.pull_request.stack.position != github.event.pull_request.stack.size)
+            && 'NO-BLD' || 'DOCS' }}
+        run: ybbld "$PR_NUMBER" "$PR_SHA" "$BLD_TYPE"
