@@ -7720,7 +7720,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"yb_test_catalog_preload_cache_list", PGC_SIGHUP, DEVELOPER_OPTIONS,
+		{"yb_test_catalog_preload_cache_list", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Catalog caches to fill when preloading the catalog."),
 			gettext_noop("A comma separated list of catalogs, catalog caches, or "
 						 "indexes of catalog caches. If set, "

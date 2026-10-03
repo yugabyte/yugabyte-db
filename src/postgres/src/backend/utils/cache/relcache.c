@@ -503,6 +503,9 @@ static void RelationCacheInitFileRemoveInDir(const char *tblspcpath);
 static void YbRelationCacheInitFileRemoveInDir(const char *initfiledir);
 static void unlink_initfile(const char *initfilename, int elevel);
 
+/* YB declarations */
+static bool YbIndexAttHasOptionsProc(Relation indexrel, AttrNumber attnum);
+
 
 /*
  *		ScanPgRelation
@@ -9263,11 +9266,7 @@ RelationGetIndexRawAttOptions(Relation indexrel)
 
 	for (attnum = 1; attnum <= natts; attnum++)
 	{
-		if (indexrel->rd_indam->amoptsprocnum == 0)
-			continue;
-
-		if (!OidIsValid(index_getprocid(indexrel, attnum,
-										indexrel->rd_indam->amoptsprocnum)))
+		if (!YbIndexAttHasOptionsProc(indexrel, attnum))
 			continue;
 
 		if (!options)
@@ -9319,18 +9318,12 @@ RelationGetIndexAttOptions(Relation relation, bool copy)
 	for (i = 0; i < natts; i++)
 	{
 		/*
-		 * YB: Skip the pg_attribute lookup for a column whose opclass has no
-		 * options procedure, with the check RelationGetIndexRawAttOptions
-		 * does: index creation rejects options for such a column, so there
-		 * is nothing to find.  A full catalog cache refresh
-		 * does this for every index column, and without the pg_attribute
-		 * catcaches preloaded each lookup scans the whole prefetched
-		 * pg_attribute.
+		 * YB: Skip the pg_attribute lookup for a column that cannot have
+		 * options.  A full catalog cache refresh does this for every index
+		 * column, and without the pg_attribute catcaches preloaded each
+		 * lookup scans the whole prefetched pg_attribute.
 		 */
-		if (IsYugaByteEnabled() &&
-			(relation->rd_indam->amoptsprocnum == 0 ||
-			 !OidIsValid(index_getprocid(relation, i + 1,
-										 relation->rd_indam->amoptsprocnum))))
+		if (IsYugaByteEnabled() && !YbIndexAttHasOptionsProc(relation, i + 1))
 			continue;
 
 		if (criticalRelcachesBuilt && relid != AttributeRelidNumIndexId)
@@ -10511,4 +10504,18 @@ unlink_initfile(const char *initfilename, int elevel)
 					 errmsg("could not remove cache file \"%s\": %m",
 							initfilename)));
 	}
+}
+
+/*
+ * Whether the opclass of an index column has an options procedure.  Index
+ * creation rejects options for a column whose opclass has none, so there are
+ * no options to look up for it.  This is false for INCLUDE columns, whose
+ * support procedures are all zero.
+ */
+static bool
+YbIndexAttHasOptionsProc(Relation indexrel, AttrNumber attnum)
+{
+	return (indexrel->rd_indam->amoptsprocnum != 0 &&
+			OidIsValid(index_getprocid(indexrel, attnum,
+									   indexrel->rd_indam->amoptsprocnum)));
 }
