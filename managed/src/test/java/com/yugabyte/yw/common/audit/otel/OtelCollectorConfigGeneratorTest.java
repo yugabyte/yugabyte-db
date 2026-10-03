@@ -23,6 +23,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
@@ -60,10 +62,14 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -1340,6 +1346,32 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
         "query receiver should not carry a bare query_log_type",
         config.replace("yugabyte.query_log_type", ""),
         not(containsString("query_log_type")));
+    // PLAT-22327: attributes the receiver parses out of the log line (pgaudit CSV fields, log
+    // level, log_line_prefix tokens) must reach the exporter namespaced under "yugabyte." here
+    // too, with the bare key deleted - same as the VM path.
+    for (String parsedAttr :
+        ImmutableList.of(
+            "log.file.name",
+            "log_level",
+            "audit_type",
+            "statement_id",
+            "substatement_id",
+            "class",
+            "command",
+            "object_type",
+            "object_name",
+            "statement",
+            "timestamp_with_ms",
+            "process_id")) {
+      assertThat(
+          parsedAttr + " must be namespaced under yugabyte.",
+          config,
+          containsString("key: yugabyte." + parsedAttr));
+      assertThat(
+          "the bare " + parsedAttr + " must be deleted after the rename",
+          config,
+          containsString("{key: " + parsedAttr + ", action: delete}"));
+    }
     // file_storage queue dir must be auto-created, else the collector crash-loops on startup.
     assertThat(config, containsString("create_directory: true"));
     // Clean YAML: no SnakeYAML Java class tags leaking into the collector config.
@@ -1392,6 +1424,162 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
     assertTrue("config should be enabled", result.isEnabled());
     assertThat(result.getConfig(), equalTo(TestUtils.readResource("audit/k8s_otel_config.yml")));
+  }
+
+  @Test
+  public void getOtelColConfigK8sExporterCredentialsAreRedactedInShellOutput() {
+    DataDogConfig dataDog = new DataDogConfig();
+    dataDog.setType(ProviderType.DATA_DOG);
+    dataDog.setSite("datadoghq.com");
+    dataDog.setApiKey("dd-0123456789abcdef0123456789abcdef");
+
+    SplunkConfig splunk = new SplunkConfig();
+    splunk.setType(ProviderType.SPLUNK);
+    splunk.setEndpoint("https://splunk:8088");
+    splunk.setToken("splunk-11111111-2222-3333-4444-555555555555");
+
+    DynatraceConfig dynatrace = new DynatraceConfig();
+    dynatrace.setType(ProviderType.DYNATRACE);
+    dynatrace.setEndpoint("https://test.live.dynatrace.com/api/v2/otlp");
+    dynatrace.setApiToken("dt0c01.DYNATRACESECRETAPITOKEN");
+
+    LokiConfig loki = new LokiConfig();
+    loki.setType(ProviderType.LOKI);
+    loki.setEndpoint("http://loki:3100");
+    loki.setAuthType(AuthType.BasicAuth);
+    AuthCredentials.BasicAuthCredentials lokiAuth = new AuthCredentials.BasicAuthCredentials();
+    lokiAuth.setUsername("loki-user");
+    lokiAuth.setPassword("loki-basic-auth-secret");
+    loki.setBasicAuth(lokiAuth);
+
+    OTLPConfig otlpBasic = new OTLPConfig();
+    otlpBasic.setType(ProviderType.OTLP);
+    otlpBasic.setEndpoint("http://otlp:3100");
+    otlpBasic.setAuthType(AuthType.BasicAuth);
+    AuthCredentials.BasicAuthCredentials otlpAuth = new AuthCredentials.BasicAuthCredentials();
+    otlpAuth.setUsername("otlp-user");
+    otlpAuth.setPassword("otlp-basic-auth-secret");
+    otlpBasic.setBasicAuth(otlpAuth);
+
+    OTLPConfig otlpBearer = new OTLPConfig();
+    otlpBearer.setType(ProviderType.OTLP);
+    otlpBearer.setEndpoint("http://otlp:3100");
+    otlpBearer.setAuthType(AuthType.BearerToken);
+    AuthCredentials.BearerToken bearerToken = new AuthCredentials.BearerToken();
+    bearerToken.setToken("otlp-bearer-token-secret");
+    otlpBearer.setBearerToken(bearerToken);
+
+    // Long enough that the default YAML width would fold it after "Bearer".
+    OTLPConfig otlpHeader = new OTLPConfig();
+    otlpHeader.setType(ProviderType.OTLP);
+    otlpHeader.setEndpoint("http://otlp:3100");
+    otlpHeader.setAuthType(AuthType.NoAuth);
+    otlpHeader.setHeaders(
+        ImmutableMap.of("x-api-key", "Bearer otlp-header-secret-" + "0123456789".repeat(6)));
+
+    Map<TelemetryProviderConfig, String> secretsByConfig = new LinkedHashMap<>();
+    secretsByConfig.put(dataDog, dataDog.getApiKey());
+    secretsByConfig.put(splunk, splunk.getToken());
+    secretsByConfig.put(dynatrace, dynatrace.getApiToken());
+    // Loki auth is header-based: the rendered credential is base64("user:password").
+    secretsByConfig.put(
+        loki,
+        Base64.getEncoder()
+            .encodeToString(
+                (loki.getBasicAuth().getUsername() + ":" + loki.getBasicAuth().getPassword())
+                    .getBytes()));
+    secretsByConfig.put(otlpBasic, otlpBasic.getBasicAuth().getPassword());
+    secretsByConfig.put(otlpBearer, otlpBearer.getBearerToken().getToken());
+    secretsByConfig.put(
+        otlpHeader, otlpHeader.getHeaders().get("x-api-key").substring("Bearer ".length()));
+
+    int i = 0;
+    for (Map.Entry<TelemetryProviderConfig, String> entry : secretsByConfig.entrySet()) {
+      TelemetryProviderConfig config = entry.getKey();
+      String secret = entry.getValue();
+      TelemetryProvider telemetryProvider =
+          createTelemetryProvider(
+              new UUID(0, i++), config.getType().name(), ImmutableMap.of("tag", "value"), config);
+      // Redaction reads the credentials to redact from the DB, not from the mocked service.
+      telemetryProvider.save();
+
+      OtelCollectorConfigGenerator.K8sOtelConfig result =
+          generator.getOtelColConfigK8s(
+              provider,
+              universe,
+              TelemetryConfig.builder()
+                  .auditLogConfig(
+                      createAuditLogConfigWithYSQL(telemetryProvider.getUuid(), ImmutableMap.of()))
+                  .build(),
+              null,
+              "%m [%p] ");
+
+      assertThat(
+          "test is only meaningful if the renderer inlines the credential",
+          result.getConfig(),
+          containsString(secret));
+
+      for (String line : result.getConfig().split("\\n")) {
+        String redacted =
+            RedactingService.redactShellProcessOutput(line, RedactionTarget.HELM_VALUES);
+        assertFalse(
+            config.getType() + " credential leaked into shell output: " + redacted,
+            redacted.contains(secret));
+      }
+    }
+  }
+
+  // The K8s config reaches the collector through the OTEL_CONFIG env var, and kubelet's $(VAR)
+  // expansion collapses "$$" -> "$" in env values before the collector's confmap unescapes once
+  // more (PLAT-22313, opentelemetry-operator#3262). The golden file pins the doubled escapes; this
+  // covers the metricsPrefix token the golden config lacks, and simulates the kubelet pass to
+  // assert nothing the collector would reject as an env reference survives it.
+  @Test
+  public void getOtelColConfigK8sEscapesDollarsForEnvVarDelivery() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("ddsite");
+    ddConfig.setApiKey("apikey");
+    TelemetryProvider ddTp =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), ddConfig);
+    when(mockTelemetryProviderService.getOrBadRequest(ddTp.getUuid())).thenReturn(ddTp);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            ddTp.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+    // The prefix renders the metricstransform capture-group reference - the token that crashed
+    // the sidecar (and with it the pod) when it reached the collector as ${1}.
+    metricsExportConfig.getUniverseMetricsExporterConfig().get(0).setMetricsPrefix("ybdb.");
+
+    String config =
+        generator
+            .getOtelColConfigK8s(
+                provider,
+                universe,
+                TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build(),
+                null,
+                "%m [%p] ")
+            .getConfig();
+
+    // Doubled escapes in the CR; the POD_NAME reference stays single-$ so the collector expands
+    // it from the pod env.
+    assertThat(config, containsString("new_name: ybdb.$$$${1}"));
+    assertThat(config, containsString("replacement: $$$$1"));
+    assertThat(config, containsString("${POD_NAME}"));
+    assertThat(config, not(containsString("$${POD_NAME}")));
+
+    // Kubelet pass: what the collector actually receives in OTEL_CONFIG.
+    String atCollector = config.replace("$$", "$");
+    assertThat(atCollector, containsString("new_name: ybdb.$${1}"));
+    assertThat(atCollector, containsString("replacement: $$1"));
+    // Any ${...} still bare after the kubelet pass is resolved by the collector as an env var and
+    // must have a valid name, or startup fails with 'environment variable "..." has invalid name'.
+    Matcher envRef = Pattern.compile("(?<!\\$)\\$\\{([^}]*)\\}").matcher(atCollector);
+    while (envRef.find()) {
+      assertTrue(
+          "collector would reject env reference ${" + envRef.group(1) + "}",
+          envRef.group(1).matches("[a-zA-Z_][a-zA-Z0-9_]*"));
+    }
   }
 
   @Test
@@ -1854,5 +2042,48 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     // Test with null endpoint
     config.setEndpoint(null);
     assertThat(config.getCleanEndpoint(), equalTo(null));
+  }
+
+  // The generated pattern is POSIX ERE for awk, so it is asserted as text rather than compiled
+  // here: java.util.regex is a different dialect and rejects the portable "[[]" spelling of a
+  // literal '[' outright, treating the inner bracket as a nested character class. Whether the
+  // pattern actually splits records is checked where awk evaluates it, in node-agent's
+  // TestArchiveKeepsMultiLineYsqlAuditRecords / ...ForACustomLogLinePrefix.
+  @Test
+  public void generateAuditLineStartEreForDefaultPrefix() {
+    // "%m [%p] " - the built-in log_line_prefix.
+    String ere = generator.generateAuditLineStartEre("%m [%p] ");
+    assertEquals(
+        "^([A-Z][0-9]+)|^(([0-9]+-[0-9]+-[0-9]+ [0-9]+:[0-9]+:[0-9]+[.][0-9]+ [A-Za-z0-9_]+)"
+            + "[ ][[]([0-9]+)[]][ ])",
+        ere);
+    assertPortablePosixEre(ere);
+  }
+
+  @Test
+  public void generateAuditLineStartEreForCustomPrefix() {
+    // A non-default prefix (the gflag case) must still yield a usable boundary.
+    String ere = generator.generateAuditLineStartEre("%t [%p] %u@%d ");
+    assertEquals(
+        "^([A-Z][0-9]+)|^(([0-9]+-[0-9]+-[0-9]+ [0-9]+:[0-9]+:[0-9]+ [A-Za-z0-9_]+)"
+            + "[ ][[]([0-9]+)[]][ ]([^@]+)[@]([^ ]+)[ ])",
+        ere);
+    assertPortablePosixEre(ere);
+  }
+
+  // POSIX ERE only: no PCRE named groups, no \\d/\\w, no {n} intervals (kept portable across
+  // mawk and gawk), anchored on a YB glog header or the prefix, mirroring the collector.
+  private void assertPortablePosixEre(String ere) {
+    assertFalse("no PCRE named groups", ere.contains("(?P<"));
+    assertFalse("no \\d", ere.contains("\\d"));
+    assertFalse("no \\w", ere.contains("\\w"));
+    assertFalse("no interval quantifiers", ere.matches("(?s).*\\{[0-9].*"));
+    assertTrue(ere.startsWith("^([A-Z][0-9]+)|^("));
+  }
+
+  @Test
+  public void re2ToPosixEreTranslatesPcreConstructs() {
+    assertEquals("[0-9]+ [A-Za-z0-9_]+", OtelCollectorConfigGenerator.re2ToPosixEre("\\d{3} \\w+"));
+    assertEquals("(x)", OtelCollectorConfigGenerator.re2ToPosixEre("(?P<foo>x)"));
   }
 }

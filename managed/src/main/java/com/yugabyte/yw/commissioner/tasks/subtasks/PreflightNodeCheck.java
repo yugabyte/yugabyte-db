@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -32,15 +33,18 @@ public class PreflightNodeCheck extends NodeTaskBase {
 
   private final NodeConfigValidator nodeConfigValidator;
   private final YNPConfigGenerator ynpConfigGenerator;
+  private final NodeAgentManager nodeAgentManager;
 
   @Inject
   protected PreflightNodeCheck(
       BaseTaskDependencies baseTaskDependencies,
       NodeConfigValidator nodeConfigValidator,
-      YNPConfigGenerator ynpConfigGenerator) {
+      YNPConfigGenerator ynpConfigGenerator,
+      NodeAgentManager nodeAgentManager) {
     super(baseTaskDependencies);
     this.nodeConfigValidator = nodeConfigValidator;
     this.ynpConfigGenerator = ynpConfigGenerator;
+    this.nodeAgentManager = nodeAgentManager;
   }
 
   // Parameters for precheck task.
@@ -114,9 +118,9 @@ public class PreflightNodeCheck extends NodeTaskBase {
   public void run() {
     log.info("Running preflight checks for node {}.", taskParams().nodeName);
     Provider provider = taskParams().getProvider();
+    NodeInstance instance = NodeInstance.getOrBadRequest(taskParams().nodeUuid);
     if (provider.isManualOnprem()) {
       // Node agent must already be present and running for onprem manual (non-sudo).
-      NodeInstance instance = NodeInstance.getOrBadRequest(taskParams().nodeUuid);
       NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(instance.getDetails().ip);
       if (confGetter.getGlobalConf(GlobalConfKeys.disableYnpNodePreflightCheck)) {
         // Run preflight_checks.sh.
@@ -126,6 +130,8 @@ public class PreflightNodeCheck extends NodeTaskBase {
         runYnpPreflightChecks(provider, instance, nodeAgent, getUniverse());
       }
     } else {
+      // Purge node agent to avoid interference with preflight checks.
+      NodeAgent.maybeGetByIp(instance.getDetails().ip).ifPresent(n -> nodeAgentManager.purge(n));
       // Sudo access is available, and YNP is not set up yet.
       runLegacyPreflightChecks();
     }

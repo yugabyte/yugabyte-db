@@ -1414,6 +1414,14 @@ extern bool YbIsCommitStatsCollectionEnabled();
  */
 extern void YbRecordCommitLatency(uint64_t latency_us);
 
+/*
+ * Returns the running total of main table rows scanned by DocDB for this
+ * session.  Unlike the number of rows returned to the query layer, this
+ * includes rows that DocDB filtered out while evaluating a pushed down
+ * expression.
+ */
+extern uint64_t YbGetTableRowsScanned();
+
 /**
  * Update the global flag indicating what metric changes to capture and return
  * from the tserver to PG.
@@ -1607,6 +1615,18 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 															char replident);
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
+
+extern void YBCSetHistoricalReadContext(uint64_t read_time_ht,
+										uint64_t in_txn_limit_ht,
+										const char *docdb_txn_id);
+
+extern void YBCInvalidateCachesForHistoricalReadContext(void);
+
+extern void YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
+															 uint64_t in_txn_limit_ht,
+															 const char *docdb_txn_id);
+
+extern void YBCResetHistoricalReadContextAndInvalidateRelcache(void);
 
 extern void YBCResetYbReadTimeAndInvalidateRelcache();
 

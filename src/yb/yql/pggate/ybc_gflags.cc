@@ -92,6 +92,13 @@ DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "ysql_catalog_preload_additional_table_list are set, we take a union of "
     "both the default list and the user-specified list.");
 
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_row_limit, 0,
+    "Maximum number of rows returned by each catalog prefetch request. 0 means no limit.");
+
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 5 * 1024 * 1024,
+    "Maximum combined response size in bytes of each catalog prefetch round. Capped at the safe "
+    "maximum RPC response size. 0 uses that safe maximum.");
+
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
     "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
     "before client authentication. Authentication reads pg_authid by role name "
@@ -139,6 +146,11 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
     " right away without incurring a master lookup");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_startup_client_connection_check, true,
+    "When enabled, a non-zero client_connection_check_interval in ysql_pg_conf_csv will also "
+    "check for client disconnects during backend initialization.");
+TAG_FLAG(ysql_enable_startup_client_connection_check, advanced);
+
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
     "If true, the connection-auth catalog prefetch (pg_authid, pg_database, "
     "...) is served from the tserver response cache, turning per-connection "
@@ -185,6 +197,7 @@ DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
@@ -297,8 +310,14 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
           &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
+      .TEST_ysql_yb_enable_replication_slot_transactional_ddl =
+          &FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl,
       .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
           &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
+      .ysql_catalog_prefetch_row_limit = &FLAGS_ysql_catalog_prefetch_row_limit,
+      .ysql_catalog_prefetch_size_limit = &FLAGS_ysql_catalog_prefetch_size_limit,
+      .ysql_enable_startup_client_connection_check =
+          &FLAGS_ysql_enable_startup_client_connection_check,
   };
   // clang-format on
   return &accessor;

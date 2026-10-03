@@ -48,6 +48,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 
 using std::string;
 
@@ -107,18 +108,17 @@ using strings::Substitute;
 
 const int64_t LogReader::kNoSizeLimit = -1;
 
-Status LogReader::Open(
+Result<LogReaderPtr> LogReader::Open(
     Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
     const std::string& tablet_wal_path, const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
-    std::shared_ptr<MemTracker> read_wal_mem_tracker, std::unique_ptr<LogReader>* reader) {
-  std::unique_ptr<LogReader> log_reader(new LogReader(
+    std::shared_ptr<MemTracker> read_wal_mem_tracker) {
+  auto log_reader = std::make_shared<LogReader>(
       env, index, std::move(log_prefix), table_metric_entity, tablet_metric_entity,
-      std::move(read_wal_mem_tracker)));
+      std::move(read_wal_mem_tracker), PrivateTag());
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
-  *reader = std::move(log_reader);
-  return Status::OK();
+  return log_reader;
 }
 
 LogReader::LogReader(Env* env,
@@ -126,7 +126,8 @@ LogReader::LogReader(Env* env,
                      std::string log_prefix,
                      const scoped_refptr<MetricEntity>& table_metric_entity,
                      const scoped_refptr<MetricEntity>& tablet_metric_entity,
-                     std::shared_ptr<MemTracker> read_wal_mem_tracker)
+                     std::shared_ptr<MemTracker> read_wal_mem_tracker,
+                     PrivateTag)
     : env_(env),
       log_index_(index),
       log_prefix_(std::move(log_prefix)),
@@ -408,6 +409,8 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> LogReader::ReadBatchUsingIndexEntry(
   int64_t offset = index_entry.offset_in_segment;
   ScopedLatencyMetric<EventStats> scoped(read_batch_latency_.get());
   auto result = segment->ReadEntryHeaderAndBatch(obey_memory_limit, &offset);
+  TEST_SYNC_POINT("LogReader::ReadBatchUsingIndexEntry::BatchRead");
+  TEST_SYNC_POINT("LogReader::ReadBatchUsingIndexEntry::BeforeMetricsUpdate");
   RETURN_NOT_OK_PREPEND(
       result,
       Format("Failed to read LogEntry for index $0 from log segment $1 offset $2",

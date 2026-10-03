@@ -57,7 +57,7 @@ Status PgDmlWrite::Prepare(
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
   write_req_->set_metrics_capture(pg_session_->metrics().metrics_capture());
-  ApplySkipIntentsOptimizationInfo(skip_intents_info, *write_req_);
+  RETURN_NOT_OK(ApplySkipIntentsOptimizationInfo(skip_intents_info, *write_req_));
 
   doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();

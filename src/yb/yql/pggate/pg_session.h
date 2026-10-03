@@ -84,6 +84,10 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   void ResetCatalogReadPoint();
   [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
+  void SetHistoricalReadContext(
+      const ReadHybridTime& read_time, std::string transaction_id);
+  void ResetHistoricalReadContext();
+
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
   //------------------------------------------------------------------------------------------------
@@ -198,7 +202,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
-  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
+  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux);
 
   Status AcquireAdvisoryLock(
       const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
@@ -281,6 +285,12 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
   ReadHybridTime catalog_read_time_;
+
+  struct HistoricalReadContext {
+    ReadHybridTime read_time;
+    std::string transaction_id;
+  };
+  std::optional<HistoricalReadContext> historical_read_context_;
 
   // Execution status.
   Status status_;

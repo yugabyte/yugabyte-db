@@ -131,6 +131,7 @@ static bool AVX512Capable() {
 #endif
 
 #include <queue>
+#include <tuple>
 #include <vector>
 #include <iostream>
 #include <string.h>
@@ -141,7 +142,8 @@ namespace hnswlib {
 template<typename label_t>
 class BaseFilterFunctor {
  public:
-    virtual bool operator()(label_t id) { return true; }
+    // internal_id is the index-assigned dense id of the element, see HierarchicalNSW::addPoint.
+    virtual bool operator()(label_t id, size_t internal_id) { return true; }
     virtual ~BaseFilterFunctor() {};
 };
 
@@ -197,16 +199,20 @@ class SpaceInterface {
     virtual ~SpaceInterface() {}
 };
 
+using tableint = unsigned int;
+
 template<typename dist_t, typename label_t>
 class AlgorithmInterface {
  public:
-    virtual void addPoint(const void *datapoint, label_t label, bool replace_deleted = false) = 0;
+    // Returns the internal id assigned to the added element.
+    virtual size_t addPoint(const void *datapoint, label_t label, bool replace_deleted = false) = 0;
 
-    virtual std::priority_queue<std::pair<dist_t, label_t>>
+    // Results are (distance, label, internal id) tuples, further first.
+    virtual std::priority_queue<std::tuple<dist_t, label_t, tableint>>
         searchKnn(const void*, size_t, BaseFilterFunctor<label_t>* isIdAllowed = nullptr, size_t ef = 0) const = 0;
 
     // Return k nearest neighbor in the order of closer fist
-    virtual std::vector<std::pair<dist_t, label_t>>
+    virtual std::vector<std::tuple<dist_t, label_t, tableint>>
         searchKnnCloserFirst(const void* query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed = nullptr, size_t ef = 0) const;
 
     virtual void saveIndex(const std::string &location) = 0;
@@ -218,10 +224,10 @@ class AlgorithmInterface {
 };
 
 template<typename dist_t, typename label_t>
-std::vector<std::pair<dist_t, label_t>>
+std::vector<std::tuple<dist_t, label_t, tableint>>
 AlgorithmInterface<dist_t, label_t>::searchKnnCloserFirst(
         const void* query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed, size_t ef) const {
-    std::vector<std::pair<dist_t, label_t>> result;
+    std::vector<std::tuple<dist_t, label_t, tableint>> result;
 
     // here searchKnn returns the result in the order of further first
     auto ret = searchKnn(query_data, k, isIdAllowed, ef);

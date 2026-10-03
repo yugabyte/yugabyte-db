@@ -37,5 +37,5 @@ yugabyte=# DROP FOREIGN TABLE mytable CASCADE;
 ```
 ## See also
 
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table/)
-- [`ALTER FOREIGN TABLE`](../ddl_alter_foreign_table/)
+- [CREATE FOREIGN TABLE](../ddl_create_foreign_table/)
+- [ALTER FOREIGN TABLE](../ddl_alter_foreign_table/)

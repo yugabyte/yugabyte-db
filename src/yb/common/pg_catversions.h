@@ -15,6 +15,8 @@
 
 
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/util/hash_util.h"
@@ -45,8 +47,13 @@ struct CatalogVersionInfo {
   // When the current stale episode started, i.e. the first time we received a version older than
   // current_version since the last advance. Uninitialized when not in a stale episode.
   MonoTime stale_since;
+  // The read time the master reported on the heartbeat that started the episode. The episode is
+  // measured as (latest reported read time - stale_since_read_ht), so time in which the master
+  // never re-read pg_yb_catalog_version does not count towards the threshold. Invalid when the
+  // master reports no read time; the measurement then falls back to (now - stale_since).
+  HybridTime stale_since_read_ht;
   // Per-episode random fatal threshold (chosen once when the episode starts, so all tservers do
-  // not crash at the same time). Compared against (now - stale_since).
+  // not crash at the same time). Compared against the episode measure described above.
   MonoDelta stale_fatal_threshold;
 };
 

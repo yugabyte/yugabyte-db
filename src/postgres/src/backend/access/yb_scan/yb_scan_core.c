@@ -46,6 +46,7 @@
 #include "optimizer/optimizer.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
+#include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -399,7 +400,7 @@ yb_scan_apply_next_parallel_range(YbcPgStatement handle,
 	 * Parallel scan range is already of limited size, it is
 	 * unlikely to exceed the message size, but may save some RPCs.
 	 */
-	exec_params->limit_use_default = true;
+	exec_params->plan_limit = 0;
 	exec_params->yb_fetch_row_limit = 0;
 	exec_params->yb_fetch_size_limit = 0;
 	return true;
@@ -444,7 +445,7 @@ ybcFetchNextHeapTuple(YbOpaque ybScan, ScanDirection dir)
 				return NULL;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(dir))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(dir))
@@ -561,7 +562,7 @@ ybcFetchNextIndexTuple(YbOpaque ybScan, ScanDirection dir)
 				return NULL;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(dir))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(dir))
@@ -1182,68 +1183,12 @@ YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max)
 }
 
 /*
- * Return true if a scan key column type is compatible with value type.
- */
-static bool
-YbIsScanCompatible(Oid column_typid,
-				   Oid value_typid,
-				   bool is_value_scalar,
-				   Datum value)
-{
-	if (column_typid == value_typid)
-		return true;
-
-	switch (column_typid)
-	{
-		case INT2OID:
-
-			/*
-			 * If column c0 has INT2OID type and value type is INT4OID, the
-			 * value may overflow INT2OID. For example, where clause condition
-			 * "c0 = 65539" would become "c0 = 3" and will unnecessarily fetch
-			 * a row with key of 3. This will not affect correctness
-			 * because at upper Postgres layer filtering will be subsequently
-			 * applied for equality/inequality conditions. For example, "c0 =
-			 * 65539" will be applied again to filter out this row.
-			 * We prefer to bind scan key c0 to account for the
-			 * common case where INT4OID value does not overflow INT2OID,
-			 * which happens in some system relation scan queries.
-			 *
-			 * For this purpose, specifically for when the value is scalar,
-			 * we return true when we are sure that
-			 * there isn't a data overflow. For instance, if column c0 has
-			 * INT2OID and value type is INT4OID, and its an inequality
-			 * strategy, we check if the actual value is within the
-			 * bounds of INT2OID. If yes, then we return true, otherwise false.
-			 */
-			return (!is_value_scalar ?
-					(value_typid == INT4OID || value_typid == INT8OID) :
-					YbIsIntegerInRange(value, value_typid, SHRT_MIN, SHRT_MAX));
-		case INT4OID:
-			return (!is_value_scalar ?
-					(value_typid == INT2OID || value_typid == INT8OID) :
-					YbIsIntegerInRange(value, value_typid, INT_MIN, INT_MAX));
-		case INT8OID:
-			return value_typid == INT2OID || value_typid == INT4OID;
-
-		case TEXTOID:
-		case BPCHAROID:
-		case VARCHAROID:
-			return (value_typid == TEXTOID || value_typid == BPCHAROID ||
-					value_typid == VARCHAROID);
-
-		default:
-			if (YbIsOidType(column_typid) && YbIsOidType(value_typid))
-				return true;
-			/* Conservatively return false. */
-			return false;
-	}
-}
-
-/*
  * Determine whether an equality between two types needs further recheck.  For
  * now, this only flags cases where the storage column type is smaller than the
- * value type.
+ * value type.  Through YbIsValueOutOfRange, the same pairs also decide whether
+ * YbIsScanCompatible binds a scalar key of any strategy, whether an IN list
+ * element or tuple is dropped, and whether an equality makes the scan
+ * unsatisfiable.
  *
  * TODO(jason): check if any other type combos need checking.  float4 and
  * float8 look suspicious.
@@ -1301,6 +1246,54 @@ YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val)
 			!YbIsIntegerInRange(val, val_typid,
 								col_typid == INT2OID ? SHRT_MIN : INT_MIN,
 								col_typid == INT2OID ? SHRT_MAX : INT_MAX));
+}
+
+/*
+ * Return true if a scan key column type is compatible with value type.
+ */
+static bool
+YbIsScanCompatible(Oid column_typid,
+				   Oid value_typid,
+				   bool is_value_scalar,
+				   Datum value)
+{
+	if (column_typid == value_typid)
+		return true;
+
+	switch (column_typid)
+	{
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+
+			/*
+			 * A narrower integer column cannot hold every value of a wider
+			 * type, and binding an out-of-range value would truncate it, so
+			 * that "c0 < 65539" on an int2 column would bind as "c0 < 3".  So
+			 * bind a scalar value only when the column type can hold it, and
+			 * leave an out-of-range one unbound for recheck.  A plain equality
+			 * to such a value makes the scan unsatisfiable before binding
+			 * (ybHasOutOfRangeEquality).  A non-scalar value, an IN list,
+			 * binds, and YbCullArray drops its out-of-range elements.
+			 */
+			if (value_typid != INT2OID && value_typid != INT4OID &&
+				value_typid != INT8OID)
+				return false;
+			return (!is_value_scalar ||
+					!YbIsValueOutOfRange(column_typid, value_typid, value));
+
+		case TEXTOID:
+		case BPCHAROID:
+		case VARCHAROID:
+			return (value_typid == TEXTOID || value_typid == BPCHAROID ||
+					value_typid == VARCHAROID);
+
+		default:
+			if (YbIsOidType(column_typid) && YbIsOidType(value_typid))
+				return true;
+			/* Conservatively return false. */
+			return false;
+	}
 }
 
 static bool
@@ -1410,6 +1403,31 @@ YbCheckScanTypes(YbOpaque ybScan, YbScanPlan scan_plan, int i)
 							   !YbIsRowHeader(key) && !YbIsSearchArray(key),
 							   key->sk_argument) ||
 			IsPolymorphicType(valtypid));
+}
+
+/*
+ * Return whether some scan key is an equality to an integer that its column's
+ * type cannot hold.  The keys are ANDed, so no row matches such a scan,
+ * whether or not the key could bind.  Only a plain scalar key qualifies, not a
+ * NULL, IN array, row comparison, or hash code key.
+ */
+static bool
+ybHasOutOfRangeEquality(YbOpaque ybScan, YbScanPlan scan_plan)
+{
+	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
+	{
+		ScanKey		key = ybScan->keys[i];
+		Oid			col_typid;
+
+		if (key->sk_strategy != BTEqualStrategyNumber || key->sk_flags != 0 ||
+			!OidIsValid(key->sk_subtype))
+			continue;
+		col_typid = ybc_get_atttypid(scan_plan->bind_desc,
+									 scan_plan->bind_key_attnums[i]);
+		if (YbIsValueOutOfRange(col_typid, key->sk_subtype, key->sk_argument))
+			return true;
+	}
+	return false;
 }
 
 /*
@@ -1643,7 +1661,7 @@ YbBindRowComparisonKeys(YbOpaque ybScan, YbScanPlan scan_plan,
 											attnum),
 						   current->sk_collation,
 						   current->sk_argument,
-						   false);
+						   (current->sk_flags & SK_ISNULL) != 0 /* is_null */ );
 
 		/*
 		 * PgGate rejects IS NOT NULL binds on partition columns, and
@@ -1980,6 +1998,8 @@ YbCullArray(ArrayType *arrayval,
  *
  * In/out params:
  * - is_column_bound: tracks binding state for each column
+ * - is_column_eq_or_in_bound: set for the column of a plain scalar IN that
+ *   actually got bound, the ybctid batch bind included
  *
  * Out params:
  * - bail_out: set true when an empty array or contradiction makes the scan
@@ -1996,6 +2016,7 @@ YbBindSearchArray(YbOpaque ybScan, YbScanPlan scan_plan,
 				  int skey_index, bool is_for_precheck,
 				  YbColFoldState *fold_state,
 				  bool is_column_bound[],
+				  bool is_column_eq_or_in_bound[],
 				  bool *bail_out)
 {
 	/* based on _bt_preprocess_array_keys() */
@@ -2177,6 +2198,18 @@ YbBindSearchArray(YbOpaque ybScan, YbScanPlan scan_plan,
 							scalar_attnum, num_elems,
 							elem_values, scalar_null_bound);
 
+	/*
+	 * A ROW IN logically pins each member column per stream, but
+	 * ybcBindTupleExprCondIn binds it as one condition over the member
+	 * columns together: none of them, whatever the member order, gets
+	 * an equality value or a scalar IN list of its own, so none
+	 * qualifies for is_column_eq_or_in_bound.  Revisit if the planner
+	 * ever produces merge plans over a ROW IN.
+	 */
+	if (!is_row)
+		is_column_eq_or_in_bound[YBAttnumToBmsIndex(relation, scalar_attnum)] =
+			true;
+
 	pfree(elem_values);
 }
 
@@ -2236,6 +2269,77 @@ YbFoldInequalityBound(YbColFoldState *fs, ScanKey key, bool is_lower_bound)
 }
 
 /*
+ * Map a merge scan stream key column to its bind relation attribute, the same
+ * way ybcSetupScanPlan maps scan keys: the base relation column for a primary
+ * key scan, the index attribute otherwise.
+ */
+static AttrNumber
+ybMergeScanStreamColAttnum(Relation index,
+						   const YbMergeScanStreamColInfo *info)
+{
+	Assert(index);
+	return (index->rd_index->indisprimary ?
+			index->rd_index->indkey.values[info->indexcol] :
+			info->indexcol + 1);
+}
+
+/*
+ * Verify that every index column the planner declared in
+ * yb_merge_scan_info->stream_cols got a usable bound condition: a single
+ * equality value or a plain scalar IN list.  The merge scan would silently
+ * return missing or misordered rows otherwise, so raise an error.
+ *
+ * If the executor ever turns an unbindable index condition into a filter
+ * inside the per-stream storage request, which runs before the streams are
+ * merged, this check must accept such a filter on the column.
+ */
+static void
+ybValidateMergeScanBinds(YbOpaque ybScan, YbScanPlan scan_plan,
+						 YbMergeScanInfo *yb_merge_scan_info,
+						 bool is_column_eq_or_in_bound[], int max_idx)
+{
+	ListCell   *lc;
+	List	   *unconditioned = NIL;
+	List	   *conditioned = NIL;
+
+	/*
+	 * Check the columns without a condition first.  When a hash column lacks
+	 * one, ybcSetupScanKeys leaves every hash column unbound, and the error
+	 * should name the column that lacks it.
+	 */
+	foreach(lc, yb_merge_scan_info->stream_cols)
+	{
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
+
+		if (info->clause)
+			conditioned = lappend(conditioned, info);
+		else
+			unconditioned = lappend(unconditioned, info);
+	}
+
+	foreach(lc, list_concat(unconditioned, conditioned))
+	{
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
+		AttrNumber	attnum = ybMergeScanStreamColAttnum(ybScan->index, info);
+		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation,
+											 attnum);
+
+		if (idx < max_idx && is_column_eq_or_in_bound[idx])
+			continue;
+
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("merge scan stream key column \"%s\" has no usable bound condition",
+						NameStr(TupleDescAttr(scan_plan->bind_desc,
+											  attnum - 1)->attname)),
+				 errdetail("The chosen query plan is not executable as declared. This is a bug."),
+				 errhint("As a workaround, disable merge scan with \"SET yb_max_merge_scan_streams = 0\".")));
+	}
+}
+
+/*
  * Use the scan-descriptor and scan-plan to setup binds for the queryplan.
  */
 static bool
@@ -2275,6 +2379,25 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 	bool		key_folded[ybScan->nkeys + 1]; /* VLA - per-key fold flag */
 
 	memset(key_folded, 0, sizeof(bool) * (ybScan->nkeys + 1));
+
+	/*
+	 * Which columns are bound by a single equality value (IS NULL counts as
+	 * equality to null) or a plain scalar IN list.  Row IN, inequality, and IS
+	 * NOT NULL binds do not qualify.
+	 */
+	bool		is_column_eq_or_in_bound[max_idx]; /* VLA */
+
+	memset(is_column_eq_or_in_bound, 0, sizeof(bool) * max_idx);
+
+	YbMergeScanInfo *yb_merge_scan_info = NULL;
+
+	if (scan)
+	{
+		if (IsA(scan, IndexScan))
+			yb_merge_scan_info = ((IndexScan *) scan)->yb_merge_scan_info;
+		else if (IsA(scan, IndexOnlyScan))
+			yb_merge_scan_info = ((IndexOnlyScan *) scan)->yb_merge_scan_info;
+	}
 
 	if (yb_enable_advanced_index_cond_fold && !is_for_precheck)
 	{
@@ -2334,6 +2457,7 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 								  false,
 								  NULL,
 								  is_column_bound,
+								  is_column_eq_or_in_bound,
 								  &bail_out);
 
 				if (bail_out)
@@ -2557,11 +2681,13 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 				case YB_FOLD_EQUALITY:
 					YbBindColumn(ybScan, scan_plan->bind_desc,
 								 attnum, fs->eq_value, false);
+					is_column_eq_or_in_bound[idx] = true;
 					break;
 
 				case YB_FOLD_IS_NULL:
 					YbBindColumn(ybScan, scan_plan->bind_desc,
 								 attnum, (Datum) 0, true);
+					is_column_eq_or_in_bound[idx] = true;
 					break;
 
 				case YB_FOLD_SAOP:
@@ -2578,6 +2704,7 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 									  false,
 									  fs,
 									  is_column_bound,
+									  is_column_eq_or_in_bound,
 									  &bail_out);
 
 					if (bail_out)
@@ -2608,6 +2735,10 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 			}
 		}
 
+		if (yb_merge_scan_info)
+			ybValidateMergeScanBinds(ybScan, scan_plan, yb_merge_scan_info,
+									 is_column_eq_or_in_bound, max_idx);
+
 		return true;
 	}
 
@@ -2624,52 +2755,71 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 
 		if (YbIsSearchArray(key))
 		{
-			Datum		this_array_const;
 			ListCell   *lc;
-			YbMergeScanInfo *yb_merge_scan_info = NULL;
-
-			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
-
-			if (scan)
-			{
-				if (IsA(scan, IndexScan))
-					yb_merge_scan_info =
-						((IndexScan *) scan)->yb_merge_scan_info;
-				else if (IsA(scan, IndexOnlyScan))
-					yb_merge_scan_info =
-						((IndexOnlyScan *) scan)->yb_merge_scan_info;
-			}
 
 			if (yb_merge_scan_info)
 			{
-				foreach(lc, yb_merge_scan_info->saop_cols)
+				Datum		this_array_const = YbGetArrayConst(&ybScan->keys[i]);
+
+				foreach(lc, yb_merge_scan_info->stream_cols)
 				{
-					ScalarArrayOpExpr *pinned_saop =
-						((YbMergeScanSaopColInfo *) lfirst(lc))->saop;
-					Datum		pinned_array_const =
-						((Const *) lsecond(pinned_saop->args))->constvalue;
+					YbMergeScanStreamColInfo *info =
+						lfirst_node(YbMergeScanStreamColInfo, lc);
+					ScalarArrayOpExpr *pinned_saop;
+					Const	   *pinned_array;
+					AttrNumber	attnum;
 
 					/*
-					 * Direct datum comparison (compared to datumIsEqual) is
-					 * safe because yb_match_in_index_clause and
-					 * ExecIndexBuildScanKeys set pinned_array_const and
-					 * this_array_const, respectively, to the same field in
-					 * memory.
+					 * Only SAOPs pre-bind.  A single-value equality stream key
+					 * column binds through the ordinary priority loop, where a
+					 * Row IN on the same column outranks it, as it does on the
+					 * fold path, and the validation below then errors.
+					 * TODO(#32734): pre-bind declared equalities too once such
+					 * a plan is reachable.
 					 */
-					if (this_array_const == pinned_array_const)
+					if (!info->clause || !IsA(info->clause, ScalarArrayOpExpr))
+						continue;
+
+					pinned_saop = (ScalarArrayOpExpr *) info->clause;
+					pinned_array = castNode(Const, lsecond(pinned_saop->args));
+					attnum = ybMergeScanStreamColAttnum(ybScan->index, info);
+
+					/*
+					 * Compare that the scan key and the pinned SAOP are on the
+					 * same column.  Two different columns can hold equal
+					 * arrays, so comparing the arrays is not enough on its own.
+					 */
+					if (scan_plan->bind_key_attnums[i] != attnum)
+						continue;
+
+					/*
+					 * Compare the arrays by value rather than by address.
+					 */
+					if (datumIsEqual(this_array_const, pinned_array->constvalue,
+									 pinned_array->constbyval,
+									 pinned_array->constlen))
 					{
-						bool		bail_out = false;
+						/*
+						 * If the following check fails, then the bind is not
+						 * done, so the merge scan validation will report it.
+						 */
+						if (!YbCheckScanTypes(ybScan, scan_plan, i))
+							ybScan->needs_recheck = true;
+						else
+						{
+							bool		bail_out = false;
 
-						/* YbBindSearchArray updates is_column_bound. */
-						YbBindSearchArray(ybScan, scan_plan, i,
-										  is_for_precheck,
-										  NULL,
-										  is_column_bound,
-										  &bail_out);
+							/* YbBindSearchArray updates is_column_bound. */
+							YbBindSearchArray(ybScan, scan_plan, i,
+											  is_for_precheck,
+											  NULL,
+											  is_column_bound,
+											  is_column_eq_or_in_bound,
+											  &bail_out);
 
-						if (bail_out)
-							return false;
-
+							if (bail_out)
+								return false;
+						}
 						break;
 					}
 				}
@@ -2835,6 +2985,7 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 									 key->sk_argument, is_null);
 					}
 					is_column_bound[idx] = true;
+					is_column_eq_or_in_bound[idx] = true;
 				}
 				else if (YbIsSearchArray(key))
 				{
@@ -2845,6 +2996,7 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 									  is_for_precheck,
 									  NULL,
 									  is_column_bound,
+									  is_column_eq_or_in_bound,
 									  &bail_out);
 
 					if (bail_out)
@@ -2924,6 +3076,16 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 			}
 		}
 	}
+
+	/*
+	 * The validation is execution only: precheck callers ask whether the
+	 * keys can be bound, not whether the plan's reliances hold, and some
+	 * value datums are not yet available under precheck.
+	 */
+	if (yb_merge_scan_info && !is_for_precheck)
+		ybValidateMergeScanBinds(ybScan, scan_plan, yb_merge_scan_info,
+								 is_column_eq_or_in_bound, max_idx);
+
 	return true; /* end of non-fold path. */
 }
 
@@ -3491,11 +3653,20 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	YbScanPlanData scan_plan;
 
 	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
-	ybcSetupScanKeys(&ybscan, &scan_plan);
 
-	/* Determine needs_recheck. */
-	(void) ybBindScanKeys(&ybscan, &scan_plan, scan,
-						  true);	/* is_for_precheck */
+	/*
+	 * Determine needs_recheck, which stays false for a scan that no row can
+	 * match.  A runtime key holds (Datum) 0 until it is evaluated, which is in
+	 * range for every integer type.  So only a constant can make
+	 * ybHasOutOfRangeEquality return true here, and that answer holds at
+	 * execution too.
+	 */
+	if (!ybHasOutOfRangeEquality(&ybscan, &scan_plan))
+	{
+		ybcSetupScanKeys(&ybscan, &scan_plan);
+		(void) ybBindScanKeys(&ybscan, &scan_plan, scan,
+							  true);	/* is_for_precheck */
+	}
 
 	bms_free(scan_plan.hash_key_cols);
 	bms_free(scan_plan.key_cols);
@@ -3561,6 +3732,16 @@ YbBeginScan(Relation table,
 	YbScanPlanData scan_plan;
 
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
+
+	if (ybHasOutOfRangeEquality(ybScan, &scan_plan))
+	{
+		elog(DEBUG1, "skipping a scan due to an out-of-range equality");
+		ybScan->quit_scan = true;
+		bms_free(scan_plan.hash_key_cols);
+		bms_free(scan_plan.key_cols);
+		return ybScan;
+	}
+
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
 	ybScan->handle = YbNewSelect(table, &ybScan->prepare_params);
@@ -4134,7 +4315,7 @@ ybc_heap_getnextslot(TableScanDesc tsdesc, ScanDirection direction,
 				return false;
 			}
 
-			/* Set scan direction, if matters */
+			/* Leave direction unset for NoMovement (see create_index_path). */
 			if (ScanDirectionIsForward(direction))
 				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
 			else if (ScanDirectionIsBackward(direction))

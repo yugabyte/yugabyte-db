@@ -36,7 +36,8 @@ set(YB_PCH_DEP_LIBS boost_regex)
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/test_certs
   WORKING_DIRECTORY ${YB_BUILD_ROOT}
-  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs)
+  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs
+  DEPENDS ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh)
 
 add_custom_target(generate_test_certs DEPENDS ${CMAKE_BINARY_DIR}/test_certs)
 
@@ -294,6 +295,8 @@ ADD_YB_TEST(xcluster/xcluster_external_mini_cluster-itest)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-itest)
 ADD_YB_TEST(xcluster/xcluster_secondary_oid_space-test)
 YB_TEST_TARGET_LINK_LIBRARIES(xcluster_secondary_oid_space-test pg_wrapper_test_base)
+ADD_YB_TEST(xcluster/xcluster_guarded_lease-test)
+YB_TEST_TARGET_LINK_LIBRARIES(xcluster_guarded_lease-test pg_wrapper_test_base)
 ADD_YB_TEST(retryable_request-test)
 ADD_YB_TEST(upgrade-tests/ash_metadata_upgrade-test)
 ADD_YB_TEST(upgrade-tests/auto_flag_upgrade-test)
@@ -312,6 +315,7 @@ ADD_YB_TEST(upgrade-tests/ysql_major_extension_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_check-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_conn_mgr-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_audit_event_trigger-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_expression_pushdown-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)

@@ -6,7 +6,13 @@ VERSION := $(strip $(shell ../../build-support/get_version.sh))
 
 # go compile options
 GOOS ?= $(shell uname -s | tr A-Z a-z)
-GOARCH := $(shell [[ $$(uname -m) == "x86_64" ]] && echo -n 'amd64' || echo -n 'arm64')
+GOARCH := $(shell test "$$(uname -m)" = "x86_64" && echo amd64 || echo arm64)
+
+# The FIPS 140-3 validated build of the Go Cryptographic Module: v1.0.0 is CMVP certificate
+# #5247. Building with it links that module and defaults the binary to GODEBUG=fips140=on, which
+# "go version -m <binary>" records. Overridable so a build can be pointed at a newer module once
+# one is certified, but the default is the certified one - not the newest.
+GOFIPS140 ?= v1.0.0
 
 # Build Tags
 BUILD_TYPE ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.build_type')
@@ -36,7 +42,7 @@ echo:
 yba: test ${BIN_DIR}/${OS_ARCH}/${BIN_NAME}
 ${BIN_DIR}/${OS_ARCH}/${BIN_NAME}: ${GO_SOURCE_FILES}
 	@mkdir -p ${BIN_DIR}/${OS_ARCH}
-	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
+	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOFIPS140=${GOFIPS140} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-cli/pkg/components/yba.Version=${VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-cli/pkg/components/yba.BuildID=${BUILD_ID}' \
 	-X 'main.Version=${VERSION}'"
@@ -92,7 +98,7 @@ updatev2client:
 
 .PHONY: build
 build:
-	go build -ldflags="-X 'main.Version=v${VERSION}'" -o ${BIN_NAME}
+	GOFIPS140=${GOFIPS140} go build -ldflags="-X 'main.Version=v${VERSION}'" -o ${BIN_NAME}
 
 .PHONY: license
 license:

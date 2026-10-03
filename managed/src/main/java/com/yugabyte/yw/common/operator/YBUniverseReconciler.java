@@ -15,6 +15,8 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -90,7 +92,6 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -1193,7 +1194,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     if (ybUniverse.getSpec() == null || ybUniverse.getSpec().getUpgradeOption() == null) {
       return UpgradeOption.ROLLING_UPGRADE;
     }
-    switch (ybUniverse.getSpec().getUpgradeOption().getValue()) {
+    return toUpgradeOption(ybUniverse.getSpec().getUpgradeOption().getValue());
+  }
+
+  /** Maps a CR upgradeOption enum value ("Rolling", "Non-Rolling", "Non-Restart"). */
+  static UpgradeOption toUpgradeOption(String crValue) {
+    switch (crValue) {
       case "Non-Rolling":
         return UpgradeOption.NON_ROLLING_UPGRADE;
       case "Non-Restart":
@@ -1204,8 +1210,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private static void applyUpgradeOptions(UpgradeTaskParams requestParams, YBUniverse ybUniverse) {
-    requestParams.upgradeOption = getUpgradeOption(ybUniverse);
+  static void applyUpgradeOptions(UpgradeTaskParams requestParams, YBUniverse ybUniverse) {
+    applyUpgradeOptions(requestParams, ybUniverse, getUpgradeOption(ybUniverse));
+  }
+
+  // Rolling batch size and wait times still come from the ybUniverse spec when upgradeOption
+  // overrides the spec's own option.
+  static void applyUpgradeOptions(
+      UpgradeTaskParams requestParams, YBUniverse ybUniverse, UpgradeOption upgradeOption) {
+    requestParams.upgradeOption = upgradeOption;
     if (ybUniverse.getSpec() == null) {
       return;
     }
@@ -1672,7 +1685,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return createTaskParams(ybUniverse, customerUUID, provider);
   }
 
-  private UserIntent createUserIntent(
+  @VisibleForTesting
+  protected UserIntent createUserIntent(
       YBUniverse ybUniverse, UUID customerUUID, boolean isCreate, Provider provider) {
     Optional<Universe> optUniverse = Optional.empty();
     if (!isCreate) {
@@ -1696,8 +1710,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         log.error("Provider {} is not ready", provider.getName());
         throw new RuntimeException("Provider " + provider.getName() + " is not ready");
       }
-      userIntent.provider = provider.getUuid().toString();
-      userIntent.providerType = CloudType.kubernetes;
+      ProviderInitializer providerInitializer =
+          Util.newProviderInitializer(
+              userIntent, provider.getUuid(), CloudType.kubernetes, confGetter);
+
       userIntent.replicationFactor =
           ybUniverse.getSpec().getReplicationFactor() != null
               ? ((int) ybUniverse.getSpec().getReplicationFactor().longValue())
@@ -1744,28 +1760,30 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               : 0;
       userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
       userIntent.setProxyConfig(toProxyConfig(ybUniverse.getSpec().getProxyConfig()));
-      userIntent.accessKeyCode = "";
+      providerInitializer.setAccessCode("");
 
       // Use new volume fields if any are present, otherwise fall back to old deviceInfo fields
       // If tserverVolume or masterVolume is present, use new fields for both (mutual exclusivity)
       if (ybUniverse.getSpec().getTserverVolume() != null
           || ybUniverse.getSpec().getMasterVolume() != null) {
         // Use new volume fields
-        userIntent.deviceInfo =
-            operatorUtils.mapTserverVolume(ybUniverse.getSpec().getTserverVolume());
-        userIntent.masterDeviceInfo =
-            operatorUtils.mapMasterVolume(ybUniverse.getSpec().getMasterVolume());
+        providerInitializer.setDeviceInfo(
+            operatorUtils.mapTserverVolume(ybUniverse.getSpec().getTserverVolume()));
+        providerInitializer.setMasterDeviceInfo(
+            operatorUtils.mapMasterVolume(ybUniverse.getSpec().getMasterVolume()));
       } else {
         // Use old deviceInfo fields
-        userIntent.deviceInfo = operatorUtils.mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-        userIntent.masterDeviceInfo =
-            operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
+        providerInitializer.setDeviceInfo(
+            operatorUtils.mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo()));
+        providerInitializer.setMasterDeviceInfo(
+            operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo()));
       }
-      if (userIntent.deviceInfo == null) {
-        userIntent.deviceInfo = operatorUtils.defaultDeviceInfo();
+      if (userIntent.getBaseDeviceInfo(provider.getUuid()) == null) {
+        providerInitializer.setDeviceInfo(operatorUtils.defaultDeviceInfo());
       }
-      if (userIntent.masterDeviceInfo == null) {
-        userIntent.masterDeviceInfo = operatorUtils.defaultMasterDeviceInfo();
+      if (userIntent.getBaseDeviceInfo(provider.getUuid(), UniverseTaskBase.ServerType.MASTER)
+          == null) {
+        providerInitializer.setMasterDeviceInfo(operatorUtils.defaultMasterDeviceInfo());
       }
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
@@ -1783,31 +1801,40 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
 
       // Handle Passwords
+      // enableYSQLAuth/enableYCQLAuth in the spec decide whether auth is enabled - the password
+      // secret only carries the password itself. On create the two must agree, and the secret must
+      // hold a password. On edit the secret is not read at all, so dropping the password from the
+      // spec, or pointing it at a secret that is empty or deleted, is a no-op rather than a silent
+      // change to the stored intent or a failed reconcile of everything else in the spec.
       YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
-      if (ysqlPassword != null) {
-        Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-        trackDependency(ybUniverse, ysqlSecret);
-        String password = parseSecretForKey(ysqlSecret, YSQL_PASSWORD_SECRET_KEY);
-        if (password == null) {
-          log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
-          throw new RuntimeException(
-              "could not find ysqlPassword in secret " + ysqlPassword.getSecretName());
-        }
-        userIntent.enableYSQLAuth = true;
-        userIntent.ysqlPassword = password;
-      }
       YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
-      if (ycqlPassword != null) {
-        Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-        trackDependency(ybUniverse, ycqlSecret);
-        String password = parseSecretForKey(ycqlSecret, YCQL_PASSWORD_SECRET_KEY);
-        if (password == null) {
-          log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
-          throw new RuntimeException(
-              "could not find ycqlPassword in secret " + ycqlPassword.getSecretName());
+      String ysqlSecretName = ysqlPassword != null ? ysqlPassword.getSecretName() : null;
+      String ycqlSecretName = ycqlPassword != null ? ycqlPassword.getSecretName() : null;
+      if (isCreate) {
+        userIntent.enableYSQLAuth = ybUniverse.getSpec().getEnableYSQLAuth();
+        validateAuthSpec(userIntent.enableYSQLAuth, ysqlSecretName != null, "YSQL", "ysqlPassword");
+        if (ysqlSecretName != null) {
+          userIntent.ysqlPassword =
+              getPasswordFromSecret(ybUniverse, ysqlSecretName, YSQL_PASSWORD_SECRET_KEY);
         }
-        userIntent.enableYCQLAuth = true;
-        userIntent.ycqlPassword = password;
+        userIntent.enableYCQLAuth = ybUniverse.getSpec().getEnableYCQLAuth();
+        validateAuthSpec(userIntent.enableYCQLAuth, ycqlSecretName != null, "YCQL", "ycqlPassword");
+        if (ycqlSecretName != null) {
+          userIntent.ycqlPassword =
+              getPasswordFromSecret(ybUniverse, ycqlSecretName, YCQL_PASSWORD_SECRET_KEY);
+        }
+      } else {
+        // TODO: PLAT-22298 to actually add support for password rotation.
+        // This will need to call into UniverseYbDbAdminController.setDatabaseCredentials ONLY when
+        // the password is actually being changed, and should happen directly in the edit call
+        // when a new secret is provided.
+        userIntent.enableYSQLAuth = ybUniverse.getSpec().getEnableYSQLAuth();
+        userIntent.enableYCQLAuth = ybUniverse.getSpec().getEnableYCQLAuth();
+        // The password itself is not read here, but the secrets stay registered as dependencies:
+        // this is the only pass that registers them for universes whose CRs predate
+        // operator_resource, and the rows drive HA restore and orphan cleanup.
+        trackPasswordSecret(ybUniverse, ysqlSecretName);
+        trackPasswordSecret(ybUniverse, ycqlSecretName);
       }
       userIntent.specificGFlags = operatorUtils.getGFlagsFromSpec(ybUniverse, provider);
 
@@ -2512,17 +2539,58 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return client.secrets().inNamespace("default").withName(name).get();
   }
 
-  // parseSecretForKey checks secret data for the key. If not found, it will then check stringData.
-  // Returns null if the key is not found at all.
-  // Also handles null secret.
-  private String parseSecretForKey(Secret secret, String key) {
-    if (secret == null) {
+  // trackPasswordSecret registers the named secret as a dependency of the universe in
+  // operator_resource and returns it, without reading anything out of it. The dependency row is
+  // what HA failover restores the secret from and what marks it orphaned when the CR is deleted,
+  // so it has to be refreshed on every reconcile, including the ones that never read the password.
+  // A reference to a secret that does not exist is logged and ignored - it must not fail the
+  // reconcile of the rest of the spec.
+  private Secret trackPasswordSecret(YBUniverse ybUniverse, @Nullable String secretName) {
+    if (secretName == null) {
       return null;
     }
-    if (secret.getData().get(key) != null) {
-      return new String(Base64.getDecoder().decode(secret.getData().get(key)));
+    Secret secret = getSecret(secretName);
+    if (secret == null) {
+      log.warn(
+          "secret {} referenced by universe {} not found",
+          secretName,
+          ybUniverse.getMetadata().getName());
+      return null;
     }
-    return secret.getStringData().get(key);
+    trackDependency(ybUniverse, secret);
+    return secret;
+  }
+
+  // getPasswordFromSecret returns the password held by the named secret, failing if the secret is
+  // missing or holds no password. Only used when creating a universe - on edit a secret that cannot
+  // be read is ignored, see the note on passwords in createUserIntent.
+  private String getPasswordFromSecret(
+      YBUniverse ybUniverse, String secretName, String passwordKey) {
+    String password =
+        operatorUtils.parseSecretForKey(trackPasswordSecret(ybUniverse, secretName), passwordKey);
+    if (StringUtils.isBlank(password)) {
+      log.error("could not find {} in secret {}", passwordKey, secretName);
+      throw new RuntimeException(
+          String.format("could not find %s in secret %s", passwordKey, secretName));
+    }
+    return password;
+  }
+
+  // validateAuthSpec fails if the spec's auth flag and its password secret reference disagree.
+  // Auth cannot be turned on without a password to set it to, and a password is meaningless
+  // without auth. Only enforced when creating a universe: a universe imported into the operator
+  // by OperatorUtils.createUniverseCr has auth enabled with no secret to reference, because the
+  // import writes no Secret, so enforcing this on the edit path would break that flow.
+  private void validateAuthSpec(
+      boolean authEnabled, boolean passwordSet, String apiName, String specFieldName) {
+    if (authEnabled && !passwordSet) {
+      throw new RuntimeException(
+          String.format("%s must be set when enable%sAuth is true", specFieldName, apiName));
+    }
+    if (!authEnabled && passwordSet) {
+      throw new RuntimeException(
+          String.format("enable%sAuth must be true when %s is set", apiName, specFieldName));
+    }
   }
 
   private void createAutoProviderCR(YBUniverse ybUniverse, String providerName, UUID customerUUID) {

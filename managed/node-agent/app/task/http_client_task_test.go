@@ -28,6 +28,57 @@ func TestCreateRegisterAgentRequestCertificateName(t *testing.T) {
 	}
 }
 
+func TestHandleGetCertificateUuid(t *testing.T) {
+	handler := NewGetCertificateUuidHandler(dummyApiToken, util.DummyCertificateName)
+	result, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Unexpected error - %s", err.Error())
+	}
+	uuid, ok := result.(string)
+	if !ok {
+		t.Fatalf("Expected string result, got %T", result)
+	}
+	if uuid != util.DummyCertificateUuid {
+		t.Fatalf("Expected %q, got %q", util.DummyCertificateUuid, uuid)
+	}
+	if handler.Result() != util.DummyCertificateUuid {
+		t.Fatalf("Expected Result() %q, got %q", util.DummyCertificateUuid, handler.Result())
+	}
+}
+
+func TestHandleGetCertificateUuidMissing(t *testing.T) {
+	handler := NewGetCertificateUuidHandler(dummyApiToken, "missing-cert")
+	_, err := handler.Handle(context.Background())
+	if err == nil {
+		t.Fatal("Expected error for missing certificate")
+	}
+}
+
+func TestHandleGetNodeAgent(t *testing.T) {
+	util.MockNodeAgentCertificateUuid = util.DummyCertificateUuid
+	defer func() { util.MockNodeAgentCertificateUuid = "" }()
+
+	handler := NewGetNodeAgentHandler(dummyApiToken)
+	result, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Unexpected error - %s", err.Error())
+	}
+	nodeAgent, ok := result.(*model.NodeAgent)
+	if !ok {
+		t.Fatalf("Expected *model.NodeAgent, got %T", result)
+	}
+	if nodeAgent.Uuid != "n1234" {
+		t.Fatalf("Expected uuid n1234, got %q", nodeAgent.Uuid)
+	}
+	if nodeAgent.CertificateUuid != util.DummyCertificateUuid {
+		t.Fatalf(
+			"Expected certificateUuid %q, got %q",
+			util.DummyCertificateUuid,
+			nodeAgent.CertificateUuid,
+		)
+	}
+}
+
 func TestHandleAgentRegistration(t *testing.T) {
 	config := util.CurrentConfig()
 	t.Logf("cuuid: %s", config.String(util.CustomerIdKey))

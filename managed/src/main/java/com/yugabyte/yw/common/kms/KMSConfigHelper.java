@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -44,8 +45,29 @@ public class KMSConfigHelper {
       KeyProvider keyProvider,
       ObjectNode formData,
       @Nullable KubernetesResourceDetails k8sResourceDetails) {
+    return submitCreateKMSConfig(customerUUID, keyProvider, formData, k8sResourceDetails).taskUUID;
+  }
+
+  /**
+   * Like {@link #createKMSConfig} but also returns, as {@code resourceUUID}, the UUID the new
+   * config will have. The row is inserted by the task, so the UUID is minted here and carried in
+   * the task params; a client can wait on the task and then read the config by UUID instead of
+   * matching on name.
+   */
+  public YBPTask submitCreateKMSConfig(
+      UUID customerUUID, KeyProvider keyProvider, ObjectNode formData) {
+    return submitCreateKMSConfig(
+        customerUUID, keyProvider, formData, null /* k8sResourceDetails */);
+  }
+
+  public YBPTask submitCreateKMSConfig(
+      UUID customerUUID,
+      KeyProvider keyProvider,
+      ObjectNode formData,
+      @Nullable KubernetesResourceDetails k8sResourceDetails) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
+    taskParams.configUUID = UUID.randomUUID();
     taskParams.kmsProvider = keyProvider;
     taskParams.providerConfig = formData;
     taskParams.customerUUID = customerUUID;
@@ -61,7 +83,7 @@ public class KMSConfigHelper {
         CustomerTask.TargetType.KMSConfiguration,
         CustomerTask.TaskType.Create,
         taskParams.getName());
-    return taskUUID;
+    return new YBPTask(taskUUID, taskParams.configUUID);
   }
 
   public UUID editKMSConfig(

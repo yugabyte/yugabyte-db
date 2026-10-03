@@ -306,4 +306,11 @@ extern PathTarget *set_pathtarget_cost_width(PlannerInfo *root, PathTarget *targ
 extern double compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel,
 								   Path *bitmapqual, int loop_count, Cost *cost, double *tuple);
 
+/* YB declarations */
+extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
+								  PlannerInfo *root, RelOptInfo *joinrel,
+								  Path *outer_path, Path *inner_path,
+								  List *pathkeys, JoinType jointype,
+								  JoinPathExtraData *extra);
+
 #endif							/* COST_H */

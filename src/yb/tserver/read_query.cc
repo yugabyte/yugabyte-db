@@ -214,6 +214,10 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   ReadResponseMsg* resp_;
   rpc::RpcContext context_;
 
+  // Token from ReadTabletProvider::AdmitRead. Destroying it releases this read's admission, so it
+  // must outlive the asynchronous part of the read -- hence a member rather than a local.
+  std::shared_ptr<void> admission_;
+
   std::shared_ptr<tablet::AbstractTablet> abstract_tablet_;
   // Leader tablet peer resolved for this read, populated progressively as the read path narrows it
   // down (initial metadata lookup, leader lookup, or the serving-tablet fallback). Retained so the
@@ -333,6 +337,14 @@ Status ReadQuery::DoPerform() {
   ADOPT_TRACE(context_.trace());
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id().ToBuffer());
+
+  // Held for the life of this ReadQuery, which covers the scan and the encoding of the
+  // response -- the work an admission limit exists to bound. It does not cover sending the
+  // response, which RespondSuccess queues with the RPC layer for the reactor to write: a
+  // send that takes a long time holds an RPC buffer, not taking up an admission slot. Storing
+  // this in a local variable would release it when this function returns, which is too early,
+  // since a read can reschedule itself while waiting for safe time.
+  admission_ = VERIFY_RESULT(read_tablet_provider_.AdmitRead(*req_));
 
   IsolationLevel isolation_level;
   {
@@ -772,6 +784,15 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
         tablet::ScopedReadOperation::Create(abstract_tablet_.get(), require_lease_, read_time_));
     read_operation_data.read_time = read_tx.read_time();
   }
+  if (req_->has_transaction()) {
+    const auto& transaction = req_->transaction();
+    if (transaction.is_read_only_historical_committed_txn() && transaction.has_transaction_id() &&
+        !transaction.transaction_id().empty()) {
+      // Historical reads of a committed txn's own writes need the intents DB even when no
+      // transactions are currently running (MinRunningHybridTime == kMax).
+      read_operation_data.use_ht_file_filter = false;
+    }
+  }
   used_read_time_ = read_operation_data.read_time;
   if (!req_->redis_batch().empty()) {
     // Assert the primary table is a redis table.
@@ -863,6 +884,11 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
         // backfill is replicated from the source).
         auto birth_time = table_info->index_info->birth_time();
         auto birth_ht = HybridTime(birth_time);
+        VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
+                << " birth_time=" << birth_time << " (" << birth_ht << ")"
+                << " retain_delete_markers="
+                << table_info->schema().table_properties().retain_delete_markers()
+                << " read_time=" << read_time_.read;
         if (birth_time != 0 && !birth_ht.is_special() && read_time_.read < birth_ht) {
           return STATUS(
               SnapshotTooOld,

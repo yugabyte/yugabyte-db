@@ -7,7 +7,6 @@ import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.List;
 import java.util.UUID;
 import lombok.Data;
 import lombok.Getter;
@@ -21,12 +20,6 @@ public class PaUniverseInfo {
 
   @ApiModelProperty(value = "Universe name (from YBA, or null if universe was deleted)")
   private String universeName;
-
-  @ApiModelProperty(value = "Data mount points")
-  private List<String> dataMountPoints;
-
-  @ApiModelProperty(value = "Other mount points")
-  private List<String> otherMountPoints;
 
   @ApiModelProperty(value = "Whether advanced observability (metrics export) is enabled")
   private boolean advancedObservability;

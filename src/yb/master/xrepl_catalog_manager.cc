@@ -4076,6 +4076,8 @@ Status CatalogManager::GetCDCStream(
   stream_info->set_xcluster_use_target_applied_filter(
       stream_lock->pb.xcluster_use_target_applied_filter());
 
+  stream_info->set_xcluster_is_wal_anchor(stream_lock->pb.xcluster_is_wal_anchor());
+
   return Status::OK();
 }
 
@@ -4258,6 +4260,8 @@ Status CatalogManager::ListCDCStreams(
         ltm->pb.detect_publication_changes_implicitly());
 
     stream->set_xcluster_use_target_applied_filter(ltm->pb.xcluster_use_target_applied_filter());
+
+    stream->set_xcluster_is_wal_anchor(ltm->pb.xcluster_is_wal_anchor());
   }
   return Status::OK();
 }
@@ -4338,8 +4342,10 @@ Status CatalogManager::UpdateCDCStreams(
     }
     auto& pb = stream_lock.mutable_data()->pb;
     const bool preserve_use_target_applied_filter = pb.xcluster_use_target_applied_filter();
+    const bool preserve_is_wal_anchor = pb.xcluster_is_wal_anchor();
     pb.CopyFrom(entry);
     pb.set_xcluster_use_target_applied_filter(preserve_use_target_applied_filter);
+    pb.set_xcluster_is_wal_anchor(preserve_is_wal_anchor);
 
     for (auto it = pb.mutable_options()->begin(); it != pb.mutable_options()->end(); ++it) {
       if (it->key() == cdc::kStreamState) {
@@ -6602,14 +6608,15 @@ Status CatalogManager::CreateCdcStateTableIfNotFound(const LeaderEpoch& epoch) {
 }
 
 Result<scoped_refptr<CDCStreamInfo>> CatalogManager::InitNewXReplStream() {
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
-
   auto stream_id = GenerateNewXreplStreamId();
   auto stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
   stream->mutable_metadata()->StartMutation();
 
-  cdc_stream_map_[stream_id] = stream;
+  {
+    LockGuard lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+    cdc_stream_map_[stream_id] = stream;
+  }
 
   return stream;
 }

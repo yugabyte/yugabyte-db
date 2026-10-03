@@ -24,6 +24,7 @@ SELECT $$IN ('1', '1')$$ AS "R2" \gset
 --
 CREATE INDEX NONCONCURRENTLY idx ON tv_tbl (v ASC, t, i2, (v::text), v, (t::varchar), t, i4)
 SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+ANALYZE tv_tbl;
 
 -- RelabelType strip points exercised:
 -- - SAOP clause LHS: v's LHS is wrapped, but the leading index expression is
@@ -49,6 +50,7 @@ DROP INDEX idx;
 --
 CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, (t::varchar), i2, (v::text), v, (t::varchar), t, i4)
 SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+ANALYZE tv_tbl;
 
 -- Beyond index 1:
 -- - The leading (v::text) is wrapped on both sides: the index expression and
@@ -77,4 +79,22 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 \set query ':P :Q SELECT i2, i4, n, v FROM tv_tbl WHERE v :R ORDER BY i2, i4, n LIMIT 5;'
 \i :run_query
 
+DROP INDEX idx;
+
+--
+-- Index 4: a relabeled expression column held at one value, before the stream
+-- column i2.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+\set query ':P :Q SELECT i4, n, v, i2 FROM tv_tbl WHERE v :R AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;'
+\i :run_query
+DROP INDEX idx;
+
+--
+-- Index 5: the same as a hash column, which stays a stream key either way and
+-- shows its equality index condition under Merge Cond.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) HASH, i2 ASC, i4 ASC);
+\i :run_query
 DROP INDEX idx;

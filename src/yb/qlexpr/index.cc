@@ -19,6 +19,7 @@
 #include "yb/common/common.messages.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
@@ -94,6 +95,8 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       indexed_range_column_ids_(ColumnIdsFromPB(pb.indexed_range_column_ids())),
       index_permissions_(pb.index_permissions()),
       backfill_error_message_(pb.backfill_error_message()),
+      backfill_status_(pb.has_backfill_status() ? StatusFromPB(pb.backfill_status())
+                                                : Status::OK()),
       num_rows_read_from_table_for_backfill_(pb.num_rows_read_from_table_for_backfill()),
       num_rows_backfilled_in_index_(pb.num_rows_backfilled_in_index()),
       birth_time_(pb.birth_time()),
@@ -145,6 +148,11 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   }
   pb->set_index_permissions(index_permissions_);
   pb->set_backfill_error_message(backfill_error_message_);
+  if (!backfill_status_.ok()) {
+    StatusToPB(backfill_status_, pb->mutable_backfill_status());
+  } else {
+    pb->clear_backfill_status();
+  }
   pb->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill_);
   pb->set_num_rows_backfilled_in_index(num_rows_backfilled_in_index_);
   if (birth_time_ != 0) {

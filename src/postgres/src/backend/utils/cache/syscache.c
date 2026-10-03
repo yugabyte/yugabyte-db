@@ -97,6 +97,7 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb_internal_conn.h"
@@ -1205,58 +1206,9 @@ static_assert(SysCacheSize == sizeof(SysCacheName) /
 
 /* List of all the tables that have caches on them */
 static const char *yb_cache_table_name_table[] = {
-	"pg_aggregate",
-	"pg_am",
-	"pg_amop",
-	"pg_amproc",
-	"pg_attribute",
-	"pg_auth_members",
-	"pg_authid",
-	"pg_cast",
-	"pg_class",
-	"pg_collation",
-	"pg_constraint",
-	"pg_conversion",
-	"pg_database",
-	"pg_default_acl",
-	"pg_enum",
-	"pg_event_trigger",
-	"pg_extension",
-	"pg_foreign_data_wrapper",
-	"pg_foreign_server",
-	"pg_foreign_table",
-	"pg_index",
-	"pg_language",
-	"pg_namespace",
-	"pg_opclass",
-	"pg_operator",
-	"pg_opfamily",
-	"pg_parameter_acl",
-	"pg_partitioned_table",
-	"pg_proc",
-	"pg_publication",
-	"pg_publication_namespace",
-	"pg_publication_rel",
-	"pg_range",
-	"pg_replication_origin",
-	"pg_rewrite",
-	"pg_sequence",
-	"pg_statistic",
-	"pg_statistic_ext",
-	"pg_statistic_ext_data",
-	"pg_subscription",
-	"pg_subscription_rel",
-	"pg_tablespace",
-	"pg_transform",
-	"pg_ts_config",
-	"pg_ts_config_map",
-	"pg_ts_dict",
-	"pg_ts_parser",
-	"pg_ts_template",
-	"pg_type",
-	"pg_user_mapping",
-	"pg_yb_tablegroup",
-	"pg_inherits"
+#define YB_CATCACHE_TABLE_ENTRY(prefix, table) #table,
+	YB_CATCACHE_TABLE_LIST
+#undef YB_CATCACHE_TABLE_ENTRY
 };
 
 static_assert(YbNumCatalogCacheTables ==
@@ -1363,7 +1315,19 @@ YbShouldPreloadCatcacheLists(void)
 void
 YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 {
-
+	/*
+	 * The scan returns each row, and the by-reference datums decoded for it,
+	 * in the current memory context, while the catcache keeps its own copy in
+	 * CacheMemoryContext.  During connection startup the caller's context
+	 * lives until the end of InitPostgres, so free the scanned rows here.
+	 */
+	MemoryContext preload_cxt = AllocSetContextCreate(CurrentMemoryContext,
+													  "YbPreloadCatalogCache",
+													  ALLOCSET_DEFAULT_SIZES);
+	MemoryContext row_cxt = AllocSetContextCreate(preload_cxt,
+												  "YbPreloadCatalogCache row",
+												  ALLOCSET_DEFAULT_SIZES);
+	MemoryContext oldcxt = MemoryContextSwitchTo(preload_cxt);
 	CatCache   *cache = SysCache[cache_id];
 	CatCache   *idx_cache = idx_cache_id != -1 ? SysCache[idx_cache_id] : NULL;
 	List	   *dest_list = NIL;
@@ -1373,7 +1337,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	TupleDesc	tupdesc = RelationGetDescr(relation);
 
 	SysScanDesc scandesc = systable_beginscan(relation,
-											  cache->cc_indexoid,
+											  InvalidOid,
 											  false /* indexOK */ ,
 											  NULL /* snapshot */ ,
 											  0 /* nkeys */ ,
@@ -1385,8 +1349,14 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	if (yb_debug_log_catcache_events)
 		INSTR_TIME_SET_CURRENT(start);
 
-	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
+	MemoryContextSwitchTo(row_cxt);
+	for (;;)
 	{
+		MemoryContextReset(row_cxt);
+		ntp = systable_getnext(scandesc);
+		if (!HeapTupleIsValid(ntp))
+			break;
+
 		scanned++;
 		SetCatCacheTuple(cache, ntp, RelationGetDescr(relation));
 
@@ -1512,6 +1482,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 
 		if (is_add_to_list_required)
 		{
+			/* The lists are consumed after the scan, so must outlive row_cxt. */
+			MemoryContextSwitchTo(preload_cxt);
+			ntp = heap_copytuple(ntp);
 			if (dest_list)
 			{
 				List	   *old_dest_list = dest_list;
@@ -1525,8 +1498,10 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 				dest_list = list_make1(ntp);
 				list_of_lists = lappend(list_of_lists, dest_list);
 			}
+			MemoryContextSwitchTo(row_cxt);
 		}
 	}
+	MemoryContextSwitchTo(preload_cxt);
 
 	systable_endscan(scandesc);
 
@@ -1582,6 +1557,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		if (idx_cache)
 			idx_cache->yb_cc_is_fully_loaded = true;
 	}
+
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(preload_cxt);
 }
 
 /*

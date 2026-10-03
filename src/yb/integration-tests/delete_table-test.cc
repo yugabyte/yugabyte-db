@@ -641,6 +641,9 @@ TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
 TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   vector<string> tserver_flags, master_flags;
   master_flags.push_back("--replication_factor=2");
+  // RemoveTabletServer below requires the TServer to have definitely lost its xCluster-guarded
+  // information lease; shorten the lease so that happens within the deadline.
+  master_flags.push_back("--xcluster_guarded_lease_duration_ms=3000");
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags));
   const MonoDelta timeout = MonoDelta::FromSeconds(40);
   const int kTsIndex = 0;  // We'll test with the first TS.
@@ -749,6 +752,9 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
 
   master_flags.push_back("--enable_load_balancing=false");
   master_flags.push_back("--replication_factor=2");
+  // RemoveTabletServer below requires the TServer to have definitely lost its xCluster-guarded
+  // information lease; shorten the lease so that happens within the deadline.
+  master_flags.push_back("--xcluster_guarded_lease_duration_ms=3000");
 
   // Start the cluster with load balancer turned off.
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags));

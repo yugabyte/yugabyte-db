@@ -159,7 +159,8 @@ extern double yb_index_backfill(Relation heapRelation,
 								IndexInfo *indexInfo,
 								bool isprimary,
 								YbBackfillInfo *bfinfo,
-								YbPgExecOutParam *bfresult);
+								YbPgExecOutParam *bfresult,
+								double *num_rows_scanned);
 
 /* TODO: add Yb prefix. */
 extern double IndexBackfillHeapRangeScan(Relation heapRelation,

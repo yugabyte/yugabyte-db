@@ -407,6 +407,10 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   ADOPT_WAIT_STATE(wait_state());
   SCOPED_WAIT_STATUS(OnCpu_Active);
 
+  // Re-activate the submitting thread's trace on this apply thread so RPCs the operation issues
+  // during apply (e.g. APPLYING/APPLIED UpdateTransaction RPCs) nest under it.
+  dist_trace::ScopedAdoptSpan otel_scope(otel_parent_);
+
 #ifndef NDEBUG
   {
     std::lock_guard lock(lock_);

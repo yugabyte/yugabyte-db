@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -159,6 +161,9 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -242,6 +247,11 @@ public class OperatorUtils {
   private ReleaseManager releaseManager;
   private ObjectMapper objectMapper;
 
+  // Keyed on path plus last-modified time and size, so an entry is only reused while the file it
+  // was read from is untouched. Bounded rather than expiring: a stale key cannot be read.
+  private final Cache<String, String> kubeConfigFileCache =
+      CacheBuilder.newBuilder().maximumSize(100).build();
+
   @Inject
   public OperatorUtils(
       RuntimeConfGetter confGetter,
@@ -310,23 +320,88 @@ public class OperatorUtils {
         .map(PlatformInstance::getUuid);
   }
 
-  public Universe getUniverseFromNameAndNamespace(
-      Long customerId, String universeName, String namespace) throws Exception {
+  /**
+   * True once HA has demoted this YBA to standby. The active instance owns the CRs, so a demoted
+   * instance that keeps reconciling fights it over the same Kubernetes cluster. Checked on every CR
+   * event rather than at startup because a role flip does not restart YBA.
+   */
+  public boolean isHaFollower() {
+    return HighAvailabilityConfig.isFollower();
+  }
+
+  /**
+   * Resolves the YBA universe backing a YBUniverse custom resource, given that resource's name and
+   * namespace.
+   *
+   * @param customerId the customer the universe must belong to
+   * @param crName the {@code metadata.name} of the YBUniverse custom resource, as named by the
+   *     {@code universe} field of a dependent resource's spec
+   * @param namespace the namespace holding the custom resource
+   * @return the universe, or null if either the custom resource or its universe does not exist
+   */
+  public Universe getUniverseFromNameAndNamespace(Long customerId, String crName, String namespace)
+      throws Exception {
     KubernetesResourceDetails ybUniverseResourceDetails = new KubernetesResourceDetails();
-    ybUniverseResourceDetails.name = universeName;
+    ybUniverseResourceDetails.name = crName;
     ybUniverseResourceDetails.namespace = namespace;
     YBUniverse ybUniverse = getYBUniverse(ybUniverseResourceDetails);
     if (ybUniverse == null) {
-      log.debug("YBUniverse '{}' not found in namespace '{}'", universeName, namespace);
+      log.debug("YBUniverse '{}' not found in namespace '{}'", crName, namespace);
       return null;
     }
-    String name = YBUniverseReconciler.getUniverseName(ybUniverse);
-    log.debug("Getting universe from name: {}", name);
-    Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, name);
-    if (universe.isPresent()) {
-      return universe.get();
+    return getUniverseFromCr(customerId, ybUniverse).orElse(null);
+  }
+
+  /**
+   * Resolves the YBA universe a YBUniverse custom resource represents, for the dependent resources
+   * - Backup, BackupSchedule, PitrConfig, RestoreJob, DrConfig, SupportBundle - that name a
+   * YBUniverse resource in their spec.
+   *
+   * <p>Resolution order follows YBUniverseReconciler.resolveExistingUniverse: the {@code
+   * yba-resource-id} annotation, then both historical naming schemes. The annotation is the only
+   * link that resolves an imported universe, which keeps the name it already had in YBA while
+   * {@link YBUniverseReconciler#getUniverseName} derives {@code <resourceName>-<hash>} from the
+   * resource metadata.
+   *
+   * <p>Read-only, unlike the reconciler's resolver: it neither annotates the resource nor reports
+   * an ambiguous match, both of which belong to the reconcile that owns the resource. It does scope
+   * the UUID lookup to the requesting customer, which {@link Universe#maybeGet} does not.
+   *
+   * @param customerId the customer the universe must belong to
+   * @param ybUniverse the custom resource to resolve
+   * @return the universe, or empty if no universe matches the custom resource
+   */
+  public static Optional<Universe> getUniverseFromCr(Long customerId, YBUniverse ybUniverse) {
+    if (ybUniverse == null) {
+      return Optional.empty();
     }
-    return null;
+    UUID ybaResourceId = getYbaResourceId(ybUniverse.getMetadata());
+    if (ybaResourceId != null) {
+      Optional<Universe> universe =
+          Universe.maybeGet(ybaResourceId).filter(u -> customerId.equals(u.getCustomerId()));
+      if (universe.isPresent()) {
+        return universe;
+      }
+      // Metadata is non-null here, getYbaResourceId only returns a value when it is set.
+      log.warn(
+          "YBUniverse '{}/{}' is annotated with YBA resource id {}, but no such universe exists for"
+              + " customer {}, falling back to name lookup",
+          ybUniverse.getMetadata().getNamespace(),
+          ybUniverse.getMetadata().getName(),
+          ybaResourceId,
+          customerId);
+    }
+    String metadataName = YBUniverseReconciler.getUniverseName(ybUniverse);
+    log.debug("Getting universe from name: {}", metadataName);
+    Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, metadataName);
+    if (universe.isPresent()) {
+      return universe;
+    }
+    String specName = ybUniverse.getSpec() == null ? null : ybUniverse.getSpec().getUniverseName();
+    if (StringUtils.isNotBlank(specName) && !specName.equals(metadataName)) {
+      return Universe.maybeGetUniverseByName(customerId, specName);
+    }
+    return Optional.empty();
   }
 
   public YBUniverse getYBUniverse(KubernetesResourceDetails name) throws Exception {
@@ -696,9 +771,9 @@ public class OperatorUtils {
           .forEach(
               azUUID -> {
                 DeviceInfo tsDeviceInfo =
-                    curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                    curCluster.userIntent.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
                 DeviceInfo newTsDeviceInfo =
-                    newIntentClone.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                    newIntentClone.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
                 log.debug(
                     "Comparing tserver device info for AZ {}: old {}, new {}",
                     azUUID,
@@ -709,9 +784,9 @@ public class OperatorUtils {
 
                 if (curCluster.clusterType != ClusterType.ASYNC) {
                   DeviceInfo masterDeviceInfo =
-                      curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                      curCluster.userIntent.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
                   DeviceInfo newMasterDeviceInfo =
-                      newIntentClone.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                      newIntentClone.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
                   log.debug(
                       "Comparing master device info for AZ {}: old {}, new {}",
                       azUUID,
@@ -725,15 +800,17 @@ public class OperatorUtils {
       return deviceInfoChanged.get();
     } else {
       // volumeSize is an Integer: compare by value, not by reference.
+      UUID providerUUID = curCluster.userIntent.maybeGetSingleProviderUUID().get();
       boolean tserverSizeChanged =
           !Objects.equals(
-              curCluster.userIntent.deviceInfo.volumeSize, newIntent.deviceInfo.volumeSize);
+              curCluster.userIntent.getBaseDeviceInfo(providerUUID).volumeSize,
+              newIntent.getBaseDeviceInfo(providerUUID).volumeSize);
       boolean masterSizeChanged = false;
       if (curCluster.clusterType != ClusterType.ASYNC) {
         masterSizeChanged =
             !Objects.equals(
-                curCluster.userIntent.masterDeviceInfo.volumeSize,
-                newIntent.masterDeviceInfo.volumeSize);
+                curCluster.userIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).volumeSize,
+                newIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER).volumeSize);
       }
       return tserverSizeChanged || masterSizeChanged;
     }
@@ -1571,10 +1648,11 @@ public class OperatorUtils {
     if (secret == null) {
       return null;
     }
-    if (secret.getData().get(key) != null) {
+    // A secret carries data, stringData, or neither - whichever is absent comes back null.
+    if (secret.getData() != null && secret.getData().get(key) != null) {
       return new String(Base64.getDecoder().decode(secret.getData().get(key)));
     }
-    return secret.getStringData().get(key);
+    return secret.getStringData() != null ? secret.getStringData().get(key) : null;
   }
 
   /*
@@ -1750,12 +1828,18 @@ public class OperatorUtils {
       throw new Exception("No storage config found with name " + crStorageConfig);
     }
 
-    KeyspaceTable kT = new KeyspaceTable();
-    if (((ObjectNode) crParams).has("keyspace")) {
-      kT.keyspace = ((ObjectNode) crParams).get("keyspace").asText();
-      ((ObjectNode) crParams).remove("keyspace");
+    // Omit / blank spec.keyspace means all databases (YSQL) or keyspaces (YCQL)
+    // of backupType. Empty list is a full backup; never emit [{keyspace: null}]
+    // (PLAT-20706 NPE). A named keyspace stays a one-element list.
+    JsonNode keyspaceNode = ((ObjectNode) crParams).remove("keyspace");
+    String keyspace = keyspaceNode == null || keyspaceNode.isNull() ? null : keyspaceNode.asText();
+    if (StringUtils.isNotBlank(keyspace)) {
+      KeyspaceTable kT = new KeyspaceTable();
+      kT.keyspace = keyspace;
+      ((ObjectNode) crParams).set("keyspaceTableList", Json.toJson(kT));
+    } else {
+      ((ObjectNode) crParams).set("keyspaceTableList", Json.newArray());
     }
-    ((ObjectNode) crParams).set("keyspaceTableList", Json.toJson(kT));
 
     ((ObjectNode) crParams).put("universeUUID", universeUUID.toString());
     ((ObjectNode) crParams).put("storageConfigUUID", storageConfigUUID.toString());
@@ -2147,12 +2231,66 @@ public class OperatorUtils {
 
   public boolean hasKubeConfigChanged(
       Map<String, String> existingCloudInfo, Map<String, String> desiredCloudInfo) {
+    // A CR carries its kubeconfig by Secret reference and the reconciler names the file after the
+    // Secret, so the name never matches the one the provider was created with - comparing names
+    // reports drift forever on an imported provider.
+    String desiredKubeConfigContent = desiredCloudInfo.get("KUBECONFIG_CONTENT");
+    if (StringUtils.isNotBlank(desiredKubeConfigContent)) {
+      String existingKubeConfigContent =
+          readKubeConfigContent(existingCloudInfo.getOrDefault("KUBECONFIG", ""));
+      if (existingKubeConfigContent != null) {
+        // createKubernetesConfig writes the content verbatim, so this compares byte for byte.
+        // Only trailing whitespace is normalized - normalizing further risks reading a rotated
+        // credential as unchanged.
+        return !Objects.equals(
+            StringUtils.stripEnd(existingKubeConfigContent, null),
+            StringUtils.stripEnd(desiredKubeConfigContent, null));
+      }
+    }
     // Look for KUBECONFIG in the existing kubeconfig and extract the name of the kubeconfig file
     // since we don't store the kubeconfig name in the provider.
     String existingKubeConfigName =
         extractKubeConfigName(existingCloudInfo.getOrDefault("KUBECONFIG", ""));
     String desiredKubeConfigName = desiredCloudInfo.getOrDefault("KUBECONFIG_NAME", "");
     return !Objects.equals(existingKubeConfigName, desiredKubeConfigName);
+  }
+
+  /**
+   * The provider's kubeconfig, cached so the reconcile loop is not re-reading a file that only
+   * changes on a credential rotation. Keyed on the path, which AccessManager writes under {@code
+   * <providerUUID>[/<regionUUID>[/<zoneUUID>]]} and so is already unique per provider and zone. The
+   * reconciler drops a provider's entries when it submits an edit for it.
+   */
+  private String readKubeConfigContent(String kubeConfigPath) {
+    if (StringUtils.isBlank(kubeConfigPath)) {
+      return null;
+    }
+    String cached = kubeConfigFileCache.getIfPresent(kubeConfigPath);
+    if (cached != null) {
+      return cached;
+    }
+    try {
+      Path path = Paths.get(kubeConfigPath);
+      if (!Files.exists(path)) {
+        return null;
+      }
+      String content = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+      kubeConfigFileCache.put(kubeConfigPath, content);
+      return content;
+    } catch (Exception e) {
+      log.warn("Failed to read kubeconfig at {}", kubeConfigPath, e);
+      return null;
+    }
+  }
+
+  /**
+   * Drops every cached kubeconfig belonging to a provider - its own and its regions' and zones',
+   * which all live under the provider's UUID. Call when submitting an edit, before the task
+   * rewrites the files.
+   */
+  public void invalidateKubeConfigCache(UUID providerUUID) {
+    String marker = "/" + providerUUID + "/";
+    kubeConfigFileCache.asMap().keySet().removeIf(key -> key.contains(marker));
   }
 
   private String extractKubeConfigName(String kubeConfigPath) {
@@ -2979,10 +3117,29 @@ public class OperatorUtils {
               .build());
       BackupScheduleSpec spec = new BackupScheduleSpec();
       spec.setStorageConfig(storageConfigName);
-      spec.setUniverse(Universe.getOrBadRequest(ybBackupSchedule.getOwnerUUID()).getName());
+      // spec.universe names the YBUniverse custom resource, not the YBA universe: consumers read
+      // it back through getUniverseFromNameAndNamespace. The two names coincide only for an
+      // imported universe; for an operator-created one the YBA name carries a hash suffix the
+      // resource name lacks.
+      Universe scheduleUniverse = Universe.getOrBadRequest(ybBackupSchedule.getOwnerUUID());
+      KubernetesResourceDetails universeResourceDetails =
+          scheduleUniverse.getUniverseDetails().getKubernetesResourceDetails();
+      if (universeResourceDetails == null) {
+        throw new Exception(
+            String.format(
+                "Universe %s has no Kubernetes resource details, cannot resolve the YBUniverse"
+                    + " custom resource backing backup schedule %s",
+                scheduleUniverse.getName(), name));
+      }
+      spec.setUniverse(universeResourceDetails.name);
       spec.setBackupType(BackupScheduleSpec.BackupType.valueOf(params.backupType.toString()));
       spec.setTableByTableBackup(params.tableByTableBackup);
-      spec.setKeyspace(params.keyspaceTableList.get(0).keyspace);
+      // Full backups (empty keyspaceTableList) omit spec.keyspace so the CR means
+      // all databases/keyspaces of backupType. Do not NPE on get(0).
+      if (CollectionUtils.isNotEmpty(params.keyspaceTableList)
+          && StringUtils.isNotBlank(params.keyspaceTableList.get(0).keyspace)) {
+        spec.setKeyspace(params.keyspaceTableList.get(0).keyspace);
+      }
       spec.setTimeBeforeDelete(params.timeBeforeDelete);
       if (params.cronExpression != null) {
         spec.setCronExpression(params.cronExpression);

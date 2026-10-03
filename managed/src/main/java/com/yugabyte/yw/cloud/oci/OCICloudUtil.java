@@ -5,6 +5,7 @@ package com.yugabyte.yw.cloud.oci;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableSet;
+import com.oracle.bmc.core.model.Image;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Static helpers for OCI cloud operations. OCI allows at most 10 freeform tags per resource;
@@ -35,6 +37,14 @@ public final class OCICloudUtil {
           "Name",
           "yb_user_email",
           "yb_yba_url");
+
+  static final String MARKETPLACE_IMAGE_COMPARTMENT = "publisherCompartment";
+
+  public enum ImageType {
+    MARKETPLACE,
+    PLATFORM,
+    CUSTOM
+  }
 
   private static final Pattern INSTANCE_CONFIGURATION_OCID_PATTERN =
       Pattern.compile("^ocid1\\.instanceconfiguration\\.[^.\\s]+\\.[^.\\s]+\\.[^.\\s]+$");
@@ -105,5 +115,20 @@ public final class OCICloudUtil {
         }
       }
     }
+  }
+
+  /**
+   * Classifies an image by its compartment. OCI reports Marketplace images with this literal in
+   * place of a compartment OCID, and Oracle platform images with no compartment at all.
+   */
+  public static ImageType getImageType(Image image) {
+    String compartmentId = image.getCompartmentId();
+    if (MARKETPLACE_IMAGE_COMPARTMENT.equals(compartmentId)) {
+      return ImageType.MARKETPLACE;
+    }
+    if (StringUtils.isBlank(compartmentId)) {
+      return ImageType.PLATFORM;
+    }
+    return ImageType.CUSTOM;
   }
 }

@@ -1023,10 +1023,6 @@ class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
     const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
     options->extra_master_flags.push_back(flag);
     options->extra_tserver_flags.push_back(flag);
-
-    // TODO(#33534): Fix this test with DDL savepoint and remove below lines.
-    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
   }
 };
 
@@ -1659,8 +1655,8 @@ TEST_F_EX(
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
     const string database_name, bool colocated, const string tablegroup_name,
     const string query_statement) {
-  auto conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  auto conn2 = ASSERT_RESULT(ConnectToDB(database_name));
+  auto conn1 = ASSERT_RESULT(SetHighPriTxn(ConnectToDB(database_name)));
+  auto conn2 = ASSERT_RESULT(SetLowPriTxn(ConnectToDB(database_name)));
 
   if (colocated) {
     ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t (a INT, PRIMARY KEY (a ASC))"));
@@ -3027,8 +3023,11 @@ class PgLibPqTestDisableObjectLocking : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
     AppendFlagToAllowedPreviewFlagsCsv(
@@ -3471,7 +3470,8 @@ TEST_F_EX(PgLibPqTest,
           Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid)));
       return count.find("1") != string::npos;
     }, 2500ms, "Webserver restarting..."));
-    ASSERT_OK(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid)));
+    // Same Mac quirk as above: -P must precede -f, or this kills unrelated processes.
+    ASSERT_OK(RunShellProcess(Format("pkill -9 -P $0 -f 'YSQL webserver'", postmaster_pid)));
   }
 }
 
@@ -3652,7 +3652,7 @@ TEST_F_EX(PgLibPqTest, YbcTableProperties, PgLibPqTestRF1) {
   row = ASSERT_RESULT((
       conn.FetchRow<PGUint64, PGUint64, bool, std::optional<PGOid>, std::optional<PGOid>>(query1)));
   ASSERT_EQ(row, (decltype(row){2, 0, false, std::nullopt, std::nullopt}));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(query2)), "SPLIT AT VALUES ((49))");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(query2)), "SPLIT AT VALUES ((51))");
 }
 
 TEST_F(PgLibPqTest, AggrSystemColumn) {
@@ -5940,8 +5940,11 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
     // Enabling table locks+concurrent DDLs causes the ConcurrentAnalyzeWithDDL fail.
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
     AppendFlagToAllowedPreviewFlagsCsv(
@@ -6194,9 +6197,14 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
     options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
+    // these flags consistent.
     options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.push_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
     options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");

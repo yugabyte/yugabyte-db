@@ -8,7 +8,8 @@ import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/ut
 import {
   sortAndGroup,
   getDefaultInstanceType,
-  useGetZones
+  useGetZones,
+  mergeDeviceInfoPreservingStorage
 } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
@@ -115,9 +116,16 @@ export const InstanceTypeField = ({
       setValue(UPDATE_FIELD, code);
       const option = data.find((i) => i.instanceTypeCode === code);
       if (option) {
+        const fromInstance = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
         setValue(
           UPDATE_DEVICE_INFO_FIELD,
-          getDeviceInfoFromInstance(option, providerRuntimeConfigs)
+          isEditMode
+            ? mergeDeviceInfoPreservingStorage(
+                fromInstance,
+                getValues(UPDATE_DEVICE_INFO_FIELD),
+                option
+              )
+            : fromInstance
         );
       }
     } else if (!isEditMode && !getValues(UPDATE_DEVICE_INFO_FIELD)) {
@@ -149,7 +157,17 @@ export const InstanceTypeField = ({
       return;
     }
     setValue(UPDATE_FIELD, option.instanceTypeCode, { shouldValidate: true });
-    setValue(UPDATE_DEVICE_INFO_FIELD, getDeviceInfoFromInstance(option, providerRuntimeConfigs));
+    const fromInstance = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
+    setValue(
+      UPDATE_DEVICE_INFO_FIELD,
+      isEditMode
+        ? mergeDeviceInfoPreservingStorage(
+            fromInstance,
+            getValues(UPDATE_DEVICE_INFO_FIELD),
+            option
+          )
+        : fromInstance
+    );
   };
 
   return (

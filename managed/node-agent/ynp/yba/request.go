@@ -17,9 +17,10 @@ import (
 
 func getAuthHeaders(token string) map[string]string {
 	return map[string]string{
-		"Accept":              "application/json",
-		"X-AUTH-YW-API-TOKEN": token,
-		"Content-Type":        "application/json",
+		"Accept":                      "application/json",
+		util.PlatformApiTokenHeader:   token,
+		util.PlatformYnpRequestHeader: "true",
+		"Content-Type":                "application/json",
 	}
 }
 
@@ -103,6 +104,29 @@ func GetSessionInfo(
 		return nil, err
 	}
 	return &sessionInfo, nil
+}
+
+// GetYBAInfo makes an API call to YBA to get the instance info, which reports whether YBA itself
+// is running in FIPS mode.
+func GetYBAInfo(
+	ctx context.Context,
+	ybaUrl, apiKey string,
+	skipTlsVerify bool,
+) (*model.YBAInfo, error) {
+	ybaInfoUrl := ybaUrl + util.PlatformGetYBAInfoEndpoint()
+	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaUrl), "https") || skipTlsVerify
+	headers := getAuthHeaders(apiKey)
+	resp, _, err := MakeRequest(ctx, ybaInfoUrl, "GET", headers, nil, skipTLSVerify)
+	if err != nil {
+		return nil, err
+	}
+	var ybaInfo model.YBAInfo
+	if err := json.Unmarshal(resp, &ybaInfo); err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to unmarshal YBA info response: %s, error: %v", string(resp), err)
+		return nil, err
+	}
+	return &ybaInfo, nil
 }
 
 // GetRuntimeConfig makes an API call to YBA to get the runtime config value for the given key in the scope.
@@ -266,4 +290,62 @@ func GetProviderNodeInstances(
 		return nil, err
 	}
 	return instances, nil
+}
+
+// GetNodeAgentByIp makes an API call to YBA to get the node agent by node IP or FQDN.
+func GetNodeAgentByIp(
+	ctx context.Context,
+	ybaUrl, apiKey string,
+	skipTlsVerify bool,
+	customerUuid, nodeIp string,
+) (*model.NodeAgent, error) {
+	nodeAgentUrl := ybaUrl + util.PlatformGetNodeAgentEndpoint(customerUuid, nodeIp)
+	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaUrl), "https") || skipTlsVerify
+	headers := getAuthHeaders(apiKey)
+	resp, _, err := MakeRequest(ctx, nodeAgentUrl, "GET", headers, nil, skipTLSVerify)
+	if err != nil {
+		return nil, err
+	}
+	var nodeAgents []*model.NodeAgent
+	if err := json.Unmarshal(resp, &nodeAgents); err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to unmarshal node agent response: %s, error: %v", string(resp), err)
+		return nil, err
+	}
+	if len(nodeAgents) == 0 {
+		util.FileLogger().
+			Infof(ctx, "Node agent with IP %s is not found for customer %s", nodeIp, customerUuid)
+		return nil, util.ErrNotExist
+	}
+	return nodeAgents[0], nil
+}
+
+// GetCertificateLabelByUuid returns the certificate label for the given certificate UUID.
+func GetCertificateLabelByUuid(
+	ctx context.Context,
+	ybaUrl, apiKey string,
+	skipTlsVerify bool,
+	customerUuid, certificateUuid string,
+) (string, error) {
+	certificatesUrl := ybaUrl + util.PlatformGetCertificatesEndpoint(customerUuid)
+	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaUrl), "https") || skipTlsVerify
+	headers := getAuthHeaders(apiKey)
+	resp, _, err := MakeRequest(ctx, certificatesUrl, "GET", headers, nil, skipTLSVerify)
+	if err != nil {
+		return "", err
+	}
+	var certificates []model.CertificateInfo
+	if err := json.Unmarshal(resp, &certificates); err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to unmarshal certificates response: %s, error: %v", string(resp), err)
+		return "", err
+	}
+	for _, certificate := range certificates {
+		if certificate.Uuid == certificateUuid {
+			return certificate.Label, nil
+		}
+	}
+	util.FileLogger().
+		Errorf(ctx, "Certificate %s is not found for customer %s", certificateUuid, customerUuid)
+	return "", util.ErrNotExist
 }

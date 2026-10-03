@@ -836,6 +836,12 @@ void
 PushVariable(JsonbParseState *state, char *guc_name)
 {
 	char *value = GetConfigOptionByName(guc_name, NULL, false);
+
+	/* A major version upgrade forces in-place materialized view refresh. */
+	if (strcmp(guc_name, "yb_refresh_matview_in_place") == 0 &&
+		YbRefreshMatviewInPlace())
+		value = "on";
+
 	if (!value)
 		return;
 
@@ -916,6 +922,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ false);
+			found_temp |= CreateTableAsUsesTempRelation(info->command);
 		}
 		else if (command_tag == CMDTAG_CREATE_TYPE ||
 				 command_tag == CMDTAG_ALTER_TYPE)

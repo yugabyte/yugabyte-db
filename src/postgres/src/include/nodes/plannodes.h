@@ -44,12 +44,17 @@ typedef struct
 /*
  * YB: info used by IndexScan and IndexOnlyScan nodes.
  *
- * Holds info used for merge scans.
+ * Holds info used for merge scans.  'stream_cols' lists the merge stream keys
+ * in index column order (see yb_finalize_merge_scan_stream_cols).  The
+ * executor must bind each of them per stream, and ybValidateMergeScanBinds
+ * checks that it does.  pggate treats every key column before the last merge
+ * sort column as a stream key (PgDmlRead::IsMergeSortColumn), including the
+ * columns this list leaves out.
  */
 typedef struct
 {
 	NodeTag		type;
-	List	   *saop_cols;		/* List of YbMergeScanSaopColInfo */
+	List	   *stream_cols;	/* List of YbMergeScanStreamColInfo */
 	YbSortInfo *sort_cols;
 } YbMergeScanInfo;
 
@@ -1061,11 +1066,20 @@ typedef struct YbBNLHashClauseInfo
 	Expr	   *orig_expr;
 } YbBNLHashClauseInfo;
 
+/* ----------------
+ *		YB batched nested loop join node
+ *
+ * With a LIMIT pushed down, the executor trims the first outer batch to
+ * first_batch_size rows, the count the planner sized and priced.  0 means
+ * the planner could not size it (a parameterized LIMIT); the executor then
+ * trims to the run-time LIMIT count.
+ * ----------------
+ */
 typedef struct YbBatchedNestLoop
 {
 	NestLoop	nl;
 
-	double		first_batch_factor;
+	int			first_batch_size;
 	/* Only relevant if we're using the hash batching strategy. */
 
 	/*

@@ -16,7 +16,7 @@ You can use YugabyteDB Anywhere to back up your universe data. This includes del
 
 Before you can back up universes, you need to [configure a storage location](../configure-backup-storage/) for your backups.
 
-If you are using v2.16 or later to manage universes with YugabyteDB v2.16 or later, you can additionally create [incremental backups](#create-incremental-backups) and [configure backup performance parameters](#configure-backup-performance-parameters).
+You can additionally create [incremental backups](#create-incremental-backups) and [configure backup performance parameters](#configure-backup-performance-parameters).
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe backups](../schedule-data-backups/).
 
@@ -62,7 +62,7 @@ To access a list of all backups from all universes, including deleted universes,
 
 ## Create incremental backups
 
-You can use **Backup Details** to add an incremental backup (v2.16 or later and universe running YugabyteDB v2.16 or later only).
+You can use **Backup Details** to add an incremental backup.
 
 Incremental backups are taken on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the complete backup. The restore happens until the point of the defined increment.
 
@@ -100,6 +100,18 @@ To configure throttle parameters:
 1. Set resource parameters for backups and restores.
 
 1. Click **Save**.
+
+## Disable backups for a universe
+
+By default, backups are enabled for new universes.
+
+To enable or disable universe backups, navigate to your universe, and on the **Tables** tab, click **Actions > More** and choose either **Disable Backup** or **Enable Backup**.
+
+When backups are disabled:
+
+- On-demand **Backup now** is not available.
+- You cannot create new scheduled backup policies. Existing scheduled policies are not deleted, but any backup runs are skipped until you enable backups again. Skipped runs do not backlog.
+- A backup already in progress stops after the current table.
 
 ## Access backups in storage
 

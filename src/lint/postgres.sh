@@ -141,7 +141,7 @@ else
 ' upstream_repositories.csv. The corresponding commit in'\
 ' upstream_repositories.csv should exist either locally in ~/code/<repo_name>'\
 ' or remotely in the corresponding remote repository (and you need internet'\
-' access in that case).:1:'"$(head -1)"
+' access in that case).:1:'"$(head -1 "$1")"
   else
     diff_result=$(diff "$1" "$upstream_copy")
     if [ $? -gt 1 ]; then
@@ -348,6 +348,12 @@ if [[ "$1" =~ /[^/]*Yb[^/]+\.[ch]$ &&
 fi
 check_ctags || exit 1
 yb_typedefs=$(cat "$yb_typedefs_list")
+upstream_types=
+have_upstream=false
+if [ -f "${upstream_copy:-}" ]; then
+  upstream_types=$(echo "$upstream_copy" | ctags_types | cut -f1)
+  have_upstream=true
+fi
 echo "$1" \
   | ctags_types \
   | while read -r line; do
@@ -361,11 +367,19 @@ echo "$1" \
 "$lineno:$(sed -n "$lineno"p "$1")"
       fi
 
-      # Ideally, we want to catch all YB-added types to make sure they have
-      # "yb", but it is not possible to determine which are YB-added or not.
-      # So as a best effort, at least we know YB files contain only YB code, so
-      # whatever types they produce should have "yb".
-      if is_yb_file "$1" && ! has_yb_marker "$symbol"; then
+      # YB files contain only YB code, so whatever types they produce are
+      # YB-added.  For upstream-owned files, compare against the upstream
+      # counterpart.  An upstream type moved to a different file therefore
+      # needs a yb name, aliased back to the upstream name where upstream
+      # defines it, as YbInt8TransTypeData is.
+      symbol_is_yb_added=false
+      if is_yb_file "$1"; then
+        symbol_is_yb_added=true
+      elif "$have_upstream" &&
+           [[ $'\n'"$upstream_types"$'\n' != *$'\n'"$symbol"$'\n'* ]]; then
+        symbol_is_yb_added=true
+      fi
+      if "$symbol_is_yb_added" && ! has_yb_marker "$symbol"; then
         echo 'error:missing_yb_prefix:This type should have "yb" prefix:'\
 "$lineno:$(sed -n "$lineno"p "$1")"
       fi

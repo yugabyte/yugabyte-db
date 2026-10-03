@@ -29,6 +29,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -38,6 +39,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
@@ -63,6 +65,7 @@
 
 #include "yb/tserver/thin_client.pb.h"
 #include "yb/tserver/thin_client.proxy.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_wire.h"
@@ -76,10 +79,14 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/tsan_util.h"
+
+DECLARE_bool(use_libunwind_for_stack_trace_collection);
 
 using yb::DataType;
 using yb::faststring;
 using yb::HostPort;
+using yb::HybridTime;
 using yb::MonoDelta;
 using yb::RefCntSlice;
 using yb::Result;
@@ -198,6 +205,12 @@ ybthin_status_code ClassifyStatus(const Status& status) {
   if (status.IsInvalidArgument() || status.IsNotSupported()) {
     return YBTHIN_INVALID;
   }
+  // The fence's own code, not the Expired category -- which a read deadline and a stale retryable
+  // request id also produce, on writes that may well have replicated.
+  const auto ts_error = tserver::TabletServerError::ValueFromStatus(status);
+  if (ts_error == tserver::TabletServerErrorPB::WRITE_FENCE_EXPIRED) {
+    return YBTHIN_FENCED;
+  }
   return YBTHIN_OTHER;
 }
 
@@ -248,6 +261,12 @@ Status BindToQLValue(const ybthin_bind& bind, yb::QLValuePB* out) {
     case YBTHIN_BIND_I64:
       out->set_int64_value(bind.int_value);
       return Status::OK();
+    case YBTHIN_BIND_U32:
+      if (bind.int_value < 0 || bind.int_value > std::numeric_limits<uint32_t>::max()) {
+        return STATUS_FORMAT(InvalidArgument, "U32 bind $0 is out of range", bind.int_value);
+      }
+      out->set_uint32_value(static_cast<uint32_t>(bind.int_value));
+      return Status::OK();
     case YBTHIN_BIND_TEXT:
       out->set_string_value(bind.bytes, bind.bytes_len);
       return Status::OK();
@@ -282,6 +301,7 @@ Result<ybthin_value_type> MapDataType(DataType dt) {
     case DataType::INT16: return YBTHIN_T_I16;
     case DataType::INT32: return YBTHIN_T_I32;
     case DataType::INT64: return YBTHIN_T_I64;
+    case DataType::UINT32: return YBTHIN_T_U32;
     case DataType::STRING: return YBTHIN_T_TEXT;
     case DataType::BINARY: return YBTHIN_T_BYTEA;
     default:
@@ -555,6 +575,10 @@ Status DecodeReadRows(
           cell.tag = YBTHIN_BIND_I64;
           cell.int_value = VERIFY_RESULT(pggate::PgWire::CheckedReadNumber<int64_t>(&cursor));
           break;
+        case YBTHIN_T_U32:
+          cell.tag = YBTHIN_BIND_U32;
+          cell.int_value = VERIFY_RESULT(pggate::PgWire::CheckedReadNumber<uint32_t>(&cursor));
+          break;
         case YBTHIN_T_TEXT: {
           // Length-prefixed and NUL-terminated: len counts the trailing NUL.
           const uint64_t len = VERIFY_RESULT(pggate::PgWire::CheckedReadNumber<uint64_t>(&cursor));
@@ -744,6 +768,20 @@ ybthin_status ybthin_client_create(
     const char* const* tserver_addrs, size_t n_addrs, const ybthin_tls_opts* tls,
     const ybthin_pool_opts* pool, uint32_t rpc_timeout_ms, uint32_t num_reactors,
     ybthin_client** out) {
+  // Collect stack traces through libunwind rather than glibc backtrace(), before any thread is
+  // created (Thread::Create warms up the stack trace library on first use).
+  //
+  // glibc's unwinder is unsafe for a .so in a foreign process: our .eh_frame is registered with the
+  // HOST's libgcc, which sorts its FDEs lazily inside a malloc held under object_mutex. A host
+  // allocator that unwinds from inside that malloc deadlocks against itself, and
+  // ybthin_client_create never returns (#33916). libunwind has its own FDE cache.
+  //
+  // The trade: libunwind can SIGSEGV collecting a trace in a BOLT-ed binary, so this gives up BOLT
+  // for this .so. yb_release does not pass --bolt. Sanitizer builds keep the default.
+  if (!yb::IsSanitizer()) {
+    FLAGS_use_libunwind_for_stack_trace_collection = true;
+  }
+
   if (!tserver_addrs || n_addrs == 0 || !out) {
     return MakeStatus(YBTHIN_INVALID, "tserver_addrs and out are required");
   }
@@ -1301,6 +1339,9 @@ void ybthin_upsert_batch_async(
     }
     if (build.ok()) {
       build = dockv::InitPartitionKey(table->schema, table->partition_schema, write);
+    }
+    if (const auto fence = HybridTime::FromPB(row.ignore_after_hybrid_time)) {
+      write->set_ignore_after_hybrid_time(fence.ToPB());
     }
     for (size_t col_idx = 0; col_idx < row.n_values && build.ok(); ++col_idx) {
       auto* cv = write->add_column_values();

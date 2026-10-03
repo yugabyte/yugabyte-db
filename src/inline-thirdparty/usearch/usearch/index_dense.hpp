@@ -2147,7 +2147,7 @@ class index_dense_gt {
         search_config.exact = exact;
 
         vector_key_t free_key_copy = free_key_;
-        if (std::is_same<typename std::decay<predicate_at>::type, dummy_predicate_t>::value) {
+        if constexpr (std::is_same<typename std::decay<predicate_at>::type, dummy_predicate_t>::value) {
             auto allow = [free_key_copy](member_cref_t const& member) noexcept {
                 return (vector_key_t)member.key != free_key_copy;
             };
@@ -2155,7 +2155,7 @@ class index_dense_gt {
             return search_result_t{std::move(typed_result), std::move(lock)};
         } else {
             auto allow = [free_key_copy, &predicate](member_cref_t const& member) noexcept {
-                return (vector_key_t)member.key != free_key_copy && predicate(member.key);
+                return (vector_key_t)member.key != free_key_copy && predicate(member.key, member.slot);
             };
             auto typed_result = typed_->search(vector_data, wanted, metric_proxy_t{*this}, search_config, allow);
             return search_result_t{std::move(typed_result), std::move(lock)};

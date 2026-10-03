@@ -128,6 +128,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 	ExprState  *joinqual;
 	ExprState  *otherqual;
 	ExprContext *econtext;
+	uint64_t	max_size;
 
 	CHECK_FOR_INTERRUPTS();
 
@@ -153,20 +154,29 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 	 */
 	elog(DEBUG2, "entering main loop");
 
-	bnlstate->batch_size = GetMaxBatchSize(batchnl);
+	max_size = GetMaxBatchSize(batchnl);
+	bnlstate->batch_size = max_size;
 
-	if (!pstate->state->yb_exec_params.limit_use_default)
+	if (pstate->state->yb_exec_params.plan_limit > 0)
 	{
-		uint32_t	limit = pstate->state->yb_exec_params.limit_count;
+		uint64_t	first_size = batchnl->first_batch_size;
 
-		limit = ceil(limit * batchnl->first_batch_factor);
-		if (limit > 0 && limit < GetMaxBatchSize(batchnl))
+		/*
+		 * Trim the first batch to the size the planner priced.  Without one
+		 * (the LIMIT was not known at plan time) trim to the rows the LIMIT
+		 * needs, as if each outer row produced one output row.
+		 */
+		if (first_size == 0)
+			first_size = Min(pstate->state->yb_exec_params.plan_limit, max_size);
+		if (first_size > 0 && first_size < max_size)
 		{
 			if (!bnlstate->is_first_batch_done)
-				bnlstate->batch_size = limit;
+			{
+				bnlstate->batch_size = first_size;
+				bnlstate->first_batch_size = first_size;
+			}
 
-			limit = GetCurrentBatchSize(bnlstate);
-			pstate->state->yb_exec_params.limit_count = limit;
+			pstate->state->yb_exec_params.plan_limit = GetCurrentBatchSize(bnlstate);
 		}
 	}
 
@@ -1059,6 +1069,7 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 								 plan->nl.join.jointype == JOIN_SEMI);
 
 	bnlstate->is_first_batch_done = false;
+	bnlstate->first_batch_size = 0;
 
 	/* set up null tuples for outer joins, if needed */
 	switch (plan->nl.join.jointype)

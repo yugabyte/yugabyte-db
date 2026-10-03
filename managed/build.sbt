@@ -164,11 +164,15 @@ javacOptions ++= Seq("-source", "17", "-target", "17")
 
 // This is for dev-mode server. In dev-mode, the play server is started before the files are compiled.
 // Hence, the application files are not available in the path. For prod, It is in reference.conf file.
+PlayKeys.devSettings += "play.pekko.dev-mode.pekko.coordinated-shutdown.phases.before-service-unbind.timeout" -> "150s"
 PlayKeys.devSettings += "play.pekko.dev-mode.pekko.coordinated-shutdown.phases.service-requests-done.timeout" -> "150s"
 
 Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
+
+val bouncyCastleFipsVersion = "2.1.1"
+val bouncyCastleUtilFipsVersion = "2.1.7"
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -177,7 +181,7 @@ libraryDependencies ++= Seq(
   filters,
   guice,
   "org.postgresql" % "postgresql" % "42.7.13",
-  "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
   "ch.qos.logback" % "logback-classic" % "1.5.38",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
@@ -192,9 +196,14 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
-  "org.bouncycastle" % "bc-fips" % "2.1.0",
-  "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
-  "org.bouncycastle" % "bctls-fips" % "2.1.20",
+  // bc-fips is the FIPS 140-3 validated module itself, so it tracks the newest *certified*
+  // build rather than the newest published one: 2.1.1 is CMVP certificate #4943 (17 Jan 2025),
+  // while 2.1.2 and 2.1.3 carry no certificate of their own. The rest are outside the validated
+  // boundary and track latest. See the dependencyOverrides below - declaring them is not enough.
+  "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion,
+  "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion,
+  "org.bouncycastle" % "bcpkix-fips" % "2.1.12",
+  "org.bouncycastle" % "bctls-fips" % "2.1.24",
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
   // AWS SDK 2.x dependencies
@@ -250,12 +259,13 @@ libraryDependencies ++= Seq(
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-dns" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % "3.77.2",
-  "org.projectlombok" % "lombok" % "1.18.26",
+  "org.projectlombok" % "lombok" % "1.18.48",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "3.1.0",
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
@@ -304,7 +314,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.0" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.6" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
@@ -737,7 +747,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.0",
+    version := "1.0.1",
     target := file("client/java/target/v1"),
   )
 
@@ -753,7 +763,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.0",
+    version := "1.8.6",
     target := file("client/java/target/v2"),
   )
 
@@ -1056,29 +1066,36 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.122-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b10"
+// bcpkix-fips and bctls-fips depend on bcutil-fips by version range, and bcutil-fips depends on
+// bc-fips by range, so a plain declaration loses to the range: a build declaring bc-fips 2.1.0
+// was resolving 2.1.3, an uncertified module. Only an override fixes the FIPS module version.
+dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
+dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
+
+libraryDependencies += "org.yb" % "yb-client" % "0.8.123-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b11"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.136.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.137.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.137.Final"
 // netty-all does not force these core modules, so they stay at the next-highest
-// requested version (4.1.130) and must be pinned explicitly to reach 4.1.136.
-dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-codec" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-common" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-handler" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-transport" % "4.1.136.Final"
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.137.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.137.Final"
 
 // Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
 dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
@@ -1163,9 +1180,17 @@ val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")
 // Include some CPU headroom in the divisor.
 // Max depends on the IP range.
-def defaultTestParallelForks: Int =
-  math.min(7,
-    math.max(1, (java.lang.Runtime.getRuntime.availableProcessors().toDouble / 1.5).toInt))
+// Also bound by the physical memory: a local provider fork takes ~4GB (3GB heap plus the processes
+// of its universe), and running more forks than the memory fits makes the OOM killer and the
+// thrashing without swap fail tests at random.
+val testForkMemoryGb = 6
+def defaultTestParallelForks: Int = {
+  val memoryGb = java.lang.management.ManagementFactory.getOperatingSystemMXBean
+    .asInstanceOf[com.sun.management.OperatingSystemMXBean]
+    .getTotalMemorySize / (1L << 30)
+  val cpuForks = (java.lang.Runtime.getRuntime.availableProcessors().toDouble / 1.5).toInt
+  math.min(7, math.max(1, math.min(cpuForks, (memoryGb / testForkMemoryGb).toInt)))
+}
 testParallelForks := defaultTestParallelForks
 val testShardSize = SettingKey[Int]("testShardSize",
   "Number of test classes, executed by each forked JVM")

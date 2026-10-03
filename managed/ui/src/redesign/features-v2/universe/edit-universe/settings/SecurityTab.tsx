@@ -16,16 +16,17 @@ import { SecuritySettingsProps } from '../../create-universe/steps/security-sett
 import {
   getClusterByType,
   useEditUniverseContext,
-  useIsUniverseReady,
+  useIsUniverseEditActionDisabled,
   withUniverseResource
 } from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
 import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { EditNetworkAcessModal } from '../edit-security/EditNetworkAcessModal';
 import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
-import { transitToUniverse } from '@app/redesign/features/universe/universe-form/utils/helpers';
 
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
@@ -84,7 +85,7 @@ export const SecurityTab = () => {
 
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
 
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
 
   const invalidateUniverseQueries = useCallback(() => {
     if (!universeUUID) return;
@@ -93,17 +94,26 @@ export const SecurityTab = () => {
     void queryClient.invalidateQueries(QUERY_KEY.getKMSHistory);
   }, [queryClient, universeUUID]);
 
-  // set_key is async; v2 kms_config_uuid updates when the task completes. Refetch the
-  // v1 universe + KMS history so EncryptionAtRest shows the new config without a reload.
+  // TLS / set_key tasks are async; v2 spec updates when the task completes. Refetch the
+  // v1 universe so EncryptionInTransit and EncryptionAtRest pick up the new config.
   const v2KmsConfigUuid = universeData?.spec?.encryption_at_rest_spec?.kms_config_uuid;
-  const isFirstKmsSync = useRef(true);
+  const v2Eit = universeData?.spec?.encryption_in_transit_spec;
+  const isFirstSecuritySync = useRef(true);
   useEffect(() => {
-    if (isFirstKmsSync.current) {
-      isFirstKmsSync.current = false;
+    if (isFirstSecuritySync.current) {
+      isFirstSecuritySync.current = false;
       return;
     }
     invalidateUniverseQueries();
-  }, [v2KmsConfigUuid, invalidateUniverseQueries]);
+  }, [
+    v2KmsConfigUuid,
+    v2Eit?.enable_node_to_node_encrypt,
+    v2Eit?.enable_client_to_node_encrypt,
+    v2Eit?.root_ca,
+    v2Eit?.client_root_ca,
+    v2Eit?.root_and_client_root_ca_same,
+    invalidateUniverseQueries
+  ]);
 
   return (
     <FormProvider {...methods}>
@@ -112,18 +122,24 @@ export const SecurityTab = () => {
           <StyledPanel>
             <StyledCardHeader>
               {t('networkAccess')}
-              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
-                <YBButton
+              <RbacValidator
+                accessRequiredOn={withUniverseResource(
+                  ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                  universeUUID
+                )}
+                isControl
+              >
+                <K8OperatorEditBlockedTooltip><YBButton
                   dataTestId="edit-network-access-button"
                   variant="ghost"
                   startIcon={<EditIcon />}
                   onClick={() => {
                     setNetworkModalOpen(true);
                   }}
-                  disabled={!isUniverseReady}
+                  disabled={isEditActionDisabled}
                 >
                   {t('edit', { keyPrefix: 'common' })}
-                </YBButton>
+                </YBButton></K8OperatorEditBlockedTooltip>
               </RbacValidator>
             </StyledCardHeader>
             <StyledContent>
@@ -164,18 +180,24 @@ export const SecurityTab = () => {
         <StyledPanel>
           <StyledCardHeader>
             {t('encryptionInTransit')}
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.MODIFY_UNIVERSE_TLS, universeUUID)} isControl>
-              <YBButton
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.MODIFY_UNIVERSE_TLS,
+                universeUUID
+              )}
+              isControl
+            >
+              <K8OperatorEditBlockedTooltip><YBButton
                 dataTestId="edit-security-transit-button"
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEitModalOpen(true)}
                 disabled={
-                  eitModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady
+                  eitModalOpen || isLegacyUniverseLoading || !universeUUID || isEditActionDisabled
                 }
               >
                 {t('edit', { keyPrefix: 'common' })}
-              </YBButton>
+              </YBButton></K8OperatorEditBlockedTooltip>
             </RbacValidator>
           </StyledCardHeader>
           <StyledContent>
@@ -212,18 +234,24 @@ export const SecurityTab = () => {
         <StyledPanel>
           <StyledCardHeader>
             {t('encryptionAtRest')}
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.MODIFY_UNIVERSE_TLS, universeUUID)} isControl>
-              <YBButton
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.MODIFY_UNIVERSE_TLS,
+                universeUUID
+              )}
+              isControl
+            >
+              <K8OperatorEditBlockedTooltip><YBButton
                 dataTestId="edit-security-at-rest-button"
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEarModalOpen(true)}
                 disabled={
-                  earModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady
+                  earModalOpen || isLegacyUniverseLoading || !universeUUID || isEditActionDisabled
                 }
               >
                 {t('edit', { keyPrefix: 'common' })}
-              </YBButton>
+              </YBButton></K8OperatorEditBlockedTooltip>
             </RbacValidator>
           </StyledCardHeader>
           <StyledContent>
@@ -251,7 +279,6 @@ export const SecurityTab = () => {
           onClose={() => {
             setEitModalOpen(false);
             invalidateUniverseQueries();
-            if (universeUUID) transitToUniverse(universeUUID);
           }}
           universe={legacyUniverse}
           isItKubernetesUniverse={isItKubernetesUniverse}
@@ -263,7 +290,6 @@ export const SecurityTab = () => {
           onClose={() => {
             setEarModalOpen(false);
             invalidateUniverseQueries();
-            if (universeUUID) transitToUniverse(universeUUID);
           }}
           universeDetails={legacyUniverse}
         />

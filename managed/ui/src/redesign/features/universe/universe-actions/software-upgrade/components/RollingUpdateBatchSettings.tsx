@@ -102,18 +102,22 @@ export const RollingUpdateBatchSettings = <TFieldValues extends FieldValues>({
   const classes = useStyles();
   const watchedFormValues = useWatch({ control }) as TFieldValues;
   const showRollingBatchFieldErrors = shouldValidate(watchedFormValues);
-  const maxNodesPerBatchInputDisabled = isDisabled || maxNodesPerBatchMaximum <= 1;
+  const isMaxNodesPerBatchLocked = maxNodesPerBatchMaximum <= 1;
+  const maxNodesPerBatchInputDisabled = isDisabled || isMaxNodesPerBatchLocked;
   const waitBetweenBatchesInputDisabled = isDisabled;
   const maxNodesPerBatchError = get(errors, maxNodesPerBatchName) as FieldError | undefined;
   const waitBetweenBatchesError = get(errors, waitBetweenBatchesName) as FieldError | undefined;
   const maxNodesPerBatchLabel = t('maxNodesPerBatch', {
     keyPrefix: ROLLING_UPDATE_BATCH_SETTINGS_I18N_PREFIX
   });
-  const maxNodesPerBatchTooltipText =
+  const unlockedMaxNodesPerBatchTooltip =
     maxNodesPerBatchTooltip ??
     t(isRollbackFlow ? 'maxNodesPerBatchTooltipRollback' : 'maxNodesPerBatchTooltip', {
       keyPrefix: ROLLING_UPDATE_BATCH_SETTINGS_I18N_PREFIX
     });
+  const maxNodesPerBatchTooltipText = isMaxNodesPerBatchLocked
+    ? t('rollMaxBatchSize.lockedTooltip', { keyPrefix: 'component' })
+    : unlockedMaxNodesPerBatchTooltip;
   const waitBetweenBatchesLabel = t('waitBetweenBatches', {
     keyPrefix: ROLLING_UPDATE_BATCH_SETTINGS_I18N_PREFIX
   });

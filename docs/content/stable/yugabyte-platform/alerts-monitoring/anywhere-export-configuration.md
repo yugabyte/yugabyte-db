@@ -27,7 +27,7 @@ To export either metrics or logs from a universe:
 
     While the connection is active, metrics or logs are automatically streamed to the tool.
 
-To be able to export logs from Kubernetes universes, ensure the OpenTelemetry Operator is installed. Refer to [OpenTelemetry Operator for Kubernetes](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) in the OpenTelemetry documentation. Metrics export is not supported on Kubernetes.
+To export logs or metrics from Kubernetes universes, install the [OpenTelemetry Operator](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started). Metrics export on Kubernetes requires YugabyteDB v2026.1.2.0 or later; see [Kubernetes limitations](../anywhere-metrics-export/#limitations).
 
 ## Available integrations
 
@@ -35,13 +35,13 @@ Currently, you can export data to the following tools:
 
 | Integration | Log export | Metric export |
 | :---------- | :--------- | :------------ |
-| [Datadog](https://docs.datadoghq.com/) | Database audit logs | Yes |
-| [Splunk](https://www.splunk.com/en_us/solutions/opentelemetry.html) | Database audit logs | |
-| [AWS CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/WhatIsCloudWatch.html) | Database audit logs | |
-| [Google Cloud Logging](https://cloud.google.com/logging/) | Database audit logs | |
+| [Datadog](https://docs.datadoghq.com/) | Yes | Yes |
+| [Splunk](https://www.splunk.com/en_us/solutions/opentelemetry.html) | Yes | |
+| [AWS CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/WhatIsCloudWatch.html) | Yes | |
+| [Google Cloud Logging](https://cloud.google.com/logging/) | Yes | |
 | [Dynatrace](#dynatrace) | | Yes |
-| [Loki](#loki) | Database audit logs | |
-| [OTLP](#otlp) | Database audit logs | Yes |
+| [Loki](#loki) | Yes | |
+| [OTLP](#otlp) | Yes | Yes |
 
 ## Best practices
 
@@ -160,7 +160,7 @@ To create an export configuration, do the following:
 
 ### Loki
 
-[Grafana Loki](https://grafana.com/docs/loki/latest/) is a log aggregation system designed to store and query logs. YugabyteDB Anywhere can export database audit logs to a Loki-compatible endpoint (including self-hosted Loki and [Grafana Cloud](https://grafana.com/docs/grafana-cloud/send-data/logs/logs-with-loki/)).
+[Grafana Loki](https://grafana.com/docs/loki/latest/) is a log aggregation system designed to store and query logs. YugabyteDB Anywhere can export logs to a Loki-compatible endpoint (including self-hosted Loki and [Grafana Cloud](https://grafana.com/docs/grafana-cloud/send-data/logs/logs-with-loki/)).
 
 #### Prerequisites
 
@@ -193,19 +193,15 @@ After you create a configuration, you cannot edit it. To change settings, create
 
 ### OTLP
 
-YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemetry Protocol) as a generic telemetry provider sink. An OTLP telemetry provider lets a universe stream database audit logs, and database metrics to any OTLP-compatible receiver using the standard OpenTelemetry wire format.
+YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemetry Protocol) as a generic telemetry provider sink. An OTLP telemetry provider lets a universe stream database logs and database metrics to any OTLP-compatible receiver using the standard OpenTelemetry wire format.
 
 The OTLP sink is vendor-agnostic and works with any backend that speaks OTLP, including (but not limited to) [Cribl](https://cribl.io/), [Grafana Cloud](https://grafana.com/docs/grafana-cloud/), [New Relic](https://docs.newrelic.com/docs/opentelemetry/opentelemetry-introduction/), [Prometheus](https://prometheus.io/docs/guides/opentelemetry/) (3.0+), [VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/), and [Sumo Logic](https://help.sumologic.com/docs/send-data/opentelemetry-for-logs/).
 
-You can reuse the same OTLP telemetry provider for [database audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
+You can reuse the same OTLP telemetry provider for [query and audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
 
 #### Prerequisites
 
-- Enable the OTLP integration by setting the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`) to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-
-    If the flag is false, any REST API create and delete requests for OTLP telemetry providers return HTTP 400 with:
-
-    `OTLP Exporter for Telemetry Provider is not enabled. Please set the runtime flag 'yb.telemetry.allow_otlp' to true.`
+- In versions earlier than v2026.1.2.0, enable the OTLP integration by setting the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`) to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Starting in v2026.1.2.0, OTLP is enabled by default.
 
 - A reachable OTLP-compatible receiver and credentials if required (Basic Auth username and password, or a bearer token).
 
@@ -240,7 +236,7 @@ Concrete endpoint URLs and auth schemes vary by OTLP backend; consult your recei
 
 - Per-signal endpoint overrides (`logsEndpoint`, `metricsEndpoint`) are allowed only when **Protocol** is **HTTP**. A gRPC provider that sets either field is rejected.
 - For the **HTTP** protocol, when log export is enabled the OpenTelemetry Collector appends `/v1/logs` to the configured endpoint. Configure the endpoint without that suffix unless you use the explicit **Logs Endpoint** override.
-- Kubernetes support follows the same rules as the rest of YugabyteDB Anywhere OpenTelemetry export: [metrics export](../anywhere-metrics-export/#limitations) is not supported on Kubernetes; [log export](../universe-logging/#prerequisites) on Kubernetes requires the [OpenTelemetry Operator](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) on the cluster.
+- Kubernetes support follows the same rules as the rest of YugabyteDB Anywhere OpenTelemetry export. See [metrics export limitations](../anywhere-metrics-export/#limitations) and [log export prerequisites](../universe-logging/#prerequisites).
 
 #### REST API configuration
 

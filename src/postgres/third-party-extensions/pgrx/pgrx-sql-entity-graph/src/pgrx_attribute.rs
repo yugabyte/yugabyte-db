@@ -15,9 +15,9 @@
 > to the `pgrx` framework and very subject to change between versions. While you may use this, please do it with caution.
 
 */
+use syn::Token;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::Token;
 
 /// This struct is intended to represent the contents of the `#[pgrx]` attribute when parsed.
 ///

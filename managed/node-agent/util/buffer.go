@@ -38,6 +38,11 @@ type simpleBuffer struct {
 	buffer *bytes.Buffer
 }
 
+// multiBuffer implements Buffer to forward the output to multiple buffers.
+type multiBuffer struct {
+	buffers []Buffer
+}
+
 // resettableBuffer is a resettable bufer which extends io.Reader.
 type resettableBuffer struct {
 	source       io.Reader
@@ -132,4 +137,63 @@ func (rb *resettableBuffer) Read(p []byte) (int, error) {
 		return rb.source.Read(p)
 	}
 	return io.TeeReader(rb.source, rb.readBuffer).Read(p)
+}
+
+// NewMultiBuffer creates an instance of multi buffer.
+// Preference is given to the first buffer for all methods.
+func NewMultiBuffer(buffers ...Buffer) Buffer {
+	return &multiBuffer{buffers: buffers}
+}
+
+// Write writes to the buffer.
+func (p *multiBuffer) Write(ba []byte) (int, error) {
+	for _, buffer := range p.buffers {
+		_, err := buffer.Write(ba)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return len(ba), nil
+}
+
+// Consume implements Buffer method.
+func (p *multiBuffer) Consume(size int) {
+	for _, buffer := range p.buffers {
+		buffer.Consume(size)
+	}
+}
+
+// Len implements Buffer method.
+func (p *multiBuffer) Len() int {
+	for _, buffer := range p.buffers {
+		return buffer.Len()
+	}
+	return 0
+}
+
+// String implements Buffer method.
+func (p *multiBuffer) String() string {
+	for _, buffer := range p.buffers {
+		return buffer.String()
+	}
+	return ""
+}
+
+// StringWithLen implements Buffer method.
+func (p *multiBuffer) StringWithLen() (string, int) {
+	for _, buffer := range p.buffers {
+		return buffer.StringWithLen()
+	}
+	return "", 0
+}
+
+// WriteLine writes a string line to the buffer.
+func (p *multiBuffer) WriteLine(s string, v ...interface{}) error {
+	for _, buffer := range p.buffers {
+		err := buffer.WriteLine(s, v...)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

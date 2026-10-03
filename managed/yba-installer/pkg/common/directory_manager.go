@@ -194,6 +194,38 @@ func GetJavaPackagePath() string {
 	return GetFileMatchingGlobOrFatal(javaBinaryGlob)
 }
 
+// javaBinary resolves a JDK tool from the JRE this installer deploys. That JRE is the only
+// acceptable source: the platform is pinned to it by the systemd unit, and the BCFKS keystore has
+// to be built by the same JRE and BouncyCastle provider that later reads it. A keytool picked up
+// from PATH or JAVA_HOME is an unversioned binary the install never chose, so a missing bundled
+// JRE is an error rather than a reason to look elsewhere - setupJDK() extracts it before anything
+// here runs, so its absence means the install is broken.
+func javaBinary(name string) (string, error) {
+	bundled := filepath.Join(GetInstallerSoftwareDir(), "jdk*", "bin", name)
+	matches, err := filepath.Glob(bundled)
+	if err != nil {
+		return "", fmt.Errorf("looking for a bundled %s at %s: %w", name, bundled, err)
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no bundled JRE provides %s: nothing matches %s", name, bundled)
+	}
+	return matches[0], nil
+}
+
+// bcFipsJarPath locates the bc-fips jar in the installed YBA release. keytool needs it on
+// -providerpath to know what BCFKS is.
+func bcFipsJarPath() (string, error) {
+	pattern := filepath.Join(GetSoftwareRoot(), "yb-platform", "yugaware", "lib", "*bc-fips-*.jar")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return "", fmt.Errorf("searching for bc-fips jar: %w", err)
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no bc-fips jar found matching %s", pattern)
+	}
+	return matches[0], nil
+}
+
 // Returns YBDB package path.
 func GetYbdbPackagePath() string {
 	return GetFileMatchingGlobOrFatal(ybdbPackageGlob)

@@ -53,6 +53,8 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
+#include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -201,7 +203,8 @@ TabletPeer::TabletPeer(
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
       tablet_splitter_(tablet_splitter),
-      client_future_(client_future) {}
+      client_future_(client_future),
+      data_disk_space_checker_(meta->fs_manager()->env(), meta->data_root_dir()) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard lock(lock_);
@@ -882,7 +885,16 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     disk_size_info.ToPB(status_pb_out);
     // Set hide status of the tablet.
     status_pb_out->set_is_hidden(meta_->hidden());
-    status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
+    status_pb_out->set_rocksdb_parent_data_compacted(meta_->rocksdb_parent_data_compacted());
+    // Reports whether a compaction is still required, not the physical state: with
+    // vector_index_include_into_post_split_compaction off nothing will ever compact
+    // the inherited data, and a consumer waiting on this bit would wait forever.
+    // Left unset when the tablet is not available, so that consumers don't read
+    // an unknown state as compacted.
+    if (tablet) {
+      status_pb_out->set_vector_indexes_parent_data_compacted(
+          !tablet->vector_indexes().PostSplitCompactionRequired());
+    }
     for (const auto& table : meta_->GetAllColocatedTables()) {
       status_pb_out->add_colocated_table_ids(table);
     }
@@ -1145,27 +1157,27 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
   // - Power is lost and the server reboots, losing committed data.
   //
   // If we read last committed op id BEFORE reading last persistent op id (CORRECT):
-  // - We read the last committed op id.
+  // - We read the last committed / majority-replicated / PRE_VOTER retention op ids.
   // - We read max persistent op id and find there is no new data, so we ignore it.
   // - New data gets written and Raft-committed, but not yet flushed to an SSTable.
   // - We still don't garbage-collect the logs containing the committed but unflushed data,
   //   because the earlier value of the last committed op id that we read prevents us from doing so.
-  auto last_committed_op_id = VERIFY_RESULT(GetConsensus())->GetLastCommittedOpId();
-  min_index = std::min(min_index, last_committed_op_id.index);
-  AddIndexFactor("last committed op ID idx", last_committed_op_id.index);
+  auto wal_gc_retention_info = VERIFY_RESULT(GetRaftConsensus())->GetWalGcRetentionOpIdInfo();
+  min_index = std::min(min_index, wal_gc_retention_info.committed_op_id.index);
+  AddIndexFactor("last committed op ID idx", wal_gc_retention_info.committed_op_id.index);
+  min_index = std::min(min_index, wal_gc_retention_info.majority_replicated_op_id.index);
+  AddIndexFactor(
+      "majority replicated op ID idx",
+      wal_gc_retention_info.majority_replicated_op_id.index);
+  min_index = std::min(min_index, wal_gc_retention_info.min_progressing_pre_voter_op_id.index);
+  AddIndexFactor(
+      "min progressing PRE_VOTER op ID idx",
+      wal_gc_retention_info.min_progressing_pre_voter_op_id.index);
 
   if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    tablet_->FlushIntentsDbIfNecessary(latest_log_entry_op_id);
-    auto max_persistent_op_id = VERIFY_RESULT(
-        tablet_->MaxPersistentOpId(true /* invalid_if_no_new_data */));
-    if (max_persistent_op_id.regular.valid()) {
-      min_index = std::min(min_index, max_persistent_op_id.regular.index);
-      AddIndexFactor("max persistent regular op ID idx", max_persistent_op_id.regular.index);
-    }
-    if (max_persistent_op_id.intents.valid()) {
-      min_index = std::min(min_index, max_persistent_op_id.intents.index);
-      AddIndexFactor("max persistent intents op ID idx", max_persistent_op_id.intents.index);
-    }
+    min_index = std::min(
+        min_index,
+        VERIFY_RESULT(tablet_->EarliestNeededLogIndex(latest_log_entry_op_id, AddIndexFactor)));
   }
 
   if (meta_->IsLazySuperblockFlushEnabled()) {
@@ -2037,10 +2049,10 @@ void TabletPeer::MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht) {
 Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
 
 bool TabletPeer::HasSufficientDiskSpaceForWrite() {
-  if (log_) {
-    return log_->HasSufficientDiskSpaceForWrite();
+  if (log_ && !log_->HasSufficientDiskSpaceForWrite()) {
+    return false;
   }
-  return true;
+  return data_disk_space_checker_.HasSufficientDiskSpace();
 }
 
 void TabletPeer::NotifyCommitedAsyncWrites(const OpId& committed_op_id) {

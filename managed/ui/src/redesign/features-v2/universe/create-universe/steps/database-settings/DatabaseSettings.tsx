@@ -14,7 +14,10 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
+import { useRuntimeConfigValues } from '../../helpers/utils';
 import { DatabaseSettingsProps } from './dtos';
+import { RunTimeConfigEntry } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import {
   canOverrideCommunicationPorts,
   getConnectionPoolingPortsFromAdvanced,
@@ -28,7 +31,8 @@ import {
   YCQL_AUTH_FIELD,
   YSQL_CONFIRM_PWD,
   YCQL_CONFIRM_PWD,
-  GFLAGS_FIELD
+  GFLAGS_FIELD,
+  PG_COMPATIBILITY_FIELD
 } from '../../fields/FieldNames';
 
 //icons
@@ -53,6 +57,13 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     keyPrefix: 'createUniverseV2'
   });
 
+  const { runtimeConfigs, isRuntimeConfigLoading } = useRuntimeConfigValues();
+
+  // Value of runtime config key
+  const isGFlagMultilineConfEnabled =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
+    )?.value === 'true';
   // Prefer Advanced ports on remount so Database and Advanced stay in sync.
   // Internal YSQL falls back to the default when connection pooling is off.
   const providerCode = generalSettings?.providerConfiguration?.code ?? generalSettings?.cloud;
@@ -91,6 +102,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const overrideCPPorts = watch('overrideCPPorts');
   const ysqlServerRpcPort = watch('ysqlServerRpcPort');
   const internalYsqlServerRpcPort = watch('internalYsqlServerRpcPort');
+  const pgCompatibleVal = watch(PG_COMPATIBILITY_FIELD);
 
   useUpdateEffect(() => {
     if (!enableYCQLVal && !enableYSQLVal) {
@@ -177,8 +189,8 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
             dbVersion={generalSettings?.databaseVersion ?? ''}
             isReadReplica={false}
             editMode={false}
-            isGFlagMultilineConfEnabled={false}
-            isPGSupported={false}
+            isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
+            isPGSupported={!!pgCompatibleVal}
             isReadOnly={false}
           />
         </YBAccordion>

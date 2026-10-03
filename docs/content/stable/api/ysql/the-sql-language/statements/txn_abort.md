@@ -134,7 +134,7 @@ yugabyte=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-- [`BEGIN`](../txn_begin/)
-- [`START TRANSACTION`](../txn_start/)
-- [`COMMIT`](../txn_commit)
-- [`ROLLBACK`](../txn_rollback)
+- [BEGIN](../txn_begin/)
+- [START TRANSACTION](../txn_start/)
+- [COMMIT](../txn_commit)
+- [ROLLBACK](../txn_rollback)

@@ -27,10 +27,18 @@
 
 #include "yb/thin_client/yb_thin_client.h"
 
+#include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/retryable_requests.h"
+
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/common/hybrid_time.h"
+
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
@@ -43,12 +51,14 @@
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
+DECLARE_bool(use_libunwind_for_stack_trace_collection);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(TEST_private_broadcast_address);
 DECLARE_string(certs_dir);
 DECLARE_string(TEST_public_hostname_suffix);
+DECLARE_int32(TEST_delay_before_added_to_leader_ms);
 
 namespace yb::pgwrapper {
 
@@ -123,6 +133,12 @@ void OnWriteDone(void* ctx, ybthin_status status) {
 }
 
 ybthin_bind I32(int32_t value) { return ybthin_bind{YBTHIN_BIND_I32, value, nullptr, 0}; }
+
+ybthin_bind I64(int64_t value) { return ybthin_bind{YBTHIN_BIND_I64, value, nullptr, 0}; }
+
+ybthin_bind U32(uint32_t value) {
+  return ybthin_bind{YBTHIN_BIND_U32, static_cast<int64_t>(value), nullptr, 0};
+}
 
 ybthin_bind Bytea(const std::string& str) {
   return ybthin_bind{
@@ -211,7 +227,8 @@ TEST_F(PgThinClientTest, OpenUpsertReadPaged) {
     keys[row_idx] = {I32(kHashKey), I32(row_idx)};      // (k HASH, v RANGE) in schema order
     values[row_idx] = Bytea(payload);
     rows[row_idx] = ybthin_upsert_row{
-        table, keys[row_idx].data(), 2, &value_ids[row_idx], &values[row_idx], 1};
+        table, keys[row_idx].data(), 2, &value_ids[row_idx], &values[row_idx], 1,
+        /* ignore_after_hybrid_time= */ 0};
   }
   {
     std::promise<WriteOutcome> promise;
@@ -277,6 +294,114 @@ TEST_F(PgThinClientTest, OpenUpsertReadPaged) {
 
   ASSERT_EQ(total, kExpectedRead);
   ASSERT_GT(pages, 1) << "expected the scan to span multiple pages at limit " << kPageLimit;
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
+// An `oid` column is DocDB UINT32. The shim must open a table that has one, bind an oid past
+// INT32_MAX (where a signed 32-bit stand-in would wrap negative and build a different key) as a
+// range key, decode the cell back as U32, and agree with SQL on what it wrote.
+TEST_F(PgThinClientTest, OidColumnRoundTrip) {
+  constexpr uint32_t kSqlOid = 3000000000u;   // > INT32_MAX
+  constexpr uint32_t kShimOid = 3000000001u;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE o (relnode oid, blk bigint, v int, PRIMARY KEY (relnode ASC, blk ASC))"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO o VALUES ($0, 0, 42)", kSqlOid));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'o'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ASSERT_EQ(info.n_columns, 3);
+  ASSERT_EQ(std::string(info.columns[0].name), "relnode");
+  ASSERT_EQ(info.columns[0].kind, YBTHIN_COL_RANGE);
+  ASSERT_EQ(info.columns[0].type, YBTHIN_T_U32);
+  ASSERT_EQ(info.columns[1].type, YBTHIN_T_I64);
+  ASSERT_EQ(info.columns[2].type, YBTHIN_T_I32);
+  const int32_t relnode_id = info.columns[0].id;
+  const int32_t v_id = info.columns[2].id;
+
+  // One row by its full range key, returning (relnode, v).
+  auto read_row = [&](uint32_t relnode) -> ReadOutcome {
+    ybthin_bind range_values[] = {U32(relnode), I64(0)};
+    int32_t target_ids[] = {relnode_id, v_id};
+    ybthin_read_spec spec = {};
+    spec.range_values = range_values;
+    spec.n_range = 2;
+    spec.target_ids = target_ids;
+    spec.n_targets = 2;
+    spec.limit = 10;
+    spec.is_forward_scan = 1;
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_op op = {};
+    op.table = table;
+    op.spec = spec;
+    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    return future.get();
+  };
+
+  // The SQL-written row is found under a U32 key bind, and its oid decodes as a U32 cell.
+  {
+    auto out = read_row(kSqlOid);
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+    ASSERT_EQ(out.n_rows, 1u);
+    ASSERT_EQ(out.n_cols, 2u);
+    EXPECT_EQ(out.cells[0].tag, YBTHIN_BIND_U32);
+    EXPECT_EQ(out.cells[0].int_value, static_cast<int64_t>(kSqlOid));
+    EXPECT_EQ(out.cells[1].tag, YBTHIN_BIND_I32);
+    EXPECT_EQ(out.cells[1].int_value, 42);
+  }
+
+  // A shim write under a U32 key is the row SQL finds under that oid.
+  {
+    ybthin_bind key[] = {U32(kShimOid), I64(0)};
+    ybthin_bind value = I32(7);
+    int32_t value_id = v_id;
+    ybthin_upsert_row row{table, key, 2, &value_id, &value, 1, /* ignore_after_hybrid_time= */ 0};
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client, &row, 1, &OnWriteDone, &promise);
+    auto out = future.get();
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+  }
+  ASSERT_EQ(7, ASSERT_RESULT(conn.FetchRow<int32_t>(
+                   Format("SELECT v FROM o WHERE relnode = $0", kShimOid))));
+  ASSERT_EQ(2, ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM o")));
+
+  // A U32 bind outside 0..2^32-1 is refused before anything is sent, not wrapped into a key.
+  {
+    ybthin_bind key[] = {ybthin_bind{YBTHIN_BIND_U32, -1, nullptr, 0}, I64(0)};
+    ybthin_bind value = I32(0);
+    int32_t value_id = v_id;
+    ybthin_upsert_row row{table, key, 2, &value_id, &value, 1, /* ignore_after_hybrid_time= */ 0};
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client, &row, 1, &OnWriteDone, &promise);
+    auto out = future.get();
+    ASSERT_NE(out.code, YBTHIN_OK);
+    ASSERT_STR_CONTAINS(out.message, "out of range");
+  }
+  ASSERT_EQ(2, ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM o")));
 
   ybthin_columns_free(info.columns, info.n_columns);
   ybthin_table_close(table);
@@ -433,7 +558,8 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
     keys[row_idx] = {I32(row_idx)};
     values[row_idx] = Bytea(payload);
     rows[row_idx] = ybthin_upsert_row{
-        table, keys[row_idx].data(), 1, &value_ids[row_idx], &values[row_idx], 1};
+        table, keys[row_idx].data(), 1, &value_ids[row_idx], &values[row_idx], 1,
+        /* ignore_after_hybrid_time= */ 0};
   }
   {
     std::promise<WriteOutcome> promise;
@@ -584,7 +710,7 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
     ybthin_bind no_keys[] = {I32(0)};
     int32_t vid = payload_id;
     ybthin_bind val = Bytea(payload);
-    ybthin_upsert_row bad = {table, no_keys, 0, &vid, &val, 1};  // n_keys == 0
+    ybthin_upsert_row bad = {table, no_keys, 0, &vid, &val, 1, 0};  // n_keys == 0
     std::promise<WriteOutcome> promise;
     auto future = promise.get_future();
     ybthin_upsert_batch_async(client, &bad, 1, &OnWriteDone, &promise);
@@ -1247,7 +1373,7 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
   ybthin_bind key[] = {I32(7)};
   ybthin_bind value[] = {Bytea(payload)};
   int32_t value_ids[] = {v_id};
-  ybthin_upsert_row row = {table, key, 1, value_ids, value, 1};
+  ybthin_upsert_row row = {table, key, 1, value_ids, value, 1, /* no fence */ 0};
 
   std::promise<WriteOutcome> promise;
   auto future = promise.get_future();
@@ -1268,6 +1394,189 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
   ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM dup_w WHERE k = 7")));
   ASSERT_EQ(payload, ASSERT_RESULT(conn.FetchRow<std::string>(
                          "SELECT encode(v, 'escape') FROM dup_w WHERE k = 7")));
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
+// ybthin_client_create must switch stack trace collection to libunwind (#33916). Two clients in one
+// process, so a write that fires only once per process cannot pass.
+TEST_F(
+    PgThinClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ClientCreateSelectsLibunwindForStackTraces)) {
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_libunwind_for_stack_trace_collection) = false;
+    ybthin_client* client = nullptr;
+    auto st = ybthin_client_create(
+        addrs, /* n_addrs= */ 1, /* tls= */ nullptr, /* pool= */ nullptr,
+        /* rpc_timeout_ms= */ 60000, /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+    ASSERT_TRUE(FLAGS_use_libunwind_for_stack_trace_collection) << "attempt " << attempt;
+    ybthin_client_destroy(client);
+  }
+}
+
+// A fenced write that already replicated must still report success when the client's resend of the
+// same retryable request id arrives after the fence has passed. The already-replicated verdict is
+// about the FIRST attempt, which committed inside its fence; reporting the resend as YBTHIN_FENCED
+// ("did NOT take effect") would tell an incoming lease holder the row is absent while it is
+// durably present -- the exact inversion the fence exists to prevent. This is why RaftConsensus
+// consults the retryable-request registry before the fence.
+TEST_F(PgThinClientTest, ReplayOfReplicatedWriteWinsOverExpiredFence) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE dup_fenced (k int, v bytea, PRIMARY KEY(k ASC))"));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'dup_fenced'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  const int32_t v_id = info.columns[1].id;
+
+  // Wide enough that the first attempt is comfortably admitted even on a slow build, short enough
+  // that the resend below arrives after it has passed.
+  constexpr int kFenceDelaySec = 10;
+  const auto fence = HybridTime::FromMicros(
+      static_cast<uint64_t>(GetCurrentTimeMicros()) + kFenceDelaySec * 1000000ULL).ToPB();
+
+  const std::string payload = "fenced-dup";
+  ybthin_bind key[] = {I32(11)};
+  ybthin_bind value[] = {Bytea(payload)};
+  int32_t value_ids[] = {v_id};
+  ybthin_upsert_row row = {table, key, 1, value_ids, value, 1, fence};
+
+  std::promise<WriteOutcome> promise;
+  auto future = promise.get_future();
+  // Replicate the write inside its fence, then make the client believe it timed out so it keeps
+  // resending the identical ops -- same retryable request id, same fence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = true;
+  ybthin_upsert_batch_async(client, &row, 1, &OnWriteDone, &promise);
+  // Hold the flag until the fence is well past, so the resend that gets through carries an
+  // expired fence for an id the tablet has already replicated.
+  SleepFor((kFenceDelaySec + 5) * 1s);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+
+  auto out = future.get();
+  ASSERT_EQ(out.code, YBTHIN_OK)
+      << "a replayed already-replicated write must report success even though its fence has "
+      << "since passed; got: " << out.message;
+
+  ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM dup_fenced WHERE k = 11")));
+  ASSERT_EQ(payload, ASSERT_RESULT(conn.FetchRow<std::string>(
+                         "SELECT encode(v, 'escape') FROM dup_fenced WHERE k = 11")));
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
+// A write whose fence has passed must be rejected AND must not take effect -- hence the assertions
+// on table contents, not just the status code. Also checks the rejection leaves no
+// retryable-request registration behind -- the rejection runs after registration (see
+// ReplayOfReplicatedWriteWinsOverExpiredFence for why) and must undo it.
+TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE fenced (k int, v bytea, PRIMARY KEY(k ASC))"));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'fenced'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  const int32_t v_id = info.columns[1].id;
+
+  const std::string payload = "fence";
+  int32_t value_ids[] = {v_id};
+
+  auto upsert = [&](int32_t k, uint64_t fence) -> ybthin_status_code {
+    ybthin_bind key[] = {I32(k)};
+    ybthin_bind value[] = {Bytea(payload)};
+    ybthin_upsert_row row = {table, key, 1, value_ids, value, 1, fence};
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client, &row, 1, &OnWriteDone, &promise);
+    return future.get().code;
+  };
+
+  // HybridTime 1 is behind any clock reading the leader can take.
+  ASSERT_EQ(upsert(1, 1), YBTHIN_FENCED) << "a write past its fence must be rejected";
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM fenced WHERE k = 1")))
+      << "a fenced write must not take effect";
+
+  // Compared against the leader's clock, so it has to be a hybrid time, not a micro count.
+  const auto far_future = HybridTime::FromMicros(
+      static_cast<uint64_t>(GetCurrentTimeMicros()) + 3600 * 1000000ULL).ToPB();
+  ASSERT_EQ(upsert(2, far_future), YBTHIN_OK) << "a write inside its fence must be applied";
+  ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM fenced WHERE k = 2")));
+
+  // No fence at all behaves as before.
+  ASSERT_EQ(upsert(3, 0), YBTHIN_OK);
+  ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM fenced WHERE k = 3")));
+
+  // The fence is judged against the hybrid time the op is assigned, not an earlier clock reading:
+  // a write admitted inside its fence that stalls until the fence has passed before its hybrid
+  // time is chosen must still be rejected.
+  constexpr int kNearFenceMs = 500;
+  const auto near_future = HybridTime::FromMicros(
+      static_cast<uint64_t>(GetCurrentTimeMicros()) + kNearFenceMs * 1000ULL).ToPB();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_added_to_leader_ms) = 4 * kNearFenceMs;
+  const auto stalled = upsert(4, near_future);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_added_to_leader_ms) = 0;
+  ASSERT_EQ(stalled, YBTHIN_FENCED)
+      << "a write whose fence passes before its hybrid time is chosen must be rejected";
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM fenced WHERE k = 4")))
+      << "a fenced write must not take effect";
+
+  // A leaked entry from a fenced round never drains, so this would never hold. Waiting rather
+  // than sampling absorbs the cluster's unrelated background writes.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+          auto raft_consensus = VERIFY_RESULT(peer->GetRaftConsensus());
+          if (raft_consensus->TEST_CountRetryableRequests().running != 0) {
+            return false;
+          }
+        }
+        return true;
+      },
+      10s, "fenced write left a retryable-request registration behind"));
 
   ybthin_columns_free(info.columns, info.n_columns);
   ybthin_table_close(table);
@@ -1391,7 +1700,7 @@ TEST_F(PgThinClientExternalTlsTest, UpsertAndReadOverTls) {
   std::vector<ybthin_upsert_row> rows(kNumRows);
   for (int row_idx = 0; row_idx < kNumRows; ++row_idx) {
     keys[row_idx] = {I32(kHashKey), I32(row_idx)};
-    rows[row_idx] = ybthin_upsert_row{table, keys[row_idx].data(), 2, nullptr, nullptr, 0};
+    rows[row_idx] = ybthin_upsert_row{table, keys[row_idx].data(), 2, nullptr, nullptr, 0, 0};
   }
   {
     std::promise<WriteOutcome> promise;

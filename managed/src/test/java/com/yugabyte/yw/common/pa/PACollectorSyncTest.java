@@ -6,6 +6,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -21,7 +23,10 @@ import com.yugabyte.yw.models.helpers.paendpoint.PaEndpointAuthType;
 import com.yugabyte.yw.models.helpers.paendpoint.PerfAdvisorEndpointType;
 import java.util.Date;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import okhttp3.HttpUrl;
+import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -196,6 +201,44 @@ public class PACollectorSyncTest extends FakeDBApplication {
       RecordedRequest reconcile = server.takeRequest();
       assertThat(reconcile.getMethod(), equalTo("GET"));
       assertThat(server.getRequestCount() - baseline, equalTo(1));
+    }
+  }
+
+  @Test
+  public void testTwoSyncsNeverRunAtTheSameTime() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      PACollector collector = registerCollector(server);
+      PerfAdvisorEndpoint endpoint = createEndpoint("byoc-prod");
+      registerUniverse(collector, endpoint);
+
+      // Holds the first sync inside its first request, so the second one is guaranteed to find
+      // it in flight.
+      CountDownLatch requestArrived = new CountDownLatch(1);
+      CountDownLatch release = new CountDownLatch(1);
+      server.setDispatcher(
+          new Dispatcher() {
+            @Override
+            public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
+              requestArrived.countDown();
+              release.await(30, TimeUnit.SECONDS);
+              return new MockResponse().setBody("GET".equals(request.getMethod()) ? "[]" : "{}");
+            }
+          });
+
+      Thread inFlightSync = new Thread(() -> sync.initialize(customer), "in-flight-sync");
+      inFlightSync.start();
+      assertTrue(requestArrived.await(30, TimeUnit.SECONDS));
+      int requestsSoFar = server.getRequestCount();
+
+      // The recurring tick landing on top of it: it has to give up, not push in parallel and
+      // race the in-flight sync over what the collector ends up holding.
+      sync.initializeAll();
+      assertThat(server.getRequestCount(), equalTo(requestsSoFar));
+
+      release.countDown();
+      inFlightSync.join(TimeUnit.SECONDS.toMillis(30));
+      assertFalse(inFlightSync.isAlive());
     }
   }
 

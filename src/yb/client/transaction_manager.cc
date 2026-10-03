@@ -49,6 +49,9 @@ DEFINE_test_flag(string, transaction_manager_preferred_tablet, "",
                  "For testing only. If non-empty, transaction manager will try to use the status "
                  "tablet with id matching this flag, if present in the list of status tablets.");
 
+DEFINE_test_flag(bool, transaction_manager_disable_local_filter, false,
+                 "Disable filter for using locally-led transaction status tablets.");
+
 METRIC_DEFINE_counter(server, transaction_promotions,
                       "Number of transactions being promoted to global transactions",
                       yb::MetricUnit::kTransactions,
@@ -210,7 +213,8 @@ class TransactionTableState {
       callback(FLAGS_TEST_transaction_manager_preferred_tablet);
       return true;
     }
-    if (local_tablet_filter_) {
+    if (PREDICT_TRUE(!FLAGS_TEST_transaction_manager_disable_local_filter) &&
+        local_tablet_filter_) {
       std::vector<const TabletId*> ids;
       ids.reserve(tablets.size());
       for (const auto& id : tablets) {

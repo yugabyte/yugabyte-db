@@ -30,6 +30,7 @@ import com.yugabyte.yw.nodeagent.DescribeTaskRequest;
 import com.yugabyte.yw.nodeagent.DescribeTaskResponse;
 import com.yugabyte.yw.nodeagent.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.DownloadFileResponse;
+import com.yugabyte.yw.nodeagent.Error;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentImplBase;
@@ -235,6 +236,8 @@ public class NodeAgentClientTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribePollDeadline)))
         .thenReturn(Duration.ofSeconds(5));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribeMaxOutputBufferLines)))
+        .thenReturn(5);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectTimeout)))
         .thenReturn(Duration.ofSeconds(10));
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentIdleConnectionTimeout)))
@@ -426,6 +429,43 @@ public class NodeAgentClientTest extends FakeDBApplication {
   @Test
   public void testFinalizeUpgrade() {
     nodeAgentClient.finalizeUpgrade(nodeAgent);
+  }
+
+  @Test
+  public void testRunAsyncTaskFailureIncludesOutput() {
+    asyncTaskData.setDescribeBehavior(
+        (request, responseObserver) -> {
+          responseObserver.onNext(
+              DescribeTaskResponse.newBuilder()
+                  .setState("RUNNING")
+                  .setOutput("Failed to start yb-master.service: Unit not found\n")
+                  .build());
+          responseObserver.onNext(
+              DescribeTaskResponse.newBuilder()
+                  .setState("FAILED")
+                  .setError(Error.newBuilder().setCode(1).setMessage("exit status 1").build())
+                  .build());
+          responseObserver.onCompleted();
+        });
+
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                nodeAgentClient.runPreflightCheck(
+                    nodeAgent, PreflightCheckInput.newBuilder().build(), null /* user */));
+
+    assertEquals(
+        "Code: 1, Error: exit status 1, State: FAILED, Output:\n"
+            + "Failed to start yb-master.service: Unit not found",
+        ex.getMessage());
+  }
+
+  @Test
+  public void testFormatNodeAgentFailureOmitsEmptyOutput() {
+    assertEquals(
+        "Code: 1, Error: exit status 1",
+        NodeAgentClient.formatNodeAgentFailure("Code: 1, Error: exit status 1", "   "));
   }
 
   @Test

@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -38,6 +39,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
@@ -89,10 +91,26 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   }
 
   private void updateProviderStatus(YBProvider provider, String message) {
+    updateProviderStatus(provider, null /* existingProvider */, message);
+  }
+
+  /**
+   * Reports a failed or refused reconcile on the CR, keeping the state the provider is reported to
+   * be in. Use where the CR's request could not be carried out but the provider itself is unharmed
+   * - a delete refused because universes still use it, say.
+   */
+  private void updateProviderStatus(
+      YBProvider provider, Provider existingProvider, String message) {
     YBProviderStatus providerStatus = provider.getStatus();
     if (providerStatus == null) {
       providerStatus = new YBProviderStatus();
-      providerStatus.setState(Provider.UsabilityState.UPDATING.toString());
+      providerStatus.setState(
+          existingProvider != null
+              ? existingProvider.getUsabilityState().toString()
+              : Provider.UsabilityState.ERROR.toString());
+    }
+    if (existingProvider != null) {
+      providerStatus.setResourceUUID(existingProvider.getUuid().toString());
     }
     providerStatus.setMessage(message);
     provider.setStatus(providerStatus);
@@ -100,6 +118,75 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
         .inNamespace(provider.getMetadata().getNamespace())
         .resource(provider)
         .replaceStatus();
+  }
+
+  /**
+   * Reports a failed edit on the CR. The provider stays usable on its old settings, so its own
+   * state is still READY - but the CR asked for settings that were never applied, and reporting
+   * that as READY hides a reconciler that is retrying and never converging. The CR only returns to
+   * READY once an edit succeeds, which CloudProviderEdit reports.
+   */
+  private void updateProviderStatusEditFailed(
+      YBProvider provider, Provider existingProvider, String message) {
+    YBProviderStatus providerStatus = provider.getStatus();
+    if (providerStatus == null) {
+      providerStatus = new YBProviderStatus();
+    }
+    providerStatus.setState(Provider.UsabilityState.ERROR.toString());
+    if (existingProvider != null) {
+      providerStatus.setResourceUUID(existingProvider.getUuid().toString());
+    }
+    providerStatus.setMessage(message);
+    provider.setStatus(providerStatus);
+    resourceClient
+        .inNamespace(provider.getMetadata().getNamespace())
+        .resource(provider)
+        .replaceStatus();
+  }
+
+  /**
+   * Mirrors the YBA provider's usability state onto the CR. Provider status is otherwise only
+   * reported by CloudBootstrap and CloudProviderEdit, neither of which runs for a CR that resolves
+   * to an already-existing provider - the shape the universe import creates - leaving it with no
+   * status at all. Call wherever the reconciler settles without starting a task; writes only on an
+   * actual change, since the no-op action reconciles on every resync.
+   */
+  @VisibleForTesting
+  void syncProviderStatus(YBProvider provider, Provider existingProvider) {
+    String state = existingProvider.getUsabilityState().toString();
+    String resourceUuid = existingProvider.getUuid().toString();
+    String message = providerStateMessage(existingProvider.getUsabilityState());
+    YBProviderStatus providerStatus = provider.getStatus();
+    if (providerStatus != null
+        && state.equals(providerStatus.getState())
+        && resourceUuid.equals(providerStatus.getResourceUUID())
+        && message.equals(providerStatus.getMessage())) {
+      return;
+    }
+    if (providerStatus == null) {
+      providerStatus = new YBProviderStatus();
+    }
+    providerStatus.setState(state);
+    providerStatus.setResourceUUID(resourceUuid);
+    providerStatus.setMessage(message);
+    provider.setStatus(providerStatus);
+    resourceClient
+        .inNamespace(provider.getMetadata().getNamespace())
+        .resource(provider)
+        .replaceStatus();
+  }
+
+  private static String providerStateMessage(Provider.UsabilityState state) {
+    switch (state) {
+      case READY:
+        return "Provider is ready";
+      case ERROR:
+        return "Provider is in error state";
+      case DELETING:
+        return "Provider deletion in progress";
+      default:
+        return "Provider update in progress";
+    }
   }
 
   // Delete the provider
@@ -135,7 +222,8 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
             "Provider {} is in use by {} universes. Cannot delete.",
             existingProvider.getName(),
             existingProvider.getUniverseCount());
-        updateProviderStatus(provider, "Provider is in use by universes. Cannot delete.");
+        updateProviderStatus(
+            provider, existingProvider, "Provider is in use by universes. Cannot delete.");
       } else {
         TaskInfo taskInfo = getCurrentTaskInfo(provider);
         if (taskInfo == null || TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
@@ -148,6 +236,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
               existingProvider.getName());
           updateProviderStatus(
               provider,
+              existingProvider,
               String.format("Provider task %s is in progress. Cannot delete.", taskInfo.getUuid()));
         } else {
           log.debug("Provider delete task {} in progress", taskInfo.getUuid());
@@ -202,6 +291,8 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       } else if (isUpdateRequired(provider, existingProvider)) {
         log.info("Updating provider {} with latest params", existingProvider.getName());
         editProviderFromCRD(cust, provider, existingProvider);
+      } else {
+        syncProviderStatus(provider, existingProvider);
       }
     } else {
       log.info("Creating new provider {} from CRD", provider.getMetadata().getName());
@@ -316,6 +407,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       } else if (existingProvider.getUsabilityState() == Provider.UsabilityState.ERROR) {
         workqueue.requeue(mapKey, ResourceAction.CREATE, false /* incrementRetry */);
       } else {
+        syncProviderStatus(provider, existingProvider);
         workqueue.resetRetries(mapKey);
       }
     }
@@ -362,6 +454,8 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   UUID editProviderFromCRD(Customer cust, YBProvider provider, Provider existingProvider) {
     try {
       JsonNode reqProviderJson = getProviderPayloadFromCRD(provider);
+      alignKubernetesProviderCase(reqProviderJson, existingProvider);
+      alignOperatorManagedFlags(reqProviderJson, existingProvider);
       // Copy the existing regions and zones to the request provider
       // If the region or zone is not present in the request provider, set it to inactive
       Map<String, JsonNode> reqRegionMap = new HashMap<>();
@@ -407,6 +501,9 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       reqProvider.setVersion(existingProvider.getVersion());
       KubernetesResourceDetails kubernetesResourceDetails =
           KubernetesResourceDetails.fromResource(provider);
+      // The edit rewrites this provider's kubeconfig files, so the cached copies are about to go
+      // stale.
+      operatorUtils.invalidateKubeConfigCache(existingProvider.getUuid());
       UUID taskUuid =
           cloudProviderHandler.editProvider(
               cust, existingProvider, reqProvider, true, false, kubernetesResourceDetails);
@@ -416,7 +513,8 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       return taskUuid;
     } catch (PlatformServiceException e) {
       log.error("Provider edit failed: {}", e.getMessage());
-      updateProviderStatus(provider, "Provider edit failed: " + e.getMessage());
+      updateProviderStatusEditFailed(
+          provider, existingProvider, "Provider edit failed: " + e.getMessage());
       throw e;
     }
   }
@@ -428,6 +526,77 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       providerTaskMap.put(OperatorWorkQueue.getWorkQueueKey(provider.getMetadata()), taskUuid);
     }
     return taskUuid;
+  }
+
+  /**
+   * Restores the casing the provider was stored with on the request's kubernetesProvider. The CR
+   * enum always serializes lower case, while a provider is stored with whatever case it was created
+   * with - "GKE" through the suggested-config API, "gke" through the UI. kubernetesProvider is not
+   * editable on an in-use provider, so a case-only difference reads as an attempted change and YBA
+   * rejects the whole edit. Only the edit flow needs this; a create has nothing to match.
+   */
+  @VisibleForTesting
+  void alignKubernetesProviderCase(JsonNode reqProviderJson, Provider existingProvider) {
+    JsonNode kubernetes = reqProviderJson.path("details").path("cloudInfo").path("kubernetes");
+    if (!kubernetes.isObject()
+        || existingProvider.getDetails() == null
+        || existingProvider.getDetails().getCloudInfo() == null
+        || existingProvider.getDetails().getCloudInfo().getKubernetes() == null) {
+      return;
+    }
+    String storedValue =
+        existingProvider.getDetails().getCloudInfo().getKubernetes().getKubernetesProvider();
+    String requestedValue = kubernetes.path("kubernetesProvider").asText(null);
+    if (StringUtils.isBlank(storedValue)
+        || StringUtils.isBlank(requestedValue)
+        || !storedValue.equalsIgnoreCase(requestedValue)) {
+      return;
+    }
+    ((ObjectNode) kubernetes).put("kubernetesProvider", storedValue);
+  }
+
+  /**
+   * Republishes the operator-managed flags exactly as the provider currently stores them. The
+   * reconciler stamps legacyK8sProvider=false and isKubernetesOperatorControlled=true onto every
+   * payload it builds, but a provider the universe import adopted still records what it was created
+   * with. Neither flag is a kubeconfig field, so the difference stops
+   * CloudProviderHelper.isKubeConfigOnlyZoneUpdate from recognising a kubeconfig rotation, and the
+   * edit is refused for any zone with running nodes.
+   */
+  @VisibleForTesting
+  void alignOperatorManagedFlags(JsonNode reqProviderJson, Provider existingProvider) {
+    if (existingProvider.getDetails() != null
+        && existingProvider.getDetails().getCloudInfo() != null) {
+      copyStoredFlags(
+          reqProviderJson.path("details").path("cloudInfo").path("kubernetes"),
+          existingProvider.getDetails().getCloudInfo().getKubernetes());
+    }
+    Map<String, AvailabilityZone> storedZones = new HashMap<>();
+    for (Region region : existingProvider.getRegions()) {
+      for (AvailabilityZone zone : region.getZones()) {
+        storedZones.put(zone.getCode(), zone);
+      }
+    }
+    for (JsonNode regionNode : reqProviderJson.path("regions")) {
+      for (JsonNode zoneNode : regionNode.path("zones")) {
+        AvailabilityZone storedZone = storedZones.get(zoneNode.path("code").asText());
+        if (storedZone == null || storedZone.getDetails() == null) {
+          continue;
+        }
+        copyStoredFlags(
+            zoneNode.path("details").path("cloudInfo").path("kubernetes"),
+            storedZone.getDetails().getCloudInfo().getKubernetes());
+      }
+    }
+  }
+
+  private void copyStoredFlags(JsonNode requested, KubernetesInfo stored) {
+    if (!requested.isObject() || stored == null) {
+      return;
+    }
+    ((ObjectNode) requested).put("legacyK8sProvider", stored.isLegacyK8sProvider());
+    ((ObjectNode) requested)
+        .put("isKubernetesOperatorControlled", stored.isKubernetesOperatorControlled);
   }
 
   private JsonNode getProviderPayloadFromCRD(YBProvider provider) {

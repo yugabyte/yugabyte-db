@@ -16,8 +16,6 @@ interface PerfAdvisorUniverseListProps {
 interface PaUniverseInfo {
   universeUuid: string;
   universeName: string | null;
-  dataMountPoints: string[];
-  otherMountPoints: string[];
   advancedObservability: boolean;
   mode: PaRegistrationMode;
   paEndpointUuid: string | null;
@@ -92,11 +90,6 @@ export const PerfAdvisorUniverseList = ({
   const universes = data?.entities ?? [];
   const totalCount = data?.totalCount ?? 0;
 
-  const formatMountPoints = (_cell: any, row: PaUniverseInfo, field: keyof PaUniverseInfo) => {
-    const points = row[field] as string[];
-    return points?.join(', ') ?? '';
-  };
-
   const formatMode = (_cell: any, row: PaUniverseInfo) => {
     const label = MODE_LABEL[row.mode] ?? row.mode;
     return row.mode === PaRegistrationMode.ONLINE && row.paEndpointName
@@ -164,32 +157,14 @@ export const PerfAdvisorUniverseList = ({
             dataField="universeName"
             dataFormat={formatUniverseName}
             dataSort
-            width="18%"
+            width="40%"
           >
             {'Universe Name'}
           </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="dataMountPoints"
-            dataFormat={(cell: any, row: PaUniverseInfo) =>
-              formatMountPoints(cell, row, 'dataMountPoints')
-            }
-            width="17%"
-          >
-            {'Data Mount Points'}
-          </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="otherMountPoints"
-            dataFormat={(cell: any, row: PaUniverseInfo) =>
-              formatMountPoints(cell, row, 'otherMountPoints')
-            }
-            width="17%"
-          >
-            Other Mount Points
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="mode" dataFormat={formatMode} width="13%">
+          <TableHeaderColumn dataField="mode" dataFormat={formatMode} width="25%">
             {'Mode'}
           </TableHeaderColumn>
-          <TableHeaderColumn dataField="actions" dataFormat={formatActions} width="10%">
+          <TableHeaderColumn dataField="actions" dataFormat={formatActions} width="15%">
             {'Actions'}
           </TableHeaderColumn>
         </YBTable>

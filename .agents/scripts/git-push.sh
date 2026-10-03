@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# git-push: run the linter, pick a push mode from the PR's review state, and
-#            push HEAD to the user's fork (or, for a stack branch, upstream).
+# git-push: run the linter, verify the push target, and push HEAD to the
+#           user's fork (or, for a stack branch, to upstream).
 #
 # Designed as the "publish to GitHub" step for create-pr.sh. Run standalone
 # to push any branch you have queued up.
@@ -13,13 +13,12 @@
 #   precisely so stacked PRs can live in the main repo (a PR stack cannot be
 #   assembled out of fork branches). Nothing else may target upstream.
 #
-#   Whether it rewrites history.  A branch whose PR is already out of draft is
-#   being read: rebasing it renews every SHA, which marks reviewers' line
-#   comments "outdated" and loses the diff-since-last-look. So once a PR is
-#   ready for review this script appends -- fetch, verify fast-forward, plain
-#   push. Before that (no PR yet, or still a draft) nobody is reading, and it
-#   rebases onto fresh upstream/<base> and force-pushes as before. `-f` forces
-#   the rebase path when the author and reviewer agree it is worth the churn.
+#   Whether it may rewrite history.  This script never rebases; picking up a
+#   newer base is the user's call. Once a PR is open, rewriting its history
+#   (rebase, amend, reset) is not allowed at all: it renews the SHAs under
+#   reviewers' comments and loses their diff-since-last-look. So with an open
+#   PR the push must be a fast-forward and is never forced. Without one, a
+#   rewritten branch is force-pushed with a lease.
 #
 #   A stack branch is the exception here too. GitHub merges a stack only when
 #   its history is linear, and keeps it linear by cascading rebases, so every
@@ -28,7 +27,7 @@
 #   force-pushes each layer with a lease. Rebasing and syncing are gh-stack's
 #   job; see the gh-stack skill.
 #
-# usage: git-push [-b <base>] [-r <fork-remote>] [-f]
+# usage: git-push [-b <base>] [-r <fork-remote>]
 #
 # Optional inputs:
 #   -b base   Base branch on the upstream repo to lint against
@@ -37,7 +36,6 @@
 #   -r remote Override fork-remote auto-detection. Useful for unusual
 #             remote layouts; otherwise leave unset. Ignored for a
 #             feature-stack branch, which always pushes to upstream.
-#   -f        Rebase and force-push even when the PR is ready for review.
 #
 # Env overrides:
 #   GH_REPO          default: yugabyte/yugabyte-db
@@ -47,45 +45,42 @@
 # Exit codes:
 #   0  pushed successfully (last log line is `>>> pushed ...`)
 #   1  pre-flight failure (no remotes, fork == upstream, dirty tree, etc.)
-#   2  rebase conflict -- resolve, `git rebase --continue`, then re-run
 #   3  lint failed -- fix as a NEW commit (do not amend a pushed commit),
 #      then re-run
-#   4  append-only push is not a fast-forward -- integrate the remote branch
-#      with a merge (not a rebase), or re-run with -f to rewrite anyway
+#   4  the branch has an open PR and the push is not a fast-forward -- the
+#      message says how to recover without rewriting the PR's history
 #   5  stack branch: `gh stack push` failed -- read its message
 
 set -euo pipefail
 
 base_branch="master"
 fork_remote_arg=""
-force_rewrite=0
 GH_REPO="${GH_REPO:-yugabyte/yugabyte-db}"
 
 usage() {
   cat <<EOF >&2
-usage: $(basename "$0") [-b <base>] [-r <fork-remote>] [-f]
+usage: $(basename "$0") [-b <base>] [-r <fork-remote>]
 
 Lint the current branch and push it. Pushes to your fork, except for a
 feature-stack/<feature>/<change> branch, which goes to the upstream repo.
-Rebases and force-pushes until the PR leaves draft; appends after that.
-A stack branch is linted whole and pushed with \`gh stack push\`.
+Never rebases. With an open PR the push must be a fast-forward; without
+one, a rewritten branch is force-pushed with a lease. A stack branch is
+linted whole and pushed with \`gh stack push\`.
 
 Options:
   -b base    Upstream base branch to lint against (default: master).
              Ignored for a stack branch.
   -r remote  Override fork-remote auto-detection.
-  -f         Rebase and force-push even after the PR is ready for review.
 
 Env overrides: GH_REPO, UPSTREAM_REMOTE, FORK_REMOTE.
 EOF
   exit 1
 }
 
-while getopts ":b:r:fh" opt; do
+while getopts ":b:r:h" opt; do
   case "$opt" in
     b) base_branch="$OPTARG" ;;
     r) fork_remote_arg="$OPTARG" ;;
-    f) force_rewrite=1 ;;
     h) usage ;;
     \?) echo "error: unknown option -$OPTARG" >&2; usage ;;
     :)  echo "error: -$OPTARG requires an argument" >&2; usage ;;
@@ -240,121 +235,75 @@ print(s["trunk"], live[-1] if live else "")' <<< "$stack_json")
   exit 0
 fi
 
-# Look the PR up once: its draft state picks the push mode below, and its
-# number/title/url drive the summary-sync reminder at the end. `--head`
+# Look the PR up before pushing: an open PR forbids rewriting the branch, and
+# its number/title/url drive the summary-sync reminder at the end. `--head`
 # matches the branch name across every fork, so keep only PRs whose head is
-# in the repo we push to. A failed lookup aborts: guessing "no PR" would
-# rebase and force-push a branch that may be under review.
+# in the fork. A failed lookup aborts: guessing "no PR" would force-push over
+# a branch that may be under review.
 pr_num=""
 pr_title=""
 pr_url=""
-pr_is_draft=""
 if ! pr_info=$(gh pr list -R "$GH_REPO" --head "$current_branch" \
-                 --state open --json number,url,title,isDraft,headRepositoryOwner \
+                 --state open --json number,url,title,headRepositoryOwner \
                  --jq "[.[] | select(.headRepositoryOwner.login == \"${push_owner}\")][0]
                        | select(. != null)
-                       | \"\(.number)\t\(.isDraft)\t\(.title)\t\(.url)\""); then
+                       | \"\(.number)\t\(.title)\t\(.url)\""); then
   echo "error: could not look up the PR for ${current_branch} on ${GH_REPO}," >&2
-  echo "       so the push mode (rebase vs append-only) is unknown." >&2
+  echo "       so whether the branch may be force-pushed is unknown." >&2
   echo "       Check 'gh auth status' and network, then re-run." >&2
   exit 1
 fi
 if [[ -n "$pr_info" ]]; then
-  IFS=$'\t' read -r pr_num pr_is_draft pr_title pr_url <<< "$pr_info"
+  IFS=$'\t' read -r pr_num pr_title pr_url <<< "$pr_info"
 fi
 
-# Append-only once the PR is out of draft: reviewers are reading it, and a
-# rebase would renew every SHA under their comments. -f opts back out.
-append_only=false
-if [[ "$pr_is_draft" == "false" ]] && (( ! force_rewrite )); then
-  append_only=true
+# Don't fetch the fork branch, so --force-with-lease below checks against the
+# last state the user saw and rejects the push if commits landed there since
+# (e.g. from another machine).
+remote_branch_exists=false
+if git rev-parse --verify --quiet "refs/remotes/${push_remote}/${current_branch}" \
+     >/dev/null 2>&1; then
+  remote_branch_exists=true
 fi
 
-if $append_only; then
-  echo ">>> PR #${pr_num} is ready for review -- append-only push" \
-       "(no rebase, no force). Pass -f to override."
-else
-  if [[ -n "$pr_num" ]]; then
-    echo ">>> PR #${pr_num} is a draft -- rebase + force-push"
-  else
-    echo ">>> no open PR for ${current_branch} -- rebase + force-push"
+# With an open PR, HEAD must still contain what was last pushed.
+if [[ -n "$pr_num" ]] && $remote_branch_exists; then
+  pushed="${push_remote}/${current_branch}"
+  if ! git merge-base --is-ancestor "$pushed" HEAD; then
+    echo "" >&2
+    echo "error: ${current_branch} does not contain ${pushed}, and PR #${pr_num}" >&2
+    echo "       is open. Rewriting an open PR's history is not allowed." >&2
+    if git merge-base --is-ancestor HEAD "$pushed"; then
+      echo "       ${pushed} is ahead of you. Integrate it:" >&2
+      echo "         git merge --ff-only ${pushed}" >&2
+    else
+      echo "       If ${pushed} has commits you fetched but did not merge:" >&2
+      echo "         git merge ${pushed}" >&2
+      echo "       If a rebase, amend, or reset rewrote the branch (HEAD was" >&2
+      echo "       $(git rev-parse --short HEAD); see git reflog), redo the" \
+           "change as new commits:" >&2
+      echo "         amend or squash:  git reset --soft ${pushed}, then commit" >&2
+      echo "         rebase onto base: git reset --hard ${pushed}, then" >&2
+      echo "                           git merge ${UPSTREAM_REMOTE}/${base_branch}" >&2
+    fi
+    exit 4
   fi
 fi
 
-# Ask the remote rather than trusting a local remote-tracking ref, which a
-# fresh clone or a `git fetch` with a narrow refspec may simply not have.
-remote_branch_exists=false
-if git ls-remote --exit-code --heads "$push_remote" "$current_branch" \
-     >/dev/null 2>&1; then
-  remote_branch_exists=true
-  echo ">>> fetching ${push_remote}/${current_branch}"
-  git fetch "$push_remote" \
-    "+refs/heads/${current_branch}:refs/remotes/${push_remote}/${current_branch}"
-fi
-
-# Explicit destinations: a plain `git fetch <remote> <branch>` only updates
+# Explicit destination: a plain `git fetch <remote> <branch>` only updates
 # the remote-tracking ref when the configured refspec covers that branch, and
-# everything below reads the tracking refs.
+# everything below reads the tracking ref.
 echo ">>> fetching ${UPSTREAM_REMOTE}/${base_branch}"
 git fetch "$UPSTREAM_REMOTE" \
   "+refs/heads/${base_branch}:refs/remotes/${UPSTREAM_REMOTE}/${base_branch}"
 
-if $append_only; then
-  # No rebase. Just prove the push is a fast-forward; anything else needs a
-  # human decision about which history to keep.
-  if $remote_branch_exists; then
-    remote_tip=$(git rev-parse "refs/remotes/${push_remote}/${current_branch}")
-    if ! git merge-base --is-ancestor "$remote_tip" HEAD; then
-      echo "" >&2
-      echo "error: push to ${push_remote}/${current_branch} is not a" >&2
-      echo "       fast-forward, and PR #${pr_num} is out of draft." >&2
-      if git merge-base --is-ancestor HEAD "$remote_tip"; then
-        echo "       The remote branch is ahead of you. Integrate it:" >&2
-        echo "         git merge --ff-only ${push_remote}/${current_branch}" >&2
-      else
-        echo "       Your branch and the remote have diverged (a rebase or" >&2
-        echo "       amend happened locally). Integrate with a merge:" >&2
-        echo "         git merge ${push_remote}/${current_branch}" >&2
-        echo "       A merge commit on the task branch is harmless -- the PR" >&2
-        echo "       is squash-merged, so it never reaches ${base_branch}." >&2
-      fi
-      echo "       Or re-run with -f to rewrite the branch anyway; that" >&2
-      echo "       marks reviewers' existing line comments as outdated." >&2
-      exit 4
-    fi
-  fi
-
-  # Report drift instead of silently correcting it: picking up the base is a
-  # merge the author should make deliberately, not a side effect of pushing.
-  behind=$(git rev-list --count "HEAD..${UPSTREAM_REMOTE}/${base_branch}" \
-             2>/dev/null || echo 0)
-  if (( behind > 0 )); then
-    echo ">>> note: branch is ${behind} commit(s) behind" \
-         "${UPSTREAM_REMOTE}/${base_branch}."
-    echo "    To pick up the base: git merge ${UPSTREAM_REMOTE}/${base_branch}"
-  fi
-else
-  # Integrate any commits already on the remote branch (e.g. pushed from
-  # another machine or another agent), then rebase onto the latest
-  # upstream/<base> so the push lands on top of a fresh base.
-  if $remote_branch_exists; then
-    echo ">>> rebasing onto ${push_remote}/${current_branch}"
-    if ! git rebase "${push_remote}/${current_branch}"; then
-      echo "" >&2
-      echo "error: rebase onto ${push_remote}/${current_branch} failed." >&2
-      echo "       Resolve the conflicts, 'git add' the resolved files," >&2
-      echo "       run 'git rebase --continue', then re-run this script." >&2
-      exit 2
-    fi
-  fi
-
-  echo ">>> rebasing onto ${UPSTREAM_REMOTE}/${base_branch}"
-  if ! git rebase "${UPSTREAM_REMOTE}/${base_branch}"; then
-    echo "" >&2
-    echo "error: rebase onto ${UPSTREAM_REMOTE}/${base_branch} failed." >&2
-    echo "       Resolve the conflicts, 'git add' the resolved files," >&2
-    echo "       run 'git rebase --continue', then re-run this script." >&2
-    exit 2
+behind=$(git rev-list --count "HEAD..${UPSTREAM_REMOTE}/${base_branch}")
+if (( behind > 0 )); then
+  echo ">>> note: ${current_branch} is ${behind} commit(s) behind" \
+       "${UPSTREAM_REMOTE}/${base_branch}, pushing it as is"
+  if [[ -n "$pr_num" ]]; then
+    echo "    To pick it up without rewriting PR #${pr_num}:" \
+         "git merge ${UPSTREAM_REMOTE}/${base_branch}"
   fi
 fi
 
@@ -365,9 +314,17 @@ run_lint "${UPSTREAM_REMOTE}/${base_branch}"
 pre_push_sha=$(git rev-parse --verify --quiet \
                  "${push_remote}/${current_branch}" 2>/dev/null || true)
 
-if $append_only; then
-  echo ">>> pushing ${current_branch} -> ${push_remote} (${push_target_desc})"
-  git push -u "$push_remote" HEAD
+if [[ -n "$pr_num" ]]; then
+  echo ">>> pushing ${current_branch} -> ${push_remote} (${push_target_desc})," \
+       "fast-forward only: PR #${pr_num} is open"
+  if ! git push -u "$push_remote" HEAD; then
+    echo "" >&2
+    echo "error: push rejected. If ${push_remote}/${current_branch} has commits" >&2
+    echo "       you have not fetched, integrate them without rewriting:" >&2
+    echo "         git fetch ${push_remote} ${current_branch}" >&2
+    echo "         git merge ${push_remote}/${current_branch}" >&2
+    exit 4
+  fi
 elif $remote_branch_exists; then
   echo ">>> force-pushing ${current_branch} -> ${push_remote}" \
        "(${push_target_desc}) --force-with-lease"

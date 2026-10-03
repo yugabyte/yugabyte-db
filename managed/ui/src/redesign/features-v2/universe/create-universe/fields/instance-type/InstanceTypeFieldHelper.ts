@@ -1,6 +1,7 @@
 import _ from 'lodash';
 import {
   CloudType,
+  DeviceInfo,
   InstanceType,
   InstanceTypeWithGroup,
   Placement,
@@ -94,6 +95,25 @@ export const isEphemeralAwsStorageInstance = (instance: InstanceType) => {
     (INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instance.instanceTypeCode?.split?.('.')[0]) ||
       instance.instanceTypeCode?.split?.('.')[0].includes('d'))
   );
+};
+
+// Edit universe: keep the current storage config when only the instance type changes.
+export const mergeDeviceInfoPreservingStorage = (
+  fromInstance: DeviceInfo | null,
+  current: DeviceInfo | null | undefined,
+  instance: InstanceType
+): DeviceInfo | null => {
+  if (!fromInstance) return null;
+  if (!current?.storageType || isEphemeralAwsStorageInstance(instance)) return fromInstance;
+  return {
+    ...fromInstance,
+    storageType: current.storageType,
+    volumeSize: current.volumeSize,
+    numVolumes: current.numVolumes,
+    diskIops: current.diskIops,
+    throughput: current.throughput,
+    storageClass: current.storageClass ?? fromInstance.storageClass
+  };
 };
 
 export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): InstanceTypeWithGroup[] => {

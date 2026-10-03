@@ -10,11 +10,17 @@ import com.google.inject.Inject;
 import com.oracle.bmc.auth.AbstractAuthenticationDetailsProvider;
 import com.oracle.bmc.auth.InstancePrincipalsAuthenticationDetailsProvider;
 import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
+import com.oracle.bmc.core.ComputeClient;
 import com.oracle.bmc.core.VirtualNetworkClient;
+import com.oracle.bmc.core.model.Image;
 import com.oracle.bmc.core.model.Subnet;
 import com.oracle.bmc.core.model.Vcn;
+import com.oracle.bmc.core.requests.GetImageRequest;
 import com.oracle.bmc.core.requests.GetSubnetRequest;
 import com.oracle.bmc.core.requests.GetVcnRequest;
+import com.oracle.bmc.dns.DnsClient;
+import com.oracle.bmc.dns.model.Zone;
+import com.oracle.bmc.dns.requests.GetZoneRequest;
 import com.oracle.bmc.identity.IdentityClient;
 import com.oracle.bmc.identity.requests.ListAvailabilityDomainsRequest;
 import com.oracle.bmc.identity.requests.ListRegionsRequest;
@@ -159,6 +165,60 @@ public class OCICloudImpl implements CloudAPI {
     }
   }
 
+  /**
+   * Looks up an image by OCID in the given region. Throws NOT_FOUND when OCI reports the image does
+   * not exist, and BAD_REQUEST for other lookup failures.
+   */
+  public Image getImageOrBadRequest(Provider provider, String regionCode, String imageId) {
+    try (ComputeClient computeClient = getComputeClient(provider, regionCode)) {
+      return computeClient.getImage(GetImageRequest.builder().imageId(imageId).build()).getImage();
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (BmcException e) {
+      log.error("OCI image lookup failed for {}: ", imageId, e);
+      throw wrapLookupFailure(e, "Image", imageId);
+    } catch (Exception e) {
+      log.error("Unexpected error looking up OCI image {}: ", imageId, e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Image details extraction failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Looks up a DNS zone by OCID in the provider's region. OCI answers both "no such zone" and "not
+   * authorized" with a 404, so the not-found message names both possibilities.
+   */
+  public Zone getDnsZoneOrBadRequest(Provider provider, String zoneId) {
+    OCICloudInfo ociCloudInfo = requireOciCloudInfo(provider);
+    try (DnsClient dnsClient = getDnsClient(provider, ociCloudInfo.ociRegion)) {
+      return dnsClient.getZone(GetZoneRequest.builder().zoneNameOrId(zoneId).build()).getZone();
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (BmcException e) {
+      log.error("OCI DNS zone lookup failed for {}: ", zoneId, e);
+      if (e.getStatusCode() == NOT_FOUND) {
+        throw new PlatformServiceException(
+            NOT_FOUND,
+            "DNS zone not found, or the provider credentials are not authorized to read it: "
+                + zoneId);
+      }
+      throw new PlatformServiceException(
+          BAD_REQUEST, "DNS zone details extraction failed: " + e.getMessage());
+    } catch (Exception e) {
+      log.error("Unexpected error looking up OCI DNS zone {}: ", zoneId, e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "DNS zone details extraction failed: " + e.getMessage());
+    }
+  }
+
+  /** Builds a DnsClient authenticated with the provider credentials. Package-visible for tests. */
+  DnsClient getDnsClient(Provider provider, String regionCode) {
+    OCICloudInfo ociCloudInfo = requireOciCloudInfo(provider);
+    AbstractAuthenticationDetailsProvider authProvider = buildAuthProvider(ociCloudInfo);
+    com.oracle.bmc.Region region = resolveRegion(regionCode, provider.getName());
+    return DnsClient.builder().region(region).build(authProvider);
+  }
+
   private static PlatformServiceException wrapLookupFailure(
       BmcException e, String resourceLabel, String resourceId) {
     if (e.getStatusCode() == NOT_FOUND) {
@@ -177,6 +237,17 @@ public class OCICloudImpl implements CloudAPI {
     AbstractAuthenticationDetailsProvider authProvider = buildAuthProvider(ociCloudInfo);
     com.oracle.bmc.Region region = resolveRegion(regionCode, provider.getName());
     return VirtualNetworkClient.builder().region(region).build(authProvider);
+  }
+
+  /**
+   * Builds a ComputeClient authenticated with the provider credentials for the given region code.
+   * Package-visible for tests.
+   */
+  ComputeClient getComputeClient(Provider provider, String regionCode) {
+    OCICloudInfo ociCloudInfo = requireOciCloudInfo(provider);
+    AbstractAuthenticationDetailsProvider authProvider = buildAuthProvider(ociCloudInfo);
+    com.oracle.bmc.Region region = resolveRegion(regionCode, provider.getName());
+    return ComputeClient.builder().region(region).build(authProvider);
   }
 
   // Performs a live OCI API round-trip to verify that the supplied API key credentials

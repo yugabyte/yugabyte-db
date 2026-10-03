@@ -142,7 +142,7 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
                     sx={{
                       display: 'flex',
                       flexDirection: 'column',
-                      maxWidth: '1024px',
+                      maxWidth: '1096px',
                       minWidth: '856px',
                       width: '100%',
                       gap: 3,

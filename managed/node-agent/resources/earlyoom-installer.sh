@@ -30,12 +30,12 @@ main() {
   if [ "$SUDO_ACCESS" = "true" ]; then
     # Setting Memlock limits for earlyoom
     # Check and set DefaultLimitMEMLOCK in /etc/systemd/system.conf
-    if ! sudo grep -q "^DefaultLimitMEMLOCK=500000" /etc/systemd/system.conf; then
-        echo 'DefaultLimitMEMLOCK=500000' | sudo tee -a /etc/systemd/system.conf
+    if ! sudo grep -q "^DefaultLimitMEMLOCK=50M" /etc/systemd/system.conf; then
+        echo 'DefaultLimitMEMLOCK=50M' | sudo tee -a /etc/systemd/system.conf
     fi
     # Check and set DefaultLimitMEMLOCK in /etc/systemd/user.conf
-    if ! sudo grep -q "^DefaultLimitMEMLOCK=500000" /etc/systemd/user.conf; then
-        echo 'DefaultLimitMEMLOCK=500000' | sudo tee -a /etc/systemd/user.conf
+    if ! sudo grep -q "^DefaultLimitMEMLOCK=50M" /etc/systemd/user.conf; then
+        echo 'DefaultLimitMEMLOCK=50M' | sudo tee -a /etc/systemd/user.conf
     fi
   fi
 

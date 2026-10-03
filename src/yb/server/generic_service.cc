@@ -31,6 +31,7 @@
 //
 #include "yb/server/generic_service.h"
 
+#include <map>
 #include <string>
 
 #include <boost/preprocessor/cat.hpp>
@@ -146,18 +147,27 @@ void GenericServiceImpl::ValidateFlagValue(
   const bool legacy_mode = req->has_flag_name();
 
   std::map<string, string> extra_validation_flags;
-  for (const auto& [flag_name, flag_value] : flags_to_validate) {
-    auto status = flags_internal::ValidateFlagValue(flag_name, flag_value);
-    if (!status.ok()) {
-      LOG(INFO) << "Flag validation failed for " << flag_name << ": " << status;
-      if (legacy_mode) {
-        rpc.RespondFailure(status);
-        return;
-      }
-      (*resp->mutable_errors())[flag_name] = status.message().ToBuffer();
-      continue;
+  {
+    std::map<string, string> proposed;
+    for (const auto& [flag_name, flag_value] : flags_to_validate) {
+      // TODO(#33370): Reject requests that list the same flag more than once.
+      proposed[flag_name] = flag_value;
     }
-    extra_validation_flags[flag_name] = flag_value;
+    // Proposed values is a thread local map that is used by flag validators.
+    flags_internal::ProposedFlagValues proposed_values(std::move(proposed));
+    for (const auto& [flag_name, flag_value] : flags_to_validate) {
+      auto status = flags_internal::ValidateFlagValue(flag_name, flag_value);
+      if (!status.ok()) {
+        LOG(INFO) << "Flag validation failed for " << flag_name << ": " << status;
+        if (legacy_mode) {
+          rpc.RespondFailure(status);
+          return;
+        }
+        (*resp->mutable_errors())[flag_name] = status.message().ToBuffer();
+        continue;
+      }
+      extra_validation_flags[flag_name] = flag_value;
+    }
   }
 
   auto extra_errors =

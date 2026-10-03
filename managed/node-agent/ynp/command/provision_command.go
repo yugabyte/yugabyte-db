@@ -12,6 +12,7 @@ import (
 	"node-agent/ynp/module/provision/chrony"
 	"node-agent/ynp/module/provision/clockbound"
 	"node-agent/ynp/module/provision/configurecoredump"
+	"node-agent/ynp/module/provision/configurefips"
 	"node-agent/ynp/module/provision/configureos"
 	"node-agent/ynp/module/provision/configureruntimecgroups"
 	"node-agent/ynp/module/provision/configuresudoers"
@@ -187,6 +188,7 @@ func (pc *ProvisionCommand) RegisterModules() error {
 	pc.registerModule(clockbound.NewConfigureClockbound(modulesPath))
 	pc.registerModule(configureos.NewConfigureOs(modulesPath))
 	pc.registerModule(configuresudoers.NewConfigureSudoers(modulesPath))
+	pc.registerModule(configurefips.NewConfigureFips(modulesPath))
 	pc.registerModule(configurethp.NewConfigureTHP(modulesPath))
 	pc.registerModule(installconfigureearlyoom.NewInstallConfigureEarlyoom(
 		modulesPath,
@@ -507,6 +509,11 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 		if key == clockbound.ModuleName && !config.GetBool(values, "configure_clockbound", false) {
 			util.FileLogger().Infof(pc.ctx, "Skipping %s because %s.configure_clockbound is %v\n",
 				key, key, values["configure_clockbound"])
+			continue
+		}
+		if key == configurefips.ModuleName && !config.GetBool(values, "configure_fips", false) {
+			util.FileLogger().Infof(pc.ctx, "Skipping %s because %s.configure_fips is %v\n",
+				key, key, values["configure_fips"])
 			continue
 		}
 		if key == configuresudoers.ModuleName &&

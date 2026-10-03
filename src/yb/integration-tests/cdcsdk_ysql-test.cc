@@ -2501,8 +2501,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
-  // Call get changes.
-  auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
+  // A single DDL, plus a BEGIN and a COMMIT for each of the two txns, on top of the inserts.
+  const int expected_records_count = insert_count + 5;
+  auto change_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, /* cp = */ nullptr, /* tablet_idx = */ 0, /* safe_hybrid_time = */ -1,
+      /* wal_segment_index = */ 0, expected_records_count);
   size_t record_size = change_resp.records.size();
   ASSERT_GT(record_size, insert_count);
 
@@ -12177,6 +12180,13 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
   LOG(INFO) << "Got " << received_records << " insert records";
   ASSERT_EQ(expected_records_size, received_records);
 
+  // GetChangeRecordCount returns as soon as it has seen every record, so the batch it fetched last
+  // is never acknowledged. Acknowledge the position it stopped at: intent SST files are released
+  // only once the barrier has moved past the segments holding those intents.
+  CDCSDKCheckpointPB ack_checkpoint = tablet_to_checkpoint[tablet_id];
+  ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &ack_checkpoint, &ack_checkpoint));
+
   // Wait for UpdatePeersAndMetrics to move the checkpoint & min_start_ht for CDC unstreamed txns.
   SleepFor(
       MonoDelta::FromSeconds(3 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier));
@@ -13507,19 +13517,24 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_EQ(tablets.size(), 1);
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
+  GetChangesResponsePB change_resp;
+  CDCSDKCheckpointPB cdc_sdk_checkpoint;
+
   // Insert a row without any replication origin and consume the records.
   // These records should not carry any origin id.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kTableName));
-  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, true /* is_explicit_checkpoint */, &cdc_sdk_checkpoint));
   ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 0));
-  auto cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // --- Single-shard (autocommit) path ---
   // INSERT with origin.
   ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
-  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, true /* is_explicit_checkpoint */, &cdc_sdk_checkpoint));
   ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
@@ -13528,7 +13543,8 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(conn.ExecuteFormat(
       "UPDATE $0 SET $1 = 200 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
-  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, true /* is_explicit_checkpoint */, &cdc_sdk_checkpoint));
   ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
@@ -13536,7 +13552,8 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
   ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 1", kTableName, kKeyColumnName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
-  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, true /* is_explicit_checkpoint */, &cdc_sdk_checkpoint));
   ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
@@ -13549,13 +13566,17 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 0", kTableName, kKeyColumnName));
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
-  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 3, true /* is_explicit_checkpoint */, &cdc_sdk_checkpoint,
+      0 /* tablet_idx */, -1 /* safe_hybrid_time */, 0 /* wal_segment_index */,
+      60 /* timeout_secs */));
   ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // --- Local (no origin) path - verify origin_id is 0/absent ---
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 300)", kTableName));
-  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, true /* is_explicit_checkpoint */, &cdc_sdk_checkpoint));
   ASSERT_OK(VerifyOriginIdOnAllRecords(change_resp, 0));
 }
 

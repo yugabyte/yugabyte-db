@@ -59,6 +59,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -77,6 +78,10 @@ DECLARE_bool(enable_fast_pitr);
 
 DEFINE_NON_RUNTIME_uint64(snapshot_coordinator_poll_interval_ms, 5000,
                           "Poll interval for snapshot coordinator in milliseconds.");
+
+DEFINE_RUNTIME_uint32(snapshot_coordinator_missing_creating_snapshot_grace_sec, 300,
+    "Clear a schedule's in-memory creating-snapshot marker if the referenced snapshot has not "
+    "been registered within this many seconds.");
 
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
@@ -305,27 +310,10 @@ class MasterSnapshotCoordinator::Impl {
       if (it == schedules_.end()) {
         return STATUS_FORMAT(NotFound, "Unknown snapshot schedule: $0", schedule_id);
       }
+      MaybeClearCreatingSnapshotMarker(it->get());
       auto* last_snapshot = BoundingSnapshot((**it).id(), Bound::kLast);
       auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
                                               : HybridTime::kInvalid;
-      auto creating_snapshot_data = (**it).creating_snapshot_data();
-      if (creating_snapshot_data.snapshot_id) {
-        auto snapshot_it = snapshots_.find(creating_snapshot_data.snapshot_id);
-        if (snapshot_it != snapshots_.end()) {
-          VLOG(2) << __func__ << " for " << schedule_id << " while creating snapshot: "
-                  << (**snapshot_it).ToString();
-        } else {
-          auto passed = CoarseMonoClock::now() - creating_snapshot_data.start_time;
-          auto message = Format(
-              "$0 for $1 while creating unknown snapshot: $2 (passed $3)",
-              __func__, schedule_id, creating_snapshot_data.snapshot_id, passed);
-          if (passed > 30s) {
-            LOG(DFATAL) << message;
-          } else {
-            VLOG(2) << message;
-          }
-        }
-      }
       operation = VERIFY_RESULT((**it).ForceCreateSnapshot(last_snapshot_time));
     }
 
@@ -875,6 +863,13 @@ class MasterSnapshotCoordinator::Impl {
         RETURN_NOT_OK(WaitForSnapshotToComplete(*result, deadline));
         return *result;
       } else if (MasterError(result.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
+        // A create for this schedule is already in progress (the status carries the blocking
+        // snapshot id and how long it has been running). Back off and retry until the deadline;
+        // if the in-progress create is actually stale, the poll loop's heal will clear it.
+        YB_LOG_EVERY_N_SECS(WARNING, 30)
+            << "Waiting to create a snapshot for schedule " << schedule_id
+            << ", blocked by an in-progress creation: " << result.status();
+        std::this_thread::sleep_for(100ms);
         continue;
       } else {
         return result.status();
@@ -1591,9 +1586,32 @@ class MasterSnapshotCoordinator::Impl {
     data->delete_snapshots.push_back(snapshot->id());
   }
 
+  // The creating-snapshot marker is cleared only by leader-side completion callbacks, so a
+  // leadership change mid-create leaks it, permanently blocking scheduled creates. Clear
+  // markers whose snapshot already finished or was never registered.
+  void MaybeClearCreatingSnapshotMarker(SnapshotScheduleState* schedule) REQUIRES(mutex_) {
+    const auto& creating = schedule->creating_snapshot_data();
+    if (!creating.snapshot_id) {
+      return;
+    }
+    auto it = snapshots_.find(creating.snapshot_id);
+    if (it == snapshots_.end()) {
+      auto passed = CoarseMonoClock::now() - creating.start_time;
+      if (passed > FLAGS_snapshot_coordinator_missing_creating_snapshot_grace_sec * 1s) {
+        schedule->ClearCreatingSnapshot(
+            Format("snapshot was never registered (passed $0)", passed));
+      }
+    } else if ((**it).initial_state() != SysSnapshotEntryPB::CREATING || (**it).AllTabletsDone()) {
+      // Note: completed creates are persisted with state CREATING and terminal tablet states,
+      // so AllTabletsDone() is the check that fires for them.
+      schedule->ClearCreatingSnapshot("snapshot already finished");
+    }
+  }
+
   void PollSchedulesPrepare(PollSchedulesData* data) REQUIRES(mutex_) {
     auto now = context_.Clock()->Now();
     for (const auto& schedule : schedules_) {
+      MaybeClearCreatingSnapshotMarker(schedule.get());
       HybridTime last_snapshot_time;
       if (schedule->deleted()) {
         auto range = snapshots_.get<ScheduleTag>().equal_range(schedule->id());

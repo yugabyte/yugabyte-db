@@ -1,6 +1,6 @@
 ---
-title: Set up Resource Governor for multitenancy
-headerTitle: Set up Resource Governor
+title: Set up Resource Governance for multitenancy
+headerTitle: Set up Resource Governance
 linkTitle: Set up
 description: Prepare cgroups and enable per-database CPU isolation in YugabyteDB.
 headcontent: Prepare cgroups and enable per-database CPU isolation
@@ -14,10 +14,10 @@ rightNav:
   hideH4: true
 ---
 
-Setting up Resource Governor has two parts:
+Setting up Resource Governance has two parts:
 
 1. Prepare a writable, dedicated cgroup for the YB-TServer process (a one-time, environment-specific, operating system step that typically requires root).
-1. Enable the resource governor using YB-TServer and YB-Master flags.
+1. Enable Resource Governance using YB-TServer and YB-Master flags.
 
 Setup assumes YugabyteDB is running as a systemd service.
 
@@ -81,17 +81,15 @@ If YB-TServer is running as a systemd service under the system slice, the CPU co
 
 ### Other deployments
 
-For deployments that don't rely on systemd (such as cron-based or container-based deployments) or for deployments on systems that use cgroups v1
-
-, place the YB-TServer process in a cgroup that meets the [requirements](#prepare-cgroups). For cgroups v2 systems, make the CPU controller available by writing `+cpu` to the `cgroup.subtree_control` file of every ancestor cgroup, top down.
+For deployments that don't rely on systemd (such as cron-based or container-based deployments) or for deployments on systems that use cgroups v1, place the YB-TServer process in a cgroup that meets the [requirements](#prepare-cgroups). For cgroups v2 systems, make the CPU controller available by writing `+cpu` to the `cgroup.subtree_control` file of every ancestor cgroup, top down.
 
 Under cgroup v2, even with write permissions to a cgroup, a non-root user can move a process into it only if the user has write access to the `cgroup.procs` file of the common ancestor of the target cgroup and the cgroup the user is currently in. Depending on the cgroup chosen, root may be required to start the YB-TServer.
 
 Container deployments (Docker and Kubernetes) typically mount the cgroups filesystem read-only. To use multitenancy, the container must be privileged with the root cgroup hierarchy mounted read/write so that child cgroups can be created. Some platforms provide workarounds; for example, GKE supports [writable cgroups in pods](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups).
 
-## Enable and configure the resource governor
+## Enable and configure Resource Governance
 
-The resource governor is controlled entirely through flags. To enable multitenancy, set the `enable_qos` flag to true on Masters and TServers.
+Resource Governance is controlled entirely through flags. To enable multitenancy, set the `enable_qos` flag to true on Masters and TServers.
 
 Set the following flags to configure multitenancy. Unless noted otherwise, set flags on both YB-Masters and YB-TServers.
 
@@ -120,7 +118,7 @@ For example, to reserve 5% of CPU for system work, cap each database at 25% of t
     --master_flags="enable_qos=true,qos_max_db_cpu_percent=25,qos_system_high_cpu_reserved_percent=5,qos_max_db_count=20"
 ```
 
-## Disable the resource governor
+## Disable Resource Governance
 
 To turn off per-database CPU limits, set `enable_qos` to `false` and restart the YB-Master and YB-TServer processes. The cgroup setup performed on the operating system does not need to be undone.
 

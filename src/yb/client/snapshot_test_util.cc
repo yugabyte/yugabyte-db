@@ -213,6 +213,27 @@ Status SnapshotTestUtil::RestoreSnapshot(
   return WaitRestorationInState(restoration_id, master::SysSnapshotEntryPB::RESTORED);
 }
 
+Result<TxnSnapshotRestorationId> SnapshotTestUtil::StartScheduleRestoration(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  master::RestoreSnapshotScheduleRequestPB req;
+  master::RestoreSnapshotScheduleResponsePB resp;
+
+  rpc::RpcController controller;
+  controller.set_timeout(60s);
+  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  req.set_restore_ht(restore_at.ToUint64());
+  RETURN_NOT_OK(
+      VERIFY_RESULT(MakeBackupServiceProxy()).RestoreSnapshotSchedule(req, &resp, &controller));
+  RETURN_NOT_OK(ResponseStatus(resp));
+  return FullyDecodeTxnSnapshotRestorationId(resp.restoration_id());
+}
+
+Status SnapshotTestUtil::RestoreSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  auto restoration_id = VERIFY_RESULT(StartScheduleRestoration(schedule_id, restore_at));
+  return WaitRestorationInState(restoration_id, master::SysSnapshotEntryPB::RESTORED);
+}
+
 Result<TxnSnapshotId> SnapshotTestUtil::StartSnapshot(const YBTableName& table_name) {
   return DoStartSnapshot([&table_name](master::CreateSnapshotRequestPB* req) {
     auto table = req->add_tables();

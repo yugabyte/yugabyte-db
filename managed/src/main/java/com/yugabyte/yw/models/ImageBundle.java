@@ -279,12 +279,14 @@ public class ImageBundle extends Model {
     Architecture arch = universe.getUniverseDetails().arch;
     ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, defaultBundles);
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (cluster.userIntent.imageBundleUUID == null
+      UUID clusterImageBundleUUID =
+          cluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid());
+
+      if (clusterImageBundleUUID == null
           && defaultBundle != null
           && imageBundleUUID.equals(defaultBundle.getUuid())) {
         return true;
-      } else if (cluster.userIntent.imageBundleUUID != null
-          && cluster.userIntent.imageBundleUUID.equals(imageBundleUUID)) {
+      } else if (clusterImageBundleUUID != null && clusterImageBundleUUID.equals(imageBundleUUID)) {
         return true;
       }
     }

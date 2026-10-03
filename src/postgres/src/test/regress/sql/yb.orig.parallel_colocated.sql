@@ -127,11 +127,13 @@ SELECT pctest1.* FROM pctest1, pctest2
 */
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
+-- Keep Gather Merge over a sorted BNL on record; the copy in the parallel
+-- hints section shows the Sort variant.
 EXPLAIN (costs off)
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
 

@@ -223,6 +223,48 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   ASSERT_EQ(tablets.size(), kNumTablets) << "Tablets on TS0: " << tablets;
 }
 
+// Regression test for #33869. Tablets that time out in CREATING state get replaced by the bg task,
+// which locks the old tablet before the new one. DeleteTable locks both in tablet id order, so
+// TSAN reports a lock-order inversion when the replacement id sorts first.
+TEST_F(CreateTableITest, TestDeleteTableAfterTabletReplacement) {
+  const int kNumReplicas = 3;
+  const int kNumTablets = 4;
+  const int kMinReplacementRounds = 3;
+  ASSERT_NO_FATALS(StartCluster({}, {"--tablet_creation_timeout_ms=1000"}, kNumReplicas));
+
+  // Without a majority the tablets never leave CREATING state, so every timeout replaces them.
+  cluster_->tablet_server(1)->Shutdown();
+  cluster_->tablet_server(2)->Shutdown();
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+  ASSERT_OK(table_creator->table_name(kTableName)
+            .schema(&client_schema)
+            .num_tablets(kNumTablets)
+            .wait(false)
+            .Create());
+
+  // Each replacement round sends a CreateTablet RPC per tablet to the live server.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto num_create_attempts = VERIFY_RESULT(cluster_->tablet_server(0)->GetMetric<int64>(
+            &METRIC_ENTITY_server,
+            "yb.tabletserver",
+            &METRIC_handler_latency_yb_tserver_TabletServerAdminService_CreateTablet,
+            "total_count"));
+        return num_create_attempts >= kNumTablets * (kMinReplacementRounds + 1);
+      },
+      60s * kTimeMultiplier, "Wait for tablet replacements"));
+
+  ASSERT_OK(cluster_->tablet_server(1)->Restart());
+  ASSERT_OK(cluster_->tablet_server(2)->Restart());
+  ASSERT_OK(client_->WaitForCreateTableToFinish(kTableName));
+
+  ASSERT_OK(client_->DeleteTable(kTableName));
+}
+
 // Ensure that, when a table is created,
 // both the tablets and leaders are well spread out across the machines in the cluster.
 TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {

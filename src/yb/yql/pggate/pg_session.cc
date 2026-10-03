@@ -30,6 +30,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/tablespace_parser.h"
+#include "yb/common/transaction.h"
 
 #include "yb/docdb/object_lock_shared_state.h"
 
@@ -38,6 +39,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -49,7 +51,9 @@
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -57,6 +61,7 @@ using namespace std::literals;
 
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
@@ -92,9 +97,17 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write, true,
                        "Enables fastpath writes for relations created in the current transaction "
                        "(skip intents DB when safe).");
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks, false,
-                               "Allows yb_enable_new_relation_fastpath_write to be applicable "
-                               "inside explicit transaction blocks too.");
+// Defaults to kEnableDdlTransactionBlocks because the flag requires
+// ysql_yb_ddl_transaction_block_enabled, which is off by default in debug builds.
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks,
+                       kEnableDdlTransactionBlocks,
+                       "Allows yb_enable_new_relation_fastpath_write to be applicable "
+                       "inside explicit transaction blocks too. DDL inside a transaction "
+                       "block can only use the fastpath if the DDL runs in the enclosing "
+                       "transaction, so this flag only takes effect if "
+                       "ysql_yb_ddl_transaction_block_enabled is true.");
+DEFINE_validator(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 
 namespace yb::pggate {
 namespace {
@@ -124,7 +137,16 @@ void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache
   if (!dist_trace::HasActiveContext() || ops.empty()) {
     return;
   }
-  dist_trace::ClearPendingRpcAttrs();
+
+  // Publish the details of the Perform RPC.
+  size_t reads = 0;
+  size_t writes = 0;
+  for (const auto& op : ops) {
+    (op->is_read() ? reads : writes)++;
+  }
+  dist_trace::AddPendingRpcStringAttr("rpc.read_ops", std::to_string(reads));
+  dist_trace::AddPendingRpcStringAttr("rpc.write_ops", std::to_string(writes));
+
   std::string joined_names;
   joined_names.reserve(128);
   std::set<std::string_view> processed;
@@ -715,10 +737,12 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(
 
 Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
   VLOG(3) << "Loading table descriptor for " << table_id;
-  // When loading table description and yb_read_time is set, return the table properties even if the
-  // table is hidden. For instance, this is required for succesful return of yb_table_properties()
-  // when yb_read_time is set and the table was hidden at yb_read_time.
-  master::IncludeHidden include_hidden = master::IncludeHidden(yb_read_time != 0);
+  // When loading table description and yb_read_time/historical_read_context_ is set, return the
+  // table properties even if the table is hidden. For instance, this is required for succesful
+  // return of yb_table_properties() when yb_read_time/historical_read_context_ is set and the table
+  // was hidden at that time.
+  master::IncludeHidden include_hidden =
+      master::IncludeHidden(yb_read_time != 0 || historical_read_context_.has_value());
   return DoLoadTable(table_id, /* fail_on_cache_hit */ false, include_hidden);
 }
 
@@ -853,10 +877,11 @@ Result<FlushFuture> PgSession::FlushOperations(
   // ReadTimeAction helps to determine whether it can safely use the optimization of allowing
   // docdb (which serves the operation) to pick the read time.
 
+  const auto relation_oid = ops.single_relation_oid();
   return FlushFuture{
       VERIFY_RESULT(Perform(
           std::move(ops), { .read_time_action = MakeReadTimeActionForFlush(*pg_txn_manager_) })),
-      *this, metrics_};
+      *this, metrics_, relation_oid};
 }
 
 NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
@@ -900,14 +925,15 @@ Status PgSession::SetReadTimeIfPresent(
     RETURN_NOT_OK(UpdateReadTime(*options.mutable_read_time_options(), ops_read_time));
   }
 
-  if (yb_read_time != 0) {
+  if (historical_read_context_) {
+    historical_read_context_->read_time.ToPB(
+        options.mutable_read_time_options()->mutable_read_time());
+  } else if (yb_read_time != 0) {
     RETURN_NOT_OK(CheckConflictWithYbReadTime(operations));
-    auto& read_time_pb = *options.mutable_read_time_options()->mutable_read_time();
-    if (yb_is_read_time_ht) {
-      ReadHybridTime::FromUint64(yb_read_time).ToPB(&read_time_pb);
-    } else {
-      ReadHybridTime::FromMicros(yb_read_time).ToPB(&read_time_pb);
-    }
+    const auto read_ht = yb_is_read_time_ht
+        ? ReadHybridTime::FromUint64(yb_read_time)
+        : ReadHybridTime::FromMicros(yb_read_time);
+    read_ht.ToPB(options.mutable_read_time_options()->mutable_read_time());
   }
   return Status::OK();
 }
@@ -943,6 +969,15 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
         IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.has_catalog_ops)));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
+    }
+  }
+
+  if (historical_read_context_) {
+    options.set_use_historical_read_session(true);
+    if (!historical_read_context_->transaction_id.empty()) {
+      auto txn_id = VERIFY_RESULT(
+          TransactionId::FromString(historical_read_context_->transaction_id));
+      options.set_historical_read_transaction_id(txn_id.data(), txn_id.size());
     }
   }
 
@@ -1088,6 +1123,16 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   if (read_ht) {
     catalog_read_time_ = read_ht;
   }
+}
+
+void PgSession::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, std::string transaction_id) {
+  historical_read_context_ = HistoricalReadContext{
+      .read_time = read_time, .transaction_id = std::move(transaction_id)};
+}
+
+void PgSession::ResetHistoricalReadContext() {
+  historical_read_context_.reset();
 }
 
 Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options) {
@@ -1306,9 +1351,9 @@ Result<PerformFuture> PgSession::RunAsync(
   return DoRunAsync(generator, {}, std::move(cache_options));
 }
 
-PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
+PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux) {
   DCHECK_NE(wait_event, ash::WaitStateCode::kWaitingOnTServer);
-  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC);
+  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC, aux);
 }
 
 std::string PgSession::LogPrefix() const {

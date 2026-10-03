@@ -458,7 +458,7 @@ public class BackupsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
     if (!backupHelper.isSkipConfigBasedPreflightValidation(universe)) {
-      backupHelper.validateStorageConfig(customerConfig);
+      backupHelper.validateStorageConfig(customerConfig, universe);
     }
 
     UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =

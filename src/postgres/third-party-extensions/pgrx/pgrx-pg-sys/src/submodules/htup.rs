@@ -8,10 +8,10 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use crate::{
-    bits8, getmissingattr, heap_getsysattr, nocachegetattr, CommandId, Datum,
-    FormData_pg_attribute, FrozenTransactionId, HeapTupleData, HeapTupleHeaderData, TransactionId,
-    TupleDesc, HEAP_HASNULL, HEAP_HOT_UPDATED, HEAP_NATTS_MASK, HEAP_ONLY_TUPLE, HEAP_XMAX_INVALID,
-    HEAP_XMIN_COMMITTED, HEAP_XMIN_FROZEN, HEAP_XMIN_INVALID, SIZEOF_DATUM,
+    CommandId, Datum, FrozenTransactionId, HEAP_HASNULL, HEAP_HOT_UPDATED, HEAP_NATTS_MASK,
+    HEAP_ONLY_TUPLE, HEAP_XMAX_INVALID, HEAP_XMIN_COMMITTED, HEAP_XMIN_FROZEN, HEAP_XMIN_INVALID,
+    HeapTupleData, HeapTupleHeaderData, SIZEOF_DATUM, TransactionId, TupleDesc, bits8,
+    getmissingattr, heap_getsysattr, nocachegetattr,
 };
 
 /// # Safety
@@ -199,7 +199,28 @@ unsafe fn att_isnull(ATT: i32, BITS: *const bits8) -> bool {
 ///
 /// Caller is responsible for ensuring `A` is a valid [`FormData_pg_attribute`] pointer
 #[inline(always)]
-unsafe fn fetchatt(A: *const FormData_pg_attribute, T: *mut std::os::raw::c_char) -> Datum {
+#[cfg(any(
+    feature = "pg13",
+    feature = "pg14",
+    feature = "pg15",
+    feature = "pg16",
+    feature = "pg17"
+))]
+unsafe fn fetchatt(A: *const crate::FormData_pg_attribute, T: *mut std::os::raw::c_char) -> Datum {
+    // #define fetchatt(A,T) fetch_att(T, (A)->attbyval, (A)->attlen)
+
+    unsafe {
+        // SAFETY:  caller has asserted `A` is a valid FromData_pg_attribute pointer
+        fetch_att(T, (*A).attbyval, (*A).attlen)
+    }
+}
+
+/// # Safety
+///
+/// Caller is responsible for ensuring `A` is a valid [`FormData_pg_attribute`] pointer
+#[inline(always)]
+#[cfg(feature = "pg18")]
+unsafe fn fetchatt(A: *const crate::CompactAttribute, T: *mut std::os::raw::c_char) -> Datum {
     // #define fetchatt(A,T) fetch_att(T, (A)->attbyval, (A)->attlen)
 
     unsafe {
@@ -377,7 +398,17 @@ unsafe fn fastgetattr(
     unsafe {
         *isnull = false;
         if HeapTupleNoNulls(tup) {
+            #[cfg(any(
+                feature = "pg13",
+                feature = "pg14",
+                feature = "pg15",
+                feature = "pg16",
+                feature = "pg17"
+            ))]
             let att = &(*tupleDesc).attrs.as_slice((*tupleDesc).natts as _)[attnum as usize - 1];
+            #[cfg(feature = "pg18")]
+            let att =
+                &(*tupleDesc).compact_attrs.as_slice((*tupleDesc).natts as _)[attnum as usize - 1];
             if att.attcacheoff >= 0 {
                 let t_data = (*tup).t_data;
                 fetchatt(

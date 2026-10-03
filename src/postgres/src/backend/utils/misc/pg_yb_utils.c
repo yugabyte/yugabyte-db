@@ -137,6 +137,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
@@ -1098,7 +1099,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			hex_encode((const char *) YbGetLocalTServerUuid(), UUID_LEN, hex_uuid);
 			hex_uuid[2 * UUID_LEN] = '\0';
 
-			YBCInitDistTrace(MyProcPid, hex_uuid);
+			YBCInitDistTrace(hex_uuid);
 
 			/* Hooks that close node spans left open by a query abort. */
 			YbDistTraceInstallExecutorHooks();
@@ -1110,7 +1111,7 @@ void
 YBOnPostgresBackendShutdown()
 {
 	if (YBCIsDistTraceEnabled())
-		YBCCleanupDistTrace();
+		YBCShutdownDistTrace();
 
 	YBCDestroyPgGate();
 }
@@ -1283,6 +1284,16 @@ typedef struct
 	 * transaction block. Only used when ddl transaction block is enabled.
 	 */
 	int			num_rollback_to_savepoint_stmts;
+	/*
+	 * This indicates whether we need to increment logical client version at
+	 * commit. This is needed by Connection Manager to handle `ALTER ... SET`
+	 * commands and is irrelevant when it is disabled.
+	 * Note that we don't handle savepoint rollbacks here i.e. we don't unset
+	 * it when we rollback to a savepoint. This is fine since an additional
+	 * logical client version bump will only cause a recycling of backends used
+	 * by Connection Manager, and that is harmless.
+	 */
+	bool increment_logical_client_version;
 	/*
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
@@ -2221,7 +2232,7 @@ bool        yb_test_make_all_ddl_statements_incrementing = false;
 bool		yb_always_increment_catalog_version_on_ddl = true;
 bool		yb_enable_negative_catcache_entries = true;
 bool		yb_enable_new_relation_fastpath_write = true;
-bool		yb_enable_new_relation_fastpath_write_in_txn_blocks = false;
+bool		yb_enable_new_relation_fastpath_write_in_txn_blocks = kEnableDdlTransactionBlocks;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -3349,6 +3360,11 @@ YBCommitTransactionContainingDDL()
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 	bool		use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
 	bool		is_global_ddl = ddl_transaction_state.is_global_ddl;
+	bool increment_logical_client_version =
+		ddl_transaction_state.increment_logical_client_version;
+
+	if (increment_logical_client_version)
+		YbIncrementMasterLogicalClientVersionTableEntry();
 
 	YBClearDdlTransactionState();
 
@@ -3464,6 +3480,12 @@ YBCommitTransactionContainingDDL()
 				pg_usleep(sleep);
 			}
 		}
+	}
+
+	if (increment_logical_client_version)
+	{
+		elog(LOG, "Logical client version incremented");
+		YbSendMasterLogicalClientVersionToFrontend();
 	}
 
 	List	   *handles = YBGetDdlHandles();
@@ -4582,14 +4604,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 
 				YBAddDdlTxnState(ddl_mode.value);
 			}
-
-			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
-				YbIsClientYsqlConnMgr() &&
-				YbIncrementMasterLogicalClientVersionTableEntry())
-			{
-				elog(LOG, "Logical client version incremented");
-				YbSendMasterLogicalClientVersionToFrontend();
-			}
 		}
 
 		if (prev_ProcessUtility)
@@ -4604,6 +4618,10 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		if (is_ddl)
 		{
 			CheckAlterDatabaseDdl(pstmt);
+
+			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
+				YbIsClientYsqlConnMgr())
+				ddl_transaction_state.increment_logical_client_version = true;
 
 			if (use_separate_ddl_transaction)
 				YBDecrementDdlNestingLevel();
@@ -5237,7 +5255,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 		size += typesize;
 	}
 
-	arg_buf = alloca(size);
+	arg_buf = palloc(size);
 
 	/* TODO(Tanuj): Look into caching the above buffer */
 
@@ -5273,6 +5291,8 @@ yb_hash_code(PG_FUNCTION_ARGS)
 
 	/* hash the contents of the buffer and return */
 	uint16_t	hashed_val = YBCCompoundHash(arg_buf, total_bytes);
+
+	pfree(arg_buf);
 
 	PG_RETURN_UINT16(hashed_val);
 }
@@ -7314,27 +7334,27 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 {
 	/* User Table stats */
 	instr->tbl_reads.count += exec_stats->tables.reads;
-	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
-	instr->tbl_read_ops += exec_stats->tables.read_ops;
-	instr->tbl_writes += exec_stats->tables.writes;
+	instr->tbl_reads.ops_count += exec_stats->tables.read_ops;
 	instr->tbl_reads.rows_scanned += exec_stats->tables.rows_scanned;
 	instr->tbl_reads.rows_received += exec_stats->tables.rows_received;
+	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
+	instr->tbl_writes += exec_stats->tables.writes;
 
 	/* Secondary Index stats */
 	instr->index_reads.count += exec_stats->indices.reads;
-	instr->index_reads.wait_time += exec_stats->indices.read_wait;
-	instr->index_read_ops += exec_stats->indices.read_ops;
-	instr->index_writes += exec_stats->indices.writes;
+	instr->index_reads.ops_count += exec_stats->indices.read_ops;
 	instr->index_reads.rows_scanned += exec_stats->indices.rows_scanned;
 	instr->index_reads.rows_received += exec_stats->indices.rows_received;
+	instr->index_reads.wait_time += exec_stats->indices.read_wait;
+	instr->index_writes += exec_stats->indices.writes;
 
 	/* System Catalog stats */
 	instr->catalog_reads.count += exec_stats->catalog.reads;
-	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
-	instr->catalog_read_ops += exec_stats->catalog.read_ops;
-	instr->catalog_writes += exec_stats->catalog.writes;
+	instr->catalog_reads.ops_count += exec_stats->catalog.read_ops;
 	instr->catalog_reads.rows_scanned += exec_stats->catalog.rows_scanned;
 	instr->catalog_reads.rows_received += exec_stats->catalog.rows_received;
+	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
+	instr->catalog_writes += exec_stats->catalog.writes;
 
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
@@ -7516,6 +7536,12 @@ void
 YbRecordCommitLatency(uint64_t latency_us)
 {
 	yb_session_stats.current_state.stats.commit_wait += latency_us;
+}
+
+uint64_t
+YbGetTableRowsScanned()
+{
+	return yb_session_stats.current_state.stats.tables.rows_scanned;
 }
 
 void
@@ -8234,14 +8260,6 @@ bool		yb_ysql_conn_mgr_superuser_existed = false;
  */
 bool		yb_ysql_conn_mgr_sticky_locks = false;
 
-/*
- * When enabled, DEALLOCATE commands sent via YSQL Connection Manager selectively
- * deallocates prepared statements (cached plans are invalid or if connection is sticky).
- * Valid plans are retained so they can be reused across logical connections
- * sharing the same backend. Updated at runtime via GUC (PGC_SIGHUP).
- */
-bool		yb_conn_mgr_selective_deallocate = true;
-
 bool		yb_enable_mage = false;
 
 bool
@@ -8735,7 +8753,51 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 
 	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);
 	assign_yb_read_time(read_time, NULL);
+	YBCPgResetHistoricalReadContext();
 	YbRelationCacheInvalidate();
+}
+
+void
+YBCSetHistoricalReadContext(uint64_t read_time_ht,
+							uint64_t in_txn_limit_ht,
+							const char *docdb_txn_id)
+{
+	elog(DEBUG1,
+		 "Setting historical read context to read_time_ht: %" PRIu64
+		 ", in_txn_limit_ht: %" PRIu64 ", docdb_txn_id: %s",
+		 read_time_ht, in_txn_limit_ht, docdb_txn_id);
+
+	YbcReadHybridTime read_time = {
+		.read = read_time_ht,
+		.local_limit = read_time_ht,
+		.global_limit = read_time_ht,
+		.in_txn_limit = in_txn_limit_ht,
+		.serial_no = 0
+	};
+
+	YBCPgSetHistoricalReadContext(read_time, docdb_txn_id);
+}
+
+void
+YBCInvalidateCachesForHistoricalReadContext(void)
+{
+	YbRelationCacheInvalidate();
+}
+
+void
+YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
+											   uint64_t in_txn_limit_ht,
+											   const char *docdb_txn_id)
+{
+	YBCSetHistoricalReadContext(read_time_ht, in_txn_limit_ht, docdb_txn_id);
+	YBCInvalidateCachesForHistoricalReadContext();
+}
+
+void
+YBCResetHistoricalReadContextAndInvalidateRelcache(void)
+{
+	YBCPgResetHistoricalReadContext();
+	YBCInvalidateCachesForHistoricalReadContext();
 }
 
 void
@@ -9541,11 +9603,59 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
+typedef struct
+{
+	Oid			docdb_oid;		/* hash key; must be first */
+	Oid			relid;
+} YbDocdbOidToRelidEntry;
+
+/*
+ * Map from docdb oid (relfilenode, or original oid for mapped catalogs) to
+ * pg_class.oid. Caller must hash_destroy the result.
+ */
+static HTAB *
+yb_build_docdb_oid_to_relid_map(void)
+{
+	HASHCTL		hash_ctl;
+	HTAB	   *map;
+	Relation	pg_class;
+	SysScanDesc scan;
+	HeapTuple	tuple;
+
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+	hash_ctl.keysize = sizeof(Oid);
+	hash_ctl.entrysize = sizeof(YbDocdbOidToRelidEntry);
+	hash_ctl.hcxt = CurrentMemoryContext;
+	map = hash_create("yb_stat_auto_analyze docdb oid map",
+					  1024,
+					  &hash_ctl,
+					  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
+	pg_class = table_open(RelationRelationId, AccessShareLock);
+	scan = systable_beginscan(pg_class, InvalidOid, false, NULL, 0, NULL);
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_class classform = (Form_pg_class) GETSTRUCT(tuple);
+		YbDocdbOidToRelidEntry *entry;
+		Oid			docdb_oid = OidIsValid(classform->relfilenode)
+			? classform->relfilenode
+			: classform->oid;
+
+		entry = hash_search(map, &docdb_oid, HASH_ENTER, NULL);
+		entry->relid = classform->oid;
+	}
+	systable_endscan(scan);
+	table_close(pg_class, AccessShareLock);
+
+	return map;
+}
+
 Datum
 yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	int			i;
+	HTAB	   *docdb_oid_map;
 
 #define YB_AUTO_ANALYZE_TABLE_COLS 5
 
@@ -9555,22 +9665,32 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 
 	HandleYBStatus(YBCQueryAutoAnalyze(MyDatabaseId, &auto_analyze_info, &num_rows));
 
+	docdb_oid_map = yb_build_docdb_oid_to_relid_map();
+
 	for (i = 0; i < num_rows; ++i)
 	{
 		YbcAutoAnalyzeInfo *row_info = (YbcAutoAnalyzeInfo *) auto_analyze_info + i;
+		YbDocdbOidToRelidEntry *entry;
+		Relation	rel;
 		Datum		values[YB_AUTO_ANALYZE_TABLE_COLS];
 		bool		nulls[YB_AUTO_ANALYZE_TABLE_COLS];
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
-		Relation rel = RelationIdGetRelation(row_info->table_oid);
+
 		/*
-		 * A table could be deleted, but auto analyze hasn't cleaned up its
-		 * entry from its service table yet.
+		 * We may temporarily have stale YCQL rows corresponding to older
+		 * DocDB oids for this table; skip them.
 		 */
+		entry = hash_search(docdb_oid_map, &row_info->table_oid, HASH_FIND,
+							NULL);
+		if (!entry)
+			continue;
+
+		rel = RelationIdGetRelation(entry->relid);
 		if (!RelationIsValid(rel))
 			continue;
-		values[0] = ObjectIdGetDatum(row_info->table_oid);
+		values[0] = ObjectIdGetDatum(entry->relid);
 		values[1] = CStringGetTextDatum(get_namespace_name(RelationGetNamespace(rel)));
 		values[2] = CStringGetTextDatum(RelationGetRelationName(rel));
 		values[3] = UInt64GetDatum(row_info->mutations);
@@ -9586,6 +9706,8 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 		RelationClose(rel);
 	}
+
+	hash_destroy(docdb_oid_map);
 
 #undef YB_AUTO_ANALYZE_TABLE_COLS
 
@@ -10031,11 +10153,16 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	if (skip_intents_txn_state.disabled)
 		return info;
 
-	bool is_rc = IsYBReadCommitted();
 	/*
-	 * In non-RC isolation, only do skip intents optimization for top-level DDL.
+	 * Serializable is the one isolation level restricted to top-level DDL. Its operations
+	 * carry no read time and read at the latest time, so there is no read time to point at
+	 * in_txn_limit. Nor is there an in_txn_limit to point it at, which
+	 * leaves the Halloween problem open even without this optimization (#33802). Every
+	 * other isolation level carries a read time that read_at_in_txn_limit moves, so it may
+	 * run inside a transaction block.
 	 */
-	bool top_level_only = !yb_enable_new_relation_fastpath_write_in_txn_blocks || !is_rc;
+	bool is_serializable = XactIsoLevel == XACT_SERIALIZABLE;
+	bool top_level_only = !yb_enable_new_relation_fastpath_write_in_txn_blocks || is_serializable;
 	bool is_top_level = !IsTransactionBlock() &&
 						GetCurrentTransactionNestLevel() == 1 &&
 						YbGetTriggerDepth() == 0 &&
@@ -10050,19 +10177,18 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 			return info;
 		}
 		/*
-		 * Here we assume that a top-level DDL (e.g. CREATE TABLE AS SELECT) never
-		 * needs to read its own newly created table. Otherwise in non-RC isolation
-		 * this optimization will not be valid.
+		 * A top-level statement is the whole transaction, so nothing reads the relation
+		 * after it. Here we assume that a top-level DDL (e.g. CREATE TABLE AS SELECT)
+		 * never needs to read its own newly created table. Otherwise this optimization
+		 * will not be valid in Serializable, which cannot read at the in_txn_limit.
 		 */
 	}
 
 	/*
-	 * In RC isolation, non-top-level requires transactional DDL support.
+	 * Non-top-level work requires transactional DDL support. Only a transaction block can
+	 * reach here with is_top_level false, so the GUC that allows it is known to be on.
 	 */
-	bool requires_transactional_ddl = !is_top_level && is_rc;
-	bool fastpath_in_txn_blocks_supported =
-		yb_enable_new_relation_fastpath_write_in_txn_blocks && YBIsDdlTransactionBlockEnabled();
-	if (requires_transactional_ddl && !fastpath_in_txn_blocks_supported)
+	if (!is_top_level && !YBIsDdlTransactionBlockEnabled())
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u requires transactional DDL support", rel->rd_id);
 		return info;
@@ -10297,10 +10423,20 @@ YBCMakeStatusErrorData(YbcStatus status)
 	switch (pg_err_code)
 	{
 		case ERRCODE_UNIQUE_VIOLATION:
-			*msg = (YbStatusErrorDataFormatText) {"duplicate key value violates unique constraint \"%s\"",
-												   1, (const char **) palloc(sizeof(const char *))};
-			(msg->args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(status));
-			break;
+			{
+				const Oid	relation_oid = YBCStatusRelationOid(status);
+
+				/*
+				 * A status without a relation OID (e.g. an index backfill
+				 * failure) already carries a full PG error message.
+				 */
+				if (!OidIsValid(relation_oid))
+					break;
+				*msg = (YbStatusErrorDataFormatText) {"duplicate key value violates unique constraint \"%s\"",
+													   1, (const char **) palloc(sizeof(const char *))};
+				(msg->args)[0] = FetchUniqueConstraintName(relation_oid);
+				break;
+			}
 		case ERRCODE_YB_TXN_ABORTED:
 			*detail = *msg;
 			*msg = (YbStatusErrorDataFormatText) {"current transaction is expired or aborted"};

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# new-pr: rebase the current branch on upstream/<base>, run the linter, push
-#         to the user's fork, and open a cross-repo PR with reviewers.
+# new-pr: run the linter, push the current branch to the user's fork, and
+#         open a cross-repo PR with reviewers.
 #
 # A "feature-stack/<feature>/<change>" branch is the exception: it lives in
 # the main repo (GitHub can only stack PRs whose head branches it owns), so
@@ -57,7 +57,6 @@
 # Exit codes:
 #   0  success (PR URL printed last)
 #   1  pre-flight failure (bad args, dirty tree, missing remote, etc.)
-#   2  rebase conflict -- resolve, `git rebase --continue`, then re-run
 #   3  lint failed -- fix as a NEW commit (do not amend), then re-run
 #   5  stack branch: `gh stack push` failed -- read its message
 #   6  stack branch: the PR was opened as a draft but `gh stack link` failed
@@ -386,11 +385,10 @@ UPSTREAM_REMOTE="$UPSTREAM_REMOTE" FORK_REMOTE="$FORK_REMOTE" GH_REPO="$GH_REPO"
 # can break upgrade-rollback safety on a mixed-version cluster, so require
 # -U with explicit forward/backward/rollback notes. Soft cases (gflag
 # default flips, catalog schema bumps) should also pass -U, but we can't
-# detect those mechanically -- the proto-file rule is the hard gate. Run
-# this *after* git-push.sh so the upstream tracking ref is current; the
-# diff above the rebase + push relied on a possibly-stale base.
-# A stack layer is compared with the layer below it, which git-push.sh has
-# just pushed from the local branch of the same name.
+# detect those mechanically -- the proto-file rule is the hard gate. Diff
+# from the merge-base so a branch behind <base> isn't charged with protos
+# that only <base> changed. A stack layer is compared with the layer below
+# it, which git-push.sh has just pushed from the local branch of that name.
 proto_base="${UPSTREAM_REMOTE}/${base_branch}"
 if $is_stack_branch && [[ "$base_branch" != "$stack_trunk" ]]; then
   proto_base="$base_branch"

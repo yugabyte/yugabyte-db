@@ -21,6 +21,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Date;
 import java.util.EnumSet;
@@ -33,8 +35,10 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.DateUtils;
 import play.mvc.Http.Status;
@@ -47,6 +51,13 @@ import play.mvc.Http.Status;
 public class ResizeNodeParams extends UpgradeWithGFlags {
 
   public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
+
+  /**
+   * Azure Premium SSD performance-tier downgrade cooldown. Azure holds the disk in the new tier for
+   * 12 hours before it can be shrunk back. Constant here because the forward smart-resize path
+   * never downgrades and therefore has no runtime flag.
+   */
+  public static final int AZU_PREMIUM_PERF_TIER_COOLDOWN_HOURS = 12;
 
   private static final Set<Common.CloudType> SUPPORTED_CLOUD_TYPES =
       EnumSet.of(
@@ -159,8 +170,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
               String oldInstanceType = currentUserIntent.getInstanceTypeForNode(n);
               String newInstanceType = newUserIntent.getInstanceTypeForNode(n);
 
-              DeviceInfo oldDevice = currentUserIntent.getDeviceInfoForNode(n);
-              DeviceInfo newDevice = newUserIntent.getDeviceInfoForNode(n);
+              DeviceInfo oldDevice = currentUserIntent.evaluateDeviceInfoForNode(n);
+              DeviceInfo newDevice = newUserIntent.evaluateDeviceInfoForNode(n);
 
               Integer newCgroupSize = newUserIntent.getCGroupSize(n);
               Integer oldCgroupSize = currentUserIntent.getCGroupSize(n);
@@ -283,8 +294,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         instanceTypeChanged = true;
         hasChanges = true;
       }
-      DeviceInfo curDeviceInfo = currentUserIntent.getDeviceInfoForNode(node);
-      DeviceInfo newDeviceInfo = newUserIntent.getDeviceInfoForNode(node);
+      DeviceInfo curDeviceInfo = currentUserIntent.evaluateDeviceInfoForNode(node);
+      DeviceInfo newDeviceInfo = newUserIntent.evaluateDeviceInfoForNode(node);
       AtomicReference<String> error = new AtomicReference<>();
       boolean nodeDiskChanged =
           checkDiskChanged(provider.getCloudCode(), curDeviceInfo, newDeviceInfo, error::set);
@@ -317,15 +328,14 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
                   || curDeviceInfo.storageType
                       == PublicCloudConstants.StorageType.Hyperdisk_Extreme);
       if ((provider.getCloudCode() == Common.CloudType.aws || isHyperdisks) && nodeDiskChanged) {
-        int cooldownInHours =
-            provider.getCloudCode() == Common.CloudType.aws
-                ? runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours)
-                : runtimeConfGetter.getGlobalConf(GlobalConfKeys.gcpHyperdiskResizeCooldownHours);
-        if (node.lastVolumeUpdateTime != null
-            && DateUtils.addHours(node.lastVolumeUpdateTime, cooldownInHours).after(new Date())) {
-          return String.format(
-              "Resize cooldown in %s (%d hours) is still active",
-              provider.getCloudCode(), cooldownInHours);
+        DiskResizeCooldownStatus status =
+            evaluateDiskResizeCooldown(
+                provider.getCloudCode(),
+                curDeviceInfo,
+                node.lastVolumeUpdateTime,
+                runtimeConfGetter);
+        if (status != null && status.isActive()) {
+          return status.getMessage();
         }
       }
 
@@ -339,6 +349,88 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     }
 
     return null;
+  }
+
+  /**
+   * Cloud disk-modify cooldown status. {@code active=true} means the caller must reject an
+   * IOPS/throughput/size change on this node right now; the operator retries after {@code
+   * remainingMinutes}. Shared between forward {@code getResizeIsPossibleError} and {@code
+   * ResizeNodeRollbackComputer} / {@code RollbackResizeNode} precheck.
+   */
+  @Getter
+  @AllArgsConstructor
+  public static class DiskResizeCooldownStatus {
+    private final boolean active;
+    private final int cooldownHours;
+    private final long remainingMinutes;
+    private final Common.CloudType cloudType;
+    private final String message;
+  }
+
+  /**
+   * Evaluates whether the cloud disk-modify cooldown is still active for a node. Returns {@code
+   * null} when the cloud/storage type has no cooldown (nothing to check). Uses {@code
+   * lastVolumeUpdateTime} when set; callers can fall back to the failed task create time (see
+   * {@link #evaluateDiskResizeCooldown(Common.CloudType, DeviceInfo, Date, Date,
+   * RuntimeConfGetter)}) when it is not.
+   */
+  public static DiskResizeCooldownStatus evaluateDiskResizeCooldown(
+      Common.CloudType cloudType,
+      DeviceInfo currentDeviceInfo,
+      Date lastVolumeUpdateTime,
+      RuntimeConfGetter runtimeConfGetter) {
+    return evaluateDiskResizeCooldown(
+        cloudType, currentDeviceInfo, lastVolumeUpdateTime, null, runtimeConfGetter);
+  }
+
+  /**
+   * Same as {@link #evaluateDiskResizeCooldown(Common.CloudType, DeviceInfo, Date,
+   * RuntimeConfGetter)} but uses {@code fallbackStart} (typically the failed ResizeNode task create
+   * time) when {@code lastVolumeUpdateTime} is null - {@code PersistResizeNode} never ran, so the
+   * disk was still modified in cloud but YBA never recorded the timestamp.
+   */
+  public static DiskResizeCooldownStatus evaluateDiskResizeCooldown(
+      Common.CloudType cloudType,
+      DeviceInfo currentDeviceInfo,
+      Date lastVolumeUpdateTime,
+      Date fallbackStart,
+      RuntimeConfGetter runtimeConfGetter) {
+    if (currentDeviceInfo == null) {
+      return null;
+    }
+    int cooldownHours;
+    if (cloudType == Common.CloudType.aws) {
+      cooldownHours = runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours);
+    } else if (cloudType == Common.CloudType.gcp
+        && (currentDeviceInfo.storageType == PublicCloudConstants.StorageType.Hyperdisk_Balanced
+            || currentDeviceInfo.storageType
+                == PublicCloudConstants.StorageType.Hyperdisk_Extreme)) {
+      cooldownHours =
+          runtimeConfGetter.getGlobalConf(GlobalConfKeys.gcpHyperdiskResizeCooldownHours);
+    } else if (cloudType == Common.CloudType.azu
+        && currentDeviceInfo.storageType == PublicCloudConstants.StorageType.Premium_LRS) {
+      cooldownHours = AZU_PREMIUM_PERF_TIER_COOLDOWN_HOURS;
+    } else {
+      return null;
+    }
+    Date start = lastVolumeUpdateTime != null ? lastVolumeUpdateTime : fallbackStart;
+    if (start == null) {
+      return new DiskResizeCooldownStatus(false, cooldownHours, 0, cloudType, null);
+    }
+    Date cooldownEnd = DateUtils.addHours(start, cooldownHours);
+    Duration remaining = Duration.between(Instant.now(), cooldownEnd.toInstant());
+    if (remaining.isZero() || remaining.isNegative()) {
+      return new DiskResizeCooldownStatus(false, cooldownHours, 0, cloudType, null);
+    }
+    long remainingMinutes = remaining.toMinutes();
+    if (remaining.compareTo(Duration.ofMinutes(remainingMinutes)) > 0) {
+      remainingMinutes++;
+    }
+    String message =
+        String.format(
+            "Resize cooldown in %s (%d hours) is still active, retry in %d minute(s)",
+            cloudType, cooldownHours, remainingMinutes);
+    return new DiskResizeCooldownStatus(true, cooldownHours, remainingMinutes, cloudType, message);
   }
 
   private static boolean checkDiskChanged(

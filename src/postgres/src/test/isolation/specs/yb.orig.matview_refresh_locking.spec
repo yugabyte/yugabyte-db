@@ -37,8 +37,9 @@ step s2_select_mv	{ SELECT * FROM mv ORDER BY k; }
 
 # Non-concurrent REFRESH holds AccessExclusiveLock: the concurrent SELECT
 # blocks until the refreshing transaction commits, then sees the refreshed
-# data.
-permutation s2_insert_base s1_begin s1_refresh s2_select_mv s1_commit
+# data.  The REFRESH itself has nothing to wait on, but rewrites the matview
+# and so can outlast the assume-session-is-blocked heuristic.
+permutation s2_insert_base s1_begin s1_refresh(yb_never_waits) s2_select_mv s1_commit
 
 # REFRESH CONCURRENTLY does not block against a plain SELECT of an open
 # transaction; the reader's next statement (READ COMMITTED) observes the

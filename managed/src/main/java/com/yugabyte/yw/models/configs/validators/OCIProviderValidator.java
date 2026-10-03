@@ -9,6 +9,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Singleton;
 import com.oracle.bmc.core.model.Subnet;
+import com.oracle.bmc.dns.model.Zone;
 import com.yugabyte.yw.cloud.oci.OCICloudImpl;
 import com.yugabyte.yw.cloud.oci.OCICloudUtil;
 import com.yugabyte.yw.common.BeanValidator;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -34,6 +36,7 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
 
   private static final Pattern VCN_OCID_PATTERN = Pattern.compile("^ocid1\\.vcn\\..+");
   private static final Pattern SUBNET_OCID_PATTERN = Pattern.compile("^ocid1\\.subnet\\..+");
+  private static final Pattern DNS_ZONE_OCID_PATTERN = Pattern.compile("^ocid1\\.dns-zone\\..+");
 
   private final OCICloudImpl ociCloudImpl;
   private final RuntimeConfGetter runtimeConfGetter;
@@ -84,6 +87,8 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
       }
     }
 
+    validateHostedZone(provider, validationErrorsMap);
+
     if (CollectionUtils.isNotEmpty(provider.getRegions())) {
       for (Region region : provider.getRegions()) {
         OCIRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(region);
@@ -103,6 +108,42 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
 
     if (!validationErrorsMap.isEmpty()) {
       throwMultipleProviderValidatorError(validationErrorsMap, null);
+    }
+  }
+
+  private void validateHostedZone(
+      Provider provider, SetMultimap<String, String> validationErrorsMap) {
+    OCICloudInfo cloudInfo = CloudInfoInterface.get(provider);
+    String zoneId = cloudInfo == null ? null : cloudInfo.ociHostedZoneId;
+    if (StringUtils.isEmpty(zoneId)) {
+      return;
+    }
+
+    if (!DNS_ZONE_OCID_PATTERN.matcher(zoneId).matches()) {
+      validationErrorsMap.put(
+          "HOSTED_ZONE",
+          "Invalid DNS zone OCID '" + zoneId + "'. Expected format: ocid1.dns-zone...");
+      return;
+    }
+
+    try {
+      Zone zone = ociCloudImpl.getDnsZoneOrBadRequest(provider, zoneId);
+      // A VCN's own *.oraclevcn.com zone is protected: OCI rejects every record write and
+      // delete on it with 409, so universe create would only fail later at UpdateDnsEntry.
+      if (Boolean.TRUE.equals(zone.getIsProtected())) {
+        validationErrorsMap.put(
+            "HOSTED_ZONE",
+            "DNS zone "
+                + zone.getName()
+                + " is OCI-managed and does not accept record changes. Use a private zone you"
+                + " created, in a view attached to the VCN's resolver.");
+      }
+    } catch (PlatformServiceException e) {
+      if (e.getHttpStatus() == BAD_REQUEST || e.getHttpStatus() == NOT_FOUND) {
+        validationErrorsMap.put("HOSTED_ZONE", e.getMessage());
+      } else {
+        throw e;
+      }
     }
   }
 

@@ -113,6 +113,19 @@ EXPLAIN EXECUTE myplan(null);
 EXECUTE myplan(null);
 EXECUTE myplan(0);
 EXECUTE myplan(1);
+DEALLOCATE myplan;
+
+-- Tests parameterized limit and offset clauses
+set plan_cache_mode = 'force_generic_plan';
+PREPARE myplan AS SELECT * FROM reverse_scan_test LIMIT $1 OFFSET $2;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(null, 0);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(null, 1);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(8, 2);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(5, 3);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(2, 4);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(0, 5);
+DEALLOCATE myplan;
+reset plan_cache_mode;
 
 --
 -- For https://github.com/YugaByte/yugabyte-db/issues/10254

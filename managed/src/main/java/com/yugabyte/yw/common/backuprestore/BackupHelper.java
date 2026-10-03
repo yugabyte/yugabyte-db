@@ -15,8 +15,10 @@ import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
+import com.yugabyte.yw.common.AWSUtil;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -60,6 +62,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.backuprestore.Tablespace;
@@ -67,7 +70,11 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -298,9 +305,7 @@ public class BackupHelper {
           BAD_REQUEST, "Point-In-Time-Restorable backup not allowed for non-YBC universes");
     }
 
-    if (!isSkipConfigBasedPreflightValidation(universe)) {
-      validateStorageConfig(customerConfig);
-    }
+    applyCrossCloudFederationSnapshot(taskParams, universe);
 
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     log.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
@@ -367,6 +372,7 @@ public class BackupHelper {
 
     CustomerConfigStorageData configData =
         (CustomerConfigStorageData) customerConfig.getDataObject();
+    applyCrossCloudFederationAudience(configData, universe);
 
     if (!isSkipConfigBasedPreflightValidation(universe)) {
       storageUtilFactory
@@ -516,12 +522,160 @@ public class BackupHelper {
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
+    validateStorageConfig(config, null);
+  }
+
+  public void validateStorageConfig(CustomerConfig config, @Nullable Universe universe)
+      throws PlatformServiceException {
     log.info(String.format("Validating storage config %s", config.getConfigName()));
     CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     if (StringUtils.isBlank(configData.backupLocation)) {
       throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
     }
+    applyCrossCloudFederationAudience(configData, universe);
     storageUtilFactory.getStorageUtil(config.getName()).validateStorageConfig(configData);
+  }
+
+  /**
+   * Stamps the resolved provider federation values on an in-memory storage config so YBA
+   * authenticates to the bucket via in-process WIF (for preflight/delete) instead of default creds:
+   * the GCP audience on a useGcpIam GCS config (GCS-on-AWS), or the AWS role ARN + audience on a
+   * cross-cloud federation S3 config (S3-on-GCP). No-op otherwise, or when no universe context /
+   * value is available.
+   */
+  public void applyCrossCloudFederationAudience(
+      CustomerConfigData configData, @Nullable Universe universe) {
+    if (configData instanceof CustomerConfigStorageGCSData) {
+      CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
+      // Only when YBA itself needs to federate. A YBA on GCP reaching a GCS bucket is same-cloud
+      // and must keep its native identity; stamping an audience there would make it build an
+      // AWS-IMDS external_account credential it cannot satisfy.
+      if (GCPUtil.isCrossCloudFederationConfig(gcs)) {
+        CrossCloudFederationTarget target =
+            resolveCrossCloudFederationTarget(universe, CloudType.gcp);
+        if (target != null) {
+          gcs.crossCloudFederationAudience = target.audience;
+        }
+      }
+    } else if (configData instanceof CustomerConfigStorageS3Data) {
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+      if (AWSUtil.isCrossCloudFederationConfig(s3)) {
+        CrossCloudFederationTarget target =
+            resolveCrossCloudFederationTarget(universe, CloudType.aws);
+        if (target != null) {
+          s3.crossCloudFederationAudience = target.audience;
+          s3.crossCloudFederationRoleArn = target.roleArn;
+        }
+      }
+    }
+  }
+
+  /**
+   * Stamps onto {@code configData} the federation identity YBA needs to reach this backup's bucket
+   * itself, for deletion. Prefers the snapshot taken when the backup was created, which survives
+   * deletion of the universe and its provider; falls back to the live universe for backups taken
+   * before the snapshot existed. No-op for a config that is not federated.
+   */
+  public void applyCrossCloudFederationFromBackup(
+      CustomerConfigStorageData configData, Backup backup) {
+    String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
+    String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
+    if (configData instanceof CustomerConfigStorageGCSData
+        && ((CustomerConfigStorageGCSData) configData).useGcpIam) {
+      if (StringUtils.isNotBlank(snapshotAudience)) {
+        ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience = snapshotAudience;
+        return;
+      }
+    } else if (configData instanceof CustomerConfigStorageS3Data
+        && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
+      if (StringUtils.isNotBlank(snapshotAudience) && StringUtils.isNotBlank(snapshotRoleArn)) {
+        CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+        s3.crossCloudFederationAudience = snapshotAudience;
+        s3.crossCloudFederationRoleArn = snapshotRoleArn;
+        return;
+      }
+    } else {
+      return;
+    }
+    Universe.maybeGet(backup.getUniverseUUID())
+        .ifPresent(u -> applyCrossCloudFederationAudience(configData, u));
+  }
+
+  /**
+   * Snapshots the cross-cloud federation identity onto the backup request, so the backup can still
+   * be deleted once its universe - and with it the provider link - is gone. Every path that submits
+   * a {@code CreateBackup} task must call this; scheduled backups do not go through {@link
+   * #createBackupTask}. The role ARN is set only when the bucket is on AWS.
+   */
+  public void applyCrossCloudFederationSnapshot(
+      BackupRequestParams taskParams, @Nullable Universe universe) {
+    CrossCloudFederationTarget target =
+        resolveCrossCloudFederationTarget(
+            universe,
+            targetCloudForStorageConfig(taskParams.customerUUID, taskParams.storageConfigUUID));
+    if (target == null) {
+      return;
+    }
+    taskParams.crossCloudFederationAudience = target.audience;
+    taskParams.crossCloudFederationRoleArn = target.roleArn;
+  }
+
+  /**
+   * Cloud the backup's bucket lives on, or null for a storage type that is not a supported
+   * federation target.
+   *
+   * <p>A backup targets one bucket, so the storage type alone says which cloud the nodes need
+   * access to; whether that needs federation depends on the cloud each node runs on, which is
+   * decided per node when federation is configured.
+   */
+  @Nullable
+  private CloudType targetCloudForStorageConfig(UUID customerUUID, UUID storageConfigUUID) {
+    try {
+      CustomerConfig config =
+          customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
+      if (CustomerConfigConsts.NAME_S3.equals(config.getName())) {
+        return CloudType.aws;
+      }
+      if (CustomerConfigConsts.NAME_GCS.equals(config.getName())) {
+        return CloudType.gcp;
+      }
+      return null;
+    } catch (Exception e) {
+      log.warn("Could not resolve the storage config to pick a federation target cloud", e);
+      return null;
+    }
+  }
+
+  /**
+   * Provider-level federation settings for reaching {@code targetCloud} from this universe, or null
+   * when federation is off, there is no universe context, or the provider has nothing configured
+   * for that cloud.
+   */
+  @Nullable
+  CrossCloudFederationTarget resolveCrossCloudFederationTarget(
+      @Nullable Universe universe, @Nullable CloudType targetCloud) {
+    if (universe == null || targetCloud == null) {
+      return null;
+    }
+    try {
+      Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      // Only universes whose nodes are configured for federation (federationConfigured) need these
+      // settings for YBA-side WIF (preflight/delete); they themselves come from the provider.
+      if (primaryCluster == null
+          || primaryCluster.userIntent == null
+          || !primaryCluster.userIntent.isFederationConfigured()) {
+        return null;
+      }
+      // A multi-provider cluster cannot reach here with federation configured: that combination
+      // is rejected when the universe is created or edited, and by the v2 enable API. So
+      // userIntent.provider is the cluster's only provider, not an arbitrary one.
+      Provider provider =
+          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+      return CloudInfoInterface.getCrossCloudFederationTarget(provider, targetCloud);
+    } catch (Exception e) {
+      log.warn("Could not resolve cross-cloud federation settings: {}", e.getMessage());
+      return null;
+    }
   }
 
   public void validateRestoreOverwrites(
@@ -674,12 +828,7 @@ public class BackupHelper {
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
   // supported
   private void validateIfYbdbInbuiltYbcHasAzureIAM(Universe universe) {
-    if (universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes)
+    if (Util.isKubernetesBasedUniverse(universe)
         && universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
         && !ybcManager.getEnabledBackupFeatures(universe.getUniverseUUID()).getAzureIam()) {
       throw new PlatformServiceException(
@@ -692,12 +841,7 @@ public class BackupHelper {
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if immutable storage feature
   // is supported
   private void validateIfYbdbInbuiltYbcHasImmutableStorage(Universe universe) {
-    if (universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes)
+    if (Util.isKubernetesBasedUniverse(universe)
         && universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
         && !ybcManager.getEnabledBackupFeatures(universe.getUniverseUUID()).getImmutableStorage()) {
       throw new PlatformServiceException(

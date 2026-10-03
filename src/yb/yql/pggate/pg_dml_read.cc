@@ -411,12 +411,13 @@ Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params) {
   return doc_op_->ExecuteInit(params);
 }
 
-void PgDmlRead::SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids) {
-  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids, /* keep_order */ false));
+void PgDmlRead::SetRequestedYbctids(
+    std::reference_wrapper<const std::vector<Slice>> ybctids, bool keep_order) {
+  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids, keep_order));
 }
 
-void PgDmlRead::SetRequestedYbctids(const YbctidGenerator& generator) {
-  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena(), false);
+void PgDmlRead::SetRequestedYbctids(const YbctidGenerator& generator, bool keep_order) {
+  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena(), keep_order);
   ybctid_holder->Reserve(generator.capacity);
   while (true) {
     const auto ybctid = generator.next();

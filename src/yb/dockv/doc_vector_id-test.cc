@@ -194,4 +194,18 @@ TEST(DocVectorIdTest, MetaValueToStringTombstone) {
   ASSERT_EQ(str, PrimitiveValue::kTombstone.ToString());
 }
 
+TEST(DocVectorIdTest, VectorIndexPayload) {
+  const Slice kYbctid("test_ybctid");
+  auto payload = DocVectorIndexPayload(kYbctid);
+  ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(payload.AsSlice())), kYbctid);
+
+  // The ybctid is extractable when the payload contains more data after it.
+  payload.Append(Slice("future covering index columns"));
+  ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(payload.AsSlice())), kYbctid);
+
+  // Truncated payload is detected.
+  auto truncated = payload.AsSlice().Prefix(kYbctid.size() / 2);
+  ASSERT_NOK(DocVectorIndexPayloadYbctid(truncated));
+}
+
 } // namespace yb::dockv

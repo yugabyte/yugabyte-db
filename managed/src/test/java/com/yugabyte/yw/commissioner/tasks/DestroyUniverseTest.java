@@ -28,7 +28,9 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -96,15 +98,18 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent;
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
     userIntent.regionList =
         defaultProvider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
     userIntent.useSystemd = true;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+    ProviderInitializer providerInitializer =
+        TestUtils.getProviderInitializerForTests(userIntent, defaultProvider.getUuid());
+
+    providerInitializer.setAccessCode("demo-access");
+    providerInitializer.setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
 
     String caFile = createTempFile("destroy_universe_test", "ca.crt", "test content");
     certFolder = new File(caFile).getParentFile();

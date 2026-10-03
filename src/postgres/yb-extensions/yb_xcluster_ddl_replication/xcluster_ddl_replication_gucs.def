@@ -31,3 +31,9 @@ X("timezone")
 X("intervalstyle")
 /* Settings that affect parsing of function bodies. */
 X("check_function_bodies")
+
+/*
+ * This affects whether REFRESH MATERIALIZED VIEW rewrites the materialized
+ * view or updates it in place.
+ */
+X("yb_refresh_matview_in_place")

@@ -40,6 +40,18 @@ struct od_tls_opts {
 	char *tls_key_file;
 	char *tls_cert_file;
 	char *tls_protocols;
+	char *yb_tls_max_protocol_version;
+	int yb_tls_prefer_server_ciphers;
+	char *yb_tls_ecdh_curve;
+	char *yb_tls_dh_params_file;
+	/* Path to a PEM-encoded CRL file for client-certificate revocation. */
+	char *yb_tls_crl_file;
+	/* Directory of hash-named CRL files (openssl rehash format). */
+	char *yb_tls_crl_dir;
+	/* OpenSSL cipher-list string, e.g. "HIGH:MEDIUM:!aNULL". */
+	char *yb_tls_cipher_list;
+	/* Command that prints the passphrase for an encrypted tls_key_file. */
+	char *yb_tls_passphrase_command;
 };
 
 typedef struct od_tls_opts od_tls_opts_t;

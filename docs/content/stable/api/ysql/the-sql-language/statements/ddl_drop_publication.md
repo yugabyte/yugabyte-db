@@ -44,5 +44,5 @@ yugabyte=# DROP PUBLICATION mypublication;
 
 ## See also
 
-- [`CREATE PUBLICATION`](../ddl_create_publication)
-- [`ALTER PUBLICATION`](../ddl_alter_publication)
+- [CREATE PUBLICATION](../ddl_create_publication)
+- [ALTER PUBLICATION](../ddl_alter_publication)

@@ -9,7 +9,9 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 #[derive(thiserror::Error, Debug, Clone, Copy)]
 pub enum PgTriggerError {
-    #[error("`PgTrigger`s can only be built from `FunctionCallInfo` instances which `pgrx::pg_sys::called_as_trigger(fcinfo)` returns `true`")]
+    #[error(
+        "`PgTrigger`s can only be built from `FunctionCallInfo` instances which `pgrx::pg_sys::called_as_trigger(fcinfo)` returns `true`"
+    )]
     NotTrigger,
     #[error("`PgTrigger`s cannot be built from `NULL` `pgrx::pg_sys::FunctionCallInfo`s")]
     NullFunctionCallInfo,

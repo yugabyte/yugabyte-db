@@ -685,7 +685,7 @@ public class PlacementInfoUtil {
    * @param nodeDetailsSet
    */
   public static void applyK8sStsIndexIncrement(Cluster cluster, Set<NodeDetails> nodeDetailsSet) {
-    if (cluster.userIntent.providerType == CloudType.kubernetes) {
+    if (Util.isKubernetesBased(cluster)) {
       cluster
           .placementInfo
           .azStream()
@@ -780,7 +780,7 @@ public class PlacementInfoUtil {
       ClusterOperationType clusterOpType) {
     if (!Objects.equals(
             node.cloudInfo.instance_type, cluster.userIntent.getInstanceTypeForNode(node))
-        && !(cluster.userIntent.providerType == CloudType.kubernetes)) {
+        && !(provider.getCloudCode() == CloudType.kubernetes)) {
       return true;
     }
     if (!cluster.userIntent.dedicatedNodes
@@ -790,11 +790,11 @@ public class PlacementInfoUtil {
     }
     if (clusterOpType == UniverseConfigureTaskParams.ClusterOperationType.EDIT) {
       Cluster currentCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
-      DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
-      DeviceInfo currentDeviceInfo = currentCluster.userIntent.getDeviceInfoForNode(node);
+      DeviceInfo newDeviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
+      DeviceInfo currentDeviceInfo = currentCluster.userIntent.evaluateDeviceInfoForNode(node);
       if (!Objects.equals(newDeviceInfo, currentDeviceInfo)
           && newDeviceInfo != null
-          && !(cluster.userIntent.providerType == CloudType.kubernetes
+          && !(provider.getCloudCode() == CloudType.kubernetes
               && currentDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
         LOG.debug("Device info has changed from {} to {}", currentDeviceInfo, newDeviceInfo);
         return true;
@@ -992,11 +992,13 @@ public class PlacementInfoUtil {
                     zonesList.add(placementAZ);
                   });
         } else {
+          // This code path should be accessible for single provider only.
+          UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
           throw new IllegalStateException(
               "Couldn't find "
                   + deltaNodes
                   + " node(s) of type "
-                  + userIntent.getBaseInstanceType()); // TODO
+                  + userIntent.getBaseInstanceType(providerUUID));
         }
       }
       changed = false;
@@ -1016,7 +1018,9 @@ public class PlacementInfoUtil {
   }
 
   public static void validatePartition(
-      UniverseDefinitionTaskParams.PartitionInfo p, boolean geoPartitioned) {
+      UniverseDefinitionTaskParams.PartitionInfo p,
+      boolean geoPartitioned,
+      ClusterType clusterType) {
     if (geoPartitioned) {
       if (StringUtils.isEmpty(p.getName())) {
         throw new PlatformServiceException(BAD_REQUEST, "Name for partition should be defined");
@@ -1038,6 +1042,9 @@ public class PlacementInfoUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, "Incorrect replicas for partition " + p.getName() + ": should be non-zero");
     }
+
+    verifyNumNodesAndRF(
+        clusterType, getNodeCountInPlacement(p.getPlacement()), p.getReplicationFactor());
 
     int numberOfReplicas =
         p.getPlacement()
@@ -1085,7 +1092,8 @@ public class PlacementInfoUtil {
           cluster.getPartitions().stream()
               .peek(
                   p -> {
-                    PlacementInfoUtil.validatePartition(p, cluster.isGeoPartitioned());
+                    PlacementInfoUtil.validatePartition(
+                        p, cluster.isGeoPartitioned(), cluster.clusterType);
                     if (cluster.isGeoPartitioned()) {
                       if (!names.add(p.getName())) {
                         throw new PlatformServiceException(
@@ -1607,8 +1615,8 @@ public class PlacementInfoUtil {
       boolean imageBundleChanged = false;
       boolean instanceTypeChanged = false;
       for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
-        DeviceInfo oldDevice = oldCluster.userIntent.getDeviceInfoForNode(nodeDetails);
-        DeviceInfo newDevice = newCluster.userIntent.getDeviceInfoForNode(nodeDetails);
+        DeviceInfo oldDevice = oldCluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
+        DeviceInfo newDevice = newCluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
         deviceChanged = deviceChanged || !Objects.equals(oldDevice, newDevice);
         Provider provider =
             Provider.getOrBadRequest(newCluster.getProviderUUIDForNode(nodeDetails));
@@ -1656,8 +1664,10 @@ public class PlacementInfoUtil {
         }
       }
     }
-
-    verifyNumNodesAndRF(oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    if (CollectionUtils.isEmpty(newCluster.getPartitions())) {
+      verifyNumNodesAndRF(
+          oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+    }
   }
 
   // Helper API to verify number of nodes and replication factor requirements.
@@ -2129,7 +2139,7 @@ public class PlacementInfoUtil {
           getDefaultRegion(cluster),
           true /* throwIfIncorrect */);
     }
-    if (cluster.userIntent.providerType == CloudType.kubernetes) {
+    if (Util.isKubernetesBased(cluster)) {
       return;
     }
     for (NodeDetails node : nodes) {
@@ -3037,7 +3047,9 @@ public class PlacementInfoUtil {
     appendAZsForRegions(allAzsInRegions, defaultRegions, azByRegionMap);
 
     if (allAzsInRegions.isEmpty()) {
-      String instanceType = userIntent.getBaseInstanceType();
+      // This code path should be accessible for a single provider only
+      String instanceType =
+          userIntent.getBaseInstanceType(userIntent.maybeGetSingleProviderUUID().get());
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(

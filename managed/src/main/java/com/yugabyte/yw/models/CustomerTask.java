@@ -192,6 +192,9 @@ public class CustomerTask extends Model {
     @EnumValue("RollbackEditUniverse")
     RollbackEditUniverse,
 
+    @EnumValue("RollbackAddNodeToUniverse")
+    RollbackAddNodeToUniverse,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -200,6 +203,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("EditKubernetesUniverse")
     EditKubernetesUniverse,
+
+    @EnumValue("RollbackEditKubernetesUniverse")
+    RollbackEditKubernetesUniverse,
 
     @EnumValue("CertsRotate")
     CertsRotate,
@@ -226,6 +232,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("ResizeNode")
     ResizeNode,
+
+    @EnumValue("RollbackResizeNode")
+    RollbackResizeNode,
 
     @Deprecated
     @EnumValue("UpdateCert")
@@ -430,6 +439,9 @@ public class CustomerTask extends Model {
     @EnumValue("EnableNodeAgent")
     EnableNodeAgent,
 
+    @EnumValue("ManageCrossCloudFederation")
+    ManageCrossCloudFederation,
+
     @EnumValue("Decommission")
     Decommission,
 
@@ -482,6 +494,8 @@ public class CustomerTask extends Model {
           return completed ? "Decommissioned" : "Decommissioning";
         case ResizeNode:
           return completed ? "Resized Node" : "Resizing Node";
+        case RollbackResizeNode:
+          return completed ? "Rolled back node resize" : "Rolling back node resize";
         case Replace:
           return completed ? "Replaced Node" : "Replacing Node";
         case Resume:
@@ -512,6 +526,8 @@ public class CustomerTask extends Model {
           return completed ? "Rolled back upgrade" : "Rolling back upgrade";
         case RollbackEditUniverse:
           return completed ? "Rolled back edit universe" : "Rolling back edit universe";
+        case RollbackAddNodeToUniverse:
+          return completed ? "Rolled back add node" : "Rolling back add node";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd" : "Upgrading to Systemd";
         case GFlagsUpgrade:
@@ -520,6 +536,10 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Kubernetes Overrides" : "Upgrading Kubernetes Overrides";
         case EditKubernetesUniverse:
           return completed ? "Edited Kubernetes Universe" : "Editing Kubernetes Universe";
+        case RollbackEditKubernetesUniverse:
+          return completed
+              ? "Rolled back edit Kubernetes universe"
+              : "Rolling back edit Kubernetes universe";
         case CertsRotate:
           return completed ? "Updated Certificates" : "Updating Certificates";
         case TlsToggle:
@@ -666,6 +686,10 @@ public class CustomerTask extends Model {
           return completed ? "Restored continuous YBA backup" : "Restoring continuous YBA backup";
         case EnableNodeAgent:
           return completed ? "Enabled node agent on" : "Enabling node agent on";
+        case ManageCrossCloudFederation:
+          return completed
+              ? "Updated cross-cloud federated IAM on"
+              : "Updating cross-cloud federated IAM on";
         case CloneNamespace:
           return completed ? "Cloned Namespace" : "Cloning Namespace";
         case UpdateOOMServiceState:
@@ -1094,6 +1118,14 @@ public class CustomerTask extends Model {
         .orElse("Unknown");
   }
 
+  private boolean isOriginalTaskOf(@Nullable UUID ownerTaskUUID) {
+    return TaskInfo.maybeGet(ownerTaskUUID)
+        .map(TaskInfo::getTaskParams)
+        .map(params -> params.path("originalTaskUUID").asText())
+        .filter(taskUUID.toString()::equals)
+        .isPresent();
+  }
+
   @JsonIgnore
   public boolean isDeletable() {
     if (targetType.isUniverseTarget()) {
@@ -1101,8 +1133,10 @@ public class CustomerTask extends Model {
       if (!optional.isPresent()) {
         return true;
       }
-      if (upgradeCustomerTasksSet.contains(type)) {
-        LOG.debug("Universe task {} is not deletable as it is an upgrade task.", targetUUID);
+      // The UI reads the latest upgrade, finalize and rollback task of a universe, and a successful
+      // upgrade can stay in PreFinalize longer than the task retention period.
+      if (upgradeCustomerTasksSet.contains(type) && isLatestOfTypeForTarget()) {
+        LOG.debug("Universe task {} is not deletable as it is the latest {} task.", taskUUID, type);
         return false;
       }
       UniverseDefinitionTaskParams taskParams = optional.get().getUniverseDetails();
@@ -1112,6 +1146,13 @@ public class CustomerTask extends Model {
       }
       if (taskUUID.equals(taskParams.placementModificationTaskUuid)) {
         LOG.debug("Universe task {} is not deletable", targetUUID);
+        return false;
+      }
+      // An owning retry or rollback may read the first task of its chain through
+      // originalTaskUUID, as RollbackResizeNode does for the gflag baseline.
+      if (isOriginalTaskOf(taskParams.updatingTaskUUID)
+          || isOriginalTaskOf(taskParams.placementModificationTaskUuid)) {
+        LOG.debug("Universe task {} is not deletable as it starts the owning task chain", taskUUID);
         return false;
       }
     } else if (targetType == TargetType.Provider) {
@@ -1130,6 +1171,18 @@ public class CustomerTask extends Model {
       }
     }
     return true;
+  }
+
+  private boolean isLatestOfTypeForTarget() {
+    return find.query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", type)
+        .orderBy("create_time desc")
+        .setMaxRows(1)
+        .findOneOrEmpty()
+        .map(latest -> latest.getTaskUUID().equals(taskUUID))
+        .orElse(true);
   }
 
   public static List<CustomerTask> findByTargetUUIDsAndTypesSince(
@@ -1164,8 +1217,25 @@ public class CustomerTask extends Model {
       appendInClause(query, "custom_type_name", filter.getTypeNameList());
     }
 
-    if (filter.getDateRangeStart() != null && filter.getDateRangeEnd() != null) {
-      query.between("create_time", filter.getDateRangeStart(), filter.getDateRangeEnd());
+    // Use entity property paths so Ebean qualifies columns as t0.* - raw "create_time" is
+    // ambiguous once status filtering joins task_info (which also has create_time).
+    // Each bound is independent: omit a side to leave that end open-ended.
+    if (filter.getDateRangeStart() != null) {
+      query.ge("createTime", filter.getDateRangeStart());
+    }
+
+    if (filter.getDateRangeEnd() != null) {
+      query.le("createTime", filter.getDateRangeEnd());
+    }
+
+    // Rows with null completion_time (in-progress) do not match ge/le and are excluded whenever
+    // either completion bound is set.
+    if (filter.getCompletionDateRangeStart() != null) {
+      query.ge("completionTime", filter.getCompletionDateRangeStart());
+    }
+
+    if (filter.getCompletionDateRangeEnd() != null) {
+      query.le("completionTime", filter.getCompletionDateRangeEnd());
     }
 
     if (!CollectionUtils.isEmpty(filter.getStatus())) {

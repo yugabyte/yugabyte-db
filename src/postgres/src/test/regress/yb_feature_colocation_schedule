@@ -4,3 +4,4 @@
 # Colocation Testsuites
 ####################################################################################################
 test: yb.orig.feature_colocation
+test: yb.orig.colocated_index_rows_scanned

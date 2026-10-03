@@ -9,7 +9,6 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -1046,7 +1045,8 @@ public class KubernetesUtil {
       UniverseDefinitionTaskParams universeParams, ClusterType clusterType) {
     Set<String> namespaces = new HashSet<>();
     for (Cluster cluster : universeParams.clusters) {
-      if (cluster.userIntent.providerType != CloudType.kubernetes) {
+
+      if (!Util.isKubernetesBased(cluster)) {
         continue;
       }
       if ((clusterType != null) && (clusterType != cluster.clusterType)) {
@@ -1093,7 +1093,7 @@ public class KubernetesUtil {
       azsOverridesStr = new HashMap<>();
     }
     for (Cluster cluster : universeParams.clusters) {
-      if (cluster.userIntent.providerType != CloudType.kubernetes) {
+      if (!Util.isKubernetesBased(cluster)) {
         continue;
       }
       if ((clusterType != null) && (clusterType != cluster.clusterType)) {
@@ -1866,15 +1866,15 @@ public class KubernetesUtil {
         continue;
       }
       DeviceInfo oldDeviceInfo, newDeviceInfo;
-      oldDeviceInfo = currCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
-      newDeviceInfo = newCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      oldDeviceInfo = currCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      newDeviceInfo = newCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.TSERVER);
       if (!(newDeviceInfo == null
           || oldDeviceInfo.equals(newDeviceInfo)
           || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
         return true;
       }
-      oldDeviceInfo = currCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
-      newDeviceInfo = newCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      oldDeviceInfo = currCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      newDeviceInfo = newCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.MASTER);
       if (!(newDeviceInfo == null
           || oldDeviceInfo.equals(newDeviceInfo)
           || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {

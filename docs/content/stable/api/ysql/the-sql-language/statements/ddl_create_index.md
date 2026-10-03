@@ -153,8 +153,10 @@ Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
 Step 4 and the surrounding `BEGIN`/`COMMIT` block rely on two features, both Early Access and available in YugabyteDB {{<release "2025.2">}} and later:
 
 - [Object locking](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks), for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true`.
-- [Transactional DDL](../../../../../explore/transactions/transactional-ddl/), to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
+- [Transactional DDL](../../../../../architecture/transactions/transactional-ddl/), to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
   Object locking depends on this flag as well.
+
+Do not enable these flags on a cluster that uses CDC. Transactional DDL currently doesn't support CDC. See [Limitations](../../../../../architecture/transactions/transactional-ddl/#limitations).
 
 It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
 If there are no reads or writes against the parent table during the detach, omit Step 4 and run Steps 5 to 8 as individual statements instead.
@@ -476,3 +478,9 @@ DROP INDEX
 [tablet-splitting]: ../../../../../architecture/docdb-sharding/tablet-splitting
 [yb-master]: ../../../../../reference/configuration/yb-master/
 [yb-tserver]: ../../../../../reference/configuration/yb-tserver/
+
+## See also
+
+- [ALTER INDEX](../ddl_alter_index)
+- [DROP INDEX](../ddl_drop_index)
+- [Faster writes to new tables](../../../../../explore/transactions/new-table-writes/)

@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include <atomic>
 #include <cstddef>
 #include <set>
 
@@ -56,7 +57,9 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 using std::string;
 
@@ -334,6 +337,41 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->intents_rocksdb_dir()));
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->snapshots_dir()));
   ASSERT_FALSE(env_->DirExists(tier_dir));
+}
+
+// The CDC barrier setters rewrite the superblock only when the value changes.
+TEST_F(TestRaftGroupMetadata, CdcBarrierSettersFlushOnlyOnChange) {
+  auto metadata = harness_->tablet()->metadata();
+  std::atomic<int> flushes{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("RaftGroupMetadata::Flush", [&flushes](void*) { ++flushes; });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(metadata->set_cdc_min_replicated_index(metadata->cdc_min_replicated_index()));
+  ASSERT_OK(metadata->set_cdc_sdk_safe_time(metadata->cdc_sdk_safe_time()));
+  ASSERT_OK(metadata->set_cdc_sdk_min_checkpoint_op_id(metadata->cdc_sdk_min_checkpoint_op_id()));
+  ASSERT_OK(metadata->set_all_cdc_retention_barriers(
+      metadata->cdc_min_replicated_index(), true, metadata->cdc_sdk_min_checkpoint_op_id(), true,
+      metadata->cdc_sdk_safe_time(), true));
+  ASSERT_EQ(flushes.load(), 0);
+
+  ASSERT_OK(metadata->set_cdc_min_replicated_index(42));
+  ASSERT_EQ(flushes.load(), 1);
+  ASSERT_OK(metadata->set_cdc_sdk_safe_time(HybridTime(1000)));
+  ASSERT_EQ(flushes.load(), 2);
+  ASSERT_OK(metadata->set_cdc_sdk_min_checkpoint_op_id(OpId(1, 5)));
+  ASSERT_EQ(flushes.load(), 3);
+  ASSERT_TRUE(metadata->is_under_cdc_sdk_replication());
+  ASSERT_OK(metadata->set_all_cdc_retention_barriers(
+      42, true, OpId(1, 5), true, HybridTime(1000), true));
+  ASSERT_EQ(flushes.load(), 3);
+  ASSERT_OK(metadata->set_all_cdc_retention_barriers(
+      43, true, OpId(1, 5), true, HybridTime(1000), true));
+  ASSERT_EQ(flushes.load(), 4);
 }
 
 TEST_F(TestRaftGroupMetadata, NamespaceIdPreservedAcrossSchemaChanges) {

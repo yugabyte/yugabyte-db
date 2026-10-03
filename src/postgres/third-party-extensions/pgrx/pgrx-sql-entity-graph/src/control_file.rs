@@ -17,7 +17,7 @@
 */
 use super::{SqlGraphEntity, SqlGraphIdentifier, ToSql};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 /// The parsed contents of a `.control` file.
@@ -68,17 +68,43 @@ impl ControlFile {
     /// ```
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(input: &str) -> Result<Self, ControlFileError> {
-        fn do_var_replacements(mut input: String) -> Result<String, ControlFileError> {
+        Self::from_str_with_version(input, None)
+    }
+
+    pub fn from_str_with_cargo_version(
+        input: &str,
+        cargo_version: &str,
+    ) -> Result<Self, ControlFileError> {
+        Self::from_str_with_version(input, Some(cargo_version))
+    }
+
+    pub fn from_path_with_cargo_version(
+        path: impl AsRef<Path>,
+        cargo_version: &str,
+    ) -> Result<Self, ControlFileError> {
+        let contents = std::fs::read_to_string(path)?;
+        Self::from_str_with_cargo_version(contents.as_str(), cargo_version)
+    }
+
+    fn from_str_with_version(
+        input: &str,
+        cargo_version: Option<&str>,
+    ) -> Result<Self, ControlFileError> {
+        fn do_var_replacements(
+            mut input: String,
+            cargo_version: Option<&str>,
+        ) -> Result<String, ControlFileError> {
             const CARGO_VERSION: &str = "@CARGO_VERSION@";
 
             // endeavor to not require external values if they're not used by the input
             if input.contains(CARGO_VERSION) {
-                input = input.replace(
-                    CARGO_VERSION,
-                    &std::env::var("CARGO_PKG_VERSION").map_err(|_| {
+                let cargo_version = match cargo_version {
+                    Some(cargo_version) => cargo_version.to_owned(),
+                    None => std::env::var("CARGO_PKG_VERSION").map_err(|_| {
                         ControlFileError::MissingEnvvar("CARGO_PKG_VERSION".to_string())
                     })?,
-                );
+                };
+                input = input.replace(CARGO_VERSION, &cargo_version);
             }
 
             Ok(input)
@@ -97,9 +123,9 @@ impl ControlFile {
             let v = v.trim_start_matches('\'');
             let v = v.trim_end_matches('\'');
 
-            temp.insert(k, do_var_replacements(v.to_string())?);
+            temp.insert(k, do_var_replacements(v.to_string(), cargo_version)?);
         }
-        let control_file = ControlFile {
+        let control_file = Self {
             comment: temp
                 .get("comment")
                 .ok_or(ControlFileError::MissingField { field: "comment" })?
@@ -130,7 +156,27 @@ impl ControlFile {
     }
 }
 
-impl From<ControlFile> for SqlGraphEntity {
+#[cfg(test)]
+mod tests {
+    use super::ControlFile;
+
+    const CONTROL_WITH_CARGO_VERSION: &str = "\
+comment = 'test extension'
+default_version = '@CARGO_VERSION@'
+relocatable = false
+superuser = false
+";
+
+    #[test]
+    fn uses_the_supplied_cargo_version_for_substitution() {
+        let control = ControlFile::from_str_with_cargo_version(CONTROL_WITH_CARGO_VERSION, "0.0.0")
+            .expect("control file should parse");
+
+        assert_eq!(control.default_version, "0.0.0");
+    }
+}
+
+impl From<ControlFile> for SqlGraphEntity<'_> {
     fn from(val: ControlFile) -> Self {
         SqlGraphEntity::ExtensionRoot(val)
     }
@@ -157,7 +203,7 @@ impl TryFrom<PathBuf> for ControlFile {
 
     fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
         let contents = std::fs::read_to_string(value)?;
-        ControlFile::try_from(contents.as_str())
+        Self::try_from(contents.as_str())
     }
 }
 
@@ -190,7 +236,7 @@ impl SqlGraphIdentifier for ControlFile {
         "root".into()
     }
 
-    fn file(&self) -> Option<&'static str> {
+    fn file(&self) -> Option<&str> {
         None
     }
 

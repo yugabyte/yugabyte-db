@@ -78,7 +78,6 @@ using std::string;
 
 DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
-DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
@@ -1011,7 +1010,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     ASSERT_OK(DeleteUniverseReplication());
   };
 
-  int producer_version = 1, consumer_version = 1;
+  // 1 for system.transaction, plus 1 for each of its tablets (1 per tserver).
+  uint64_t producer_version = 1 + 3;
+  uint64_t consumer_version = 1 + 3;
 
   // Keep same tablet count for normal tablets.
   ASSERT_OK(CreateClusterAndTable());
@@ -1020,7 +1021,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   auto global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(producer_client(), producer_transaction_table_name));
   ASSERT_OK(producer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(producer_cluster(), ++producer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(producer_cluster(), ++producer_version));
 
   LOG(INFO) << "First run, more txn tablets on producer.";
   ASSERT_OK(SetupReplicationAndWaitForValidSafeTime());
@@ -1037,9 +1038,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(consumer_client(), producer_transaction_table_name));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(consumer_cluster(), ++consumer_version));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(consumer_cluster(), ++consumer_version));
 
   ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
       consumer_table_->name().namespace_id(), /*is_read_only=*/false));
@@ -2316,7 +2317,6 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1));
 
   // 2. Setup replication.

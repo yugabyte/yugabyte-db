@@ -247,6 +247,10 @@ extern double yb_estimate_num_groups(PlannerInfo *root, List *groupExprs,
 extern int	yb_batch_expr_size(PlannerInfo *root,
 							   Index path_relid,
 							   Node *batched_expr);
+extern double yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
+											 Oid opfamily, int strategy,
+											 Relids outer_relids,
+											 List *outer_baserestrictinfo);
 double		get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids);
 
 #endif							/* SELFUNCS_H */
