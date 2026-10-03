@@ -98,15 +98,19 @@ Keep the KMS configuration after compaction has rewritten the universe data in p
 
 ## Back up and restore data from an encrypted at rest universe
 
-When you back up and restore universe data with encryption at rest enabled, YugabyteDB Anywhere requires a KMS configuration to manage backing up and restoring encrypted universe data. Because of the possibility that you will need to restore data to a different universe that might have a different master key, YugabyteDB Anywhere ensures that all encrypted backups include a metadata file. The file includes a list of key IDs in the source's master key registry.
+When you back up and restore universe data with encryption at rest enabled, YugabyteDB Anywhere requires a KMS configuration to manage backing up and restoring encrypted universe data. Because you might restore data to a different universe that uses a different master key, every encrypted backup includes a metadata file. The file contains the universe keys wrapped by the master key, and the master key metadata needed to unwrap them.
 
-When restoring an encrypted backup to a universe, Yugabyte Anywhere detects the correct KMS configuration used to encrypt the backup. The KMS configuration must be available in the YugabyteDB Anywhere account.
+When restoring an encrypted backup to a universe, YugabyteDB Anywhere detects the KMS configuration that can unwrap those universe keys. The KMS configuration must be available in the YugabyteDB Anywhere account.
 
-When restoring your universe data, YugabyteDB Anywhere uses the selected KMS configuration to consume the master key ID and then retrieves the master key value for each key ID in the metadata file. Each of these keys are then sent to the destination universe to augment or build the universe key registry there.
+On restore, YugabyteDB Anywhere unwraps each universe key with that KMS configuration and sends the universe keys to the destination universe. The destination universe adds them to its universe key registry.
 
 ## Rotate keys
 
 You can rotate the master and universe keys.
+
+Changing the KMS configuration does not generate a new universe key. It re-wraps every universe key that YugabyteDB Anywhere stores for the universe under the new master key. Those wrapped copies are kept by YugabyteDB Anywhere and recorded in backup metadata. The re-wrap happens immediately. The universe key registry on the universe stays encrypted with the latest universe key, and the data on disk stays as it is.
+
+Rotating the universe key encrypts new data with that key. Existing files move to the new universe key when compaction rewrites them.
 
 Note that you can choose to rotate the master key/KMS configuration _or_ rotate the universe key, but you can't do both actions at the same time.
 
@@ -143,12 +147,12 @@ Enabling encryption and rotating a universe key works in two steps:
 
 The cluster configuration change does the following:
 
-- Decrypts the universe key registry with the master key.
+- Decrypts the universe key registry with the previous universe key, when encryption is already enabled.
 - Adds the new universe key to the registry.
 - Updates the cluster configuration with the new latest key ID.
-- Encrypts the registry with the master key.
+- Encrypts the registry with the new universe key.
 
-Once encryption is enabled with a new universe key, only new data is encrypted with this new key. Old data remains unencrypted, or encrypted with an older universe key, until compaction churn triggers a re-encryption with the new key.
+Once encryption is enabled with a new universe key, new data is encrypted with this key. Existing files stay under the previous universe key, or remain unencrypted, until compaction rewrites them. There is no indicator of how much data is still under an earlier universe key.
 
 To rotate the universe keys, navigate to the universe and do the following:
 
