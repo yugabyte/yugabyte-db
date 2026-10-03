@@ -649,7 +649,7 @@ YBThreadPool::~YBThreadPool() {
 }
 
 bool YBThreadPool::Enqueue(ThreadPoolTask* task) {
-  task->set_trace_parent(dist_trace::GetActiveSpanContext());
+  task->set_trace_parent(dist_trace::DistTrace::GetActiveSpanContext());
   return impl_->Enqueue(task);
 }
 

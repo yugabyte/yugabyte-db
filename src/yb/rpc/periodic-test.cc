@@ -281,11 +281,11 @@ TEST_F(PeriodicTimerTraceTest, TraceContextCarriedToTask) {
   shared_ptr<PeriodicTimer> timer;
   {
     dist_trace::ScopedAdoptSpan scope(expected);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     timer = PeriodicTimer::Create(
         messenger_.get(),
         [&observed, &latch] {
-          observed = dist_trace::GetActiveSpanContext();
+          observed = dist_trace::DistTrace::GetActiveSpanContext();
           latch.CountDown();
         },
         MonoDelta::FromMilliseconds(period_ms_), std::move(opts));
@@ -312,7 +312,7 @@ TEST_F(PeriodicTimerTraceTest, NoTraceContextCarriedWhenNoneActive) {
   auto timer = PeriodicTimer::Create(
       messenger_.get(),
       [&observed, &latch] {
-        observed = dist_trace::GetActiveSpanContext();
+        observed = dist_trace::DistTrace::GetActiveSpanContext();
         latch.CountDown();
       },
       MonoDelta::FromMilliseconds(period_ms_), std::move(opts));

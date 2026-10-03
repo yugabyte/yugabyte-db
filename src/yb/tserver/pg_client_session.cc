@@ -983,8 +983,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     if (trace_context_size > 0) {
       auto trace_context = rpc::ParseTraceContext(Slice(input, trace_context_size));
       if (trace_context.ok()) {
-        if (dist_trace::IsDistTraceEnabled()) {
-          trace_span_ = dist_trace::StartServerSpan(
+        if (dist_trace::DistTrace::IsEnabled()) {
+          trace_span_ = dist_trace::DistTrace::StartServerSpan(
               GetSharedMemSpanName(T::kReqType), *trace_context);
           if (trace_span_) {
             trace_span_->SetAttribute("rpc.system", "yb_shmem");
@@ -1383,7 +1383,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
 
   // Index names for the rpc.table_names span attribute, one cache-only lookup for the batch.
   boost::container::small_vector<client::YBTablePtr, 4> index_tables;
-  if (dist_trace::HasActiveContext()) {
+  if (dist_trace::DistTrace::HasActiveContext()) {
     boost::container::small_vector<TableId, 4> index_table_ids;
     for (const auto& op : req->ops()) {
       if (op.has_read() && op.read().has_index_request()) {
