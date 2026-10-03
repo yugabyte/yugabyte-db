@@ -147,6 +147,13 @@ macro(yb_find_third_party_dependencies)
     STATIC_LIB ${GTEST_STATIC_LIBRARY}
     SHARED_LIB ${GTEST_SHARED_LIBRARY})
 
+  ## google/benchmark, used by microbenchmarks added with ADD_YB_BENCHMARK.
+  find_package(GBenchmark REQUIRED)
+  include_directories(SYSTEM ${GBENCHMARK_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(gbenchmark
+    STATIC_LIB ${GBENCHMARK_STATIC_LIB}
+    SHARED_LIB ${GBENCHMARK_SHARED_LIB})
+
   ## Protobuf
   add_custom_target(gen_proto)
   find_package(Protobuf REQUIRED)

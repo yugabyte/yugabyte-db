@@ -194,6 +194,18 @@ To run tests:
 
 Run one test per execution; do not use a `--gtest_filter` that matches more than one test.
 
+### C++ Microbenchmarks
+
+Microbenchmarks use google/benchmark and are added with `ADD_YB_BENCHMARK` (see
+`src/yb/util/mutex-benchmark.cc` for an example). The test runner does not run them, and
+`--cxx-test` does not find them. Build with `--target` (`benchmarks` builds all of them) and run the
+binary directly:
+
+```bash
+./yb_build.sh release --target mutex-benchmark
+build/latest/benchmarks-util/mutex-benchmark --benchmark_filter=AbslMutex
+```
+
 ### Java Tests
 
 ```bash
