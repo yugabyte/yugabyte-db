@@ -391,6 +391,17 @@ YbPgInheritsCacheDelete(YbPgInheritsCacheEntry entry, bool isParentEntry)
 		 "YbPgInheritsCacheDelete for oid %d in %s cache",
 		 entry->oid, isParentEntry ? "parent" : "child");
 	Assert(entry->refcount == 1);
+
+	ListCell   *lc;
+
+	/* heap_copytuple allocates the ybctid separately */
+	foreach(lc, entry->tuples)
+	{
+		HeapTuple	tuple = (HeapTuple) lfirst(lc);
+
+		if (HEAPTUPLE_YBCTID(tuple))
+			pfree(DatumGetPointer(HEAPTUPLE_YBCTID(tuple)));
+	}
 	list_free_deep(entry->tuples);
 	if (isParentEntry)
 	{

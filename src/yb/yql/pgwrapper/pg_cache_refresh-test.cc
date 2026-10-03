@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -259,6 +260,63 @@ TEST_F(PgCacheRefreshTest, NewConnectionTransparentRetryTxn) {
   testTxnRetryAfterSchemaVersionMismatch(&conn, [this] {
     testConcurrentSchemaVersionIncrementFromDifferentNode("col4");
   });
+}
+
+// With invalidation messages disabled, every catalog version bump makes other backends go through
+// a full catalog cache refresh.
+class PgFullCatalogCacheRefreshTest : public PgCacheRefreshTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgCacheRefreshTest::UpdateMiniClusterOptions(opts);
+    // Disabling invalidation messages requires object locking to be off on the master too.
+    opts->extra_master_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    opts->extra_master_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_master_flags, "ysql_enable_concurrent_ddl");
+    opts->extra_master_flags.emplace_back("--ysql_yb_enable_invalidation_messages=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_invalidation_messages=false");
+  }
+};
+
+TEST_F(PgFullCatalogCacheRefreshTest, NoCacheMemoryGrowth) {
+  constexpr int kNumPartitions = 10;
+  constexpr int kNumWarmupRefreshes = 3;
+  constexpr int kNumRefreshes = 10;
+
+  // Partitions and their indexes give the relcache preload pg_inherits rows and index entries,
+  // whose copied tuples used to leak their ybctids on every refresh.
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE parent (k INT) PARTITION BY RANGE (k)"));
+  for (int i = 0; i < kNumPartitions; ++i) {
+    ASSERT_OK(ddl_conn.ExecuteFormat(
+        "CREATE TABLE part_$0 PARTITION OF parent FOR VALUES FROM ($1) TO ($2)",
+        i, i * 10, (i + 1) * 10));
+  }
+  ASSERT_OK(ddl_conn.Execute("CREATE INDEX ON parent (k)"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto catalog_version_query =
+      "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()"s;
+  const auto cache_memory_query =
+      "SELECT used_bytes FROM pg_get_backend_memory_contexts() "
+      "WHERE name = 'CacheMemoryContext'"s;
+  int64_t used_bytes_after_warmup = 0;
+  int64_t used_bytes = 0;
+  for (int i = 0; i < kNumWarmupRefreshes + kNumRefreshes; ++i) {
+    const auto old_version = ASSERT_RESULT(conn.FetchRow<int64_t>(catalog_version_query));
+    ASSERT_OK(BumpCatalogVersion(1, &ddl_conn));
+    // Each query that sees a newer catalog version did a full refresh.
+    ASSERT_OK(LoggedWaitFor(
+        [&conn, &catalog_version_query, old_version]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<int64_t>(catalog_version_query)) > old_version;
+        },
+        MonoDelta::FromSeconds(10 * kTimeMultiplier), "full catalog cache refresh"));
+    used_bytes = ASSERT_RESULT(conn.FetchRow<int64_t>(cache_memory_query));
+    LOG(INFO) << "CacheMemoryContext used bytes after refresh " << i + 1 << ": " << used_bytes;
+    if (i == kNumWarmupRefreshes - 1) {
+      used_bytes_after_warmup = used_bytes;
+    }
+  }
+  ASSERT_EQ(used_bytes, used_bytes_after_warmup);
 }
 
 } // namespace pgwrapper
