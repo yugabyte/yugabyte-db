@@ -1978,12 +1978,18 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	}
 
 	if (relation->rd_rel->relhastriggers)
+	{
+		Assert(state->pg_trigger_cache != NULL);
 		RelationBuildTriggers(relation, state->pg_trigger_cache);
+	}
 	else
 		relation->trigdesc = NULL;
 
 	if (relation->rd_rel->relrowsecurity)
+	{
+		Assert(state->pg_policy_cache != NULL);
 		RelationBuildRowSecurity(relation, state->pg_policy_cache);
+	}
 	else
 		relation->rd_rsdesc = NULL;
 }
@@ -2026,6 +2032,7 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 	state.pg_attrdef_cache = &cache_update_state->pg_attrdef_cache;
 	state.pg_constraint_cache = &cache_update_state->pg_constraint_cache;
 	state.pg_trigger_cache = &cache_update_state->pg_trigger_cache;
+	state.pg_policy_cache = &cache_update_state->pg_policy_cache;
 
 	const bool	sys_rel_update_required = cache_update_state->sys_relations_update_required;
 
