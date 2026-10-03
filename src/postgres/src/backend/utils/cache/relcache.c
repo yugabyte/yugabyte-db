@@ -3348,13 +3348,14 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 	if (status)
 		return status;
 
+	YBUpdateRelationsAttributes(state);
+
 	/*
 	 * Fill pg_proc before building partition keys: an expression key looks
-	 * up PROCOID while it is simplified.
+	 * up PROCOID while it is simplified.  Filling scans the catalogs through
+	 * their relcache entries, whose tuple descriptors are built just above.
 	 */
 	YbFillCaches(prefetcher);
-
-	YBUpdateRelationsAttributes(state);
 
 	YBUpdateRelationsPartitioning(state);
 
