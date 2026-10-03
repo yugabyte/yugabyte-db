@@ -799,6 +799,12 @@ extern bool yb_test_invalidate_relcache_in_planner;
 extern bool yb_test_fail_next_inc_catalog_version;
 
 /*
+ * If set to true, the client connection check pggate runs while blocked on a
+ * tserver reply raises an ERROR instead of probing the socket.
+ */
+extern bool yb_test_fail_client_connection_check;
+
+/*
  * This number times disable_cost is added to the cost for some unsupported
  * ybgin index scans.
  */

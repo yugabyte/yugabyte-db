@@ -95,6 +95,10 @@ bool HasProcessableAbortInterruptNoOp() {
   return false;
 }
 
+bool ClientConnectionLostNoOp() {
+  return false;
+}
+
 bool IsInParallelModeNoOp() {
   return false;
 }
@@ -195,6 +199,7 @@ Status PggateTest::Init(
   callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
   callbacks.HasProcessableAbortInterrupt =
       &HasProcessableAbortInterruptNoOp;
+  callbacks.ClientConnectionLost = &ClientConnectionLostNoOp;
   callbacks.IsInParallelMode = &IsInParallelModeNoOp;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =

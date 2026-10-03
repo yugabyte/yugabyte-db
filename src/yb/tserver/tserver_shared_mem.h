@@ -14,6 +14,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string_view>
 
@@ -213,13 +214,21 @@ YB_STRONGLY_TYPED_BOOL(Create);
 
 class SharedExchangeHeader;
 
+// Periodic wake-up while waiting for a response. `callback` runs on the waiting thread each time
+// `interval` elapses without a response, until the deadline.
+struct SharedExchangeWaitPoller {
+  MonoDelta interval;
+  std::function<void()> callback;
+};
+
 class SharedExchange {
  public:
   SharedExchange(SharedExchangeHeader& header, size_t exchange_size);
 
   std::byte* Obtain(size_t required_size);
   Status SendRequest();
-  Result<Slice> FetchResponse(CoarseTimePoint deadline);
+  Result<Slice> FetchResponse(
+      CoarseTimePoint deadline, const SharedExchangeWaitPoller* poller = nullptr);
   bool ResponseReady();
   bool ReadyToSend();
   bool busy() const;

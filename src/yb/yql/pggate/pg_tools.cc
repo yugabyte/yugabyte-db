@@ -25,7 +25,10 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_utils.h"
 
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -38,6 +41,14 @@
 
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
+
+DEFINE_NON_RUNTIME_uint32(pg_client_connection_check_interval_ms, 1000,
+    "How often, in milliseconds, a postgres backend blocked on a tserver request checks whether "
+    "its client is still connected. When the client is gone the backend terminates instead of "
+    "waiting for the request to time out. Only applies while blocked in pggate and is independent "
+    "of the client_connection_check_interval GUC, which covers the rest of statement execution. "
+    "0 disables the check.");
+TAG_FLAG(pg_client_connection_check_interval_ms, advanced);
 
 std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id) {
   return str << "object { db_oid: " << lock_id.db_oid
@@ -203,6 +214,23 @@ Status CheckForPgInterrupts() {
   return STATUS_EC_FORMAT(
       Aborted, PgsqlError{YBPgErrorCode::YB_PG_QUERY_CANCELED},
       "Canceled due to pending postgres interrupt");
+}
+
+MonoDelta ClientConnectionCheckInterval() {
+  const auto interval_ms = FLAGS_pg_client_connection_check_interval_ms;
+  return interval_ms ? MonoDelta::FromMilliseconds(interval_ms) : MonoDelta();
+}
+
+bool InterruptOnClientConnectionLoss() {
+  if (!YBCIsClientConnectionLost()) [[likely]] {
+    return false;
+  }
+  // Re-entered on every wake-up until the interrupted wait completes; the interrupt itself is
+  // idempotent, so only the log line needs suppressing.
+  YB_LOG_FIRST_N(INFO, 1)
+      << "Client connection lost while waiting for tserver, interrupting pggate";
+  YBCInterruptPgGate();
+  return true;
 }
 
 } // namespace yb::pggate

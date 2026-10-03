@@ -407,6 +407,10 @@ typedef struct {
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
   bool (*HasProcessableAbortInterrupt)();
+  // Probes the client socket. Returns true if the client is gone, in which case postgres has
+  // already flagged ClientConnectionLost. Must not longjmp: pggate calls it from inside blocking
+  // waits on the postgres main thread.
+  bool (*ClientConnectionLost)();
   /* xact.h */
   bool (*IsInParallelMode)();
 } YbcPgCallbacks;
