@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
+#include <vector>
 #include <boost/algorithm/string/trim.hpp>
 #include "yb/util/string_case.h"
 
@@ -39,6 +40,8 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/tcmalloc_util.h"
 
 DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "If true, the recommended defaults for the memory usage settings take into account the amount "
@@ -238,6 +241,9 @@ void AdjustAutoAnalyzeFlagIfNeeded() {
 
 Status MasterTServerParseFlagsAndInit(
     const std::string& server_type, bool is_master, int* argc, char*** argv) {
+  // Copy before ParseCommandLineFlags reorders the array, in case the process is re-executed.
+  std::vector<char*> original_argv(*argv, *argv + *argc + 1);
+
   debug::EnableTraceEvents();
 
   // Do not sync GLOG to disk for INFO, WARNING.
@@ -262,6 +268,9 @@ Status MasterTServerParseFlagsAndInit(
     std::cerr << "usage: " << (*argv)[0] << std::endl;
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
+
+  WARN_NOT_OK(MaybeReexecToEnableTCMallocPerCpuCaches(original_argv.data()),
+              "Failed to re-execute with TCMalloc per-CPU caches enabled");
 
   // Must be called before installing a failure signal handler (in InitYB).
   absl::InitializeSymbolizer((*argv)[0]);
