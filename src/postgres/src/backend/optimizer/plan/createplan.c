@@ -3404,6 +3404,34 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 }
 
 /*
+ * Returns true if the query's target relation captures transition tables for
+ * the given operation.  For a partitioned target, the transition-table
+ * triggers live only on the relation named in the query, not on the leaf
+ * that has_applicable_triggers() examines.
+ */
+static bool
+yb_target_has_transition_tables(PlannerInfo *root, CmdType operation)
+{
+	Relation	target_rel;
+	TriggerDesc *trigdesc;
+	bool		result = false;
+
+	target_rel = RelationIdGetRelation(planner_rt_fetch(root->parse->resultRelation,
+														root)->relid);
+	trigdesc = target_rel->trigdesc;
+	if (trigdesc)
+	{
+		if (operation == CMD_DELETE)
+			result = trigdesc->trig_delete_old_table;
+		else if (operation == CMD_UPDATE)
+			result = (trigdesc->trig_update_old_table ||
+					  trigdesc->trig_update_new_table);
+	}
+	RelationClose(target_rel);
+	return result;
+}
+
+/*
  * yb_leaf_update_modifies_partition_key
  *
  * Returns true if any column in the input bitmapset is a partition key column
@@ -3876,8 +3904,13 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	/*
 	 * Cannot support before row triggers for single-row update/delete, as the
 	 * old row will need to be passed to the trigger, requiring the scan.
+	 * Transition tables likewise need the old row.
 	 */
-	*no_row_trigger = !has_applicable_triggers(relation, path->operation, update_attrs);
+	*no_row_trigger = (!has_applicable_triggers(relation, path->operation,
+												update_attrs) &&
+					   (rt_index == root->parse->resultRelation ||
+						!yb_target_has_transition_tables(root,
+														 path->operation)));
 	if (!*no_row_trigger)
 	{
 		RelationClose(relation);
