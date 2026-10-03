@@ -930,7 +930,7 @@ if(APPLE)
   yb_allow_flat_namespace_lookup(yb-cql)
   yb_allow_flat_namespace_lookup(yb_pgwrapper)
   # yb_pggate_util and yb_dockv have a mutual (circular) dependency that cannot be expressed as a
-  # link edge between shared libraries, so yb_pggate_util resolves yb_dockv/yb_ash symbols at runtime.
+  # link edge between shared libraries, so yb_pggate_util resolves yb_dockv symbols at runtime.
   yb_allow_flat_namespace_lookup(yb_pggate_util)
   # Test-utility libraries form mutually circular dependencies (integration-tests depends on
   # yb_client_test_util and tools_test_utils, which reference it back), which cannot be link edges.
