@@ -6378,8 +6378,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
 
       subTaskGroup.addSubTask(task);
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
