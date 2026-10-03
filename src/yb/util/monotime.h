@@ -200,6 +200,7 @@ class MonoTime {
   // The coarse monotonic time is faster to retrieve, but "only" accurate to within a millisecond or
   // two.  The speed difference will depend on your timer hardware.
   static MonoTime Now();
+  static MonoTime NowPlus(MonoDelta delta);
 
   static MonoTime NowIf(bool flag) {
     return flag ? Now() : MonoTime();

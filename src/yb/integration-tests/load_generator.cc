@@ -242,7 +242,7 @@ void MultiThreadedAction::Start() {
 }
 
 void MultiThreadedAction::WaitForCompletion() {
-  thread_pool_->Wait();
+  thread_pool_->WaitUntil(MonoTime::kUninitialized);
 }
 
 // ------------------------------------------------------------------------------------------------

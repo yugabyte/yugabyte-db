@@ -48,6 +48,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/threadpool.h"
 #include "yb/util/flags.h"
 
 DEFINE_UNKNOWN_bool(expose_metric_histogram_percentiles, true,

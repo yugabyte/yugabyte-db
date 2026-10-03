@@ -1991,7 +1991,7 @@ std::vector<FollowerCommunicationTime> PeerMessageQueue::GetFollowerCommunicatio
 }
 
 void PeerMessageQueue::TEST_WaitForNotificationToFinish() {
-  notifications_strand_->BusyWait();
+  notifications_strand_->TEST_BusyWait();
 }
 
 }  // namespace consensus

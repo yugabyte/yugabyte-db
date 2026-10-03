@@ -107,6 +107,8 @@ class GetLeaderMasterRpc : public rpc::Rpc {
 
   std::string ToString() const override;
 
+  std::string LogPrefix() const;
+
  private:
   void Finished(const Status& status) override EXCLUDES(lock_);
 

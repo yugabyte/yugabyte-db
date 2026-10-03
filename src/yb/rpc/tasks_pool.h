@@ -19,10 +19,7 @@
 
 #include "yb/rpc/thread_pool.h"
 
-namespace yb {
-namespace rpc {
-
-class ThreadPool;
+namespace yb::rpc {
 
 // Tasks pool that could be used in conjunction with ThreadPool, to preallocate a buffer for a fixed
 // number of tasks and avoid allocating memory for each task separately.
@@ -88,5 +85,4 @@ class TasksPool {
   boost::lockfree::queue<WrappedTask*> queue_;
 };
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc

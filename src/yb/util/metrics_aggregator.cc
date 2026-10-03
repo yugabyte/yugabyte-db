@@ -17,6 +17,7 @@
 
 #include "yb/util/debug.h"
 #include "yb/util/metrics.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
 

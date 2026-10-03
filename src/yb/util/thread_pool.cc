@@ -13,7 +13,7 @@
 //
 //
 
-#include "yb/rpc/thread_pool.h"
+#include "yb/util/thread_pool.h"
 
 #include <chrono>
 #include <condition_variable>
@@ -21,7 +21,6 @@
 
 #include <boost/intrusive/list.hpp>
 
-#include "yb/util/concurrent_queue.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
@@ -33,9 +32,9 @@
 using namespace std::literals;
 
 DEFINE_NON_RUNTIME_uint64(default_idle_timeout_ms, 15000,
-    "Default RPC ThreadPool idle timeout value in milliseconds");
+    "Default RPC YBThreadPool idle timeout value in milliseconds");
 
-namespace yb::rpc {
+namespace yb {
 
 namespace {
 
@@ -44,27 +43,40 @@ class Worker;
 using TaskQueue = SemiFairQueue<ThreadPoolTask>;
 using WaitingWorkers = LockFreeStack<Worker>;
 
+constexpr size_t kStopCreatingWorkersFlag = 1ul << 48;
+
 struct ThreadPoolShare {
   const ThreadPoolOptions options;
   TaskQueue task_queue;
+  std::atomic<size_t> task_queue_size{0};
   WaitingWorkers waiting_workers;
   std::atomic<size_t> num_workers{0};
 
   explicit ThreadPoolShare(ThreadPoolOptions o)
       : options(std::move(o)) {}
+
+  void PushTask(ThreadPoolTask* task) {
+    if (options.metrics.queue_time_us_stats) {
+      task->set_submit_time(MonoTime::Now());
+    }
+    task_queue.Push(task);
+    task_queue_size.fetch_add(1, std::memory_order_acq_rel);
+  }
+
+  ThreadPoolTask* PopTask() {
+    auto result = task_queue.Pop();
+    if (result) {
+      task_queue_size.fetch_sub(1, std::memory_order_acq_rel);
+      if (options.metrics.queue_time_us_stats) {
+        options.metrics.queue_time_us_stats->Increment(
+            (MonoTime::Now() - result->submit_time()).ToMicroseconds());
+      }
+    }
+    return result;
+  }
 };
 
 const auto kShuttingDownStatus = STATUS(Aborted, "Service is shutting down");
-
-void TaskDone(ThreadPoolTask* task, const Status& status) {
-  // We have to retrieve the subpool pointer from the task before calling Done, because that call
-  // may destroy the task.
-  auto* sub_pool = task->sub_pool();
-  task->Done(status);
-  if (sub_pool) {
-    sub_pool->OnTaskDone(task, status);
-  }
-}
 
 // There is difference between idle stop and external stop.
 // In case of idle stop we don't perform join on thread, since it is already detached.
@@ -72,8 +84,8 @@ YB_DEFINE_ENUM(WorkerState, (kRunning)(kWaitingTask)(kIdleStop)(kExternalStop));
 
 class Worker : public boost::intrusive::list_base_hook<> {
  public:
-  explicit Worker(ThreadPoolShare& share)
-      : share_(share) {
+  explicit Worker(ThreadPoolShare& share, bool persistent)
+      : share_(share), persistent_(persistent) {
   }
 
   Status Start(size_t index, ThreadPoolTask* task) EXCLUDES(mutex_) {
@@ -105,12 +117,13 @@ class Worker : public boost::intrusive::list_base_hook<> {
       std::lock_guard lock(mutex_);
       if (state_ != WorkerState::kIdleStop) {
         state_ = WorkerState::kExternalStop;
+        --share_.num_workers;
       }
       task = std::exchange(task_, nullptr);
       cond_.notify_one();
     }
     if (task) {
-      TaskDone(task, kShuttingDownStatus);
+      task->Done(kShuttingDownStatus);
     }
   }
 
@@ -127,6 +140,11 @@ class Worker : public boost::intrusive::list_base_hook<> {
     return state_;
   }
 
+  bool Idle() const {
+    std::lock_guard lock(mutex_);
+    return added_to_waiting_workers_;
+  }
+
  private:
   // Our main invariant is empty task queue or empty worker queue.
   // In other words, one of those queues should be empty.
@@ -134,9 +152,28 @@ class Worker : public boost::intrusive::list_base_hook<> {
   // does not have free hands (worker queue empty)
   void Execute(ThreadPoolTask* task) {
     Thread::current_thread()->SetUserData(&share_);
+    bool has_run_metrics = share_.options.metrics.run_time_us_stats != nullptr;
+    if (!task) {
+      task = PopTask();
+    }
     while (task) {
-      task->Run();
-      TaskDone(task, Status::OK());
+      auto start = MonoTime::NowIf(has_run_metrics);
+      if (!task->run_token()) {
+        task->Run();
+        task->Done(Status::OK());
+      } else {
+        auto run_token = task->run_token()->lock();
+        if (run_token) {
+          task->Run();
+          task->Done(Status::OK());
+        } else {
+          task->Done(kShuttingDownStatus);
+        }
+      }
+      if (has_run_metrics) {
+        share_.options.metrics.run_time_us_stats->Increment(
+            (MonoTime::Now() - start).ToMicroseconds());
+      }
       task = PopTask();
     }
   }
@@ -144,7 +181,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
   ThreadPoolTask* PopTask() {
     // First of all we try to get already queued task, w/o locking.
     // If there is no task, so we could go to waiting state.
-    if (auto* task = share_.task_queue.Pop()) {
+    if (auto* task = share_.PopTask()) {
       return task;
     }
 
@@ -158,13 +195,13 @@ class Worker : public boost::intrusive::list_base_hook<> {
     for (;;) {
       AddToWaitingWorkers();
 
-      if (auto task = share_.task_queue.Pop()) {
+      if (auto task = share_.PopTask()) {
         state_ = WorkerState::kRunning;
         return task;
       }
 
       bool timeout;
-      if (share_.options.idle_timeout) {
+      if (!persistent_ && share_.options.idle_timeout) {
         CHECK(!task_);
         auto duration = share_.options.idle_timeout.ToSteadyDuration();
         timeout = cond_.wait_for(GetLockForCondition(lock), duration) == std::cv_status::timeout;
@@ -182,7 +219,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
       }
 
       if (timeout && added_to_waiting_workers_) {
-        if (auto task = share_.task_queue.Pop()) {
+        if (auto task = share_.PopTask()) {
           state_ = WorkerState::kRunning;
           return task;
         }
@@ -201,7 +238,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
     if (task_) {
       return std::exchange(task_, nullptr);
     }
-    if (auto task = share_.task_queue.Pop()) {
+    if (auto task = share_.PopTask()) {
       return task;
     }
     return std::nullopt;
@@ -214,17 +251,18 @@ class Worker : public boost::intrusive::list_base_hook<> {
     }
   }
 
-  friend void SetNext(Worker* worker, Worker* next) {
-    worker->next_waiting_worker_ = next;
+  friend void SetNext(Worker& worker, Worker* next) {
+    worker.next_waiting_worker_ = next;
   }
 
-  friend Worker* GetNext(Worker* worker) {
-    return worker->next_waiting_worker_;
+  friend Worker* GetNext(Worker& worker) {
+    return worker.next_waiting_worker_;
   }
 
   ThreadPoolShare& share_;
+  const bool persistent_;
   scoped_refptr<Thread> thread_;
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::condition_variable cond_;
   WorkerState state_ GUARDED_BY(mutex_) = WorkerState::kRunning;
   bool added_to_waiting_workers_ GUARDED_BY(mutex_) = false;
@@ -236,11 +274,16 @@ using Workers = boost::intrusive::list<Worker>;
 
 } // namespace
 
-class ThreadPool::Impl {
+class YBThreadPool::Impl {
  public:
   explicit Impl(ThreadPoolOptions options)
       : share_(std::move(options)) {
     LOG(INFO) << "Starting thread pool " << share_.options.ToString();
+    for (size_t index = 0; index != options.min_workers; ++index) {
+      if (!TryStartNewWorker(nullptr, /* persistent = */ true)) {
+        break;
+      }
+    }
   }
 
   const ThreadPoolOptions& options() const {
@@ -251,15 +294,21 @@ class ThreadPool::Impl {
     ++adding_;
     if (closing_) {
       --adding_;
-      TaskDone(task, kShuttingDownStatus);
+      task->Done(kShuttingDownStatus);
       return false;
     }
+
+    if (share_.options.metrics.queue_length_stats) {
+      share_.options.metrics.queue_length_stats->Increment(
+          share_.task_queue_size.load(std::memory_order_relaxed));
+    }
+
     if (NotifyWorker(task)) {
       --adding_;
       return true;
     }
 
-    if (TryStartNewWorker(task)) {
+    if (TryStartNewWorker(task, /* persistent= */ false)) {
       --adding_;
       return true;
     }
@@ -269,24 +318,27 @@ class ThreadPool::Impl {
     // 2) Failed to start a new thread for a worker.
     // 3) We are shutting down. In this case we add task to the queue, so it will be processed by
     //    Shutdown.
-    share_.task_queue.Push(task);
+    share_.PushTask(task);
     --adding_;
     NotifyWorker(nullptr);
     return true;
   }
 
-  bool TryStartNewWorker(ThreadPoolTask* task) EXCLUDES(mutex_) {
+  bool TryStartNewWorker(ThreadPoolTask* task, bool persistent) EXCLUDES(mutex_) {
     Worker* worker = nullptr;
     if (share_.num_workers++ < share_.options.max_workers) {
       std::lock_guard lock(mutex_);
       if (!closing_) {
-        auto new_worker = std::make_unique<Worker>(share_);
+        auto new_worker = std::make_unique<Worker>(share_, persistent);
         workers_.push_back(*(worker = new_worker.release()));
       }
     }
     if (worker) {
       auto status = worker->Start(++worker_counter_, task);
       if (status.ok()) {
+        if (task && share_.options.metrics.queue_time_us_stats) {
+          share_.options.metrics.queue_time_us_stats->Increment(0);
+        }
         return true;
       }
       bool empty;
@@ -315,6 +367,9 @@ class ThreadPool::Impl {
       auto state = worker->Notify(task);
       switch (state) {
         case WorkerState::kWaitingTask:
+          if (share_.options.metrics.queue_time_us_stats) {
+            share_.options.metrics.queue_time_us_stats->Increment(0);
+          }
           return true;
         case WorkerState::kExternalStop: [[fallthrough]];
         case WorkerState::kRunning:
@@ -338,7 +393,7 @@ class ThreadPool::Impl {
   void Shutdown() EXCLUDES(mutex_) {
     // Prevent new worker threads from being created by pretending a large number of workers have
     // already been created.
-    share_.num_workers = 1ul << 48;
+    share_.num_workers ^= kStopCreatingWorkersFlag;
     decltype(workers_) workers;
     {
       std::lock_guard lock(mutex_);
@@ -367,8 +422,8 @@ class ThreadPool::Impl {
         workers_.clear();
       }
     }
-    while (auto* task = share_.task_queue.Pop()) {
-      TaskDone(task, kShuttingDownStatus);
+    while (auto* task = share_.PopTask()) {
+      task->Done(kShuttingDownStatus);
     }
 
     workers.clear_and_dispose(std::default_delete<Worker>());
@@ -376,6 +431,33 @@ class ThreadPool::Impl {
 
   bool Owns(Thread* thread) {
     return thread && thread->user_data() == &share_;
+  }
+
+  bool BusyWait(MonoTime deadline) {
+    while (!Idle()) {
+      if (deadline && MonoTime::Now() > deadline) {
+        return false;
+      }
+      std::this_thread::sleep_for(1ms);
+    }
+    return true;
+  }
+
+  bool Idle() {
+    if (adding_ || !share_.task_queue.Empty()) {
+      return false;
+    }
+    std::lock_guard lock(mutex_);
+    for (const auto& worker : workers_) {
+      if (!worker.Idle()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  size_t NumWorkers() const {
+    return share_.num_workers.load(std::memory_order_relaxed) & ~kStopCreatingWorkersFlag;
   }
 
  private:
@@ -391,43 +473,55 @@ class ThreadPool::Impl {
 
 // ------------------------------------------------------------------------------------------------
 
-ThreadPool::ThreadPool(ThreadPoolOptions options)
+YBThreadPool::YBThreadPool(ThreadPoolOptions options)
     : impl_(new Impl(std::move(options))) {
 }
 
-ThreadPool::ThreadPool(ThreadPool&& rhs) noexcept
+YBThreadPool::YBThreadPool(YBThreadPool&& rhs) noexcept
     : impl_(std::move(rhs.impl_)) {}
 
-ThreadPool& ThreadPool::operator=(ThreadPool&& rhs) noexcept {
+YBThreadPool& YBThreadPool::operator=(YBThreadPool&& rhs) noexcept {
   impl_->Shutdown();
   impl_ = std::move(rhs.impl_);
   return *this;
 }
 
-ThreadPool::~ThreadPool() {
+YBThreadPool::~YBThreadPool() {
   if (impl_) {
     impl_->Shutdown();
   }
 }
 
-bool ThreadPool::Enqueue(ThreadPoolTask* task) {
+bool YBThreadPool::Enqueue(ThreadPoolTask* task) {
   return impl_->Enqueue(task);
 }
 
-void ThreadPool::Shutdown() {
+void YBThreadPool::Shutdown() {
   impl_->Shutdown();
 }
 
-const ThreadPoolOptions& ThreadPool::options() const {
+const ThreadPoolOptions& YBThreadPool::options() const {
   return impl_->options();
 }
 
-bool ThreadPool::Owns(Thread* thread) {
+bool YBThreadPool::Owns(Thread* thread) {
   return impl_->Owns(thread);
 }
 
-bool ThreadPool::OwnsThisThread() {
+bool YBThreadPool::OwnsThisThread() {
   return Owns(Thread::current_thread());
+}
+
+bool YBThreadPool::BusyWait(MonoTime deadline) {
+  return impl_->BusyWait(deadline);
+}
+
+size_t YBThreadPool::NumWorkers() const {
+  return impl_->NumWorkers();
+}
+
+bool YBThreadPool::Idle() const {
+  return impl_->Idle();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -435,48 +529,53 @@ bool ThreadPool::OwnsThisThread() {
 // ------------------------------------------------------------------------------------------------
 
 void ThreadSubPoolBase::Shutdown() {
-  closing_ = true;
+  auto active_enqueues = active_enqueues_.fetch_add(kStopMark, std::memory_order_acq_rel);
+  if (active_enqueues >= kStopMark) {
+    while (!(active_enqueues & kStoppedMark)) {
+      std::this_thread::sleep_for(1ms);
+      active_enqueues = active_enqueues_.load(std::memory_order_acquire);
+    }
+    return;
+  }
+  while (active_enqueues & (kStopMark - 1)) {
+    std::this_thread::sleep_for(1ms);
+    active_enqueues = active_enqueues_.load(std::memory_order_acquire);
+  }
+  std::weak_ptr<void> run_token = std::exchange(run_token_, nullptr);
   // We expected shutdown to happen rarely, so just use busy wait here.
-  BusyWait();
-}
-
-void ThreadSubPoolBase::BusyWait() {
-  while (!IsIdle()) {
+  while (!run_token.expired()) {
     std::this_thread::sleep_for(1ms);
   }
+  AbortTasks();
+  active_enqueues_.fetch_add(kStoppedMark, std::memory_order_acq_rel);
 }
 
-bool ThreadSubPoolBase::IsIdle() {
-  // Use sequential consistency for safety. This is only used during shutdown.
-  return active_tasks_ == 0;
+void ThreadSubPoolBase::AbortTasks() {
 }
 
 // ------------------------------------------------------------------------------------------------
 // ThreadSubPool
 // ------------------------------------------------------------------------------------------------
 
-ThreadSubPool::ThreadSubPool(ThreadPool* thread_pool) : ThreadSubPoolBase(thread_pool) {
+ThreadSubPool::ThreadSubPool(YBThreadPool* thread_pool) : ThreadSubPoolBase(thread_pool) {
 }
 
 ThreadSubPool::~ThreadSubPool() {
 }
 
 bool ThreadSubPool::Enqueue(ThreadPoolTask* task) {
-  if (closing_.load(std::memory_order_acquire)) {
+  return EnqueueHelper([this, task](bool ok) {
+    if (ok) {
+      task->set_run_token(run_token_);
+      return thread_pool_.Enqueue(task);
+    }
     task->Done(STATUS(Aborted, "Thread sub-pool closing"));
     return false;
-  }
-  active_tasks_.fetch_add(1, std::memory_order_acq_rel);
-  task->set_sub_pool(this);
-  return thread_pool_.Enqueue(task);
-}
-
-void ThreadSubPool::OnTaskDone(ThreadPoolTask* task, const Status& status) {
-  active_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+  });
 }
 
 MonoDelta DefaultIdleTimeout() {
   return MonoDelta::FromMilliseconds(FLAGS_default_idle_timeout_ms);
 }
 
-} // namespace yb::rpc
+} // namespace yb

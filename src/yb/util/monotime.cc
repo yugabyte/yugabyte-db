@@ -308,6 +308,10 @@ MonoTime MonoTime::Now() {
   return MonoTime(std::chrono::steady_clock::now());
 }
 
+MonoTime MonoTime::NowPlus(MonoDelta delta) {
+  return delta ? Now() + delta : MonoTime();
+}
+
 MonoTime MonoTime::Max() {
   return MonoTime(std::chrono::steady_clock::time_point::max());
 }

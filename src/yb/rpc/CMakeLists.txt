@@ -106,9 +106,7 @@ set(YRPC_SRCS
     service_pool.cc
     sidecars.cc
     stream.cc
-    strand.cc
     tcp_stream.cc
-    thread_pool.cc
     yb_rpc.cc)
 
 set(YRPC_LIBS
@@ -184,4 +182,3 @@ ADD_YB_TEST(rpc-bench RUN_SERIAL true)
 ADD_YB_TEST(rpc-test)
 ADD_YB_TEST(rpc_stub-test RUN_SERIAL true)
 ADD_YB_TEST(scheduler-test)
-ADD_YB_TEST(thread_pool-test)

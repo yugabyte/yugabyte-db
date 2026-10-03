@@ -698,12 +698,12 @@ struct KeyToCheck {
 
   explicit KeyToCheck(int value_, const TransactionId& txn_id_) : value(value_), txn_id(txn_id_) {}
 
-  friend void SetNext(KeyToCheck* key_to_check, KeyToCheck* next) {
-    key_to_check->next = next;
+  friend void SetNext(KeyToCheck& key_to_check, KeyToCheck* next) {
+    key_to_check.next = next;
   }
 
-  friend KeyToCheck* GetNext(KeyToCheck* key_to_check) {
-    return key_to_check->next;
+  friend KeyToCheck* GetNext(KeyToCheck& key_to_check) {
+    return key_to_check.next;
   }
 };
 

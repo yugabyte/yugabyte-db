@@ -265,7 +265,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/striped64.h"
-#include "yb/util/threadpool.h"
 
 // Define a new entity type.
 //
@@ -401,6 +400,7 @@ METRIC_DECLARE_entity(server);
 namespace yb {
 
 class JsonWriter;
+class ThreadPool;
 
 // Unit types to be used with metrics.
 // As additional units are required, add them to this enum and also to Name().
