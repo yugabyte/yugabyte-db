@@ -5028,16 +5028,13 @@ TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListInvalidValues, PgCatalogPreloadCac
   }
 }
 
-// Only a superuser can set the list in a session.
-TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListSuperuserOnly, PgCatalogPreloadCacheListTestBase) {
+// The list is set for the whole server, so not even a superuser can set it in a session.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListNotSettableInSession,
+          PgCatalogPreloadCacheListTestBase) {
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE ROLE regular_user LOGIN"));
-  ASSERT_OK(conn.Execute("SET yb_test_catalog_preload_cache_list = 'pg_class'"));
-
-  auto user_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "regular_user"));
   ASSERT_NOK_STR_CONTAINS(
-      user_conn.Execute("SET yb_test_catalog_preload_cache_list = 'pg_class'"),
-      "permission denied to set parameter");
+      conn.Execute("SET yb_test_catalog_preload_cache_list = 'pg_class'"),
+      "cannot be changed now");
 }
 
 // Enables the regular-backend tserver response cache for the connection-auth
