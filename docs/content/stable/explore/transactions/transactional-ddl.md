@@ -22,7 +22,7 @@ For more information and current limitations, see [Transactional DDL](../../../a
 
 {{< note title="Before you start" >}}
 
-This example requires transactional DDL (disabled by default). Create and connect to a YugabyteDB universe, then enable `ysql_yb_ddl_transaction_block_enabled` as described in [Enable transactional DDL](../../../architecture/transactions/transactional-ddl/#enable-transactional-ddl).
+{{<tags/feature/ea idea="1677">}}This example requires transactional DDL (disabled by default). Create and connect to a YugabyteDB universe, then enable `ysql_yb_ddl_transaction_block_enabled` as described in [Enable transactional DDL](../../../architecture/transactions/transactional-ddl/#enable-transactional-ddl).
 
 {{< /note >}}
 
