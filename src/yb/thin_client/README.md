@@ -79,6 +79,10 @@ object) and **version-pair it with the tserver** it talks to.
 
 - `PgThinClientTest.OpenUpsertReadPaged` -- open table (schema asserted), upsert
   rows (cross-checked via SQL), and page a bounded scan.
+- `PgThinClientLoadBalancerTest.ConnectionStaysOnOneTserverBehindALoadBalancer`
+  -- behind a load balancer that picks a tserver per TCP connection, as a
+  Kubernetes Service does, a connection's sessions and Performs stay on one
+  tserver.
 - `PgThinClientTlsTest.ClientCreateOverTls` -- under node-to-node +
   client-to-server encryption, a plaintext client is rejected by the TLS-only
   endpoint and a TLS `client_create` (test CA) succeeds.

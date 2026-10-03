@@ -22,8 +22,13 @@
 #include <utility>
 #include <array>
 #include <future>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
+
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/write.hpp>
 
 #include "yb/thin_client/yb_thin_client.h"
 
@@ -37,12 +42,17 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/file_system.h"
 #include "yb/util/format.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -59,6 +69,8 @@ DECLARE_bool(TEST_private_broadcast_address);
 DECLARE_string(certs_dir);
 DECLARE_string(TEST_public_hostname_suffix);
 DECLARE_int32(TEST_delay_before_added_to_leader_ms);
+
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_ThinClientService_Perform);
 
 namespace yb::pgwrapper {
 
@@ -1581,6 +1593,269 @@ TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
   ybthin_columns_free(info.columns, info.n_columns);
   ybthin_table_close(table);
   ybthin_client_destroy(client);
+}
+
+namespace {
+
+// Upserts rows (hash_key, v) for v in [from, to) into a (k int, v int) table keyed on (k HASH, v).
+WriteOutcome UpsertKeys(
+    ybthin_client* client, ybthin_table* table, int hash_key, int from, int to) {
+  std::vector<std::array<ybthin_bind, 2>> keys;
+  for (int v = from; v < to; ++v) {
+    keys.push_back({I32(hash_key), I32(v)});
+  }
+  std::vector<ybthin_upsert_row> rows;
+  for (auto& key : keys) {
+    rows.push_back(ybthin_upsert_row{table, key.data(), 2, nullptr, nullptr, 0, 0});
+  }
+  std::promise<WriteOutcome> promise;
+  auto future = promise.get_future();
+  ybthin_upsert_batch_async(client, rows.data(), rows.size(), &OnWriteDone, &promise);
+  return future.get();
+}
+
+// One page of the scan over `hash_key`, returning column `v_id`.
+ReadOutcome ReadKeys(
+    ybthin_client* client, ybthin_table* table, int hash_key, int32_t v_id, uint64_t limit,
+    const std::vector<uint8_t>& paging_state, bool forward_scan = true) {
+  ybthin_bind hash_values[] = {I32(hash_key)};
+  int32_t target_ids[] = {v_id};
+  ybthin_read_op op = {};
+  op.table = table;
+  op.spec.hash_values = hash_values;
+  op.spec.n_hash = 1;
+  op.spec.target_ids = target_ids;
+  op.spec.n_targets = 1;
+  op.spec.limit = limit;
+  op.spec.is_forward_scan = forward_scan ? 1 : 0;
+  op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
+  op.paging_state_in_len = paging_state.size();
+  std::promise<ReadOutcome> promise;
+  auto future = promise.get_future();
+  ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+  return future.get();
+}
+
+// The v values of the whole scan over `hash_key`, in scan order.
+Result<std::vector<int32_t>> ScanKeys(
+    ybthin_client* client, ybthin_table* table, int hash_key, int32_t v_id, uint64_t limit,
+    bool forward_scan = true, int max_pages = 100) {
+  std::vector<int32_t> values;
+  int pages = 0;
+  std::vector<uint8_t> paging_state;
+  do {
+    auto out = ReadKeys(client, table, hash_key, v_id, limit, paging_state, forward_scan);
+    if (out.code != YBTHIN_OK) {
+      return STATUS_FORMAT(
+          IllegalState, "read failed with code $0: $1", static_cast<int>(out.code), out.message);
+    }
+    for (size_t row_idx = 0; row_idx < out.n_rows; ++row_idx) {
+      values.push_back(static_cast<int32_t>(out.cells[row_idx * out.n_cols].int_value));
+    }
+    paging_state = std::move(out.paging_state);
+    if (++pages >= max_pages) {
+      return STATUS(IllegalState, "paging did not terminate");
+    }
+  } while (!paging_state.empty());
+  return values;
+}
+
+// Two sessions share one connection, as in a small caller pool.
+constexpr ybthin_pool_opts kOneConnectionPool = {
+    /* read_sessions= */ 1, /* write_sessions= */ 1, /* sessions_per_conn= */ 4};
+
+// Forwards each accepted connection to the next backend in turn, as a Kubernetes ClusterIP Service
+// picks a pod per connection.
+class RoundRobinBalancer {
+ public:
+  explicit RoundRobinBalancer(std::vector<Endpoint> backends)
+      : backends_(std::move(backends)), acceptor_(io_context_) {}
+
+  ~RoundRobinBalancer() {
+    io_context_.stop();
+    if (thread_.joinable()) {
+      thread_.join();
+    }
+  }
+
+  Status Start(const Endpoint& local) {
+    boost::system::error_code ec;
+    acceptor_.open(local.protocol(), ec);
+    if (!ec) {
+      acceptor_.bind(local, ec);
+    }
+    if (!ec) {
+      acceptor_.listen(boost::asio::socket_base::max_listen_connections, ec);
+    }
+    if (ec) {
+      return STATUS_FORMAT(NetworkError, "Balancer cannot listen on $0: $1", local, ec.message());
+    }
+    Accept();
+    thread_ = std::thread([this] { io_context_.run(); });
+    return Status::OK();
+  }
+
+ private:
+  using Socket = boost::asio::ip::tcp::socket;
+  using Buffer = std::array<char, 4096>;
+
+  // Both directions of one forwarded connection; either side closing ends both.
+  struct Pipe : std::enable_shared_from_this<Pipe> {
+    Pipe(Socket&& client_socket, boost::asio::io_context& io_context)
+        : client(std::move(client_socket)), backend(io_context) {}
+
+    void Start(const Endpoint& to) {
+      backend.async_connect(to, [self = shared_from_this()](const boost::system::error_code& ec) {
+        if (ec) {
+          self->Close();
+          return;
+        }
+        self->Relay(self->client, self->backend, self->to_backend);
+        self->Relay(self->backend, self->client, self->to_client);
+      });
+    }
+
+    void Relay(Socket& from, Socket& to, Buffer& buffer) {
+      from.async_read_some(
+          boost::asio::buffer(buffer),
+          [self = shared_from_this(), &from, &to, &buffer](
+              const boost::system::error_code& ec, size_t size) {
+            if (ec) {
+              self->Close();
+              return;
+            }
+            boost::asio::async_write(
+                to, boost::asio::buffer(buffer.data(), size),
+                [self, &from, &to, &buffer](const boost::system::error_code& ec, size_t) {
+                  if (ec) {
+                    self->Close();
+                    return;
+                  }
+                  self->Relay(from, to, buffer);
+                });
+          });
+    }
+
+    void Close() {
+      boost::system::error_code ec;
+      client.close(ec);
+      backend.close(ec);
+    }
+
+    Socket client;
+    Socket backend;
+    Buffer to_backend;
+    Buffer to_client;
+  };
+
+  void Accept() {
+    acceptor_.async_accept([this](const boost::system::error_code& ec, Socket client) {
+      if (ec) {
+        return;
+      }
+      std::make_shared<Pipe>(std::move(client), io_context_)
+          ->Start(backends_[next_backend_++ % backends_.size()]);
+      Accept();
+    });
+  }
+
+  boost::asio::io_context io_context_;
+  const std::vector<Endpoint> backends_;
+  boost::asio::ip::tcp::acceptor acceptor_;
+  size_t next_backend_ = 0;
+  std::thread thread_;
+};
+
+}  // namespace
+
+// Three tservers. Postgres runs on tserver 0, so the thin client talks to the other two.
+class PgThinClientLoadBalancerTest : public PgThinClientTest {
+ protected:
+  size_t NumTabletServers() override { return 3; }
+
+  std::string TServerAddrOf(size_t ts_idx) const {
+    return cluster_->mini_tablet_server(ts_idx)->bound_rpc_addr_str();
+  }
+
+  uint64_t PerformCount(size_t ts_idx) {
+    return cluster_->mini_tablet_server(ts_idx)
+        ->metric_entity()
+        .FindOrCreateMetric<Histogram>(
+            &METRIC_handler_latency_yb_tserver_ThinClientService_Perform)
+        ->underlying()
+        ->TotalCount();
+  }
+};
+
+// A load balancer, like a Kubernetes ClusterIP Service, picks a tserver per TCP connection, while a
+// session id is known only to the tserver it opened on. So a connection's Performs must ride the
+// one socket its sessions opened on.
+TEST_F(PgThinClientLoadBalancerTest, ConnectionStaysOnOneTserverBehindALoadBalancer) {
+  constexpr size_t kFirstTs = 1;
+  constexpr size_t kSecondTs = 2;
+  constexpr int kHashKey = 1;
+  constexpr int kRounds = 5;
+  constexpr int kRowsPerRound = 10;
+  constexpr uint64_t kPageLimit = 4;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int, v int, PRIMARY KEY((k) HASH, v))"));
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 't'::regclass::oid"));
+
+  // Other clients' sessions on the tserver the balancer picks first put its session ids ahead of
+  // the other's, as on a shared universe. A Perform on the wrong tserver then finds no session,
+  // rather than another client's that happens to share its id.
+  const auto first_addr = TServerAddrOf(kFirstTs);
+  const char* first_addrs[] = {first_addr.c_str()};
+  constexpr ybthin_pool_opts kOtherClientsPool = {
+      /* read_sessions= */ 8, /* write_sessions= */ 1, /* sessions_per_conn= */ 0};
+  ybthin_client* other_client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        first_addrs, 1, /* tls= */ nullptr, &kOtherClientsPool, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &other_client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+
+  RoundRobinBalancer balancer({cluster_->mini_tablet_server(kFirstTs)->bound_rpc_addr(),
+                               cluster_->mini_tablet_server(kSecondTs)->bound_rpc_addr()});
+  std::unique_ptr<FileLock> port_lock;
+  const auto balancer_addr = HostPort("127.0.0.1", GetFreePort(&port_lock)).ToString();
+  ASSERT_OK(balancer.Start(ASSERT_RESULT(ParseEndpoint(balancer_addr, 0))));
+
+  const char* addrs[] = {balancer_addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, &kOneConnectionPool, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  const int32_t v_id = info.columns[1].id;
+
+  for (int round = 0; round < kRounds; ++round) {
+    auto out = UpsertKeys(
+        client, table, kHashKey, round * kRowsPerRound, (round + 1) * kRowsPerRound);
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+    ASSERT_EQ(
+        ASSERT_RESULT(ScanKeys(client, table, kHashKey, v_id, kPageLimit)).size(),
+        static_cast<size_t>((round + 1) * kRowsPerRound));
+  }
+  ASSERT_GT(PerformCount(kFirstTs), 0U);
+  ASSERT_EQ(PerformCount(kSecondTs), 0U) << "the pool's one connection should stay on one tserver";
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+  ybthin_client_destroy(other_client);
 }
 
 // The cluster runs with node-to-node encryption; the thin client connects over TLS, authenticating
