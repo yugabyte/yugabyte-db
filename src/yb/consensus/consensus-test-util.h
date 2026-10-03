@@ -505,10 +505,23 @@ class LocalTestPeerProxy : public TestPeerProxy {
                    LWConsensusResponsePB* response,
                    rpc::RpcController* controller,
                    const rpc::ResponseCallback& callback) override {
+    update_count_.fetch_add(1, std::memory_order_relaxed);
     RegisterCallback(Method::kUpdate, callback);
     auto request_copy = rpc::CopySharedMessage(*request);
     CHECK_OK(pool_->SubmitFunc(
         std::bind(&LocalTestPeerProxy::SendUpdateRequest, this, request_copy, response)));
+  }
+
+  // Holds every UpdateConsensus request for 'delay' before delivering it to the target peer, to
+  // emulate network latency. Responses are delivered without further delay, so one request costs
+  // one 'delay'.
+  void TEST_SetUpdateDelay(MonoDelta delay) {
+    update_delay_ms_.store(delay.ToMilliseconds(), std::memory_order_relaxed);
+  }
+
+  // Number of UpdateConsensus requests sent to the target peer.
+  size_t update_count() const {
+    return update_count_.load(std::memory_order_relaxed);
   }
 
   void RequestConsensusVoteAsync(const VoteRequestPB* request,
@@ -560,6 +573,11 @@ class LocalTestPeerProxy : public TestPeerProxy {
 
   void SendUpdateRequest(const std::shared_ptr<LWConsensusRequestPB>& request,
                          LWConsensusResponsePB* response) {
+    const auto delay_ms = update_delay_ms_.load(std::memory_order_relaxed);
+    if (delay_ms > 0) {
+      SleepFor(MonoDelta::FromMilliseconds(delay_ms));
+    }
+
     // Give the other peer a clean response object to write to.
     LWConsensusResponsePB other_peer_resp(&request->arena());
     std::shared_ptr<RaftConsensus> peer;
@@ -623,6 +641,8 @@ class LocalTestPeerProxy : public TestPeerProxy {
   const std::string peer_uuid_;
   TestPeerMapManager* const peers_;
   bool miss_comm_;
+  std::atomic<int64_t> update_delay_ms_{0};
+  std::atomic<size_t> update_count_{0};
 };
 
 class LocalTestPeerProxyFactory : public PeerProxyFactory {
