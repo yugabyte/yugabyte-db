@@ -5187,9 +5187,10 @@ yb_is_begin_transaction(CommandTag command_tag)
  * with minimum parsing.
  * Note: This function will always return false if
  * yb_non_ddl_txn_for_sys_tables_allowed is set to true.
+ * If include_explain is true, EXPLAIN of such a statement also counts.
  */
 static bool
-yb_is_dml_command(const char *query_string)
+yb_is_dml_command_ext(const char *query_string, bool include_explain)
 {
 	if (yb_non_ddl_txn_for_sys_tables_allowed)
 	{
@@ -5205,7 +5206,7 @@ yb_is_dml_command(const char *query_string)
 
 	/*
 	 * Detect and return false for replication commands since they are never a
-	 * DML. This is needed to avoid calling YbParseCommandTag for replication
+	 * DML. This is needed to avoid parsing replication
 	 * commands which have a different grammar (repl_gram.y) and will always
 	 * lead to a syntax error.
 	 */
@@ -5216,7 +5217,17 @@ yb_is_dml_command(const char *query_string)
 		return false;
 	}
 
-	CommandTag	command_tag = YbParseCommandTag(query_string);
+	List	   *parsetree_list = yb_parse_query_silently(query_string);
+
+	if (list_length(parsetree_list) == 0)
+		return false;
+
+	Node	   *stmt = linitial_node(RawStmt, parsetree_list)->stmt;
+
+	if (include_explain && IsA(stmt, ExplainStmt))
+		stmt = ((ExplainStmt *) stmt)->query;
+
+	CommandTag	command_tag = CreateCommandTag(stmt);
 
 	return (command_tag == CMDTAG_DELETE ||
 			command_tag == CMDTAG_INSERT ||
@@ -5224,13 +5235,20 @@ yb_is_dml_command(const char *query_string)
 			command_tag == CMDTAG_UPDATE);
 }
 
+static bool
+yb_is_dml_command(const char *query_string)
+{
+	return yb_is_dml_command_ext(query_string, false);
+}
+
 /*
- * Only retry supported commands.
+ * Only retry supported commands.  EXPLAIN of a DML is retryable too: e.g. it
+ * can hit a schema version mismatch while an index drop alters its table.
  */
 static bool
 yb_check_retry_allowed(const char *query_string)
 {
-	return yb_is_dml_command(query_string);
+	return yb_is_dml_command_ext(query_string, true);
 }
 
 static void
