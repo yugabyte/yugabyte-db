@@ -72,3 +72,6 @@ extern void YbApplySecondaryIndexPushdown(YbcPgStatement dml,
 										  const YbPushdownExprs *pushdown);
 
 extern Oid	ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
+
+/* True for a built-in aggregate DocDB knows how to evaluate. */
+extern bool YbAggPushdownFnIsBuiltin(Oid fnoid);
