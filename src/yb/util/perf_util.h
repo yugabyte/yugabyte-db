@@ -13,8 +13,9 @@
 
 #pragma once
 
-#include <string>
 #include <memory>
+#include <mutex>
+#include <string>
 
 #include "yb/util/result.h"
 #include "yb/util/subprocess.h"
@@ -35,6 +36,9 @@ class PerfProfiler {
   Result<PerfProfilerStopResult> Stop();
 
  private:
+  // Held from Start() until Stop() finishes. Every profiler writes the same files under
+  // storage_dir, so only one may be active per process.
+  std::unique_lock<std::mutex> active_lock_;
   std::unique_ptr<Subprocess> perf_proc_;
   std::string storage_dir_;
 };
