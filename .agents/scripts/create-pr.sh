@@ -455,7 +455,7 @@ trap 'rm -f "$combined_body"' EXIT
 gh_pr_create_args=(-R "$GH_REPO" -B "$base_branch" -H "$pr_head"
                    -t "$full_title" -F "$combined_body")
 # A stack layer always opens as a draft and is marked ready only after it is
-# linked, so the CI it triggers sees the stack metadata (bld-*.yml).
+# linked, so the CI that readiness triggers already sees a stack member.
 if (( draft )) || $is_stack_branch; then
   gh_pr_create_args+=(--draft)
 fi

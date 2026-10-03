@@ -216,7 +216,6 @@ A stack is for a feature that splits into several dependent changes. Reach for i
 - **The remote is the one pointing at `yugabyte/yugabyte-db`**, never your fork. Pass it wherever `gh stack` takes `--remote`.
 - **Push with `git-push.sh`, not `gh stack push`.** For a stack branch it lints the whole stack from the top layer, then runs `gh stack push`. The no-rewrite rule in [Pushing follow-up commits](#pushing-follow-up-commits) does not apply: GitHub merges a stack only when its history is linear, so cascading rebases and lease-protected force-pushes are the normal update, even mid-review. Never `git merge` the trunk or another layer into a stack branch.
 - **Open PRs with `create-pr.sh`, not `gh stack submit`**, one layer at a time from the bottom up, because `submit`'s generated titles fail the pr-title check. Don't pass `-b`. The script opens the PR as a draft, links it into the stack with `gh stack link`, and then marks it ready unless you passed `-D`.
-- **No need to hold upper layers in draft to save CI.** The `bld-*` workflows build only the bottom and top PRs of a stack. The layers between them run `NO-BLD`.
 
 ## Notes
 
