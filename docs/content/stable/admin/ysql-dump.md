@@ -80,6 +80,27 @@ Create the dump in the specified character set encoding. By default, the dump is
 
 Send output to the specified file. This parameter can be omitted for file-based output formats, in which case the standard output is used.
 
+#### -F *format*, --format=*format*
+
+Select the output format. *format* can be one of the following:
+
+- **`p`** — Plain-text SQL script (default). Restore with [ysqlsh](../../api/ysqlsh/) (for example, the `\i` meta-command) or by piping the script to `ysqlsh`.
+- **`c`** — Custom archive format. Restore with the `pg_restore` utility (installed with YugabyteDB under `postgres/bin`). Suitable for selective restore and compressed output.
+- **`d`** — Directory format: one file per table and other objects, written under the directory path given by `-f` / `--file`. This format is **required** when using more than one parallel job (`-j` / `--jobs`). Restore with `pg_restore`.
+- **`t`** — `tar` archive format. Restore with `pg_restore`.
+
+For more on non-plain formats, see the [PostgreSQL `pg_restore` documentation](https://www.postgresql.org/docs/current/app-pgrestore.html).
+
+#### -j *num*, --jobs=*num*
+
+Run the dump using *num* concurrent jobs. The default is `1` (no parallelism).
+
+Parallel dumps are supported only with **directory** format (`-Fd`). Using `-j` greater than `1` with plain (`p`), custom (`c`), or `tar` (`t`) format causes `ysql_dump` to exit with an error.
+
+Parallel dumps cannot be combined with [`--include-foreign-data`](#include-foreign-data-pattern).
+
+For a consistent dump, `ysql_dump` coordinates worker connections with a synchronized snapshot (unless you supply your own with [`--snapshot`](#snapshot-snapshotname)).
+
 #### -m *addresses*, --masters=*addresses*
 
 Comma-separated list of YB-Master hosts and ports.
@@ -191,6 +212,14 @@ To exclude data for all tables in the database, see [-s|--schema-only](#s-schema
 #### --if-exists
 
 Use conditional statements (that is, add an IF EXISTS clause) when cleaning database objects. This option is not valid unless `-c|--clean` is also specified.
+
+#### --include-foreign-data=*pattern*
+
+Include the row data for **foreign tables** whose foreign server name matches *pattern*. By default, `ysql_dump` dumps foreign table definitions but not the remote rows (reload would read from the foreign server at restore time). With this option, the dump copies the foreign table contents into the dump so they can be restored without contacting the original foreign server at restore time.
+
+The *pattern* is interpreted using the same rules as for [-n\|--schema](#n-schema-schema-schema) and [-t\|--table](#t-table-table-table). You can give `--include-foreign-data` more than once to select foreign servers matching any of several patterns.
+
+This option cannot be used together with [-s\|--schema-only](#s-schema-only), and is not supported with parallel dumps ([-j\|--jobs](#j-num-jobs-num) greater than `1`).
 
 #### --inserts
 
