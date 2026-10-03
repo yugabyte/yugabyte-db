@@ -19,6 +19,7 @@ var (
     DbYcqlPassword string
     SslMode        string
     SslRootCert    string
+    CertsDir       string
     MasterUIPort   string
     TserverUIPort  string
     Warnings       string
@@ -52,6 +53,9 @@ func init() {
         "ssl mode for connecting to the database.")
     flag.StringVar(&SslRootCert, "ssl_root certificate", "",
         "root certificate for connecting to the database.")
+    flag.StringVar(&CertsDir, "certs_dir_name", "",
+        "directory containing the certificates yb-admin needs to reach a cluster "+
+            "with node-to-node encryption enabled.")
     flag.StringVar(&MasterUIPort, "master_ui_port", "7000",
         "Master UI port.")
     flag.StringVar(&TserverUIPort, "tserver_ui_port", "9000",
