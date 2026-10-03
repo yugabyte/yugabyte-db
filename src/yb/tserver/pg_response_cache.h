@@ -56,6 +56,7 @@ class PgResponseCache {
 
     std::shared_ptr<LWPgPerformResponsePB> response;
     std::vector<RefCntSlice> rows_data;
+    size_t response_memory_footprint = 0;
   };
 
   using Setter = std::function<void(Response&&)>;
