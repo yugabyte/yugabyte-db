@@ -686,6 +686,40 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(metrics.cache.queries, metrics.cache.hits);
 }
 
+class PgCatalogShortRpcDeadlineTest : public PgCatalogWithUnlimitedCachePerfTest {
+ protected:
+  static constexpr int kRpcDeadlineMs = 2000;
+  static constexpr int kPgClientExtraTimeoutMs = 1000;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = kRpcDeadlineMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_extra_timeout_ms) = kPgClientExtraTimeoutMs;
+    PgCatalogWithUnlimitedCachePerfTest::SetUp();
+  }
+};
+
+// Test that the response cache is used even after the RPC deadline has passed.
+TEST_F_EX(PgCatalogPerfTest,
+          ResponseCacheValidPastReadinessDeadline,
+          PgCatalogShortRpcDeadlineTest) {
+  // Warm up catalog's response cache.
+  ASSERT_RESULT(Connect());
+
+  const auto total_deadline_ms =
+      PgCatalogShortRpcDeadlineTest::kRpcDeadlineMs +
+      PgCatalogShortRpcDeadlineTest::kPgClientExtraTimeoutMs;
+  std::this_thread::sleep_for(std::chrono::milliseconds(
+      total_deadline_ms + ReleaseVsDebugVsAsanVsTsan(4000, 8000, 10000, 16000)));
+
+  // Ensure new connections use the response cache.
+  auto metrics = ASSERT_RESULT(metrics_->Delta([this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+  ASSERT_GT(metrics.cache.queries, 0);
+  ASSERT_EQ(metrics.cache.queries, metrics.cache.hits);
+}
+
 // The test checks response cache renewing process in case of 'Snapshot too old' error.
 // This error is possible in the following situation:
 //   - several days ago at time T1 first connection was established to DB
