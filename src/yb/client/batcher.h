@@ -38,6 +38,7 @@
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/error_collector.h"
+#include "yb/client/request_id_allocator.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
@@ -92,8 +93,11 @@ struct InFlightOpsGroupsWithMetadata {
 struct RequestDetails {
   RetryableRequestId min_running_request_id;
 
-  explicit RequestDetails(RetryableRequestId min_running_request_id_) :
-      min_running_request_id(min_running_request_id_) {}
+  // Keeps the id's block alive; used to report completion to the request id allocator.
+  RequestIdBlockPtr block;
+
+  explicit RequestDetails(const RequestIdAllocation& allocation) :
+      min_running_request_id(allocation.min_running), block(allocation.block) {}
 };
 
 using BatcherRequestsMap = std::unordered_map<RetryableRequestId, RequestDetails>;
@@ -256,13 +260,12 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   server::Clock* Clock() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+  RequestIdAllocation NextRequestIdAndMinRunningRequestId();
 
   void RequestsFinished();
 
-  void RegisterRequest(
-      RetryableRequestId id, RetryableRequestId min_running_id) {
-    retryable_requests_.emplace(id, RequestDetails(min_running_id));
+  void RegisterRequest(const RequestIdAllocation& allocation) {
+    retryable_requests_.emplace(allocation.id, RequestDetails(allocation));
   }
 
   void MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id);
