@@ -365,7 +365,9 @@ Status TabletVectorIndexes::DoCreateIndex(
       vector_index_thread_pool_provider, indexed_table->doc_read_context->table_key_prefix(),
       index_table.hybrid_time, metadata().split_generation(),
       *index_table.index_info, std::move(index_context),
-      block_cache_, MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
+      // A shut down index of a replaced storage (e.g. truncate) could still be referenced, e.g. by
+      // an aborted backfill, so its tracker could still exist.
+      block_cache_, MemTracker::FindOrCreateTracker(-1, index_table.table_id, mem_tracker_),
       vector_index_metric_entity));
   vector_index->SetDeactivatedHybridTime(index_table.vector_index_deactivated_ht);
 
