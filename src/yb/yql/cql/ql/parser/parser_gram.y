@@ -85,6 +85,7 @@
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
+#include "yb/yql/cql/ql/ptree/pt_list_roles_permissions.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
@@ -156,6 +157,7 @@ typedef PTName::SharedPtr              PName;
 typedef PTIndexColumnPtr       PIndexColumn;
 typedef PTQualifiedName::SharedPtr     PQualifiedName;
 typedef PTQualifiedNameListNode::SharedPtr PQualifiedNameListNode;
+typedef PTListResource                 PListResource;
 
 typedef PTBaseType::SharedPtr          PType;
 typedef PTCharBaseType::SharedPtr      PCharBaseType;
@@ -242,6 +244,9 @@ using namespace yb::ql;
 
                           // Revoke.
                           RevokeStmt RevokeRoleStmt
+
+                          // List roles / permissions.
+                          ListRolesStmt ListPermissionsStmt
 
                           // Select.
                           distinct_clause opt_all_clause
@@ -396,7 +401,7 @@ using namespace yb::ql;
                           opt_collate opt_class udt_name
 
 %type <PString>           // Identifier name.
-                          ColId role_name permission permissions
+                          ColId role_name permission permissions opt_list_of_role
                           alias_clause opt_alias_clause
 
 // Precision for datatype FLOAT in declarations for columns or any other entities.
@@ -406,6 +411,9 @@ using namespace yb::ql;
 %type <KeywordType>       col_name_keyword reserved_keyword
 
 %type <PBool>             boolean opt_else_clause opt_returns_clause opt_json_clause_default_null
+                          opt_norecursive
+
+%type <PListResource>     opt_list_resource
 
 //--------------------------------------------------------------------------------------------------
 // Inactive tree node declarations (%type).
@@ -644,8 +652,8 @@ using namespace yb::ql;
                           MAP MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MODIFY
                           MONTH_P MOVE
 
-                          NAME_P NAMES NAN NATIONAL NATURAL NCHAR NEXT NO NONE NOT NOTHING NOTIFY
-                          NOTNULL NOWAIT NULL_P NULLIF NULLS_P NUMERIC
+                          NAME_P NAMES NAN NATIONAL NATURAL NCHAR NEXT NO NONE NORECURSIVE NOT
+                          NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF NULLS_P NUMERIC
 
                           OBJECT_P OF OFF OFFSET OIDS ON ONLY OPERATOR OPTION OPTIONS OR ORDER
                           ORDINALITY OUT_P OUTER_P OVER OVERLAPS OVERLAY OWNED OWNER
@@ -729,6 +737,12 @@ using namespace yb::ql;
 
 //--------------------------------------------------------------------------------------------------
 // Precedence: lowest to highest.
+// LIST permissions ON ROLE role_name: in "ON ROLE OF ..." and "ON ROLE NORECURSIVE", read ROLE as
+// the start of the ROLE resource (a role named "of" / "norecursive") rather than as a bare table
+// named "role". A table named "role" can still be listed with "ON TABLE role". See
+// opt_list_resource.
+%nonassoc   ROLE
+%nonassoc   OF NORECURSIVE
 %nonassoc   SET                                                      // see relation_expr_opt_alias.
 %left       UNION EXCEPT
 %left       INTERSECT
@@ -927,6 +941,12 @@ stmt:
   }
   | RevokeRoleStmt {
       $$ = $1;
+  }
+  | ListRolesStmt {
+    $$ = $1;
+  }
+  | ListPermissionsStmt {
+    $$ = $1;
   }
   | TruncateStmt {
     $$ = $1;
@@ -5184,6 +5204,7 @@ unreserved_keyword:
   | NAMES { $$ = $1; }
   | NEXT { $$ = $1; }
   | NO { $$ = $1; }
+  | NORECURSIVE { $$ = $1; }
   | NOTHING { $$ = $1; }
   | NOTIFY { $$ = $1; }
   | NOWAIT { $$ = $1; }
@@ -8006,6 +8027,70 @@ function_with_argtypes_list:
 
 function_with_argtypes:
   func_name func_args {
+  }
+;
+
+/*****************************************************************************
+ *
+ * LIST ROLES and LIST PERMISSIONS statements (Apache Cassandra 3.11 syntax):
+ *
+ *   LIST ROLES [ OF role_name ] [ NORECURSIVE ]
+ *   LIST permissions [ ON resource ] [ OF role_name ] [ NORECURSIVE ]
+ *
+ * "permissions" and "resource" are the same as in GRANT / REVOKE.
+ *
+ *****************************************************************************/
+ListRolesStmt:
+  LIST ROLES opt_list_of_role opt_norecursive {
+    $$ = MAKE_NODE(@1, PTListRoles, $3, !$4 /* recursive */);
+  }
+;
+
+ListPermissionsStmt:
+  LIST permissions opt_list_resource opt_list_of_role opt_norecursive {
+    $$ = MAKE_NODE(@1, PTListPermissions, $2, $3, $4, !$5 /* recursive */);
+  }
+;
+
+opt_list_resource:
+  /*EMPTY*/ {
+    $$ = PListResource();
+  }
+  | ON ALL KEYSPACES {
+    $$ = PListResource{true, ResourceType::ALL_KEYSPACES, nullptr};
+  }
+  | ON KEYSPACE ColId {
+    $$ = PListResource{true, ResourceType::KEYSPACE, MAKE_NODE(@3, PTQualifiedName, $3)};
+  }
+  | ON TABLE qualified_name {
+    $$ = PListResource{true, ResourceType::TABLE, $3};
+  }
+  | ON qualified_name {
+    $$ = PListResource{true, ResourceType::TABLE, $2};
+  }
+  | ON ALL ROLES {
+    $$ = PListResource{true, ResourceType::ALL_ROLES, nullptr};
+  }
+  | ON ROLE role_name {
+    $$ = PListResource{true, ResourceType::ROLE, MAKE_NODE(@3, PTQualifiedName, $3)};
+  }
+;
+
+opt_list_of_role:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | OF role_name {
+    $$ = $2;
+  }
+;
+
+opt_norecursive:
+  /*EMPTY*/ {
+    $$ = false;
+  }
+  | NORECURSIVE {
+    $$ = true;
   }
 ;
 

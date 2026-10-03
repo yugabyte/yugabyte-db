@@ -66,6 +66,8 @@ Statement | Description |
 [REVOKE PERMISSION](ddl_revoke_permission/) | Revoke a permission on an object from a role |
 [GRANT ROLE](ddl_grant_role/) | Grant a role to another role |
 [REVOKE ROLE](ddl_revoke_role/) | Revoke a role from another role |
+[LIST ROLES](ddl_list_roles/) | List roles and the roles granted to them |
+[LIST PERMISSIONS](ddl_list_permissions/) | List the permissions granted to roles |
 
 ## DML statements
 

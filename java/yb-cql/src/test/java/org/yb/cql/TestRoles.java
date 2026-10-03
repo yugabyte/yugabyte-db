@@ -14,9 +14,17 @@ package org.yb.cql;
 
 import static org.yb.AssertionWrappers.*;
 
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.ColumnDefinitions;
+import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
 import com.datastax.driver.core.exceptions.SyntaxError;
+import com.datastax.driver.core.policies.RoundRobinPolicy;
+import com.datastax.driver.core.policies.WhiteListPolicy;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -24,11 +32,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 
 
 @RunWith(value=YBTestRunner.class)
@@ -625,12 +635,14 @@ public class TestRoles extends BaseAuthenticationCQLTest {
 
     final List<String> DESCRIBE_LIST = Arrays.asList(DESCRIBE);
 
-    // Grant describe on a role.
+    // Grant describe on a role. Allowed, as in Cassandra.
     String canonicalResource = "roles/" + roles.get(2);
-    expectDescribeSyntaxError(GrantPermissionRoleStmt(DESCRIBE, roles.get(2), roles.get(1)));
+    session.execute(GrantPermissionRoleStmt(DESCRIBE, roles.get(2), roles.get(1)));
+    assertPermissionsGranted(session, roles.get(1), canonicalResource, DESCRIBE_LIST);
 
     // Revoke describe on a role.
-    expectDescribeSyntaxError(RevokePermissionRoleStmt(DESCRIBE, roles.get(2), roles.get(1)));
+    session.execute(RevokePermissionRoleStmt(DESCRIBE, roles.get(2), roles.get(1)));
+    assertPermissionsGranted(session, roles.get(1), canonicalResource, new ArrayList<>());
 
     // Grant describe on all roles.
     canonicalResource = "roles";
@@ -695,5 +707,224 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Verify that we can connect as cassandra role as it gets regenerated with flag disabled
     checkConnectivity(true, cassandra_user, cassandra_user, false);
     markClusterNeedsRecreation();
+  }
+
+
+  // ----------------------------------------------------------------------------------------------
+  // LIST ROLES / LIST PERMISSIONS (Apache Cassandra 3.11 semantics).
+
+  /**
+   * Creates the fixture used to record Apache Cassandra 3.11.19's behavior, with names prefixed
+   * by {@code p}: p_alice (login) <- p_parent <- p_grandparent; p_other (login) is unrelated;
+   * p_descr (login) has DESCRIBE ON ALL ROLES. Grants: p_alice MODIFY <table p_ks.t>; p_parent
+   * SELECT <keyspace p_ks>; p_grandparent SELECT <all keyspaces> and ALTER <role p_other>;
+   * p_other SELECT <table p_ks.t>.
+   */
+  private void createListFixture(String p) throws Exception {
+    for (String stmt : Arrays.asList(
+        "CREATE KEYSPACE %1$s_ks",
+        "CREATE TABLE %1$s_ks.t (k int PRIMARY KEY, v int)",
+        "CREATE ROLE %1$s_alice WITH LOGIN = true AND PASSWORD = 'a'",
+        "CREATE ROLE %1$s_parent",
+        "CREATE ROLE %1$s_grandparent",
+        "CREATE ROLE %1$s_other WITH LOGIN = true AND PASSWORD = 'o'",
+        "CREATE ROLE %1$s_descr WITH LOGIN = true AND PASSWORD = 'd'",
+        "GRANT %1$s_grandparent TO %1$s_parent",
+        "GRANT %1$s_parent TO %1$s_alice",
+        "GRANT SELECT ON KEYSPACE %1$s_ks TO %1$s_parent",
+        "GRANT MODIFY ON TABLE %1$s_ks.t TO %1$s_alice",
+        "GRANT SELECT ON ALL KEYSPACES TO %1$s_grandparent",
+        "GRANT ALTER ON ROLE %1$s_other TO %1$s_grandparent",
+        "GRANT SELECT ON TABLE %1$s_ks.t TO %1$s_other",
+        "GRANT DESCRIBE ON ALL ROLES TO %1$s_descr")) {
+      session.execute(String.format(stmt, p));
+    }
+  }
+
+  /** LIST ROLES rows as "role|super|login|number of options". */
+  private static List<String> roleRows(ResultSet rs) {
+    List<String> rows = new ArrayList<>();
+    for (Row row : rs) {
+      rows.add(String.format("%s|%s|%s|%d", row.getString("role"), row.getBool("super"),
+          row.getBool("login"), row.getMap("options", String.class, String.class).size()));
+    }
+    return rows;
+  }
+
+  /** LIST PERMISSIONS rows as "role|username|resource|permission". */
+  private static List<String> permissionRows(ResultSet rs) {
+    List<String> rows = new ArrayList<>();
+    for (Row row : rs) {
+      rows.add(String.format("%s|%s|%s|%s", row.getString("role"), row.getString("username"),
+          row.getString("resource"), row.getString("permission")));
+    }
+    return rows;
+  }
+
+  /**
+   * Checks the result's column names and types. The native protocol has one type code for
+   * text/varchar, which the driver prints as "varchar".
+   */
+  private static void assertColumns(ResultSet rs, String... namesAndTypes) {
+    ColumnDefinitions columns = rs.getColumnDefinitions();
+    assertEquals(namesAndTypes.length / 2, columns.size());
+    for (int i = 0; i < columns.size(); i++) {
+      assertEquals(namesAndTypes[2 * i], columns.getName(i));
+      assertEquals(namesAndTypes[2 * i + 1], columns.getType(i).toString());
+    }
+  }
+
+  @Test
+  public void testListRoles() throws Exception {
+    final String p = "lr";
+    createListFixture(p);
+
+    ResultSet rs = session.execute("LIST ROLES OF lr_alice");
+    assertColumns(rs, "role", "varchar", "super", "boolean", "login", "boolean",
+        "options", "map<varchar, varchar>");
+    assertEquals(Arrays.asList(
+        "lr_alice|false|true|0", "lr_grandparent|false|false|0", "lr_parent|false|false|0"),
+        roleRows(rs));
+    assertEquals(Arrays.asList("lr_alice|false|true|0", "lr_parent|false|false|0"),
+        roleRows(session.execute("LIST ROLES OF lr_alice NORECURSIVE")));
+
+    // Bare LIST ROLES as a superuser lists every role, sorted by name.
+    List<String> all = roleRows(session.execute("LIST ROLES"));
+    assertTrue(all.contains("cassandra|true|true|0"));
+    assertTrue(all.contains("lr_descr|false|true|0"));
+    List<String> sorted = new ArrayList<>(all);
+    Collections.sort(sorted);
+    assertEquals(sorted, all);
+
+    runInvalidStmt(new SimpleStatement("LIST ROLES OF lr_ghost"), session,
+        "<role lr_ghost> doesn't exist");
+  }
+
+  @Test
+  public void testListPermissions() throws Exception {
+    final String p = "lp";
+    createListFixture(p);
+
+    // Grants inherited through role membership are included, with the holder in the role column.
+    // username is the role name, even for roles that cannot log in. NORECURSIVE does not drop
+    // inherited grants.
+    List<String> alicePermissions = Arrays.asList(
+        "lp_alice|lp_alice|<table lp_ks.t>|MODIFY",
+        "lp_grandparent|lp_grandparent|<all keyspaces>|SELECT",
+        "lp_grandparent|lp_grandparent|<role lp_other>|ALTER",
+        "lp_parent|lp_parent|<keyspace lp_ks>|SELECT");
+    ResultSet rs = session.execute("LIST ALL PERMISSIONS OF lp_alice");
+    assertColumns(rs, "role", "varchar", "username", "varchar", "resource", "varchar",
+        "permission", "varchar");
+    assertEquals(alicePermissions, permissionRows(rs));
+    assertEquals(alicePermissions,
+        permissionRows(session.execute("LIST ALL OF lp_alice NORECURSIVE")));
+
+    // ON TABLE includes the parent resources; the permission filter applies.
+    assertEquals(Arrays.asList(
+        "lp_alice|lp_alice|<table lp_ks.t>|MODIFY",
+        "lp_grandparent|lp_grandparent|<all keyspaces>|SELECT",
+        "lp_parent|lp_parent|<keyspace lp_ks>|SELECT"),
+        permissionRows(session.execute("LIST ALL ON TABLE lp_ks.t OF lp_alice")));
+    assertEquals(Arrays.asList(
+        "lp_grandparent|lp_grandparent|<all keyspaces>|SELECT",
+        "lp_parent|lp_parent|<keyspace lp_ks>|SELECT"),
+        permissionRows(session.execute("LIST SELECT ON TABLE lp_ks.t OF lp_alice")));
+    // NORECURSIVE drops the parent resources only.
+    assertEquals(Arrays.asList("lp_parent|lp_parent|<keyspace lp_ks>|SELECT"),
+        permissionRows(session.execute("LIST ALL ON KEYSPACE lp_ks OF lp_alice NORECURSIVE")));
+    // ON ROLE includes the <all roles> parent.
+    assertEquals(Arrays.asList("lp_descr|lp_descr|<all roles>|DESCRIBE"),
+        permissionRows(session.execute("LIST DESCRIBE ON ROLE lp_other OF lp_descr")));
+    // A permission that does not apply to the resource type is not an error.
+    assertTrue(session.execute("LIST SELECT ON ROLE lp_other").all().isEmpty());
+
+    // Cassandra's permission order.
+    session.execute("CREATE ROLE lp_ordered");
+    session.execute("GRANT ALL ON KEYSPACE lp_ks TO lp_ordered");
+    assertEquals(Arrays.asList(
+        "lp_ordered|lp_ordered|<keyspace lp_ks>|CREATE",
+        "lp_ordered|lp_ordered|<keyspace lp_ks>|ALTER",
+        "lp_ordered|lp_ordered|<keyspace lp_ks>|DROP",
+        "lp_ordered|lp_ordered|<keyspace lp_ks>|SELECT",
+        "lp_ordered|lp_ordered|<keyspace lp_ks>|MODIFY",
+        "lp_ordered|lp_ordered|<keyspace lp_ks>|AUTHORIZE"),
+        permissionRows(session.execute("LIST ALL OF lp_ordered")));
+
+    // No match: a void result, as in Cassandra.
+    rs = session.execute("LIST MODIFY ON ALL ROLES OF lp_alice");
+    assertEquals(0, rs.getColumnDefinitions().size());
+    assertTrue(rs.all().isEmpty());
+
+    runInvalidStmt(new SimpleStatement("LIST ALL ON TABLE lp_ks.nope"), session,
+        "<table lp_ks.nope> doesn't exist");
+    runInvalidStmt(new SimpleStatement("LIST ALL ON KEYSPACE lp_nokeys"), session,
+        "<keyspace lp_nokeys> doesn't exist");
+    runInvalidStmt(new SimpleStatement("LIST ALL ON ROLE lp_ghost"), session,
+        "<role lp_ghost> doesn't exist");
+  }
+
+  @Test
+  public void testListIsNotPagedAndCanBePrepared() throws Exception {
+    final String p = "lpp";
+    createListFixture(p);
+    session.execute("CREATE ROLE lpp_ordered");
+    session.execute("GRANT ALL ON KEYSPACE lpp_ks TO lpp_ordered");
+
+    // Like Cassandra, LIST ignores the fetch size and returns every row in one page.
+    ResultSet rs = session.execute(
+        new SimpleStatement("LIST ALL OF lpp_ordered").setFetchSize(2));
+    assertNull(rs.getExecutionInfo().getPagingState());
+    assertEquals(6, rs.getAvailableWithoutFetching());
+    rs = session.execute(new SimpleStatement("LIST ROLES OF lpp_alice").setFetchSize(1));
+    assertNull(rs.getExecutionInfo().getPagingState());
+    assertEquals(3, rs.getAvailableWithoutFetching());
+
+    // Prepared LIST statements have no bind variables and return the column metadata with the
+    // rows (PREPARE returns no result metadata, as in Cassandra).
+    PreparedStatement listRoles = session.prepare("LIST ROLES OF lpp_alice NORECURSIVE");
+    assertEquals(0, listRoles.getVariables().size());
+    for (int i = 0; i < 2; i++) {
+      rs = session.execute(listRoles.bind());
+      assertColumns(rs, "role", "varchar", "super", "boolean", "login", "boolean",
+          "options", "map<varchar, varchar>");
+      assertEquals(Arrays.asList("lpp_alice|false|true|0", "lpp_parent|false|false|0"),
+          roleRows(rs));
+    }
+    PreparedStatement listPermissions =
+        session.prepare("LIST ALL ON KEYSPACE lpp_ks OF lpp_alice NORECURSIVE");
+    assertEquals(Arrays.asList("lpp_parent|lpp_parent|<keyspace lpp_ks>|SELECT"),
+        permissionRows(session.execute(listPermissions.bind())));
+  }
+
+  @Test
+  public void testListReflectsGrantOnAnotherTServer() throws Exception {
+    List<InetSocketAddress> tservers = miniCluster.getCQLContactPoints();
+    assertTrue(tservers.size() >= 2);
+    session.execute("CREATE ROLE lx_role");
+    // One session per tserver, so that the GRANT and the LIST run on different tservers. LIST
+    // reads the role catalog from the master, so the result does not depend on the second
+    // tserver's permissions cache having caught up.
+    try (Cluster clusterA = pinnedClusterBuilder(tservers.get(0)).build();
+         Cluster clusterB = pinnedClusterBuilder(tservers.get(1)).build()) {
+      Session a = clusterA.connect();
+      Session b = clusterB.connect();
+      final String list = "LIST ALL ON ALL KEYSPACES OF lx_role NORECURSIVE";
+      for (int i = 0; i < 3; i++) {
+        a.execute("GRANT CREATE ON ALL KEYSPACES TO lx_role");
+        assertEquals(Arrays.asList("lx_role|lx_role|<all keyspaces>|CREATE"),
+            permissionRows(b.execute(list)));
+        a.execute("REVOKE CREATE ON ALL KEYSPACES FROM lx_role");
+        assertTrue(permissionRows(b.execute(list)).isEmpty());
+      }
+    }
+  }
+
+  private Cluster.Builder pinnedClusterBuilder(InetSocketAddress tserver) {
+    return Cluster.builder()
+        .addContactPointsWithPorts(Collections.singletonList(tserver))
+        .withLoadBalancingPolicy(
+            new WhiteListPolicy(new RoundRobinPolicy(), Collections.singletonList(tserver)))
+        .withCredentials("cassandra", "cassandra");
   }
 }
