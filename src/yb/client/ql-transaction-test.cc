@@ -2018,6 +2018,13 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
       request->mutable_committed_op_id()->set_index(4);
     }
   });
+  // The callbacks capture locals of this test. Clear them before they dangle, or a later test in
+  // the same process that enables sync points runs them.
+  auto sync_point_cleanup = ScopeExit([&sync_point] {
+    sync_point.DisableProcessing();
+    sync_point.ClearAllCallBacks();
+    sync_point.ClearTrace();
+  });
 
   sync_point.EnableProcessing();
 
