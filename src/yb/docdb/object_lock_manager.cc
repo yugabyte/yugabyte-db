@@ -445,10 +445,14 @@ class ObjectLockManagerImpl {
       std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner)
       EXCLUDES(global_mutex_);
 
+  void UpdateStatusTablet(TransactionId txn_id, const TabletId& status_tablet)
+      EXCLUDES(global_mutex_);
+
   size_t TEST_LocksSize(LocksMapType locks_map);
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
-  LockStateMap TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
+  LockStateMap TEST_GetLockStateMapForTxn(TransactionId txn) const;
+  TabletId TEST_GetStatusTabletForTxn(TransactionId txn) const;
 
  private:
   friend struct WaiterEntry;
@@ -463,7 +467,9 @@ class ObjectLockManagerImpl {
   void ReleaseExclusiveLockIntents(
       std::span<const LockBatchEntry<ObjectLockManager>> key_to_intent_type);
 
-  TrackedTxnLockEntryPtr GetTransactionEntryUnlocked(const TransactionId& txn_id)
+  TrackedTxnLockEntryPtr GetTransactionEntryIfExists(TransactionId txn_id)
+      const EXCLUDES(global_mutex_);
+  TrackedTxnLockEntryPtr GetTransactionEntryUnlocked(TransactionId txn_id)
       REQUIRES(global_mutex_);
 
   // Make sure the entries exist in the locks_ map and return pointers so we can access
@@ -757,8 +763,19 @@ void ObjectLockManagerImpl::ReleaseExclusiveLockIntents(
   }
 }
 
-TrackedTxnLockEntryPtr ObjectLockManagerImpl::GetTransactionEntryUnlocked(
-    const TransactionId& txn_id) {
+TrackedTxnLockEntryPtr ObjectLockManagerImpl::GetTransactionEntryIfExists(
+    TransactionId txn_id) const {
+  {
+    std::lock_guard lock(global_mutex_);
+    auto txn_it = txn_locks_.find(txn_id);
+    if (txn_it == txn_locks_.end()) {
+      return nullptr;
+    }
+    return txn_it->second;
+  }
+}
+
+TrackedTxnLockEntryPtr ObjectLockManagerImpl::GetTransactionEntryUnlocked(TransactionId txn_id) {
   // TODO: Should we switch similar logic of allocation and reuse as with lock entries?
   const auto& [it, _] = txn_locks_.emplace(txn_id, std::make_shared<TrackedTransactionLockEntry>());
   return it->second;
@@ -1593,6 +1610,15 @@ void ObjectLockManagerImpl::PopulateObjectLockWaiterBlockers(
   }
 }
 
+void ObjectLockManagerImpl::UpdateStatusTablet(
+    TransactionId txn_id, const TabletId& status_tablet) {
+  if (auto txn_entry = GetTransactionEntryIfExists(txn_id)) {
+    std::lock_guard txn_lock(txn_entry->mutex);
+    txn_entry->status_tablet = status_tablet;
+    VLOG_WITH_FUNC(1) << "Updated status tablet for " << txn_id << " to " << status_tablet;
+  }
+}
+
 void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
     std::ostream& out, std::string_view caption, LocksMapType locks_map) {
   out << R"(
@@ -1646,18 +1672,20 @@ size_t ObjectLockManagerImpl::TEST_WaitingLocksSize() {
   return TEST_LocksSize(LocksMapType::kWaiting);
 }
 
-LockStateMap ObjectLockManagerImpl::TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
-  TrackedTxnLockEntryPtr txn_entry;
-  {
-    std::lock_guard lock(global_mutex_);
-    auto txn_it = txn_locks_.find(txn);
-    if (txn_it == txn_locks_.end()) {
-      return {};
-    }
-    txn_entry = txn_it->second;
+LockStateMap ObjectLockManagerImpl::TEST_GetLockStateMapForTxn(TransactionId txn) const {
+  if (auto txn_entry = GetTransactionEntryIfExists(txn)) {
+    std::lock_guard txn_lock(txn_entry->mutex);
+    return txn_entry->existing_states;
   }
-  std::lock_guard txn_lock(txn_entry->mutex);
-  return txn_entry->existing_states;
+  return {};
+}
+
+TabletId ObjectLockManagerImpl::TEST_GetStatusTabletForTxn(TransactionId txn) const {
+  if (auto txn_entry = GetTransactionEntryIfExists(txn)) {
+    std::lock_guard txn_lock(txn_entry->mutex);
+    return txn_entry->status_tablet;
+  }
+  return {};
 }
 
 ObjectLockManager::ObjectLockManager(
@@ -1722,6 +1750,10 @@ void ObjectLockManager::PopulateObjectLockWaiterBlockers(
   impl_->PopulateObjectLockWaiterBlockers(blockers_by_owner);
 }
 
+void ObjectLockManager::UpdateStatusTablet(TransactionId txn_id, const TabletId& status_tablet) {
+  impl_->UpdateStatusTablet(txn_id, status_tablet);
+}
+
 size_t ObjectLockManager::TEST_GrantedLocksSize() {
   return impl_->TEST_GrantedLocksSize();
 }
@@ -1730,8 +1762,12 @@ size_t ObjectLockManager::TEST_WaitingLocksSize() {
   return impl_->TEST_WaitingLocksSize();
 }
 
-LockStateMap ObjectLockManager::TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
+LockStateMap ObjectLockManager::TEST_GetLockStateMapForTxn(TransactionId txn) const {
   return impl_->TEST_GetLockStateMapForTxn(txn);
+}
+
+TabletId ObjectLockManager::TEST_GetStatusTabletForTxn(TransactionId txn) const {
+  return impl_->TEST_GetStatusTabletForTxn(txn);
 }
 
 }  // namespace yb::docdb

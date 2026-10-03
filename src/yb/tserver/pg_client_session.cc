@@ -1261,9 +1261,12 @@ class TransactionProvider {
 
   TransactionProvider(
       PgClientSession::TransactionBuilder&& builder,
+      tserver::TSLocalLockManager* ts_lock_manager,
       docdb::ObjectLockOwnerRegistry* lock_owner_registry,
       docdb::ObjectLockSharedState* object_lock_shared_state)
-      : builder_(std::move(builder)), lock_owner_registry_(lock_owner_registry),
+      : builder_(std::move(builder)),
+        ts_lock_manager_(ts_lock_manager),
+        lock_owner_registry_(lock_owner_registry),
         object_lock_shared_state_(object_lock_shared_state),
         object_lock_registration_(std::make_shared<ObjectLockRegistration>()) {}
 
@@ -1319,6 +1322,7 @@ class TransactionProvider {
   Result<TransactionMetadata> NextTxnMetaForPlain(
       TransactionFullLocality locality, CoarseTimePoint deadline) {
     client::internal::InFlightOpsGroupsWithMetadata ops_info;
+    bool new_txn = false;
     if (!next_plain_) {
       VLOG_WITH_FUNC(1) << "requesting new transaction of locality " << locality;
       auto txn = Build(locality, deadline, {});
@@ -1332,6 +1336,7 @@ class TransactionProvider {
       }
       RETURN_NOT_OK(synchronizer.Wait());
       next_plain_.swap(txn);
+      new_txn = true;
     } else {
       VLOG_WITH_FUNC(1) << "trying to reuse existing transaction " << next_plain_->id();
     }
@@ -1339,24 +1344,43 @@ class TransactionProvider {
     auto metadata = VERIFY_RESULT(next_plain_->metadata());
     next_plain_->SetStartTimeIfNecessary();
 
-    std::lock_guard lock(object_lock_registration_->mutex);
-    if (object_lock_shared_state_ &&
-        (!object_lock_registration_->guard ||
-         object_lock_registration_->guard->txn_id() != metadata.transaction_id)) {
-      object_lock_registration_->guard.reset();
-      object_lock_registration_->guard.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
-          *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
+    if (new_txn) {
+      std::lock_guard lock(object_lock_registration_->mutex);
+      if (object_lock_shared_state_ &&
+          (!object_lock_registration_->guard ||
+           object_lock_registration_->guard->txn_id() != metadata.transaction_id)) {
+        object_lock_registration_->guard.reset();
+        object_lock_registration_->guard.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
+            *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
 
-      next_plain_->RemoteAbortCallback([
+        next_plain_->RemoteAbortCallback([
+            registration_ptr = std::weak_ptr{object_lock_registration_},
+            transaction_id = metadata.transaction_id] {
+          if (auto registration = registration_ptr.lock()) {
+            std::lock_guard lock(registration->mutex);
+            if (registration->guard && registration->guard->txn_id() == transaction_id) {
+              VLOG_WITH_FUNC(1) << "Clearing lock owner registration for remote aborted txn "
+                                << transaction_id;
+              registration->guard.reset();
+            }
+          }
+        });
+      }
+
+      next_plain_->PromotionCallback([
+          ts_lock_manager = ts_lock_manager_,
+          lock_owner_registry = lock_owner_registry_,
           registration_ptr = std::weak_ptr{object_lock_registration_},
-          transaction_id = metadata.transaction_id] {
+          transaction_id = metadata.transaction_id](TabletId status_tablet) {
         if (auto registration = registration_ptr.lock()) {
           std::lock_guard lock(registration->mutex);
           if (registration->guard && registration->guard->txn_id() == transaction_id) {
-            VLOG_WITH_FUNC(1) << "Clearing lock owner registration for remote aborted txn "
-                              << transaction_id;
-            registration->guard.reset();
+            lock_owner_registry->UpdateRegistrationStatusTablet(
+                *registration->guard, status_tablet);
           }
+        }
+        if (ts_lock_manager) {
+          ts_lock_manager->UpdateStatusTablet(transaction_id, std::move(status_tablet));
         }
       });
     }
@@ -1403,6 +1427,7 @@ class TransactionProvider {
   }
 
   const PgClientSession::TransactionBuilder builder_;
+  tserver::TSLocalLockManager* ts_lock_manager_ = nullptr;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry_ = nullptr;
   docdb::ObjectLockSharedState* object_lock_shared_state_;
   std::shared_ptr<ObjectLockRegistration> object_lock_registration_;
@@ -1740,7 +1765,7 @@ class PgClientSession::Impl {
         ts_lock_manager_(std::move(lock_manager)),
         object_lock_shared_state_(std::move(object_lock_shared_state)),
         transaction_provider_(
-            std::move(transaction_builder), context_.lock_owner_registry,
+            std::move(transaction_builder), ts_lock_manager_.get(), context_.lock_owner_registry,
             object_lock_shared_state_ ? object_lock_shared_state_->get() : nullptr),
         big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_, pid_)) {}

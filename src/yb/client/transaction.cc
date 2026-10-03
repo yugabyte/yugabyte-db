@@ -1490,6 +1490,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     remote_abort_callback_ = std::move(callback);
   }
 
+  void PromotionCallback(std::function<void(TabletId)> callback) {
+    std::lock_guard lock(mutex_);
+    promotion_callback_ = std::move(callback);
+  }
+
  private:
   void CompleteConstruction() {
     LOG_IF(FATAL, !IsAcceptableAtomicImpl(log_prefix_.tag));
@@ -1915,6 +1920,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       std::lock_guard lock(mutex_);
       cleanup_waiter_.swap(waiter);
       old_status_tablet_state_.store(OldTransactionState::kAborted, std::memory_order_release);
+      LOG_IF_WITH_PREFIX(DFATAL, promotion_callback_)
+          << "promotion callback not called yet at time of old transaction abort";
     }
 
     if (waiter) {
@@ -2356,6 +2363,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                 state != TransactionState::kAborted) {
               LOG_WITH_PREFIX(DFATAL) << "Transaction status promoted but not in promoting state";
             }
+            ExecutePromotionCallback();
             SendUpdateTransactionPromotingRpcs();
           }
           FALLTHROUGH_INTENDED;
@@ -2450,6 +2458,21 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
+  void ExecutePromotionCallback() {
+    TRACE_TO(trace_, __func__);
+    std::function<void(TabletId)> promotion_callback;
+    TabletId status_tablet;
+    {
+      std::lock_guard lock(mutex_);
+      if (!promotion_callback_) {
+        return;
+      }
+      promotion_callback.swap(promotion_callback_);
+      status_tablet = status_tablet_->tablet_id();
+    }
+    promotion_callback(std::move(status_tablet));
+  }
+
   void SendUpdateTransactionPromotingRpcs() EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(2) << "SendUpdateTransactionPromotingRpcs()";
@@ -2493,7 +2516,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "DoSendUpdateTransactionPromotingRpcs()";
 
     std::vector<TabletId> participant_tablets;
-    std::function<void(const TabletId&)> start_location_update;
+    std::function<void(TabletId)> start_location_update;
     tserver::UpdateTransactionRequestPB req;
     {
       UniqueLock lock(mutex_);
@@ -2872,6 +2895,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   OriginationInfo origination_info_ GUARDED_BY(mutex_);
 
   std::function<void(void)> remote_abort_callback_ GUARDED_BY(mutex_);
+  std::function<void(TabletId)> promotion_callback_ GUARDED_BY(mutex_);
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -3134,6 +3158,10 @@ void YBTransaction::SetOriginId(uint32_t origin_id) { impl_->SetOriginId(origin_
 
 void YBTransaction::RemoteAbortCallback(std::function<void(void)> callback) {
   impl_->RemoteAbortCallback(std::move(callback));
+}
+
+void YBTransaction::PromotionCallback(std::function<void(TabletId)> callback) {
+  impl_->PromotionCallback(std::move(callback));
 }
 
 } // namespace client
