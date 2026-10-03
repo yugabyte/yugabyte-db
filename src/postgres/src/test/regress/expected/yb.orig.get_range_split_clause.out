@@ -362,7 +362,6 @@ CREATE TABLE tbl_numeric_nan (
   a NUMERIC,
   PRIMARY KEY(a DESC)
 ) SPLIT AT VALUES (('NaN'), (200), (100));
-ERROR:  DECIMAL does not support NaN yet
 -- Test Enumerated type
 CREATE TYPE enum_type AS ENUM('one', 'two', 'three', 'four', 'five', 'six', 'seven');
 CREATE TABLE tbl_enum (

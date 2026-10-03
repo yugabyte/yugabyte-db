@@ -299,6 +299,60 @@ UnsafeStatus DecodeBsonColumn(
 }
 
 template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kSortOrder>
+UnsafeStatus DecodeDecimalColumn(
+    const char* input, const char* end, PgTableRow* row, size_t index, void* const* chain) {
+  CONSUME_GROUP_END();
+  if (PREDICT_FALSE(input >= end)) {
+    return STATUS(Corruption, "Not enough bytes to decode decimal column").UnsafeRelease();
+  }
+  auto entry_type = static_cast<KeyEntryType>(*input++);
+  constexpr auto kFinite =
+      kSortOrder == SortOrder::kAscending ? KeyEntryType::kDecimal
+                                         : KeyEntryType::kDecimalDescending;
+  constexpr auto kNegInf =
+      kSortOrder == SortOrder::kAscending ? KeyEntryType::kDecimalNegInfinity
+                                         : KeyEntryType::kDecimalNegInfinityDescending;
+  constexpr auto kPosInf =
+      kSortOrder == SortOrder::kAscending ? KeyEntryType::kDecimalPosInfinity
+                                         : KeyEntryType::kDecimalPosInfinityDescending;
+  constexpr auto kNaN =
+      kSortOrder == SortOrder::kAscending ? KeyEntryType::kDecimalNaN
+                                         : KeyEntryType::kDecimalNaNDescending;
+
+  if (entry_type == kFinite) {
+    DecimalDecoder<kSortOrder> decoder;
+    PERFORM_DECODE();
+    if (PREDICT_FALSE(input > end)) {
+      return STATUS_FORMAT(
+          Corruption, "Not enough bytes to decode $0", kFinite).UnsafeRelease();
+    }
+    return CallNextDecoder<kMatchedId, kLastColumn>(input, end, row, index, chain);
+  }
+
+  char sentinel = 0;
+  if (entry_type == kNegInf) {
+    sentinel = util::kDecimalNegInfinitySentinel;
+  } else if (entry_type == kPosInf) {
+    sentinel = util::kDecimalPosInfinitySentinel;
+  } else if (entry_type == kNaN) {
+    sentinel = util::kDecimalNaNSentinel;
+  } else if (entry_type == KeyEntryType::kNullLow || entry_type == KeyEntryType::kNullHigh) {
+    if (kMatchedId) {
+      row->SetNull(index);
+    }
+    return CallNextDecoder<kMatchedId, kLastColumn>(input, end, row, index, chain);
+  } else {
+    return STATUS_FORMAT(
+        Corruption, "Wrong key entry type $0 for decimal column", entry_type).UnsafeRelease();
+  }
+
+  if (kMatchedId) {
+    row->SetBinary(index, Slice(&sentinel, 1), true);
+  }
+  return CallNextDecoder<kMatchedId, kLastColumn>(input, end, row, index, chain);
+}
+
+template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kSortOrder>
 struct DecodeColumnFactory {
   template <KeyEntryType kAscEntryType, KeyEntryType kDescEntryType, class Decoder>
   static PgKeyColumnDecoder Apply() {
@@ -319,6 +373,10 @@ struct DecodeColumnFactory {
   static PgKeyColumnDecoder ApplyBsonColumn() {
     return DecodeBsonColumn<kConsumeGroupEnd, kMatchedId, kLastColumn, kSortOrder>;
   }
+
+  static PgKeyColumnDecoder ApplyDecimalColumn() {
+    return DecodeDecimalColumn<kConsumeGroupEnd, kMatchedId, kLastColumn, kSortOrder>;
+  }
 };
 
 template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kSortOrder>
@@ -331,9 +389,7 @@ PgKeyColumnDecoder GetDecoder5(const ColumnSchema& column) {
     case DataType::STRING:
       return Factory::template ApplyStringColumn<true>();
     case DataType::DECIMAL:
-      return Factory::template Apply<
-          KeyEntryType::kDecimal, KeyEntryType::kDecimalDescending,
-          DecimalDecoder<kSortOrder>>();
+      return Factory::ApplyDecimalColumn();
     case DataType::INT8: [[fallthrough]];
     case DataType::INT16: [[fallthrough]];
     case DataType::INT32:
