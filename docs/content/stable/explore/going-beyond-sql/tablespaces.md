@@ -16,6 +16,8 @@ YugabyteDB extends the concept of PostgreSQL tablespaces for a distributed datab
 
 YSQL tablespaces re-purpose this concept for a geo-distributed deployment by allowing you to specify the number of replicas for a table or index, and how they can be distributed across a set of clouds, regions, and zones. Replicating and pinning tables in specific regions can lower read latency, improve resilience, and achieve compliance with data residency laws. For example, you can create duplicate indexes on the same column of a table and place these indexes close to users in different regions for fast access. Similarly, you can partition a master table and associate the partitions with different tablespaces to pin the data geographically.
 
+Placement options are defined in [CREATE TABLESPACE](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/).
+
 The ability to control the placement of tables in a fine-grained manner provides the following advantages:
 
 - Tables with critical information can have higher replication factor and increased fault tolerance compared to the rest of the data.
@@ -103,11 +105,6 @@ CREATE TABLESPACE us_east_1a_zone_tablespace
 CREATE TABLE single_zone_table (id INTEGER, field text)
   TABLESPACE us_east_1a_zone_tablespace SPLIT INTO 1 TABLETS;
 ```
-
-Each placement block can specify an optional `max_num_replicas` upper bound. When omitted, the
-upper bound is the placement's `num_replicas`. For example, an RF5 policy across three zones can
-set each block to `"min_num_replicas":1,"max_num_replicas":2` to prevent any one zone from
-hosting a majority.
 
 To view your tablespaces, you can enter the following command:
 
@@ -334,7 +331,7 @@ yugabyte=# SELECT * FROM preferred_leader_table;
 Time: 1.052 ms
 ```
 
-You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders are evenly spread across them. Zones without any values are least preferred.
+`leader_preference` is defined in [CREATE TABLESPACE](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/#replica-placement).
 
 You can check the overall leader distribution and [cluster level leader preference](../../../admin/yb-admin/#set-preferred-zones) on the [tablet-servers page](http://127.0.0.1:7000/tablet-servers).
 
@@ -344,43 +341,31 @@ You can check the overall leader distribution and [cluster level leader preferen
 
 {{<tags/feature/ea idea="2006">}}[Read replica](../../multi-region-deployments/read-replicas-ysql/) clusters in YugabyteDB are a set of follower nodes that maintain asynchronously replicated copies of tablets in the primary cluster. These TServers are configured using their own [placement_uuid](../../../reference/configuration/yb-tserver/#placement-uuid) flag that is different from that of the primary cluster.
 
-You configure tablespaces with read replica nodes using the `read_replica_placement` configuration option. Tables that you add to the tablespace automatically have copies of their tablets placed on the read replica nodes.
+You configure tablespaces with read replica nodes using the [`read_replica_placement`](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/#read-replica-placement) option of CREATE TABLESPACE. Tables that you add to the tablespace automatically have copies of their tablets placed on the read replica nodes.
 
 For example, the following commands create a tablespace with a read replica, and then create a table with 3 copies in us-east-1a (the primary cluster) and 2 copies on the read replica in us-east-2a. Note that this assumes that read replica TServers have already been started, as described in [Read replica deployment](../../../deploy/multi-dc/read-replica-clusters/).
 
 ```sql
 CREATE TABLESPACE us_east_1_with_rr_tablespace WITH (
   replica_placement='{
-  "num_replicas": 3,
-  "placement_blocks": [
-    {
-      "cloud": "aws",
-      "region": "us-east-1",
-      "zone": "us-east-1a",
-      "min_num_replicas": 3
-    }
-  ]
-}', read_replica_placement='[
-  {
+    "num_replicas": 3,
+    "placement_blocks": [
+      {"cloud": "aws", "region": "us-east-1", "zone": "us-east-1a", "min_num_replicas": 3}
+    ]
+  }',
+  read_replica_placement='{
     "num_replicas": 2,
     "placement_uuid": "9d8f5715-2e7c-4e64-8e34-35f510c12e66",
     "placement_blocks": [
-      {
-        "cloud": "aws",
-        "region": "us-east-2",
-        "zone": "us-east-2a",
-        "min_num_replicas": 2
-      },
-      }
+      {"cloud": "aws", "region": "us-east-2", "zone": "us-east-2a", "min_num_replicas": 2}
     ]
-  }
-]');
+  }');
 
 CREATE TABLE single_zone_table_with_read_replica (id INTEGER, field text)
   TABLESPACE us_east_1_with_rr_tablespace;
 ```
 
-The `placement_uuid` field in the `read_replica_placement` section needs to be set to the [placement ID of the read replica cluster](../../../admin/yb-admin/#add-read-replica-placement-info). To obtain the placement ID, use the [get-universe-config](../../../admin/yb-admin/#get-universe-config) yb-admin command.
+`placement_uuid` is the [placement ID of the read replica cluster](../../../admin/yb-admin/#add-read-replica-placement-info). Obtain it with [get-universe-config](../../../admin/yb-admin/#get-universe-config).
 
 You can also use the [wildcard](#use-wildcards-for-zones) `*` when specifying placement in read replicas.
 
@@ -479,10 +464,3 @@ You can see the replication info for our table has changed:
 The RaftConfig has also changed to match the new tablespace:
 
 ![YB-Master UI: critical_table raft configuration](/images/explore/tablespaces/5_critical_table_raft_config_final.png)
-
-## What's next?
-
-The following features will be supported in upcoming releases:
-
-- Support for `ALTER TABLESPACE`.
-- Setting read replica placements using tablespaces.
