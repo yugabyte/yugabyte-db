@@ -24,6 +24,12 @@
 namespace yb {
 namespace ql {
 using yb::util::kBcryptHashSize;
+using yb::util::kBcryptHashStrLen;
+using yb::util::kBcryptMaxWorkFactor;
+using yb::util::kBcryptMinWorkFactor;
+
+class SemContext;
+
 //--------------------------------------------------------------------------------------------------
 // Roles.
 
@@ -70,7 +76,8 @@ class PTRolePassword : public PTRoleOption {
 
   PTRolePassword(MemoryContext* memctx,
                  YBLocationPtr loc,
-                 const MCSharedPtr<MCString>& password);
+                 const MCSharedPtr<MCString>& password,
+                 bool is_hashed = false);
 
   virtual ~PTRolePassword();
 
@@ -92,8 +99,29 @@ class PTRolePassword : public PTRoleOption {
     return password_->c_str();
   }
 
+  // True when password() is a client-supplied bcrypt hash (HASHED PASSWORD) that must be stored
+  // verbatim, false for plaintext that Analyze still has to bcrypt.
+  bool is_hashed() const {
+    return is_hashed_;
+  }
+
+  // Fills *salted_hash with this option's value as a kBcryptHashSize-byte, zero-padded buffer:
+  // bcrypts a plaintext PASSWORD, or validates a client-supplied HASHED PASSWORD and stores it
+  // verbatim. The zero padding keeps the fixed-width contract of salted_hash(), bcrypt_checkpw and
+  // the roles vtable while leaving clean NULs rather than stack bytes after the hash (#27523).
+  // Raises a semantic error on this node if a supplied hash is not one bcrypt could verify.
+  // Shared by CREATE ROLE and ALTER ROLE.
+  Status BuildSaltedHash(SemContext* sem_context, MCSharedPtr<MCString>* salted_hash) const;
+
+  // True if `hash` is a bcrypt hash of the shape Cassandra's hash_password emits *and* one the
+  // underlying crypt_blowfish can actually verify: $2[abxy]$<2-digit cost within
+  // [kBcryptMinWorkFactor, kBcryptMaxWorkFactor]>$<22-char salt><31-char checksum>,
+  // kBcryptHashStrLen characters in total.
+  static bool IsValidBcryptHash(const char* hash);
+
  private:
   const MCSharedPtr<MCString> password_;
+  const bool is_hashed_;
 
 };
 

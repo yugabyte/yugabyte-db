@@ -484,7 +484,9 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       String roleName = row.getString("role");
       if (!DEFAULT_ROLE.equals(roleName)) {
         LOG.info("Dropping role " + roleName);
-        session.execute("DROP ROLE '" + roleName + "'");
+        // Quote as an identifier (doubling embedded quotes) so role names containing a single
+        // quote -- e.g. "o'brien" -- don't produce a broken `DROP ROLE 'o'brien'`.
+        session.execute("DROP ROLE \"" + roleName.replace("\"", "\"\"") + "\"");
       }
     }
   }
