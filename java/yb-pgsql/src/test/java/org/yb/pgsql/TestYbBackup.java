@@ -1226,6 +1226,15 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testBackupCreateGetBackupSize() throws Exception {
+    testBackupCreateGetBackupSize(true);
+  }
+
+  @Test
+  public void testBackupCreateGetBackupSizeWithChecksums() throws Exception {
+    testBackupCreateGetBackupSize(false);
+  }
+
+  private void testBackupCreateGetBackupSize(boolean disableChecksums) throws Exception {
     // output from yb controller doesn't contain backup size data in json format so
     // this test doesn't make much sense
     if (TestUtils.useYbController()) {
@@ -1242,8 +1251,14 @@ public class TestYbBackup extends BasePgSQLTest {
       }
 
       String backupDir = YBBackupUtil.getTempBackupDir();
-      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-          "--keyspace", "ysql.yugabyte", "--pg_based_backup", "--disable_checksum");
+      String output;
+      if (disableChecksums) {
+        output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+            "--keyspace", "ysql.yugabyte", "--pg_based_backup", "--disable_checksum");
+      } else {
+        output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+            "--keyspace", "ysql.yugabyte", "--pg_based_backup");
+      }
       JSONObject json = new JSONObject(output);
       long expectedBackupSize = json.getLong("backup_size_in_bytes");
       long actualBackupSize = FileUtils.sizeOfDirectory(new File(json.getString("snapshot_url")));
