@@ -33,6 +33,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tserver/tserver_service.pb.h"
@@ -335,6 +336,61 @@ TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
   RestartMaster();
 
   VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
+}
+
+TEST_F(PgDdlAtomicityTest, MasterCrashDuringDropTableWithIndexes) {
+  const std::string kTable = "drop_with_indexes_crash_test";
+  const std::string kIndex1 = kTable + "_v_idx";
+  const std::string kIndex2 = kTable + "_w_idx";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET statement_timeout = '15s'"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, w TEXT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1(v)", kIndex1, kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1(w)", kIndex2, kTable));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i::text, i::text FROM generate_series(1, 10) i", kTable));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_crash_before_index_unlink_in_delete_table", "true"));
+
+  // The DDL is committed by the time the master crashes, so the statement may
+  // succeed or fail depending on when the connection is lost.
+  auto status = conn.ExecuteFormat("DROP TABLE $0", kTable);
+  LOG(INFO) << "DROP TABLE status: " << status;
+
+  ASSERT_EQ(cluster_->master_daemons().size(), 1);
+  auto* master = cluster_->master_daemons()[0];
+  ASSERT_OK(WaitFor([&]() { return !master->IsProcessAlive(); }, MonoDelta::FromSeconds(30),
+                    "Wait for master to crash"));
+  RestartMaster();
+
+  master::ListTablesRequestPB req;
+  req.set_name_filter(kTable);
+  req.mutable_namespace_()->set_name(kDatabase);
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.set_include_not_running(true);
+  // The restarted master must roll the committed DROP TABLE forward on its own:
+  // the table and both of its indexes have to reach DELETED without any client
+  // involvement.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    master::ListTablesResponsePB resp;
+    rpc::RpcController rpc;
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+    RETURN_NOT_OK(proxy.ListTables(req, &resp, &rpc));
+    for (const auto& table : resp.tables()) {
+      if (table.state() != master::SysTablesEntryPB::DELETED) {
+        LOG(INFO) << table.name() << " still in state "
+                  << master::SysTablesEntryPB::State_Name(table.state());
+        return false;
+      }
+    }
+    return true;
+  }, MonoDelta::FromSeconds(120), "Wait for dropped table and indexes to reach DELETED"));
+
+  VerifyTableNotExists(client.get(), kDatabase, kTable, 40);
+  VerifyTableNotExists(client.get(), kDatabase, kIndex1, 40);
+  VerifyTableNotExists(client.get(), kDatabase, kIndex2, 40);
 }
 
 // Class for sanity test.
