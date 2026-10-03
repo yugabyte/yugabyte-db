@@ -97,6 +97,9 @@ set_vars_for_cxx_test() {
   if [[ -n $cxx_test_name ]]; then
     make_targets+=( "$cxx_test_name" )
   fi
+  if [[ -n $cxx_benchmark_name ]]; then
+    make_targets+=( "$cxx_benchmark_name" )
+  fi
 
   # This is necessary to avoid failures if we are just building one test.
   test_existence_check=false
@@ -155,6 +158,7 @@ print_report() {
       report_time "C++ compilation"                     make
       report_time "Java compilation"                    java_build
       report_time "C++ (one test program)"              cxx_test
+      report_time "C++ (one benchmark program)"         cxx_benchmark
       report_time "ctest (multiple C++ test programs)"  ctest
       report_time "Collecting Java tests"               collect_java_tests
       report_time "Java tests"                          java_tests
@@ -486,6 +490,20 @@ run_cxx_test() {
   else
     run_repeat_unit_test "$build_type" "$test_binary_name"
   fi
+}
+
+run_cxx_benchmark() {
+  # ADD_YB_BENCHMARK puts each benchmark in a benchmarks-<dir> directory of the build root.
+  local benchmark_paths=( "$BUILD_ROOT"/benchmarks-*/"$cxx_benchmark_name" )
+  if [[ ! -x ${benchmark_paths[0]} ]]; then
+    fatal "Could not find benchmark program '$cxx_benchmark_name' in" \
+          "$BUILD_ROOT/benchmarks-*. Is it added with ADD_YB_BENCHMARK?"
+  fi
+  (
+    set_sanitizer_runtime_options
+    set -x
+    "${benchmark_paths[0]}" "${benchmark_args[@]}"
+  )
 }
 
 register_file_to_rebuild() {
@@ -1179,6 +1197,12 @@ if [[ ${ran_tests_remotely} != "true" ]]; then
     capture_sec_timestamp cxx_test_start
     run_cxx_test
     capture_sec_timestamp cxx_test_end
+  fi
+
+  if [[ -n $cxx_benchmark_name ]]; then
+    capture_sec_timestamp cxx_benchmark_start
+    run_cxx_benchmark
+    capture_sec_timestamp cxx_benchmark_end
   fi
 
   capture_sec_timestamp java_test_start
