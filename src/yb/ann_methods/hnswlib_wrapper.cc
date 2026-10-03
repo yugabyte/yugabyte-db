@@ -16,6 +16,8 @@
 #include <cmath>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -24,6 +26,7 @@
 
 #include "yb/ann_methods/yb_hnsw_wrapper.h"
 
+#include "yb/hnsw/hnsw.h"
 #include "yb/hnsw/hnsw_block_cache.h"
 
 #include "yb/gutil/casts.h"
@@ -201,7 +204,8 @@ class HnswlibIndex :
         block_cache_(block_cache),
         options_(options),
         backend_(backend),
-        space_(std::move(space)) {
+        space_(std::move(space)),
+        tenant_dims_(std::is_same_v<Scalar, float> ? hnsw::TenantDims(options.dimensions) : 0) {
     consumption_.Init(mem_tracker);
     static std::once_flag once_flag;
     std::call_once(once_flag, [func = space_->get_dist_func()]() {
@@ -267,7 +271,33 @@ class HnswlibIndex :
     // Only data grows on insert (level1+ linkLists_[i] entries and label_lookup_); the
     // search-contexts pool is sized at construction.
     auto se = UpdateDataConsumptionOnExit();
-    return hnsw_->addPoint(v.data(), vector_id);
+    if (!tenant_dims_) {
+      return hnsw_->addPoint(v.data(), vector_id);
+    }
+    // Also search for neighbors starting from the tenant's entry point, so vectors of the same
+    // tenant stay connected regardless of the insertion order.
+    auto tenant_key = hnsw::TenantKey(v.data(), options_.dimensions, tenant_dims_);
+    int hint = -1;
+    {
+      std::lock_guard lock(tenant_mutex_);
+      auto it = tenant_entries_.find(tenant_key);
+      if (it != tenant_entries_.end()) {
+        hint = static_cast<int>(it->second.first);
+      }
+    }
+    HNSWImpl::entryHint() = hint;
+    auto reset_hint = ScopeExit([] { HNSWImpl::entryHint() = -1; });
+    auto internal_id = hnsw_->addPoint(v.data(), vector_id);
+    int level = hnsw_->element_levels_[internal_id];
+    {
+      std::lock_guard lock(tenant_mutex_);
+      auto [it, inserted] = tenant_entries_.try_emplace(
+          std::move(tenant_key), narrow_cast<hnswlib::tableint>(internal_id), level);
+      if (!inserted && level > it->second.second) {
+        it->second = {narrow_cast<hnswlib::tableint>(internal_id), level};
+      }
+    }
+    return internal_id;
   }
 
   size_t Size() const override {
@@ -326,6 +356,17 @@ class HnswlibIndex :
       const Vector& query_vector, const SearchOptions& options) const {
     std::vector<VectorWithDistance<DistanceResult>> result;
     HnswlibVectorFilter filter(options.filter, this->payloads());
+    int hint = -1;
+    if (tenant_dims_) {
+      std::lock_guard lock(tenant_mutex_);
+      auto it = tenant_entries_.find(
+          hnsw::TenantKey(query_vector.data(), options_.dimensions, tenant_dims_));
+      if (it != tenant_entries_.end()) {
+        hint = static_cast<int>(it->second.first);
+      }
+    }
+    HNSWImpl::entryHint() = hint;
+    auto reset_hint = ScopeExit([] { HNSWImpl::entryHint() = -1; });
     auto tmp_result = hnsw_->searchKnnCloserFirst(
         query_vector.data(), options.max_num_results, &filter, options.ef);
     RETURN_NOT_OK(filter.status());
@@ -416,6 +457,11 @@ class HnswlibIndex :
   const std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
   IndexMemoryConsumption consumption_;
+
+  // Tenant key => (internal id, level) of the tenant's vector at the highest level.
+  const size_t tenant_dims_;
+  mutable std::mutex tenant_mutex_;
+  std::unordered_map<std::string, std::pair<hnswlib::tableint, int>> tenant_entries_;
 };
 
 
