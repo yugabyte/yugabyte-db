@@ -1539,9 +1539,8 @@ class MasterSnapshotCoordinator::Impl {
           cleanup_snapshots.push_back(p->id());
         } else if (p->HasExpired(context_.Clock()->Now()) &&
                    p->initial_state() != SysSnapshotEntryPB::DELETING) {
-          // For expired snapshots that we have not already tried to delete, start the deletion
-          // workflow.
-          LOG(INFO) << "Snapshot " << p->id() << " has expired. Trying to delete it.";
+          // VLOG because TryDeleteSnapshot may decline, in which case this repeats every poll.
+          VLOG(1) << "Snapshot " << p->id() << " has expired. Trying to delete it.";
           TryDeleteSnapshot(p.get(), &schedules_data);
         } else {
           p->PrepareOperations(&operations);
@@ -1574,16 +1573,26 @@ class MasterSnapshotCoordinator::Impl {
     ScheduleOperations(restore_operations, leader_term);
   }
 
-  void TryDeleteSnapshot(SnapshotState* snapshot, PollSchedulesData* data) {
+  // Returns true if the snapshot is pinned by an in-progress restoration.
+  bool TryDeleteSnapshot(SnapshotState* snapshot, PollSchedulesData* data) REQUIRES(mutex_) {
+    auto restoration = FindInProgressRestorationUsingSnapshot(snapshot->id());
+    if (restoration) {
+      VLOG(1) << "Not deleting snapshot " << snapshot->id() << "/" << snapshot->schedule_id()
+              << ": restoration " << restoration->get().restoration_id()
+              << " is in progress and using it";
+      return true;
+    }
+
     auto delete_status = snapshot->TryStartDelete();
     if (!delete_status.ok()) {
       VLOG(1) << "Unable to delete snapshot " << snapshot->id() << "/" << snapshot->schedule_id()
               << ": " << delete_status << ", state: " << snapshot->ToString();
-      return;
+      return false;
     }
 
     VLOG(1) << "Cleanup snapshot: " << snapshot->id() << "/" << snapshot->schedule_id();
     data->delete_snapshots.push_back(snapshot->id());
+    return false;
   }
 
   // The creating-snapshot marker is cleared only by leader-side completion callbacks, so a
@@ -1615,8 +1624,16 @@ class MasterSnapshotCoordinator::Impl {
       HybridTime last_snapshot_time;
       if (schedule->deleted()) {
         auto range = snapshots_.get<ScheduleTag>().equal_range(schedule->id());
+        bool pinned_by_restoration = false;
         for (const auto& snapshot : boost::make_iterator_range(range.first, range.second)) {
-          TryDeleteSnapshot(snapshot.get(), data);
+          if (TryDeleteSnapshot(snapshot.get(), data)) {
+            pinned_by_restoration = true;
+          }
+        }
+        if (pinned_by_restoration) {
+          VLOG(1) << "Not retiring deleted snapshot schedule " << schedule->id()
+                  << ": a restoration is in progress and using one of its snapshots";
+          continue;
         }
       } else {
         auto [begin, end] = snapshots_.get<ScheduleTag>().equal_range(schedule->id());
