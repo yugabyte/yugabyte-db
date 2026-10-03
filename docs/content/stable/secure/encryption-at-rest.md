@@ -104,7 +104,7 @@ You can rotate the new key as follows:
     yb-admin --master_addresses $MASTER_ADDRESSES rotate_universe_key_in_memory <key_id_2>
     ```
 
-    The new universe key encrypts new data. Existing files stay under the previous universe key until a compaction or a later write rewrites them. There is no indicator of how much data is still under an earlier universe key. Keep every rotated universe key; the cluster needs it to read that data.
+    The new universe key encrypts new data. Existing files stay under the previous universe key until compaction rewrites them. There is no indicator of how much data is still under an earlier universe key. Keep every rotated universe key; the cluster needs it to read that data.
 
 1. Verify the new key. To do this, check that the new key is encrypting the cluster, as follows:
 
@@ -122,7 +122,7 @@ You can rotate the new key as follows:
 
 ## Disable encryption
 
-Disabling encryption at rest stops encryption of new data. Data already on disk stays encrypted until a compaction or a later write rewrites it, and the cluster still needs the universe keys to read that data.
+Disabling encryption at rest stops encryption of new data. Data already on disk stays encrypted until compaction rewrites it, and the cluster still needs the universe keys to read that data.
 
 You can disable cluster-wide encryption as follows:
 

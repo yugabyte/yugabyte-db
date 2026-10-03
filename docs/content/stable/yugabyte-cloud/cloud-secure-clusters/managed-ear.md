@@ -29,9 +29,9 @@ Note that, regardless of whether you enable YugabyteDB EAR for a cluster, Yugaby
 
 ## How the CMK encrypts the cluster
 
-The CMK you create in your cloud provider KMS does not encrypt cluster data directly. The CMK is the master key. It encrypts the cluster's key registry, which is stored with the cluster and copied into backups.
+The CMK you create in your cloud provider KMS does not encrypt cluster data directly. The CMK is the master key. It wraps each universe (cluster) key. YugabyteDB Aeon keeps those wrapped copies, and backup metadata includes them.
 
-The registry holds universe keys. A universe key protects data written to disk by encrypting the key for each data file. YugabyteDB Aeon generates universe keys for the cluster. You do not create them in AWS, Azure, or GCP. For the full key hierarchy, refer to [Encryption at rest in YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-at-rest/). (Anywhere uses the same key names and calls a cluster a universe.)
+A universe key protects data written to disk by encrypting the key for each data file. The cluster keeps a registry of universe keys, encrypted with the latest universe key. YugabyteDB Aeon generates the universe keys. You do not create them in AWS, Azure, or GCP. For the full key hierarchy, refer to [Encryption at rest in YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-at-rest/). (Note that Anywhere uses the same key names and calls a cluster a universe.)
 
 ## Limitations
 
@@ -161,16 +161,16 @@ You can enable EAR using a CMK for clusters (database version 2.16.7 and later o
 
 Click **Save** when you are done.
 
-YugabyteDB Aeon validates the CMK and, if successful, generates a universe key and starts encrypting the data. Only new data is encrypted. Existing data remains unencrypted until a compaction, or a later write or update, rewrites it under that universe key.
+YugabyteDB Aeon validates the CMK and, if successful, generates a universe key and starts encrypting the data. Only new data is encrypted. Existing data remains unencrypted until compaction rewrites it under that universe key. You cannot see what fraction of existing data has been rewritten. To force a full rewrite, contact {{% support-cloud %}}.
 
 To disable cluster EAR, click **Disable Encryption at Rest**. YugabyteDB Aeon uses lazy decryption to decrypt the cluster.
 
 ## Rotate your CMK
 
-When you edit the CMK configuration, YugabyteDB Aeon rotates the master key (your CMK), then rotates the universe key that protects data on disk. See [How the CMK encrypts the cluster](#how-the-cmk-encrypts-the-cluster).
+When you edit the CMK configuration, YugabyteDB Aeon rotates the master key (your CMK) only. The existing universe keys stay in place. See [How the CMK encrypts the cluster](#how-the-cmk-encrypts-the-cluster).
 
 {{< warning title="Deleting your CMK" >}}
-Deleting the CMK that is currently configured makes the cluster unable to unwrap its key registry.
+Deleting the CMK that is currently configured makes YugabyteDB Aeon unable to unwrap the universe keys it stores for the cluster, including the copies recorded in backup metadata.
 
 You can remove a previous CMK after both of the following are true:
 
@@ -202,6 +202,5 @@ To rotate the CMK used for EAR, do the following:
 
 YugabyteDB Aeon then does the following:
 
-- The live cluster's key registry is re-encrypted with the new CMK immediately.
-- New data is encrypted under the new universe key. Existing data is rewritten under that universe key as tablets compact, or as rows are written or updated. You cannot see what fraction of data is still under an earlier universe key. To force a full rewrite, contact {{% support-cloud %}}.
+- Every universe key that YugabyteDB Aeon stores for the cluster is re-wrapped with the new CMK immediately. No new universe key is generated. Backups taken after the rotation record those newly wrapped keys. The cluster's universe key registry and the data on disk stay as they are.
 - The previous CMK is still required to restore backups and PITR history from before the rotation.
