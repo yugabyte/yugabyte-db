@@ -25,6 +25,7 @@ import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/tablet.proto";
 import "yb/tablet/tablet_types.proto";
+import "yb/rpc/lightweight_message.proto";
 
 // Info about a single tablet server, returned to the client as part
 // of the GetTabletLocations response. This can be used on the client
@@ -109,7 +110,7 @@ message GetIndexBackfillProgressResponsePB {
 
 message GetTabletLocationsRequestPB {
   // The tablet IDs about which to fetch info.
-  repeated bytes tablet_ids = 1;
+  repeated bytes tablet_ids = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // If table ID is specified, table's partition_list_version will be included into response.
   optional bytes table_id = 2;

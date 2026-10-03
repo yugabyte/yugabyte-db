@@ -448,12 +448,27 @@ class OtlpHttpCollector {
 
   std::optional<Span> FindRpcSpanWithTableName(
       const std::string& trace_id, std::string_view table_name) const EXCLUDES(mutex_) {
-    return FindSpanWithNamePrefixAndTableName(trace_id, "rpc ", table_name);
+    // Only the pggate-published Perform span; the tserver's tablet Read/Write spans carry
+    // rpc.table_names too and must not satisfy this lookup.
+    return FindSpanWithNamePrefixAndTableName(
+        trace_id, "rpc yb.tserver.PgClientService.", table_name);
   }
 
   std::optional<Span> FindSpanWithNamePrefixAndTableName(
       const std::string& trace_id, std::string_view span_name_prefix,
       std::string_view table_name) const EXCLUDES(mutex_) {
+    return FindSpanWithNamePrefixAndAttr(
+        trace_id, span_name_prefix, "rpc.table_names",
+        [table_name](const std::string& names) {
+          return names.find(table_name) != std::string::npos;
+        });
+  }
+
+  // First span whose name starts with span_name_prefix and whose string attribute `key` is
+  // present and satisfies `match`.
+  std::optional<Span> FindSpanWithNamePrefixAndAttr(
+      const std::string& trace_id, std::string_view span_name_prefix, const std::string& key,
+      const std::function<bool(const std::string&)>& match) const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     auto it = traces_.find(trace_id);
     if (it == traces_.end()) return std::nullopt;
@@ -461,9 +476,8 @@ class OtlpHttpCollector {
       if (!span.op_name.starts_with(span_name_prefix)) {
         continue;
       }
-      auto table_names_it = span.str_attrs.find("rpc.table_names");
-      if (table_names_it != span.str_attrs.end() &&
-          table_names_it->second.find(table_name) != std::string::npos) {
+      auto attr_it = span.str_attrs.find(key);
+      if (attr_it != span.str_attrs.end() && match(attr_it->second)) {
         return span;
       }
     }
@@ -995,16 +1009,53 @@ class DistTraceTest : public LibPqTestBase {
   Result<Span> WaitForSpanWithTableName(
       const std::string& trace_id, std::string_view span_name_prefix,
       std::string_view table_name) const {
+    return WaitForSpanWithAttr(
+        trace_id, span_name_prefix, "rpc.table_names",
+        [table_name](const std::string& names) {
+          return names.find(table_name) != std::string::npos;
+        });
+  }
+
+  // Waits for a span whose name starts with span_name_prefix and whose string attribute `key`
+  // satisfies `match`.
+  Result<Span> WaitForSpanWithAttr(
+      const std::string& trace_id, std::string_view span_name_prefix, const std::string& key,
+      const std::function<bool(const std::string&)>& match) const {
     std::optional<Span> span;
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
-          span = collector_.FindSpanWithNamePrefixAndTableName(
-              trace_id, span_name_prefix, table_name);
+          span = collector_.FindSpanWithNamePrefixAndAttr(trace_id, span_name_prefix, key, match);
           return span.has_value();
         },
         kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
-        Format("$0 span with table name '$1' to appear", span_name_prefix, table_name)));
+        Format("$0 span with attribute $1 to appear", span_name_prefix, key)));
     return *span;
+  }
+
+  Result<Span> WaitForSpanWithAttr(
+      const std::string& trace_id, std::string_view span_name_prefix, const std::string& key,
+      const std::string& value) const {
+    return WaitForSpanWithAttr(
+        trace_id, span_name_prefix, key,
+        [&value](const std::string& actual) { return actual == value; });
+  }
+
+  Result<std::string> FetchTableOid(const std::string& table_name) {
+    // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections
+    return conn_->FetchRow<std::string>(
+        Format("SELECT oid::text FROM pg_class WHERE relname = '$0'", table_name));
+  }
+
+  // The YB table id, as Perform requests carry it.
+  Result<std::string> FetchYbTableId(const std::string& table_name) {
+    auto table_oid = VERIFY_RESULT(FetchTableOid(table_name));
+    return GetPgsqlTableId(
+        static_cast<uint32_t>(db_oid_), static_cast<uint32_t>(std::stoul(table_oid)));
+  }
+
+  Result<std::vector<std::string>> FetchTabletIds(const std::string& table_name) {
+    return conn_->FetchRows<std::string>(
+        Format("SELECT tablet_id FROM yb_local_tablets WHERE table_name = '$0'", table_name));
   }
 
   std::vector<std::string>& CaptureWarnings() {
@@ -1054,6 +1105,11 @@ class DistTraceRpcTest : public DistTraceTest {
  protected:
   bool UsePgClientSharedMemory() const override {
     return false;
+  }
+
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceTest::ConfigureDistTraceOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_beta_feature_tablegroup=true");
   }
 };
 
@@ -1947,6 +2003,8 @@ TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForRead) {
   ASSERT_NE(table_names_it, span.str_attrs.end())
       << "rpc.table_names attribute missing on shared memory span";
   ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
+  // Trace-tagged request fields are drained onto the shmem span by hand, not by a proxy stub.
+  ASSERT_EQ(span.str_attrs["req.ops.0.read.table_id"], ASSERT_RESULT(FetchYbTableId(kTableName)));
 }
 
 TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
@@ -1958,7 +2016,7 @@ TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
       "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
 
   ASSERT_OK(conn_->ExecuteFormat(
-      "INSERT INTO $0 VALUES (100, 'traced_insert')", kTableName));
+      "INSERT INTO $0 SELECT g, 'traced_insert' FROM generate_series(100, 104) g", kTableName));
 
   auto span = ASSERT_RESULT(WaitForSpanWithTableName(
       tp.trace_id, kSharedMemoryPerformSpanName, kTableName));
@@ -1968,6 +2026,9 @@ TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
   ASSERT_NE(table_names_it, span.str_attrs.end())
       << "rpc.table_names attribute missing on shared memory span";
   ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
+  // The five write ops share one table_id, so they collapse into a single index-range attribute.
+  ASSERT_EQ(
+      span.str_attrs["req.ops.0-4.write.table_id"], ASSERT_RESULT(FetchYbTableId(kTableName)));
 }
 
 TEST_F(DistTraceRpcTest, TestRpcSpans) {
@@ -2005,6 +2066,31 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
 
   ASSERT_EQ(server_span.str_attrs["rpc.system"], "yb_rpc");
 
+  // The generated proxy stub drains the request's trace-tagged fields onto the client span.
+  const auto table_id = ASSERT_RESULT(FetchYbTableId("rpc_crossing_test"));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp.trace_id, "rpc yb.tserver.PgClientService.Perform", "req.ops.0.read.table_id",
+      table_id));
+
+  // The tserver's Read to the tablet carries tablet_id, a bytes field emitted as text.
+  const auto tablet_ids = ASSERT_RESULT(FetchTabletIds("rpc_crossing_test"));
+  ASSERT_FALSE(tablet_ids.empty());
+  auto read_span = ASSERT_RESULT(WaitForSpanWithAttr(
+      tp.trace_id, "rpc yb.tserver.TabletServerService.Read", "req.tablet_id",
+      [&tablet_ids](const std::string& tablet_id) {
+        return std::find(tablet_ids.begin(), tablet_ids.end(), tablet_id) != tablet_ids.end();
+      }));
+  ASSERT_EQ(read_span.service_name, "TabletServer");
+  ASSERT_EQ(read_span.str_attrs["rpc.table_names"], Format("rpc_crossing_test($0)", table_id));
+
+  // A bulk insert is one Perform with many write ops on the same table; the per-op table_id tags
+  // fold into a single index-range attribute instead of one attribute per op.
+  ASSERT_OK(conn_->Execute(
+      "INSERT INTO rpc_crossing_test SELECT g, 'bulk' FROM generate_series(1000, 1099) g"));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp.trace_id, "rpc yb.tserver.PgClientService.Perform", "req.ops.0-99.write.table_id",
+      table_id));
+
   // CREATE TABLE runs the master RPC synchronously on the tserver's handler thread.
   ASSERT_OK(conn_->Execute(
       "CREATE TABLE master_crossing_test (id int PRIMARY KEY, val text)"));
@@ -2012,6 +2098,24 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
   ASSERT_OK(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.master.",
       "TabletServer" /* client_service */, "Master" /* server_service */));
+
+  // Only colocated reads embed the index as index_request (a regular table scans the index as
+  // its own read op); the tserver resolves the index name from its table cache for the Read span.
+  ASSERT_OK(conn_->Execute("CREATE TABLEGROUP rpc_crossing_tg"));
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE rpc_crossing_coloc (id int, val text) TABLEGROUP rpc_crossing_tg"));
+  ASSERT_OK(conn_->Execute("INSERT INTO rpc_crossing_coloc VALUES (1, 'row_1')"));
+  ASSERT_OK(conn_->Execute("CREATE INDEX rpc_crossing_coloc_val_idx ON rpc_crossing_coloc(val)"));
+  const auto coloc_table_id = ASSERT_RESULT(FetchYbTableId("rpc_crossing_coloc"));
+  const auto index_id = ASSERT_RESULT(FetchYbTableId("rpc_crossing_coloc_val_idx"));
+  auto tp_idx = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_idx.full));
+  ASSERT_OK(conn_->Execute("SET enable_seqscan = off"));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rpc_crossing_coloc WHERE val = 'row_1'"));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp_idx.trace_id, "rpc yb.tserver.TabletServerService.Read", "rpc.table_names",
+      Format("rpc_crossing_coloc($0), rpc_crossing_coloc_val_idx($1)", coloc_table_id, index_id)));
 }
 
 // Runs a traced INSERT with TEST_perform_async_error set, which fails Perform after its handler
@@ -2065,6 +2169,13 @@ TEST_F(DistTraceTest, TestSharedMemorySpansReachTabletServer) {
   ASSERT_OK(collector_.WaitForRemoteChildSpan(
       tp.trace_id, kSharedMemoryObjectLockSpanName,
       "ysql" /* client_service */, "TabletServer" /* server_service */));
+
+  // AcquireObjectLock's oids are trace-tagged; the SELECT takes ACCESS SHARE on the table.
+  auto lock_span = ASSERT_RESULT(WaitForSpanWithAttr(
+      tp.trace_id, kSharedMemoryObjectLockSpanName, "req.lock_oid.relation_oid",
+      ASSERT_RESULT(FetchTableOid(kTableName))));
+  ASSERT_EQ(lock_span.str_attrs["req.lock_oid.database_oid"], std::to_string(db_oid_));
+  ASSERT_EQ(lock_span.str_attrs["req.lock_type"], "ACCESS_SHARE_LOCK");
 }
 
 // A too-large request falls back to RPC: no shmem span, attributes land on the RPC span.

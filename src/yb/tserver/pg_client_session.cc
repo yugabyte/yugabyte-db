@@ -1367,8 +1367,8 @@ DeferReadPoint GetDeferReadPoint(const Req& req) {
 Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperations(
     const ThreadSafeArenaPtr& arena, LWPgPerformRequestPB* req, client::YBSession* session,
     rpc::Sidecars* sidecars,
-    const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
-    bool has_distributed_txn,
+    const PgTablesQueryResult& tables, PgTableCache& table_cache,
+    VectorIndexQueryPtr& vector_index_query, bool has_distributed_txn,
     const LWFunction<Result<TransactionMetadata>()>& object_locking_txn_meta_provider,
     IsTxnUsingTableLocks is_txn_using_table_locks,
     const PgClientSessionMetrics& metrics) {
@@ -1381,12 +1381,29 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   const auto read_from_followers = req->options().read_from_followers();
   bool has_write_ops = false;
 
+  // Index names for the rpc.table_names span attribute, one cache-only lookup for the batch.
+  boost::container::small_vector<client::YBTablePtr, 4> index_tables;
+  if (dist_trace::HasActiveContext()) {
+    boost::container::small_vector<TableId, 4> index_table_ids;
+    for (const auto& op : req->ops()) {
+      if (op.has_read() && op.read().has_index_request()) {
+        index_table_ids.push_back(op.read().index_request().table_id().ToBuffer());
+      }
+    }
+    table_cache.GetIfCached(index_table_ids, index_tables);
+  }
+  auto next_index_table = index_tables.begin();
+
   // TODO(vector_index): it is unexpected to have a mix of vector index read ops and
   // non-vector index read ops. A sanity DCHECK is required.
   for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
       auto& read = *op.mutable_read();
       RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
+      client::YBTablePtr index_table;
+      if (read.has_index_request() && next_index_table != index_tables.end()) {
+        index_table = std::move(*next_index_table++);
+      }
       if (read.index_request().has_vector_idx_options()) {
         if (req->ops_size() != 1) {
           auto status = STATUS_FORMAT(
@@ -1403,6 +1420,9 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         RETURN_NOT_OK(result.second->Prepare(arena, read, table, ops));
       } else {
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, arena, *sidecars, &read);
+        if (index_table) {
+          read_op->set_index_table(index_table);
+        }
         if (read_from_followers) {
           read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
         }
@@ -3531,7 +3551,7 @@ class PgClientSession::Impl {
     data->subtxn_id = options.active_sub_transaction_id();
 
     std::tie(data->ops, data->vector_index_query) = VERIFY_RESULT(PrepareOperations(
-        arena, &data->req, session, &data->sidecars, tables,
+        arena, &data->req, session, &data->sidecars, tables, table_cache(),
         vector_index_query_data_,
         data->transaction != nullptr /* has_distributed_txn */,
         make_lw_function([this, locality, deadline] {

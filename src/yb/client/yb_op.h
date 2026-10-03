@@ -568,6 +568,10 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
+  // Table behind request_->index_request(); resolved only when the request is being traced.
+  void set_index_table(const YBTablePtr& table) { index_table_ = table; }
+  const YBTablePtr& index_table() const { return index_table_; }
+
  protected:
   Type type() const override { return PGSQL_READ; }
   OpGroup group() const override;
@@ -579,6 +583,7 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
   ReadHybridTime used_read_time_;
   // The tablet that served this operation.
   TabletId used_tablet_;
+  YBTablePtr index_table_;
 };
 
 class YBPgsqlLockOp : public YBPgsqlOp {
