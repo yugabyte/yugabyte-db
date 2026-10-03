@@ -3348,11 +3348,15 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 	if (status)
 		return status;
 
+	/*
+	 * Fill pg_proc before building partition keys: an expression key looks
+	 * up PROCOID while it is simplified.
+	 */
+	YbFillCaches(prefetcher);
+
 	YBUpdateRelationsAttributes(state);
 
 	YBUpdateRelationsPartitioning(state);
-
-	YbFillCaches(prefetcher);
 
 	YBUpdateRelationsIndicies(state);
 
@@ -3690,9 +3694,12 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 
 	/*
 	 * The required caches must cover every catalog cache lookup above, so
-	 * that none of them scans the prefetched rows of a table.
+	 * that none of them scans the prefetched rows of a table.  Without
+	 * negative cache entries, the lookup of a user namespace that does not
+	 * exist misses even in a filled cache.
 	 */
 	Assert(!YbCatalogPreloadCacheListIsSet() ||
+		   !yb_enable_negative_catcache_entries ||
 		   YbNumCatalogCacheMisses == misses_before);
 
 	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());

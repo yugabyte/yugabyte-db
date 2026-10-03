@@ -4976,6 +4976,9 @@ TEST_P(PgCatalogPreloadCachePartitionedTest, PgProcMisses) {
     ASSERT_OK(conn.Execute(
         "CREATE TABLE p (k INT, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k)"));
     ASSERT_OK(conn.Execute("CREATE TABLE p1 PARTITION OF p FOR VALUES FROM (0) TO (10)"));
+    // Building an expression key looks up its function by OID.
+    ASSERT_OK(conn.Execute("CREATE TABLE pe (k INT) PARTITION BY RANGE ((k % 10))"));
+    ASSERT_OK(conn.Execute("CREATE TABLE pe1 PARTITION OF pe FOR VALUES FROM (0) TO (5)"));
   }
   auto ddl_conn = ASSERT_RESULT(Connect());
 
