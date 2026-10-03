@@ -1033,7 +1033,13 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
     CoarseTimePoint deadline) {
   VLOG_WITH_PREFIX(2) << "Tablet poll list has " << tablet_to_poll_list.size()
                       << " tablets : " << AsString(tablet_to_poll_list);
-  for (const auto& tablet_id : tablet_to_poll_list) {
+  for (const auto& tablet_id_ref : tablet_to_poll_list) {
+    // Owning copy before the local CDC GetChanges / empty-HostPort path. Under
+    // cdc_enable_local_rpc_in_virtual_wal, AsyncLocalCall skips the remote
+    // serialization boundary; keep tablet identity as a standalone std::string
+    // rather than a reference into poll-list / map storage that may churn under
+    // attach burst or tablet split/refresh (see #33468).
+    const TabletId tablet_id(tablet_id_ref);
     GetChangesRequestPB req;
     GetChangesResponsePB resp;
 
@@ -1107,7 +1113,9 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req->set_stream_id(stream_id_.ToString());
   // Make the CDC service return the values as QLValuePB.
   req->set_cdcsdk_request_source(CDCSDKRequestSource::WALSENDER);
-  req->set_tablet_id(tablet_id);
+  // Explicit owning copy into the request PB so the local_rpc path does not
+  // share backing storage with VirtualWAL maps/sets.
+  req->set_tablet_id(std::string(tablet_id));
   req->set_getchanges_resp_max_size_bytes(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes);
   // It is safe to set the safe_hybrid_time as the max of the next_req_info's safe_hybrid_time
   // and last_persisted_record_id_commit_time_ because upon restart VWAL will always send records
