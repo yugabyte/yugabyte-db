@@ -16,6 +16,7 @@ Perform the following configuration on each node in the cluster:
 1. Set up time synchronization.
 1. Set ulimits.
 1. Enable transparent hugepages.
+1. Enable TCMalloc per-CPU caches.
 
 Keep in mind that, although YugabyteDB is PostgreSQL compatible and runs a PostgreSQL process, it is not a PostgreSQL distribution. The PostgreSQL it runs doesn't need the same OS and system resources that open source PostgreSQL requires. For this reason, the kernel configuration requirements are different.
 
@@ -303,3 +304,36 @@ For example, on RHEL or CentOS 7 or 8, using grub2, you can use the following st
     ```
 
 1. Reboot the system.
+
+## Enable TCMalloc per-CPU caches
+
+YB-Master and YB-TServer use [TCMalloc](https://github.com/google/tcmalloc) to allocate memory. TCMalloc performs best with per-CPU caches, which require the Linux restartable sequences (rseq) feature. If glibc registers rseq first, TCMalloc can't use it and silently falls back to slower per-thread caches. glibc does this in version 2.35 and later, and in some earlier versions that have the change backported, such as glibc 2.34 in RHEL 9. This affects, for example, RHEL 9 and derivatives such as AlmaLinux 9, and Ubuntu 22.04 and later.
+
+To let TCMalloc use per-CPU caches, set `GLIBC_TUNABLES=glibc.pthread.rseq=0` in the environment of the yb-master and yb-tserver processes. The PostgreSQL processes that YB-TServer starts inherit the setting. glibc versions without this tunable ignore it.
+
+{{< warning title="Linux kernels 6.19.0 through 7.0.13" >}}
+TCMalloc's use of rseq is broken on these kernels (see [google/tcmalloc#292](https://github.com/google/tcmalloc/issues/292)). Don't set `glibc.pthread.rseq=0` on them; upgrade the kernel to 7.0.14 or later first. To check the kernel version, run `uname -r`.
+{{< /warning >}}
+
+If you use systemd to start the servers, add the variable to the `[Service]` section of the yb-master and yb-tserver unit files:
+
+```properties
+[Service]
+Environment=GLIBC_TUNABLES=glibc.pthread.rseq=0
+```
+
+If `GLIBC_TUNABLES` is already set for other tunables, append the new tunable to it with a colon, for example `GLIBC_TUNABLES=<existing-tunables>:glibc.pthread.rseq=0`. A second `GLIBC_TUNABLES` setting replaces the first instead of adding to it.
+
+If you start the servers from a shell, put the variable before the command, for example:
+
+```sh
+$ GLIBC_TUNABLES=glibc.pthread.rseq=0 ./bin/yb-tserver --flagfile tserver.conf
+```
+
+After restarting the servers, verify that per-CPU caches are active:
+
+```sh
+$ grep "TCMalloc per cpu caches active" yb-master.INFO yb-tserver.INFO
+```
+
+A value of `1` means per-CPU caches are active, and `0` means TCMalloc is using per-thread caches. The INFO logs are in the `yb-data/master/logs` and `yb-data/tserver/logs` directories under the first directory in `--fs_data_dirs`.
