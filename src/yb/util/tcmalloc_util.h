@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <optional>
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 
 // Returns the tcmalloc property with the given name, or 0 if tcmalloc is not used. In case of an
@@ -56,5 +58,9 @@ void ConfigureTCMalloc(int64_t mem_limit);
 int64_t GetTCMallocSamplingPeriod();
 
 void SetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+
+// Logs a warning if TCMalloc per-CPU caches are inactive, and returns an error if they are active
+// on a kernel where they are unsafe.
+Status CheckTCMallocPerCpuCaches();
 
 }  // namespace yb
