@@ -58,6 +58,9 @@ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 --
 -- reset all
 --
+-- YB note: this reset has literals and removes the entry created for it at parse time, so YB
+-- discards its stats rather than store unnormalized text (#30592); unlike upstream, no row
+-- for it appears below.
 SELECT pg_stat_statements_reset(0,0,0) IS NOT NULL AS t;
 SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 
