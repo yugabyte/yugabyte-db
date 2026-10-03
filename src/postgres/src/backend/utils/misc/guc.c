@@ -6793,6 +6793,19 @@ static struct config_real ConfigureNamesReal[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_dist_trace_sample_rate", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Fraction of queries without a traceparent that are "
+						 "distributed-traced."),
+			gettext_noop("Set through the ysql_yb_dist_trace_sample_rate "
+						 "yb-tserver flag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_dist_trace_sample_rate,
+		0.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL, NULL

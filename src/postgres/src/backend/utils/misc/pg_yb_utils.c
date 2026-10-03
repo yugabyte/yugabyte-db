@@ -2307,6 +2307,7 @@ char	   *yb_test_fail_index_state_change = "";
 char	   *yb_default_replica_identity = "CHANGE";
 
 char	   *yb_dist_tracecontext = NULL;
+double		yb_dist_trace_sample_rate = 0.0;
 
 YbcOtelSpanContext yb_guc_remote_span_ctx = NULL;
 
