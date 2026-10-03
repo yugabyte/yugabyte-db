@@ -18,10 +18,17 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/util.h"
+
+#include "yb/rpc/outbound_call.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/string_case.h"
 
 DEFINE_NON_RUNTIME_bool(yb_admin_force_use_private_ip, false,
     "Prefer the private RPC address over the broadcast address when a server has registered "
@@ -71,7 +78,68 @@ bool CompareListTabletServersEntries(
   return a.instance_id().permanent_uuid() < b.instance_id().permanent_uuid();
 }
 
+// Only a plural suffix extends a name token, so "setup" does not match "set".
+bool TokenCovers(const string& op_token, const string& name_token) {
+  if (HasPrefixString(name_token, op_token)) {
+    return true;
+  }
+  if (!HasPrefixString(op_token, name_token)) {
+    return false;
+  }
+  const auto suffix = op_token.substr(name_token.size());
+  return suffix == "s" || suffix == "es";
+}
+
 }  // namespace
+
+bool IsUnsupportedRpcError(const Status& s) {
+  // Not ERROR_NO_SUCH_SERVICE, as in client.cc: servers also return it for a service that isn't
+  // registered yet.
+  return rpc::RpcError(s) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD;
+}
+
+std::vector<string> SuggestByNameTokens(
+    const string& op, const std::vector<string>& names, size_t max_results) {
+  const std::vector<string> op_tokens =
+      strings::Split(ToLowerCase(op), "_", strings::SkipEmpty());
+  if (op_tokens.empty()) {
+    return {};
+  }
+  // (number of name tokens left uncovered, name), so sorting puts the closest names first.
+  std::vector<std::pair<size_t, string>> ranked;
+  for (const auto& name : names) {
+    const std::vector<string> name_tokens =
+        strings::Split(ToLowerCase(name), "_", strings::SkipEmpty());
+    std::vector<bool> covered(name_tokens.size(), false);
+    bool all_op_tokens_covered = true;
+    for (const auto& op_token : op_tokens) {
+      bool op_token_covered = false;
+      for (size_t i = 0; i < name_tokens.size(); ++i) {
+        if (TokenCovers(op_token, name_tokens[i])) {
+          covered[i] = true;
+          op_token_covered = true;
+        }
+      }
+      if (!op_token_covered) {
+        all_op_tokens_covered = false;
+        break;
+      }
+    }
+    if (all_op_tokens_covered) {
+      ranked.emplace_back(std::count(covered.begin(), covered.end(), false), name);
+    }
+  }
+  std::sort(ranked.begin(), ranked.end());
+  if (ranked.size() > max_results) {
+    ranked.resize(max_results);
+  }
+  std::vector<string> result;
+  result.reserve(ranked.size());
+  for (auto& [_, name] : ranked) {
+    result.push_back(std::move(name));
+  }
+  return result;
+}
 
 string SnapshotIdToString(const SnapshotId& snapshot_id) {
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
