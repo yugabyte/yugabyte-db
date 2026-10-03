@@ -118,7 +118,11 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     Map<String, CloudAPI.NodeDiskSpec> cloudByNode = describeCloudNodes(universe);
     ResizeNodeParams rollbackParams =
         buildRollbackParams(failedParams, beforeDetails, universe, cloudByNode);
-    checkCooldownGate(rollbackParams, universe, context.getTaskInfo().getCreateTime(), cloudByNode);
+    // Azure cooldown clock when lastVolumeUpdateTime is unset; RollbackResizeNode precheck reads
+    // this instead of the original task.
+    rollbackParams.setFailedTaskCreateTime(context.getTaskInfo().getCreateTime());
+    checkCooldownGate(
+        rollbackParams, universe, rollbackParams.getFailedTaskCreateTime(), cloudByNode);
 
     // Skip optimistic version check for this programmatically-submitted task.
     rollbackParams.expectedUniverseVersion = -1;
