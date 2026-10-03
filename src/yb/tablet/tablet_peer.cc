@@ -132,6 +132,12 @@ DEFINE_RUNTIME_uint32(log_retention_diagnostics_min_age_secs, 0,
     "the first retained segment is at least this old in seconds. 0 disables.");
 TAG_FLAG(log_retention_diagnostics_min_age_secs, advanced);
 
+DEFINE_RUNTIME_bool(flush_bootstrap_state_on_shutdown, true,
+    "Persist the tablet bootstrap state (retryable requests and the transaction loader hybrid time "
+    "filter) when a tablet peer is shut down gracefully, so that the next local bootstrap of the "
+    "tablet replays less of the WAL and scans fewer intent SST files.");
+TAG_FLAG(flush_bootstrap_state_on_shutdown, advanced);
+
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
@@ -518,9 +524,42 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   return tablet_->CompleteStartup();
 }
 
+void TabletPeer::FlushBootstrapStateBeforeShutdown() {
+  if (!FLAGS_flush_bootstrap_state_on_shutdown || !FlushBootstrapStateEnabled() ||
+      state_.load(std::memory_order_acquire) != RaftGroupStatePB::RUNNING) {
+    return;
+  }
+  auto tablet = shared_tablet_maybe_null();
+  if (!tablet) {
+    return;
+  }
+  auto* participant = tablet->transaction_participant();
+  if (participant && !participant->TransactionsLoaded()) {
+    // A bound computed before loading completes could be too high (#32131), and waiting for the
+    // loader here would hold up the shutdown.
+    LOG_WITH_PREFIX(INFO)
+        << "Not persisting the bootstrap state before shutdown: transactions are still loading";
+    return;
+  }
+  // Flush RocksDB first, so that the persisted min_replay_txn_first_write_ht is computed against
+  // what is on disk after the shutdown; the storage shutdown flush then has nothing left to do.
+  WARN_NOT_OK(
+      tablet->Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kShutdown),
+      LogPrefix() + "Failed to flush RocksDB before persisting the bootstrap state");
+  auto status = FlushBootstrapState();
+  if (!status.ok() && !status.IsAlreadyPresent()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to persist the bootstrap state before shutdown: " << status;
+  }
+}
+
 bool TabletPeer::StartShutdown(
     const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
+
+  // Before consensus shuts down: the retryable requests snapshot needs a running replica.
+  if (!disable_flush_on_shutdown) {
+    FlushBootstrapStateBeforeShutdown();
+  }
 
   auto consensus = GetRaftConsensusUnsafe();
   if (consensus) {
