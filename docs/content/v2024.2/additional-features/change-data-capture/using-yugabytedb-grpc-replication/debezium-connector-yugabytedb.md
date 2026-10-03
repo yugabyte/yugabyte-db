@@ -1101,7 +1101,23 @@ Advanced connector configuration properties:
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
+| heartbeat.interval.ms | 0 | How often, in milliseconds, the connector sends a heartbeat record for each tablet to the heartbeat topic (see `heartbeat.topics.prefix`). After Kafka Connect commits a heartbeat record's offset, the connector advances that tablet's checkpoint on the server. Heartbeats keep the checkpoint moving when the connector emits no change events for a tablet, for example because a single message transformation (SMT) filters out all of its records, so that YugabyteDB can clear WAL that is no longer needed. The connector sends heartbeats during both the snapshot and streaming phases. The default value of `0` disables heartbeats.<br/><br/>If you filter records using an SMT, enable heartbeats, and make sure that the SMT doesn't drop the heartbeat records. If you use `BinaryDataConverter` as the value converter, also configure a delegate converter as described in the note following this table.<br/><br/>**Note:** The connector sends heartbeats starting with connector version `dz.1.9.5.yb.grpc.2026.1.2`. Earlier versions accept this property but don't send heartbeats. |
+| heartbeat.topics.prefix | `__debezium-heartbeat` | Controls the name of the topic to which the connector sends heartbeat records. The topic name has the pattern `<heartbeat.topics.prefix>.<database.server.name>`. For example, if `database.server.name` is `dbserver1`, the default topic name is `__debezium-heartbeat.dbserver1`. |
 | transaction.ordering | `false` | Whether to order transactions by their commit time.<br/>{{< warning title="Deprecation Notice" >}} This configuration property has been deprecated. For more details, see [transaction ordering](#transaction-ordering). {{< /warning >}} |
+
+{{< note title="Heartbeats with BinaryDataConverter" >}}
+
+Heartbeat records have a structured (`Struct`) key and value. If you use `io.debezium.converters.BinaryDataConverter` as the value converter, for example to write pre-serialized payloads to Kafka unchanged, configure a delegate converter for records whose value isn't binary. Otherwise, the connector task fails when it sends the first heartbeat record, with an error that includes `requires a delegate.converter.type to be configured`. For example:
+
+```properties
+value.converter=io.debezium.converters.BinaryDataConverter
+value.converter.delegate.converter.type=org.apache.kafka.connect.json.JsonConverter
+value.converter.delegate.converter.type.schemas.enable=false
+```
+
+Records whose value is already binary are still written unchanged; the delegate converter serializes only records whose value isn't binary, such as heartbeat and transaction metadata records. If `key.converter` is also `BinaryDataConverter`, configure `key.converter.delegate.converter.type` in the same way. For more information, refer to [Using Avro as the payload format](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html#avro-as-payload-format) in the Debezium documentation.
+
+{{< /note >}}
 
 ### Transformers
 
