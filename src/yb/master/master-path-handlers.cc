@@ -2344,6 +2344,8 @@ void RaftConfigToJson(
     jw->String(ts_uuid);
     jw->String("role");
     jw->String(PeerRole_Name(replica.role));
+    jw->String("replica_state");
+    jw->String(tablet::RaftGroupStatePB_Name(replica.state));
     jw->String("location");
     auto ts_desc_ptr = replica.ts_desc.lock();
     jw->String(
@@ -4077,6 +4079,27 @@ string MasterPathHandlers::ReplicaInfoToHtml(
                          PeerRole_Name(replica.role), location_html);
     }
     html << Format("UUID: $0<br/>", ts_uuid);
+    // The state is what this replica last reported to the master, so it can lag by a heartbeat.
+    const auto replica_state = tablet::RaftGroupStatePB_Name(replica.state);
+    if (replica.state == tablet::RaftGroupStatePB::RUNNING) {
+      html << Format("Replica state (may be stale): $0<br/>", replica_state);
+    } else if (replica.state == tablet::RaftGroupStatePB::UNKNOWN) {
+      // Replicas other than the sender are created with this state when the master rebuilds the
+      // replica map from a consensus state. It also stays until the replica's state next changes
+      // after a full report, because NOT_STARTED and BOOTSTRAPPING are ignored in full reports.
+      html << Format("Replica state: $0 (state not known to this master)<br/>", replica_state);
+    } else {
+      // Any other state (for example BOOTSTRAPPING) is highlighted. A replica that is being remote
+      // bootstrapped reports NOT_STARTED until it starts replaying the WAL, and the master does not
+      // track the tablet data state that would tell the two apart.
+      const char* hint = replica.state == tablet::RaftGroupStatePB::NOT_STARTED
+          ? " (may be remote bootstrapping, see Ongoing Remote Bootstraps on the Cluster Balancer "
+            "View, /load-distribution)"
+          : "";
+      html << Format(
+          "Replica state (may be stale): <b><font color=\"red\">$0</font></b>$1<br/>",
+          replica_state, hint);
+    }
     html << Format(
         "Active SSTs size: $0<br/>",
         HumanizeBytes(replica.drive_info.sst_files_size));
