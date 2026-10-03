@@ -2307,4 +2307,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum number of lines to buffer in memory for node agent describe output",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> createYbStorageDb =
+      new ConfKeyInfo<>(
+          "yb.universe.create_yb_storage_db",
+          ScopeType.GLOBAL,
+          "Create yb_storage database on universe creation",
+          "When enabled, universe creation creates the yb_storage YSQL database used by the amp"
+              + " controller, if it does not already exist.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

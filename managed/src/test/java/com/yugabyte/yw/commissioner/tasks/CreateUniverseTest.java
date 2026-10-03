@@ -256,6 +256,22 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testCreateUniverseCreatesYbStorageDb() {
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.createYbStorageDb.getKey(), "true");
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(any(), any(), any()))
+        .thenReturn(Json.newObject().put("result", "CREATE DATABASE"));
+    TaskInfo taskInfo = submitTask(getTaskParams(true));
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskType> expected = new ArrayList<>(UNIVERSE_CREATE_TASK_SEQUENCE);
+    expected.add(
+        expected.indexOf(TaskType.UpdateConsistencyCheck) + 1, TaskType.CreateYbStorageDatabase);
+    assertTaskSequence(
+        expected,
+        taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition)));
+    verify(mockYsqlQueryExecutor, times(1)).executeQueryInNodeShell(any(), any(), any());
+  }
+
+  @Test
   public void testCreateUniverseWithCRAzureSuccess() {
     factory
         .globalRuntimeConf()

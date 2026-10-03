@@ -1355,7 +1355,10 @@ public enum TaskType {
 
   CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class),
 
-  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class);
+  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class),
+
+  CreateYbStorageDatabase(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class);
 
   private final Class<? extends ITask> taskClass;
 
