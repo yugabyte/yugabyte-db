@@ -828,7 +828,8 @@ bool
 YbNeedAdditionalCatalogTables()
 {
 	return (*YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
-			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list));
+			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
+			YbCatalogPreloadCacheListIsSet());
 }
 
 static const char *
