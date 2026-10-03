@@ -410,6 +410,61 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
   const std::vector<std::string> object_names_ = {kTableName, kIndexName, kMatViewName};
 };
 
+TEST_F(PgTablespacesTest, PartitionIndexesUsePartitionTablespace) {
+  auto conn = ASSERT_RESULT(Connect());
+  const Tablespace ts1("partition_ts1", 1, {PlacementBlock(1, 1)});
+  const Tablespace ts2("partition_ts2", 1, {PlacementBlock(2, 1)});
+  const Tablespace ts3("partition_ts3", 1, {PlacementBlock(3, 1)});
+  const Tablespace default_ts(
+      "pg_default", 3, {PlacementBlock(1, 1), PlacementBlock(2, 1), PlacementBlock(3, 1)});
+  for (const auto* tablespace : {&ts1, &ts2, &ts3}) {
+    ASSERT_OK(conn.Execute(tablespace->CreateCmd()));
+  }
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int, b int) PARTITION BY LIST (a)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part1 PARTITION OF t FOR VALUES IN (1) TABLESPACE partition_ts1"));
+  // Both explicit and default parent-index tablespaces must yield to the partition's placement.
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t (b) TABLESPACE partition_ts3"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX ON t (a, b)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part2 PARTITION OF t FOR VALUES IN (2) TABLESPACE partition_ts2"));
+  ASSERT_OK(conn.Execute("CREATE TABLE part3 (a int, b int) TABLESPACE partition_ts1"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t ATTACH PARTITION part3 FOR VALUES IN (3)"));
+  ASSERT_OK(conn.Execute("SET default_tablespace TO partition_ts3"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part4 PARTITION OF t FOR VALUES IN (4) TABLESPACE pg_default"));
+  ASSERT_OK(conn.Execute("RESET default_tablespace"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part5 PARTITION OF t FOR VALUES IN (5) "
+      "PARTITION BY LIST (b) TABLESPACE partition_ts2"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part5_1 PARTITION OF part5 FOR VALUES IN (1) TABLESPACE partition_ts1"));
+
+  for (const auto& [partition, tablespace] : {
+           std::pair{"part1", &ts1}, {"part2", &ts2}, {"part3", &ts1},
+           {"part4", &default_ts}, {"part5_1", &ts1}}) {
+    SCOPED_TRACE(partition);
+    const auto [index_count, same_tablespace] = ASSERT_RESULT((conn.FetchRow<int64_t, bool>(Format(
+        "SELECT count(*), bool_and(i.reltablespace = t.reltablespace) "
+        "FROM pg_index p JOIN pg_class i ON i.oid = p.indexrelid "
+        "JOIN pg_class t ON t.oid = p.indrelid WHERE t.oid = '$0'::regclass", partition))));
+    ASSERT_EQ(index_count, 2);
+    ASSERT_TRUE(same_tablespace);
+
+    for (const auto* suffix : {"b_idx", "a_b_idx"}) {
+      const auto index_name = Format("$0_$1", partition, suffix);
+      ASSERT_FALSE(ASSERT_RESULT(GetTabletsForTable(index_name)).empty());
+      ASSERT_NO_FATAL_FAILURE(VerifyTablePlacement(
+          index_name, tablespace->PlacementBlocks(), /* read_replica_placement_blocks = */ {},
+          tablespace->NumReplicas()));
+    }
+  }
+
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 1)"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t WHERE b > 0")), 5);
+}
+
 // Test that the leader preference is respected for indexes/matviews.
 TEST_F(PgTablespacesTest, TestPreferredZone) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;

@@ -224,20 +224,46 @@ CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a);
 ALTER TABLE tempparttest SET TABLESPACE regress_tblspace;
 DROP TABLE tempparttest;
 
--- partitioned index
+-- partitioned indexes follow their tables, not the parents tablespace
 CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
-CREATE TABLE testschema.part1 PARTITION OF testschema.part FOR VALUES IN (1);
+CREATE TABLE testschema.part1 PARTITION OF testschema.part FOR VALUES IN (1) TABLESPACE regress_tblspace_2;
 CREATE INDEX part_a_idx ON testschema.part (a) TABLESPACE regress_tblspace;
-CREATE TABLE testschema.part2 PARTITION OF testschema.part FOR VALUES IN (2);
+CREATE TABLE testschema.part2 PARTITION OF testschema.part FOR VALUES IN (2) TABLESPACE regress_tblspace_2;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname LIKE 'part%_idx' ORDER BY relname;
 
-CREATE TABLE testschema.part34 PARTITION OF testschema.part FOR VALUES IN (3, 4) PARTITION BY LIST (a);
+CREATE TABLE testschema.part34 PARTITION OF testschema.part FOR VALUES IN (3, 4) PARTITION BY LIST (a) TABLESPACE regress_tblspace_2;
 CREATE TABLE testschema.part3 PARTITION OF testschema.part34 FOR VALUES IN (3);
 ALTER INDEX testschema.part34_a_idx SET TABLESPACE pg_default;
-CREATE TABLE testschema.part4 PARTITION OF testschema.part34 FOR VALUES IN (4);
+SET default_tablespace TO regress_tblspace;
+CREATE TABLE testschema.part4 PARTITION OF testschema.part34 FOR VALUES IN (4) TABLESPACE pg_default;
+RESET default_tablespace;
 SELECT relname, spcname FROM pg_catalog.pg_class c LEFT OUTER JOIN pg_catalog.pg_tablespace t
     ON c.reltablespace = t.oid WHERE c.relname LIKE 'part%_idx' ORDER BY relname;
+
+-- a parent index without a tablespace clause follows the same rule
+CREATE TABLE testschema.index_part (a int, b int) PARTITION BY LIST (a);
+CREATE TABLE testschema.index_part1 PARTITION OF testschema.index_part FOR VALUES IN (1) TABLESPACE regress_tblspace_2;
+CREATE INDEX index_part_b_idx ON testschema.index_part (b);
+CREATE TABLE testschema.index_part2 PARTITION OF testschema.index_part FOR VALUES IN (2) TABLESPACE regress_tblspace_2;
+CREATE TABLE testschema.index_part3 (a int, b int) TABLESPACE regress_tblspace_2;
+ALTER TABLE testschema.index_part ATTACH PARTITION testschema.index_part3 FOR VALUES IN (3);
+-- reusing an existing index must preserve its tablespace
+CREATE TABLE testschema.index_part4 (a int, b int) TABLESPACE regress_tblspace_2;
+CREATE INDEX index_part4_b_idx ON testschema.index_part4 (b) TABLESPACE regress_tblspace;
+ALTER TABLE testschema.index_part ATTACH PARTITION testschema.index_part4 FOR VALUES IN (4);
+SET default_tablespace TO regress_tblspace;
+CREATE TABLE testschema.index_part5 PARTITION OF testschema.index_part FOR VALUES IN (5) TABLESPACE pg_default;
+RESET default_tablespace;
+SELECT t.relname, COALESCE(s.spcname, 'pg_default') AS index_tablespace,
+       t.reltablespace = c.reltablespace AS same_tablespace
+FROM pg_inherits h JOIN pg_index i ON i.indexrelid = h.inhrelid
+    JOIN pg_class t ON t.oid = i.indrelid
+    JOIN pg_class c ON c.oid = i.indexrelid
+    LEFT JOIN pg_tablespace s ON s.oid = c.reltablespace
+WHERE h.inhparent = 'testschema.index_part_b_idx'::regclass
+ORDER BY t.relname;
+DROP TABLE testschema.index_part;
 
 -- check that default_tablespace doesn't affect ALTER TABLE index rebuilds
 CREATE TABLE testschema.test_default_tab(id bigint) TABLESPACE regress_tblspace;
