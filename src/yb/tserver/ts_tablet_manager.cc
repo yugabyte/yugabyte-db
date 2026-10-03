@@ -1451,6 +1451,8 @@ Status TSTabletManager::ApplyTabletSplit(
   }
   cmeta->set_split_parent_tablet_id(tablet_id);
 
+  std::vector<std::string> child_wal_dirs;
+  child_wal_dirs.reserve(tcmetas.size());
   for (auto& tcmeta : tcmetas) {
     const auto& new_tablet_id = tcmeta.tablet_id;
 
@@ -1476,12 +1478,19 @@ Status TSTabletManager::ApplyTabletSplit(
 
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
-
-    // This can happen if e.g., enable_flush_retryable_requests is off, or the parent does not
-    // have a flushed bootstrap state.
-    WARN_NOT_OK(tablet_peer->CopyBootstrapStateForTabletSplit(dest_wal_dir),
-                "Failed to copy bootstrap state for tablet split");
+    child_wal_dirs.push_back(dest_wal_dir);
   }
+
+  // Persist the bootstrap state as of this split into the children. This is done here, after the
+  // synchronous RocksDB flushes above, rather than by the flusher: the flush task submitted by the
+  // roll-over in Log::CopyTo is blocked on the replica state lock held by this apply, so it could
+  // only ever update the parent's file after the children were created (#30760). Failure is not
+  // fatal: the children then bootstrap without a file, as they do when
+  // enable_flush_retryable_requests is off or when SPLIT_OP is replayed during the parent's own
+  // bootstrap (no consensus yet).
+  WARN_NOT_OK(
+      tablet_peer->FlushBootstrapStateForTabletSplit(child_wal_dirs, operation->hybrid_time()),
+      "Failed to persist bootstrap state for tablet split");
 
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_source_tablet_mark_split_done)) {
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_source_tablet_mark_split_done";

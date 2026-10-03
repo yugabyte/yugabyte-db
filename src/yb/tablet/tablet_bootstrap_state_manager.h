@@ -74,6 +74,23 @@ class TabletBootstrapStateManager {
   // Flush the pb as the latest version.
   Status SaveToDisk(const TabletWeakPtr& tablet_ptr, consensus::RaftConsensus& raft_consensus);
 
+  // Builds the PB that SaveToDisk would persist for the given retryable requests snapshot: the
+  // snapshot itself plus the participant's min_replay_txn_first_write_ht as of that snapshot.
+  // When the participant reports no live transaction at all (kMax), the last persisted bound is
+  // kept, or bound_if_no_live_transactions when it is valid: a bound only has to stay below the
+  // first write of transactions that start after it, so an older bound remains valid and a caller
+  // may know a tighter one.
+  Result<consensus::TabletBootstrapStatePB> BuildPB(
+      const TabletWeakPtr& tablet_ptr, const consensus::RetryableRequests& retryable_requests,
+      WaitForTransactionsLoaded wait_for_load,
+      HybridTime bound_if_no_live_transactions = HybridTime::kInvalid) const;
+
+  // Atomically replaces the bootstrap state file in dir with pb. dir may belong to another tablet
+  // (e.g. a split child), so this touches neither the in-memory state nor has_file_on_disk_.
+  static Status WritePBToDir(
+      Env* env, const std::string& dir, const consensus::TabletBootstrapStatePB& pb,
+      const std::string& log_prefix);
+
   // Load the latest version from disk if any.
   Result<consensus::TabletBootstrapStatePB> LoadFromDisk();
 

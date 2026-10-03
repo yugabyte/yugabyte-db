@@ -127,6 +127,12 @@ DEFINE_RUNTIME_bool(abort_active_txns_during_xrepl_bootstrap, true,
     "may be produced if this is disabled.");
 TAG_FLAG(abort_active_txns_during_xrepl_bootstrap, advanced);
 
+DEFINE_RUNTIME_bool(flush_bootstrap_state_on_tablet_split, true,
+    "When a tablet split is applied, persist the parent's bootstrap state as of the split "
+    "(retryable requests and the transaction loader hybrid time filter) into each child tablet, "
+    "instead of copying the parent's last flushed file, which is usually stale by then.");
+TAG_FLAG(flush_bootstrap_state_on_tablet_split, advanced);
+
 DEFINE_RUNTIME_uint32(log_retention_diagnostics_min_age_secs, 0,
     "When the maintenance manager computes the GC-able WAL size, log WAL retention diagnostics if "
     "the first retained segment is at least this old in seconds. 0 disables.");
@@ -1996,15 +2002,46 @@ Result<OpId> TabletPeer::CopyBootstrapStateTo(const std::string& dest_path) {
   return bootstrap_state_flusher->CopyBootstrapStateTo(dest_path);
 }
 
-Status TabletPeer::CopyBootstrapStateForTabletSplit(const std::string& child_wal_dir) {
+Status TabletPeer::FlushBootstrapStateForTabletSplit(
+    const std::vector<std::string>& child_wal_dirs, HybridTime split_op_hybrid_time) {
   if (!FlushBootstrapStateEnabled()) {
     return STATUS(NotSupported, "flush_retryable_requests is not supported");
   }
-  // We do not use bootstrap_state_flusher for this variant. This means that we do not synchronize
-  // with existing flushes, but tablet split prevents the flusher from proceeding anyways due to
-  // the replica state lock being held (which is also why the flusher cannot be used here).
-  return bootstrap_state_manager_->CopyTo(JoinPathSegments(
-      child_wal_dir, tablet::TabletBootstrapStateManager::FileName()));
+  // This runs inside the SPLIT_OP apply, under the Raft replica state lock. Neither the flusher nor
+  // the locking consensus accessors can be used here, since both take that lock. The flush task
+  // that the log roll-over in Log::CopyTo submitted is parked on it as well, so it can only rewrite
+  // the parent's file after the children have been created; copying that file therefore gave the
+  // children the state of the parent's previous flush, not of the split (#30760).
+  if (!FLAGS_flush_bootstrap_state_on_tablet_split) {
+    for (const auto& child_wal_dir : child_wal_dirs) {
+      RETURN_NOT_OK(bootstrap_state_manager_->CopyTo(
+          JoinPathSegments(child_wal_dir, TabletBootstrapStateManager::FileName())));
+    }
+    return Status::OK();
+  }
+
+  auto consensus = VERIFY_RESULT(GetRaftConsensus());
+  auto retryable_requests = consensus->TakeSnapshotOfRetryableRequestsUnlocked();
+  // Do not wait for the transaction loader while holding the replica state lock: a replica that is
+  // still loading transactions persists its current, safe lower bound instead.
+  //
+  // When no transaction is live at the split, the split time is the bound the children can use:
+  // every intent in their checkpoint was written by an op before SPLIT_OP, so with a smaller
+  // hybrid time, and every op they will accept gets a larger one.
+  auto pb = VERIFY_RESULT(bootstrap_state_manager_->BuildPB(
+      tablet_weak_, *retryable_requests, WaitForTransactionsLoaded::kFalse,
+      /* bound_if_no_live_transactions = */ split_op_hybrid_time));
+
+  auto* env = bootstrap_state_manager_->fs_manager()->env();
+  for (const auto& child_wal_dir : child_wal_dirs) {
+    RETURN_NOT_OK(TabletBootstrapStateManager::WritePBToDir(env, child_wal_dir, pb, LogPrefix()));
+  }
+  LOG_WITH_PREFIX(INFO)
+      << "Persisted bootstrap state up to " << OpId::FromPB(pb.last_op_id())
+      << " with min_replay_txn_first_write_ht "
+      << HybridTime::FromPB(pb.min_replay_txn_first_write_ht())
+      << " into " << child_wal_dirs.size() << " split child tablet(s)";
+  return Status::OK();
 }
 
 Status TabletPeer::SubmitFlushBootstrapStateTask() {
