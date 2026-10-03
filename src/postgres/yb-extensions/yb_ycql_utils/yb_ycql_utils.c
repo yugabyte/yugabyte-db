@@ -4,6 +4,7 @@
 #include "pg_yb_utils.h"
 #include "postmaster/syslogger.h"
 #include "utils/builtins.h"
+#include "utils/jsonb.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 PG_MODULE_MAGIC;
@@ -12,6 +13,9 @@ PG_FUNCTION_INFO_V1(ycql_stat_statements);
 
 /* In yb_ycql_utils v1.0 the number of columns = 9 */
 static const int ycql_stat_statements_num_cols_v1_1 = 10;
+
+/* v1.2 adds the yb_latency_histogram column */
+static const int ycql_stat_statements_num_cols_v1_2 = 11;
 
 Datum
 ycql_stat_statements(PG_FUNCTION_ARGS)
@@ -81,6 +85,20 @@ ycql_stat_statements(PG_FUNCTION_ARGS)
 
 		if (ncols >= ycql_stat_statements_num_cols_v1_1)
 			values[9] = CStringGetTextDatum(stats->keyspace);
+
+		if (ncols >= ycql_stat_statements_num_cols_v1_2)
+		{
+			/*
+			 * The histogram is produced as a JSON array string on the tserver. It may be empty
+			 * when talking to an older tserver that does not populate it; fall back to an empty
+			 * array so the jsonb input is always valid.
+			 */
+			const char *histogram = (stats->yb_latency_histogram != NULL &&
+									 stats->yb_latency_histogram[0] != '\0') ?
+				stats->yb_latency_histogram : "[]";
+
+			values[10] = DirectFunctionCall1(jsonb_in, CStringGetDatum(histogram));
+		}
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

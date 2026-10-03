@@ -676,6 +676,7 @@ void CQLServiceImpl::UpdateCountersUnlocked(
       stmt_counters->min_time_in_msec = execute_time_in_msec;
     }
   }
+  stmt_counters->latency_histogram.Record(execute_time_in_msec);
 }
 
 shared_ptr<StmtCounters> CQLServiceImpl::GetWritablePrepStmtCounters(const std::string& query_id) {
@@ -727,6 +728,7 @@ Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsReq
       stmt_pb.set_mean_time(stmt.second.total_time_in_msec / stmt.second.num_calls);
       const double stddev_time = stmt.second.GetStdDevTime();
       stmt_pb.set_stddev_time(stddev_time);
+      stmt_pb.set_yb_latency_histogram(stmt.second.latency_histogram.ToJsonArrayString());
     }
   }
   return Status::OK();
