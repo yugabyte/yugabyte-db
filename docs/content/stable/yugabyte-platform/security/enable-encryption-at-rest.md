@@ -108,6 +108,8 @@ When restoring your universe data, YugabyteDB Anywhere uses the selected KMS con
 
 You can rotate the master and universe keys.
 
+Changing the KMS configuration re-encrypts the live universe key registry with the new master key immediately. Rotating the universe key starts encrypting new data with that key. Existing files move to the new universe key as they are compacted or rewritten.
+
 Note that you can choose to rotate the master key/KMS configuration _or_ rotate the universe key, but you can't do both actions at the same time.
 
 ### Rotate the master keys
@@ -148,7 +150,7 @@ The cluster configuration change does the following:
 - Updates the cluster configuration with the new latest key ID.
 - Encrypts the registry with the master key.
 
-Once encryption is enabled with a new universe key, only new data is encrypted with this new key. Old data remains unencrypted, or encrypted with an older universe key, until compaction churn triggers a re-encryption with the new key.
+Once encryption is enabled with a new universe key, new data is encrypted with this key. Existing files stay under the previous universe key, or remain unencrypted, until a compaction or a later write rewrites them. There is no indicator of how much data is still under an earlier universe key.
 
 To rotate the universe keys, navigate to the universe and do the following:
 

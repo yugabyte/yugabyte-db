@@ -27,11 +27,17 @@ You can enable YugabyteDB EAR for a cluster as follows:
 
 Note that, regardless of whether you enable YugabyteDB EAR for a cluster, YugabyteDB Aeon uses volume encryption for all data at rest, including your account data, your clusters, and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, Azure disk encryption, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
 
+## How the CMK encrypts the cluster
+
+The CMK you create in your cloud provider KMS does not encrypt cluster data directly. The CMK is the master key. It encrypts the cluster's key registry, which is stored with the cluster and copied into backups.
+
+The registry holds universe keys. A universe key protects data written to disk by encrypting the key for each data file. YugabyteDB Aeon generates universe keys for the cluster. You do not create them in AWS, Azure, or GCP. For the full key hierarchy, refer to [Encryption at rest in YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-at-rest/). (Anywhere uses the same key names and calls a cluster a universe.)
+
 ## Limitations
 
 - You can't enable cluster EAR on clusters with YugabyteDB versions earlier than 2.16.7.
 
-Enabling EAR can impact cluster performance. You should monitor your workload after enabling this feature.
+- Enabling EAR can impact cluster performance. You should monitor your workload after enabling this feature.
 
 ## Prerequisites
 
@@ -155,14 +161,23 @@ You can enable EAR using a CMK for clusters (database version 2.16.7 and later o
 
 Click **Save** when you are done.
 
-YugabyteDB Aeon validates the key and, if successful, starts encrypting the data. Only new data is encrypted with the new key. Old data remains unencrypted until compaction churn triggers a re-encryption with the new key.
+YugabyteDB Aeon validates the CMK and, if successful, generates a universe key and starts encrypting the data. Only new data is encrypted. Existing data remains unencrypted until a compaction, or a later write or update, rewrites it under that universe key.
 
 To disable cluster EAR, click **Disable Encryption at Rest**. YugabyteDB Aeon uses lazy decryption to decrypt the cluster.
 
 ## Rotate your CMK
 
+When you edit the CMK configuration, YugabyteDB Aeon rotates the master key (your CMK), then rotates the universe key that protects data on disk. See [How the CMK encrypts the cluster](#how-the-cmk-encrypts-the-cluster).
+
 {{< warning title="Deleting your CMK" >}}
-If you delete a CMK, you will no longer be able to decrypt clusters encrypted using the key. Before deleting a CMK, make sure that you no longer need it. Retain all CMKs used to encrypt data in backups and snapshots.
+Deleting the CMK that is currently configured makes the cluster unable to unwrap its key registry.
+
+You can remove a previous CMK after both of the following are true:
+
+- Incremental backups taken before the rotation have aged out, so they can no longer be restored. The same applies to any full backup from before the rotation that you still need.
+- You no longer need [point-in-time recovery (PITR)](../cloud-clusters/aeon-pitr/) to a time before the rotation.
+
+If you must be able to restore a backup for 30 days, keep the rotated CMK for those 30 days.
 {{< /warning >}}
 
 To rotate the CMK used for EAR, do the following:
@@ -185,4 +200,8 @@ To rotate the CMK used for EAR, do the following:
 
 1. Click **Save**.
 
-YugabyteDB Aeon uses lazy decryption and encryption to encrypt the cluster using the new key.
+YugabyteDB Aeon then does the following:
+
+- The live cluster's key registry is re-encrypted with the new CMK immediately.
+- New data is encrypted under the new universe key. Existing data is rewritten under that universe key as tablets compact, or as rows are written or updated. You cannot see what fraction of data is still under an earlier universe key. To force a full rewrite, contact {{% support-cloud %}}.
+- The previous CMK is still required to restore backups and PITR history from before the rotation.
