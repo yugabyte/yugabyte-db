@@ -5818,13 +5818,14 @@ Status CatalogManager::GetPlacementLocalTransactionStatusTablets(
         continue;
       }
       auto tablets = VERIFY_RESULT(table_info.table->GetTablets());
-      auto tablet_ids =
-          tablets
-              | std::views::filter([this](auto& tablet) {
-                  return CheckTransactionStatusTabletUsable(tablet);
-                })
-              | std::views::transform([](const auto& tablet) { return tablet->tablet_id(); })
-              | std::ranges::to<std::vector>();
+      // Single pass: the usability predicate may change concurrently, so a multi-pass range
+      // (size then copy) could overflow the allocated buffer.
+      std::vector<TabletId> tablet_ids;
+      for (const auto& tablet : tablets) {
+        if (CheckTransactionStatusTabletUsable(tablet)) {
+          tablet_ids.push_back(tablet->tablet_id());
+        }
+      }
       if (table_info.is_region_local) {
         resp->mutable_region_local_tablet_id()->Add(tablet_ids.begin(), tablet_ids.end());
       }
