@@ -373,3 +373,10 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
 /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
 
 drop table GH18347;
+
+-- GH-34210: large arguments must be handled correctly.
+SELECT yb_hash_code(repeat('x', 10000000)) IS NOT NULL;
+CREATE TEMP TABLE large_hash_input (n int);
+INSERT INTO large_hash_input VALUES (10000000);
+SELECT yb_hash_code(repeat('x', n)) IS NOT NULL FROM large_hash_input;
+DROP TABLE large_hash_input;

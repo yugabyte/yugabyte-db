@@ -1522,3 +1522,19 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
 (3 rows)
 
 drop table GH18347;
+-- GH-34210: large arguments must be handled correctly.
+SELECT yb_hash_code(repeat('x', 10000000)) IS NOT NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+CREATE TEMP TABLE large_hash_input (n int);
+INSERT INTO large_hash_input VALUES (10000000);
+SELECT yb_hash_code(repeat('x', n)) IS NOT NULL FROM large_hash_input;
+ ?column? 
+----------
+ t
+(1 row)
+
+DROP TABLE large_hash_input;
