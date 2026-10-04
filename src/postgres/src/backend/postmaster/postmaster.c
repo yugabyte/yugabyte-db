@@ -425,6 +425,15 @@ static volatile sig_atomic_t pending_pm_immediate_shutdown_request;
 /* event multiplexing object */
 static WaitEventSet *pm_wait_set;
 
+#ifdef __APPLE__
+/*
+ * YB: macOS has no PR_SET_PDEATHSIG, so the postmaster detects tserver exit
+ * through EOF on its STDIN pipe.
+ */
+static bool yb_watch_stdin = false;
+static bool yb_pm_is_accepting_conns = false;
+#endif
+
 #ifdef USE_SSL
 /* Set when and if SSL has been initialized properly */
 bool		LoadedSSL = false;
@@ -1749,12 +1758,23 @@ DetermineSleepTime(void)
 static void
 ConfigurePostmasterWaitSet(bool accept_connections)
 {
+	int			nevents = accept_connections ? (1 + NumListenSockets) : 1;
+
+#ifdef __APPLE__
+	/*
+	 * macOS does not support PR_SET_PDEATHSIG, so we need to watch for parent
+	 * tserver exit on the STDIN pipe.
+	 */
+	if (yb_watch_stdin)
+		nevents++;
+	yb_pm_is_accepting_conns = accept_connections;
+#endif
+
 	if (pm_wait_set)
 		FreeWaitEventSet(pm_wait_set);
 	pm_wait_set = NULL;
 
-	pm_wait_set = CreateWaitEventSet(NULL,
-									 accept_connections ? (1 + NumListenSockets) : 1);
+	pm_wait_set = CreateWaitEventSet(NULL, nevents); /* YB: Custom nevents for macOS */
 	AddWaitEventToSet(pm_wait_set, WL_LATCH_SET, PGINVALID_SOCKET, MyLatch,
 					  NULL);
 
@@ -1764,6 +1784,18 @@ ConfigurePostmasterWaitSet(bool accept_connections)
 			AddWaitEventToSet(pm_wait_set, WL_SOCKET_ACCEPT, ListenSockets[i],
 							  NULL, NULL);
 	}
+
+#ifdef __APPLE__
+	/*
+	 * YB: Register the STDIN pipe as a READABLE wait event rather than a CLOSED
+	 * wait event. With CLOSED alone, spurious data on the pipe without EOF
+	 * would fire kqueue but report no event, which would cause WaitEventSetWait
+	 * to spin.
+	 */
+	if (yb_watch_stdin)
+		AddWaitEventToSet(pm_wait_set, WL_SOCKET_READABLE, STDIN_FILENO,
+						  NULL, NULL);
+#endif
 }
 
 /*
@@ -1777,13 +1809,11 @@ ServerLoop(void)
 	WaitEvent	events[MAXLISTEN];
 	int			nevents;
 
+#ifdef __APPLE__
+	yb_watch_stdin = YBIsEnabledInPostgresEnvVar();
+#endif
 	ConfigurePostmasterWaitSet(true);
 	last_lockfile_recheck_time = last_touch_time = time(NULL);
-
-	/* YB_TODO_PG19MERGE: only caller is currently under #if 0; silence unused warning */
-#ifdef __APPLE__
-	pg_attribute_unused() bool yb_enabled = YBIsEnabledInPostgresEnvVar();
-#endif
 
 #ifdef __linux__
 	if (getenv("FLAGS_yb_backend_oom_score_adj") != NULL)
@@ -1827,16 +1857,40 @@ ServerLoop(void)
 			if (pending_pm_pmsignal)
 				process_pm_pmsignal();
 
+#ifdef __APPLE__
 			/*
-			 * YB_TODO_PG19MERGE: PG19 changed the server loop.
-			 * Port this YB code.
+			 * YB: STDIN readable means that the parent tserver exited. Request
+			 * a fast shutdown to match the SIGINT that Linux delivers via
+			 * PR_SET_PDEATHSIG. Must precede the generic WL_SOCKET_ACCEPT check
+			 * as it uses the same bitset as WL_SOCKET_READABLE.
+			 * The difference between WL_SOCKET_READABLE and WL_SOCKET_ACCEPT is
+			 * largely pedantic; one cannot "accept" connections from a pipe,
+			 * but can read from it.
 			 */
-#if 0
-			#ifdef __APPLE__
-				/* YB: If STDIN is closed, it means that parent did exit */
-				if (yb_enabled && FD_ISSET(STDIN_FILENO, &rmask))
-					return STATUS_OK;
-			#endif
+			if (yb_watch_stdin && events[i].fd == STDIN_FILENO &&
+				(events[i].events & WL_SOCKET_READABLE))
+			{
+				ereport(LOG,
+						(errmsg("parent exited, starting fast shutdown")));
+				yb_watch_stdin = false;
+
+				/*
+				 * Drop STDIN from the wait set. EOF stays readable and would
+				 * spin the loop. Also, preserve the current accept mode.
+				 * Setting this to false will cause incoming connections that
+				 * are yet to be
+				 * accepted to stagnate in the queue until the postmaster exits
+				 * which would be suboptimal.
+				 */
+				ConfigurePostmasterWaitSet(yb_pm_is_accepting_conns);
+
+				/*
+				 * Send the same signal that Linux's PR_SET_PDEATHSIG delivers.
+				 * Must match YB_PG_PDEATHSIG as set in pg_wrapper.cc.
+				 */
+				kill(MyProcPid, SIGINT);
+				continue;
+			}
 #endif
 			if (events[i].events & WL_SOCKET_ACCEPT)
 			{
@@ -1948,49 +2002,6 @@ ServerLoop(void)
 		}
 	}
 }
-
-/*
- * YB_TODO_PG19MERGE: PG19 replaced the select() loop in ServerLoop with
- * WaitEventSet. Re-port the macOS STDIN_FILENO watch for tserver-exit
- * detection (commit 4ad4f5e6bac248612b69d484dbf35907e8ae8228) into the new
- * event loop.
- */
-#if 0
-/*
- * Initialise the masks for select() for the ports we are listening on.
- * Return the number of sockets to listen on.
- */
-static int
-initMasks(fd_set *rmask)
-{
-	int			maxsock = -1;
-	int			i;
-
-	FD_ZERO(rmask);
-
-#ifdef __APPLE__
-	if (YBIsEnabledInPostgresEnvVar())
-	{
-		FD_SET(STDIN_FILENO, rmask);
-		maxsock = STDIN_FILENO;
-	}
-#endif
-
-	for (i = 0; i < MAXLISTEN; i++)
-	{
-		int			fd = ListenSocket[i];
-
-		if (fd == PGINVALID_SOCKET)
-			break;
-		FD_SET(fd, rmask);
-
-		if (fd > maxsock)
-			maxsock = fd;
-	}
-
-	return maxsock + 1;
-}
-#endif
 
 /*
  * canAcceptConnections --- check to see if database state allows connections

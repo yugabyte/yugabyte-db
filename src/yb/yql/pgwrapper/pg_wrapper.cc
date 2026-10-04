@@ -1140,6 +1140,9 @@ Status PgWrapper::Start() {
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
+  // macOS has no PR_SET_PDEATHSIG: the postmaster manually detects tserver exit
+  // and sends itself a hard-coded SIGINT. Update that path (postmaster.c) too
+  // if changing this signal.
   proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
