@@ -116,6 +116,9 @@ DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
 DEFINE_NON_RUNTIME_bool(ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
+DEFINE_NON_RUNTIME_bool(ysql_catalog_prefetch_minimize_index_scans, true,
+    "Read system table during catalog prefetching without index scan (if possible)");
+
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching_connect_higher_version, "2026_02");
@@ -316,6 +319,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
       .ysql_catalog_prefetch_row_limit = &FLAGS_ysql_catalog_prefetch_row_limit,
       .ysql_catalog_prefetch_size_limit = &FLAGS_ysql_catalog_prefetch_size_limit,
+      .ysql_catalog_prefetch_minimize_index_scans =
+          &FLAGS_ysql_catalog_prefetch_minimize_index_scans,
       .ysql_enable_startup_client_connection_check =
           &FLAGS_ysql_enable_startup_client_connection_check,
   };

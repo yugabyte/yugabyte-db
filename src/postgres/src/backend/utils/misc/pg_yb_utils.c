@@ -6891,7 +6891,8 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 	 */
 	int			sys_only_filter_attr = InvalidAttrNumber;
 	int			db_id = MyDatabaseId;
-	int			sys_table_index_id = InvalidOid;
+	int			mandatory_index_id = InvalidOid;
+	int			index_id = InvalidOid;
 	bool		fetch_ybctid = true;
 
 	switch (sys_table_id)
@@ -6899,17 +6900,17 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			/* TemplateDb tables */
 		case AuthMemRelationId: /* pg_auth_members */
 			db_id = Template1DbOid;
-			sys_table_index_id = AuthMemMemRoleIndexId;
+			mandatory_index_id = AuthMemMemRoleIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			sys_table_index_id = AuthIdRolnameIndexId;
+			index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */
 			db_id = Template1DbOid;
-			sys_table_index_id = DatabaseNameIndexId;
+			mandatory_index_id = DatabaseNameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 
@@ -6934,95 +6935,95 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			sys_only_filter_attr = Anum_pg_aggregate_aggfnoid;
 			break;
 		case AccessMethodProcedureRelationId:	/* pg_amproc */
-			sys_table_index_id = AccessMethodProcedureIndexId;
+			mandatory_index_id = AccessMethodProcedureIndexId;
 			sys_only_filter_attr = Anum_pg_amproc_oid;
 			break;
 		case AccessMethodRelationId:	/* pg_am */
-			sys_table_index_id = AmNameIndexId;
+			index_id = AmNameIndexId;
 			sys_only_filter_attr = Anum_pg_am_oid;
 			break;
 		case AttrDefaultRelationId: /* pg_attrdef */
-			sys_table_index_id = AttrDefaultIndexId;
+			index_id = AttrDefaultIndexId;
 			sys_only_filter_attr = Anum_pg_attrdef_oid;
 			break;
 		case AttributeRelationId:	/* pg_attribute */
-			sys_table_index_id = AttributeRelidNameIndexId;
+			index_id = AttributeRelidNameIndexId;
 			sys_only_filter_attr = Anum_pg_attribute_attrelid;
 			break;
 		case CastRelationId:	/* pg_cast */
-			sys_table_index_id = CastSourceTargetIndexId;
+			mandatory_index_id = CastSourceTargetIndexId;
 			sys_only_filter_attr = Anum_pg_cast_oid;
 			break;
 		case ConstraintRelationId:	/* pg_constraint */
-			sys_table_index_id = ConstraintRelidTypidNameIndexId;
+			mandatory_index_id = ConstraintRelidTypidNameIndexId;
 			sys_only_filter_attr = Anum_pg_constraint_oid;
 			break;
 		case EnumRelationId:	/* pg_enum */
-			sys_table_index_id = EnumTypIdLabelIndexId;
+			mandatory_index_id = EnumTypIdLabelIndexId;
 			sys_only_filter_attr = Anum_pg_enum_oid;
 			break;
 		case IndexRelationId:	/* pg_index */
-			sys_table_index_id = IndexIndrelidIndexId;
+			mandatory_index_id = IndexIndrelidIndexId;
 			sys_only_filter_attr = Anum_pg_index_indexrelid;
 			break;
 		case InheritsRelationId:	/* pg_inherits */
-			sys_table_index_id = InheritsParentIndexId;
+			mandatory_index_id = InheritsParentIndexId;
 			sys_only_filter_attr = Anum_pg_inherits_inhrelid;
 			break;
 		case NamespaceRelationId:	/* pg_namespace */
-			sys_table_index_id = NamespaceNameIndexId;
+			mandatory_index_id = NamespaceNameIndexId;
 			sys_only_filter_attr = Anum_pg_namespace_oid;
 			break;
 		case OperatorClassRelationId:	/* pg_opclass */
-			sys_table_index_id = OpclassAmNameNspIndexId;
+			index_id = OpclassAmNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_opclass_oid;
 			break;
 		case OperatorRelationId:	/* pg_operator */
-			sys_table_index_id = OperatorNameNspIndexId;
+			mandatory_index_id = OperatorNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_operator_oid;
 			break;
 		case PolicyRelationId:	/* pg_policy */
-			sys_table_index_id = PolicyPolrelidPolnameIndexId;
+			mandatory_index_id = PolicyPolrelidPolnameIndexId;
 			sys_only_filter_attr = Anum_pg_policy_oid;
 			break;
 		case ProcedureRelationId:	/* pg_proc */
-			sys_table_index_id = ProcedureNameArgsNspIndexId;
+			mandatory_index_id = ProcedureNameArgsNspIndexId;
 			sys_only_filter_attr = Anum_pg_proc_oid;
 			break;
 		case RelationRelationId:	/* pg_class */
-			sys_table_index_id = ClassNameNspIndexId;
+			index_id = ClassNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_class_oid;
 			break;
 		case CollationRelationId:	/* pg_collation */
-			sys_table_index_id = CollationNameEncNspIndexId;
+			index_id = CollationNameEncNspIndexId;
 			break;
 		case RangeRelationId:	/* pg_range */
 			sys_only_filter_attr = Anum_pg_range_rngtypid;
 			break;
 		case RewriteRelationId: /* pg_rewrite */
-			sys_table_index_id = RewriteRelRulenameIndexId;
+			mandatory_index_id = RewriteRelRulenameIndexId;
 			sys_only_filter_attr = Anum_pg_rewrite_oid;
 			break;
 		case StatisticRelationId:	/* pg_statistic */
 			sys_only_filter_attr = Anum_pg_statistic_starelid;
 			break;
 		case StatisticExtRelationId:	/* pg_statistic_ext */
-			sys_table_index_id = StatisticExtNameIndexId;
+			mandatory_index_id = StatisticExtNameIndexId;
 			sys_only_filter_attr = Anum_pg_statistic_ext_oid;
 			break;
 		case StatisticExtDataRelationId:	/* pg_statistic_ext_data */
 			sys_only_filter_attr = Anum_pg_statistic_ext_data_stxoid;
 			break;
 		case TriggerRelationId: /* pg_trigger */
-			sys_table_index_id = TriggerRelidNameIndexId;
+			index_id = TriggerRelidNameIndexId;
 			sys_only_filter_attr = Anum_pg_trigger_oid;
 			break;
 		case TypeRelationId:	/* pg_type */
-			sys_table_index_id = TypeNameNspIndexId;
+			index_id = TypeNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_type_oid;
 			break;
 		case AccessMethodOperatorRelationId:	/* pg_amop */
-			sys_table_index_id = AccessMethodOperatorIndexId;
+			mandatory_index_id = AccessMethodOperatorIndexId;
 			sys_only_filter_attr = Anum_pg_amop_oid;
 			break;
 		case PartitionedRelationId: /* pg_partitioned_table */
@@ -7042,7 +7043,11 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 	if (!YbUseMinimalCatalogCachesPreload())
 		sys_only_filter_attr = InvalidAttrNumber;
 
-	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id,
+	Assert(mandatory_index_id == InvalidOid || index_id == InvalidOid);
+	if (*YBCGetGFlags()->ysql_catalog_prefetch_minimize_index_scans)
+		index_id = InvalidOid;
+	const int actual_index_id = mandatory_index_id == InvalidOid ? index_id : mandatory_index_id;
+	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, actual_index_id,
 									  sys_only_filter_attr, fetch_ybctid);
 }
 
