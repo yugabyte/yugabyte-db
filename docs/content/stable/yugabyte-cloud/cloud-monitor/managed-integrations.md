@@ -35,11 +35,13 @@ Currently, you can export data to the following tools.
 | :---------- | :--------- | :------------ |
 | [Datadog](#datadog) | Database query logs<br>Database audit logs | [Yes](https://docs.datadoghq.com/integrations/yugabytedb_managed/#data-collected) |
 | [Grafana Cloud](#grafana-cloud) | | [Yes](https://grafana.com/grafana/dashboards/12620-yugabytedb/) |
+| [Grafana Mimir](#grafana-mimir) | | Yes |
 | [Sumo Logic](#sumo-logic) | | Yes |
 | [Prometheus](#prometheus) | | Yes |
 | [VictoriaMetrics](#victoriametrics) | | Yes |
 | [Google Cloud Logging](#google-cloud-logging) | Database audit logs | |
 | [New Relic](#new-relic) | | Yes |
+| [Tsuga](#tsuga) | Database query logs<br>Database audit logs | Yes |
 | [Amazon S3](#amazon-s3) | Database query logs<br>Database audit logs | |
 
 <!--| [Dynatrace](#dynatrace) | | Yes |-->
@@ -101,6 +103,25 @@ To create an export configuration, do the following:
 1. Enter your Grafana Cloud Access policy token.
 1. Enter your Grafana Cloud instance ID and zone. Obtain these by navigating to the Grafana Cloud portal, selecting your stack, and on the Grafana tile, clicking **Details**. They are displayed under **Instance Details**.
 1. Optionally, click **Download** to download the Grafana Cloud dashboard template. You can [import this JSON format template](https://grafana.com/docs/grafana-cloud/visualizations/dashboards/manage-dashboards/#export-and-import-dashboards) into your Grafana account and use it as a starting point for visualizing your cluster data in Grafana. The dashboard is also available from the [Grafana Dashboards](https://grafana.com/grafana/dashboards/19887-yugabytedb-managed-clusters/) page.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+### Grafana Mimir
+
+The [Grafana Mimir](https://grafana.com/docs/mimir/latest/) integration requires the following:
+
+- Grafana Mimir instance that accepts [OpenTelemetry (OTLP) metrics](https://grafana.com/docs/mimir/latest/configure/configure-otel-collector/).
+- OTLP endpoint URL for that instance.
+- Authorization header used to authenticate with Grafana Mimir.
+- For a multi-tenant instance, the tenant organization ID. Grafana Mimir reads this value from the [`X-Scope-OrgID`](https://grafana.com/docs/mimir/latest/references/http-api/#authentication) header.
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the **Grafana Mimir** integration or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the Grafana Mimir OTLP endpoint URL where you want to send metrics. For example, `mimir.yourcompany.com/otlp`.
+1. Enter the Authorization header value. The value must start with `Bearer ` or `Basic `, including the space. For example, `Bearer xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`.
+1. Optionally, enter the Grafana Mimir organization ID. This is sent as the `X-Scope-OrgID` header. Leave the field blank if your Grafana Mimir instance isn't multi-tenant.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
@@ -271,6 +292,26 @@ To create an export configuration, do the following:
     - US Endpoint: `https://otlp.nr-data.net`
     - EU Endpoint: `https://otlp.eu01.nr-data.net`
 1. Enter the license key for the New Relic account you want to use for data ingest. Keys are available under **User menu > API Keys** in the New Relic platform.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+### Tsuga
+
+The [Tsuga](https://www.tsuga.com/) integration requires the following:
+
+- Tsuga account
+- OTLP endpoint URL for your Tsuga intake
+- Tsuga API token. The token is sent as an `Authorization: Bearer` header.
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the **Tsuga** integration or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the Tsuga OTLP endpoint URL where you want to send metrics and logs. For example, `intake.yourcompany.tsuga.com/api/v1/otlp`.
+
+    Enter the endpoint without `/v1/metrics` or `/v1/logs`. Those paths are appended automatically.
+
+1. Enter the Tsuga API token. Enter the token only; `Bearer` is added automatically.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
