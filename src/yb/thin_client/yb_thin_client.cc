@@ -412,6 +412,7 @@ Status OpenSession(
     }
   }
   session.host_index = opened_host;
+  // The replaced id is left for its tserver to expire, since a reopen follows a failure there.
   session.session_id = session_id;
   ++session.generation;
   session.open = true;
