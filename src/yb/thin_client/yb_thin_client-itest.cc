@@ -1808,8 +1808,7 @@ Result<std::vector<int32_t>> ScanKeysWithRetries(
 
 // Two sessions share one connection, as in a small caller pool.
 constexpr ybthin_pool_opts kOneConnectionPool = {
-    /* read_sessions= */ 1, /* write_sessions= */ 1, /* sessions_per_conn= */ 4,
-    /* sockets_per_host= */ 0};
+    /* read_sessions= */ 1, /* write_sessions= */ 1, /* sessions_per_conn= */ 4};
 
 }  // namespace
 
@@ -1999,8 +1998,7 @@ TEST_F(PgThinClientFailoverTest, ScansOnOtherConnectionsKeepPaging) {
   // the stopped tserver for even i.
   constexpr uint32_t kReadSessions = 4;
   constexpr ybthin_pool_opts kPool = {
-      kReadSessions, /* write_sessions= */ 1, /* sessions_per_conn= */ 1,
-      /* sockets_per_host= */ 0};
+      kReadSessions, /* write_sessions= */ 1, /* sessions_per_conn= */ 1};
 
   const auto oids = ASSERT_RESULT(CreateKeyTable());
   // One reactor per connection is plenty for a test that sends one call at a time.
@@ -2202,8 +2200,7 @@ class PgThinClientLoadBalancerTest : public PgThinClientFailoverTest {
     // the other's, as on a shared universe. A Perform on the wrong tserver then finds no session,
     // rather than another client's that happens to share its id.
     constexpr ybthin_pool_opts kOtherClientsPool = {
-        /* read_sessions= */ 8, /* write_sessions= */ 1, /* sessions_per_conn= */ 0,
-        /* sockets_per_host= */ 0};
+        /* read_sessions= */ 8, /* write_sessions= */ 1, /* sessions_per_conn= */ 0};
     other_client_ = ASSERT_RESULT(
         CreateThinClient({TServerAddrOf(kFirstTs)}, &kOtherClientsPool, 60000));
 
@@ -2277,19 +2274,17 @@ TEST_F(PgThinClientLoadBalancerTest, SessionsReopenTogetherAfterTheSocketDrops) 
 }
 
 // A connection keeps one socket to a single address, taken to be a load balancer, and 8 to each of
-// several addresses, unless the pool sets sockets_per_host.
+// several addresses.
 TEST_F(PgThinClientTest, SocketsPerHost) {
   constexpr int kUpserts = 20;
   const auto oids = ASSERT_RESULT(CreateKeyTable());
   const std::vector<Endpoint> tserver = {cluster_->mini_tablet_server(0)->bound_rpc_addr()};
   struct Case {
     size_t num_addrs;
-    uint32_t sockets_per_host;
     size_t expected_sockets;
   };
-  for (const auto& test_case : {Case{1, 0, 1}, Case{2, 0, 8}, Case{1, 3, 3}}) {
-    SCOPED_TRACE(Format(
-        "$0 addresses, sockets_per_host $1", test_case.num_addrs, test_case.sockets_per_host));
+  for (const auto& test_case : {Case{1, 1}, Case{2, 8}}) {
+    SCOPED_TRACE(Format("$0 addresses", test_case.num_addrs));
     // Forwarders to the one tserver stand in for the addresses, and count the sockets opened.
     std::vector<std::unique_ptr<FileLock>> port_locks(test_case.num_addrs);
     std::vector<std::unique_ptr<RoundRobinBalancer>> forwarders;
@@ -2298,10 +2293,7 @@ TEST_F(PgThinClientTest, SocketsPerHost) {
       forwarders.push_back(std::make_unique<RoundRobinBalancer>(tserver));
       addrs.push_back(ASSERT_RESULT(StartBalancer(*forwarders.back(), &port_lock)));
     }
-    const ybthin_pool_opts pool = {
-        /* read_sessions= */ 1, /* write_sessions= */ 1, /* sessions_per_conn= */ 4,
-        /* sockets_per_host= */ test_case.sockets_per_host};
-    auto client = ASSERT_RESULT(CreateThinClient(addrs, &pool, 60000));
+    auto client = ASSERT_RESULT(CreateThinClient(addrs, &kOneConnectionPool, 60000));
     auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
     for (int v = 0; v < kUpserts; ++v) {
       ASSERT_EQ(UpsertKeys(client.get(), table.get(), /* hash_key= */ 1, v, v + 1).code, YBTHIN_OK);

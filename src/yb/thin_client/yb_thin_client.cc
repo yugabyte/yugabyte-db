@@ -110,7 +110,6 @@ static constexpr int kDefaultNumReactors = 4;
 static constexpr uint32_t kDefaultReadSessions = 4;
 static constexpr uint32_t kDefaultWriteSessions = 1;
 static constexpr uint32_t kDefaultSessionsPerConn = 4;
-static constexpr uint32_t kDefaultSocketsPerTserver = 8;
 // One connection to a tserver. Its own messenger, hence its own sockets, so N connections spread
 // across tserver nodes behind a ClusterIP VIP. Sessions are packed onto connections. A connection
 // whose tserver stops answering moves on to the next configured one.
@@ -960,12 +959,6 @@ ybthin_status ybthin_client_create(
   if (client->hosts.empty()) {
     return MakeStatus(YBTHIN_INVALID, "no valid tserver addresses");
   }
-  // One address is taken to be a load balancer, which picks a tserver per socket, so a connection's
-  // calls must share one socket to reach the tserver that issued its session ids.
-  uint32_t sockets_per_host = pool ? pool->sockets_per_host : 0;
-  if (!sockets_per_host) {
-    sockets_per_host = client->hosts.size() == 1 ? 1 : kDefaultSocketsPerTserver;
-  }
 
   if (tls && tls->ca_cert_path) {
     const bool mtls = tls->cert_path && tls->key_path;
@@ -1006,7 +999,11 @@ ybthin_status ybthin_client_create(
     auto conn = std::make_unique<ybthin_connection>();
     rpc::MessengerBuilder builder("yb_thin_client");
     builder.set_num_reactors(client->num_reactors);
-    builder.set_num_connections_to_server(static_cast<int>(sockets_per_host));
+    // One address is taken to be a load balancer, which picks a tserver per socket, so a
+    // connection's calls must share one socket to reach the tserver that issued its session ids.
+    if (client->hosts.size() == 1) {
+      builder.set_num_connections_to_server(1);
+    }
     builder.UseDefaultConnectionContextFactory();
     if (client->secure_context) {
       rpc::ApplySecureContext(client->secure_context.get(), &builder);
