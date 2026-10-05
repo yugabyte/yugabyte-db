@@ -43,6 +43,15 @@ func mountEphemeralDrivesModulePath(t *testing.T) string {
 	return path
 }
 
+// azure_disk_utils.sh.j2 uses GNU realpath -m, readlink -e, and chmod --reference.
+// Skip helper-driven tests on platforms that only ship BSD/macOS userland.
+func requireGNUUserland(t *testing.T) {
+	t.Helper()
+	if err := exec.Command("realpath", "-m", "/").Run(); err != nil {
+		t.Skip("requires GNU realpath -m (Linux); skipping on this host")
+	}
+}
+
 func writeTestFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -88,6 +97,7 @@ func addNVMeNamespace(
 }
 
 func runAzureDiskResolver(
+	t *testing.T,
 	devRoot string,
 	sysClassNVMe string,
 	sysClassBlock string,
@@ -95,6 +105,8 @@ func runAzureDiskResolver(
 	lun string,
 	nvmeIDCommand ...string,
 ) (string, string, error) {
+	t.Helper()
+	requireGNUUserland(t)
 	command := "disabled"
 	if len(nvmeIDCommand) > 0 {
 		command = nvmeIDCommand[0]
@@ -152,6 +164,7 @@ func TestResolveLegacyAzureSCSIDiskByLUN(t *testing.T) {
 	}
 
 	output, stderr, err := runAzureDiskResolver(
+		t,
 		devRoot,
 		sysClassNVMe,
 		sysClassBlock,
@@ -202,6 +215,7 @@ func TestResolveAzureNVMeDataDiskExcludesLocalDisk(t *testing.T) {
 	}
 
 	output, stderr, err := runAzureDiskResolver(
+		t,
 		devRoot,
 		sysClassNVMe,
 		sysClassBlock,
@@ -261,6 +275,7 @@ func TestAzureNVMeResolverFailsWithOnlyLocalDisk(t *testing.T) {
 	}
 
 	output, stderr, err := runAzureDiskResolver(
+		t,
 		devRoot,
 		sysClassNVMe,
 		sysClassBlock,
@@ -338,6 +353,7 @@ func TestRenderedScriptKeepsAzureDiskIdentity(t *testing.T) {
 }
 
 func TestReplaceFstabMountEntryUpdatesStaleUUID(t *testing.T) {
+	requireGNUUserland(t)
 	helperPath := filepath.Join(
 		mountEphemeralDrivesModulePath(t),
 		"templates",
@@ -389,6 +405,7 @@ replace_fstab_mount_entry "$2" /mnt/d0 current-uuid xfs defaults,noatime,nofail
 }
 
 func TestValidateMountPathsRejectsUnsafeTargets(t *testing.T) {
+	requireGNUUserland(t)
 	helperPath := filepath.Join(
 		mountEphemeralDrivesModulePath(t),
 		"templates",
@@ -456,6 +473,7 @@ validate_mount_paths
 }
 
 func TestValidateMountPathsRejectsOverlappingTargets(t *testing.T) {
+	requireGNUUserland(t)
 	helperPath := filepath.Join(
 		mountEphemeralDrivesModulePath(t),
 		"templates",
@@ -489,6 +507,7 @@ validate_mount_paths
 func TestAzureLUNMismatchMessageIncludesLUN(t *testing.T) {
 	root := t.TempDir()
 	output, stderr, err := runAzureDiskResolver(
+		t,
 		filepath.Join(root, "dev"),
 		filepath.Join(root, "sys", "class", "nvme"),
 		filepath.Join(root, "sys", "class", "block"),
