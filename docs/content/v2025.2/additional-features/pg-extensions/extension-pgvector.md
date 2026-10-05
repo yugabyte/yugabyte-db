@@ -295,7 +295,7 @@ Keep the following in mind:
 
 | Upgrading from | Action |
 | :--- | :--- |
-| v2024.2 | Export the data, then drop the vector tables and the `vector` extension before upgrading. See [Upgrade from v2024.2](#upgrade-from-v2024-2). |
+| v2024.2 | v2024.2 includes the `vector` extension but not vector indexes. Export the data, then drop the tables that use the extension and the extension itself before upgrading. See [Upgrade from v2024.2](#upgrade-from-v2024-2). |
 | v2025.1 | The upgrade fails if a vector index exists. Use [Option 1](#option-1-rebuild-across-the-upgrade). |
 | v2025.2.0 to v2025.2.5 | Rebuild the vector tables using [Option 1 or Option 2](#upgrade-from-v2025-1-or-v2025-2). |
 | v2025.2.6.0 or later | No action required if all vector tables were created after the upgrade to that release was finalized. |
@@ -310,19 +310,19 @@ JOIN pg_class i ON i.oid = x.indexrelid
 JOIN pg_am a ON a.oid = i.relam
 JOIN pg_class t ON t.oid = x.indrelid
 JOIN pg_namespace n ON n.oid = t.relnamespace
-WHERE a.amname IN ('ybhnsw', 'ybdummyann');
+WHERE a.amname = 'ybhnsw';
 ```
 
 Also include tables that have `vector` columns but no index yet, if you plan to index them later.
 
 ### Upgrade from v2024.2
 
-Vector objects created in v2024.2 can't be upgraded. The [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/) from PostgreSQL 11 to PostgreSQL 15 fails while the `vector` extension is installed, and pgvector changes from version 0.4.4 to 0.8.0 with no update path.
+v2024.2 includes the `vector` extension as a tech preview, without vector index support. Tables that use the extension can't be upgraded in place: the [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/) from PostgreSQL 11 to PostgreSQL 15 fails while the `vector` extension is installed, and pgvector changes from version 0.4.4 to 0.8.0 with no update path.
 
-1. Before upgrading, save the DDL of the vector tables and indexes (for example, using `ysql_dump --schema-only`), and export their data (for example, using `\copy <table> TO '<table>.csv' WITH (FORMAT csv)`).
-1. Drop the vector indexes and tables, and run `DROP EXTENSION vector;` in each database where the extension is installed.
+1. Before upgrading, save the DDL of the tables that use the `vector` type (for example, using `ysql_dump --schema-only`), and export their data (for example, using `\copy <table> TO '<table>.csv' WITH (FORMAT csv)`).
+1. Drop those tables, and run `DROP EXTENSION vector;` in each database where the extension is installed.
 1. Upgrade to v2025.2.6.0 or later, and finalize the upgrade.
-1. Run `CREATE EXTENSION vector;`, recreate the tables, and create the vector indexes using `ybhnsw`.
+1. Run `CREATE EXTENSION vector;`, recreate the tables, and create any vector indexes you need using `ybhnsw`.
 1. Load the exported data.
 
 Creating the vector indexes before loading the data avoids an index backfill.
@@ -369,6 +369,10 @@ Use this option to keep the tables available during the upgrade. Nothing is requ
 1. Recreate the views and foreign keys that you dropped in step 5, and any grants or triggers that weren't part of the DDL you used in step 2.
 
 Alternatively, you can create and populate the new table in one step using `CREATE TABLE items_new AS TABLE items;`. This form doesn't copy constraints, defaults, grants, or other indexes, so you must add them before swapping the tables.
+
+### Colocated databases
+
+In a [colocated](../../colocation/) database, all colocated tables share one tablet, and the reverse-mapping data left behind by tables in the old format stays in that tablet. Recreating a table switches it to the new format and stops further leaks, but doesn't reclaim the space already used; only dropping the database does. To reclaim the space, rebuild the whole database instead of individual tables: export it using `ysql_dump`, drop the database, and after the upgrade is finalized, create the database again and load the dump.
 
 ## Learn more
 

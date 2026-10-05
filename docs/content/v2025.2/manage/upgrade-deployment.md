@@ -91,7 +91,7 @@ For some xCluster setups, before upgrading, you should run a verification script
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel append (yb_enable_parallel_append=true, yb_parallel_range_rows=10000)
 
-- If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrade vector indexes](../../additional-features/pg-extensions/extension-pgvector/#upgrade-vector-indexes) before you upgrade. Upgrading from v2024.2 requires dropping the `vector` extension first, upgrading from the v2025.1 series fails if a vector index exists, and tables with vector indexes created on earlier releases must be recreated after the upgrade is finalized.
+- If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrade vector indexes](../../additional-features/pg-extensions/extension-pgvector/#upgrade-vector-indexes) before you upgrade. Upgrading from v2024.2 requires dropping the `vector` extension first. Upgrading from the v2025.1 series fails if a vector index exists, and tables with vector indexes created on earlier releases must be recreated after the upgrade is finalized.
 
 ## Upgrade YugabyteDB cluster
 
