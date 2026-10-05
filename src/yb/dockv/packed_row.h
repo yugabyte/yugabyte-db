@@ -90,13 +90,16 @@ class PackableValue {
 class RowPackerBase {
  public:
   // packed_size_limit - don't pack column if packed row will be over limit after it.
+  // vector_value_format - vector value format of the table, used when a vector value has to be
+  // re-encoded from another packed row version.
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      const ValueControlFields& row_control_fields);
+      const ValueControlFields& row_control_fields,
+      VectorValueFormat vector_value_format = VectorValueFormat::kTyped);
 
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      Slice control_fields);
+      Slice control_fields, VectorValueFormat vector_value_format = VectorValueFormat::kTyped);
 
   RowPackerBase(const RowPackerBase&) = delete;
   void operator=(const RowPackerBase&) = delete;
@@ -132,6 +135,8 @@ class RowPackerBase {
 
   // The end prefix, i.e., beginning of column values.
   size_t prefix_end_;
+
+  VectorValueFormat vector_value_format_;
 
   // Resulting buffer.
   ValueBuffer result_;

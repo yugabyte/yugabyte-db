@@ -381,7 +381,9 @@ class PackedRowData {
   void InitPackerHelper() {
     packer_.emplace(
         std::in_place_type_t<Packer>(), new_packing_.schema_version, *new_packing_.schema_packing,
-        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_));
+        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_),
+        new_packing_.table_owns_vector_reverse_mapping
+            ? dockv::VectorValueFormat::kTyped : dockv::VectorValueFormat::kLegacy);
   }
 
   Status Flush() {

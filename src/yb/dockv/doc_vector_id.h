@@ -85,11 +85,12 @@ class DocVectorValue final : public PackableValue {
 
   static Slice SanitizeValue(Slice encoded);
 
+  // Returns the value entry type byte that prefixes a V1 vector value of the given format.
+  static char ValueTypePrefix(VectorValueFormat format);
+
   std::string ToString() const override;
 
  private:
-  static char ValueTypePrefix(VectorValueFormat format);
-
   template <class Buffer>
   void AppendEncodedVectorValue(Buffer* buffer) const;
 
