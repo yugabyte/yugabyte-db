@@ -187,20 +187,20 @@ ORDER BY k1, k2, k3;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Sort
-   Sort Key: "*SELECT* 1".k1, "*SELECT* 1".k2, "*SELECT* 1".k3
+   Sort Key: unnamed_subquery.k1, unnamed_subquery.k2, unnamed_subquery.k3
    ->  HashAggregate
-         Group Key: "*SELECT* 1".k1, "*SELECT* 1".k2, "*SELECT* 1".k3
+         Group Key: unnamed_subquery.k1, unnamed_subquery.k2, unnamed_subquery.k3
          ->  Append
-               ->  Subquery Scan on "*SELECT* 1"
+               ->  Subquery Scan on unnamed_subquery
                      ->  Index Scan using t1m_pkey on t1m t1
                            Index Cond: ((id >= 499996) AND (id <= 500005))
-               ->  Subquery Scan on "*SELECT* 2"
+               ->  Subquery Scan on unnamed_subquery_1
                      ->  Index Only Scan using t1m_k1k2k3 on t1m t2
                            Index Cond: (k1 <= 50)
-               ->  Subquery Scan on "*SELECT* 3"
+               ->  Subquery Scan on unnamed_subquery_2
                      ->  Index Only Scan using t1m_k1k2k3 on t1m t3
                            Index Cond: (k1 = ANY ('{100,200,1000,2000,5000,8000}'::integer[]))
-               ->  Subquery Scan on "*SELECT* 4"
+               ->  Subquery Scan on unnamed_subquery_3
                      ->  Index Only Scan using t1m_k1k2k3 on t1m t4
                            Index Cond: (k1 = ANY ('{1000,3000,5000,6000,7000}'::integer[]))
 (17 rows)
@@ -310,30 +310,28 @@ FROM (
 ) v
 GROUP BY k1, k2, k3
 ORDER BY k1, k2, k3;
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
- Finalize GroupAggregate
-   Group Key: "*SELECT* 2".k1, "*SELECT* 2".k2, "*SELECT* 2".k3
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ GroupAggregate
+   Group Key: unnamed_subquery_1.k1, unnamed_subquery_1.k2, unnamed_subquery_1.k3
    ->  Gather Merge
          Workers Planned: 2
-         ->  Partial GroupAggregate
-               Group Key: "*SELECT* 2".k1, "*SELECT* 2".k2, "*SELECT* 2".k3
-               ->  Sort
-                     Sort Key: "*SELECT* 2".k1, "*SELECT* 2".k2, "*SELECT* 2".k3
-                     ->  Parallel Append
-                           ->  Subquery Scan on "*SELECT* 2"
-                                 ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t2
-                                       Index Cond: (k3 = 5000)
-                           ->  Subquery Scan on "*SELECT* 3"
-                                 ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t3
-                                       Index Cond: (k2 = 2000)
-                           ->  Subquery Scan on "*SELECT* 4"
-                                 ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t4
-                                       Index Cond: (k1 = 3000)
-                           ->  Subquery Scan on "*SELECT* 1"
-                                 ->  Parallel Index Scan using t1m_pkey on t1m t1
-                                       Index Cond: ((id >= 499996) AND (id <= 500005))
-(21 rows)
+         ->  Sort
+               Sort Key: unnamed_subquery_1.k1, unnamed_subquery_1.k2, unnamed_subquery_1.k3
+               ->  Parallel Append
+                     ->  Subquery Scan on unnamed_subquery_1
+                           ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t2
+                                 Index Cond: (k3 = 5000)
+                     ->  Subquery Scan on unnamed_subquery_2
+                           ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t3
+                                 Index Cond: (k2 = 2000)
+                     ->  Subquery Scan on unnamed_subquery_3
+                           ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t4
+                                 Index Cond: (k1 = 3000)
+                     ->  Subquery Scan on unnamed_subquery
+                           ->  Parallel Index Scan using t1m_pkey on t1m t1
+                                 Index Cond: ((id >= 499996) AND (id <= 500005))
+(19 rows)
 
 --
 -- Should choose PARALLEL append + partial agg + gather MERGE plan
@@ -354,24 +352,24 @@ ORDER BY k3, id;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Finalize GroupAggregate
-   Group Key: "*SELECT* 2".k3, "*SELECT* 2".id
+   Group Key: unnamed_subquery_1.k3, unnamed_subquery_1.id
    ->  Gather Merge
          Workers Planned: 2
          ->  Sort
-               Sort Key: "*SELECT* 2".k3, "*SELECT* 2".id
+               Sort Key: unnamed_subquery_1.k3, unnamed_subquery_1.id
                ->  Partial HashAggregate
-                     Group Key: "*SELECT* 2".k3, "*SELECT* 2".id
+                     Group Key: unnamed_subquery_1.k3, unnamed_subquery_1.id
                      ->  Parallel Append
-                           ->  Subquery Scan on "*SELECT* 2"
+                           ->  Subquery Scan on unnamed_subquery_1
                                  ->  Parallel Index Scan using t1m_k1k2k3 on t1m t2
                                        Index Cond: (k3 <= 100)
-                           ->  Subquery Scan on "*SELECT* 3"
+                           ->  Subquery Scan on unnamed_subquery_2
                                  ->  Parallel Index Scan using t1m_k1k2k3 on t1m t3
                                        Index Cond: (k2 <= 100)
-                           ->  Subquery Scan on "*SELECT* 4"
+                           ->  Subquery Scan on unnamed_subquery_3
                                  ->  Parallel Index Scan using t1m_k1k2k3 on t1m t4
                                        Index Cond: (k1 <= 100)
-                           ->  Subquery Scan on "*SELECT* 1"
+                           ->  Subquery Scan on unnamed_subquery
                                  ->  Parallel Index Scan using t1m_pkey on t1m t1
                                        Index Cond: ((id >= 495001) AND (id <= 505000))
 (21 rows)

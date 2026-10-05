@@ -773,12 +773,11 @@ EXPLAIN (costs off)
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
     AND b < (SELECT avg(b) FROM pctest1 WHERE d LIKE 'Value_9');
-                          QUERY PLAN                          
---------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Gather
    Workers Planned: 2
-   Params Evaluated: $1
-   InitPlan 1 (returns $1)
+   InitPlan expr_1
      ->  Aggregate
            ->  Gather
                  Workers Planned: 2
@@ -787,11 +786,11 @@ SELECT * from pctest2
    ->  Parallel Hash Semi Join
          Hash Cond: (pctest2.c = pctest1_1.b)
          ->  Parallel Seq Scan on pctest2
-               Storage Filter: ((b)::numeric < $1)
+               Storage Filter: ((b)::numeric < (InitPlan expr_1).col1)
          ->  Parallel Hash
                ->  Parallel Seq Scan on pctest1 pctest1_1
                      Storage Filter: (d ~~ 'Value_9'::text)
-(16 rows)
+(15 rows)
 
 SELECT * from pctest2
   WHERE c IN (SELECT b FROM pctest1 WHERE d LIKE 'Value_9')
@@ -1109,19 +1108,17 @@ SELECT a FROM pctest_h1 WHERE a < 10;
 -- with grouping
 EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest_h1 WHERE c > 40 GROUP BY c;
-                       QUERY PLAN                       
---------------------------------------------------------
- Finalize GroupAggregate
+                    QUERY PLAN                    
+--------------------------------------------------
+ GroupAggregate
    Group Key: c
    ->  Gather Merge
          Workers Planned: 2
-         ->  Partial GroupAggregate
-               Group Key: c
-               ->  Sort
-                     Sort Key: c
-                     ->  Parallel Seq Scan on pctest_h1
-                           Storage Filter: (c > 40)
-(10 rows)
+         ->  Sort
+               Sort Key: c
+               ->  Parallel Seq Scan on pctest_h1
+                     Storage Filter: (c > 40)
+(8 rows)
 
 SELECT c, count(*) FROM pctest_h1 WHERE c > 40 GROUP BY c;
  c  | count 
@@ -1191,8 +1188,8 @@ SELECT * from pctest_h2
                     QUERY PLAN                     
 ---------------------------------------------------
  Seq Scan on pctest_h2
-   Filter: ((b)::numeric < (SubPlan 1))
-   SubPlan 1
+   Filter: ((b)::numeric < (SubPlan expr_1))
+   SubPlan expr_1
      ->  Finalize Aggregate
            ->  Seq Scan on pctest_h1
                  Storage Filter: (c = pctest_h2.c)
@@ -1227,12 +1224,11 @@ EXPLAIN (costs off)
 SELECT * from pctest_h2
   WHERE c IN (SELECT b FROM pctest_h1 WHERE d LIKE 'Value_9')
     AND b < (SELECT avg(b) FROM pctest_h1 WHERE d LIKE 'Value_9');
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Gather
    Workers Planned: 2
-   Params Evaluated: $1
-   InitPlan 1 (returns $1)
+   InitPlan expr_1
      ->  Finalize Aggregate
            ->  Gather
                  Workers Planned: 2
@@ -1243,11 +1239,11 @@ SELECT * from pctest_h2
    ->  Parallel Hash Semi Join
          Hash Cond: (pctest_h2.c = pctest_h1_1.b)
          ->  Parallel Seq Scan on pctest_h2
-               Storage Filter: ((b)::numeric < $1)
+               Storage Filter: ((b)::numeric < (InitPlan expr_1).col1)
          ->  Parallel Hash
                ->  Parallel Seq Scan on pctest_h1 pctest_h1_1
                      Storage Filter: (d ~~ 'Value_9'::text)
-(18 rows)
+(17 rows)
 
 SELECT * from pctest_h2
   WHERE c IN (SELECT b FROM pctest_h1 WHERE d LIKE 'Value_9')
