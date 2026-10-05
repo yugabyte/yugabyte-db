@@ -29,8 +29,10 @@ hot read/write paths without embedding a full client.
   `ThinClientService` sessions (Heartbeat) across one or more connections, with a
   keepalive; optional TLS (server-auth or mTLS) via `SecureContext`. A session
   can have several Performs in flight; `ybthin_pool_opts` sizes the pool
-  (read/write sessions packed onto connections), and connections spread the
-  sessions across tservers. Reads round-robin the read sessions; upserts
+  (read/write sessions packed onto connections, and sockets per tserver address),
+  and connections spread the sessions across tservers. Behind a single address,
+  taken to be a load balancer, each connection keeps one socket, so its sessions
+  stay on one tserver. Reads round-robin the read sessions; upserts
   round-robin the write sessions. A connection whose tserver stops answering
   moves on to the next configured tserver, and its sessions reopen there.
 - `ybthin_table_open` / `ybthin_table_close` / `ybthin_columns_free` -- resolve a

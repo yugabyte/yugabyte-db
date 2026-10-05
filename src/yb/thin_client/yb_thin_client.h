@@ -71,10 +71,15 @@ typedef struct {
 // sessions are packed per connection, so ceil((read_sessions + write_sessions) / sessions_per_conn)
 // are opened. Reads and upserts each round-robin their own pool. A 0 field (or NULL opts) takes the
 // default.
+//
+// `sockets_per_host` is how many sockets each connection spreads its calls to a host over. A
+// session lives on one tserver, so behind a load balancer that picks a tserver per socket it must
+// be 1. By default it is 1 with one address, taken to be a load balancer, and 8 with several.
 typedef struct {
   uint32_t read_sessions;     // 0 => default (4)
   uint32_t write_sessions;    // 0 => default (1); 0 sessions => upserts use the read pool
   uint32_t sessions_per_conn; // 0 => default (4)
+  uint32_t sockets_per_host;  // 0 => default (1 with one address, 8 with several)
 } ybthin_pool_opts;
 
 // Connect to one or more tserver RPC endpoints ("host:port", default port 9100), open a pool of
