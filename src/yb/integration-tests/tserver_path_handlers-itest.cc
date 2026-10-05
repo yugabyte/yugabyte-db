@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <regex>
 #include <string>
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -21,6 +22,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
@@ -212,6 +214,45 @@ TEST_F(TServerPathHandlersItest, TestSnapshotsEndpoint) {
   ASSERT_FALSE(rows[1][2].empty()); // cumulative size
   ASSERT_FALSE(rows[1][3].empty()); // exclusive size
   ASSERT_EQ(rows[1][4], schedule_id.ToString()); // schedule id
+}
+
+// The on-disk size cell is a multi-line list, which the page's sort script can only compare as
+// text, so the cell carries the table's size in bytes as a numeric sort key.
+TEST_F(TServerPathHandlersItest, TablesPageOnDiskSizeSortKey) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  client::YBSchema schema;
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  ASSERT_OK(builder.Build(&schema));
+
+  const client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "sort_key_table");
+  ASSERT_OK(client->CreateNamespaceIfNotExists(
+      table_name.namespace_name(), table_name.namespace_type()));
+  client::TableHandle table;
+  ASSERT_OK(table.Create(table_name, /* num_tablets = */ 1, schema, client.get()));
+
+  auto session = client->NewSession(30s);
+  for (int32_t key = 0; key != 100; ++key) {
+    auto insert = table.NewInsertOp(session->arena());
+    QLAddInt32HashValue(insert->mutable_request(), key);
+    session->Apply(insert);
+  }
+  ASSERT_OK(session->TEST_Flush());
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // The size cell in the table's row, capturing its sort key.
+  const std::regex size_cell_regex(
+      table->id() + "[^\n]*?<td[^>]* data-sort=(\\d+)><ul><li>Total");
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        const auto page = VERIFY_RESULT(FetchURL("/tables"));
+        std::smatch match;
+        if (!std::regex_search(page, match, size_cell_regex)) {
+          return false;
+        }
+        return VERIFY_RESULT(CheckedStoull(match[1].str())) > 0;
+      },
+      30s, "Wait for the tables page to carry the table's size as its sort key"));
 }
 
 class TServerSstStatsPathHandlerItest : public TServerPathHandlersItest {

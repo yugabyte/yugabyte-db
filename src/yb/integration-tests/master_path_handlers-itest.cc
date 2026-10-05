@@ -76,6 +76,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_tablespace_util.h"
@@ -715,6 +716,54 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
     }
   }
 };
+
+// The on-disk size cell is a multi-line list, which the page's sort script can only compare as
+// text, so the cell carries the total bytes as a numeric sort key.
+TEST_F_EX(
+    MasterPathHandlersItest, TablesPageOnDiskSizeSortKey, TabletSplitMasterPathHandlersItest) {
+  CreateTestTable(1 /* num_tablets */);
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
+
+  // The size cell in the test table's row, capturing its sort key.
+  const std::regex size_cell_regex(
+      table->id() + "[^\n]*?<td[^>]* data-sort=(\\d+)><ul><li>Total: ");
+
+  // Sizes reach the master by heartbeat, so wait until the key is set and matches the total that
+  // the JSON endpoint reports for the same table.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        faststring result;
+        RETURN_NOT_OK(GetUrl("/tables", &result));
+        const auto page = result.ToString();
+        std::smatch match;
+        if (!std::regex_search(page, match, size_cell_regex)) {
+          return false;
+        }
+        const auto sort_key = VERIFY_RESULT(CheckedStoull(match[1].str()));
+
+        RETURN_NOT_OK(GetUrl("/api/v1/tables", &result));
+        JsonDocument doc;
+        auto json_obj = VERIFY_RESULT(doc.Parse(result.ToString()));
+        // Find the same table in the JSON endpoint by uuid.
+        for (const auto& user_table : VERIFY_RESULT(json_obj["user"].GetArray())) {
+          if (VERIFY_RESULT(user_table["uuid"].GetString()) != table->id()) {
+            continue;
+          }
+          auto disk_size_obj = user_table["on_disk_size"];
+          const auto total_bytes =
+              VERIFY_RESULT(disk_size_obj["wal_files_size_bytes"].GetUint64()) +
+              VERIFY_RESULT(disk_size_obj["sst_files_size_bytes"].GetUint64()) +
+              VERIFY_RESULT(disk_size_obj["vector_index_size_bytes"].GetUint64());
+          return sort_key > 0 && sort_key == total_bytes;
+        }
+        return STATUS_FORMAT(NotFound, "Table $0 not in /api/v1/tables", table->id());
+      },
+      30s /* timeout */, "Wait for the tables page to carry the table's size as its sort key"));
+}
 
 TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHandlersItest) {
   CreateTestTable(1 /* num_tablets */);
