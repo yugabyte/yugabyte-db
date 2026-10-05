@@ -12198,8 +12198,9 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
   // compared to pre-consumption.
   std::unordered_map<std::string, size_t> final_log_segment_count;
   GetLogSegmentCountForTablet(tablet_id, &final_log_segment_count);
+  // A rollover in flight at the first sample can still add a segment, so only check none were GCed.
   for (const auto& [peer, segment_count] : final_log_segment_count) {
-    ASSERT_EQ(segment_count, log_segment_count[peer]);
+    ASSERT_GE(segment_count, log_segment_count[peer]);
   }
 
   ASSERT_OK(WaitFor(
