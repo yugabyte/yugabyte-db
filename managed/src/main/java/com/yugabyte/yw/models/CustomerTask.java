@@ -1148,8 +1148,8 @@ public class CustomerTask extends Model {
         LOG.debug("Universe task {} is not deletable", targetUUID);
         return false;
       }
-      // An owning retry or rollback may read the first task of its chain through
-      // originalTaskUUID, as RollbackResizeNode does for the gflag baseline.
+      // Retries and rollbacks name the first task of their chain as originalTaskUUID, which task
+      // APIs return; keep it resolvable while the chain owns the universe.
       if (isOriginalTaskOf(taskParams.updatingTaskUUID)
           || isOriginalTaskOf(taskParams.placementModificationTaskUuid)) {
         LOG.debug("Universe task {} is not deletable as it starts the owning task chain", taskUUID);
