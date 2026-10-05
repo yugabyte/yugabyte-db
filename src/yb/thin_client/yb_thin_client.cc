@@ -364,11 +364,8 @@ Result<uint64_t> DoHeartbeat(
     MaybeDropConnectionSessions(conn, host, conn_epoch, rpc_status, /* from_tserver= */ false);
     return rpc_status;
   }
-  Status app_status = yb::ResponseStatus(resp);
-  if (!app_status.ok()) {
-    MaybeDropConnectionSessions(conn, host, conn_epoch, app_status, /* from_tserver= */ true);
-    return app_status;
-  }
+  // A failed reply is about the one session, so the caller, which knows its generation, decides.
+  RETURN_NOT_OK(yb::ResponseStatus(resp));
   return resp.session_id();
 }
 
@@ -1102,7 +1099,10 @@ ybthin_status ybthin_client_create(
             MoveOffHost(*client_ptr, conn, host, result.status());
           }
           std::lock_guard<std::mutex> session_lock(session.mutex);
+          // A reply about a session that has since been reopened says nothing about the connection.
           if (session.generation == generation) {
+            MaybeDropConnectionSessions(
+                conn, host, conn_epoch, result.status(), /* from_tserver= */ true);
             session.open = false;
           }
         }
