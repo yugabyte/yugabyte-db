@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/master/master_ysql_lease.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 

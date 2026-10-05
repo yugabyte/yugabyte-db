@@ -71,6 +71,7 @@ class MasterHeartbeatProxy;
 class MasterReplicationProxy;
 class MasterSnapshotCoordinator;
 class MasterTestProxy;
+class MasterYsqlLeaseProxy;
 class NamespaceInfo;
 class ObjectLockInfoManager;
 class PermissionsManager;

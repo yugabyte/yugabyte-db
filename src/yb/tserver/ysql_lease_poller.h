@@ -15,7 +15,7 @@
 
 #include <future>
 
-#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_ysql_lease.fwd.h"
 
 #include "yb/server/server_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
