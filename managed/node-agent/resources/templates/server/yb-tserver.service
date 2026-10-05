@@ -22,7 +22,7 @@ ExecStart={{yb_home_dir}}/tserver/bin/yb-tserver --flagfile {{yb_home_dir}}/tser
 Restart=always
 RestartSec=5
 # Stop -> SIGTERM to tserver only - 10s - SIGKILL. SIGTERM goes to the tserver alone so it can
-# shut down its postgres children itself. Anything left in the unit's cgroup after the tserver
+# shut down its postgres children itself. Anything left in the unit cgroup after the tserver
 # exits is then SIGKILLed.
 KillMode=mixed
 TimeoutStopFailureMode=terminate
