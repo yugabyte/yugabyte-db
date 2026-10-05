@@ -5096,7 +5096,8 @@ class PgVectorValueFormatTest :
   // Dumps table SST files and collects type prefixes for the vector column.
   // Table must have only one vector column.
   Result<std::vector<char>> CollectTypePrefixes(
-      const std::string& table_name, const std::string& vector_column_name) {
+      const std::string& table_name, const std::string& vector_column_name,
+      PackingMode packing_mode) {
     const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
     const auto yb_table = VERIFY_RESULT(client_->OpenTable(table_id));
     ColumnId vector_column_id = kInvalidColumnId;
@@ -5129,18 +5130,25 @@ class PgVectorValueFormatTest :
       if (!value) {
         continue;
       }
-      prefixes.push_back(ParseTypePrefixFromValueDump(*value, GetParam()));
+      prefixes.push_back(ParseTypePrefixFromValueDump(*value, packing_mode));
     }
     return prefixes;
   }
 
   Status ValidateVectorColumnPrefixes(const std::string& table_name, size_t expected_count) {
+    return ValidateVectorColumnPrefixes(table_name, expected_count, GetParam());
+  }
+
+  // packing_mode - packed row version the vector values are expected to be stored in.
+  Status ValidateVectorColumnPrefixes(
+      const std::string& table_name, size_t expected_count, PackingMode packing_mode) {
     RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
     RETURN_NOT_OK(cluster_->FlushTablets());
 
-    const auto prefixes = VERIFY_RESULT(CollectTypePrefixes(table_name, kVectorColumn));
+    const auto prefixes = VERIFY_RESULT(CollectTypePrefixes(
+        table_name, kVectorColumn, packing_mode));
 
-    const auto expected_prefix = GetParam() == PackingMode::kV2
+    const auto expected_prefix = packing_mode == PackingMode::kV2
         ? kNoTypePrefix : table_name == kLegacyTable ? kLegacyPrefix : kTypedPrefix;
     return CheckTypePrefixes(prefixes, expected_prefix, expected_count);
   }
@@ -5194,6 +5202,83 @@ TEST_P(PgVectorValueFormatTest, TableOwnedEncodingSurvivesClusterRestart) {
   };
   ASSERT_EQ(2, ASSERT_RESULT(get_count(kLegacyTable)));
   ASSERT_EQ(1, ASSERT_RESULT(get_count(kTypedTable)));
+}
+
+// Compaction merges column updates older than the history cutoff into the packed row and packs
+// the result with the version ysql_use_packed_row_v2 selects at that moment. Columns the update
+// did not touch are carried over from the old packed row, so flipping the flag between the insert
+// and the compaction converts the stored vector value from one version to the other (DB-23864).
+TEST_P(PgVectorValueFormatTest, RepackOnVersionSwitch) {
+  constexpr int kNumRows = 10;
+  constexpr int kRetentionIntervalSec = 2;
+
+  if (GetParam() == PackingMode::kNone) {
+    GTEST_SKIP() << "Requires packed rows";
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      kRetentionIntervalSec;
+
+  const std::vector<std::string> tables = {kLegacyTable, kTypedTable};
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  for (const auto& table : tables) {
+    // The vector value format is chosen at table creation.
+    const auto typed = table == kTypedTable;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = typed;
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id INT PRIMARY KEY, $1 vector(3), value INT) SPLIT INTO 1 TABLETS",
+        table, kVectorColumn));
+    ASSERT_EQ(ASSERT_RESULT(TableOwnsVectorReverseMapping(table)), typed);
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, ARRAY[i, i * 2, i * 3]::vector, 0 FROM generate_series(1, $1) i",
+        table, kNumRows));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto fetch = [&conn](const std::string& table) {
+    return conn.FetchRows<int32_t, std::string>(
+        Format("SELECT id, $0::text FROM $1 ORDER BY id", kVectorColumn, table));
+  };
+  std::vector<std::decay_t<decltype(*fetch(""))>> expected;
+  for (const auto& table : tables) {
+    expected.push_back(ASSERT_RESULT(fetch(table)));
+    ASSERT_EQ(expected.back().size(), kNumRows);
+  }
+
+  const auto new_packing_mode =
+      GetParam() == PackingMode::kV2 ? PackingMode::kV1 : PackingMode::kV2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = new_packing_mode == PackingMode::kV2;
+  for (const auto& table : tables) {
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value = 1", table));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  // Separate column entries are gone only when the update was merged into the packed rows, which
+  // happens once the history cutoff passes the update.
+  ASSERT_OK(WaitFor([this, &tables]() -> Result<bool> {
+    RETURN_NOT_OK(cluster_->CompactTablets());
+    for (const auto& table : tables) {
+      auto dump = VERIFY_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), table));
+      for (const auto& line : dump) {
+        // Reverse mapping values also mention ColumnId.
+        if (line.find("ColumnId(") != std::string::npos &&
+            line.find("MetaKey(VectorId(") == std::string::npos) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Merge updates into packed rows"));
+
+  for (size_t i = 0; i != tables.size(); ++i) {
+    SCOPED_TRACE(tables[i]);
+    ASSERT_EQ(ASSERT_RESULT(fetch(tables[i])), expected[i]);
+    // The V1 reader accepts either type byte, so check the stored one.
+    ASSERT_OK(ValidateVectorColumnPrefixes(tables[i], kNumRows, new_packing_mode));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
