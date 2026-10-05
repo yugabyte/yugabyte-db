@@ -57,15 +57,9 @@ fi
 systemctl daemon-reload || true
 
 if [ "$CGROUP_MODE" = "v2" ] && [ "$USE_SYS" != "True" ]; then
+  # The user manager picks up the delegated controllers only when it starts.
   YB_UID=$(id -u "$YB_USER")
-  controllers="/sys/fs/cgroup/user.slice/user-${YB_UID}.slice/user@${YB_UID}.service/cgroup.controllers"
-  # Delegation applies only when user@ starts. Restarting it stops every yb user service, so skip
-  # it when cpu is already delegated (e.g. re-provisioning a node with a running tserver).
-  if [ -f "$controllers" ] && grep -qw cpu "$controllers"; then
-    echo "cpu controller is already delegated to user@${YB_UID}.service"
-  else
-    systemctl stop "user@${YB_UID}.service" 2>/dev/null || true
-    systemctl reset-failed "user@${YB_UID}.service" 2>/dev/null || true
-    systemctl start "user@${YB_UID}.service" 2>/dev/null || true
-  fi
+  systemctl stop "user@${YB_UID}.service" 2>/dev/null || true
+  systemctl reset-failed "user@${YB_UID}.service" 2>/dev/null || true
+  systemctl start "user@${YB_UID}.service" 2>/dev/null || true
 fi

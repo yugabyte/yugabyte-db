@@ -539,6 +539,7 @@ func TestCgroupModulesSplitByPrivilege(t *testing.T) {
 				"--skip_module",
 				"InstallNodeAgent", /* This needs YBA */
 				"--skip_module",
+				// Skipping only stops script generation; config.ini still has the section.
 				"ConfigureSystemd", /* This requires some setup */
 				"--config_override",
 				"ynp.configure_cgroup=true",
