@@ -1282,6 +1282,11 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
     auto user_frontiers = options_.frontiers_factory();
     RETURN_NOT_OK(user_frontiers->Smallest().FromPB(chunk_pb.smallest().user_frontier()));
     RETURN_NOT_OK(user_frontiers->Largest().FromPB(chunk_pb.largest().user_frontier()));
+    // Collapse consecutive chunks without a file, as AdvanceFlushedFrontier does when adding them.
+    if (!file && !immutable_chunks_.empty() && !immutable_chunks_.back()->file) {
+      rocksdb::UpdateFrontiers(user_frontiers, *immutable_chunks_.back()->user_frontiers);
+      immutable_chunks_.pop_back();
+    }
     immutable_chunks_.push_back(std::make_shared<ImmutableChunk>(
         chunk_pb.order_no(), std::move(file), std::move(index),
         std::move(user_frontiers), ImmutableChunkState::kInManifest
@@ -2048,6 +2053,52 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   TEST_SYNC_POINT("VectorLSM::Flush:AfterDoFlush");
 
   return wait ? promise.get_future().get() : Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
+    const rocksdb::UserFrontiers& frontiers) {
+  RETURN_NOT_OK(RUNNING_STATUS());
+
+  ImmutableChunkPtr chunk;
+  {
+    std::lock_guard lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+    if (mutable_chunk_ && mutable_chunk_->num_entries) {
+      return false;
+    }
+    for (const auto& immutable_chunk : immutable_chunks_) {
+      if (!immutable_chunk->IsInManifest()) {
+        return false;
+      }
+    }
+
+    auto user_frontiers = frontiers.Clone();
+    const size_t order_no =
+        immutable_chunks_.empty() ? 0 : immutable_chunks_.back()->order_no + 1;
+    // Only a compaction removes a chunk without a file, and an index without new rows does not
+    // compact. Fold the previous such chunk into this one, so they do not pile up. Frontiers
+    // merge field by field, so the flushed frontier stays the same.
+    // TODO(vector_index): the manifest still keeps a record per call, and only a compaction writes
+    // the reset that lets them be dropped. Write a reset past some number of records, see #27098.
+    if (!immutable_chunks_.empty()) {
+      const auto& last = immutable_chunks_.back();
+      if (!last->file && !last->index && last->ReadyForCompaction()) {
+        if (last->user_frontiers) {
+          rocksdb::UpdateFrontiers(user_frontiers, *last->user_frontiers);
+        }
+        immutable_chunks_.pop_back();
+      }
+    }
+
+    chunk = std::make_shared<ImmutableChunk>(
+        order_no, VectorIndexPtr{}, std::move(user_frontiers), /* flush_promise= */ nullptr);
+    immutable_chunks_.push_back(chunk);
+    updates_queue_.emplace(order_no, chunk);
+  }
+
+  options_.insert_thread_pool->EnqueueFunctor([this, chunk] { SaveChunk(chunk); });
+  return true;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

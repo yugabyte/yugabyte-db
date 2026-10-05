@@ -136,6 +136,10 @@ class VectorLSM {
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
+  // Records `frontiers` as flushed without a chunk file, when nothing is unflushed: the mutable
+  // chunk has no entries and every chunk is in the manifest. Returns false when skipped.
+  Result<bool> AdvanceFlushedFrontier(const rocksdb::UserFrontiers& frontiers);
+
   // Returns an estimate, derived from the underlying vector index implementation, of the number
   // of vectors that fit into the specified byte budget.
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
