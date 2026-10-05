@@ -181,10 +181,9 @@ Result<QLValuePB> EncodeVectorSchemaMissingValue(
       raw_pgvector_value.value_case(), QLValuePB::kBinaryValue, InvalidArgument,
       "Value calue should be QLValuePB::kBinaryValue");
 
-  const char prefix = format == VectorValueFormat::kTyped
-      ? ValueEntryTypeAsChar::kVector : ValueEntryTypeAsChar::kString;
   std::string encoded;
-  AppendEncodedBinaryValue(prefix, raw_pgvector_value, &encoded);
+  AppendEncodedBinaryValue(
+      DocVectorValue::ValueTypePrefix(format), raw_pgvector_value, &encoded);
   encoded.push_back(char{0});
   result.set_binary_value(std::move(encoded));
   return result;
