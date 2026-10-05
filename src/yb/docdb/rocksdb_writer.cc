@@ -1457,6 +1457,12 @@ VectorIndexesUpdater::VectorIndexesUpdater(
 
 bool VectorIndexesUpdater::IntentApplyShouldUpdateVectorIndex(
     const DocVectorIndex& vector_index) const {
+  // Also applies to xCluster targets: a restore can only bring a deactivated index back as of a
+  // time before it was deactivated. An active index has an invalid cutoff, which compares above
+  // any commit time.
+  if (commit_ht_ > vector_index.deactivated_hybrid_time()) {
+    return false;
+  }
   return commit_ht_ > vector_index.hybrid_time() || xcluster_target_;
 }
 

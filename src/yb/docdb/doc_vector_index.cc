@@ -549,6 +549,12 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return WaitForFlush();
   }
 
+  Result<bool> AdvanceFlushedOpId(const OpId& op_id) override {
+    ConsensusFrontiers frontiers;
+    frontiers.Largest().set_op_id(op_id);
+    return lsm_.AdvanceFlushedFrontier(frontiers);
+  }
+
   rocksdb::FlushAbility GetFlushAbility() override {
       return lsm_.GetFlushAbility();
   }

@@ -750,6 +750,70 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
 }
 
+// AdvanceFlushedFrontier keeps a single chunk without a file however often it is called, also
+// across a reopen, and the flushed frontier is the largest one recorded.
+TEST_F(VectorLSMUsearchTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumAdvances = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  std::string test_dir;
+  ASSERT_OK(Env::Default()->GetTestDirectory(&test_dir));
+  const auto storage_dir = JoinPathSegments(
+      test_dir, "vector_lsm_test_" + Uuid::Generate().ToString(), "vector_lsm");
+  auto open = [this, &storage_dir](FloatVectorLSM& lsm) {
+    return OpenVectorLSM(
+        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared,
+        /* mem_tracker = */ {}, storage_dir);
+  };
+  auto flushed_vertex_id = [](FloatVectorLSM& lsm) -> std::optional<VectorId> {
+    auto frontier = lsm.GetFlushedFrontier();
+    if (!frontier) {
+      return std::nullopt;
+    }
+    return down_cast<const TestFrontier&>(*frontier).vertex_id();
+  };
+
+  std::optional<VectorId> expected;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(open(lsm));
+    ASSERT_OK(InsertCube(lsm, kDimensions, kDefaultChunkSize));
+    ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+    TestFrontiers frontiers;
+    frontiers.Largest().SetVertexId(VectorId::GenerateRandom());
+    // Refused while there are unflushed entries.
+    ASSERT_FALSE(ASSERT_RESULT(lsm.AdvanceFlushedFrontier(frontiers)));
+
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_EQ(1, lsm.NumImmutableChunks());
+    expected = flushed_vertex_id(lsm);
+
+    for (size_t i = 0; i != kNumAdvances; ++i) {
+      auto vertex_id = VectorId::GenerateRandom();
+      frontiers.Largest().SetVertexId(vertex_id);
+      ASSERT_TRUE(ASSERT_RESULT(lsm.AdvanceFlushedFrontier(frontiers)));
+      if (!expected || *expected < vertex_id) {
+        expected = vertex_id;
+      }
+      // The chunk is saved in the background, the next call needs it in the manifest.
+      ASSERT_OK(WaitFor(
+          [&lsm] { return lsm.GetFlushAbility() == storage::FlushAbility::kNoNewData; },
+          10s, "Frontier only chunk in manifest"));
+      ASSERT_EQ(flushed_vertex_id(lsm), expected);
+      ASSERT_EQ(2, lsm.NumImmutableChunks());
+    }
+  }
+
+  // The manifest has a record per call, loading collapses them.
+  FloatVectorLSM lsm;
+  ASSERT_OK(open(lsm));
+  ASSERT_EQ(2, lsm.NumImmutableChunks());
+  ASSERT_EQ(flushed_vertex_id(lsm), expected);
+}
+
 void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
     vector_index::DistanceKind distance_kind) {
   constexpr size_t kDimensions = 8;
