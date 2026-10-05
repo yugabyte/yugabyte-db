@@ -257,8 +257,9 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 2, /* index = */ 1));
   ASSERT_EQ(cache_->num_cached_ops(), 1);
 
-  // Resume Log::Sync and set FLAGS_TEST_pause_before_wal_sync to true again. Wait until the
-  // batch containing (1.2) is synced and Log::Sync() is paused on the batch containing (2.1).
+  // Resume Log::Sync(). Since TEST_set_pause_before_wal_sync is set, Log::Sync() sets
+  // TEST_pause_before_wal_sync back to true, so the next batch pauses too. Wait until the batch
+  // containing (1.2) is synced and Log::Sync() is paused on the batch containing (2.1).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
   ASSERT_OK(wait_for_sync_pauses(2));
 
@@ -273,8 +274,8 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
 
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 3, /* index = */ 1));
   ASSERT_EQ(cache_->num_cached_ops(), 1);
-  // Wait until the batch containing (2.1) is synced and Log::Sync() is paused on the batch
-  // containing (3.1).
+  // Resume Log::Sync(). Wait until the batch containing (2.1) is synced and Log::Sync() is
+  // paused on the batch containing (3.1).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
   ASSERT_OK(wait_for_sync_pauses(3));
 
