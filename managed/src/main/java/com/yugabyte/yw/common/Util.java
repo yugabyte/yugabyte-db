@@ -2110,7 +2110,7 @@ public class Util {
       SetMultimap<Object, UUID> mmap =
           valuesTracker.computeIfAbsent(property, (x) -> HashMultimap.create());
       mmap.put(value, p.getUuid());
-      if (mmap.keys().size() > 1) {
+      if (mmap.keySet().size() > 1) {
         List<String> list =
             mmap.entries().stream()
                 .map(e -> e.getValue().toString() + " has " + e.getKey())
