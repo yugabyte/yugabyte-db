@@ -947,6 +947,9 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(!root->yb_cur_batched_relids);
 	root->yb_cur_batched_relids = batchedrelids;
+	root->yb_cur_batched_groups =
+		yb_clause_batched_groups(batched_rinfos, batchedrelids,
+								 index->rel->relids);
 
 	/*
 	 * An index clause that references a batched outer relation but cannot
@@ -1051,6 +1054,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	root->yb_cur_batched_relids = NULL;
+	root->yb_cur_batched_groups = NIL;
 
 	return batched_paths_added;
 }

@@ -777,6 +777,8 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		parent_root ? parent_root->yb_cur_batched_relids : NULL;
 	root->yb_cur_unbatched_relids =
 		parent_root ? parent_root->yb_cur_unbatched_relids : NULL;
+	root->yb_cur_batched_groups =
+		parent_root ? parent_root->yb_cur_batched_groups : NIL;
 	root->yb_availBatchedRelids =
 		parent_root ? parent_root->yb_availBatchedRelids : NULL;
 	root->yb_cur_batch_no = -1;

@@ -407,6 +407,8 @@ struct PlannerInfo
 	Relids		yb_cur_batched_relids;	/* valid if we are processing a
 										 * batched NL join */
 	Relids		yb_cur_unbatched_relids;
+	List	   *yb_cur_batched_groups;	/* yb_ppi_batched_groups for the
+										 * path being built */
 
 	/*
 	 * YB: List of Relids. Each element is a Bitmapset that encodes the batched
@@ -1260,6 +1262,20 @@ typedef struct PathTarget
  * the same relation is referenced with a batched array elsewhere in the scan.
  * The join directly above the path applies them instead (see
  * get_joinrel_parampathinfo).  Like ppi_clauses, it is NIL in join cases.
+ *
+ * YB: yb_ppi_batched_groups lists the sets of batched outer relations that a
+ * single batched clause of this path references together.  Such a clause
+ * becomes one YbBatchedExpr, which createplan.c expands into an array using
+ * one batch index for every batched Var inside it, so element i is only
+ * meaningful when all of them come from the same outer tuple -- that is, when
+ * one batched nested loop join fills them.  A join that batches part of a set
+ * probes the diagonal of two independently advancing batches instead of their
+ * cross product and loses rows, so yb_batched_clause_final_check rejects it.
+ * Unlike ppi_clauses this list is carried up through join cases, because the
+ * clause it came from is not reachable from there.  Only sets of two or more
+ * are recorded: one batched relation constrains nothing, and an unbatched
+ * relation in the same expression supplies a scalar parameter that holds
+ * still for a whole rescan of this path.
  */
 typedef struct ParamPathInfo
 {
@@ -1272,6 +1288,7 @@ typedef struct ParamPathInfo
 	/* Yugabyte attributes */
 	Relids		yb_ppi_req_outer_batched;	/* outer rels that can be batched */
 	List	   *yb_ppi_relegated_clauses;	/* clauses withheld from ppi_clauses */
+	List	   *yb_ppi_batched_groups;	/* outer rels to batch together */
 } ParamPathInfo;
 
 
@@ -1416,6 +1433,9 @@ typedef struct Path
 
 #define YB_PATH_NEEDS_BATCHED_RELS(path) \
 	!bms_is_empty(YB_PATH_REQ_OUTER_BATCHED(path))
+
+#define YB_PATH_BATCHED_GROUPS(path)  \
+	((path)->param_info ? ((path)->param_info->yb_ppi_batched_groups) : NIL)
 
 #define YB_PATH_REQ_OUTER_UNBATCHED(path)  \
 	(bms_difference(PATH_REQ_OUTER(path), YB_PATH_REQ_OUTER_BATCHED(path)))
