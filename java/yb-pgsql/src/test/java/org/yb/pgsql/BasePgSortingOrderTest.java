@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Arrays;
 import java.util.Set;
@@ -105,6 +106,11 @@ public abstract class BasePgSortingOrderTest extends BasePgSQLTest {
   public String formTableName(String typeName) {
     String name = typeName.replaceAll("[ ()]", "_");
     return name;
+  }
+
+  private static boolean needsTextCompare(String tableName) {
+    String upper = tableName.toUpperCase();
+    return upper.startsWith("DECIMAL") || upper.startsWith("NUMERIC") || upper.startsWith("DEC");
   }
 
   public void createTables(String[] typeNames) throws SQLException {
@@ -195,11 +201,22 @@ public abstract class BasePgSortingOrderTest extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       List<Row> pgsqlRows;
       List<Row> docdbRows;
-      try (ResultSet rs = statement.executeQuery(pgsqlStmt)) {
-        pgsqlRows = getRowList(rs);
-      }
-      try (ResultSet rs = statement.executeQuery(docdbStmt)) {
-        docdbRows = getRowList(rs);
+      // JDBC getObject maps NUMERIC to BigDecimal and rejects NaN / +/-Infinity.
+      // getString still returns the Postgres text form for those specials.
+      if (needsTextCompare(tableName)) {
+        try (ResultSet rs = statement.executeQuery(pgsqlStmt)) {
+          pgsqlRows = getStringRowList(rs);
+        }
+        try (ResultSet rs = statement.executeQuery(docdbStmt)) {
+          docdbRows = getStringRowList(rs);
+        }
+      } else {
+        try (ResultSet rs = statement.executeQuery(pgsqlStmt)) {
+          pgsqlRows = getRowList(rs);
+        }
+        try (ResultSet rs = statement.executeQuery(docdbStmt)) {
+          docdbRows = getRowList(rs);
+        }
       }
 
       LOG.info("Comparing result for " + tableName +
@@ -209,6 +226,14 @@ public abstract class BasePgSortingOrderTest extends BasePgSQLTest {
       assertEquals(docdbRows.size(), rowCount);
       assertEquals(pgsqlRows, docdbRows);
     }
+  }
+
+  private static List<Row> getStringRowList(ResultSet rs) throws SQLException {
+    List<Row> rows = new ArrayList<>();
+    while (rs.next()) {
+      rows.add(new Row(rs.getString(1)));
+    }
+    return rows;
   }
 
   // Run one testcase.
