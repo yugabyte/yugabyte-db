@@ -123,6 +123,9 @@ struct TableInfo {
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
+  // See TableInfoPB::vector_index_deactivated_ht. Invalid while the vector index is active.
+  HybridTime vector_index_deactivated_ht;
+
   // Public ctor with private argument to allow std::make_shared, but prevent public usage.
   TableInfo(const std::string& log_prefix,
             TableType table_type,
@@ -572,20 +575,23 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // /mnt/d0/yb-data/tserver/wals
   std::string wal_root_dir() const;
 
-  // Set table_id for altering the schema of a colocated user table.
+  // Set table_id for altering the schema of a colocated user table. hybrid_time is the time of the
+  // operation applying the new schema, and is invalid for remote bootstrap.
   void SetSchema(const Schema& schema,
                  const qlexpr::IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
                  const SchemaVersion version,
                  const OpId& op_id,
-                 const TableId& table_id = "");
+                 const TableId& table_id = "",
+                 HybridTime hybrid_time = HybridTime());
 
   void SetSchemaUnlocked(const Schema& schema,
                  const qlexpr::IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
                  const SchemaVersion version,
                  const OpId& op_id,
-                 const TableId& table_id = "") REQUIRES(data_mutex_);
+                 const TableId& table_id = "",
+                 HybridTime hybrid_time = HybridTime()) REQUIRES(data_mutex_);
 
   void InsertPackedSchemaForXClusterTarget(
       const Schema& schema, const qlexpr::IndexMap& index_map, const SchemaVersion version,
@@ -605,7 +611,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const Schema& schema, const qlexpr::IndexMap& index_map,
       const std::vector<DeletedColumn>& deleted_cols,
       const SchemaVersion version, const std::string& namespace_name,
-      const std::string& table_name, const OpId& op_id, const TableId& table_id = "");
+      const std::string& table_name, const OpId& op_id, const TableId& table_id = "",
+      HybridTime hybrid_time = HybridTime());
 
   Result<TableInfoPtr> AddTable(
       const std::string& table_id,
@@ -896,6 +903,17 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,
                               const TableInfoPtr& new_table_info) REQUIRES(data_mutex_);
+
+  // Applies a change of an indexed table's index map to TableInfo::vector_index_deactivated_ht of
+  // the vector indexes hosted by this tablet, per index: an index removed from the map is
+  // deactivated at hybrid_time, an index added to the map is reactivated. One call can do both,
+  // e.g. a restore to a time before one index was created and another was dropped.
+  void UpdateVectorIndexDeactivationUnlocked(
+      const qlexpr::IndexMap& old_index_map, const qlexpr::IndexMap& new_index_map,
+      HybridTime hybrid_time) REQUIRES(data_mutex_);
+
+  void SetVectorIndexDeactivatedHtUnlocked(const TableId& index_id, HybridTime hybrid_time)
+      REQUIRES(data_mutex_);
 
   std::vector<TableId> GetAllColocatedTablesUnlocked() const REQUIRES(data_mutex_);
 
