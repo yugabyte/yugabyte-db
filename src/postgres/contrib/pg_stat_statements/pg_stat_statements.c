@@ -1729,7 +1729,6 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	int			saved_stmt_location = pstmt->stmt_location;
 	int			saved_stmt_len = pstmt->stmt_len;
 
-	/* YB: like the saved_ values, read before *pstmt may be freed below */
 	bool		yb_is_backfill = IsA(parsetree, YbBackfillIndexStmt);
 
 	/*
