@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import { YBCheckbox, YBModal } from '../../../../components';
-import { PerfAdvisorAPI, QUERY_KEY } from '../../../PerfAdvisor/api';
+import { AlertVariant, YBAlert, YBModal, YBRadioGroup } from '../../../../components';
+import { PaRegistrationMode, PerfAdvisorAPI, QUERY_KEY } from '../../../PerfAdvisor/api';
 import { Universe } from '../../universe-form/utils/dto';
 import { PerfAdvisorModalIntention } from '../../../../../redesign/helpers/constants';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
@@ -35,7 +35,7 @@ export const EnablePerfAdvisorModal = ({
   paModalIntention = PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
 }: EnablePerfAdvisorModalProps) => {
   const { t } = useTranslation();
-  const [advancedObservability, setAdvancedObservability] = useState(false);
+  const [mode, setMode] = useState<PaRegistrationMode>(PaRegistrationMode.BASIC);
   const queryClient = useQueryClient();
   const dispatch = useDispatch();
   const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
@@ -109,7 +109,7 @@ export const EnablePerfAdvisorModal = ({
       PerfAdvisorAPI.attachUniverseToPerfAdvisor(
         paUuid,
         universeData.universeUUID,
-        advancedObservability
+        mode === PaRegistrationMode.ADVANCED
       ),
     {
       onSuccess: (resp: any) => {
@@ -148,14 +148,54 @@ export const EnablePerfAdvisorModal = ({
           ? t('universeActions.paUniverseStatus.disableTitle')
           : t('universeActions.paUniverseStatus.enableTitle');
 
-  const bodyContent = enableAdvancedObservabilityOnly ? (
-    <Box component="span" display="block">
-      <Trans
-        i18nKey="universeActions.paUniverseStatus.enableAdvancedObservabilitySubText"
-        values={{ universeName: universeData.name }}
-        components={{ strong: <strong /> }}
+  const modeOptions = [
+    {
+      value: PaRegistrationMode.BASIC,
+      label: t('universeActions.paUniverseStatus.modeBasic'),
+      'data-testid': 'EnablePerfAdvisorModal-ModeBasic'
+    },
+    ...(isEmbeddedPAEnabled
+      ? [
+          {
+            value: PaRegistrationMode.ADVANCED,
+            label: t('universeActions.paUniverseStatus.modeAdvanced'),
+            'data-testid': 'EnablePerfAdvisorModal-ModeAdvanced'
+          }
+        ]
+      : [])
+  ];
+
+  const showLicenseNotice =
+    enableAdvancedObservabilityOnly ||
+    (!isUniverseRegisteredToPA && mode === PaRegistrationMode.ADVANCED);
+
+  const licenseNotice = (
+    <Box mt={2}>
+      <YBAlert
+        open
+        variant={AlertVariant.Warning}
+        dataTestId="EnablePerfAdvisorModal-LicenseNotice"
+        text={
+          <Trans
+            i18nKey="universeActions.paUniverseStatus.advancedObservabilityLicenseNotice"
+            components={{ strong: <strong /> }}
+          />
+        }
       />
     </Box>
+  );
+
+  const bodyContent = enableAdvancedObservabilityOnly ? (
+    <>
+      <Box component="span" display="block">
+        <Trans
+          i18nKey="universeActions.paUniverseStatus.enableAdvancedObservabilitySubText"
+          values={{ universeName: universeData.name }}
+          components={{ strong: <strong /> }}
+        />
+      </Box>
+      {licenseNotice}
+    </>
   ) : disableAdvancedObservabilityOnly ? (
     <Box component="span" display="block">
       <Trans
@@ -175,18 +215,17 @@ export const EnablePerfAdvisorModal = ({
           }}
         />
       </span>
-      {!isUniverseRegisteredToPA && isEmbeddedPAEnabled && (
+      {!isUniverseRegisteredToPA && modeOptions.length > 1 && (
         <Box mt={2}>
-          <YBCheckbox
-            checked={advancedObservability}
-            onChange={(e) => setAdvancedObservability(e.target.checked)}
-            label={t('universeActions.paUniverseStatus.enableAdvancedObservability')}
-            inputProps={{
-              'data-testid': 'EnablePerfAdvisorModal-AdvancedObservability'
-            }}
+          <YBRadioGroup
+            label={t('universeActions.paUniverseStatus.modeLabel')}
+            options={modeOptions}
+            value={mode}
+            onChange={(_, value) => setMode(value as PaRegistrationMode)}
           />
         </Box>
       )}
+      {showLicenseNotice && licenseNotice}
     </>
   );
 
@@ -207,6 +246,9 @@ export const EnablePerfAdvisorModal = ({
       <Box
         display="flex"
         width="100%"
+        // Capped whatever the mode: the dialog is fit-content, so a cap that came and went with
+        // the notice resized it whenever the mode changed.
+        maxWidth={600}
         flexDirection="column"
         pt={2}
         pb={2}
