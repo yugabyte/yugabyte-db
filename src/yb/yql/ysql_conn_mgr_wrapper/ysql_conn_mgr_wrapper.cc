@@ -30,6 +30,7 @@ DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
 DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 DECLARE_bool(ysql_conn_mgr_superuser_sticky);
+DECLARE_bool(ysql_conn_mgr_use_auth_backend);
 DECLARE_bool(ysql_conn_mgr_version_matching);
 DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
 DECLARE_int32(ysql_conn_mgr_max_query_size);
@@ -93,11 +94,6 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "'log_debug', 'log_session', 'log_query', and 'log_stats'. Only the log settings present "
     "in this string will be enabled. Omitted settings will remain disabled. 'log_config' is "
     "accepted for backward compatibility but has no effect, as config logging is always on.");
-
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
-    "Enable the use of the auth-backend for authentication of logical connections. "
-    "When false, the older auth-passthrough implementation is used."
-    );
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_auth_msg_timeout, 15000,
     "Maximum time (in milliseconds) to wait for each startup & auth message from client. "
