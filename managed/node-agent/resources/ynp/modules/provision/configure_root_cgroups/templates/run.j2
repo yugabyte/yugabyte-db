@@ -1,0 +1,71 @@
+# Root half of the tserver CPU cgroup setup. It lives in a root module so that split provisioning
+# (--root, then --noroot) completes it; ConfigureRuntimeCgroups then persists the state files as
+# the yb user. The cgroup layout is detected here because in split mode those state files are
+# written only after this runs.
+set -euo pipefail
+
+YB_USER="{{ yb_user }}"
+USE_SYS="{{ use_system_level_systemd }}"
+CGROUP_V1_NAME="yugabyte-db"
+V1_BOOT_UNIT=/etc/systemd/system/yb-cgroup-v1-setup.service
+USER_AT_DROPIN_DIR=/etc/systemd/system/user@.service.d
+USER_AT_DROPIN=$USER_AT_DROPIN_DIR/override.conf
+
+CGROUP_MODE=unknown
+V1_CPU_ROOT=""
+if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+  CGROUP_MODE=v2
+elif [ -d /sys/fs/cgroup/cpu ]; then
+  CGROUP_MODE=v1
+  V1_CPU_ROOT=/sys/fs/cgroup/cpu
+elif [ -d "/sys/fs/cgroup/cpu,cpuacct" ]; then
+  CGROUP_MODE=v1
+  V1_CPU_ROOT="/sys/fs/cgroup/cpu,cpuacct"
+fi
+echo "Detected cgroup mode: ${CGROUP_MODE}"
+
+if [ "$CGROUP_MODE" = "v1" ]; then
+  # Create the leaf now so yb-tserver can be placed in it in this provisioning run; the boot unit
+  # recreates it after every reboot.
+  leaf="${V1_CPU_ROOT}/${CGROUP_V1_NAME}"
+  install -d -m 0755 "$leaf"
+  chmod -R a+rw "$leaf" || true
+  echo "Created v1 cgroup at ${leaf} with a+rw"
+  cat >"$V1_BOOT_UNIT" <<'UNIT'
+{% include 'yb-cgroup-v1-setup.service' %}
+UNIT
+  chmod 0644 "$V1_BOOT_UNIT"
+  systemctl daemon-reload || true
+  systemctl enable yb-cgroup-v1-setup.service 2>/dev/null || true
+  systemctl start yb-cgroup-v1-setup.service 2>/dev/null || true
+else
+  systemctl stop yb-cgroup-v1-setup.service 2>/dev/null || true
+  systemctl disable yb-cgroup-v1-setup.service 2>/dev/null || true
+  rm -f "$V1_BOOT_UNIT"
+fi
+
+# The stock user@.service delegates only some controllers (e.g. "pids memory" on systemd 252), so
+# without this drop-in the cpu controller never reaches yb-tserver under user-level systemd.
+if [ "$CGROUP_MODE" = "v2" ] && [ "$USE_SYS" != "True" ]; then
+  install -d -m 0755 "$USER_AT_DROPIN_DIR"
+  printf '%s\n' '[Service]' 'Delegate=pids memory cpu' >"$USER_AT_DROPIN"
+  chmod 0644 "$USER_AT_DROPIN"
+else
+  rm -f "$USER_AT_DROPIN"
+  rmdir "$USER_AT_DROPIN_DIR" 2>/dev/null || true
+fi
+systemctl daemon-reload || true
+
+if [ "$CGROUP_MODE" = "v2" ] && [ "$USE_SYS" != "True" ]; then
+  YB_UID=$(id -u "$YB_USER")
+  controllers="/sys/fs/cgroup/user.slice/user-${YB_UID}.slice/user@${YB_UID}.service/cgroup.controllers"
+  # Delegation applies only when user@ starts. Restarting it stops every yb user service, so skip
+  # it when cpu is already delegated (e.g. re-provisioning a node with a running tserver).
+  if [ -f "$controllers" ] && grep -qw cpu "$controllers"; then
+    echo "cpu controller is already delegated to user@${YB_UID}.service"
+  else
+    systemctl stop "user@${YB_UID}.service" 2>/dev/null || true
+    systemctl reset-failed "user@${YB_UID}.service" 2>/dev/null || true
+    systemctl start "user@${YB_UID}.service" 2>/dev/null || true
+  fi
+fi
