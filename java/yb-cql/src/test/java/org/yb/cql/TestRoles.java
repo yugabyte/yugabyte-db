@@ -663,6 +663,103 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     assertPermissionsGranted(session, roles.get(6), canonicalResource, new ArrayList<>());
   }
 
+  // Length of a bcrypt hash string: "$2<variant>$<2-digit cost>$<22-char salt><31-char checksum>".
+  private static final int BCRYPT_HASH_LENGTH = 60;
+
+  // salted_hash is stored zero-padded to 64 bytes, so reading it back yields the bcrypt string
+  // followed by NUL padding. Strip the padding to recover the usable hash.
+  private static String bcryptHashOf(String saltedHash) {
+    int nul = saltedHash.indexOf('\0');
+    return nul >= 0 ? saltedHash.substring(0, nul) : saltedHash;
+  }
+
+  private String readBcryptHash(String role) {
+    String saltedHash = session.execute(String.format(
+        "SELECT salted_hash FROM system_auth.roles WHERE role = '%s';", role))
+        .one().getString("salted_hash");
+    return bcryptHashOf(saltedHash);
+  }
+
+  // Cassandra 4.1 HASHED PASSWORD: a client can supply a bcrypt hash directly so credentials can be
+  // migrated between clusters without the plaintext, and without the server re-hashing them.
+  @Test
+  public void testHashedPassword() throws Exception {
+    // Create a role with a plaintext password and read back the bcrypt hash the server stored.
+    String plainRole = "hashed_source_role";
+    String password = "s3cr3t_pw";
+    createRole(session, plainRole, password, true, false, true);
+
+    String hash = readBcryptHash(plainRole);
+    assertEquals(BCRYPT_HASH_LENGTH, hash.length());
+
+    // CREATE ROLE with HASHED PASSWORD reuses the hash verbatim; the original plaintext must
+    // authenticate, and the stored hash must match what the client supplied byte for byte.
+    String hashedRole = "hashed_target_role";
+    session.execute(String.format(
+        "CREATE ROLE %s WITH LOGIN = true AND HASHED PASSWORD = '%s';", hashedRole, hash));
+    verifyRole(session, hashedRole, true, false);
+    checkConnectivity(true, hashedRole, password, false);
+    assertEquals(hash, readBcryptHash(hashedRole));
+
+    // ALTER ROLE to a different hash: the old password stops working, the new one works.
+    String otherPassword = "n3w_s3cr3t";
+    String otherRole = "hashed_other_role";
+    createRole(session, otherRole, otherPassword, true, false, false);
+    String otherHash = readBcryptHash(otherRole);
+    session.execute(String.format(
+        "ALTER ROLE %s WITH HASHED PASSWORD = '%s';", hashedRole, otherHash));
+    checkConnectivity(true, hashedRole, password, true);
+    checkConnectivity(true, hashedRole, otherPassword, false);
+
+    // Reject PASSWORD and HASHED PASSWORD in the same statement.
+    try {
+      session.execute(String.format(
+          "CREATE ROLE bad_role WITH PASSWORD = '%s' AND HASHED PASSWORD = '%s';", password, hash));
+      fail("Expected CREATE ROLE with both PASSWORD and HASHED PASSWORD to fail");
+    } catch (InvalidQueryException e) {
+      assertTrue(e.getMessage(), e.getMessage().contains("Invalid Role Definition"));
+    }
+
+    // Reject a non-bcrypt hash.
+    try {
+      session.execute("CREATE ROLE bad_role WITH HASHED PASSWORD = 'not_a_valid_bcrypt_hash';");
+      fail("Expected CREATE ROLE with an invalid HASHED PASSWORD to fail");
+    } catch (InvalidQueryException e) {
+      assertTrue(e.getMessage(), e.getMessage().contains("Invalid bcrypt hash"));
+    }
+
+    // ALTER ROLE validates the hash exactly as CREATE ROLE does.
+    try {
+      session.execute(String.format(
+          "ALTER ROLE %s WITH HASHED PASSWORD = 'not_a_valid_bcrypt_hash';", hashedRole));
+      fail("Expected ALTER ROLE with an invalid HASHED PASSWORD to fail");
+    } catch (InvalidQueryException e) {
+      assertTrue(e.getMessage(), e.getMessage().contains("Invalid bcrypt hash"));
+    }
+
+    // A well-formed hash whose cost bcrypt will not compute has to be rejected at DDL time, rather
+    // than stored to leave a role that exists but whose password can never be verified.
+    try {
+      session.execute(String.format("CREATE ROLE bad_role WITH HASHED PASSWORD = '%s';",
+          "$2a$99$" + hash.substring(7)));
+      fail("Expected CREATE ROLE with an out-of-range bcrypt cost to fail");
+    } catch (InvalidQueryException e) {
+      assertTrue(e.getMessage(), e.getMessage().contains("Invalid bcrypt hash"));
+    }
+
+    // The other bcrypt variants are accepted, and must remain verifiable: for an ASCII password all
+    // four variants produce the same checksum, so the original plaintext still authenticates.
+    for (char variant : new char[] {'b', 'x', 'y'}) {
+      String variantHash = "$2" + variant + hash.substring(3);
+      String variantRole = "hashed_role_2" + variant;
+      session.execute(String.format(
+          "CREATE ROLE %s WITH LOGIN = true AND HASHED PASSWORD = '%s';",
+          variantRole, variantHash));
+      checkConnectivity(true, variantRole, password, false);
+      assertEquals(variantHash, readBcryptHash(variantRole));
+    }
+  }
+
   @Test
   public void testCassandraUserRecreationDisabledOnRestart() throws Exception {
     String cassandra_user = "cassandra";

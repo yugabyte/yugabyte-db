@@ -38,6 +38,7 @@ create_role ::= CREATE ROLE [ IF NOT EXISTS ] role_name
                 [ WITH role_property [ AND ... ] ]
 
 role_property ::=  PASSWORD = <Text Literal>
+                 | HASHED PASSWORD = <Text Literal>
                  | LOGIN = <Boolean Literal>
                  | SUPERUSER = <Boolean Literal>
 ```
@@ -45,6 +46,7 @@ role_property ::=  PASSWORD = <Text Literal>
 Where
 
 - `role_name` is a text identifier.
+- `<Text Literal>` for `HASHED PASSWORD` is a bcrypt hash, not a plaintext password. Use the first 60 characters of the `salted_hash` column of `system_auth.roles`, which is padded to 64 bytes.
 
 ## Semantics
 
@@ -54,6 +56,7 @@ Where
 - Only a role with the `SUPERUSER` status can create another `SUPERUSER` role.
 - A role with the `LOGIN` privilege can be used to authenticate into YQL.
 - Only a client with the permission `CREATE` on `ALL ROLES` or with the `SUPERUSER` status can create another role.
+- `HASHED PASSWORD` stores a pre-computed bcrypt hash directly instead of a plaintext password, so credentials can be migrated between clusters without exposing the plaintext (compatible with Apache Cassandra 4.1). The value must be a valid bcrypt hash; `PASSWORD` and `HASHED PASSWORD` cannot be combined in the same statement.
 
 ## Examples
 
@@ -75,6 +78,14 @@ You can create a regular user with login privileges as shown below. Note the `SU
 
 ```sql
 ycqlsh:example> CREATE ROLE role3 WITH SUPERUSER = false AND LOGIN = true AND PASSWORD = 'aid8134'
+```
+
+### Create a role from an existing password hash
+
+Supply a bcrypt hash directly with `HASHED PASSWORD` to migrate a role's credentials from another cluster without knowing the plaintext. The hash is the first 60 characters of the `salted_hash` column of `system_auth.roles` (the column is padded to 64 bytes, so supply only the 60-character bcrypt string).
+
+```sql
+ycqlsh:example> CREATE ROLE role4 WITH LOGIN = true AND HASHED PASSWORD = '$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW'
 ```
 
 ## See also

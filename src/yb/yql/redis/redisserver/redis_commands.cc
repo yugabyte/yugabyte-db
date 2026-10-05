@@ -1031,7 +1031,9 @@ void HandleConfig(LocalCommandData data) {
   } else if (FLAGS_use_hashed_redis_password) {
     std::vector<string> hashes;
     for (const auto& pwd : passwords) {
-      char hash[yb::util::kBcryptHashSize];
+      // Zero-initialize: the hash is stored as a fixed-width kBcryptHashSize string, so the bytes
+      // past the bcrypt string would otherwise be uninitialized stack.
+      char hash[yb::util::kBcryptHashSize] = {};
       if (yb::util::bcrypt_hashpw(pwd.c_str(), hash) != 0) {
         resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
         resp->ref_error_message("ERR: Error while hashing the password.");
