@@ -233,6 +233,10 @@ Status YsqlManager::RollbackYsqlMajorCatalogVersion(
   return Status::OK();
 }
 
+Status YsqlManager::CleanupStalePgUpgradeSocketDir() {
+  return ysql_initdb_and_major_upgrade_helper_->CleanupStalePgUpgradeSocketDir();
+}
+
 Status YsqlManager::GetYsqlMajorCatalogUpgradeState(
     const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
     GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc) {
