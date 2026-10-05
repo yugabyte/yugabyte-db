@@ -35,6 +35,7 @@ DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(load_balancer_max_concurrent_removals);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(load_balancer_max_concurrent_moves_per_table);
+DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_string(placement_cloud);
@@ -87,7 +88,7 @@ void GeoTransactionsTestBase::SetUp() {
   pgwrapper::PgMiniTestBase::SetUp();
   InitTransactionManagerAndPool();
   // Wait for system.transactions to be created.
-  WaitForStatusTabletsVersion(1);
+  WaitForStatusTabletsVersionForCreate(0);
 }
 
 void GeoTransactionsTestBase::InitTransactionManagerAndPool() {
@@ -121,7 +122,7 @@ void GeoTransactionsTestBase::CreateTransactionTable(int region) {
   pb->set_min_num_replicas(1);
   ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
 
-  WaitForStatusTabletsVersion(current_version + 1);
+  WaitForStatusTabletsVersionForCreate(current_version);
 }
 
 Result<TableId> GeoTransactionsTestBase::GetTransactionTableId(int region) {
@@ -170,7 +171,7 @@ void GeoTransactionsTestBase::CreateMultiRegionTransactionTable() {
   pb->set_min_num_replicas(1);
   ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
 
-  WaitForStatusTabletsVersion(current_version + 1);
+  WaitForStatusTabletsVersionForCreate(current_version);
 }
 
 void GeoTransactionsTestBase::SetupTablespaces() {
@@ -208,8 +209,7 @@ void GeoTransactionsTestBase::SetupTables(size_t tables_per_region) {
     }
 
     if (wait_for_hash) {
-      WaitForStatusTabletsVersion(current_version + 1);
-      ++current_version;
+      current_version = WaitForStatusTabletsVersionForCreate(current_version);
     }
   }
 }
@@ -257,6 +257,14 @@ void GeoTransactionsTestBase::WaitForStatusTabletsVersion(uint64_t version) {
       [this, version] { return GetCurrentVersion() == version; },
       kStatusTabletCacheRefreshTimeout,
       strings::Substitute(error, version)));
+}
+
+uint64_t GeoTransactionsTestBase::WaitForStatusTabletsVersionForCreate(
+    uint64_t current_version, uint64_t num_tables) {
+  // 1 status table + its tablets.
+  current_version += num_tables * (1 + FLAGS_transaction_table_num_tablets);
+  WaitForStatusTabletsVersion(current_version);
+  return current_version;
 }
 
 void GeoTransactionsTestBase::WaitForLoadBalanceCompletion() {

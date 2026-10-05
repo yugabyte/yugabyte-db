@@ -577,6 +577,13 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     // master failover that aborts in-progress clones.
     opts->extra_master_flags.emplace_back(
         Format("--leader_failure_max_missed_heartbeat_periods=$0", 10 * kTimeMultiplier));
+    // Such stalls (up to ~8s) outlast the default 2s raft lease, so the master leader keeps losing
+    // its lease and cannot refresh YSQL leases. Must stay below the 15s leader failure timeout.
+    if (IsSanitizer()) {
+      for (auto flag : {"leader_lease_duration_ms", "ht_lease_duration_ms"}) {
+        opts->extra_master_flags.emplace_back(Format("--$0=$1", flag, 4000 * kTimeMultiplier));
+      }
+    }
     opts->num_masters = 3;
   }
 

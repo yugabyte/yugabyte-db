@@ -657,6 +657,235 @@ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
 /*+ Set(yb_enable_cbo on) Leading((p1 p2)) YbBatchedNL(p1 p2) */
 SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
 
+-------------------------------------------------------------------------
+-- #34069: t1b.b + t1a.b must not become a batched Index Cond on t2b while
+-- two different joins batch t1a and t1b.  Expanding it with one batch index
+-- for both batches probes only their diagonal, so the count drops below the
+-- unbatched baseline.  Two relations in one batched expression stay legal
+-- when a single join batches both, which the Leading(((q1 q2) q3)) case
+-- above and the "legal BNL" case further down keep covered.
+-- Expected: the top join does not batch t1b, so t1b.b + t1a.b is applied as
+-- its join filter instead of a batched Index Cond on t2b, and the count
+-- matches the unbatched baseline.
+-- Both p1 aliases are capped at the range p5.a covers to keep the unbatched
+-- baseline from rescanning 300x300 outer pairs.
+-------------------------------------------------------------------------
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a (t2b t2a))))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2a p5_pkey)
+  IndexScan(t2b p5_pkey)
+  YbBatchedNL(t1a t1b t2a t2b)
+  YbBatchedNL(t1a t2a t2b)
+  YbBatchedNL(t2a t2b)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a (t2b t2a))))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2a p5_pkey)
+  IndexScan(t2b p5_pkey)
+  YbBatchedNL(t1a t1b t2a t2b)
+  YbBatchedNL(t1a t2a t2b)
+  YbBatchedNL(t2a t2b)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+
+-- Baseline: same join order with batching disabled.
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((t1b (t1a (t2b t2a))))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2a p5_pkey)
+  IndexScan(t2b p5_pkey)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((t1b (t1a (t2b t2a))))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2a p5_pkey)
+  IndexScan(t2b p5_pkey)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+
+-- The same split, where only the index condition shows the group: t2b.a's
+-- equivalence class also holds the plain Var t1a.a, which the scan's movable
+-- clauses pick over t1b.b + t1a.b, while the index path parameterized by t1a
+-- and t1b probes the expression.  A partitioned t2b puts an Append over the
+-- scans, which has to take the group over from its children.  t2b.b = t1b.b
+-- keeps that path from being pruned in favor of the one parameterized by t1a
+-- alone, and the cost model is on because legacy costing does not choose the
+-- split here.
+-- Expected: the top join does not batch t1b in either form, and both counts
+-- match the unbatched baseline.
+CREATE TABLE p5_part (a int, b int, c varchar, primary key(a asc, b asc))
+  PARTITION BY RANGE (a);
+CREATE TABLE p5_part_1 PARTITION OF p5_part FOR VALUES FROM (MINVALUE) TO (30);
+CREATE TABLE p5_part_2 PARTITION OF p5_part FOR VALUES FROM (30) TO (MAXVALUE);
+INSERT INTO p5_part SELECT * FROM p5;
+ANALYZE p5_part;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b p5_pkey)
+  YbBatchedNL(t1a t1b t2b)
+  YbBatchedNL(t1a t2b)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b p5_pkey)
+  YbBatchedNL(t1a t1b t2b)
+  YbBatchedNL(t1a t2b)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b)
+  YbBatchedNL(t1a t1b t2b)
+  YbBatchedNL(t1a t2b)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b)
+  YbBatchedNL(t1a t1b t2b)
+  YbBatchedNL(t1a t2b)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+
+-- Baseline: same join order with batching disabled.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b p5_pkey)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+DROP TABLE p5_part;
+
+-- GEQO ignores join hints, and without the check its own search picks the
+-- split for the four-relation query above.
+-- Expected: t1b.b + t1a.b is never probed with t1a and t1b batched by different
+-- joins, and the count matches that query's unbatched baseline.
+/*+
+  Set(geqo_threshold 2)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+/*+
+  Set(geqo_threshold 2)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+
 DROP TABLE p1;
 DROP TABLE p2;
 DROP TABLE p3;

@@ -221,6 +221,10 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pg_locks_integrate_advisory_locks, kLocalPe
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_docdb_vector_type, kExternal, false, true,
     "Enable using the DocDB Vector type from YSQL.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_xcluster_analyze_replication, kExternal, false, true,
+    "If true, an xCluster automatic mode source records each relation it analyzes in ddl_queue so "
+    "that the target refreshes that relation's statistics.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
     "Sets the minimum transaction age for results from pg_locks.");
 

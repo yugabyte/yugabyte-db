@@ -524,13 +524,16 @@ LookupTupleHashEntryHash(TupleHashTable hashtable, TupleTableSlot *slot,
  * different from the table's internal functions.
  *
  * YB: caller must also provide key attributes to use for looking up with the
- * given tuple.
+ * given tuple.  yb_keyColExprs, if not NULL, gives per key an expression to
+ * evaluate on the given tuple instead of fetching keyColIdx[i]; a NULL entry
+ * falls back to the attribute.
  */
 TupleHashEntry
 FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 				   ExprState *eqcomp,
 				   FmgrInfo *hashfunctions,
-				   AttrNumber *keyColIdx)
+				   AttrNumber *keyColIdx,
+				   ExprState **yb_keyColExprs)
 {
 	TupleHashEntry entry;
 	MemoryContext oldContext;
@@ -543,7 +546,7 @@ FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 	hashtable->inputslot = slot;
 	hashtable->in_hash_funcs = hashfunctions;
 	hashtable->in_keyColIdx = keyColIdx;
-	hashtable->yb_in_keycolExprs = NULL;
+	hashtable->yb_in_keycolExprs = yb_keyColExprs;
 	hashtable->cur_eq_func = eqcomp;
 
 	/* Search the hash table */
@@ -610,10 +613,16 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 		/* combine successive hashkeys by rotating */
 		hashkey = pg_rotate_left32(hashkey, 1);
 
-		/* YB: for BNL, handle expressions on the outer tuple. */
+		/*
+		 * YB: for BNL, evaluate a key expression on the tuple instead of
+		 * fetching a column.  Outer key expressions reference OUTER_VAR and
+		 * inner key expressions reference INNER_VAR; a key expression
+		 * references one side only, so present the tuple as both.
+		 */
 		if (eval_exprs != NULL && eval_exprs[i] != NULL)
 		{
 			hashtable->exprcontext->ecxt_outertuple = slot;
+			hashtable->exprcontext->ecxt_innertuple = slot;
 			attr = ExecEvalExprSwitchContext(eval_exprs[i],
 											 hashtable->exprcontext,
 											 &isNull);

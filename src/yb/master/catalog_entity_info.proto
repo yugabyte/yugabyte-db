@@ -1080,7 +1080,7 @@ message SysTabletServerEntryPB {
   enum State {
     // Proto best practices are to include a sentinel as the first enum value.
     // See https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum
-    UNSPECIFIED = 0;
+    State_UNSPECIFIED = 0;
     // A heartbeat from the TServer has been ACK'd recently.
     LIVE = 1;
     // No heartbeat from the TServer has been ACK'd within at least tserver_unresponsive_timeout_ms.
@@ -1097,6 +1097,25 @@ message SysTabletServerEntryPB {
     // the entry is deleted. This state signals to code that holds on to a shared_ptr<TSDescriptor>
     // that the object representing the tablet server is stale and should not be used.
     REMOVED = 4;
+  }
+
+  enum XClusterGuardedLeaseState {
+    // Proto best practices are to include a sentinel as the first enum value.
+    // See https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum
+    XClusterGuardedLeaseState_UNSPECIFIED = 0;
+    // It is possible that this TServer has a xCluster-guarded information lease.
+    //
+    // Most obviously, this could be because we have extended a lease that would be still valid if
+    // the TServer received it.  Less obviously, that lease may no longer be valid but we have not
+    // updated this enum yet.  Is also possible a previous master leader may have extended a lease
+    // that is still valid unbeknownst to the current leader.
+    MAYBE_HAS_LEASE = 1;
+    // It is definitely not possible that this TServer has a xCluster-guarded information lease.
+    //
+    // Moreover if this TServer does require such a lease in the future, the associated information
+    // (e.g., the xCluster role) from master will date at least from the point at which this state
+    // was changed to MAYBE_HAS_LEASE.
+    DEFINITELY_NO_LEASE = 2;
   }
 
   // The instance_seqno of a tserver is chosen at process start and is constant throughout the
@@ -1116,4 +1135,6 @@ message SysTabletServerEntryPB {
   optional VersionInfoPB version_info = 9;
 
   optional uint64 start_time_us = 10;
+
+  optional XClusterGuardedLeaseState xcluster_guarded_lease_state = 11;
 }

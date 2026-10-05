@@ -2694,6 +2694,121 @@ TEST_F(AdminCliTest, AddTransactionStatusTablet) {
   }, kWaitNewTabletReadyTimeout, "Timeout waiting for new status tablet to be ready"));
 }
 
+class AddTransactionTabletTest : public AdminCliTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->transaction_table_num_tablets = 1;
+  }
+
+  void WaitForTransactionTabletCount(
+      std::string_view txn_table, int64_t expected_count, MonoDelta timeout = 20s) {
+    int64_t num_tablets;
+    ASSERT_OK(WaitFor([&] -> Result<bool> {
+      auto tablets = VERIFY_RESULT(CallAdmin(
+          "list_tablets", master::kSystemNamespaceName, std::string(txn_table)));
+      // -1 to exclude table header.
+      num_tablets = std::count(tablets.begin(), tablets.end(), '\n') - 1;
+      LOG(INFO) << "Tablets: " << AsString(tablets);
+      return num_tablets >= expected_count;
+    }, timeout, "Timeout waiting for status tablet count"));
+    ASSERT_EQ(num_tablets, expected_count);
+  }
+};
+
+TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTest) {
+  constexpr auto kNamespaceName = "test_namespace";
+  constexpr auto kTableName = "test_table";
+  constexpr auto kLocalTransactionTableName = "transactions_local";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+
+  BuildAndStart(/*ts_flags=*/{
+    "--ycql_use_local_transaction_tables=true",
+    "--TEST_transaction_manager_disable_local_filter=true",
+  }, /*master_flags=*/{
+    "--autoscale_transaction_tables=false",
+    "--tablet_creation_timeout_ms=10000",
+  });
+
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  // Force creation of system.transactions.
+  auto session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE KEYSPACE IF NOT EXISTS $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat("USE $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY) "
+      "WITH transactions = { 'enabled' : true }", kTableName));
+
+  auto global_txn_table = YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  auto global_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kGlobalTransactionsTableName, /*count=*/1));
+
+  // We create a transaction tablet that gets stuck in CREATING (for tablet_creation_timeout_ms) by
+  // adding the tablet after shutting down all tservers, and then restarting everything once create
+  // tablet RPCs start failing (see #33820).
+  // If this behavior is changed in the future, this test should be changed to create such a tablet
+  // by some other means.
+  cluster_->tablet_server(0)->Shutdown();
+  {
+    ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
+    auto log_waiter = cluster_->GetMasterLogWaiter(
+        Format("Processing pending assignments for table: $0", global_txn_table_id));
+    ASSERT_OK(log_waiter.WaitFor(5s));
+  }
+  cluster_->master()->Shutdown(SafeShutdown::kFalse);
+  ASSERT_OK(cluster_->Restart());
+
+  auto do_inserts = [&](size_t start, size_t end) -> Status {
+    for (size_t i = 0; i < 10; ++i) {
+      RETURN_NOT_OK(session.ExecuteQueryFormat(
+          "START TRANSACTION;"
+          "INSERT INTO $0.$1(key) VALUES ($2);"
+          "COMMIT",
+          kNamespaceName, kTableName, i));
+    }
+    return Status::OK();
+  };
+
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kGlobalTransactionsTableName, /*count=*/1));
+  session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(do_inserts(0, 10));
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kGlobalTransactionsTableName, /*count=*/2));
+  ASSERT_OK(do_inserts(10, 20));
+
+  ASSERT_OK(CallAdmin("create_transaction_table", kLocalTransactionTableName));
+  ASSERT_OK(CallAdmin(
+      "modify_table_placement_info", kNamespaceName, kTableName,
+      "cloud1.datacenter1.rack1", "1"));
+  ASSERT_OK(CallAdmin(
+      "modify_table_placement_info", master::kSystemNamespaceName, kLocalTransactionTableName,
+      "cloud1.datacenter1.rack1", "1"));
+  auto local_txn_table = YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kLocalTransactionTableName);
+  auto local_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), local_txn_table));
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kLocalTransactionTableName, /*count=*/1));
+
+  cluster_->tablet_server(0)->Shutdown();
+  {
+    auto log_waiter = cluster_->GetMasterLogWaiter(
+        Format("Processing pending assignments for table: $0", local_txn_table_id));
+    ASSERT_OK(CallAdmin("add_transaction_tablet", local_txn_table_id));
+    ASSERT_OK(log_waiter.WaitFor(5s));
+  }
+  cluster_->master()->Shutdown(SafeShutdown::kFalse);
+  ASSERT_OK(cluster_->Restart());
+
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kLocalTransactionTableName, /*count=*/1));
+  session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(do_inserts(20, 30));
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kLocalTransactionTableName, /*count=*/2));
+  ASSERT_OK(do_inserts(30, 40));
+}
+
 class AdminCliListTabletsTest : public AdminCliTest {
  public:
   template <class... Args>
@@ -3455,7 +3570,12 @@ TEST_F(AdminCliTest, TestUpdateSysCatalogEntry) {
 
 TEST_F(AdminCliTest, TestRemoveTabletServer) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
-  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+  // remove_tablet_server requires the TServer to have definitely lost its xCluster-guarded
+  // information lease.  Keep the lease (plus clock-skew slack) shorter than
+  // tserver_unresponsive_timeout_ms so that holds as soon as the TServer is marked unresponsive.
+  BuildAndStart(
+      {}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000",
+           "--xcluster_guarded_lease_duration_ms=3000"});
   ASSERT_OK(cluster_->AddTabletServer(true));
   auto added_tserver = cluster_->tablet_server(cluster_->num_tablet_servers() - 1);
   ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), added_tserver));

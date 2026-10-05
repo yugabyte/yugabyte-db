@@ -123,6 +123,10 @@ DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
 DEFINE_NON_RUNTIME_uint64(rocksdb_max_manifest_file_size, 10_MB,
     "Maximum size of manifest file before which it is consolidated");
 
+DEFINE_NON_RUNTIME_bool(rocksdb_persist_options_file, false,
+    "Write the RocksDB OPTIONS file on every DB open and options change. Nothing reads it, and "
+    "with many tablets the rewrites are a noticeable share of the bootstrap I/O.");
+
 DEFINE_RUNTIME_bool(rocksdb_advise_random_on_open, true,
     "If set to true, will hint the underlying file system that the file access pattern is random, "
     "when a sst file is opened.");
@@ -682,6 +686,7 @@ void InitRocksDBBaseOptions(
   }
 
   options->max_manifest_file_size = FLAGS_rocksdb_max_manifest_file_size;
+  options->persist_options_file = FLAGS_rocksdb_persist_options_file;
 
   // Since the flag validator for FLAGS_compression_type will fail if the result of this call is not
   // OK, this CHECK_RESULT should never fail and is safe.

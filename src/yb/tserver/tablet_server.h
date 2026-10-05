@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #pragma once
 
 #include <atomic>
@@ -42,30 +43,23 @@
 #include <utility>
 #include <vector>
 
-#include "yb/common/common_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
-#include "yb/consensus/metadata.pb.h"
-
-#include "yb/cdc/cdc_consumer.fwd.h"
-#include "yb/cdc/xrepl_types.h"
-
 #include "yb/client/client_fwd.h"
+
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/docdb/object_lock_shared_fwd.h"
 
 #include "yb/encryption/encryption_fwd.h"
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
-
-#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 
-#include "yb/server/webserver_options.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
@@ -79,7 +73,6 @@
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
 
@@ -142,7 +135,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   static constexpr int32_t kUnknownClusterConfigVersion = -1;
 
   explicit TabletServer(const TabletServerOptions& opts);
-  ~TabletServer();
+  ~TabletServer() override;
 
   // Initializes the tablet server, including the bootstrapping of all
   // existing tablets.
@@ -433,7 +426,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClusterConfigHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
-  Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
+  Status XClusterHandleMasterHeartbeatResponse(
+      const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time);
 
   void ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info)
       EXCLUDES(xcluster_guarded_info_version_mutex_);
@@ -610,7 +604,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
 
   // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
-  // PropagateXClusterGuardedInfo RPCs, and guards the version below.
+  // ApplyXClusterGuardedInfoIfNewer RPCs, and guards the version below.
   std::mutex xcluster_guarded_info_version_mutex_;
   // (term, count) of the most recently applied copy; (0, 0) is below any real version.
   std::pair<int64_t, uint64_t> xcluster_guarded_info_version_

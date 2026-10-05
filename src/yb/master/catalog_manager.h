@@ -1337,7 +1337,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Schedule a task to run on the async task thread pool.
   Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) override;
 
-  // Time since this peer became master leader. Caller should verify that it is leader before.
+  // Time since this peer last became master leader.
   MonoDelta TimeSinceElectedLeader() const;
 
   Result<std::vector<TableDescription>> CollectTables(
@@ -2975,6 +2975,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status CreateLocalTransactionStatusTableIfNeeded(
       rpc::RpcContext* rpc, const TablespaceId& tablespace_id, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
+
+  bool CheckTransactionStatusTabletUsable(const TabletInfoPtr& tablet);
 
   // Get tablet ids of the global transaction status table.
   Status GetGlobalTransactionStatusTablets(

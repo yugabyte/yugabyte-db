@@ -838,6 +838,10 @@ public class UniverseCRUDHandler {
 
   public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create for {}.", customer.getUuid());
+    if (appConfig.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      // Not every caller runs configure() first, which is where this is otherwise enforced.
+      taskParams.fipsEnabled = true;
+    }
 
     // Get the user submitted form data.
     if (taskParams.getPrimaryCluster() != null

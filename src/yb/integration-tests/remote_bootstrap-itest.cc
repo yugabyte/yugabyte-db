@@ -333,6 +333,10 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   }
 
   opts.extra_master_flags = extra_master_flags;
+  // Several tests remove a TServer via ExternalMiniCluster::RemoveTabletServer, which requires the
+  // TServer to have definitely lost its xCluster-guarded information lease; shorten the lease so
+  // that happens within the tests' deadlines.
+  opts.extra_master_flags.emplace_back("--xcluster_guarded_lease_duration_ms=3000");
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));

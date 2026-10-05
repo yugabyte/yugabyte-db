@@ -232,6 +232,13 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     }
   }
 
+  // Newest socket directory holding a live socket for this port; an empty stale dir never matches.
+  static String getSocketDirExpression(String tmpDirectory, String port) {
+    return String.format(
+        "$(dirname \"$(ls -t %s/.yb.*:%s/.s.PGSQL.%s 2>/dev/null | head -1)\")",
+        tmpDirectory, port, port);
+  }
+
   private void runCheckOnPod(Universe universe, NodeDetails node) {
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
     Architecture arch = getArchitectureOnK8sPod(universe, node);
@@ -247,14 +254,14 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
         universe.getUniverseDetails().getPrimaryCluster();
     String pgUpgradeBinaryLocation =
         String.format("%s/%s/postgres/bin/pg_upgrade", dataDirectory + "/yw-data", versionName);
-    String oldHost =
-        primaryCluster.userIntent.enableYSQLAuth
-            ? "$(ls -d -t " + tmpDirectory + "/.yb.* | head -1)"
-            : podName;
     String oldPort =
         primaryCluster.userIntent.enableConnectionPooling
             ? String.valueOf(node.internalYsqlServerRpcPort)
             : String.valueOf(node.ysqlServerRpcPort);
+    String oldHost =
+        primaryCluster.userIntent.enableYSQLAuth
+            ? getSocketDirExpression(tmpDirectory, oldPort)
+            : podName;
 
     String upgradeCheckCommand =
         String.format(
@@ -302,19 +309,19 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
               + "/pg_data";
     }
     command.add(pgDataDir);
+    String oldPort =
+        primaryCluster.userIntent.enableConnectionPooling
+            ? String.valueOf(node.internalYsqlServerRpcPort)
+            : String.valueOf(node.ysqlServerRpcPort);
     command.add("--old-host");
     boolean authEnabled = GFlagsUtil.isYsqlAuthEnabled(universe, node);
     if (authEnabled) {
-      command.add(String.format("'$(ls -d -t %s/.yb.* | head -1)'", customTmpDirectory));
+      command.add("'" + getSocketDirExpression(customTmpDirectory, oldPort) + "'");
     } else {
       command.add(node.cloudInfo.private_ip);
     }
     command.add("--old-port");
-    if (primaryCluster.userIntent.enableConnectionPooling) {
-      command.add(String.valueOf(node.internalYsqlServerRpcPort));
-    } else {
-      command.add(String.valueOf(node.ysqlServerRpcPort));
-    }
+    command.add(oldPort);
     command.add("--username");
     command.add("\"yugabyte\"");
     command.add("--check");

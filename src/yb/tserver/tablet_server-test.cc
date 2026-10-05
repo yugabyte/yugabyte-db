@@ -85,6 +85,7 @@ DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
@@ -1135,7 +1136,9 @@ TEST_P(FlushTabletsTest, VectorIndexExcluded) {
 }
 
 TEST_F(TabletServerTest, ApplyXClusterGuardedInfoIfNewer) {
-  // The fixture's TServer has no master, so nothing else applies xCluster-guarded info.
+  // The fixture's TServer has no master, so nothing else applies xCluster-guarded info.  It also
+  // never gets a xCluster-guarded lease, so do not let the lack of one hide the applied roles.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
   auto* server = mini_server_->server();
   const NamespaceId kNamespace = "namespace";
 

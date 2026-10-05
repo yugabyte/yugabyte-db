@@ -190,7 +190,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     pb->set_min_num_replicas(3);
     ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
 
-    WaitForStatusTabletsVersion(current_version + 1);
+    current_version = WaitForStatusTabletsVersionForCreate(current_version);
   }
 
   void StartLocalTransactionTableNodes() {
@@ -1255,8 +1255,7 @@ class GeoPartitionedReadCommittedTest : public GeoTransactionsTestBase {
           table_name, i, partition_list[i - 1], num_tablets));
 
       if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
-        WaitForStatusTabletsVersion(current_version + 1);
-        ++current_version;
+        current_version = WaitForStatusTabletsVersionForCreate(current_version);
       }
     }
     ASSERT_OK(conn.ExecuteFormat(

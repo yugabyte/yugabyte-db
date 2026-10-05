@@ -51,6 +51,7 @@
 #include "yb/client/transaction_manager.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/common_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/snapshot.h"

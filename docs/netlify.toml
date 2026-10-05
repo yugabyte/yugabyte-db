@@ -1157,6 +1157,15 @@
     # Relative path to source directory in case you use Hugo's "--s" option
     srcdir = "docs"
 
+# A header * matches across /, including nested paths. /*.md covers
+# /page.md and /stable/explore/page.md. The /* rule below does the same
+# for HSTS and CSP.
+[[headers]]
+  for = "/*.md"
+  [headers.values]
+    Content-Type = "text/markdown; charset=utf-8"
+    X-Robots-Tag = "noindex"
+
 [[headers]]
   #
   # https://docs.netlify.com/configure-builds/file-based-configuration/#headers

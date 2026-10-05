@@ -2614,6 +2614,15 @@ void TabletServiceAdminImpl::UpdateTransactionTablesVersion(
   server_->TransactionManager().UpdateTransactionTablesVersion(req->version(), callback);
 }
 
+void TabletServiceAdminImpl::ApplyXClusterGuardedInfoIfNewer(
+    const ApplyXClusterGuardedInfoIfNewerRequestPB* req,
+    ApplyXClusterGuardedInfoIfNewerResponsePB* resp, rpc::RpcContext context) {
+  VLOG(2) << "Received xCluster-guarded info with version "
+          << req->xcluster_guarded_info().xcluster_guarded_info_version().ShortDebugString();
+  server_->ApplyXClusterGuardedInfoIfNewer(req->xcluster_guarded_info());
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::GetPgSocketDir(
     const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp, rpc::RpcContext context) {
   auto result = GetLocalPgHostPort();
