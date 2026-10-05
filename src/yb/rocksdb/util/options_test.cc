@@ -1713,6 +1713,7 @@ Status GetFromString(DBOptions* source, DBOptions* destination) {
       "advise_random_on_open=true;"
       "fail_if_options_file_error=true;"
       "persist_options_file=false;"
+      "disable_wal=true;"
       "allow_concurrent_memtable_write=true;"
       "wal_recovery_mode=kPointInTimeRecovery;"
       "enable_write_thread_adaptive_yield=true;"

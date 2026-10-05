@@ -1352,6 +1352,11 @@ struct DBOptions {
   // DEFAULT: true
   bool persist_options_file;
 
+  // If true, the DB keeps no WAL: every write behaves as with WriteOptions::disableWAL, no WAL
+  // file is created, and WAL files left by an earlier open are deleted without replay. Writes are
+  // durable only once flushed, so the caller must be able to recover unflushed ones itself.
+  bool disable_wal = false;
+
   // Initial value for seqno generator.
   // Used only during creation of new DB.
   SequenceNumber initial_seqno = 0;

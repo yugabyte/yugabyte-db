@@ -1211,7 +1211,7 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
       logs_.pop_front();
     }
     // Current log cannot be obsolete.
-    DCHECK(!logs_.empty());
+    DCHECK(!logs_.empty() || db_options_.disable_wal);
   }
 
   // We're just cleaning up for DB::Write().
@@ -1614,7 +1614,16 @@ Status DBImpl::Recover(
           "flag but a log file already exists");
     }
 
-    if (!logs.empty()) {
+    if (!logs.empty() && db_options_.disable_wal) {
+      // The caller recovers unflushed writes itself, so these are dropped unread.
+      for (auto log : logs) {
+        versions_->MarkFileNumberUsedDuringRecovery(log);
+        if (!read_only) {
+          WARN_NOT_OK(env_->DeleteFile(LogFileName(db_options_.wal_dir, log)),
+                      "Failed to delete log file");
+        }
+      }
+    } else if (!logs.empty()) {
       // Recover in the order in which the logs were generated
       std::sort(logs.begin(), logs.end());
       s = RecoverLogFiles(logs, &max_sequence, read_only);
@@ -2885,6 +2894,9 @@ Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
 }
 
 Status DBImpl::SyncWAL() {
+  if (db_options_.disable_wal) {
+    return Status::OK();
+  }
   autovector<log::Writer*, 1> logs_to_sync;
   bool need_log_dir_sync;
   uint64_t current_log_number;
@@ -5244,6 +5256,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   if (my_batch == nullptr) {
     return STATUS(Corruption, "Batch is nullptr!");
   }
+  const bool disable_wal = write_options.disableWAL || db_options_.disable_wal;
   if (write_options.timeout_hint_us != 0) {
     return STATUS(InvalidArgument, "timeout_hint_us is deprecated");
   }
@@ -5254,11 +5267,11 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   WriteThread::Writer w;
   w.batch = my_batch;
   w.sync = write_options.sync;
-  w.disableWAL = write_options.disableWAL;
+  w.disableWAL = disable_wal;
   w.in_batch_group = false;
   w.callback = callback;
 
-  if (!write_options.disableWAL) {
+  if (!disable_wal) {
     RecordTick(stats_.get(), WRITE_WITH_WAL);
   }
 
@@ -5312,7 +5325,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   WriteContext context;
   mutex_.Lock();
 
-  if (!write_options.disableWAL) {
+  if (!disable_wal) {
     default_cf_internal_stats_->AddDBStats(InternalDBStatsType::WRITE_WITH_WAL, 1);
   }
 
@@ -5411,7 +5424,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   uint64_t last_sequence = versions_->LastSequence();
   WriteThread::Writer* last_writer = &w;
   autovector<WriteThread::Writer*> write_group;
-  bool need_log_sync = !write_options.disableWAL && write_options.sync;
+  bool need_log_sync = !disable_wal && write_options.sync;
   bool need_log_dir_sync = need_log_sync && !log_dir_synced_;
 
   if (status.ok()) {
@@ -5487,12 +5500,12 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     MeasureTime(stats_.get(), BYTES_PER_WRITE, total_byte_size);
     PERF_TIMER_STOP(write_pre_and_post_process_time);
 
-    if (write_options.disableWAL) {
+    if (disable_wal) {
       has_unpersisted_data_ = true;
     }
 
     uint64_t log_size = 0;
-    if (!write_options.disableWAL) {
+    if (!disable_wal) {
       PERF_TIMER_GUARD(write_wal_time);
 
       WriteBatch* merged_batch = nullptr;
@@ -5567,7 +5580,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
         auto stats = default_cf_internal_stats_;
         stats->AddDBStats(InternalDBStatsType::BYTES_WRITTEN, total_byte_size);
         stats->AddDBStats(InternalDBStatsType::NUMBER_KEYS_WRITTEN, total_count);
-        if (!write_options.disableWAL) {
+        if (!disable_wal) {
           if (write_options.sync) {
             stats->AddDBStats(InternalDBStatsType::WAL_FILE_SYNCED, 1);
           }
@@ -5576,7 +5589,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
         uint64_t for_other = write_group.size() - 1;
         if (for_other > 0) {
           stats->AddDBStats(InternalDBStatsType::WRITE_DONE_BY_OTHER, for_other);
-          if (!write_options.disableWAL) {
+          if (!disable_wal) {
             stats->AddDBStats(InternalDBStatsType::WRITE_WITH_WAL, for_other);
           }
         }
@@ -6744,26 +6757,31 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
   // Handles create_if_missing, error_if_exists
   s = impl->Recover(column_families);
   if (s.ok()) {
+    // Without a WAL the number names no file, but memtables and flush edits still track it.
     uint64_t new_log_number = impl->versions_->NewFileNumber();
-    unique_ptr<WritableFile> lfile;
-    EnvOptions soptions(db_options);
-    EnvOptions opt_env_options =
-        impl->db_options_.env->OptimizeForLogWrite(soptions, impl->db_options_);
-    s = NewWritableFile(impl->db_options_.env,
-                        LogFileName(impl->db_options_.wal_dir, new_log_number),
-                        &lfile, opt_env_options);
+    if (!impl->db_options_.disable_wal) {
+      unique_ptr<WritableFile> lfile;
+      EnvOptions soptions(db_options);
+      EnvOptions opt_env_options =
+          impl->db_options_.env->OptimizeForLogWrite(soptions, impl->db_options_);
+      s = NewWritableFile(impl->db_options_.env,
+                          LogFileName(impl->db_options_.wal_dir, new_log_number),
+                          &lfile, opt_env_options);
+      if (s.ok()) {
+        lfile->SetPreallocationBlockSize((max_write_buffer_size / 10) + max_write_buffer_size);
+        // Since Rocksdb WAL is not used, there is no need to allocate its starting buffer.
+        // TODO(remove-rocksdb-wal): https://github.com/yugabyte/yugabyte-db/issues/20851
+        unique_ptr<WritableFileWriter> file_writer(
+            new WritableFileWriter(std::move(lfile), opt_env_options, nullptr,
+            AllocateBuffer::kFalse));
+        impl->logs_.emplace_back(
+            new_log_number,
+            new log::Writer(std::move(file_writer), new_log_number,
+                            impl->db_options_.recycle_log_file_num > 0));
+      }
+    }
     if (s.ok()) {
-      lfile->SetPreallocationBlockSize((max_write_buffer_size / 10) + max_write_buffer_size);
       impl->logfile_number_ = new_log_number;
-      // Since Rocksdb WAL is not used, there is no need to allocate its starting buffer.
-      // TODO(remove-rocksdb-wal): https://github.com/yugabyte/yugabyte-db/issues/20851
-      unique_ptr<WritableFileWriter> file_writer(
-          new WritableFileWriter(std::move(lfile), opt_env_options, nullptr,
-          AllocateBuffer::kFalse));
-      impl->logs_.emplace_back(
-          new_log_number,
-          new log::Writer(std::move(file_writer), new_log_number,
-                          impl->db_options_.recycle_log_file_num > 0));
 
       // set column family handles
       for (auto cf : column_families) {

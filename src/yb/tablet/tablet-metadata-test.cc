@@ -46,6 +46,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet-test-util.h"
@@ -337,6 +338,42 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->intents_rocksdb_dir()));
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->snapshots_dir()));
   ASSERT_FALSE(env_->DirExists(tier_dir));
+}
+
+// A tablet keeps no RocksDB WAL file, and an idle one reopens without replacing its MANIFEST or
+// CURRENT, also after applying a history cutoff.
+TEST_F(TestRaftGroupMetadata, IdleReopenKeepsRocksDbFiles) {
+  QLWriteRequestPB req;
+  BuildPartialRow(0, 0, "foo", &req);
+  ASSERT_OK(writer_->Write(&req));
+  ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  HistoryCutoffOperation cutoff(harness_->tablet());
+  cutoff.AllocateRequest()->set_primary_cutoff_ht(clock()->Now().ToUint64());
+  ASSERT_OK(cutoff.Apply(/* leader_term= */ 1));
+
+  const auto dir = harness_->tablet()->metadata()->rocksdb_dir();
+  const auto metadata_files = [&dir]() -> Result<std::set<std::string>> {
+    std::vector<std::string> children;
+    RETURN_NOT_OK(Env::Default()->GetChildren(dir, &children));
+    std::set<std::string> result;
+    for (const auto& name : children) {
+      if (name.starts_with("MANIFEST-") || name == "CURRENT" || name.ends_with(".log")) {
+        result.insert(name);
+      }
+    }
+    return result;
+  };
+  const auto files_before_reopen = ASSERT_RESULT(metadata_files());
+  ASSERT_FALSE(files_before_reopen.empty());
+  for (const auto& name : files_before_reopen) {
+    ASSERT_FALSE(name.ends_with(".log")) << name;
+  }
+
+  harness_->tablet()->StartShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
+  harness_->tablet()->CompleteShutdown();
+  writer_.reset();
+  ASSERT_NO_FATALS(TabletReOpen());
+  ASSERT_EQ(ASSERT_RESULT(metadata_files()), files_before_reopen);
 }
 
 // Nothing reads the RocksDB OPTIONS file, so tablets are opened without writing it.

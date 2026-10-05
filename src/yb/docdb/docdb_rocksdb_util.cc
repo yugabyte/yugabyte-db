@@ -687,6 +687,8 @@ void InitRocksDBBaseOptions(
 
   options->max_manifest_file_size = FLAGS_rocksdb_max_manifest_file_size;
   options->persist_options_file = FLAGS_rocksdb_persist_options_file;
+  // Unflushed writes are recovered from the Raft log.
+  options->disable_wal = true;
 
   // Since the flag validator for FLAGS_compression_type will fail if the result of this call is not
   // OK, this CHECK_RESULT should never fail and is safe.
