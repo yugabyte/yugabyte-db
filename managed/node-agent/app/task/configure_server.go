@@ -31,6 +31,7 @@ var ScriptFilesToCopy = []struct {
 	Dest string
 }{
 	{"yb-server-ctl.sh.j2", "bin/yb-server-ctl.sh"},
+	{"yb-server-exec.sh.j2", "bin/yb-server-exec.sh"},
 	{"clock-sync.sh.j2", "bin/clock-sync.sh"},
 	{"clean_cores.sh.j2", "bin/clean_cores.sh"},
 	{"zip_purge_yb_logs.sh.j2", "bin/zip_purge_yb_logs.sh"},
