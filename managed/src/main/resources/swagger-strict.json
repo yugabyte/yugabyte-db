@@ -2982,7 +2982,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -5888,7 +5889,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -9058,7 +9060,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -9891,7 +9894,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -11431,7 +11435,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -12177,7 +12182,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -16971,7 +16977,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -17671,7 +17678,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -18756,7 +18764,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -19612,7 +19621,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -21166,7 +21176,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -21858,7 +21869,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -22288,7 +22300,8 @@
               "UpdateParentTaskParams",
               "SaveSoftwareUpgradeProgress",
               "CheckDuplicateInstance",
-              "RunUpgradeNodeAgent"
+              "RunUpgradeNodeAgent",
+              "CreateYbStorageDatabase"
             ],
             "type" : "string"
           },
@@ -22872,7 +22885,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -23664,7 +23678,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -24838,7 +24853,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -26184,7 +26200,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -26883,7 +26900,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -27723,7 +27741,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -28387,7 +28406,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -29050,7 +29070,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -30231,7 +30252,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
@@ -31392,7 +31414,8 @@
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
-            "RunUpgradeNodeAgent"
+            "RunUpgradeNodeAgent",
+            "CreateYbStorageDatabase"
           ],
           "type" : "string"
         },
