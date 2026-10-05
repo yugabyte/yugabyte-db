@@ -1943,8 +1943,8 @@ class UniverseDetail extends Component {
                               }
                             >
                               {isUniverseRegisteredToPa
-                                ? 'Disable Perf Advisor Collector'
-                                : 'Enable Perf Advisor Collector'}
+                                ? 'Disable Performance Monitoring'
+                                : 'Enable Performance Monitoring'}
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         </RbacValidator>
