@@ -88,7 +88,8 @@ For more information on setting up OIDC, consult your IdP provider documentation
 
 To configure federated authentication using a custom IdP in YugabyteDB Aeon, do the following:
 
-1. Navigate to **Security > Access Control > Authentication**, and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Security > Access Control > Authentication**, or, if you have [Multi-account access](../../manage-accounts/) enabled, navigate to **Organization > Security > Access Control > Authentication**.
+1. Click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose Custom identity provider.
 
 1. Complete the OIDC configuration settings.

@@ -1,9 +1,9 @@
 ---
-title: Manage account access
+title: Manage Aeon account access
 headertitle: Manage account users
 linkTitle: Manage account users
-description: Manage access to your YugabyteDB Aeon account and your clusters.
-headcontent: Invite team members to your YugabyteDB Aeon account
+description: Manage access to your YugabyteDB Aeon accounts and their clusters.
+headcontent: Invite team members to your YugabyteDB Aeon accounts
 aliases:
   - /stable/yugabyte-cloud/cloud-admin/manage-access/
 menu:
@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Invite team members to your account so that they can create and manage clusters, manage billing, audit account activity, and more. Account users are assigned [roles](../managed-roles/), which can be customized to provide access to only the actions and resources needed to perform their tasks.
+Invite team members to an account so that they can create and manage clusters, manage billing, audit account activity, and more. Account users are assigned [roles](../managed-roles/), which can be customized to provide access to only the actions and resources needed to perform their tasks.
 
 Users can log in to YugabyteDB Aeon using an email-based account, a social login, or federated authentication via an external identity provider (IdP). For information on using social logins and federated authentication, refer to [Authentication](../managed-authentication/).
 

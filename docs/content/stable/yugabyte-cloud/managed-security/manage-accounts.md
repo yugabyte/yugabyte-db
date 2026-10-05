@@ -47,38 +47,60 @@ Multi-account is in Early Access; see the [Limitations](#limitations-early-acces
 
 ## Manage accounts
 
-To manage accounts, click the **Profile** icon in the top right corner and choose **Manage Accounts** to display the **Manage Account** page.
-
-Note that only users designated by Yugabyte Support when you enabled the feature can add and manage accounts.
+To manage your organization and its accounts, click the **Organization** menu in the top left corner and choose your organization to display the **Accounts** page.
 
 ![Accounts page](/images/yb-cloud/managed-accounts.png)
 
-Your accounts are listed under **Organization**.
+The **Accounts** page lists the accounts in your organization.
+
+To rename an account, click the **Edit Account Name** icon next to the name in the list, enter a new name, and click **Confirm**.
+
+To delete an account, click **...** and choose **Delete Account**.
+
+Note that only users designated by Yugabyte Support when you enabled the feature can add and manage accounts.
 
 Keep in mind the following when using multiple accounts:
 
-- When [adding users](../manage-access/), be sure to [switch to the account](#switch-accounts) where you want to add them first.
+- Account users are managed from the account. To [manage users](../manage-access/) for an account, first [switch to the account](#switch-accounts).
 - To add users to multiple accounts, you must sign in to each account and send an invitation.
 - If multiple accounts are enabled, all users must choose the account to sign into when they sign in.
-- Each account uses a different [billing profile](../../cloud-admin/cloud-billing-profile/). You must set up a new billing profile for each account you create.
 
 ### Add accounts
 
-By default, your organization has a single account.
-
 To add an account:
 
-1. Click the Profile icon in the top right corner and choose **Create Account**, or, on the **Manage Account** page, click **Add Account**.
+1. Click the **Organization** menu in the top left corner and choose your organization and, on the **Accounts** page, click **Create Account**.
 1. Enter a name for the account and click **Create Account**.
 
-The account is listed under **Accounts** on the **Manage Account** page.
+The account is listed on the **Accounts** page.
 
 ### Switch accounts
 
-To switch to an account:
+To switch between accounts:
 
-1. On the **Manage Account>Accounts** tab, click **Switch Account** for the account you want to switch to.
-1. Sign in to the account.
+- Click the **Organization** menu in the top left corner and choose the account you want to switch to.
+
+## Manage organization roles
+
+To view all users in your organization:
+
+- Navigate to **Organization > Security > Access Control > Users**.
+
+Each user you add to individual accounts is added to your organization as a **Member** role.
+
+To change a user's role, in the **Organization Role** column, choose a role.
+
+- You cannot modify your own role.
+- Your organization can have a maximum of 5 Super Admins.
+- Users who are propmoted to Super Admin are added to _all_ your accounts as an Admin.
+
+## Billing
+
+Each account has its own [billing profile](../../cloud-admin/cloud-billing-profile/). You must set up a new billing profile for each account you create.
+
+To view a summary of billing for all accounts:
+
+- Navigate to **Organization > Billing**.
 
 ## Limitations (Early Access)
 

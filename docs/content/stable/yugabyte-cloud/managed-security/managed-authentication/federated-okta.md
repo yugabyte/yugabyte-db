@@ -88,7 +88,8 @@ For more information, refer to [App integrations](https://help.okta.com/oie/en-u
 
 To configure federated authentication in YugabyteDB Aeon, do the following:
 
-1. Navigate to **Security > Access Control > Authentication**, and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Security > Access Control > Authentication**, or, if you have [Multi-account access](../../manage-accounts/) enabled, **Organization > Security > Access Control > Authentication**.
+1. Click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose Okta identity provider.
 1. Enter the client ID and secret of the Okta application you created.
 1. Enter the Okta domain for your application.
