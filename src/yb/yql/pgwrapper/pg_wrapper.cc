@@ -147,6 +147,7 @@ DEFINE_RUNTIME_string(ysql_pg_conf_csv, "",
     "file is updated and a SIGHUP signal is used to notify the postmaster. "
     "Check https://www.postgresql.org/docs/current/view-pg-settings.html for information about "
     "which parameters take effect at runtime.");
+TAG_FLAG(ysql_pg_conf_csv, locked_reads);
 
 DEFINE_RUNTIME_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
@@ -919,7 +920,7 @@ Result<vector<string>> WritePgConfigFiles(const PgProcessConf& conf) {
   vector<string> args;
   args.push_back("-c");
   args.push_back(VERIFY_RESULT_PREPEND(
-      WritePostgresConfig(conf, FLAGS_ysql_pg_conf_csv),
+      WritePostgresConfig(conf, GET_STRING_FLAG(ysql_pg_conf_csv)),
       "Failed to write ysql pg configuration: "));
   args.push_back("-c");
   args.push_back(VERIFY_RESULT_PREPEND(
@@ -1136,7 +1137,7 @@ Status PgWrapper::ReloadConfig() {
 }
 
 Status PgWrapper::UpdateAndReloadConfig() {
-  RETURN_NOT_OK(WritePostgresConfig(conf_, FLAGS_ysql_pg_conf_csv));
+  RETURN_NOT_OK(WritePostgresConfig(conf_, GET_STRING_FLAG(ysql_pg_conf_csv)));
   RETURN_NOT_OK(WritePgHbaConfig(conf_, FLAGS_ysql_hba_conf_csv));
   RETURN_NOT_OK(WritePgIdentConfig(conf_, FLAGS_ysql_ident_conf_csv));
   return ReloadConfig();

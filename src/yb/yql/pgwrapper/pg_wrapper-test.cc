@@ -1020,6 +1020,12 @@ TEST_F(PgWrapperFlagsTest, RuntimeUpdateHbaAndIdent) {
   ASSERT_EQ(row_count, 0);
 }
 
+TEST(PgWrapperFlagsXmlTest, PgConfCsvAdvertisedAsRuntime) {
+  const auto tags = flags_internal::GetExternalFlagTags(
+      gflags::GetCommandLineFlagInfoOrDie("ysql_pg_conf_csv"));
+  ASSERT_TRUE(tags.contains(FlagTag::kRuntime));
+}
+
 class ValidateYsqlPgConfCsvTest : public YBTest {};
 
 TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) {

@@ -283,6 +283,28 @@ std::optional<std::string> GetFlagNewInstallValue(const std::string& flag_name);
 bool IsStringFlagAllowed(const std::string& flag_name);
 }  // namespace flags_internal
 
+namespace flags_internal {
+
+unordered_set<FlagTag> GetExternalFlagTags(const CommandLineFlagInfo& flag) {
+  unordered_set<FlagTag> tags;
+  GetFlagTags(flag.name, &tags);
+  // TODO(#14400): Until we make gflags string modifications atomic, we should not be making
+  // runtime changes to string flags. However, to not have to do two rounds of auditing, we continue
+  // to mark flags as runtime, regardless of their data type, purely based on whether they can
+  // logically be modified at runtime.
+  //
+  // To keep external clients oblivious to this, we strip the runtime tag here, so to external
+  // metadata, tooling and Platform automation, all string flags will be treated explicitly as not
+  // runtime! The exception is flags tagged locked_reads, which are only read via GET_STRING_FLAG
+  // once the process is serving.
+  if (flag.type == "string" && !tags.contains(FlagTag::kLocked_reads)) {
+    tags.erase(FlagTag::kRuntime);
+  }
+  return tags;
+}
+
+}  // namespace flags_internal
+
 namespace {
 
 void AppendXMLTag(const char* tag, const string& txt, string* r) {
@@ -293,22 +315,7 @@ YB_STRONGLY_TYPED_BOOL(OnlyDisplayDefaultFlagValue);
 
 static string DescribeOneFlagInXML(
     const CommandLineFlagInfo& flag, OnlyDisplayDefaultFlagValue only_display_default_values) {
-  unordered_set<FlagTag> tags;
-  GetFlagTags(flag.name, &tags);
-  // TODO(#14400): Until we make gflags string modifications atomic, we should not be making
-  // runtime changes to string flags. However, to not have to do two rounds of auditing, we continue
-  // to mark flags as runtime, regardless of their data type, purely based on whether they can
-  // logically be modified at runtime.
-  //
-  // To keep external clients oblivious to this, we strip the runtime tag here, so to external
-  // metadata, tooling and Platform automation, all string flags will be treated explicitly as not
-  // runtime!
-  if (flag.type == "string") {
-    auto runtime_it = tags.find(FlagTag::kRuntime);
-    if (runtime_it != tags.end()) {
-      tags.erase(runtime_it);
-    }
-  }
+  const auto tags = flags_internal::GetExternalFlagTags(flag);
 
   if (only_display_default_values && tags.contains(FlagTag::kHidden)) {
     return {};
@@ -826,6 +833,12 @@ Status SetFlag(const std::string* flag_ptr, const char* flag_name, const std::st
 Status SetFlagDefaultAndCurrent(
     const std::string* flag_ptr, const char* flag_name, const std::string& new_value) {
   return SetFlagDefaultAndCurrentInternal(flag_ptr, flag_name, new_value);
+}
+
+std::string GetStringFlag(const std::string*, const char* flag_name) {
+  std::string value;
+  CHECK(google::GetCommandLineOption(flag_name, &value)) << "Flag " << flag_name << " not found";
+  return value;
 }
 
 void WarnFlagDeprecated(const std::string& flagname, const std::string& date_mm_yyyy) {
