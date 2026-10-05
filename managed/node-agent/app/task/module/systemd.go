@@ -306,44 +306,69 @@ func KillSystemdServiceLeftovers(
 	logOut util.Buffer,
 ) error {
 	properties := []string{"ActiveState", "SubState", "ControlGroup"}
-	values, err := systemdUnitProperties(ctx, username, serverName, properties, logOut)
-	if err != nil {
+	var values map[string]string
+	readProperties := func() error {
+		return backoff.Do(ctx, SystemdBackOff, func(int) error {
+			var err error
+			values, err = systemdUnitProperties(ctx, username, serverName, properties, logOut)
+			return err
+		})
+	}
+	if err := readProperties(); err != nil {
 		return err
 	}
-	// No main process is running in these states, and systemd drops ControlGroup once the cgroup
-	// is empty, so a ControlGroup here means leftovers.
-	idle := values["ActiveState"] == "inactive" || values["ActiveState"] == "failed" ||
-		values["SubState"] == "auto-restart"
-	if !idle || values["ControlGroup"] == "" {
+	// systemd drops ControlGroup once the cgroup is empty, so a ControlGroup on a unit with no main
+	// process means leftovers.
+	if values["ControlGroup"] == "" {
 		return nil
 	}
-	util.FileLogger().
-		Infof(ctx, "Killing leftover processes in cgroup %s of %s", values["ControlGroup"], serverName)
-	logOut.WriteLine(
-		"Killing leftover processes in cgroup %s of %s", values["ControlGroup"], serverName)
 	cmdPrefix, cmdUser, err := getSystemdCommandPrefix(ctx, username, serverName, logOut)
 	if err != nil {
 		return err
 	}
+	if values["SubState"] == "auto-restart" {
+		// Cancel the pending restart first, so the kill below cannot hit a tserver that the restart
+		// timer starts in between. Leftovers of a KillMode=process unit survive the stop.
+		cmd := fmt.Sprintf("%s stop %s", cmdPrefix, serverName)
+		_, err := RunShellCmdWithRetry(ctx, SystemdBackOff, cmdUser, "StopSystemdService", cmd, logOut)
+		if err != nil {
+			return err
+		}
+		if err := readProperties(); err != nil {
+			return err
+		}
+	}
+	idle := values["ActiveState"] == "inactive" || values["ActiveState"] == "failed"
+	if !idle || values["ControlGroup"] == "" {
+		return nil
+	}
+	cgroup := values["ControlGroup"]
+	failed := values["ActiveState"] == "failed"
+	util.FileLogger().Infof(ctx, "Killing leftover processes in cgroup %s of %s", cgroup, serverName)
+	logOut.WriteLine("Killing leftover processes in cgroup %s of %s", cgroup, serverName)
 	// Default kill target is all processes in the unit cgroup, including sub-cgroups.
 	cmd := fmt.Sprintf("%s kill --signal=SIGKILL %s", cmdPrefix, serverName)
-	if _, err := RunShellCmd(ctx, cmdUser, "KillSystemdServiceLeftovers", cmd, logOut); err != nil {
-		// The leftovers may have exited on their own in the meantime; the poll below decides.
-		util.FileLogger().Warnf(ctx, "Failed to kill leftovers of %s - %s", serverName, err.Error())
+	err = backoff.Do(ctx, SystemdBackOff, func(int) error {
+		_, err := RunShellCmd(ctx, cmdUser, "KillSystemdServiceLeftovers", cmd, logOut)
+		if err != nil && readProperties() == nil && values["ControlGroup"] == "" {
+			// The leftovers exited on their own in the meantime.
+			return nil
+		}
+		return err
+	})
+	if err != nil {
+		return err
 	}
 	deadline := time.Now().Add(SystemdLeftoverKillTimeout)
 	for {
 		values, err = systemdUnitProperties(ctx, username, serverName, properties, logOut)
-		if err != nil {
-			return err
-		}
-		if values["ControlGroup"] == "" {
+		if err == nil && values["ControlGroup"] == "" {
 			break
 		}
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf(
 				"leftover processes in cgroup %s of %s did not exit within %s",
-				values["ControlGroup"],
+				cgroup,
 				serverName,
 				SystemdLeftoverKillTimeout,
 			)
@@ -354,8 +379,12 @@ func KillSystemdServiceLeftovers(
 		case <-time.After(SystemdLeftoverKillPollInterval):
 		}
 	}
+	if !failed {
+		return nil
+	}
 	cmd = fmt.Sprintf("%s reset-failed %s", cmdPrefix, serverName)
-	_, err = RunShellCmd(ctx, cmdUser, "ResetFailedSystemdService", cmd, logOut)
+	_, err = RunShellCmdWithRetry(
+		ctx, SystemdBackOff, cmdUser, "ResetFailedSystemdService", cmd, logOut)
 	return err
 }
 
