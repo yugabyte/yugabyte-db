@@ -28,15 +28,17 @@ hot read/write paths without embedding a full client.
 - `ybthin_client_create` / `ybthin_client_destroy` -- connect and open a pool of
   `ThinClientService` sessions (Heartbeat) across one or more connections, with a
   keepalive; optional TLS (server-auth or mTLS) via `SecureContext`. A session
-  applies one Perform at a time, so concurrency comes from having many
-  sessions; `ybthin_pool_opts` sizes the pool (read/write sessions packed
-  onto connections). Reads round-robin the read sessions; upserts round-robin the
-  write sessions.
+  can have several Performs in flight; `ybthin_pool_opts` sizes the pool
+  (read/write sessions packed onto connections), and connections spread the
+  sessions across tservers. Reads round-robin the read sessions; upserts
+  round-robin the write sessions. A connection whose tserver stops answering
+  moves on to the next configured tserver, and its sessions reopen there.
 - `ybthin_table_open` / `ybthin_table_close` / `ybthin_columns_free` -- resolve a
   table by `(db_oid, table_oid)` and fetch its schema (columns in schema order:
   hash, then range, then value). Also the startup health check.
-- `ybthin_read_page_async` -- one page of a read; delivers the `pg_doc_data` row
-  sidecar + opaque `paging_state` + `used_read_time_ht`.
+- `ybthin_read_async` -- one page of each of N read ops, in one Perform; delivers
+  each op's decoded rows + opaque `paging_state`, and the batch's
+  `used_read_time_ht`.
 - `ybthin_upsert_batch_async` -- N `PGSQL_UPSERT` rows as the ops of one Perform.
 - `ybthin_read_result_free` / `ybthin_string_free` -- free shim-owned buffers.
 
@@ -76,9 +78,3 @@ object) and **version-pair it with the tserver** it talks to.
 ```
 ./yb_build.sh release --cxx-test yb_thin_client-itest
 ```
-
-- `PgThinClientTest.OpenUpsertReadPaged` -- open table (schema asserted), upsert
-  rows (cross-checked via SQL), and page a bounded scan.
-- `PgThinClientTlsTest.ClientCreateOverTls` -- under node-to-node +
-  client-to-server encryption, a plaintext client is rejected by the TLS-only
-  endpoint and a TLS `client_create` (test CA) succeeds.
