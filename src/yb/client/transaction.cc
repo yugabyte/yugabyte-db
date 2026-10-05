@@ -39,6 +39,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
@@ -312,6 +313,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   ~Impl() {
+    if (write_pipelining_abort_) {
+      std::lock_guard lock(mutex_);
+      ReportWritePipeliningAbort();
+    }
     std::vector<rpc::Rpcs::Handle *> handles{
         &heartbeat_handle_, &new_heartbeat_handle_, &commit_handle_, &abort_handle_,
         &old_abort_handle_};
@@ -522,6 +527,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     bool schedule_status_moved = false;
 
     CommitCallback commit_callback;
+    if (!status.ok() &&
+        tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST) {
+      write_pipelining_abort_ = true;
+    }
     {
       std::lock_guard lock(mutex_);
       running_requests_ -= ops.size();
@@ -549,8 +558,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
+          const bool applied = op.yb_op->applied();
+          // Only count user ops and catalog writes.
+          if (applied) {
+            if (!op.yb_op->read_only()) {
+              ++completed_write_ops_;
+            } else if (!op.yb_op->IsYsqlCatalogOp()) {
+              ++completed_read_ops_;
+            }
+          }
           const std::string& tablet_id = op.tablet->tablet_id();
-          if (op.yb_op->applied() && op.yb_op->should_apply_intents(metadata_.isolation)) {
+          if (applied && op.yb_op->should_apply_intents(metadata_.isolation)) {
             if (prev_tablet_id == nullptr || tablet_id != *prev_tablet_id) {
               prev_tablet_id = &tablet_id;
               tablets_[tablet_id].has_metadata = true;
@@ -1340,6 +1358,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       }
     }
 
+    if (!status.ok()) {
+      write_pipelining_abort_ = true;
+    }
+
     for (auto& waiter : waiters) {
       waiter(status);
     }
@@ -1358,12 +1380,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // abort the transaction.
     auto min_op = *write_query->op_ids.begin();
     auto max_op = *write_query->op_ids.rbegin();
-    SCHECK_EC_FORMAT(
-        max_op.term - min_op.term <= 1, IllegalState,
-        TransactionError(TransactionErrorCode::kAborted),
-        "Tablet $0: tablet leader moved more than once before async writes completed "
-        "(min_op: $1, max_op: $2)",
-        tablet_id, min_op, max_op);
+    if (max_op.term - min_op.term > 1) {
+      auto status = STATUS_EC_FORMAT(
+          IllegalState, TransactionError(TransactionErrorCode::kAborted),
+          "Tablet $0: tablet leader moved more than once before async writes completed "
+          "(min_op: $1, max_op: $2)",
+          tablet_id, min_op, max_op);
+      write_pipelining_abort_ = true;
+      return status;
+    }
 
     // Now we either have pending writes within the same term, or across 2 consecutive terms.
     //
@@ -1401,6 +1426,20 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     callback(status);
+  }
+
+  void ReportWritePipeliningAbort() const REQUIRES(mutex_) {
+    VLOG_WITH_PREFIX(1) << "Write pipelining abort discarded " << completed_read_ops_
+                        << " read ops and " << completed_write_ops_ << " write ops";
+    if (auto aborts = manager_->write_pipelining_aborts_metric()) {
+      IncrementCounter(aborts);
+    }
+    if (auto discarded_reads = manager_->write_pipelining_abort_discarded_reads_metric()) {
+      IncrementCounterBy(discarded_reads, completed_read_ops_);
+    }
+    if (auto discarded_writes = manager_->write_pipelining_abort_discarded_writes_metric()) {
+      IncrementCounterBy(discarded_writes, completed_write_ops_);
+    }
   }
 
   void SetOriginId(uint32_t origin_id) EXCLUDES(mutex_) {
@@ -2778,6 +2817,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       GUARDED_BY(async_write_query_mutex_);
   StdStatusCallback async_write_commit_waiter_ GUARDED_BY(async_write_query_mutex_);
   Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
+
+  // Ops this transaction has successfully flushed. If write_pipelining_abort_ is set, then these
+  // are reported as discarded work.
+  int64_t completed_read_ops_ GUARDED_BY(mutex_) = 0;
+  int64_t completed_write_ops_ GUARDED_BY(mutex_) = 0;
+  mutable std::atomic<bool> write_pipelining_abort_{false};
 
   uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
 
