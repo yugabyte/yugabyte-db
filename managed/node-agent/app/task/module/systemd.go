@@ -346,26 +346,20 @@ func KillSystemdServiceLeftovers(
 	failed := values["ActiveState"] == "failed"
 	util.FileLogger().Infof(ctx, "Killing leftover processes in cgroup %s of %s", cgroup, serverName)
 	logOut.WriteLine("Killing leftover processes in cgroup %s of %s", cgroup, serverName)
-	// Default kill target is all processes in the unit cgroup, including sub-cgroups.
+	// Default kill target is all processes in the unit cgroup, including sub-cgroups. The kill is
+	// resent on every poll, which also retries it across transient dbus errors.
 	cmd := fmt.Sprintf("%s kill --signal=SIGKILL %s", cmdPrefix, serverName)
-	err = backoff.Do(ctx, SystemdBackOff, func(int) error {
-		_, err := RunShellCmd(ctx, cmdUser, "KillSystemdServiceLeftovers", cmd, logOut)
-		if err != nil && readProperties() == nil && values["ControlGroup"] == "" {
-			// The leftovers exited on their own in the meantime.
-			return nil
-		}
-		return err
-	})
-	if err != nil {
-		return err
-	}
 	deadline := time.Now().Add(SystemdLeftoverKillTimeout)
 	for {
+		_, killErr := RunShellCmd(ctx, cmdUser, "KillSystemdServiceLeftovers", cmd, logOut)
 		values, err = systemdUnitProperties(ctx, username, serverName, properties, logOut)
 		if err == nil && values["ControlGroup"] == "" {
 			break
 		}
 		if !time.Now().Before(deadline) {
+			if killErr != nil {
+				return killErr
+			}
 			return fmt.Errorf(
 				"leftover processes in cgroup %s of %s did not exit within %s",
 				cgroup,
