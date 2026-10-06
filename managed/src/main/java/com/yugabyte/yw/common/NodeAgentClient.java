@@ -707,7 +707,7 @@ public class NodeAgentClient {
       log.debug("Node agent {} is not in active state", nodeAgent);
       return Optional.empty();
     }
-    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid())) {
       nodeAgent.refresh();
     }
     return optional;

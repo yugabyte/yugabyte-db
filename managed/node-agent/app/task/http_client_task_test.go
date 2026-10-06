@@ -14,10 +14,24 @@ import (
 
 var dummyApiToken = "123456"
 
+func TestCreateRegisterAgentRequestCertificateName(t *testing.T) {
+	config := util.CurrentConfig()
+	req := createRegisterAgentRequest(config, "my-custom-cert")
+	if req.CertificateName != "my-custom-cert" {
+		t.Fatalf("Expected certificateName %q, got %q", "my-custom-cert", req.CertificateName)
+	}
+	if req.Name != config.String(util.NodeNameKey) {
+		t.Fatalf("Expected name %q, got %q", config.String(util.NodeNameKey), req.Name)
+	}
+	if req.State != model.Registering.Name() {
+		t.Fatalf("Expected state %q, got %q", model.Registering.Name(), req.State)
+	}
+}
+
 func TestHandleAgentRegistration(t *testing.T) {
 	config := util.CurrentConfig()
 	t.Logf("cuuid: %s", config.String(util.CustomerIdKey))
-	testRegistrationHandler := NewAgentRegistrationHandler(dummyApiToken)
+	testRegistrationHandler := NewAgentRegistrationHandler(dummyApiToken, "")
 	ctx := context.Background()
 	result, err := testRegistrationHandler.Handle(ctx)
 
@@ -43,7 +57,7 @@ func TestHandleAgentRegistrationFailure(t *testing.T) {
 	cuid := config.String(util.CustomerIdKey)
 	config.Update(util.CustomerIdKey, "dummy")
 	defer config.Update(util.CustomerIdKey, cuid)
-	testRegistrationHandler := NewAgentRegistrationHandler(dummyApiToken)
+	testRegistrationHandler := NewAgentRegistrationHandler(dummyApiToken, "" /* certificate name */)
 	ctx := context.Background()
 	_, err := testRegistrationHandler.Handle(ctx)
 

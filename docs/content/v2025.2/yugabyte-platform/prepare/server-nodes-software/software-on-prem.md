@@ -193,10 +193,10 @@ You can use the `--config_override` flag to override settings in the configurati
 
 Examples:
 
-Override the FQDN (string type) under ynp:
+Override the FQDN (string type) under yba:
 
 ```sh
-./node-agent-provision.sh --config_override ynp.node_external_fqdn=\"my-new-fqdn\"
+./node-agent-provision.sh --config_override yba.node_external_fqdn=\"my-new-fqdn\"
 ```
 
 Override chrony servers (list of strings) under ynp:

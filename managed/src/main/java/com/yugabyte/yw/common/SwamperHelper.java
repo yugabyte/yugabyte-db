@@ -172,7 +172,11 @@ public class SwamperHelper {
     NODE_REGION,
     NODE_AZ,
     NODE_CLUSTER_TYPE,
-    UNIVERSE_UUID
+    UNIVERSE_UUID;
+
+    public String getLabelName() {
+      return name().toLowerCase();
+    }
   }
 
   private ObjectNode getIndividualConfig(Universe universe, TargetType t, NodeDetails nodeDetails) {
@@ -184,11 +188,9 @@ public class SwamperHelper {
     }
 
     ObjectNode labels = Json.newObject();
-    labels.put(
-        LabelType.UNIVERSE_UUID.toString().toLowerCase(), universe.getUniverseUUID().toString());
-    labels.put(
-        LabelType.NODE_PREFIX.toString().toLowerCase(), universe.getUniverseDetails().nodePrefix);
-    labels.put(LabelType.EXPORT_TYPE.toString().toLowerCase(), t.toString().toLowerCase());
+    labels.put(LabelType.UNIVERSE_UUID.getLabelName(), universe.getUniverseUUID().toString());
+    labels.put(LabelType.NODE_PREFIX.getLabelName(), universe.getUniverseDetails().nodePrefix);
+    labels.put(LabelType.EXPORT_TYPE.getLabelName(), t.toString().toLowerCase());
     if (nodeDetails.nodeName != null) {
       // exported_instance is a special name that we should not use as a custom label.
       // You get metrics with exported_ prefix if the collected data already have one of
@@ -204,20 +206,19 @@ public class SwamperHelper {
       // their own exported_instance label.
       // Update this for any new target types added accordingly whether it's required or not.
       if (t != null && t.exportedInstanceLabelNeeded) {
-        labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), nodeDetails.nodeName);
+        labels.put(LabelType.EXPORTED_INSTANCE.getLabelName(), nodeDetails.nodeName);
       }
-      labels.put(LabelType.NODE_NAME.toString().toLowerCase(), nodeDetails.nodeName);
+      labels.put(LabelType.NODE_NAME.getLabelName(), nodeDetails.nodeName);
     }
     if (nodeDetails.cloudInfo != null) {
       if (nodeDetails.cloudInfo.private_ip != null) {
-        labels.put(
-            LabelType.NODE_ADDRESS.toString().toLowerCase(), nodeDetails.cloudInfo.private_ip);
+        labels.put(LabelType.NODE_ADDRESS.getLabelName(), nodeDetails.cloudInfo.private_ip);
       }
       if (nodeDetails.cloudInfo.region != null) {
-        labels.put(LabelType.NODE_REGION.toString().toLowerCase(), nodeDetails.cloudInfo.region);
+        labels.put(LabelType.NODE_REGION.getLabelName(), nodeDetails.cloudInfo.region);
       }
       if (nodeDetails.cloudInfo.az != null) {
-        labels.put(LabelType.NODE_AZ.toString().toLowerCase(), nodeDetails.cloudInfo.az);
+        labels.put(LabelType.NODE_AZ.getLabelName(), nodeDetails.cloudInfo.az);
       }
       if (CloudType.onprem.name().equals(nodeDetails.cloudInfo.cloud)) {
         NodeInstance.maybeGet(nodeDetails.nodeUuid)
@@ -225,7 +226,7 @@ public class SwamperHelper {
                 nodeInstance -> {
                   if (StringUtils.isNotEmpty(nodeInstance.getDetails().instanceName)) {
                     labels.put(
-                        LabelType.NODE_IDENTIFIER.toString().toLowerCase(),
+                        LabelType.NODE_IDENTIFIER.getLabelName(),
                         nodeInstance.getDetails().instanceName);
                   }
                 });
@@ -233,7 +234,7 @@ public class SwamperHelper {
     }
     if (nodeDetails.placementUuid != null) {
       labels.put(
-          LabelType.NODE_CLUSTER_TYPE.toString().toLowerCase(),
+          LabelType.NODE_CLUSTER_TYPE.getLabelName(),
           universe.getCluster(nodeDetails.placementUuid).clusterType.toString());
     }
     if (t.isCollectionLevelSupported()) {

@@ -1,0 +1,30 @@
+title: YbAdminComponentSpec
+description: Spec driving the node-level YbAdminComponent.
+type: object
+properties:
+  component_name:
+    description: |
+      Logical component name; used as output file label.
+      Must be a single file name of up to 128 characters from [A-Za-z0-9._-].
+    type: string
+  yb_admin_command:
+    description: |
+      yb-admin subcommand (e.g. list_tables).
+      Support bundles only run read-only subcommands, so anything that mutates cluster
+      state is rejected. Operators can add to the allowed set through the
+      yb.support_bundle.extra_yb_admin_commands runtime config.
+    type: string
+  yb_admin_args:
+    description: Additional arguments after the subcommand.
+    type: array
+    items:
+      type: string
+  output_file_name:
+    description: |
+      Output file name written under the per-node bundle directory.
+      Must be a single file name of up to 128 characters from [A-Za-z0-9._-].
+    type: string
+  timeout_secs:
+    description: Command timeout in seconds.
+    type: integer
+    format: int64

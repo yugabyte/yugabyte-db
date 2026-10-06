@@ -300,8 +300,6 @@ export interface MetadataFields {
   metricsUsername: string;
   metricsPassword: string;
   metricsScrapePeriodSec: number;
-  dataMountPoints: string[];
-  otherMountPoints: string[];
   lastSyncError?: string | null;
 }
 

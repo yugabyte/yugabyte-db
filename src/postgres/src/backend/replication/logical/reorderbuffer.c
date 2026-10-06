@@ -227,7 +227,7 @@ typedef struct ReorderBufferDiskChange
  * resource management here, but it's not entirely clear what that would look
  * like.
  *
- * YB NOTE: This is overridden by yb_reorderbuffer_max_changes_in_memory GUC.
+ * YB NOTE: Spill decisions use yb_reorderbuffer_max_memory_kb.
  */
 int			logical_decoding_work_mem;
 static const Size max_changes_in_memory = 4096; /* XXX for restore only */
@@ -3995,7 +3995,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	bool		update_stats = true;
 
 	if (rb->size >= (IsYugaByteEnabled() ?
-					 yb_reorderbuffer_max_changes_in_memory :
+					 yb_reorderbuffer_max_memory_kb :
 					 logical_decoding_work_mem) * (Size) 1024)
 	{
 		/*
@@ -4026,7 +4026,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	 * value before the most recent change.
 	 */
 	while (rb->size >= (IsYugaByteEnabled() ?
-						yb_reorderbuffer_max_changes_in_memory :
+						yb_reorderbuffer_max_memory_kb :
 						logical_decoding_work_mem) * (Size) 1024 ||
 		   (debug_logical_replication_streaming == DEBUG_LOGICAL_REP_STREAMING_IMMEDIATE &&
 			rb->size > 0))
@@ -4094,7 +4094,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 
 	/* We must be under the memory limit now. */
 	Assert(rb->size < (IsYugaByteEnabled() ?
-					   yb_reorderbuffer_max_changes_in_memory :
+					   yb_reorderbuffer_max_memory_kb :
 					   logical_decoding_work_mem) * (Size) 1024);
 }
 
@@ -4725,9 +4725,12 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	XLByteToSeg(txn->final_lsn, last_segno, wal_segment_size);
 
-	while ((restored <
-			(IsYugaByteEnabled() ? yb_reorderbuffer_max_changes_in_memory : max_changes_in_memory))
-		   && (*segno <= last_segno))
+	/*
+	 * YB restores a fixed number of changes so restore batching is independent
+	 * from the memory limit that controls spilling.
+	 */
+	while ((restored < max_changes_in_memory) &&
+		   (*segno <= last_segno))
 	{
 		int			readBytes;
 		ReorderBufferDiskChange *ondisk;

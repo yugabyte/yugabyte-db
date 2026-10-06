@@ -1792,11 +1792,9 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
 
     // The test is specifically written for cases when txn ddl is disabled.
     // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
@@ -2001,10 +1999,6 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
 class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
     options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
     PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
@@ -2080,8 +2074,13 @@ TEST_F(PgAnalyzeReadBufferLimitTest, AnalyzeWithBigResponse) {
       .port = ts1->ysql_port(),
     }).Connect());
     ASSERT_OK(conn1.Execute("CREATE TABLE test (k INT PRIMARY KEY, v TEXT)"));
+    // With the default batch size the setup INSERT sends ~2.5MB write requests, which the 4MB read
+    // buffer limit can reject. A rejected call gets no response, so the backend would block on it
+    // until the RPC timeout.
+    ASSERT_OK(conn1.Execute("SET ysql_session_max_batch_size = 512"));
     ASSERT_OK(conn1.Execute("INSERT INTO test SELECT s, repeat('abcdefg', 100) || '-' || s::TEXT "
                             "FROM generate_series(1, 10000) AS s"));
+    ASSERT_OK(conn1.Execute("RESET ysql_session_max_batch_size"));
     ASSERT_OK(conn1.Execute("ANALYZE test"));
 }
 

@@ -55,4 +55,12 @@ public class TestPgRegressIndex extends BasePgRegressTest {
     enableStickySuperuserConnsAndRestartCluster();
     runPgRegressTest("yb_index_schedule");
   }
+
+  @Test
+  public void schedule2() throws Exception {
+    // (DB-13032) This test touches system tables, so enable stickiness for
+    // superuser connections when Connection Manager is enabled.
+    enableStickySuperuserConnsAndRestartCluster();
+    runPgRegressTest("yb_index2_schedule");
+  }
 }

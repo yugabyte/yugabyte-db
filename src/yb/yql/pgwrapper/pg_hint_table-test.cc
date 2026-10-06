@@ -167,6 +167,11 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
 
 TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
   auto conn_explain = ASSERT_RESULT(ConnectWithHintTable());
+  // The planner refreshes the hint cache by scanning hint_plan.hints within the statement's read
+  // snapshot, so the concurrent hint updates below can force a read restart. EXPLAIN is not query
+  // layer retriable by default; opt it in so the restart is handled transparently, as it is for a
+  // plain SELECT.
+  ASSERT_OK(conn_explain.Execute("SET yb_extra_commands_to_retry TO 'EXPLAIN'"));
   auto conn_hint1 = ASSERT_RESULT(ConnectWithHintTable());
   auto conn_hint2 = ASSERT_RESULT(ConnectWithHintTable());
 
@@ -281,11 +286,10 @@ class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
     options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
     AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
   }
 };
 

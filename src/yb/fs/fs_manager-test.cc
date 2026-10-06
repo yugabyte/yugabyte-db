@@ -223,6 +223,32 @@ TEST_F(FsManagerTestBase, TestListTablets) {
   ASSERT_EQ(1, tablet_ids.size()) << tablet_ids;
 }
 
+// Pins down the CURRENT behavior a manual `cp` of a tablet's metadata directory produces (the
+// duplicate the field recovery for swapped mounts tends to leave behind): startup fails with an
+// instruction to remove one copy by hand. Nothing picks a winner and nothing cleans up, which is
+// part of what motivates the data-root pinning above -- catching the swap before duplicates are
+// created is the only version of this without manual surgery.
+TEST_F(FsManagerTestBase, DuplicateTabletMetadataFailsStartupTabletEnumeration) {
+  const string wal_path = GetTestPath("wal");
+  const string data_path_1 = GetTestPath("data1");
+  const string data_path_2 = GetTestPath("data2");
+  ReinitFsManager({ wal_path }, { data_path_1, data_path_2 });
+  ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
+
+  const auto meta_dirs = fs_manager()->GetRaftGroupMetadataDirs();
+  ASSERT_EQ(2, meta_dirs.size());
+  const char* const kTabletId = "0123456789abcdef0123456789abcdef";
+  for (const auto& dir : meta_dirs) {
+    std::unique_ptr<WritableFile> writer;
+    ASSERT_OK(env_->NewWritableFile(JoinPathSegments(dir, kTabletId), &writer));
+  }
+
+  const auto result = fs_manager()->ListTabletIds(CleanupTemporaryFiles::kFalse);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsIllegalState()) << result.status();
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Remove the duplicate one");
+}
+
 TEST_F(FsManagerTestBase, TestCannotUseNonEmptyFsRoot) {
   string path = GetTestPath("new_fs_root");
   ReinitFsManager({ path }, { path });

@@ -211,7 +211,11 @@ class KVTableSingleTabletTest : public KVTableTest {
 TEST_F_EX(KVTableTest, YB_DISABLE_TEST_ON_MACOS(BigValues), KVTableSingleTabletTest) {
   std::atomic_bool stop_requested_flag(false);
   SetFlagOnExit set_flag_on_exit(&stop_requested_flag);
-  int rows = 100;
+  // The writers stop for good once they have written this many keys between them, while the wait
+  // below needs 50 more writes AFTER the tserver goes down. Keep the budget well clear of that: a
+  // slow shutdown (as under ASAN) lets the writers get most of the way through a small budget
+  // first, leaving fewer keys than the wait asks for and a wait that can never complete.
+  int rows = 10000;
   int start_key = 0;
   int writer_threads = 4;
   int value_size_bytes = 32_KB;
@@ -228,9 +232,9 @@ TEST_F_EX(KVTableTest, YB_DISABLE_TEST_ON_MACOS(BigValues), KVTableSingleTabletT
   writer.Start();
   mini_cluster_->mini_tablet_server(1)->Shutdown();
   auto start_writes = writer.num_writes();
-  while (writer.num_writes() - start_writes < 50) {
-    std::this_thread::sleep_for(100ms);
-  }
+  ASSERT_OK(WaitFor(
+      [&writer, start_writes] { return writer.num_writes() - start_writes >= 50; }, 60s,
+      "50 writes while the tserver is down"));
   ASSERT_OK(mini_cluster_->mini_tablet_server(1)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitFor([] {
@@ -248,6 +252,8 @@ TEST_F_EX(KVTableTest, YB_DISABLE_TEST_ON_MACOS(BigValues), KVTableSingleTabletT
     return found;
   }, 15s, "Load operations from disk"));
 
+  // The writers no longer run out of keys on their own, so stop them before waiting.
+  stop_requested_flag = true;
   writer.WaitForCompletion();
 }
 

@@ -35,6 +35,7 @@
 #include "yb/dockv/intent.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/walltime.h"
@@ -73,6 +74,49 @@ using dockv::ValueEntryTypeAsChar;
 namespace {
 
 constexpr char kPostApplyMetadataMarker = 0;
+
+// #32724: detect table-level tombstones written to regular DB (colocated truncate / drop) and
+// notify SchemaPackingProvider so RaftGroupMetadata can advance the colocated tombstone-time
+// cache watermark on every replica, not only on the leader's ApplyTruncateColocated path.
+// Use the canonical colocation-only helper: cotable-keyed tables never engage this cache
+// (GetTableTombstoneTime requires has_colocation_id), and a second hand-rolled recognizer would
+// drift from dockv::IsColocatedTableTombstoneKey.
+bool IsTableTombstoneKey(Slice key) {
+  auto result = dockv::IsColocatedTableTombstoneKey(key);
+  return result.ok() && *result;
+}
+
+bool IsTombstoneValue(Slice value) {
+  if (value.empty()) {
+    return false;
+  }
+  if (value[0] == ValueEntryTypeAsChar::kTombstone) {
+    return true;
+  }
+  Slice v = value;
+  if (!dockv::ValueControlFields::Decode(&v).ok() || v.empty()) {
+    return false;
+  }
+  return v[0] == ValueEntryTypeAsChar::kTombstone;
+}
+
+// If this regular-DB write is a table-level tombstone, notify metadata so that table's
+// tombstone-time cache is invalidated (watermark/generation advanced, cache cleared).
+void MaybeNotifyTableTombstoneWritten(
+    SchemaPackingProvider& provider, Slice key, Slice value, HybridTime write_ht) {
+  // Guard kMax as well as invalid: AdvanceTombstoneCacheWatermark DCHECKs against kMax, and a
+  // malformed HT must not crash debug builds from the apply path.
+  if (!write_ht.is_valid() || write_ht == HybridTime::kMax || write_ht < HybridTime::kInitial ||
+      !IsTableTombstoneKey(key) || !IsTombstoneValue(value)) {
+    return;
+  }
+  dockv::DocKeyDecoder decoder(key);
+  ColocationId colocation_id = kColocationIdNotSet;
+  auto has_colocation = decoder.DecodeColocationId(&colocation_id);
+  if (has_colocation.ok() && *has_colocation) {
+    provider.NotifyTableTombstoneWritten(colocation_id, write_ht);
+  }
+}
 
 void DumpIntentsRecordForTransaction(rocksdb::DB* intents_db, const TransactionId& transaction_id,
                                      SchemaPackingProvider* schema_packing_provider = nullptr) {
@@ -885,6 +929,15 @@ Result<bool> ApplyIntentsContext::Entry(
         ApplyIntent, tablet_id_, transaction_id(), intent.doc_path.size(), intent.doc_path,
         commit_ht_, write_id_, decoded_value.body);
 
+    // Local transactional apply (YSQL legacy colocated TRUNCATE / DROP table tombstones): every
+    // replica applies intents here, and followers never run ApplyTruncateColocated. Keep this
+    // outside ApplyToRegularDB(): bootstrap can skip the regular-DB Put when that storage already
+    // has the write, while ADD_TABLE / change-metadata may re-arm the context at an older HT; this
+    // notify is then what raises the watermark back above the tombstone. Notifying before the
+    // RocksDB write is intentional (see OnTableTombstoneWritten).
+    MaybeNotifyTableTombstoneWritten(
+        schema_packing_provider(), intent.doc_path, decoded_value.body, commit_ht_);
+
     RETURN_NOT_OK(UpdateSchemaVersion(intent.doc_path, decoded_value.body));
   }
 
@@ -1090,7 +1143,7 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
     SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers& frontiers,
     const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages,
-    TableType table_type)
+    TableType table_type, std::atomic<bool>* can_advance_intents_flush_op_id)
     : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
@@ -1098,7 +1151,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
       intents_write_batch_(intents_write_batch),
       vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
-      table_type_(table_type) {
+      table_type_(table_type),
+      can_advance_intents_flush_op_id_(can_advance_intents_flush_op_id) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
@@ -1203,6 +1257,19 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
       RETURN_NOT_OK(vector_indexes_updater->Feed(regular_write_handler, output_key, output_value));
     }
     ++apply_data.write_id;
+
+    // xCluster consumer apply of external intents (colocated TRUNCATE/DROP tombstones arrive here
+    // as non-transactional batches; ApplyIntentsContext is not used on the consumer). Notify now
+    // so eligible readers stop trusting a pre-truncate cache entry; also queue a
+    // post-WriteToRocksDB re-notify (FlushPendingTableTombstoneNotifies) because external intents
+    // are not visible to IntentAwareIterator - a miss in the residual window can re-poison with
+    // "no tombstone".
+    MaybeNotifyTableTombstoneWritten(
+        schema_packing_provider(), output_key, output_value, apply_data.commit_ht);
+    if (IsTableTombstoneKey(output_key) && IsTombstoneValue(output_value)) {
+      pending_table_tombstone_notifies_.push_back(PendingTableTombstoneNotify{
+          output_key.ToBuffer(), output_value.ToBuffer(), apply_data.commit_ht});
+    }
 
     // Update min/max schema version.
     RETURN_NOT_OK(UpdateSchemaVersion(output_key, output_value));
@@ -1345,6 +1412,17 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
       }
       HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
 
+      // Non-transactional regular-DB write_pairs (direct PutBatch without a transaction). Local
+      // colocated TRUNCATE is always transactional, so this hook is not the YSQL truncate path;
+      // it covers any non-txn table-tombstone write_pair shape (and stays consistent with the
+      // external-intents notify above once those are applied via write_pairs). Prefer the pair's
+      // external_hybrid_time when present (xCluster producer HT), else the batch write HT.
+      const HybridTime pair_ht = write_pair.has_external_hybrid_time()
+          ? HybridTime(write_pair.external_hybrid_time())
+          : write_hybrid_time_;
+      MaybeNotifyTableTombstoneWritten(
+          schema_packing_provider(), write_pair.key(), write_pair.value(), pair_ht);
+
       RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
     }
   }
@@ -1360,7 +1438,23 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
     frontiers_.Largest().SetHasVectorDeletion();
   }
 
+  // Keep this condition in sync with the one guarding the intents db write in
+  // Tablet::ApplyKeyValueRowOperations. Clearing the flag while that write does not happen would
+  // leave the flag false forever; that write happening while the flag is not cleared would
+  // introduce the issue again.
+  if (can_advance_intents_flush_op_id_ && intents_write_batch_->Count() != 0) {
+    can_advance_intents_flush_op_id_->store(false, std::memory_order_release);
+  }
+
   return Status::OK();
+}
+
+void NonTransactionalBatchWriter::FlushPendingTableTombstoneNotifies() {
+  for (const auto& pending : pending_table_tombstone_notifies_) {
+    MaybeNotifyTableTombstoneWritten(
+        schema_packing_provider(), pending.key, pending.value, pending.write_ht);
+  }
+  pending_table_tombstone_notifies_.clear();
 }
 
 DumpIntentsContext::DumpIntentsContext(

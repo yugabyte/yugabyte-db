@@ -1,0 +1,195 @@
+--
+-- See yb_merge_scan_schedule for details about the test.  Tests merge scan
+-- when the value type does not match the column type: a cross type SAOP
+-- (issue #32841).
+--
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set _echo_parameterized_query :ECHO
+\set ECHO none
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set off '/*+Set(yb_max_merge_scan_streams 0)*/'
+\set on '/*+Set(yb_max_merge_scan_streams 64)*/'
+\set P1 ':explain'
+\set P2
+\set Q1 ':off'
+\set Q2 ':on'
+-- R1's array matches the column type.  R2's float8 array does not match the
+-- float4 column, so the bind drops: merge scan errors, and non merge scan
+-- returns correct rows through recheck (the values match rows since they are
+-- exactly representable in both types).
+-- TODO(#32841): the planner should pick a plan that does not throw an error.
+SELECT $$'{1.5,2.5}'::real[]$$ AS "R1" \gset
+SELECT $$'{1.5,2.5}'::float8[]$$ AS "R2" \gset
+\set query ':P :Q SELECT id, f4, x FROM num_tbl WHERE f4 = ANY(:R) ORDER BY id LIMIT 10;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) ORDER BY id LIMIT 10;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, x
+   ->  Sort (actual rows=10 loops=1)
+         Output: id, f4, x
+         Sort Key: num_tbl.id
+         Sort Method: top-N heapsort
+         ->  Index Scan using num_tbl_pkey on public.num_tbl (actual rows=4000 loops=1)
+               Output: id, f4, x
+               Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::real[]))
+               Storage Table Read Requests: 4
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 4000
+(12 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::float8[]) ORDER BY id LIMIT 10;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, x
+   ->  Sort (actual rows=10 loops=1)
+         Output: id, f4, x
+         Sort Key: num_tbl.id
+         Sort Method: top-N heapsort
+         ->  Index Scan using num_tbl_pkey on public.num_tbl (actual rows=4000 loops=1)
+               Output: id, f4, x
+               Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::double precision[]))
+               Rows Removed by Index Recheck: 6000
+               Storage Table Read Requests: 10
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 10000
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) ORDER BY id LIMIT 10;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, x
+   ->  Index Scan using num_tbl_pkey on public.num_tbl (actual rows=10 loops=1)
+         Output: id, f4, x
+         Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::real[]))
+         Merge Sort Key: num_tbl.id
+         Merge Stream Key: num_tbl.f4
+         Merge Streams: 2
+         Merge Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::real[]))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 2
+         Storage Table Rows Scanned: 20
+(12 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::float8[]) ORDER BY id LIMIT 10;
+ERROR:  merge scan stream key column "f4" has no usable bound condition
+DETAIL:  The chosen query plan is not executable as declared. This is a bug.
+HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams = 0".
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) ORDER BY id LIMIT 10;
+ id | f4  |  x  
+----+-----+-----
+  1 | 2.5 | x1
+  5 | 1.5 | x5
+  6 | 2.5 | x6
+ 10 | 1.5 | x10
+ 11 | 2.5 | x11
+ 15 | 1.5 | x15
+ 16 | 2.5 | x16
+ 20 | 1.5 | x20
+ 21 | 2.5 | x21
+ 25 | 1.5 | x25
+(10 rows)
+
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::float8[]) ORDER BY id LIMIT 10;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) ORDER BY id LIMIT 10;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::float8[]) ORDER BY id LIMIT 10;
+ERROR:  merge scan stream key column "f4" has no usable bound condition
+DETAIL:  The chosen query plan is not executable as declared. This is a bug.
+HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams = 0".
+-- test yb_enable_advanced_index_cond_fold flag off
+SET yb_enable_advanced_index_cond_fold = off;
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) ORDER BY id LIMIT 10;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, x
+   ->  Sort (actual rows=10 loops=1)
+         Output: id, f4, x
+         Sort Key: num_tbl.id
+         Sort Method: top-N heapsort
+         ->  Index Scan using num_tbl_pkey on public.num_tbl (actual rows=4000 loops=1)
+               Output: id, f4, x
+               Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::real[]))
+               Storage Table Read Requests: 4
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 4000
+(12 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::float8[]) ORDER BY id LIMIT 10;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, x
+   ->  Sort (actual rows=10 loops=1)
+         Output: id, f4, x
+         Sort Key: num_tbl.id
+         Sort Method: top-N heapsort
+         ->  Index Scan using num_tbl_pkey on public.num_tbl (actual rows=4000 loops=1)
+               Output: id, f4, x
+               Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::double precision[]))
+               Rows Removed by Index Recheck: 6000
+               Storage Table Read Requests: 10
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 10000
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) ORDER BY id LIMIT 10;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   Output: id, f4, x
+   ->  Index Scan using num_tbl_pkey on public.num_tbl (actual rows=10 loops=1)
+         Output: id, f4, x
+         Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::real[]))
+         Merge Sort Key: num_tbl.id
+         Merge Stream Key: num_tbl.f4
+         Merge Streams: 2
+         Merge Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::real[]))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 2
+         Storage Table Rows Scanned: 20
+(12 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::float8[]) ORDER BY id LIMIT 10;
+ERROR:  merge scan stream key column "f4" has no usable bound condition
+DETAIL:  The chosen query plan is not executable as declared. This is a bug.
+HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams = 0".
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) ORDER BY id LIMIT 10;
+ id | f4  |  x  
+----+-----+-----
+  1 | 2.5 | x1
+  5 | 1.5 | x5
+  6 | 2.5 | x6
+ 10 | 1.5 | x10
+ 11 | 2.5 | x11
+ 15 | 1.5 | x15
+ 16 | 2.5 | x16
+ 20 | 1.5 | x20
+ 21 | 2.5 | x21
+ 25 | 1.5 | x25
+(10 rows)
+
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::float8[]) ORDER BY id LIMIT 10;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::real[]) ORDER BY id LIMIT 10;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT id, f4, x FROM num_tbl WHERE f4 = ANY('{1.5,2.5}'::float8[]) ORDER BY id LIMIT 10;
+ERROR:  merge scan stream key column "f4" has no usable bound condition
+DETAIL:  The chosen query plan is not executable as declared. This is a bug.
+HINT:  As a workaround, disable merge scan with "SET yb_max_merge_scan_streams = 0".
+RESET yb_enable_advanced_index_cond_fold;

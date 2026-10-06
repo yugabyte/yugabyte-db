@@ -1,0 +1,13 @@
+title: SupportBundleSizeEstimateResponse
+x-yba-api-visibility: internal
+description: Support bundle size estimate per node and component (same as V1).
+type: object
+properties:
+  data:
+    description: Map of universe node names to component sizes. Global component sizes are mapped to YBA.
+    type: object
+    additionalProperties:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int64

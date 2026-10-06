@@ -117,11 +117,12 @@ export const mapGFlags = (
     tserver: {}
   };
   gflags.forEach((gflag) => {
-    if (gflag.MASTER) {
-      gflagsMap.master[gflag.Name] = gflag.MASTER.toString();
+    // Keep falsy values (0, false, ""); truthy checks would drop them.
+    if (Object.hasOwn(gflag, 'MASTER')) {
+      gflagsMap.master[gflag.Name] = String(gflag.MASTER);
     }
-    if (gflag.TSERVER) {
-      gflagsMap.tserver[gflag.Name] = gflag.TSERVER.toString();
+    if (Object.hasOwn(gflag, 'TSERVER')) {
+      gflagsMap.tserver[gflag.Name] = String(gflag.TSERVER);
     }
   });
   return gflagsMap;

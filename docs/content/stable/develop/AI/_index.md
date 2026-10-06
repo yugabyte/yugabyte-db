@@ -14,7 +14,7 @@ YugabyteDB offers the familiarity and extensibility of PostgreSQL, while also de
 
 Using the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) PostgreSQL extension, YugabyteDB functions as a highly performant vector database, with enterprise scale and resilience. This means you can use YugabyteDB to support Retrieval-augmented generation (RAG) workloads, providing AI agents with knowledge of your unstructured data, while its scalability allows it to store and search billions of vectors.
 
-For integrated document preprocessing and embedding generation from SQL, use the [pg_dist_rag](distributed-rag/) extension {{<tags/feature/tp>}} (YugabyteDB {{<release "2025.2">}} or later). It registers document sources, coordinates distributed chunking and embedding pipelines, and stores vectors in pgvector indexes—without building external ETL.
+For integrated document preprocessing and embedding generation from SQL, use the [pg_dist_rag](distributed-rag/) extension {{<tags/feature/tp>}} (YugabyteDB {{<release "2026.1.1.0">}} or later). It registers document sources, coordinates distributed chunking and embedding pipelines, and stores vectors in pgvector indexes—without building external ETL.
 
 Learn more about developing GenAI and RAG applications with YugabyteDB:
 
@@ -35,7 +35,7 @@ Install skills and connect to the [MCP server](mcp-server/).
 ## Get started
 
 {{<tip>}}
-Use YugabyteDB {{<release "2025.2">}} or later to get the latest vector indexing capabilities, pg_dist_rag pipelines, and MCP features.
+Use YugabyteDB {{<release "2025.2">}} or later to get the latest vector indexing capabilities and MCP features.
 
 No cluster? No problem. Run the [latest YugabyteDB version locally](https://download.yugabyte.com) on macOS (using Docker or the yugabyted binary) or any Linux VM to try these tutorials.
 {{</tip>}}

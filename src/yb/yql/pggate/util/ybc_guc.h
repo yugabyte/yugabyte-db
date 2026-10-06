@@ -262,9 +262,14 @@ extern int yb_walsender_poll_sleep_duration_nonempty_ms;
 extern int yb_walsender_poll_sleep_duration_empty_ms;
 
 /*
- * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
- * buffer, which is used in streaming changes via logical replication. After that changes are
- * spooled to disk.
+ * GUC flag: Specifies the maximum memory in kilobytes used by the reorder buffer before logical
+ * replication changes are streamed or spilled to disk.
+ */
+extern int yb_reorderbuffer_max_memory_kb;
+
+/*
+ * Deprecated GUC: use yb_reorderbuffer_max_memory_kb instead. Originally specified the
+ * maximum number of changes kept in memory per transaction in the reorder buffer.
  */
 extern int yb_reorderbuffer_max_changes_in_memory;
 

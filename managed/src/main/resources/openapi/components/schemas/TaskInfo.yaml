@@ -73,6 +73,13 @@ properties:
     description: Whether the task can be rolled back.
     type: boolean
     readOnly: true
+  original_task_uuid:
+    description: |
+      UUID of the first task in the retry/rollback chain (clean universe state), if any.
+      Carried forward on retries and rollbacks. Distinct from previousTaskUUID inherit linkage.
+    type: string
+    format: uuid
+    readOnly: true
   user_email:
     description: Email of the user who started the task.
     type: string

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -19,6 +20,8 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.models.OperatorResource;
+import com.yugabyte.yw.models.ReleaseArtifact;
+import com.yugabyte.yw.models.ReleaseArtifact.Platform;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
@@ -396,5 +399,66 @@ public class ReleaseReconcilerTest extends FakeDBApplication {
     assertTrue(
         "All OperatorResource entries (release + orphaned secret) should be removed after delete",
         OperatorResource.getAll().isEmpty());
+  }
+
+  /** Returns the tracked resource details for {@code name}, or null when it is not tracked. */
+  private KubernetesResourceDetails trackedDetails(String name) {
+    return releaseReconciler.getResourceTracker().getResourceDependencies().keySet().stream()
+        .filter(d -> name.equals(d.name))
+        .findFirst()
+        .orElse(null);
+  }
+
+  @Test
+  public void testOnUpdateTracksSecretAgainstUpdatedReleaseNotLastAddedOne() throws Exception {
+    when(confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)).thenReturn(true);
+    doNothing()
+        .when(releaseManager)
+        .downloadYbHelmChart(anyString(), any(com.yugabyte.yw.models.Release.class));
+    String secretName = "aws-release-update-secret";
+
+    // Existing YBA release whose artifact points at a different S3 path than the CR, so the
+    // update path rebuilds the artifacts and resolves the secret again.
+    com.yugabyte.yw.models.Release ybRelease =
+        com.yugabyte.yw.models.Release.create(RELEASE_VERSION, "LTS");
+    ReleaseArtifact.S3File existingFile = new ReleaseArtifact.S3File();
+    existingFile.path = "s3://bucket/path/old_x86_64.tar.gz";
+    ybRelease.addArtifact(
+        ReleaseArtifact.create("oldchecksum", Platform.LINUX, Architecture.x86_64, existingFile));
+
+    // Another Release CR is added first, and must not become the owner of the updated CR's secret.
+    releaseReconciler.onAdd(createReleaseCr("release-added"));
+
+    doAnswer(
+            inv -> {
+              ResourceTracker tracker = inv.getArgument(3);
+              KubernetesResourceDetails owner = inv.getArgument(4);
+              UUID localInstanceUuid = inv.getArgument(5);
+              tracker.trackDependency(
+                  owner,
+                  new KubernetesResourceDetails(inv.getArgument(0), inv.getArgument(1)),
+                  localInstanceUuid);
+              return "mock-secret-key";
+            })
+        .when(operatorUtils)
+        .getAndParseSecretForKey(
+            eq(secretName),
+            eq(NAMESPACE),
+            eq("AWS_SECRET_ACCESS_KEY"),
+            any(ResourceTracker.class),
+            any(KubernetesResourceDetails.class),
+            nullable(UUID.class));
+
+    Release updatedCr = createReleaseCrWithS3Secret("release-updated", secretName, NAMESPACE);
+    releaseReconciler.onUpdate(updatedCr, updatedCr);
+
+    ResourceTracker tracker = releaseReconciler.getResourceTracker();
+    assertEquals(
+        "Secret should be a dependency of the release being updated",
+        1,
+        tracker.getDependencies(trackedDetails("release-updated")).size());
+    assertTrue(
+        "Secret should not be attributed to the previously added release",
+        tracker.getDependencies(trackedDetails("release-added")).isEmpty());
   }
 }

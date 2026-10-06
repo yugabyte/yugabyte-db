@@ -208,7 +208,8 @@ func copyBits(vers string) error {
 	// cleaned up automatically with the rest of the version dir by
 	// PrunePastInstalls() on upgrade and by Uninstall() on full uninstall.
 	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
-		GetJavaPackagePath(), GetPostgresPackagePath(), bundlePACollectorPackagePath()}
+		GetJavaPackagePath(), GetPostgresPackagePath(), bundlePACollectorPackagePath(),
+		bundleYsqlDumpClientPath()}
 
 	for _, file := range neededFiles {
 		fp := AbsoluteBundlePath(file)

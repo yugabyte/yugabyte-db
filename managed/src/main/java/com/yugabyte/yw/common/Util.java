@@ -47,6 +47,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.DB;
 import io.swagger.annotations.ApiModel;
@@ -75,6 +76,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
@@ -97,6 +99,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import javax.annotation.Nullable;
@@ -122,6 +125,9 @@ import play.libs.Json;
 @Slf4j
 public class Util {
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
+
+  private static final Pattern FSTAB_UUID_LINE =
+      Pattern.compile("^UUID=([^\\s]+)\\s+([^\\s]+)\\s+");
 
   public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   public static final String YSQL_PASSWORD_KEYWORD = "PASSWORD";
@@ -2081,5 +2087,34 @@ public class Util {
         DeltaEvaluator.buildDeltaJsonTree(
             universe.getUniverseDetails(), dbTaskParams, new NodeDetailsArrayComparator());
     return DeltaEvaluator.generateOnlyDelta(deltaTree);
+  }
+
+  public static List<String> getMountPoints(DeviceInfo deviceInfo) {
+    if (deviceInfo.mountPoints != null) {
+      return Arrays.asList(deviceInfo.mountPoints.split(","));
+    } else {
+      return IntStream.range(0, deviceInfo.numVolumes)
+          .boxed()
+          .map(i -> "/mnt/d" + i)
+          .collect(Collectors.toList());
+    }
+  }
+
+  public static Map<String, String> parseFstabPathToUUID(String fstabContents) {
+    Map<String, String> pathToUUID = new HashMap<>();
+    if (StringUtils.isBlank(fstabContents)) {
+      return pathToUUID;
+    }
+    for (String line : fstabContents.split("\\R")) {
+      String trimmed = line.trim();
+      if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+        continue;
+      }
+      Matcher m = FSTAB_UUID_LINE.matcher(trimmed);
+      if (m.find()) {
+        pathToUUID.put(m.group(2), m.group(1));
+      }
+    }
+    return pathToUUID;
   }
 }

@@ -1521,13 +1521,18 @@ void CDCSDKYsqlTest::CheckRecordTuples(
 Status CDCSDKYsqlTest::InitVirtualWAL(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
     const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range,
-    bool include_oid_to_relfilenode, int timeout) {
+    bool include_oid_to_relfilenode, int timeout,
+    const std::vector<uint32_t>& publication_oids, bool pub_all_tables) {
   InitVirtualWALForCDCRequestPB init_req;
   init_req.set_stream_id(stream_id.ToString());
   init_req.set_session_id(session_id);
   for (const auto& table_id : table_ids) {
     init_req.add_table_id(table_id);
   }
+  for (const auto& publication_oid : publication_oids) {
+    init_req.add_publication_oid(publication_oid);
+  }
+  init_req.set_pub_all_tables(pub_all_tables);
 
   if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range) {
     auto slot_hash_range_req = init_req.mutable_slot_hash_range();
@@ -1624,7 +1629,7 @@ Result<GetConsistentChangesResponsePB> CDCSDKYsqlTest::GetConsistentChangesFromC
 
 Status CDCSDKYsqlTest::UpdatePublicationTableList(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-    uint64_t session_id, bool include_oid_to_relfilenode) {
+    uint64_t session_id, bool include_oid_to_relfilenode, int timeout) {
   UpdatePublicationTableListRequestPB req;
   UpdatePublicationTableListResponsePB resp;
 
@@ -1656,7 +1661,7 @@ Status CDCSDKYsqlTest::UpdatePublicationTableList(
 
         return false;
       },
-      MonoDelta::FromSeconds(kRpcTimeout),
+      MonoDelta::FromSeconds(timeout),
       "UpdatePublicationTableList failed due to RPC timeout"));
 
   return Status::OK();
@@ -5057,6 +5062,22 @@ Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
 
   return Status::OK();
+}
+
+Result<std::string> CDCSDKYsqlTest::CleanupStaleCDCStreams(bool dry_run) {
+  string tool_path = GetToolPath("../bin", "yb-admin");
+  vector<string> argv;
+  argv.push_back(tool_path);
+  argv.push_back("--master_addresses");
+  argv.push_back(AsString(test_cluster_.mini_cluster_->GetMasterAddresses()));
+  argv.push_back("cleanup_stale_cdc_streams");
+  if (dry_run) {
+    argv.push_back("dry_run");
+  }
+
+  std::string output;
+  RETURN_NOT_OK(Subprocess::Call(argv, &output));
+  return output;
 }
 
 Status CDCSDKYsqlTest::CreateTables(

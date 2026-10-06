@@ -35,6 +35,8 @@ func SetupRegisterCommand(parentCmd *cobra.Command) {
 	registerCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
 	registerCmd.PersistentFlags().Bool("skip_verify_cert", false,
 		"Skip Yugabyte Anywhere SSL cert verification.")
+	registerCmd.PersistentFlags().
+		String("certificate_name", "", "YBA certificate config name for node-agent TLS")
 	registerCmd.MarkPersistentFlagRequired("api_token")
 	unregisterCmd.PersistentFlags().
 		StringP("api_token", "t", "", "Optional API token for unregistering the node.")
@@ -188,13 +190,18 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store skip_verify_cert value - %s", err.Error())
 	}
+	// Do not persist in config.yml — the name can go out of sync on cert rotation.
+	certificateName, err := cmd.Flags().GetString("certificate_name")
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to read certificate name - %s", err.Error())
+	}
 	err = server.RetrieveUser(ctx, apiToken)
 	if err != nil {
 		util.ConsoleLogger().
 			Fatalf(ctx, "Error fetching the current user with the API key - %s", err)
 	}
 
-	err = server.RegisterNodeAgent(server.Context(), apiToken)
+	err = server.RegisterNodeAgent(server.Context(), apiToken, certificateName)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
 	}

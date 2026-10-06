@@ -1181,6 +1181,77 @@ TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsAfterFailover) {
   LOG(INFO) << "Restoration: " << restorations[0];
 }
 
+// Scheduled snapshot creation must resume on a master that started a snapshot, lost
+// leadership before it finished, and later became leader again.
+TEST_F(YbAdminSnapshotScheduleTest, CreatingSnapshotMarkerHealedAfterFailover) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl());
+
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 8, client_.get(), &table_));
+
+  const auto original_leader_uuid = cluster_->GetLeaderMaster()->uuid();
+
+  // Stall tablet snapshot creation so the leader is mid-create when it steps down.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_create_checkpoint", "true"));
+  auto snapshot_state = [this](const std::string& id) -> Result<std::string> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    for (const auto& snapshot : snapshots.GetArray()) {
+      if (VERIFY_RESULT(GetMemberAsStr(snapshot, "id")) == id) {
+        return std::string(VERIFY_RESULT(GetMemberAsStr(snapshot, "state")));
+      }
+    }
+    return std::string();
+  };
+  // A create that started before the pause flag landed can slip past the pause point and
+  // complete normally; wait for one that stays CREATING.
+  std::string stuck_snapshot_id;
+  ASSERT_OK(WaitFor([this, &snapshot_state, &stuck_snapshot_id]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    std::string candidate;
+    for (const auto& snapshot : snapshots.GetArray()) {
+      if (VERIFY_RESULT(GetMemberAsStr(snapshot, "state")) == "CREATING") {
+        candidate = VERIFY_RESULT(GetMemberAsStr(snapshot, "id"));
+        break;
+      }
+    }
+    if (candidate.empty()) {
+      return false;
+    }
+    SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+    if (VERIFY_RESULT(snapshot_state(candidate)) != "CREATING") {
+      return false;
+    }
+    stuck_snapshot_id = candidate;
+    return true;
+  }, kInterval * 5, "Wait for a snapshot stuck in CREATING"));
+
+  LOG(INFO) << "Stepping down master leader " << original_leader_uuid
+            << ", stuck snapshot " << stuck_snapshot_id;
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  // The paused snapshot must still be mid-create; otherwise the marker was cleared normally
+  // and the leak was not reproduced.
+  ASSERT_EQ(ASSERT_RESULT(snapshot_state(stuck_snapshot_id)), "CREATING");
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_create_checkpoint", "false"));
+
+  // The new leader finishes the stuck snapshot and keeps the schedule going.
+  ASSERT_OK(WaitNewSnapshot(schedule_id));
+
+  LOG(INFO) << "Returning leadership to " << original_leader_uuid;
+  ASSERT_OK(WaitFor([this, &original_leader_uuid]() -> Result<bool> {
+    if (cluster_->GetLeaderMaster()->uuid() == original_leader_uuid) {
+      return true;
+    }
+    RETURN_NOT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader(original_leader_uuid));
+    return cluster_->GetLeaderMaster()->uuid() == original_leader_uuid;
+  }, 60s * kTimeMultiplier, "Wait for original master to regain leadership"));
+
+  // Fails without the marker heal: the re-elected leader never creates snapshots again.
+  ASSERT_OK(WaitNewSnapshot(schedule_id));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, ASSERT_RESULT(GetCurrentTime())));
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsTestMigration) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(2s * kTimeMultiplier, 10s * kTimeMultiplier));
 

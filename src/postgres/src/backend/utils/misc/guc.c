@@ -122,8 +122,8 @@ extern bool yb_conn_mgr_modifying_defaults;
  * Written by Odyssey on every client attach via the 'G' packet; read back
  * by pg_stat_activity through the PgBackendStatus shared memory entry.
  */
-char	   *yb_conn_mgr_client_addr;
-int			yb_conn_mgr_client_port;
+char	   *yb_ycm_internal_client_addr;
+int			yb_ycm_internal_client_port;
 char	   *yb_conn_mgr_client_hostname;
 
 static int	GUC_check_errcode_value;
@@ -284,6 +284,8 @@ static const char *const map_old_guc_names[] = {
 	"ssl_ecdh_curve", "ssl_groups",
 	"yb_enable_parallel_append", "enable_parallel_append",
 	"yb_max_saop_merge_streams", "yb_max_merge_scan_streams",
+	"yb_is_client_ysqlconnmgr", YB_YCM_IS_CLIENT_YSQLCONNMGR,
+	"yb_use_tserver_key_auth", YB_YCM_USE_TSERVER_KEY_AUTH,
 	NULL
 };
 
@@ -8825,12 +8827,12 @@ check_yb_conn_mgr_client_addr(char **newval, void **extra, GucSource source)
 	/*
 	 * Parallel workers are background processes and don't have any client_addr.
 	 * Postgres keeps it NULL so does connection manager too.
-	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_addr,
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_addr,
 	 * therefore explicitly check for parallel workers.
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
 	{
-		GUC_check_errmsg("yb_conn_mgr_client_addr can only be set by "
+		GUC_check_errmsg("yb_ycm_internal_client_addr can only be set by "
 						 "YSQL Connection Manager");
 		return false;
 	}
@@ -8917,7 +8919,7 @@ check_yb_conn_mgr_client_hostname(char **newval, void **extra, GucSource source)
 	/*
 	 * Parallel workers are background processes and don't have any client_port.
 	 * Postgres keeps it NULL so does connection manager too.
-	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_port,
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_port,
 	 * therefore explicitly check for parallel workers.
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
@@ -8971,7 +8973,7 @@ check_yb_conn_mgr_client_port(int *newval, void **extra, GucSource source)
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
 	{
-		GUC_check_errmsg("yb_conn_mgr_client_port can only be set by "
+		GUC_check_errmsg("yb_ycm_internal_client_port can only be set by "
 						 "YSQL Connection Manager");
 		return false;
 	}

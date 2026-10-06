@@ -6,13 +6,12 @@ description: |
   If node_names is omitted or empty, all live nodes in the universe are upgraded.
 type: object
 properties:
-  certificate_uuid:
+  certificate_name:
     description: |
-      Optional UUID of the certificate to use for the node agent upgrade.
+      Optional name (label) of the YBA certificate config to use for the node agent upgrade.
       If omitted, existing certificates are used.
     type: string
-    format: uuid
-    example: fce99806-03f0-4b17-9483-297ccfaa368d
+    example: my-custom-ca
   node_names:
     description: |
       Optional list of node names whose node agents should be upgraded.
@@ -25,6 +24,8 @@ properties:
       - yb-15-universe-n2
   certs_only:
     description: |
-      If true, only replace node agent certificates without upgrading the node agent package.
+      If true, replace node agent certificates without upgrading the package when
+      the node agent version already matches YBA. If the version does not match,
+      a full upgrade is performed so RPC stays compatible.
     type: boolean
     default: false

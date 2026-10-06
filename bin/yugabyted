@@ -3768,7 +3768,11 @@ class ControlScript(object):
                 p.kill()
 
             for p in self.processes.values():
-                p.wait_until_stop()
+                # Wait through the Popen handle rather than ProcessManager.wait_until_stop():
+                # the killed child stays visible to `ps` as a zombie until it is reaped, so
+                # wait_until_stop() would spin until its timeout.
+                if p.process:
+                    p.process.wait()
 
             self.script.delete_pidfile()
 
@@ -10763,9 +10767,14 @@ class ProcessManager(object):
     # Records given pid in pidfile.
     # TODO: Redirect YW logs to yugabyte-logs
     def write_pid(self, pid):
-        with open(self.pidfile, "w+") as pid_file:
+        # Publish atomically: truncating the pidfile in place lets a concurrent command
+        # (e.g. `yugabyted status`) read an empty PID, consider the pidfile corrupt and
+        # delete it, which makes the owning command see the live daemon as dead.
+        tmp_pidfile = "{}.{}.tmp".format(self.pidfile, os.getpid())
+        with open(tmp_pidfile, "w") as pid_file:
             pid_file.write(str(pid))
-            Output.log("{} started running with PID {}.".format(self.name, pid))
+        os.rename(tmp_pidfile, self.pidfile)
+        Output.log("{} started running with PID {}.".format(self.name, pid))
 
     # Returns pid of this process if it's running.
     def get_pid(self):

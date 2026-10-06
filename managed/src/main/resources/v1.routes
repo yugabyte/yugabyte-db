@@ -682,7 +682,7 @@ PUT /customers/:cUUID/pa_collector/:paUUID                                     c
 DELETE /customers/:cUUID/pa_collector/:paUUID                                  com.yugabyte.yw.controllers.PACollectorController.deletePACollector(cUUID: java.util.UUID, paUUID: java.util.UUID, force: java.lang.Boolean ?= false, request: Request)
 POST /customers/:cUUID/pa_collector/:paUUID/universes/page                      com.yugabyte.yw.controllers.PACollectorController.pageRegisteredUniverses(cUUID: java.util.UUID, paUUID: java.util.UUID, request: Request)
 GET /customers/:cUUID/universes/:uUUID/pa_collector                            com.yugabyte.yw.controllers.PACollectorController.checkRegistered(cUUID: java.util.UUID, uUUID: java.util.UUID)
-PUT /customers/:cUUID/universes/:uUUID/pa_collector/:paUUID                    com.yugabyte.yw.controllers.PACollectorController.registerUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID, paUUID: java.util.UUID, advancedObservability: java.lang.Boolean ?= false, request: Request)
+PUT /customers/:cUUID/universes/:uUUID/pa_collector/:paUUID                    com.yugabyte.yw.controllers.PACollectorController.registerUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID, paUUID: java.util.UUID, advancedObservability: java.lang.Boolean ?= false, mode: java.lang.String ?= null, paEndpointUUID: java.util.UUID ?= null, request: Request)
 DELETE /customers/:cUUID/universes/:uUUID/pa_collector                        com.yugabyte.yw.controllers.PACollectorController.unregisterUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
 
 # PA Proxy - reverse proxy for PA UI XHRs. Universe-scoped routes come first so

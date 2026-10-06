@@ -55,6 +55,12 @@ Run `git status`. If there are uncommitted changes:
 
 If the branch already has at least one commit ahead of the base and the working copy is clean, skip to Step 2.
 
+### Step 1.5: PG code style pass (only when src/postgres files changed)
+
+If the branch changes anything under `src/postgres`, load the `pg-code-style-guide` skill and check the diff against it (yb prefixes, YB marker blocks, upstream lines untouched, regress test rules). Fix violations now -- this is the last point where cleanup is free; after publishing they come back as review comments.
+
+Commit the resulting fixes -- amend Step 1's commit or add a new one -- before Step 5; the script refuses to run against a dirty tree.
+
 ### Step 2: Base branch
 
 The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` always rebases and pushes against `master`. Backports are not opened with this skill — use `/backport-commit` instead.
@@ -102,7 +108,7 @@ Examples:
 
 **Pass only the `<Component>: <Title>` part to `create-pr.sh -t`** — the script prepends `[<issue>] ` from `-i` automatically. The script validates both inputs and rejects invalid ones with `exit 1`:
 
-- `-i`: must be a GH issue (`#NNNN` or bare `NNNN`) or a JIRA key (`PROJECT-NNN`, where `PROJECT` is uppercase letters). A **comma-separated list** is also accepted (e.g. `31151, #31152, PLAT-333`) — the script joins valid tokens with `, ` and renders them as `[#a, #b, PLAT-c] <Component>: <Title>`. Anything else is rejected.
+- `-i`: must be a GH issue (`#NNNN` or bare `NNNN`) or a JIRA key (`PROJECT-NNN`, where `PROJECT` is uppercase letters only — no digits). A **comma-separated list** is also accepted for a change that closes several issues (e.g. `31151,#31152`) — the script joins the tokens with `,` and renders them as `[#a,#b] <Component>: <Title>`. The list must be **all GH or all JIRA**; mixing them, or putting a space after the comma, is rejected by `.github/workflows/pr-title.yml` (which gates every PR that touches code — it carries `paths-ignore` for `README.md` and `docs/**`). Anything else is rejected by the script.
 - `-t`: must match `^[A-Za-z][A-Za-z0-9]+:[[:space:]].+` — i.e. a Component prefix (letter-led, alphanumeric, ≥2 chars), then `: `, then a non-empty description. Known components: `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `ClaudeCode`, `Build`.
 
 If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
@@ -144,7 +150,7 @@ Say **why**, always — a reviewer who has to reverse-engineer the motivation is
 The script rebases on `<upstream>/master`, runs `lint.sh --rev <upstream>/master` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), runs `gh pr create`, and adds reviewers via the REST `requested_reviewers` endpoint (which correctly routes user logins to `reviewers[]` and team slugs to `team_reviewers[]`). It auto-detects the upstream and fork remotes.
 
 Inputs:
-- **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152, PLAT-333`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `, ` so the title renders as `[#31151, #31152, PLAT-333] <Component>: <Title>`.
+- **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `,` so the title renders as `[#31151,#31152] <Component>: <Title>`. The list must be all GH or all JIRA — see Step 4.
 - **`-t`**: title body **without** the `[<issue>] ` prefix but **with** the `Component: ` prefix (e.g. `DocDB: Fix flake`).
 - **`-d` (required)**: path to a markdown file with the PR description (the "what / why" prose derived from branch commits). The script makes this the `## Summary` section.
 - **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.

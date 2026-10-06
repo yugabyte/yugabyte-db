@@ -55,8 +55,8 @@ import { useYBToast } from '@app/redesign/features-v2/universe/create-universe/h
 const { Box, styled, Typography } = mui;
 
 const StyledOuterPanel = styled('div')(({ theme }) => ({
-  width: '718px',
-  maxWidth: '718px',
+  width: '720px',
+  maxWidth: '720px',
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[200]}`,
   overflow: 'hidden',
@@ -94,8 +94,9 @@ export function getPrimaryMapPins(
 ): MapPin[] {
   if (!universeData) return [];
   const primary = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
-  const regionList = (primary?.placement_spec?.cloud_list?.[0] as { region_list?: { uuid?: string; name?: string }[] })
-    ?.region_list;
+  const regionList = (
+    primary?.placement_spec?.cloud_list?.[0] as { region_list?: { uuid?: string; name?: string }[] }
+  )?.region_list;
   if (!regionList?.length) return [];
   const byUuid = new Map(providerRegions.map((r) => [r.uuid, r]));
   const out: MapPin[] = [];
@@ -121,10 +122,14 @@ function RRPlacementMap({
   providerRegions: Region[];
 }) {
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
-  const watchRegions = useWatch({ name: 'regions' }) as RRRegionsAndAZFormValues['regions'] | undefined;
+  const watchRegions = useWatch({ name: 'regions' }) as
+    | RRRegionsAndAZFormValues['regions']
+    | undefined;
   const primaryIcon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const rrIcon = useGetMapIcons({ type: MarkerType.READ_REPLICA });
-  const readReplicaCluster = universeData ? getClusterByType(universeData, ClusterSpecClusterType.ASYNC) : undefined;
+  const readReplicaCluster = universeData
+    ? getClusterByType(universeData, ClusterSpecClusterType.ASYNC)
+    : undefined;
   const primaryPins = useMemo(
     () => getPrimaryMapPins(universeData, providerRegions),
     [universeData, providerRegions]
@@ -164,7 +169,9 @@ function RRPlacementMap({
   }, [primaryPins, draftRrPins]);
 
   return (
-    <Box sx={{ width: '360px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <Box
+      sx={{ width: '360px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}
+    >
       <YBMaps
         mapHeight={362}
         dataTestId="yb-maps-rr-regions-az"
@@ -175,28 +182,41 @@ function RRPlacementMap({
           zoom: 2,
           center: [0, 0]
         }}
+        showBoundaries={false}
       >
-        {(primaryPins.map((p) => (
-          <YBMapMarker
-            key={p.key}
-            position={[p.lat, p.lng]}
-            type={MarkerType.REGION_SELECTED}
-            tooltip={<>{p.name}</>}
-          />
-        )) as unknown) as any}
-        {(draftRrPins.map((p) => (
-          <YBMapMarker
-            key={p.key}
-            position={[p.lat, p.lng]}
-            type={MarkerType.READ_REPLICA}
-            tooltip={<>{p.name}</>}
-          />
-        )) as unknown) as any}
+        {
+          primaryPins.map((p) => (
+            <YBMapMarker
+              key={p.key}
+              position={[p.lat, p.lng]}
+              type={MarkerType.REGION_SELECTED}
+              tooltip={<>{p.name}</>}
+            />
+          )) as unknown as any
+        }
+        {
+          draftRrPins.map((p) => (
+            <YBMapMarker
+              key={p.key}
+              position={[p.lat, p.lng]}
+              type={MarkerType.READ_REPLICA}
+              tooltip={<>{p.name}</>}
+            />
+          )) as unknown as any
+        }
         <MapLegend
           mapLegendItems={
             [
-              <MapLegendItem key="primary-legend" icon={<>{primaryIcon.normal}</>} label={t('legendPrimaryCluster')} />,
-              <MapLegendItem key="rr-legend" icon={<>{rrIcon.normal}</>} label={t('legendReadReplica')} />
+              <MapLegendItem
+                key="primary-legend"
+                icon={<>{primaryIcon.normal}</>}
+                label={t('legendPrimaryCluster')}
+              />,
+              <MapLegendItem
+                key="rr-legend"
+                icon={<>{rrIcon.normal}</>}
+                label={t('legendReadReplica')}
+              />
             ] as any
           }
         />
@@ -207,7 +227,7 @@ function RRPlacementMap({
 }
 
 export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
-  const [rrContext, rrMethods] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+  const [rrContext, rrMethods] = useContext(AddRRContext) as unknown as AddRRContextMethods;
   const {
     regionsAndAZ,
     regionsAndAZBaseline,
@@ -238,8 +258,7 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     : undefined;
   const providerUUID = primaryCluster?.provider_spec?.provider ?? '';
   const useDedicatedNodes = Boolean(primaryCluster?.node_spec?.dedicated_nodes);
-  const isK8s =
-    primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
+  const isK8s = primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
 
   const { data: regionsList = [], isLoading: isRegionsLoading } = useQuery(
     [QUERY_KEY.getRegionsList, providerUUID],
@@ -252,10 +271,7 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     [regionsAndAZ]
   );
 
-  const resolver = useMemo(
-    () => yupResolver(RRRegionsAndAZValidationSchema(t)),
-    [t]
-  );
+  const resolver = useMemo(() => yupResolver(RRRegionsAndAZValidationSchema(t)), [t]);
 
   const methods = useForm<RRRegionsAndAZFormValues>({
     defaultValues,
@@ -271,7 +287,11 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     [watchedRegions]
   );
 
-  const { fields: regionFields, append: appendRegion, remove: removeRegion } = useFieldArray({
+  const {
+    fields: regionFields,
+    append: appendRegion,
+    remove: removeRegion
+  } = useFieldArray({
     control,
     name: 'regions'
   });
@@ -385,9 +405,9 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                     onRemoveRegion={
                       regionFields.length > 1
                         ? () => {
-                          spliceRegionsAndAZBaseline(index);
-                          removeRegion(index);
-                        }
+                            spliceRegionsAndAZBaseline(index);
+                            removeRegion(index);
+                          }
                         : undefined
                     }
                   />
@@ -443,9 +463,7 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                   }
                   onClick={() =>
                     appendRegion(
-                      getEmptyRRPlacementRegion(
-                        isEditPlacementOnly ? { isNew: true } : undefined
-                      )
+                      getEmptyRRPlacementRegion(isEditPlacementOnly ? { isNew: true } : undefined)
                     )
                   }
                   dataTestId="rr-add-region"

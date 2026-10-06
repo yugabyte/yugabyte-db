@@ -315,6 +315,7 @@ YbcPgFunction
 YbcPgGFlagsAccessor
 YbcPgGlobalTabletsDescriptor
 YbcPgGlobalViewRead
+YbcPgGvScanResult
 YbcPgInitPostgresInfo
 YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
@@ -329,7 +330,6 @@ YbcPgOid
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction
-YbcPgResultPB
 YbcPgRowMessage
 YbcPgRowMessageAction
 YbcPgServerMetricsInfo
@@ -337,6 +337,7 @@ YbcPgSession
 YbcPgSessionState
 YbcPgSessionTxnInfo
 YbcPgSharedDataPlaceholder
+YbcPgSkipIntentsOptimizationInfo
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns

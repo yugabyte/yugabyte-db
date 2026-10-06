@@ -226,6 +226,9 @@ public class CustomerTaskHandler {
       taskData.abortable = taskProgress.get("abortable").asBoolean();
       taskData.retryable = taskProgress.get("retryable").asBoolean();
       taskData.canRollback = taskProgress.get("canRollback").asBoolean();
+      if (taskProgress.hasNonNull("originalTaskUUID")) {
+        taskData.originalTaskUUID = UUID.fromString(taskProgress.get("originalTaskUUID").asText());
+      }
       taskData.id = task.getTaskUUID();
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();

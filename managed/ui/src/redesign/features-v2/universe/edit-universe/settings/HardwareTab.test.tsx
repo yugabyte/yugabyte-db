@@ -17,7 +17,8 @@ import {
   makeNonGeoUniverseWithReadReplicaPlacementSpec,
   makeGeoK8sUniverse,
   makeK8sUniverse,
-  makeProviderRegions
+  makeProviderRegions,
+  FIXTURE_ASYNC_CLUSTER_UUID
 } from '../__fixtures__/editUniverseFixtures';
 
 const runtimeConfigState = vi.hoisted(() => ({
@@ -112,6 +113,38 @@ describe('HardwareTab', () => {
     } as Universe;
     renderHardwareTab(withDedicated);
     expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(3);
+  });
+
+  it('renders non-dedicated view when only read replica has dedicated nodes', () => {
+    const u = makeNonGeoUniverseWithReadReplicaPlacementSpec();
+    const readReplica = u.spec!.clusters[1];
+    const withDedicatedReadReplica: Universe = {
+      ...u,
+      spec: {
+        ...u.spec!,
+        clusters: [
+          u.spec!.clusters[0],
+          {
+            ...readReplica,
+            dedicated_nodes: true,
+            node_spec: { ...readReplica.node_spec, dedicated_nodes: true }
+          }
+        ]
+      },
+      info: {
+        ...u.info!,
+        node_details_set: [
+          {
+            node_uuid: 'rr1',
+            az_uuid: 'az-uuid-1',
+            dedicated_to: NodeDetailsDedicatedTo.TSERVER,
+            placement_uuid: FIXTURE_ASYNC_CLUSTER_UUID
+          }
+        ]
+      }
+    } as Universe;
+    renderHardwareTab(withDedicatedReadReplica);
+    expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(2);
   });
 
   it('renders K8s custom-resource universe as dedicated T-Server and Master cards', () => {

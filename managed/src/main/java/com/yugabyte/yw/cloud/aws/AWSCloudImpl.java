@@ -15,6 +15,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
@@ -25,6 +27,8 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -128,10 +132,12 @@ import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 public class AWSCloudImpl implements CloudAPI {
 
   EncryptionAtRestManager keyManager;
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
-  public AWSCloudImpl(EncryptionAtRestManager keyManager) {
+  public AWSCloudImpl(EncryptionAtRestManager keyManager, RuntimeConfGetter runtimeConfGetter) {
     this.keyManager = keyManager;
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
@@ -1234,14 +1240,17 @@ public class AWSCloudImpl implements CloudAPI {
                         .build()));
       }
 
-      // Create new reservation
+      // Create new reservation with a limited end date so AWS auto-releases it after the TTL.
+      Duration ttl = runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsCapacityReservationTtl);
+      Instant endDate = Instant.now().plus(ttl);
       CreateCapacityReservationRequest request =
           CreateCapacityReservationRequest.builder()
               .instanceType(instanceType)
               .instancePlatform("Linux/UNIX")
               .availabilityZone(availabilityZone)
               .instanceCount(count)
-              .endDateType("unlimited")
+              .endDateType("limited")
+              .endDate(endDate)
               .instanceMatchCriteria("targeted")
               .tagSpecifications(
                   TagSpecification.builder()
@@ -1251,23 +1260,26 @@ public class AWSCloudImpl implements CloudAPI {
               .build();
 
       LOG.debug(
-          "Creating capacity reservation: {} in availability zone: {} for {} {} instances",
+          "Creating capacity reservation: {} in availability zone: {} for {} {} instances"
+              + " with TTL {}",
           reservationName,
           availabilityZone,
           count,
-          instanceType);
+          instanceType,
+          ttl);
 
       CreateCapacityReservationResponse result = ec2Client.createCapacityReservation(request);
       String capacityReservationId = result.capacityReservation().capacityReservationId();
 
       LOG.info(
           "Successfully created capacity reservation: {} (ID: {}) in availability zone: {} with {}"
-              + " {} instances",
+              + " {} instances and TTL of {}",
           reservationName,
           capacityReservationId,
           availabilityZone,
           count,
-          instanceType);
+          instanceType,
+          ttl);
 
       return capacityReservationId;
 

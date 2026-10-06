@@ -559,7 +559,9 @@ Status PgTxnManager::FinishPlainTransaction(
   }
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
-  if (is_read_only && !IsTableLockingEnabledForCurrentTxn()) {
+  if (is_read_only &&
+      (!IsTableLockingEnabledForCurrentTxn() ||
+       client_->TryReleaseAllObjectLocksInSharedMemory())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
     return Status::OK();

@@ -211,5 +211,3 @@ PQdefaultAuthDataHook     208
 PQfullProtocolVersion     209
 appendPQExpBufferVA       210
 PQgetThreadLock           211
-# YugabyteDB-specific export. High ordinal to avoid conflicts with future upstream PG additions.
-YbPQsaveMessageField      10001
