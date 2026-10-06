@@ -16,6 +16,8 @@
 // tserver. Most tests drive an in-process mini cluster; the TLS data path needs an
 // ExternalMiniCluster, whose tservers get --certs_dir and can therefore serve SQL under encryption.
 
+#include <sys/wait.h>
+
 #include <algorithm>
 #include <functional>
 #include <tuple>
@@ -45,6 +47,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/errno.h"
 #include "yb/util/file_system.h"
 #include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
@@ -2539,6 +2542,22 @@ TEST_F(PgThinClientExternalTlsTest, UpsertAndReadOverTls) {
 class PgThinClientExternalFailoverTest : public PgThinClientExternalTest {
  protected:
   PgThinClientExternalFailoverTest() : PgThinClientExternalTest(/* encrypted= */ false) {}
+
+  // SIGSTOP lands asynchronously, so a tserver just paused may still answer the next RPC. Waits
+  // until all its threads have stopped.
+  static Status Freeze(ExternalDaemon* daemon) {
+    RETURN_NOT_OK(daemon->Pause());
+    return WaitFor(
+        [daemon]() -> Result<bool> {
+          siginfo_t info = {};
+          // WNOWAIT leaves the stop unreaped.
+          if (waitid(P_PID, daemon->pid(), &info, WSTOPPED | WNOHANG | WNOWAIT) != 0) {
+            return STATUS_FROM_ERRNO("waitid", errno);
+          }
+          return info.si_pid != 0;
+        },
+        10s * kTimeMultiplier, "tserver stops");
+  }
 };
 
 // A frozen tserver, like a partitioned pod, accepts connections but never answers, so every RPC to
@@ -2564,8 +2583,8 @@ TEST_F(PgThinClientExternalFailoverTest, WritesMoveOffAFrozenTserver) {
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   }
 
-  ASSERT_OK(frozen_ts->Pause());
   ScopedResumeExternalDaemon resume_frozen_ts(frozen_ts);
+  ASSERT_OK(Freeze(frozen_ts));
   const auto frozen_at = CoarseMonoClock::Now();
 
   ASSERT_OK(UpsertKeysWithRetries(
@@ -2607,8 +2626,8 @@ TEST_F(PgThinClientExternalFailoverTest, PagedScanAcrossAFrozenTserver) {
   ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
   ASSERT_FALSE(first_page.paging_state.empty());
 
-  ASSERT_OK(frozen_ts->Pause());
   ScopedResumeExternalDaemon resume_frozen_ts(frozen_ts);
+  ASSERT_OK(Freeze(frozen_ts));
 
   {
     auto out = ReadKeys(
@@ -2655,8 +2674,8 @@ TEST_F(PgThinClientExternalFailoverTest, PageInFlightWhenItsTserverDies) {
 
   // Frozen, the tserver holds the page unanswered until it is killed. The guard resumes it if the
   // test fails first, so teardown can stop it.
-  ASSERT_OK(dying_ts->Pause());
   ScopedResumeExternalDaemon resume_dying_ts(dying_ts);
+  ASSERT_OK(Freeze(dying_ts));
   auto in_flight = StartReadKeys(
       client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
   ASSERT_EQ(in_flight.wait_for(1s), std::future_status::timeout);
