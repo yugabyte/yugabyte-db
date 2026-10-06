@@ -881,6 +881,7 @@ static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
 static bool yb_conn_mgr_modifying_defaults = false;
+static bool yb_conn_mgr_selective_deallocate;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -4032,7 +4033,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_conn_mgr_selective_deallocate", PGC_SIGHUP, CUSTOM_OPTIONS,
-			gettext_noop("Enables connection-manager-aware DEALLOCATE behavior."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
