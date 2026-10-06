@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <string>
 
 #include "yb/rocksdb/env.h"
@@ -28,14 +29,27 @@
 
 YB_STRONGLY_TYPED_BOOL(CopyFileSync);
 
+namespace yb {
+class PriorityThreadPoolSuspender;
+}
+
 namespace rocksdb {
 
 // Copy a file up to a specified size. If passed size is 0 - copy the whole file.
 // Will return "file too small" error status if `size` is larger than size of the source file.
 // If sync is true, the destination file will be synced to disk before returning.
+//
+// `env_options` supplies the rate limiter, if any, that the write side of the copy should be
+// throttled by. `suspender` makes the copy preemptible when it runs as a priority thread pool
+// task: the writer checks it every time it flushes its buffer, so a higher priority task queued
+// meanwhile takes the worker over instead of waiting for the whole copy to finish.
+// `shutting_down`, if given, is polled once per buffer: as soon as it is set the copy stops and
+// returns ShutdownInProgress, leaving a partial destination file the caller must remove.
 Status CopyFile(
     Env* env, const std::string& source, const std::string& destination, uint64_t size = 0,
-    CopyFileSync sync = CopyFileSync::kFalse);
+    CopyFileSync sync = CopyFileSync::kFalse, const EnvOptions& env_options = EnvOptions(),
+    yb::PriorityThreadPoolSuspender* suspender = nullptr,
+    const std::atomic<bool>* shutting_down = nullptr);
 
 // Recursively delete the specified directory.
 Status DeleteRecursively(Env* env, const std::string& dirname);

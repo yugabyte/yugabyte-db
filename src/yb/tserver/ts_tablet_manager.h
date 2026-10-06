@@ -408,11 +408,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
   //
   // This is the primitive that AlterTabletTier will call to resolve which path_id to pass to
-  // light_weight_compact when migrating SSTs to a different tier.
+  // ScheduleDBPathMove when migrating SSTs to a different tier.
   //
   // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
   // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
-  // place data on the returned path_id (e.g. after a successful light_weight_compact) are
+  // place data on the returned path_id (e.g. after a successful ScheduleDBPathMove) are
   // responsible for calling RegisterDataAndWalDir themselves to commit the assignment, so later
   // calls to this function and to GetAndRegisterDataAndWalDir see accurate load counts.
   //
