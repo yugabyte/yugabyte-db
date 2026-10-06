@@ -68,7 +68,7 @@ FOREIGN KEY and REFERENCES specifies that the set of columns can only contain va
 
 A foreign key can reference a partitioned table, and a partitioned table can declare a foreign key.
 
-A foreign key can reference a partitioned table only through a primary key or UNIQUE constraint that includes every column of that table’s partition key. The foreign key has to list those columns as well.
+A foreign key can reference a partitioned table only through a primary key or UNIQUE constraint that includes every column of that table's partition key. The foreign key has to list those columns as well.
 
 For an example of how to create and manage partitioned tables in YSQL, see [Table partitioning](/stable/explore/ysql-language-features/advanced-features/partitions/).
 
@@ -169,7 +169,7 @@ Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tab
 
 For hash-sharded tables, you can use the SPLIT INTO clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
 
-Presplitting tablets, using SPLIT INTO, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+Presplitting tablets using SPLIT INTO distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 

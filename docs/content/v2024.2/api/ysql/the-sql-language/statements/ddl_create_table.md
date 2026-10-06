@@ -68,7 +68,7 @@ Therefore, if you don't specify a primary key at table-creation time, YugabyteDB
 
 A foreign key that references a partitioned table is not supported. A partitioned table can declare a foreign key.
 
-For information on how to create and manage partitioned tables, see [Table partitioning](/stable/explore/ysql-language-features/advanced-features/partitions/).
+For an example of how to create and manage partitioned tables in YSQL, see [Table partitioning](/stable/explore/ysql-language-features/advanced-features/partitions/).
 
 ### Unique
 
@@ -139,7 +139,7 @@ Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tab
 
 For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
 
-Presplitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+Presplitting tablets using `SPLIT INTO` distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
