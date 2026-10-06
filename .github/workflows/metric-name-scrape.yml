@@ -8,11 +8,13 @@ name: metric-name-scrape
 # (e.g. service_request_bytes_yb_tserver_TabletServerService_{Write,Read,...}).
 #
 # Nightly and advisory: it tests the released image, not the PR. It fails only on families
-# that are not in build-support/metric_name_scrape_baseline.json.
+# that are not in build-support/metric_name_scrape_baseline.json, or when the scrape itself
+# fails (server never came up, or an endpoint returned nothing).
 #
 # First run / refresh: trigger manually with update_baseline=true, download the
 # `metric-name-scrape-baseline` artifact, and commit it as
-# build-support/metric_name_scrape_baseline.json.
+# build-support/metric_name_scrape_baseline.json. Until that file exists, scheduled runs
+# report the findings as a warning and pass.
 
 on:
   schedule:
@@ -44,13 +46,19 @@ jobs:
           docker run -d --name yb -p 7000:7000 -p 9000:9000 -p 12000:12000 -p 13000:13000 \
             "${{ inputs.image || 'yugabytedb/yugabyte:latest' }}" \
             bin/yugabyted start --background=false
+          up=0
           for i in $(seq 1 90); do
             if curl -fsS localhost:9000/prometheus-metrics >/dev/null 2>&1 &&
                curl -fsS localhost:13000/prometheus-metrics >/dev/null 2>&1; then
-              echo "up after ${i}x5s"; break
+              echo "up after ${i}x5s"; up=1; break
             fi
             sleep 5
           done
+          if [[ "${up}" != 1 ]]; then
+            echo "::error::YugabyteDB did not serve /prometheus-metrics within 450s"
+            docker logs yb | tail -50
+            exit 1
+          fi
           # Let per-method/per-pool metrics materialise.
           sleep 30
 
@@ -59,16 +67,28 @@ jobs:
           set -euo pipefail
           : > all.prom
           for port in 7000 9000 12000 13000; do
-            curl -fsS "localhost:${port}/prometheus-metrics" >> all.prom || \
-              echo "::warning::no metrics on port ${port}"
+            curl -fsS "localhost:${port}/prometheus-metrics" > "port-${port}.prom"
+            if [[ ! -s "port-${port}.prom" ]]; then
+              echo "::error::no metrics on port ${port}"
+              exit 1
+            fi
+            cat "port-${port}.prom" >> all.prom
           done
           wc -l all.prom
 
       - name: Check (ratchet against scrape baseline)
         if: ${{ !inputs.update_baseline }}
         run: |
+          set -euo pipefail
+          baseline=build-support/metric_name_scrape_baseline.json
+          if [[ ! -f "${baseline}" ]]; then
+            echo "::warning::${baseline} not committed yet; reporting only." \
+                 "Seed it with a manual run (update_baseline=true)."
+            python3 build-support/metric_name_lint.py --scrape all.prom --no-baseline || true
+            exit 0
+          fi
           python3 build-support/metric_name_lint.py --scrape all.prom \
-            --baseline build-support/metric_name_scrape_baseline.json --github
+            --baseline "${baseline}" --github
 
       - name: Write new scrape baseline
         if: ${{ inputs.update_baseline }}

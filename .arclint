@@ -193,7 +193,7 @@
         "(^src/yb/util/metrics[.](h|cc)$)"
       ],
       "script-and-regex.script":
-        "python3 build-support/metric_name_lint.py --format arc --files",
+        "python3 build-support/metric_name_lint.py --format arc --arc-severity warning --files",
       "script-and-regex.regex":
         "/^[^:]+:(?P<line>\\d+):(?P<severity>error|warning):(?P<name>[A-Z_]+):(?P<message>.*)$/m"
     },

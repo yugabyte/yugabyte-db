@@ -48,8 +48,11 @@ GOOD: service_request_bytes{server_type="yb_tserver", service_type="TabletServer
 ## How to do it right
 
 **C++ (yugabyte-db).** Labels come from `MetricEntity` attributes. Define an entity type for the
-dimension and instantiate the same prototype on one entity per value. Precedents:
-`METRIC_ENTITY_cgroup` (`tserver_cgroup_manager.cc`) and table/tablet entities.
+dimension and instantiate the same prototype on one entity per value. A new entity type also
+needs a branch in `MetricEntity::ReconstructPrometheusAttributesUnlocked`
+(`metric_entity.cc`) that exports its attributes; without one its metrics never reach
+`/prometheus-metrics`. Precedents: `METRIC_ENTITY_cgroup` (`tserver_cgroup_manager.cc`) and
+table/tablet entities.
 
 ```cpp
 METRIC_DEFINE_entity(thread_pool);   // + an allowlist branch in MetricEntity's Prometheus attributes
@@ -86,20 +89,30 @@ GOOD: Gauge("ybm_job_duration_seconds", "...", labelnames=["job"])
 
 ## The CI gate (`metric-name-lint`)
 
-- **New violations fail the PR.** Existing debt is recorded in the baseline file and only
-  reported.
+- **New violations are reported on every PR that touches covered paths.** Existing debt is
+  recorded in the baseline file and only reported. While the gate is advisory the check is not
+  required.
 - **The baseline can only shrink.**
-  - Fixed an old one? CI fails until you run `metric_name_lint.py --update-baseline` and commit
-    the smaller baseline.
-  - A PR that *adds* baseline entries fails unless it carries the `metric-naming-exception`
-    label, which needs observability-owner approval (CODEOWNERS on the baseline file).
+  - Fixed an old one? CI fails until you run `metric_name_lint.py --update-baseline` (a full
+    scan; it refuses `--files`) and commit the smaller baseline.
+  - Name families are tracked per member, so adding a member to a known family is a new
+    violation, not existing debt.
+  - A PR that *adds* baseline entries, or changes the gate settings in
+    `.metric-name-lint.json`, fails unless it carries the `metric-naming-exception` label.
+    Today anyone who can label PRs can apply it, so reviewers must check that the PR explains
+    the exception. Restricting it (a CODEOWNERS entry for the baseline file) is a follow-up.
 - **One-off exception:** add
   `// metric-name-lint: allow(<why, and the migration issue>)` on the line or the line above.
-  A reason is required.
-- **Queries that regex-match `__name__`** are reported as warnings, not failures.
+  A non-blank reason is required.
+- **Queries that regex-match `__name__`** are reported as warnings. They never fail the check
+  and never count as baseline growth.
+- **Per-file lint.** `build-support/lint.py` (the `pr-lint` job) runs the same checker on
+  changed files and reports findings as warnings while the gate is advisory.
 - **Run it locally** with `python3 <path>/metric_name_lint.py`, or add `--files <changed files>`
   to check only those files.
 
-The linter checks source statically. yugabyte-db also runs a nightly check of a live
+The linter checks source statically: it catches names built inline, or assigned from a
+formatted/concatenated string to a local variable shortly before use. Names built further away
+(helpers, config) are left to review. yugabyte-db also runs a nightly check of a live
 `/prometheus-metrics` scrape (`--scrape`), which catches names assembled in ways the static
 rules can't see.

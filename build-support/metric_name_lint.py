@@ -63,7 +63,7 @@ DEFAULT_CONFIG = {
     "guide": "METRIC_NAMING.md",
 }
 
-SUPPRESS_RX = re.compile(r"metric-name-lint:\s*allow\(\s*([^)]+?)\s*\)")
+SUPPRESS_RX = re.compile(r"metric-name-lint:\s*allow\(\s*([^)\s][^)]*?)\s*\)")
 
 RULES = {
     "DYNAMIC_NAME":
@@ -290,13 +290,15 @@ def family_findings(defs, cfg):
         vals = [m for m in members if _value_like(m[0][len(prefix):])]
         if len(vals) < n_min:
             continue
+        sample = ", ".join(sorted(v[0][len(prefix):] for v in vals)[:6])
+        family = "%d metrics `%s{%s%s}`" % (len(vals), prefix, sample,
+                                            ", ..." if len(vals) > 6 else "")
+        # One finding per member, keyed by member name: adding a member to a baselined family
+        # is a new finding, and removing one shows up as a stale (shrinking) entry.
         for m in vals:
             claimed.add(m[0])
-        first = min(vals, key=lambda m: (m[1], m[2]))
-        sample = ", ".join(sorted(v[0][len(prefix):] for v in vals)[:6])
-        out.append(Finding("NAME_FAMILY", first[1], first[2], "family:" + prefix,
-                           "%d metrics `%s{%s%s}`" % (
-                               len(vals), prefix, sample, ", ..." if len(vals) > 6 else "")))
+            out.append(Finding("NAME_FAMILY", m[1], m[2], "family:%s|%s" % (prefix, m[0]),
+                               "`%s`, one of %s" % (m[0], family)))
     # EMBEDDED_NAMESPACE: handler_latency_yb_cqlserver_... style static names.
     for name, entity, path, line in defs:
         if name in claimed:
@@ -324,6 +326,34 @@ def _dynamic_expr(expr):
                           r"StrCat|Format\(", e)) or bool(re.fullmatch(r"[a-z]\w*(\.\w+)*", e))
 
 
+def _assigned_dynamic(raw, pos, ident):
+    """For a bare identifier used as a metric name, look back for `ident = <dynamic expr>`
+    (Java `String n = "a_" + x;`, Go `n := fmt.Sprintf(...)`, Python `n = f"..."`). Returns the
+    assigned expression when it builds the name at runtime, else None. Parameters such as the
+    `name` in a `buildCounter(String name, ...)` wrapper have no assignment and are not
+    flagged."""
+    ident = ident.strip()
+    if not re.fullmatch(r"[A-Za-z_]\w*", ident):
+        return None
+    window = raw[max(0, pos - 2000):pos]
+    ms = list(re.finditer(r"\b%s\s*(?::=|=)(?!=)\s*([^\n;]+)" % re.escape(ident), window))
+    if not ms:
+        return None
+    rhs = ms[-1].group(1).strip()
+    if re.fullmatch(r"[A-Za-z_]\w*", rhs) or not _dynamic_expr(rhs):
+        return None
+    return rhs
+
+
+def _name_expr_dynamic(raw, pos, expr):
+    """Detail string if `expr` (a metric-name argument) is built at runtime, else None."""
+    e = expr.strip()
+    if re.fullmatch(r"\w+", e):
+        rhs = _assigned_dynamic(raw, pos, e)
+        return "`%s` = `%s`" % (e, _short(rhs, 50)) if rhs else None
+    return "`%s`" % _short(e) if _dynamic_expr(e) else None
+
+
 def scan_go(path, text, raw, cfg):
     out = []
     for m in GO_OPTS.finditer(text):
@@ -331,11 +361,11 @@ def scan_go(path, text, raw, cfg):
         end = body.find("}")
         body = body[:end if end >= 0 else 800]
         nm = re.search(r"\bName:\s*([^,\n]+)", body)
-        if nm and _dynamic_expr(nm.group(1)) and not re.fullmatch(r"\w+", nm.group(1).strip()):
+        dyn = nm and _name_expr_dynamic(raw, m.start(), nm.group(1))
+        if dyn:
             out.append(Finding("DYNAMIC_NAME", path, line_of(text, m.start()),
-                               "goopts:" + nm.group(1), "Opts.Name `%s` (use Namespace/"
-                               "Subsystem + constant Name, labels for values)"
-                               % _short(nm.group(1))))
+                               "goopts:" + nm.group(1), "Opts.Name %s (use Namespace/"
+                               "Subsystem + constant Name, labels for values)" % dyn))
     for m in GO_DESC.finditer(text):
         args, _ = split_args(raw, m.end())
         if args and _dynamic_expr(args[0]) and not args[0].startswith("prometheus.BuildFQName"):
@@ -356,6 +386,7 @@ def scan_go(path, text, raw, cfg):
 JAVA_BUILDER = re.compile(r"\b(?:Counter|Gauge|Summary|Histogram|Info|StateSet)\s*\.\s*"
                           r"(?:builder|build)\s*\(")
 JAVA_WRAPPER = re.compile(r"\bbuild(?:Counter|Gauge|Summary|Histogram)\s*\(")
+JAVA_METRICDEF = re.compile(r"\bnew\s+MetricDefinition\s*\(")
 JAVA_MICROMETER = re.compile(r"\.(?:counter|gauge|timer|summary)\s*\(\s*(\"[^\"]*\"\s*\+|"
                              r"String\.format\s*\()")
 
@@ -378,16 +409,25 @@ def scan_java(path, text, raw, cfg):
             if a2:
                 cands.append(a2[0])
         for c in cands:
-            if _dynamic_expr(c) and not re.fullmatch(r"\w+", c.strip()):
+            dyn = _name_expr_dynamic(raw, m.start(), c)
+            if dyn:
                 out.append(Finding("DYNAMIC_NAME", path, line_of(text, m.start()),
-                                   "javab:" + c, "metric builder name `%s`" % _short(c)))
+                                   "javab:" + c, "metric builder name %s" % dyn))
     for m in JAVA_WRAPPER.finditer(text):
         args, _ = split_args(raw, m.end())
         if not args or _java_decl(args):
             continue
-        if _dynamic_expr(args[0]) and not re.fullmatch(r"\w+", args[0].strip()):
+        dyn = _name_expr_dynamic(raw, m.start(), args[0])
+        if dyn:
             out.append(Finding("DYNAMIC_NAME", path, line_of(text, m.start()),
-                               "javaw:" + args[0], "metric name `%s`" % _short(args[0])))
+                               "javaw:" + args[0], "metric name %s" % dyn))
+    # yugabyte-cloud style: new MetricDefinition(name, description, tags) handed to Micrometer.
+    for m in JAVA_METRICDEF.finditer(text):
+        args, _ = split_args(raw, m.end())
+        dyn = args and _name_expr_dynamic(raw, m.start(), args[0])
+        if dyn and not re.search(r"\.getName\(\)$", args[0].strip()):
+            out.append(Finding("DYNAMIC_NAME", path, line_of(text, m.start()),
+                               "javad:" + args[0], "MetricDefinition name %s" % dyn))
     for m in (JAVA_MICROMETER.finditer(text) if "io.micrometer" in raw else ()):
         out.append(Finding("DYNAMIC_NAME", path, line_of(text, m.start()),
                            "javam:" + raw[m.start():m.end() + 60].split("\n")[0],
@@ -418,13 +458,19 @@ def scan_py(path, text, raw, cfg):
         if a0 and (re.match(r"\s*f[\"']", a0) or concat):
             out.append(Finding("DYNAMIC_NAME", path, line_of(text, m.start()),
                                "py:" + a0, "prometheus_client name `%s`" % _short(a0)))
+        elif a0 and re.fullmatch(r"\w+", a0.strip()):
+            rhs = _assigned_dynamic(raw, m.start(), a0)
+            if rhs:
+                out.append(Finding("DYNAMIC_NAME", path, line_of(text, m.start()),
+                                   "py:" + a0, "prometheus_client name `%s` = `%s`"
+                                   % (a0.strip(), _short(rhs, 50))))
     return out
 
 
 # --------------------------------------------------------------------------------------------
 # Consumers: PromQL in dashboards, alerts, configs, code
 
-PROMQL_RX = re.compile(r"__name__\s*=~\s*\\*[\"']([^\"'\\]+)")
+PROMQL_RX = re.compile(r"__name__\s*=~\s*\\*[\"']((?:[^\"'\\]|\\[^\"'])+)")
 
 
 def _top_level_alts(rx):
@@ -596,6 +642,59 @@ def write_baseline(path, findings):
         f.write("\n")
 
 
+def _git_show(root, ref, rel):
+    """Contents of ref:rel, or None if the path does not exist at ref. Any other git failure
+    (unknown ref, unfetched base) raises, so it can't be mistaken for 'no baseline yet'."""
+    try:
+        subprocess.check_output(["git", "rev-parse", "--verify", "--quiet", ref + "^{commit}"],
+                                cwd=root, stderr=subprocess.DEVNULL)
+    except (subprocess.CalledProcessError, OSError):
+        raise RuntimeError("cannot resolve git ref %r for the baseline-growth check" % ref)
+    p = subprocess.run(["git", "cat-file", "-e", "%s:%s" % (ref, rel)], cwd=root,
+                       stderr=subprocess.DEVNULL)
+    if p.returncode != 0:
+        return None
+    return subprocess.check_output(["git", "show", "%s:%s" % (ref, rel)], cwd=root, text=True,
+                                   stderr=subprocess.DEVNULL)
+
+
+GATE_KEYS = ("baseline", "include", "exclude", "warn_only_rules", "disabled_rules",
+             "family_min_size", "max_file_bytes")
+
+
+def baseline_growth(root, ref, cfg, baseline, baseline_override):
+    """Entries the change adds to the baseline, relative to `ref`.
+
+    Everything is judged by the *base* branch's config, so a change can't dodge the check by
+    pointing `baseline` at a new file or by loosening include/exclude/rules: any change to the
+    gate settings counts as growth and needs the same approved exception."""
+    old_cfg_raw = _git_show(root, ref, CONFIG_FILE)
+    if old_cfg_raw is None and os.path.exists(os.path.join(root, CONFIG_FILE)):
+        return []                                   # the gate itself is introduced by this change
+    old_cfg = dict(DEFAULT_CONFIG)
+    if old_cfg_raw is not None:
+        try:
+            old_cfg.update(json.loads(old_cfg_raw))
+        except ValueError:
+            raise RuntimeError("%s at %s is not valid JSON" % (CONFIG_FILE, ref))
+    grown = []
+    changed = [k for k in GATE_KEYS if old_cfg.get(k) != cfg.get(k)]
+    if changed:
+        grown.append({"rule": "CONFIG", "path": CONFIG_FILE,
+                      "detail": "gate settings changed: %s" % ", ".join(changed)})
+    rel = baseline_override or old_cfg["baseline"]
+    old_raw = _git_show(root, ref, rel)
+    try:
+        old = json.loads(old_raw) if old_raw is not None else {}
+    except ValueError:
+        raise RuntimeError("baseline %s at %s is not valid JSON" % (rel, ref))
+    old_fps = {e["fingerprint"] for e in old.get("findings", [])}
+    old_warn = set(old_cfg["warn_only_rules"])
+    grown += [e for fp, e in baseline.items()
+              if fp not in old_fps and e.get("rule") not in old_warn]
+    return grown
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--files", nargs="*", help="only scan these files (repo-relative)")
@@ -612,6 +711,9 @@ def main(argv=None):
                          "origin/master); set METRIC_NAME_LINT_ALLOW_GROWTH=1 to override")
     ap.add_argument("--fail-on-stale", action="store_true",
                     help="fail if baseline has fixed entries (forces the baseline to shrink)")
+    ap.add_argument("--arc-severity", choices=["error", "warning"], default="error",
+                    help="severity of blocking findings in --format arc (warning keeps the "
+                         "per-file lint advisory)")
     args = ap.parse_args(argv)
 
     root = os.path.abspath(args.root or repo_root())
@@ -635,30 +737,35 @@ def main(argv=None):
         scope_full = args.files is None
 
     if args.update_baseline:
+        # A partial scan would silently drop every entry outside its scope.
+        if args.files is not None:
+            print("metric-name-lint: --update-baseline needs a full scan; drop --files",
+                  file=sys.stderr)
+            return 2
+        if args.scrape and not args.baseline:
+            print("metric-name-lint: --update-baseline with --scrape needs an explicit "
+                  "--baseline (the scrape baseline is a separate file)", file=sys.stderr)
+            return 2
         write_baseline(base_path, findings)
         print("metric-name-lint: wrote %d findings to %s" % (
             len(findings), os.path.relpath(base_path, root)))
         return 0
 
     baseline = {} if args.no_baseline else load_baseline(base_path)
+    warn_only = set() if args.strict else set(cfg["warn_only_rules"])
 
     grown = []
     if args.no_baseline_growth:
-        rel = os.path.relpath(base_path, root)
         try:
-            old = json.loads(subprocess.check_output(
-                ["git", "show", "%s:%s" % (args.no_baseline_growth, rel)], cwd=root, text=True,
-                stderr=subprocess.DEVNULL))
-            old_fps = {e["fingerprint"] for e in old.get("findings", [])}
-        except Exception:
-            old_fps = None                                  # baseline introduced by this change
-        if old_fps is not None:
-            grown = [e for fp, e in baseline.items() if fp not in old_fps]
+            grown = baseline_growth(root, args.no_baseline_growth, cfg, baseline,
+                                    args.baseline)
+        except RuntimeError as e:
+            print("metric-name-lint: %s" % e, file=sys.stderr)
+            return 2
         if grown and os.environ.get("METRIC_NAME_LINT_ALLOW_GROWTH") == "1":
             print("metric-name-lint: baseline grew by %d entr%s (override approved)" %
                   (len(grown), "y" if len(grown) == 1 else "ies"))
             grown = []
-    warn_only = set() if args.strict else set(cfg["warn_only_rules"])
     new = [f for f in findings if f.fingerprint not in baseline]
     known = [f for f in findings if f.fingerprint in baseline]
     blocking = [f for f in new if f.rule not in warn_only]
@@ -666,6 +773,8 @@ def main(argv=None):
     if scope_full:
         seen = {f.fingerprint for f in findings}
         stale = [e for fp, e in baseline.items() if fp not in seen]
+    # Warn-only findings (PromQL) never block, so a fixed one doesn't force a baseline update.
+    stale_blocking = [e for e in stale if e["rule"] not in warn_only]
 
     if args.format == "json":
         print(json.dumps({
@@ -676,7 +785,7 @@ def main(argv=None):
     elif args.format == "arc":
         # One line per finding, consumed by yugabyte-db build-support/lint.py script-and-regex.
         for f in new:
-            sev = "error" if f.rule not in warn_only else "warning"
+            sev = args.arc_severity if f.rule not in warn_only else "warning"
             print("%s:%d:%s:%s:%s" % (f.path, f.line, sev, f.rule, f.message()))
     else:
         for f in new:
@@ -710,7 +819,7 @@ def main(argv=None):
     if args.github and grown:
         print("::error title=metric-name-lint::baseline grew by %d entries; new metric-naming "
               "debt needs the 'metric-naming-exception' label" % len(grown))
-    return 1 if blocking or grown or (args.fail_on_stale and stale) else 0
+    return 1 if blocking or grown or (args.fail_on_stale and stale_blocking) else 0
 
 
 if __name__ == "__main__":

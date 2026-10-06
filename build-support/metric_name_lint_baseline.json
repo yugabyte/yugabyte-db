@@ -129,16 +129,124 @@
       "detail": "macro `THREAD_POOL_METRICS_DEFINE`"
     },
     {
-      "fingerprint": "c9558acb210a3162",
+      "fingerprint": "145ffc0ac9c336cf",
       "rule": "NAME_FAMILY",
       "path": "src/yb/yql/cql/cqlserver/cql_processor.cc",
-      "detail": "6 metrics `handler_latency_yb_cqlserver_CQLServerService_{Any, ExecuteRequest, GetProcessor, ParseRequest, ProcessRequest, QueueResponse}`"
+      "detail": "`handler_latency_yb_cqlserver_CQLServerService_GetProcessor`, one of 6 metrics `handler_latency_yb_cqlserver_CQLServerService_{Any, ExecuteRequest, GetProcessor, ParseRequest, ProcessRequest, QueueResponse}`"
     },
     {
-      "fingerprint": "ba0597dae89e834d",
+      "fingerprint": "18700d6bfecd9fc8",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/cqlserver/cql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_CQLServerService_ProcessRequest`, one of 6 metrics `handler_latency_yb_cqlserver_CQLServerService_{Any, ExecuteRequest, GetProcessor, ParseRequest, ProcessRequest, QueueResponse}`"
+    },
+    {
+      "fingerprint": "79983fff6470e5f7",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/cqlserver/cql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_CQLServerService_ParseRequest`, one of 6 metrics `handler_latency_yb_cqlserver_CQLServerService_{Any, ExecuteRequest, GetProcessor, ParseRequest, ProcessRequest, QueueResponse}`"
+    },
+    {
+      "fingerprint": "558c3edf836c2264",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/cqlserver/cql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_CQLServerService_QueueResponse`, one of 6 metrics `handler_latency_yb_cqlserver_CQLServerService_{Any, ExecuteRequest, GetProcessor, ParseRequest, ProcessRequest, QueueResponse}`"
+    },
+    {
+      "fingerprint": "88a342d4836080c7",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/cqlserver/cql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_CQLServerService_ExecuteRequest`, one of 6 metrics `handler_latency_yb_cqlserver_CQLServerService_{Any, ExecuteRequest, GetProcessor, ParseRequest, ProcessRequest, QueueResponse}`"
+    },
+    {
+      "fingerprint": "42f00f5b78bc2c96",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/cqlserver/cql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_CQLServerService_Any`, one of 6 metrics `handler_latency_yb_cqlserver_CQLServerService_{Any, ExecuteRequest, GetProcessor, ParseRequest, ProcessRequest, QueueResponse}`"
+    },
+    {
+      "fingerprint": "18b59a5502c0b151",
       "rule": "NAME_FAMILY",
       "path": "src/yb/yql/cql/ql/ql_processor.cc",
-      "detail": "14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_ParseRequest`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "09d04c6cba10f2f2",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_AnalyzeRequest`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "babda5a78169f255",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "ca9b5c63f4fcaf5d",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyze`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "b4fd224ef5b80824",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "1c17afbb5a6a83e7",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "ce27be5e4cc2bd2b",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_SelectStmt`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "9da11dec21ebf49f",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_InsertStmt`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "1b806d50c1fd540a",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "c8379e9467850b8c",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "9e5d4bdec0f94492",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_UseStmt`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "d630ae294749ceea",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_OtherStmts`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "5ebde97ebcf608a8",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_Transaction`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
+    },
+    {
+      "fingerprint": "72ddb429229d4788",
+      "rule": "NAME_FAMILY",
+      "path": "src/yb/yql/cql/ql/ql_processor.cc",
+      "detail": "`handler_latency_yb_cqlserver_SQLProcessor_ResponseSize`, one of 14 metrics `handler_latency_yb_cqlserver_SQLProcessor_{AnalyzeRequest, DeleteStmt, ExecuteRequest, InsertStmt, NumFlushesToExecute, NumRetriesToExecute, ...}`"
     },
     {
       "fingerprint": "473d062ac4859f54",

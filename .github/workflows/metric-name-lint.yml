@@ -17,10 +17,14 @@ name: metric-name-lint
 #   * Queries that regex-match __name__ are warnings, never failures.
 #
 # The same checker also runs per-file via .arclint (build-support/lint.py), so authors see
-# findings locally before pushing. This workflow is the full-repo check the per-file mode can't
-# do: cross-file families, stale-baseline detection and baseline-growth protection.
+# findings locally and in the pr-lint job. During evaluation it reports there as WARNINGS
+# (--arc-severity warning), so pr-lint does not fail on it. This workflow is the full-repo check
+# the per-file mode can't do: cross-file families, stale-baseline detection and
+# baseline-growth protection. Changing .metric-name-lint.json's gate settings counts as
+# baseline growth.
 #
-# Advisory while the team evaluates it: not a required check yet.
+# Advisory while the team evaluates it: not a required check yet. To make the gate blocking,
+# drop --arc-severity from .arclint and mark this check required.
 
 on:
   pull_request:
