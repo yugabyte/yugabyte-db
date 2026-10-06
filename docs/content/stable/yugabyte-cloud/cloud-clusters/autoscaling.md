@@ -65,7 +65,6 @@ Auto scaling events have the following lifecycle:
 
 - [Single-region cluster](../../cloud-basics/create-clusters/create-single-region/)
 - Only users with edit permission on the cluster can create and change autoscaling policies.
-- Scale-out and scale-in increments should be multiples of the cluster's replication factor (for example, 3 nodes for a replication factor of 3).
 
 ## Enable autoscaling
 
@@ -116,7 +115,7 @@ Scale-out rules use OR logic. If any configured scale-out rule is satisfied, the
 
 You can respond differently depending on how severe the load is. For example, a moderate CPU increase might need to persist for an hour, while sustained high CPU can trigger a scale-out much sooner. Every rule adds the same number of nodes.
 
-That number must be a multiple of the cluster's availability zones so the zones stay balanced. In a 3-AZ cluster, the smallest increment is 3 nodes, and the next is 6.
+The number of nodes must be a multiple of the number of availability zones so the zones stay balanced. For example, in a 3-AZ cluster, the smallest increment is 3 nodes, and the next is 6.
 
 ### Scale in rules
 
@@ -126,9 +125,10 @@ Scale-in conditions determine when nodes can be removed.
 
 Scale-in conditions use AND logic. Every configured condition must be satisfied before the cluster scales in.
 
-Each condition specifies a metric (CPU or Connection), a threshold, and an evaluation window. **Remove** *n* **nodes** is how many nodes are removed when every condition is met.
+Each condition specifies a metric (CPU or Connection), a threshold, and an evaluation window. **Remove** *n* **nodes** is how many nodes are removed when every condition is met. The number of nodes must be a multiple of the number of availability zones. For example, in a 3-AZ cluster, the smallest increment is 3 nodes, and the next is 6.
 
-For example, with both of the following true, autoscaling removes 3 nodes:
+
+For example, with both of the following true, autoscaling removes nodes:
 
 - CPU use stays below 40% for 60 minutes.
 - Connection use stays below 70% for 15 minutes.
