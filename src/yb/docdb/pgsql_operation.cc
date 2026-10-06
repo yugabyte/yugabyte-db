@@ -2795,9 +2795,10 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   table_iter_.reset();
   PgsqlVectorFilter filter(data_.vector_index->metrics(), &table_iter_);
   auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
+  auto backfill_done = VERIFY_RESULT(data_.vector_index->BackfillDone());
   RSTATUS_DCHECK(
-      data_.vector_index->BackfillDone(), IllegalState,
-      "Vector index query on non ready index: $0", *data_.vector_index);
+      backfill_done, IllegalState, "Vector index query on non ready index: $0",
+      *data_.vector_index);
 
   // Resolve ybctids with the filter's reader so Search sees the same snapshot the filter used
   // (avoids a spurious "Vector not found" when a DELETE applies between the two reads). When the

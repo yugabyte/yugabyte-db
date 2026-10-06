@@ -874,11 +874,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     auto tablet = tablet_;
     if (tablet) {
       status_pb_out->set_table_type(tablet->table_type());
-      auto vector_index_finished_backfills = tablet->vector_indexes().FinishedBackfills();
-      if (vector_index_finished_backfills) {
-        *status_pb_out->mutable_vector_index_finished_backfills() =
-            std::move(*vector_index_finished_backfills);
-      }
+      tablet->vector_indexes().FillBackfillStatus(*status_pb_out);
     }
     disk_size_info.ToPB(status_pb_out);
     // Set hide status of the tablet.

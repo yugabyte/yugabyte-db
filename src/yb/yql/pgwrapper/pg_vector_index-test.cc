@@ -80,6 +80,7 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(TEST_disable_wal_retention_time);
+DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_exact);
@@ -356,12 +357,19 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   }
 
   // Waits until all `expected_num_indexes` vector indexes of the cluster report their backfill as
-  // finished.
+  // finished. Fails right away if a backfill failed.
   Status WaitForVectorIndexBackfills(size_t expected_num_indexes, const std::string& description) {
-    return WaitFor([this, expected_num_indexes] {
+    return WaitFor([this, expected_num_indexes]() -> Result<bool> {
       auto indexes = ListVectorIndexes(cluster_.get());
-      return indexes.size() == expected_num_indexes &&
-             std::ranges::all_of(indexes, [](const auto& index) { return index->BackfillDone(); });
+      if (indexes.size() != expected_num_indexes) {
+        return false;
+      }
+      for (const auto& index : indexes) {
+        if (!VERIFY_RESULT(index->BackfillDone())) {
+          return false;
+        }
+      }
+      return true;
     }, 60s * kTimeMultiplier, description);
   }
 
@@ -5511,6 +5519,25 @@ TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
   ASSERT_OK(WaitForVectorIndexBackfills(num_indexes, "Backfill done after truncate"));
 }
 
+// When the backfill fails with something other than TryAgain/ShutdownInProgress, CREATE INDEX
+// should fail with that error instead of hanging.
+TEST_P(PgVectorIndexTest, CreateIndexFailsOnFailedBackfill) {
+  constexpr size_t kNumRows = 64;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  // So the test fails instead of hanging if the error isn't reported.
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET statement_timeout = $0", ToMilliseconds(60s * kTimeMultiplier)));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = true;
+  ASSERT_NOK_STR_CONTAINS(CreateIndex(conn), "Injected vector index backfill failure");
+
+  // The failed CREATE INDEX got rolled back, so this should work now.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = false;
+  ASSERT_OK(CreateIndex(conn));
+}
+
 // VectorLSM::Insert counts its tasks on the mutable chunk before allocating them in the insert
 // registry. When the allocation failed because the registry was already shut down, the count
 // stayed elevated, so a chunk that a flush had meanwhile handed to the save path never saved and
@@ -5579,9 +5606,9 @@ TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
 
   // Let the other replicas finish their backfills, so the removal below overtakes the parked insert
   // only.
-  ASSERT_OK(WaitFor([this, &parked_dir] {
+  ASSERT_OK(WaitFor([this, &parked_dir]() -> Result<bool> {
     for (const auto& index : ListVectorIndexes(cluster_.get())) {
-      if (index->path() != parked_dir && !index->BackfillDone()) {
+      if (index->path() != parked_dir && !VERIFY_RESULT(index->BackfillDone())) {
         return false;
       }
     }

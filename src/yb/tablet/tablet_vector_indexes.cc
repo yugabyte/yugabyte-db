@@ -16,6 +16,7 @@
 #include <algorithm>
 
 #include "yb/common/read_hybrid_time.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -38,6 +39,7 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_metadata.h"
 
@@ -53,6 +55,9 @@ using namespace yb::size_literals;
 
 DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
     "Sleep specified amount of seconds before doing vector index backfill.");
+
+DEFINE_test_flag(bool, fail_vector_index_backfill, false,
+    "Make vector index backfills fail with an injected error. Logged as a warning, not DFATAL.");
 
 DEFINE_test_flag(int32, sleep_after_vector_index_backfill_chunk_ms, 0,
     "Sleep specified amount of milliseconds after flushing each vector index backfill chunk. "
@@ -75,6 +80,8 @@ DECLARE_uint64(vector_index_initial_chunk_size);
 namespace yb::tablet {
 
 namespace {
+
+constexpr auto kInjectedBackfillFailure = "Injected vector index backfill failure";
 
 class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingReader {
  public:
@@ -564,6 +571,10 @@ Status TabletVectorIndexes::Backfill(
     std::this_thread::sleep_for(FLAGS_TEST_sleep_before_vector_index_backfill_seconds * 1s);
   }
 
+  if (FLAGS_TEST_fail_vector_index_backfill) {
+    return STATUS(IOError, kInjectedBackfillFailure);
+  }
+
   // The backfill task holds only a non-blocking ScopedRWOperation here (not the tablet metadata
   // apply lock), so a test may park it until the tablet starts shutting down without wedging the
   // tserver. On release, reader.Init below resolves intents and, if the tablet is shutting down,
@@ -672,7 +683,8 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
   backfill_retry_pending_.store(false, std::memory_order_release);
   std::shared_ptr<ScopedRWOperation> read_op;
   for (const auto& vector_index : *list) {
-    if (vector_index->BackfillDone()) {
+    auto done = vector_index->BackfillDone();
+    if (done.ok() && *done) {
       continue;
     }
     std::string backfill_key;
@@ -734,6 +746,8 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
 void TabletVectorIndexes::ScheduleBackfill(
     const docdb::DocVectorIndexPtr& vector_index, const TableInfoPtr& indexed_table, Slice key,
     HybridTime backfill_ht, OpId op_id, std::shared_ptr<ScopedRWOperation> read_op) {
+  // New attempt, forget the error from the last one.
+  vector_index->SetBackfillStatus(Status::OK());
   thread_pool_provider_(VectorIndexThreadPoolType::kBackfill)->EnqueueFunctor(
       [this, vector_index, backfill_ht, key = key.ToBuffer(), op_id, indexed_table,
        read_op = std::move(read_op)] {
@@ -747,9 +761,16 @@ void TabletVectorIndexes::ScheduleBackfill(
         // then.
         ScheduleBackfillRetry(FLAGS_vector_index_backfill_retry_delay_ms * 1ms);
       }
-    } else {
-      LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
-          << "Backfill " << AsString(vector_index) << " failed: " << status;
+    } else if (!status.ok()) {
+      // Unlike TryAgain, this doesn't schedule a retry, so record it for whoever waits on the
+      // backfill.
+      vector_index->SetBackfillStatus(status);
+      // Injected by tests, don't crash the debug build for it.
+      if (status.message() == Slice(kInjectedBackfillFailure)) {
+        LOG_WITH_PREFIX(WARNING) << "Backfill " << AsString(vector_index) << " failed: " << status;
+      } else {
+        LOG_WITH_PREFIX(DFATAL) << "Backfill " << AsString(vector_index) << " failed: " << status;
+      }
     }
   });
 }
@@ -896,7 +917,8 @@ bool TabletVectorIndexes::HasActiveBackfill() const {
     return false;
   }
   for (const auto& index : *list) {
-    if (!index->BackfillDone()) {
+    auto done = index->BackfillDone();
+    if (!done.ok() || !*done) {
       return true;
     }
   }
@@ -927,20 +949,24 @@ bool TabletVectorIndexes::PostSplitCompactionRequired() const {
   return FLAGS_vector_index_include_into_post_split_compaction && !ParentDataCompacted();
 }
 
-auto TabletVectorIndexes::FinishedBackfills()
-    -> std::optional<google::protobuf::RepeatedPtrField<std::string>> {
+void TabletVectorIndexes::FillBackfillStatus(TabletStatusPB& tablet_status) {
   auto list = List();
   if (!list) {
-    return std::nullopt;
+    return;
   }
-  google::protobuf::RepeatedPtrField<std::string> result;
   for (const auto& index : *list) {
-    if (index->BackfillDone()) {
-      *result.Add() = index->table_id();
+    auto done = index->BackfillDone();
+    if (!done.ok()) {
+      auto& failure = *tablet_status.add_vector_index_failed_backfills();
+      failure.set_table_id(index->table_id());
+      StatusToPB(done.status(), failure.mutable_status());
+    } else if (*done) {
+      tablet_status.add_vector_index_finished_backfills(index->table_id());
     }
   }
-  VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(result);
-  return result;
+  VLOG_WITH_PREFIX_AND_FUNC(4)
+      << "finished: " << AsString(tablet_status.vector_index_finished_backfills())
+      << ", failed: " << AsString(tablet_status.vector_index_failed_backfills());
 }
 
 Status TabletVectorIndexes::ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
@@ -1015,7 +1041,7 @@ Status TabletVectorIndexes::Verify() {
   }
   auto read_ht = VERIFY_RESULT(tablet().SafeTime(RequireLease::kFalse));
   for (const auto& vector_index : *list) {
-    while (!vector_index->BackfillDone()) {
+    while (!VERIFY_RESULT(vector_index->BackfillDone())) {
       std::this_thread::sleep_for(10ms);
     }
     auto index_table = VERIFY_RESULT(metadata().GetTableInfo(vector_index->table_id()));
