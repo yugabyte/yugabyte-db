@@ -702,6 +702,11 @@ bool TServerSharedData::IsCronLeader() const {
   return lease_end.Initialized() && lease_end > MonoTime::Now();
 }
 
+bool TServerSharedData::IsCronLeaderActive() const {
+  // We are the active leader only if we have not stepped down and still hold a valid lease.
+  return cron_leader_active_.load() && IsCronLeader();
+}
+
 std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id) {
   return MakeSharedMemoryPrefix(instance_id) + "_big_" + std::to_string(id);
 }

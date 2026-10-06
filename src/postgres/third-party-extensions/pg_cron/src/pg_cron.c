@@ -153,7 +153,7 @@ static char* pg_cron_cmdTuples(char *msg);
 static void bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata);
 
 static long YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime);
-static bool YbIsCronLeader();
+static bool YbCronAllowedForXClusterRole();
 static void YbCheckLeadership(List *taskList, TimestampTz currentTime);
 static TimestampTz YbGetLastPersistedMinute(TimestampTz currentTime);
 static void YbPersistLastMinute();
@@ -205,7 +205,14 @@ static const struct config_enum_entry cron_message_level_options[] = {
  * Once distributed scheduling(#22336) is implemented the leader will schedule
  * the job and other nodes will execute jobs that have been scheduled on them.
  */
+/*
+ * ybIsLeader: this node is the active leader and starts new runs.
+ * ybCanRunJobs: this node holds a valid lease and lets its in-flight runs
+ * continue. After a graceful step down ybIsLeader is false while
+ * ybCanRunJobs stays true until the lease expires.
+ */
 bool ybIsLeader = false;
+static bool ybCanRunJobs = false;
 
 static const char *cron_error_severity(int elevel);
 
@@ -2433,7 +2440,7 @@ ExecuteSqlString(const char *sql)
 static bool
 jobCanceled(CronTask *task)
 {
-	if (IsYugaByteEnabled() && !ybIsLeader)
+	if (IsYugaByteEnabled() && !ybCanRunJobs)
 	{
 		task->errorMessage = "pg_cron leader changed";
 		task->state = CRON_TASK_ERROR;
@@ -2502,12 +2509,10 @@ YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime)
 	return secondsPassed;
 }
 
+/* Whether the xCluster role of the cron database allows running cron jobs. */
 static bool
-YbIsCronLeader()
+YbCronAllowedForXClusterRole()
 {
-	if (!YBCIsCronLeader())
-		return false;
-
 	if (YbEnableOnXClusterTarget)
 		return true;
 
@@ -2532,7 +2537,12 @@ YbCheckLeadership(List *taskList, TimestampTz currentTime)
 	if (!IsYugaByteEnabled())
 		return;
 
-	if (YbIsCronLeader())
+	/* Check the lease first: the xCluster role lookup is a call to the tserver. */
+	bool		allowed = YBCIsCronLeader() && YbCronAllowedForXClusterRole();
+
+	ybCanRunJobs = allowed;
+
+	if (allowed && YBCIsCronLeaderActive())
 	{
 		if (!ybIsLeader)
 		{
@@ -2564,6 +2574,10 @@ YbCheckLeadership(List *taskList, TimestampTz currentTime)
 	}
 	else if (ybIsLeader)
 	{
+		/*
+		 * Stop starting new runs. In-flight runs continue until they finish
+		 * or until the lease expires, at which point jobCanceled aborts them.
+		 */
 		ereport(LOG, (errmsg("pg_cron switching to idle mode")));
 		ybIsLeader = false;
 
