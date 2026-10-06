@@ -51,15 +51,15 @@ Autoscaling uses the following signals:
 | Signal | Description |
 | :--- | :--- |
 | CPU | Average CPU use across the cluster. CPU is the primary autoscaling signal. |
-| Connections | Connection use relative to the configured safe connection limit. Use this as an additional signal so the cluster has enough connection capacity. |
+| Connections | Connection use relative to the number of available connections. Use this as an additional signal so the cluster has enough connection capacity. |
 
-Auto scaling events have the following lifecycle:
+Autoscaling events have the following lifecycle:
 
 1. **Evaluate.** A scale-out rule fires, or every scale-in condition is met.
 1. **Check guardrails.** The action stays between the minimum and maximum node count.
 1. **Add or remove nodes.** Nodes are provisioned or decommissioned.
 1. **Cluster balancing.** Tablets and leaders move so data and load are spread across the new set of nodes. On a large cluster, rebalancing can take a long time.
-1. **Cooldown.** The cooldown timer starts after rebalancing completes. When it expires, evaluation resumes.
+1. **Cooldown.** The cooldown timer starts after the operation finishes, including data movement and cluster balancing. When it expires, evaluation resumes.
 
 ## Prerequisites
 
@@ -88,8 +88,6 @@ To change a policy after autoscaling is enabled, open the **Autoscaling** tab an
 
 Set the minimum and maximum number of nodes that autoscaling can use.
 
-![Cluster limits](/images/yb-cloud/cloud-clusters-autoscaling-limits.png)
-
 For example, set **Minimum nodes** to 9 and **Maximum nodes** to 21. Autoscaling keeps the cluster between these two sizes.
 
 Choose a minimum that covers your normal workload and availability requirements. The maximum is the furthest the cluster can expand.
@@ -99,8 +97,6 @@ The minimum and maximum must be multiples of the number of availability zones, s
 ### Scale out rules
 
 Scale-out rules determine when nodes are added.
-
-![Scale-out rules](/images/yb-cloud/cloud-clusters-autoscaling-scale-out.png)
 
 Each rule specifies:
 
@@ -121,8 +117,6 @@ The number of nodes must be a multiple of the number of availability zones so th
 
 Scale-in conditions determine when nodes can be removed.
 
-![Scale-in rules](/images/yb-cloud/cloud-clusters-autoscaling-scale-in.png)
-
 Scale-in conditions use AND logic. Every configured condition must be satisfied before the cluster scales in.
 
 Each condition specifies a metric (CPU or Connection), a threshold, and an evaluation window. **Remove** *n* **nodes** is how many nodes are removed when every condition is met. The number of nodes must be a multiple of the number of availability zones. For example, in a 3-AZ cluster, the smallest increment is 3 nodes, and the next is 6.
@@ -138,8 +132,6 @@ Scale in waits for every condition. That keeps capacity in place until load has 
 ### Cooldowns
 
 After a scaling operation completes, autoscaling waits through a cooldown period (specified in minutes) before it can start another one.
-
-![Cooldown periods](/images/yb-cloud/cloud-clusters-autoscaling-cooldown.png)
 
 The timer starts after the operation has finished, including data movement and cluster balancing. That gives the cluster time to stabilize before autoscaling evaluates the rules again.
 
@@ -158,7 +150,7 @@ Autoscaling stays paused while cluster maintenance is in progress, including:
 - Rolling restarts
 - Other cluster maintenance operations
 
-These operations can temporarily change CPU and other resource use, and trigger scaling the workload doesn't need.
+These operations can temporarily change CPU and other resource use, and trigger scaling the workload doesn't need. In addition, long-running operations such as backups can delay scaling; see [Limitations](#limitations).
 
 After the following operations finish, the post-maintenance cooldown applies before autoscaling evaluates the rules again:
 
@@ -166,7 +158,6 @@ After the following operations finish, the post-maintenance cooldown applies bef
 - Roll back a database upgrade
 - Operating system upgrade
 - Server setting update
-- Full move (all nodes replaced)
 - Resume a paused cluster
 - Clone a database (point-in-time recovery)
 - Manual infrastructure edit or resize
@@ -208,7 +199,7 @@ Scaling history lists each operation:
 
 Use the type filter to show all events, or only scale-out or scale-in.
 
-The trigger names the rule that fired. Node change shows the size before and after, and duration includes rebalancing. For example, a scale-out rule set to CPU greater than 65% for 15 minutes can take the cluster from 12 to 15 nodes and finish in 14 minutes.
+The trigger names the rule that fired. Node change shows the size before and after, and duration includes rebalancing. For example, if a scale-out rule set to CPU greater than 65% for 15 minutes fires on a 3-node cluster, autoscaling adds 3 nodes and the history shows a node change of 3 → 6 (+3).
 
 The tab can also show why an expected operation didn't run, such as when the cluster is already at its maximum size, a cooldown is active, or maintenance is in progress.
 
@@ -216,16 +207,17 @@ The tab can also show why an expected operation didn't run, such as when the clu
 
 Autoscaling only scales horizontally.
 
-Do not use autoscaling in conjunction with [incremental backups](../backup-clusters/#manage-scheduled-backups):
+Don't use autoscaling with [incremental backups](../backup-clusters/):
 
-- Backups in progress block autoscaling changes. Daily backups are recommended.
+- Backups in progress block autoscaling changes.
 - Scaling changes cause the next incremental backup to be effectively a full backup, increasing the size and impact of the backup.
+
+If you use autoscaling, schedule daily full backups instead of incremental backups.
 
 Autoscaling doesn't support:
 
 - Vertical scaling
 - Scheduled scaling
-- Memory-based scaling
 - Disk autoscaling
 - Scaling based on queries per second
 - Latency-based scaling
