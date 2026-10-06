@@ -2893,9 +2893,12 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
     return conn.FetchRow<pgwrapper::PGUint64>(
         Format("SELECT COUNT(*) FROM cron_table WHERE a = '$0'", cluster_name));
   };
+  // A job in flight on A when switchover takes away its pg_cron leadership is expectedly marked
+  // failed with "pg_cron leader changed"; ignore that.
   auto get_failed_runs = [&](pgwrapper::PGConn& conn) -> Result<uint64_t> {
     return conn.FetchRow<pgwrapper::PGUint64>(
-        "SELECT COUNT(*) FROM cron.job_run_details WHERE status = 'failed'");
+        "SELECT COUNT(*) FROM cron.job_run_details WHERE status = 'failed' "
+        "AND return_message <> 'pg_cron leader changed'");
   };
 
   SleepFor(30s);
