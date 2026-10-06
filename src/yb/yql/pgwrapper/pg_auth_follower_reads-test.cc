@@ -24,13 +24,13 @@
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/snapshot_test_util.h"
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_auth_catalog_read.h"
 
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 
@@ -57,7 +57,6 @@
 
 DECLARE_bool(TEST_enable_pg_client_mock);
 DECLARE_bool(TEST_skip_election_when_fail_detected);
-DECLARE_bool(disable_pitr);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
@@ -68,6 +67,7 @@ DECLARE_bool(ysql_enable_read_request_cache_for_connection_auth);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_relcache_init_optimization);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
+DECLARE_int32(TEST_delay_sys_catalog_restore_on_followers_secs);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint32(pg_cache_response_trust_auth_lifetime_limit_ms);
@@ -307,7 +307,6 @@ class PgAuthFollowerReadsTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_conn_mgr) = false;
     if (EnableRouting()) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auth_catalog_follower_reads) = true;
@@ -327,7 +326,6 @@ class PgAuthFollowerReadsTest : public PgMiniTestBase {
         "host all postgres all trust,host all +auth_group all md5,host all all all reject";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = PgConf();
     ASSERT_NO_FATAL_FAILURE(PgMiniTestBase::SetUp());
-    ASSERT_OK(WaitForPitrDisabledMode());
   }
 
   size_t NumMasters() override { return 3; }
@@ -340,17 +338,6 @@ class PgAuthFollowerReadsTest : public PgMiniTestBase {
 
   tserver::TabletServer* server() const {
     return cluster_->mini_tablet_server(0)->server();
-  }
-
-  Status WaitForPitrDisabledMode() {
-    return WaitFor([&] {
-      for (size_t i = 0; i < cluster_->num_masters(); ++i) {
-        if (!cluster_->mini_master(i)->master()->snapshot_coordinator().PitrDisabled()) {
-          return false;
-        }
-      }
-      return true;
-    }, 30s * kTimeMultiplier, "Wait for local PITR-disabled mode");
   }
 
   Result<client::internal::RemoteTabletPtr> CatalogTablet() {
@@ -439,8 +426,7 @@ TEST_F(PgAuthFollowerReadsTest, FreshPasswordLoginMembershipAndConnectPrivileges
   ASSERT_NO_FATAL_FAILURE(AssertDenied(kNewPassword, "is not permitted to log in"));
   ASSERT_OK(admin.Execute("ALTER ROLE auth_user LOGIN"));
 
-  ASSERT_OK(admin.Execute("REVOKE auth_group FROM auth_user"));
-  ASSERT_NO_FATAL_FAILURE(AssertDenied(kNewPassword, "pg_hba.conf rejects connection"));
+  ASSERT_NO_FATAL_FAILURE(AssertFreshLogin(kNewPassword));
   ASSERT_OK(admin.Execute("GRANT auth_group TO auth_user"));
 
   ASSERT_OK(admin.Execute("CREATE DATABASE auth_db"));
@@ -736,7 +722,7 @@ TEST_F(PgAuthFollowerReadsTest, FollowerNetworkFailureFallsBackAtSameSnapshot) {
   ASSERT_TRUE(leader_retry);
 }
 
-TEST_F(PgAuthFollowerReadsTest, PitrDisabledModeAndFreshnessSurviveFailoverAndFullRestart) {
+TEST_F(PgAuthFollowerReadsTest, FreshnessSurvivesFailoverAndFullRestart) {
   {
     auto admin = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateRoles(&admin));
@@ -754,7 +740,6 @@ TEST_F(PgAuthFollowerReadsTest, PitrDisabledModeAndFreshnessSurviveFailoverAndFu
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       return VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->permanent_uuid() == target;
     }, 30s * kTimeMultiplier, "Elect the chosen auth snapshot leader"));
-    ASSERT_OK(WaitForPitrDisabledMode());
     ASSERT_OK(admin.ExecuteFormat("ALTER ROLE auth_user PASSWORD '$0'", kNewPassword));
     ASSERT_NO_FATAL_FAILURE(AssertDenied(kOldPassword, "password authentication failed"));
     ASSERT_NO_FATAL_FAILURE(AssertFreshLogin(kNewPassword));
@@ -762,10 +747,7 @@ TEST_F(PgAuthFollowerReadsTest, PitrDisabledModeAndFreshnessSurviveFailoverAndFu
 
   // Unlike RestartSync's rolling restart, stop every peer before starting any of them.
   cluster_->StopSync();
-  // Omit the creation flag so recovery must restore the persisted mode.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = false;
   ASSERT_OK(cluster_->Start());
-  ASSERT_OK(WaitForPitrDisabledMode());
   // PG starts asynchronously; only this readiness connection may retry.
   auto admin = ASSERT_RESULT(Connect());
   ASSERT_NO_FATAL_FAILURE(AssertDenied(kOldPassword, "password authentication failed"));
@@ -1427,6 +1409,78 @@ TEST_F(PgAuthFollowerFaultTest, ReadRestartAbortsWholeAttempt) {
   auto admin = ASSERT_RESULT(Connect());
   ASSERT_OK(CreatePagedRoles(&admin));
   ASSERT_NO_FATAL_FAILURE(AbortAfterPage(&admin, Fault::kReadRestart));
+}
+
+// PITR stays available with follower routing. Pre-restore catalogs accept the newer password;
+// restored catalogs reject it.
+TEST_F(PgAuthFollowerReadsTest, SharedCatalogRestoreReachesFollowerLogins) {
+  auto admin = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateRoles(&admin));
+  client::SnapshotTestUtil snapshots(*cluster_, cluster_->proxy_cache());
+  const auto schedule =
+      ASSERT_RESULT(snapshots.CreateSchedule("template1", client::WaitSnapshot::kFalse));
+  const auto snapshot = ASSERT_RESULT(snapshots.WaitScheduleSnapshot(schedule));
+  const auto restore_at = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->Now() > restore_at;
+  }, 30s * kTimeMultiplier, "Pass the snapshot time"));
+  ASSERT_OK(admin.ExecuteFormat("ALTER ROLE auth_user PASSWORD '$0'", kNewPassword));
+  ASSERT_OK(admin.Execute("REVOKE auth_group FROM auth_user"));
+  ASSERT_NO_FATAL_FAILURE(AssertDenied(kNewPassword, "pg_hba.conf rejects connection"));
+
+  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  // Master 0 shares the tserver's IP; partitioning it would also block DDL object-lock RPCs.
+  const size_t lagging_idx = cluster_->mini_master(1) == leader ? 2 : 1;
+  auto* lagging = cluster_->mini_master(lagging_idx);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_election_when_fail_detected) = true;
+  std::vector<IpAddress> addresses;
+  for (auto privacy : {server::Private::kTrue, server::Private::kFalse}) {
+    addresses.push_back(ASSERT_RESULT(
+        HostToAddress(server::TEST_RpcAddress(lagging_idx + 1, privacy))));
+  }
+  auto heal = [&] {
+    for (const auto& address : addresses) {
+      leader->messenger().RestoreConnectivityTo(address);
+    }
+  };
+  auto cleanup = ScopeExit([&] {
+    heal();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_election_when_fail_detected) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs) = 0;
+  });
+  for (const auto& address : addresses) {
+    leader->messenger().BreakConnectivityTo(address);
+  }
+  ASSERT_OK(snapshots.RestoreSnapshotSchedule(schedule, restore_at));
+
+  // Refresh replica state, which clears earlier failure marks, and route to the lagging follower.
+  auto prefer_lagging = [&]() -> Status {
+    auto remote = VERIFY_RESULT(CatalogTablet());
+    for (auto* replica : remote->GetRemoteTabletServers()) {
+      if (replica->permanent_uuid() != leader->permanent_uuid() &&
+          replica->permanent_uuid() != lagging->permanent_uuid()) {
+        remote->MarkReplicaFailed(replica, STATUS(NetworkError, "Route to lagged peer"));
+      }
+    }
+    return Status::OK();
+  };
+  ASSERT_OK(prefer_lagging());
+  ASSERT_NO_FATAL_FAILURE(AssertDenied(kNewPassword, "password authentication failed"));
+
+  // Catch up while the restore apply is delayed: its safe time can pass T before the apply.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs) = 3;
+  heal();
+  SleepFor(MonoDelta::FromMilliseconds(500));
+  ASSERT_OK(prefer_lagging());
+  ASSERT_NO_FATAL_FAILURE(AssertDenied(kNewPassword, "password authentication failed"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs) = 0;
+  auto tablet = ASSERT_RESULT(lagging->master()->sys_catalog().tablet_peer()->shared_tablet());
+  const auto caught_up = leader->Now();
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(tablet->SafeTime(tablet::RequireLease::kFalse)) >= caught_up;
+  }, 30s * kTimeMultiplier, "Apply the restore on the lagging follower"));
+  ASSERT_OK(prefer_lagging());
+  ASSERT_NO_FATAL_FAILURE(AssertFreshLogin(kOldPassword));
 }
 
 }  // namespace yb::pgwrapper
