@@ -5,5 +5,5 @@ test: time
 test: timetz
 test: timestamp
 test: timestamptz
-test: interval
+test: yb.port.interval
 test: yb.port.horology
