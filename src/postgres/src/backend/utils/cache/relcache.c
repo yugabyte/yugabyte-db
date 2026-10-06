@@ -1471,6 +1471,18 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		if (state->sys_relations_only && !IsSystemClass(relid, relp))
 			continue;
 
+		/*
+		 * Indexes on temp tables use PostgreSQL's access methods, whose
+		 * opclasses can have options.  Loading those looks up ATTNUM and the
+		 * options function's PROCOID, which yb_test_catalog_preload_cache_list
+		 * may leave unfilled, so such indexes are built on demand instead.
+		 */
+		if (YbCatalogPreloadCacheListIsSet() &&
+			relp->relpersistence == RELPERSISTENCE_TEMP &&
+			(relp->relkind == RELKIND_INDEX ||
+			 relp->relkind == RELKIND_PARTITIONED_INDEX))
+			continue;
+
 		++num_tuples;
 
 		/*
@@ -2680,10 +2692,19 @@ YbIsRequiredPreloadCache(int cache_id)
  * a catalog cache name (ATTNAME), or the name of the index of a catalog cache
  * (pg_attribute_relid_attnam_index), as the CatalogCacheMisses metric labels
  * it.  Names are matched case-insensitively.
+ *
+ * An item that selects no catalog cache is ignored with a warning rather than
+ * rejected: the value comes from the configuration file, where an invalid
+ * value keeps postgres from starting.
  */
-static bool
+static void
 YbSelectCatalogPreloadItem(const char *name, YbCatalogPreloadCacheList *list)
 {
+	/*
+	 * The check hook runs in the postmaster and in every backend on each
+	 * reload, so warn only once, from the postmaster.
+	 */
+	const int	elevel = IsUnderPostmaster ? DEBUG2 : WARNING;
 	const YbCatNamePfId *table = YbFindPrefetchTableByName(name);
 
 	if (table)
@@ -2695,19 +2716,25 @@ YbSelectCatalogPreloadItem(const char *name, YbCatalogPreloadCacheList *list)
 
 		if (cache->type == YB_TABLE_CACHE_TYPE_NO_CACHE)
 		{
-			GUC_check_errdetail("Catalog \"%s\" has no catalog cache.", name);
-			return false;
+			ereport(elevel,
+					(errmsg("ignoring \"%s\" in yb_test_catalog_preload_cache_list",
+							name),
+					 errdetail("Catalog \"%s\" has no catalog cache.", name)));
+			return;
 		}
 		if (cache->type == YB_TABLE_CACHE_TYPE_CUSTOM_CACHE)
 		{
-			GUC_check_errdetail("The cache of catalog \"%s\" is always filled.",
-								name);
-			return false;
+			ereport(elevel,
+					(errmsg("ignoring \"%s\" in yb_test_catalog_preload_cache_list",
+							name),
+					 errdetail("The cache of catalog \"%s\" is always filled.",
+							   name)));
+			return;
 		}
 		num_cache_ids = YbGetPrefetchTableCacheIds(table->pfetchTable, cache_ids);
 		for (int i = 0; i < num_cache_ids; ++i)
 			list->selected[cache_ids[i]] = true;
-		return true;
+		return;
 	}
 
 	for (int cache_id = 0; cache_id < SysCacheSize; ++cache_id)
@@ -2718,19 +2745,23 @@ YbSelectCatalogPreloadItem(const char *name, YbCatalogPreloadCacheList *list)
 
 		if (YbGetCatalogCachePrefetchTable(cache_id) == YB_PFETCH_TABLE_LAST)
 		{
-			GUC_check_errdetail("Catalog cache %s is on catalog \"%s\", which cannot be preloaded.",
-								YbGetCatalogCacheName(cache_id),
-								YbGetCatalogCacheTableNameFromCacheId(cache_id));
-			return false;
+			ereport(elevel,
+					(errmsg("ignoring \"%s\" in yb_test_catalog_preload_cache_list",
+							name),
+					 errdetail("Catalog cache %s is on catalog \"%s\", which cannot be preloaded.",
+							   YbGetCatalogCacheName(cache_id),
+							   YbGetCatalogCacheTableNameFromCacheId(cache_id))));
+			return;
 		}
 
 		list->selected[cache_id] = true;
-		return true;
+		return;
 	}
 
-	GUC_check_errdetail("\"%s\" is neither a preloadable catalog nor a catalog cache.",
-						name);
-	return false;
+	ereport(elevel,
+			(errmsg("ignoring \"%s\" in yb_test_catalog_preload_cache_list", name),
+			 errdetail("\"%s\" is neither a preloadable catalog nor a catalog cache.",
+					   name)));
 }
 
 /*
@@ -2753,11 +2784,10 @@ YbParseCatalogPreloadCacheList(const char *value, YbCatalogPreloadCacheList *lis
 		result = false;
 	}
 	*is_empty = items == NIL;
-	foreach(lc, items)
+	if (result)
 	{
-		if (!result)
-			break;
-		result = YbSelectCatalogPreloadItem(lfirst(lc), list);
+		foreach(lc, items)
+			YbSelectCatalogPreloadItem(lfirst(lc), list);
 	}
 	list_free(items);
 	pfree(rawstring);

@@ -4993,39 +4993,89 @@ TEST_P(PgCatalogPreloadCachePartitionedTest, PgProcMisses) {
   ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
 }
 
-// Postgres rejects an invalid value on reload and keeps the previous one.
-TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListInvalidValues, PgCatalogPreloadCacheListTestBase) {
+// The tserver rejects a value that is not a comma separated list of names, so it never reaches the
+// postgres configuration file.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListInvalidSyntax, PgCatalogPreloadCacheListTestBase) {
   constexpr auto kValidValue = "pg_attribute";
   ASSERT_OK(SetCacheList(kValidValue));
-  bool fkey_catcache = true;
   for (const auto& invalid_value : {
-           "pg_nosuch",            // unknown name
-           "pg_class,pg_nosuch",   // unknown name after a valid one
-           "-ATTNAME",             // no exclusions
-           "default",              // no keywords
-           "pg_trigger",           // has no catalog cache
-           "pg_inherits",          // its cache is always filled
-           "LANGOID"}) {           // on a catalog that is not preloadable
-    ASSERT_OK(cluster_->SetFlagOnTServers(
-        "ysql_yb_test_catalog_preload_cache_list", invalid_value));
-    // Postgres applies the other changes of a configuration file with an invalid value, so wait
-    // for a change of another flag to know that it has reloaded the file.
-    fkey_catcache = !fkey_catcache;
-    const auto fkey_catcache_str = fkey_catcache ? "on" : "off";
-    ASSERT_OK(cluster_->SetFlagOnTServers(
-        "ysql_yb_enable_fkey_catcache", fkey_catcache ? "true" : "false"));
-    ASSERT_OK(LoggedWaitFor(
-        [this, fkey_catcache_str]() -> Result<bool> {
-          auto conn = VERIFY_RESULT(Connect());
-          return VERIFY_RESULT(conn.FetchRow<std::string>(
-                     "SELECT current_setting('yb_enable_fkey_catcache')")) == fkey_catcache_str;
-        },
-        30s * kTimeMultiplier, "postgres reloads its configuration"));
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
-                  "SELECT current_setting('yb_test_catalog_preload_cache_list')")),
-              kValidValue) << "Value: '" << invalid_value << "'";
+           "pg_class,",          // empty item
+           ",pg_class",
+           "pg_class,,ATTNUM",
+           "-ATTNAME",           // no exclusions
+           "\"ATTNUM\"",         // no quoting
+           "pg class"}) {
+    ASSERT_NOK(cluster_->SetFlagOnTServers(
+        "ysql_yb_test_catalog_preload_cache_list", invalid_value))
+        << "Value: '" << invalid_value << "'";
   }
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+                "SELECT current_setting('yb_test_catalog_preload_cache_list')")),
+            kValidValue);
+}
+
+// Postgres ignores the items that select no preloadable catalog cache and fills the caches the
+// other items select.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListIgnoresUnknownNames,
+          PgCatalogPreloadCacheListTestBase) {
+  ASSERT_OK(CreateTestObjects());
+  for (const auto& value : {
+           "pg_operator,pg_nosuch",     // unknown name
+           "pg_operator,default",       // no keywords
+           "pg_operator,pg_trigger",    // has no catalog cache
+           "pg_operator,pg_inherits",   // its cache is always filled
+           "pg_operator,LANGOID"}) {    // on a catalog that is not preloadable
+    ASSERT_OK(SetCacheList(value));
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Fetch("SELECT 1"));
+    ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0)
+        << "Value: '" << value << "'";
+  }
+}
+
+class PgCatalogPreloadCacheListUnknownNameAtStartupTest
+    : public PgCatalogPreloadCacheListTestBase {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_yb_test_catalog_preload_cache_list=pg_operator,pg_nosuch"};
+  }
+};
+
+// An unknown name in the list does not keep postgres from starting.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListUnknownNameAtStartup,
+          PgCatalogPreloadCacheListUnknownNameAtStartupTest) {
+  ASSERT_OK(CreateTestObjects());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+  ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+}
+
+// A full catalog cache refresh does not build the indexes on temp tables: loading their opclass
+// options would look up ATTNUM, which the list leaves unfilled. They are built on first use.
+TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListTempIndexOptions,
+          PgCatalogPreloadCacheListTestBase) {
+  ASSERT_OK(SetCacheList("pg_class"));
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE tt (k INT, x TSVECTOR)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX tt_x ON tt USING gist (x tsvector_ops (siglen = 100))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO tt SELECT g, to_tsvector('w' || g) FROM generate_series(1, 100) g"));
+  // Reports the misses of the statements above.
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+
+  ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
+  WaitForCatalogVersionToPropagate();
+  auto misses = ASSERT_RESULT(MissesFor(conn, "SELECT 1"));
+  ASSERT_EQ(misses[kAttnumIndex], 0);
+
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(
+      "SELECT pg_get_indexdef('tt_x'::regclass) LIKE '%siglen=''100''%'")));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+                "SELECT count(*) FROM tt WHERE x @@ to_tsquery('w5')")),
+            1);
 }
 
 // The list is set for the whole server, so not even a superuser can set it in a session.
