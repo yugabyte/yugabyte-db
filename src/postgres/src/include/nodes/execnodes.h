@@ -2352,6 +2352,8 @@ typedef struct YbBatchedNestLoopState
 	FmgrInfo   *innerHashFunctions;
 	int			numLookupAttrs;
 	AttrNumber *innerAttrs;
+	ExprState **innerKeyExprs;	/* per key: inner expression, or NULL when the
+								 * key is the inner column innerAttrs[i] */
 	ExprState  *ht_lookup_fn;
 
 	/* Function pointers to local join methods */

@@ -1022,6 +1022,10 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 							sizeof(YbBNLHashClauseInfo)));
 
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
+		newnode->hashClauseInfos[i].innerHashExpr = (Expr *)
+			copyObject(from->hashClauseInfos[i].innerHashExpr);
+
+	for (int i = 0; i < from->num_hashClauseInfos; i++)
 		newnode->hashClauseInfos[i].outerParamExpr = (Expr *)
 			copyObject(from->hashClauseInfos[i].outerParamExpr);
 
