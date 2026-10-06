@@ -1272,6 +1272,8 @@ public class TestYbQpm extends BasePgSQLTest {
   public void testYbQpmReadTruncatedDumpFile() throws Exception {
     final String skip = " /* __YB_STAT_PLANS_SKIP */";
     try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET yb_pg_stat_plans_track = top");
+      stmt.execute("SET yb_pg_stat_plans_track_catalog_queries = false");
       Path dumpFile;
       try (ResultSet rs = stmt.executeQuery("SHOW data_directory")) {
         assertTrue(rs.next());
