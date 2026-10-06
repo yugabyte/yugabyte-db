@@ -90,7 +90,7 @@ Infer as much as you can from context first, then **batch-confirm with the user 
    - `managed/` → `YBA`
    - `yugabyted-ui/` → `yugabyted`
    - `docs/` → `Docs`
-   - `.claude/`, `AGENTS.md`, `CLAUDE.md` → `ClaudeCode`
+   - `.claude/`, `AGENTS.md` → `ClaudeCode`
    - `build-support/`, `cmake_modules/`, `.github/` → `Build`
    - mixed/cross-cutting → ask the user
 
