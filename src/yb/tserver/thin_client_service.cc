@@ -59,6 +59,9 @@ using namespace std::literals;
 
 DECLARE_uint64(rpc_max_message_size);
 
+DEFINE_test_flag(uint64, thin_client_perform_delay_ms, 0,
+                 "Delay before a thin client Perform is applied.");
+
 namespace yb::tserver {
 
 namespace {
@@ -353,6 +356,26 @@ class ThinClientServiceImpl::Impl : public SessionRegistryContext {
   }
 
   void Perform(
+      LWThinPerformRequestPB* req, LWThinPerformResponsePB* resp, rpc::RpcContext* context) {
+    if (const auto delay_ms = FLAGS_TEST_thin_client_perform_delay_ms;
+        PREDICT_FALSE(delay_ms > 0)) {
+      // The context keeps the request and response alive while the Perform waits.
+      auto delayed_context = std::make_shared<rpc::RpcContext>(std::move(*context));
+      messenger_.scheduler().Schedule(
+          [this, req, resp, delayed_context](const Status& status) {
+            if (!status.ok()) {
+              delayed_context->RespondFailure(status);
+              return;
+            }
+            DoPerform(req, resp, delayed_context.get());
+          },
+          delay_ms * 1ms);
+      return;
+    }
+    DoPerform(req, resp, context);
+  }
+
+  void DoPerform(
       LWThinPerformRequestPB* req, LWThinPerformResponsePB* resp, rpc::RpcContext* context) {
     auto session = session_registry_.Get(req->session_id());
     if (!session.ok()) {
