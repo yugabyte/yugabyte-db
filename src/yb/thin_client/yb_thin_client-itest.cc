@@ -65,6 +65,7 @@
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_uint64(TEST_thin_client_perform_delay_ms);
+DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_bool(use_libunwind_for_stack_trace_collection);
 DECLARE_bool(use_node_to_node_encryption);
@@ -1898,22 +1899,29 @@ TEST_F(PgThinClientTest, FencedBatchKeepsOtherSessionsOpen) {
   ASSERT_EQ(next_page.code, YBTHIN_OK) << next_page.message;
 }
 
+// Sessions expire after a few seconds. Postgres heartbeats its own sessions often enough to keep
+// them, while the thin client's keepalive does not.
+class PgThinClientSessionExpiryTest : public PgThinClientTest {
+ protected:
+  static constexpr uint64_t kSessionLifetimeMs = 4000 * kTimeMultiplier;
+
+  void SetUp() override {
+    // Set before the cluster starts, since the session registry schedules its expiry checks by it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = kSessionLifetimeMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) = kSessionLifetimeMs / 3;
+    PgThinClientTest::SetUp();
+  }
+};
+
 // A Perform that finds its session just before the session expires is answered "Session is
 // shutting down". That loses the session like an unknown one: the call fails with YBTHIN_NETWORK,
 // and its session and the connection's other sessions reopen before their next use.
-TEST_F(PgThinClientTest, ShuttingDownSessionIsLost) {
+TEST_F(PgThinClientSessionExpiryTest, ShuttingDownSessionIsLost) {
   constexpr int kHashKey = 1;
   constexpr int kRows = 10;
   constexpr uint64_t kPageLimit = 4;
-  const uint64_t session_lifetime_ms = 3000 * kTimeMultiplier;
   const auto oids = ASSERT_RESULT(CreateKeyTable());
-
-  // Only the client's first sessions get the short lifetime; reopened ones get the default.
-  const auto default_lifetime_ms = FLAGS_pg_client_session_expiration_ms;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = session_lifetime_ms;
-  auto created = CreateThinClient({TServerAddr()}, &kOneConnectionPool, 60000);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = default_lifetime_ms;
-  auto client = ASSERT_RESULT(std::move(created));
+  auto client = ASSERT_RESULT(CreateThinClient({TServerAddr()}, &kOneConnectionPool, 60000));
   auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
   const int32_t v_id = table.ColumnId(1);
 
@@ -1924,7 +1932,7 @@ TEST_F(PgThinClientTest, ShuttingDownSessionIsLost) {
 
   // Held past two lifetimes, since a keepalive ping may postpone the expiry once.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) =
-      2 * session_lifetime_ms + 1000 * kTimeMultiplier;
+      2 * kSessionLifetimeMs + 1000 * kTimeMultiplier;
   auto lost = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) = 0;
   ASSERT_EQ(lost.code, YBTHIN_NETWORK) << lost.message;
