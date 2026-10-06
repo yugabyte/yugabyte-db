@@ -21,7 +21,7 @@ For an accounts schema that uses `INHERITS`, see [Table inheritance example](../
 
 Columns, column defaults, and check constraints propagate from a parent to its children.
 
-Primary keys, unique constraints, and foreign keys do not propagate. Define them on each child.
+Primary keys, unique constraints, indexes, and foreign keys do not propagate. Define them on each child.
 
 A table can inherit from more than one parent, and a child can itself be a parent. The parent can also contain rows that are not in any child.
 

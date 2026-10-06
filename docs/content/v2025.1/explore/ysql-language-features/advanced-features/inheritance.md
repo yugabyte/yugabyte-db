@@ -69,7 +69,7 @@ A query on `accounts` includes rows from the child tables:
 SELECT SUM(balance) FROM accounts WHERE account_id = 10;
 ```
 
-The parent can contain rows that are not in any child. Primary keys, unique constraints, and foreign keys are not inherited, so each child in this example defines its own.
+The parent can contain rows that are not in any child. Primary keys, unique constraints, indexes, and foreign keys are not inherited, so each child in this example defines its own.
 
 ### Queries and updates on data
 
