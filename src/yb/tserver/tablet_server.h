@@ -522,7 +522,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
-  void SetCronLeaderLease(MonoTime cron_leader_lease_end);
+  void SetCronLeaseEnd(MonoTime lease_end);
+
+  void SetCronCanStartJobs(bool can_start);
 
   // Loads cluster_ysql_db_oldest_pinned_read_times_ in memory from the persisted pins file
   // on disk. Called on tserver startup to prevent accidental compaction before heartbeat.
