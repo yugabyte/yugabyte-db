@@ -55,6 +55,8 @@ namespace {
 constexpr uint32 kPgCronJsonVersion1 = 1;
 constexpr char kPgCronJsonVersion[] = "version";
 constexpr char kPgCronJsonLastMinute[] = "last_minute";
+// How long before the lease ends this node stops its in-flight pg_cron jobs.
+constexpr int64_t kJobStopMarginSec = 3;
 }  // namespace
 
 PgCronLeaderService::PgCronLeaderService(
@@ -81,9 +83,9 @@ void PgCronLeaderService::Activate() {
       VLOG_WITH_FUNC(1) << "Leader for term 1. Activating immediately";
       leader_activate_time_ = MonoTime::Min();
     } else {
-      leader_activate_time_ =
-          MonoTime::Now() + MonoDelta::FromMicroseconds(
-                                FLAGS_pg_cron_leader_lease_sec + 2 * FLAGS_max_clock_skew_usec);
+      leader_activate_time_ = MonoTime::Now() +
+                              MonoDelta::FromSeconds(FLAGS_pg_cron_leader_lease_sec) +
+                              MonoDelta::FromMicroseconds(2 * FLAGS_max_clock_skew_usec);
       LOG_WITH_FUNC(INFO) << "Waiting until " << leader_activate_time_.ToFormattedString()
                           << " for lease of the old leader to expire";
     }
@@ -136,10 +138,16 @@ void PgCronLeaderService::RefreshLeaderLease() {
     return;
   }
 
-  // We are the leader. Renew the lease.
+  // We are the leader: renew the lease. The lease ends kJobStopMarginSec early, to leave time to
+  // stop running jobs before a new leader, which waits out the full lease, starts.
   const auto lease_end = now + MonoDelta::FromSeconds(FLAGS_pg_cron_leader_lease_sec);
-  VLOG_WITH_FUNC(1) << "Setting leader lease to " << lease_end.ToFormattedString();
-  set_cron_leader_lease_fn_(lease_end);
+  const auto stop_margin = std::clamp<int64_t>(
+      static_cast<int64_t>(FLAGS_pg_cron_leader_lease_sec) -
+          static_cast<int64_t>(FLAGS_pg_cron_leadership_refresh_sec) - 1,
+      0, kJobStopMarginSec);
+  VLOG_WITH_FUNC(1) << "Setting leader lease to " << lease_end.ToFormattedString()
+                    << " minus " << stop_margin << " s";
+  set_cron_leader_lease_fn_(lease_end - MonoDelta::FromSeconds(stop_margin));
 }
 
 Status PgCronLeaderService::SetLastMinute(int64_t last_minute, CoarseTimePoint deadline) {
