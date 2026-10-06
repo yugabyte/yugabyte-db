@@ -641,13 +641,12 @@ class YBClient::Data {
       GUARDED_BY(per_tag_tokens_mutex_);
 
   server::ClockPtr clock_;
-  const ClientId id_;
-  const std::string log_prefix_;
 
   // Allocates ids for the retryable write requests, so the server could track different RPCs
-  // related to the same write operation and reject duplicates. The implementation is picked by
-  // FLAGS_client_request_id_allocator.
+  // related to the same write operation and reject duplicates, and owns the client ids they are
+  // sent with. The implementation is picked by FLAGS_client_request_id_allocator.
   const std::unique_ptr<internal::RequestIdAllocator> request_id_allocator_;
+  const std::string log_prefix_;
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
 

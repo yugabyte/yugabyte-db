@@ -15,20 +15,16 @@
 
 #include <memory>
 
+#include "yb/client/request_id_allocator.h"
+
 #include "yb/common/retryable_request.h"
 
 namespace yb::client::internal {
 
-/// Allocated id, with the lower bound on the ids that could still be running.
-struct AtomicRequestIdAllocation {
-  RetryableRequestId id;
-  RetryableRequestId min_running;
-};
-
 class AtomicRequestIdAllocatorImpl;
 
 /// Allocates retryable request ids, without a lock, unlike the spinlock guarded set of running
-/// ids that it replaces. Meant to be sharded, see ShardedRequestIdAllocator, so that a single
+/// ids that it replaces. Meant to be sharded, see request_id_allocator.cc, so that a single
 /// instance only sees the requests of a few threads.
 ///
 /// Next() increments an atomic counter. Finish() pushes the id to a lock free queue, and the
@@ -45,7 +41,7 @@ class AtomicRequestIdAllocatorImpl;
 /// garbage collect its deduplication state and to reject expired ids, see
 /// consensus/retryable_requests.cc. It only lags while ids wait in the queue, which just delays
 /// that cleanup.
-class AtomicRequestIdAllocator {
+class AtomicRequestIdAllocator : public RequestIdAllocator {
  public:
   AtomicRequestIdAllocator();
 
@@ -55,14 +51,16 @@ class AtomicRequestIdAllocator {
   AtomicRequestIdAllocator(const AtomicRequestIdAllocator&) = delete;
   void operator=(const AtomicRequestIdAllocator&) = delete;
 
-  AtomicRequestIdAllocation Next();
+  const ClientId& client_id() const override;
 
-  /// Reports that the request will never be retried. Exactly once per allocated id.
-  void Finish(RetryableRequestId id);
+  RequestIdAllocation Next() override;
+
+  void Finish(RetryableRequestId id) override;
 
   RetryableRequestId TEST_min_running() const;
 
  private:
+  const ClientId client_id_ = ClientId::GenerateRandom();
   const std::unique_ptr<AtomicRequestIdAllocatorImpl> impl_;
 };
 

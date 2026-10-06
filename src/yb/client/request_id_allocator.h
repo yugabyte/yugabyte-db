@@ -28,36 +28,35 @@ struct RequestIdAllocation {
   RetryableRequestId min_running;
 
   /// Client id to send with the request. The server deduplicates by client id and request id
-  /// together, and a sharded allocator has one per shard.
-  const ClientId* client_id;
+  /// together, and the sharded allocator has one per shard.
+  const ClientId* client_id = nullptr;
 
-  /// Finishes the request: the shard, for a sharded allocator.
-  RequestIdAllocator* allocator;
-
-  /// Per request state of the allocator, opaque to the caller.
-  std::shared_ptr<void> state;
+  /// Finishes the request: the shard, for the sharded allocator.
+  RequestIdAllocator* allocator = nullptr;
 };
 
-/// Allocates the retryable request ids of a client. The implementation is picked by
-/// FLAGS_client_request_id_allocator, see CreateRequestIdAllocator.
+/// Allocates the retryable request ids of a client, and generates the client ids that they are
+/// sent with. The implementation is picked by FLAGS_client_request_id_allocator, see
+/// CreateRequestIdAllocator.
 class RequestIdAllocator {
  public:
   virtual ~RequestIdAllocator() = default;
+
+  /// The id that identifies the client in logs: the one sent with the requests, or the one of
+  /// the first shard of the sharded allocator.
+  virtual const ClientId& client_id() const = 0;
 
   virtual RequestIdAllocation Next() = 0;
 
   /// Reports that the request will never be retried. Exactly once per allocation, through the
   /// allocator of the allocation.
-  virtual void Finish(const RequestIdAllocation& allocation) = 0;
+  virtual void Finish(RetryableRequestId id) = 0;
 };
 
-/// Creates the allocator named by FLAGS_client_request_id_allocator. The allocators with a single
-/// id space send client_id with their requests, the sharded ones generate a client id per shard.
-std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator(const ClientId& client_id);
+/// Creates the allocator named by FLAGS_client_request_id_allocator.
+std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator();
 
-/// The same for the given name, which the benchmark uses to run the allocators that only exist
-/// behind the interface.
-std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator(
-    const std::string& name, const ClientId& client_id);
+/// The same for the given name, for the tests.
+std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator(const std::string& name);
 
 } // namespace yb::client::internal

@@ -712,10 +712,6 @@ const std::string& Batcher::proxy_uuid() const {
   return client_->proxy_uuid();
 }
 
-const ClientId& Batcher::client_id() const {
-  return client_->id();
-}
-
 server::Clock* Batcher::Clock() const {
   return client_->Clock();
 }
@@ -726,7 +722,7 @@ RequestIdAllocation Batcher::NextRequestIdAndMinRunningRequestId() {
 
 void Batcher::RequestsFinished() {
   for (const auto& [id, details] : retryable_requests_) {
-    details.allocator->Finish(details);
+    details.allocator->Finish(id);
   }
 }
 

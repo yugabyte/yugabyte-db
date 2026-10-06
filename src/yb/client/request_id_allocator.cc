@@ -13,42 +13,62 @@
 
 #include "yb/client/request_id_allocator.h"
 
+#include <algorithm>
+#include <atomic>
 #include <mutex>
 #include <set>
-#include <span>
 #include <vector>
 
 #include "yb/client/atomic_request_id_allocator.h"
-#include "yb/client/bitmap_request_id_allocator.h"
-#include "yb/client/block_request_id_allocator.h"
-#include "yb/client/counter_request_id_allocator.h"
-#include "yb/client/retryable_request_tracker.h"
-#include "yb/client/sharded_request_id_allocator.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 
 DEFINE_NON_RUNTIME_string(client_request_id_allocator, "sharded-queue",
-    "Allocator of the retryable request ids of a client. spinlock: a set of the running ids under "
-    "a spinlock. id-blocks: per thread blocks of ids, https://github.com/yugabyte/yugabyte-db/"
-    "pull/33246. striped: a set per stripe, each under its own lock, https://github.com/yugabyte/"
-    "yugabyte-db/pull/33244. queue, bitmap: lock free, with the finished ids folded from a queue "
-    "or a bitmap. sharded-queue, sharded-bitmap, sharded-counters: a lock free allocator per "
-    "shard, each with its own client id, see client_request_id_shards.");
+    "Allocator of the retryable request ids of a client. spinlock: the set of the running ids "
+    "under a spinlock that the others replace. queue: lock free, with the finished ids folded "
+    "from a queue. sharded-queue: a queue per shard, each with its own client id, see "
+    "client_request_id_shards.");
 DEFINE_validator(client_request_id_allocator,
-    FLAG_IN_SET_VALIDATOR("spinlock", "id-blocks", "striped", "queue", "bitmap", "sharded-queue",
-                          "sharded-bitmap", "sharded-counters"));
+    FLAG_IN_SET_VALIDATOR("spinlock", "queue", "sharded-queue"));
+
+DEFINE_RUNTIME_uint32(client_request_id_shards, 0,
+    "Number of shards that the retryable request ids of a client are split into. Each shard has "
+    "its own client id and its own min_running_request_id, so more shards mean less contention "
+    "between the threads and a smaller blast radius of a request that stays unfinished, but also "
+    "more per client state on the server. Zero picks an eighth of the CPUs, which keeps the "
+    "threads that share a shard well below the number where it degrades.");
 
 namespace yb::client::internal {
 
 namespace {
 
-// The allocator that all of them replace: a set of the running ids under a spinlock.
+// A shard reaches full throughput while up to 16 threads finish requests through it, and degrades
+// beyond that, so an eighth of the CPUs leaves margin for the clients whose threads outnumber
+// them. The cap bounds the per client state that the server keeps for the shards.
+size_t NumRequestIdShards() {
+  if (FLAGS_client_request_id_shards) {
+    return FLAGS_client_request_id_shards;
+  }
+  return std::clamp<size_t>(NumEffectiveCPUs() / 8, 2, 64);
+}
+
+// Index of the calling thread, so that a thread always uses the same shard.
+size_t RequestIdThreadIndex() {
+  static std::atomic<size_t> sequence{0};
+  thread_local size_t index = sequence.fetch_add(1);
+  return index;
+}
+
+// The allocator that the others replace: a set of the running ids under a spinlock.
 class SpinlockRequestIdAllocator : public RequestIdAllocator {
  public:
-  explicit SpinlockRequestIdAllocator(const ClientId& client_id) : client_id_(client_id) {}
+  const ClientId& client_id() const override {
+    return client_id_;
+  }
 
   RequestIdAllocation Next() override {
     std::lock_guard lock(mutex_);
@@ -59,159 +79,75 @@ class SpinlockRequestIdAllocator : public RequestIdAllocator {
       .min_running = *running_.begin(),
       .client_id = &client_id_,
       .allocator = this,
-      .state = nullptr,
     };
   }
 
-  void Finish(const RequestIdAllocation& allocation) override {
+  void Finish(RetryableRequestId id) override {
     std::lock_guard lock(mutex_);
-    if (!running_.erase(allocation.id)) {
-      LOG(DFATAL) << "Finished an unknown request: " << allocation.id;
+    if (!running_.erase(id)) {
+      LOG(DFATAL) << "Finished an unknown request: " << id;
     }
   }
 
  private:
-  const ClientId client_id_;
+  const ClientId client_id_ = ClientId::GenerateRandom();
   simple_spinlock mutex_;
   RetryableRequestId next_id_ GUARDED_BY(mutex_) = 0;
   std::set<RetryableRequestId> running_ GUARDED_BY(mutex_);
 };
 
-class BlockRequestIdAllocatorAdapter : public RequestIdAllocator {
+// A queue per shard, each with its own client id. A thread always uses the same shard, so the
+// shards share no state: the ids of a shard are dense and independent, and a request that stays
+// unfinished holds back the min_running of its own shard only, instead of the one that the whole
+// client reports.
+//
+// The price is paid by the server, which keeps the deduplication state per client id, see
+// consensus/retryable_requests.cc. It tracks the same number of requests either way, but the per
+// client part of that state is multiplied by the number of shards, per tablet that the client
+// writes to. So the shard count is a trade between that and the contention between the threads,
+// and it does not have to match the number of threads.
+class ShardedRequestIdAllocator : public RequestIdAllocator {
  public:
-  explicit BlockRequestIdAllocatorAdapter(const ClientId& client_id) : client_id_(client_id) {}
-
-  RequestIdAllocation Next() override {
-    auto allocation = allocator_.Next();
-    return RequestIdAllocation {
-      .id = allocation.id,
-      .min_running = allocation.min_running,
-      .client_id = &client_id_,
-      .allocator = this,
-      .state = std::move(allocation.block),
-    };
-  }
-
-  void Finish(const RequestIdAllocation& allocation) override {
-    BlockRequestIdAllocator::Finished(std::static_pointer_cast<RequestIdBlock>(allocation.state));
-  }
-
- private:
-  const ClientId client_id_;
-  BlockRequestIdAllocator allocator_;
-};
-
-class StripedRequestIdAllocator : public RequestIdAllocator {
- public:
-  explicit StripedRequestIdAllocator(const ClientId& client_id) : client_id_(client_id) {}
-
-  RequestIdAllocation Next() override {
-    // The registration is move only and holds a list iterator, so it lives on the heap.
-    auto registration = std::make_shared<Registration>(tracker_.Register());
-    return RequestIdAllocation {
-      .id = registration->request_id(),
-      .min_running = registration->min_running_request_id(),
-      .client_id = &client_id_,
-      .allocator = this,
-      .state = std::move(registration),
-    };
-  }
-
-  void Finish(const RequestIdAllocation& allocation) override {
-    auto* registration = static_cast<Registration*>(allocation.state.get());
-    tracker_.Unregister(std::span(&registration, 1));
-  }
-
- private:
-  using Registration = RetryableRequestTracker::Registration;
-
-  const ClientId client_id_;
-  RetryableRequestTracker tracker_;
-};
-
-// An allocator with a single id space: the client id is the one given, or a generated one for a
-// shard.
-template <class Impl>
-class SingleSpaceRequestIdAllocator : public RequestIdAllocator {
- public:
-  SingleSpaceRequestIdAllocator() : client_id_(ClientId::GenerateRandom()) {}
-  explicit SingleSpaceRequestIdAllocator(const ClientId& client_id) : client_id_(client_id) {}
-
-  RequestIdAllocation Next() override {
-    auto allocation = impl_.Next();
-    return RequestIdAllocation {
-      .id = allocation.id,
-      .min_running = allocation.min_running,
-      .client_id = &client_id_,
-      .allocator = this,
-      .state = nullptr,
-    };
-  }
-
-  void Finish(const RequestIdAllocation& allocation) override {
-    impl_.Finish(allocation.id);
-  }
-
- private:
-  const ClientId client_id_;
-  Impl impl_;
-};
-
-// A shard per group of threads, each with its own client id, see ShardedRequestIdAllocator.
-template <class Impl>
-class ShardedRequestIdAllocatorAdapter : public RequestIdAllocator {
- public:
-  ShardedRequestIdAllocatorAdapter() {
+  ShardedRequestIdAllocator() {
     auto num_shards = NumRequestIdShards();
     shards_.reserve(num_shards);
     for (size_t i = 0; i != num_shards; ++i) {
-      shards_.push_back(std::make_unique<SingleSpaceRequestIdAllocator<Impl>>());
+      shards_.push_back(std::make_unique<AtomicRequestIdAllocator>());
     }
   }
 
+  const ClientId& client_id() const override {
+    return shards_.front()->client_id();
+  }
+
+  // The request is finished through the shard of the allocation.
   RequestIdAllocation Next() override {
     return shards_[RequestIdThreadIndex() % shards_.size()]->Next();
   }
 
-  void Finish(const RequestIdAllocation& allocation) override {
-    LOG(DFATAL) << "The shard of the allocation finishes it";
+  void Finish(RetryableRequestId id) override {
+    LOG(DFATAL) << "The shard of the allocation finishes it: " << id;
   }
 
  private:
-  std::vector<std::unique_ptr<SingleSpaceRequestIdAllocator<Impl>>> shards_;
+  std::vector<std::unique_ptr<AtomicRequestIdAllocator>> shards_;
 };
 
 } // namespace
 
-std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator(const ClientId& client_id) {
-  return CreateRequestIdAllocator(FLAGS_client_request_id_allocator, client_id);
+std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator() {
+  return CreateRequestIdAllocator(FLAGS_client_request_id_allocator);
 }
 
-std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator(
-    const std::string& name, const ClientId& client_id) {
+std::unique_ptr<RequestIdAllocator> CreateRequestIdAllocator(const std::string& name) {
   if (name == "spinlock") {
-    return std::make_unique<SpinlockRequestIdAllocator>(client_id);
-  }
-  if (name == "id-blocks") {
-    return std::make_unique<BlockRequestIdAllocatorAdapter>(client_id);
-  }
-  if (name == "striped") {
-    return std::make_unique<StripedRequestIdAllocator>(client_id);
+    return std::make_unique<SpinlockRequestIdAllocator>();
   }
   if (name == "queue") {
-    return std::make_unique<SingleSpaceRequestIdAllocator<AtomicRequestIdAllocator>>(client_id);
-  }
-  if (name == "bitmap") {
-    return std::make_unique<SingleSpaceRequestIdAllocator<BitmapRequestIdAllocator>>(client_id);
+    return std::make_unique<AtomicRequestIdAllocator>();
   }
   if (name == "sharded-queue") {
-    return std::make_unique<ShardedRequestIdAllocatorAdapter<AtomicRequestIdAllocator>>();
-  }
-  if (name == "sharded-bitmap") {
-    return std::make_unique<ShardedRequestIdAllocatorAdapter<BitmapRequestIdAllocator>>();
-  }
-  if (name == "sharded-counters") {
-    return std::make_unique<ShardedRequestIdAllocatorAdapter<CounterRequestIdAllocator>>();
+    return std::make_unique<ShardedRequestIdAllocator>();
   }
   LOG(FATAL) << "Unknown request id allocator: " << name;
 }

@@ -482,7 +482,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
   RETURN_NOT_OK(CheckCPUFlags());
 
   std::unique_ptr<YBClient> c(new YBClient());
-  c->data_->client_name_ = data_->client_name_ + "_" + c->data_->id_.ToString();
+  c->data_->client_name_ = data_->client_name_ + "_" + c->id().ToString();
 
   // Init messenger.
   if (messenger) {
@@ -2618,7 +2618,7 @@ const std::string& YBClient::proxy_uuid() const {
 }
 
 const ClientId& YBClient::id() const {
-  return data_->id_;
+  return data_->request_id_allocator_->client_id();
 }
 
 const CloudInfoPB& YBClient::cloud_info() const {

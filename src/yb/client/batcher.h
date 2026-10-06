@@ -247,8 +247,6 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   const std::string& proxy_uuid() const;
 
-  const ClientId& client_id() const;
-
   MicrosTime rpcs_start_time_micros() const { return rpcs_start_time_micros_; }
 
   server::Clock* Clock() const;
@@ -257,9 +255,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void RequestsFinished();
 
-  void RegisterRequest(internal::RequestIdAllocation allocation) {
-    auto id = allocation.id;
-    retryable_requests_.emplace(id, std::move(allocation));
+  void RegisterRequest(const internal::RequestIdAllocation& allocation) {
+    retryable_requests_.emplace(allocation.id, allocation);
   }
 
   void MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id);

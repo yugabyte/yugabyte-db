@@ -39,10 +39,10 @@ class AtomicRequestIdAllocatorImpl {
     finished_queue_.Drain();
   }
 
-  AtomicRequestIdAllocation Next() {
+  RequestIdAllocation Next() {
     auto id = next_id_.fetch_add(1);
     // min_running only moves past finished ids, so it stays below the id allocated above.
-    return AtomicRequestIdAllocation { .id = id, .min_running = min_running_id_.load() };
+    return RequestIdAllocation { .id = id, .min_running = min_running_id_.load() };
   }
 
   void Finish(RetryableRequestId id) {
@@ -156,8 +156,15 @@ AtomicRequestIdAllocator::AtomicRequestIdAllocator()
 
 AtomicRequestIdAllocator::~AtomicRequestIdAllocator() = default;
 
-AtomicRequestIdAllocation AtomicRequestIdAllocator::Next() {
-  return impl_->Next();
+const ClientId& AtomicRequestIdAllocator::client_id() const {
+  return client_id_;
+}
+
+RequestIdAllocation AtomicRequestIdAllocator::Next() {
+  auto allocation = impl_->Next();
+  allocation.client_id = &client_id_;
+  allocation.allocator = this;
+  return allocation;
 }
 
 void AtomicRequestIdAllocator::Finish(RetryableRequestId id) {

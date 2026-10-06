@@ -768,7 +768,7 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
     req_.set_leader_term(batcher_->GetLeaderTerm());
   }
 
-  if (!batcher_->client_id().IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
+  if (FLAGS_detect_duplicates_for_retryable_requests) {
     const auto& first_yb_op = ops_.begin()->yb_op;
     // The client id to send is the one of the allocation, since a sharded allocator has one per
     // shard.
@@ -781,11 +781,11 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
       req_.set_min_running_request_id(request_detail.min_running);
       client_id = request_detail.client_id;
     } else {
-      auto allocation = batcher_->NextRequestIdAndMinRunningRequestId();
+      const auto allocation = batcher_->NextRequestIdAndMinRunningRequestId();
       req_.set_request_id(allocation.id);
       req_.set_min_running_request_id(allocation.min_running);
       client_id = allocation.client_id;
-      batcher_->RegisterRequest(std::move(allocation));
+      batcher_->RegisterRequest(allocation);
     }
     auto client_id_pair = client_id->ToUInt64Pair();
     req_.set_client_id1(client_id_pair.first);
