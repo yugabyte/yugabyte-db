@@ -45,6 +45,19 @@ const (
 	// AWSEndpointEnv field name to denote in Json request
 	AWSEndpointEnv = "AWS_KMS_ENDPOINT"
 
+	// OCIStorageRegionField field name to denote in storage config Json request
+	OCIStorageRegionField = "OCI_REGION"
+	// OCINamespaceField field name to denote in Json request
+	OCINamespaceField = "OCI_NAMESPACE"
+	// UseOCIIAM field name to denote in Json request
+	UseOCIIAM = "USE_OCI_IAM"
+	// OCIS3AccessKeyIDField field name to denote in Json request
+	OCIS3AccessKeyIDField = "OCI_S3_ACCESS_KEY_ID"
+	// OCIS3SecretAccessKeyField field name to denote in Json request
+	OCIS3SecretAccessKeyField = "OCI_S3_SECRET_ACCESS_KEY"
+	// OCIS3HostBaseField field name to denote in Json request
+	OCIS3HostBaseField = "OCI_S3_HOST_BASE"
+
 	// AzureSubscriptionIDEnv env variable name for azure provider
 	AzureSubscriptionIDEnv = "AZURE_SUBSCRIPTION_ID"
 	// AzureRGEnv env variable name for azure provider
@@ -107,8 +120,8 @@ const (
 	OCICompartmentIDField = "ociCompartmentId"
 	// OCIVaultIDField field name to denote in Json request
 	OCIVaultIDField = "ociVaultId"
-	// OCIRegionField field name to denote in Json request
-	OCIRegionField = "ociRegion"
+	// OCIKmsRegionField field name to denote in KMS config Json request
+	OCIKmsRegionField = "ociRegion"
 	// OCIKeyNameField field name to denote in Json request
 	OCIKeyNameField = "ociKeyName"
 	// OCIKeyOCIDField field name to denote in Json request
@@ -614,6 +627,8 @@ const (
 	GCSStorageConfigType = "GCS"
 	// NFSStorageConfigType type
 	NFSStorageConfigType = "NFS"
+	// OCIStorageConfigType type
+	OCIStorageConfigType = "OCI"
 )
 
 // ClusterTypes for universe

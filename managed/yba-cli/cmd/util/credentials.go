@@ -224,6 +224,19 @@ func AWSRegionFromEnv() (string, error) {
 	return region, nil
 }
 
+// OCIS3CredentialsFromEnv retrieves "OCI_S3_ACCESS_KEY_ID" and "OCI_S3_SECRET_ACCESS_KEY".
+func OCIS3CredentialsFromEnv() (accessKeyID, secretAccessKey string, err error) {
+	accessKeyID, accessPresent := os.LookupEnv(OCIS3AccessKeyIDField)
+	secretAccessKey, secretPresent := os.LookupEnv(OCIS3SecretAccessKeyField)
+	if !accessPresent || !secretPresent ||
+		len(accessKeyID) == 0 || len(secretAccessKey) == 0 {
+		return "", "", fmt.Errorf(
+			"%s and %s environment variables must both be set",
+			OCIS3AccessKeyIDField, OCIS3SecretAccessKeyField)
+	}
+	return accessKeyID, secretAccessKey, nil
+}
+
 // AzureStorageCredentialsFromEnv retrives value of "AZURE_STORAGE_SAS_TOKEN" from env variables
 func AzureStorageCredentialsFromEnv() (string, error) {
 	azureSasToken, isPresent := os.LookupEnv(AzureStorageSasTokenEnv)

@@ -66,6 +66,12 @@ var createOCIEARCmd = &cobra.Command{
 				"Invalid --auth-type. Allowed values: API_KEY, INSTANCE_PRINCIPAL\n",
 				formatter.RedColor))
 		}
+		if util.IsEmptyString(valueFromFlagOrEnv(cmd, "region", util.OCIRegionEnv)) {
+			cmd.Help()
+			logrus.Fatalln(formatter.Colorize(
+				fmt.Sprintf("Missing required value: --region (or %s)\n", util.OCIRegionEnv),
+				formatter.RedColor))
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		runCreateOCIEAR(cmd)
@@ -81,7 +87,7 @@ func init() {
 		"[Required] OCI vault OCID.")
 	createOCIEARCmd.MarkFlagRequired("vault-id")
 	createOCIEARCmd.Flags().String("region", "",
-		fmt.Sprintf("OCI region identifier, for example us-ashburn-1. "+
+		fmt.Sprintf("[Required] OCI region identifier, for example us-ashburn-1. "+
 			"Can also be set using environment variable %s.", util.OCIRegionEnv))
 	createOCIEARCmd.Flags().String("compartment-id", "",
 		"[Required] OCI compartment OCID.")
@@ -131,16 +137,7 @@ func runCreateOCIEAR(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	region, err := cmd.Flags().GetString("region")
-	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
-	if util.IsEmptyString(region) {
-		region, err = util.OCIValueFromEnv(util.OCIRegionEnv)
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-	}
+	region := valueFromFlagOrEnv(cmd, "region", util.OCIRegionEnv)
 	compartmentID, err := cmd.Flags().GetString("compartment-id")
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -154,7 +151,7 @@ func runCreateOCIEAR(cmd *cobra.Command) {
 		"name":                     configName,
 		util.OCIAuthTypeField:      authType,
 		util.OCIVaultIDField:       vaultID,
-		util.OCIRegionField:        region,
+		util.OCIKmsRegionField:     region,
 		util.OCICompartmentIDField: compartmentID,
 		util.OCIKeyNameField:       keyName,
 	}
@@ -189,21 +186,25 @@ var apiKeyEnvNames = map[string]string{
 	"private-key-file-path": util.OCIPrivateKeyFileEnv,
 }
 
-// apiKeyValueFromFlagOrEnv returns the flag value, or its environment variable
+// valueFromFlagOrEnv returns the flag value, or the environment variable
 // value when the flag is empty
-func apiKeyValueFromFlagOrEnv(cmd *cobra.Command, name string) string {
-	value, err := cmd.Flags().GetString(name)
+func valueFromFlagOrEnv(cmd *cobra.Command, flagName, envName string) string {
+	value, err := cmd.Flags().GetString(flagName)
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 	if !util.IsEmptyString(value) {
 		return value
 	}
-	value, err = util.OCIValueFromEnv(apiKeyEnvNames[name])
+	value, err = util.OCIValueFromEnv(envName)
 	if err != nil {
 		return ""
 	}
 	return value
+}
+
+func apiKeyValueFromFlagOrEnv(cmd *cobra.Command, name string) string {
+	return valueFromFlagOrEnv(cmd, name, apiKeyEnvNames[name])
 }
 
 func apiKeyFlagsSetCount(cmd *cobra.Command) int {

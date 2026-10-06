@@ -301,7 +301,7 @@ func ConvertToKMSConfig(r map[string]interface{}) (KMSConfig, error) {
 			if v, ok := credentials[OCIVaultIDField].(string); ok {
 				oci.VaultID = v
 			}
-			if v, ok := credentials[OCIRegionField].(string); ok {
+			if v, ok := credentials[OCIKmsRegionField].(string); ok {
 				oci.Region = v
 			}
 			if v, ok := credentials[OCIKeyNameField].(string); ok {
