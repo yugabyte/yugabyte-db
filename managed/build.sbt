@@ -1308,6 +1308,11 @@ Test / testGrouping := partitionTests(
   sharedPgJvmOpts(target.value)
 )
 
+// Where local provider test forks keep the logs of failed tests (the YBA log of the fork and the
+// DB/YB-Controller logs of the failed test's universe), so that CI can archive them.
+def localTestLogDirJvmOpts(base: File): Seq[String] =
+  Seq(s"-Dyb.local.test.logDir=${(base / "local-test-logs").getAbsolutePath}")
+
 // Add local tests only grouping to avoid multiple local tests falling into one bucket.
 TestLocalProviderSuite / parallelExecution := true
 TestLocalProviderSuite / testGrouping := partitionLocalTests(
@@ -1316,7 +1321,7 @@ TestLocalProviderSuite / testGrouping := partitionLocalTests(
   testLocalShardSize.value,
   testLocalIpRangeStart.value,
   testLocalIpRangeSize.value,
-  sharedPgJvmOpts(target.value)
+  sharedPgJvmOpts(target.value) ++ localTestLogDirJvmOpts(target.value)
 )
 
 // Start one embedded postgres for the whole test run (shared by every fork) and stop it after.

@@ -12,6 +12,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static play.inject.Bindings.bind;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.encoder.PatternLayoutEncoder;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.FileAppender;
+import ch.qos.logback.core.filter.Filter;
+import ch.qos.logback.core.spi.FilterReply;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
@@ -95,6 +102,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -117,6 +125,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -180,6 +189,24 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   private static final String IP_RANGE_START_ENV_KEY = "TEST_IP_RANGE_START";
   private static final String IP_RANGE_END_ENV_KEY = "TEST_IP_RANGE_END";
   private static final String SKIP_WAIT_FOR_CLUSTER_ENV_KEY = "YB_SKIP_WAIT_FOR_CLUSTER";
+  // Set by build.sbt for testLocal forks: the directory where the logs of failed tests are kept
+  // for CI to archive. The fork logs YBA to a file there (see attachForkLogAppender), and the
+  // master, tserver, postgres and YB-Controller logs of each failed test are copied there.
+  private static final String LOG_DIR_SYS_PROP = "yb.local.test.logDir";
+  private static final AtomicBoolean FORK_LOG_CLEANUP_REGISTERED = new AtomicBoolean();
+  private static final AtomicBoolean ANY_TEST_FAILED = new AtomicBoolean();
+  private static final String FORK_LOG_APPENDER = "LOCAL_TEST_FORK_LOG";
+  // Debug and trace output of these loggers is left out of the fork log to keep it small.
+  private static final List<String> FORK_LOG_QUIET_LOGGERS =
+      List.of(
+          "com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory",
+          "com.yugabyte.yw.common.concurrent.KeyLock",
+          "com.yugabyte.yw.common.RedactingService",
+          "io.ebean",
+          "com.zaxxer.hikari",
+          "com.jayway.jsonpath",
+          "org.apache.http",
+          "org.apache.commons");
 
   private static final String DEFAULT_BASE_DIR = "/tmp/local";
   public static String YBC_VERSION = "2.2.0.4-b4";
@@ -297,6 +324,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
 
     waitForClusterToStabilize = System.getenv(SKIP_WAIT_FOR_CLUSTER_ENV_KEY) == null;
+    registerForkLogCleanup();
     setUpYBSoftware(os, arch);
     ybcBinPath = System.getenv(YBC_BIN_ENV_KEY);
     setUpYBCSoftware(os, arch);
@@ -624,6 +652,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   @Override
   public void setUpBase() {
     injectDependencies();
+    attachForkLogAppender();
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");
     settableRuntimeConfigFactory
@@ -805,12 +834,110 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     if (simpleSqlPayload != null) {
       simpleSqlPayload.stop();
     }
+    if (failed) {
+      ANY_TEST_FAILED.set(true);
+      keepFailedTestLogs();
+    }
     if ((!failed || !KEEP_FAILED_UNIVERSE) && !KEEP_ALWAYS) {
       try {
         FileUtils.deleteDirectory(Paths.get(baseDir, subDir, testName).toFile());
       } catch (Exception ignored) {
       }
       localNodeManager.shutdown();
+    }
+  }
+
+  private static File getForkLogFile(String logDir) {
+    return new File(logDir, "yw." + System.getProperty(IP_RANGE_START_SYS_PROP, "0") + ".log");
+  }
+
+  // Logs YBA to a file per fork in the log directory. This does not reload logback-test.xml: it
+  // adds one more appender to the root logger next to the configured ones, and the file name is
+  // unique per fork as every fork gets its own IP range. It is attached in code rather than in
+  // logback-test.xml because the application of every test reconfigures logback (dropping it), and
+  // the conditions of logback-test.xml do not see the system property after that.
+  private static void attachForkLogAppender() {
+    String logDir = System.getProperty(LOG_DIR_SYS_PROP);
+    if (logDir == null) {
+      return;
+    }
+    LoggerContext loggerContext = (LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
+    ch.qos.logback.classic.Logger rootLogger =
+        loggerContext.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    if (rootLogger.getAppender(FORK_LOG_APPENDER) != null) {
+      return;
+    }
+    // An encoder created in code has no default pattern. This is the console pattern of
+    // logback-test.xml, with the plain level instead of the colored one.
+    PatternLayoutEncoder encoder = new PatternLayoutEncoder();
+    encoder.setContext(loggerContext);
+    encoder.setPattern(
+        "%d{\"yyyy-MM-dd'T'HH:mm:ss.SSSXXX\", UTC} %X{logType} %-5level %X{correlation-id} %F:%L"
+            + " [%thread] %logger %msg%n");
+    encoder.start();
+    Filter<ILoggingEvent> quietFilter =
+        new Filter<>() {
+          @Override
+          public FilterReply decide(ILoggingEvent event) {
+            if (event.getLevel().isGreaterOrEqual(Level.INFO)) {
+              return FilterReply.NEUTRAL;
+            }
+            String loggerName = event.getLoggerName();
+            return FORK_LOG_QUIET_LOGGERS.stream().anyMatch(loggerName::startsWith)
+                ? FilterReply.DENY
+                : FilterReply.NEUTRAL;
+          }
+        };
+    quietFilter.start();
+    FileAppender<ILoggingEvent> appender = new FileAppender<>();
+    appender.setContext(loggerContext);
+    appender.setName(FORK_LOG_APPENDER);
+    appender.setFile(getForkLogFile(logDir).getAbsolutePath());
+    appender.setAppend(true);
+    appender.setEncoder(encoder);
+    appender.addFilter(quietFilter);
+    appender.start();
+    rootLogger.addAppender(appender);
+  }
+
+  // The YBA log of a fork is only worth keeping if one of its tests failed. The fork may run
+  // several test classes, so the decision is made when the JVM exits.
+  private static void registerForkLogCleanup() {
+    String logDir = System.getProperty(LOG_DIR_SYS_PROP);
+    if (logDir == null || !FORK_LOG_CLEANUP_REGISTERED.compareAndSet(false, true)) {
+      return;
+    }
+    File forkLog = getForkLogFile(logDir);
+    Runtime.getRuntime()
+        .addShutdownHook(
+            new Thread(
+                () -> {
+                  if (!ANY_TEST_FAILED.get()) {
+                    forkLog.delete();
+                  }
+                },
+                "Delete local test fork log"));
+  }
+
+  // Copies the master, tserver (with postgres) and YB-Controller logs of the failed test's
+  // universe out of its directory, which is deleted on teardown.
+  private void keepFailedTestLogs() {
+    String logDir = System.getProperty(LOG_DIR_SYS_PROP);
+    if (logDir == null) {
+      return;
+    }
+    File testDir = Paths.get(baseDir, subDir, testName).toFile();
+    File failedTestLogDir = Paths.get(logDir, "failed", testName).toFile();
+    String logsPathPart = File.separator + "logs" + File.separator;
+    try {
+      FileUtils.copyDirectory(
+          testDir, failedTestLogDir, f -> f.isDirectory() || f.getPath().contains(logsPathPart));
+      FileUtils.writeStringToFile(
+          new File(failedTestLogDir, "yba-log.txt"),
+          getForkLogFile(logDir).getName() + System.lineSeparator(),
+          StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      log.warn("Failed to keep the logs of failed test {}", testName, e);
     }
   }
 
