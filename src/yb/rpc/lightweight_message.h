@@ -14,7 +14,6 @@
 #pragma once
 
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -353,28 +352,16 @@ const Value& ExtractValue(const google::protobuf::MapPair<Key, Value>& p) {
 
 } // namespace map_util
 
-// Collects trace-tagged request fields as (dotted-path, text-value) pairs, folding consecutive
-// repeated elements with the same value into one attribute keyed by an index range, e.g.
-// req.ops.0-4.write.table_id.
+// Collects trace-tagged request fields as (dotted-path, text-value) pairs. Repeated elements
+// share one key with `*` in place of the index (req.ops.*.write.table_id), whose value is the
+// sorted set of distinct values joined by ", ".
 class TracingAttributeCollector {
  public:
   void Add(std::string key, std::string value);
   std::vector<std::pair<std::string, std::string>> Finish();
 
  private:
-  struct Entry {
-    std::string key;     // Full key, or for an indexed field the path before the index.
-    std::string suffix;  // Indexed field only: path after the index, including the leading '.'.
-    size_t first = 0;
-    size_t last = 0;
-    bool indexed = false;
-    std::string value;
-  };
-
-  // Output order is first appearance; a range stays where its first element was added.
-  std::vector<Entry> entries_;
-  // Path with the index cut out -> entry holding the open range for that path.
-  std::unordered_map<std::string, size_t> open_ranges_;
+  std::map<std::string, std::set<std::string>> entries_;
 };
 
 } // namespace yb::rpc

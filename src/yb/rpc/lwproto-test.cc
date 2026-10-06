@@ -126,27 +126,24 @@ TEST(LWProtoTest, BigMessage) {
 // Every trace-tagged field type the generator handles, in both the lightweight and the plain
 // protobuf form: scalars, enum, bool, hex bytes, bytes_as_string, repeated scalars, nested and
 // repeated nested messages, a pointer field, and recursion through a self-referential message.
-// Fields not tagged (i32, pairs) must not appear; unset tagged fields must not appear.
+// Fields not tagged (i32, pairs) must not appear; unset tagged fields must not appear. Attributes
+// come out sorted by key; a repeated field is one `*` key listing its distinct values.
 TEST(LWProtoTest, TracingAttributes) {
   using Attrs = std::vector<std::pair<std::string, std::string>>;
   const Attrs expected = {
-      {"req.u32", "7"},
-      {"req.str", "hello"},
       {"req.bytes", "0102FF"},
-      {"req.en", "TWO"},
-      {"req.ru32.0", "1"},
-      {"req.ru32.1", "2"},
-      {"req.rstr.0", "a"},
-      {"req.rstr.1", "b"},
-      {"req.message.str", "sub"},
-      {"req.message.rbytes.0", "x1"},
-      {"req.message.rbytes.1", "x2"},
-      {"req.message.cycle.str", "deep"},
-      {"req.repeated_messages.0.str", "r0"},
-      {"req.repeated_messages.1.str", "r1"},
-      {"req.ptr_message.str", "ptr"},
-      {"req.flag", "true"},
       {"req.bytes_str", "raw text"},
+      {"req.en", "TWO"},
+      {"req.flag", "true"},
+      {"req.message.cycle.str", "deep"},
+      {"req.message.rbytes.*", "x1, x2"},
+      {"req.message.str", "sub"},
+      {"req.ptr_message.str", "ptr"},
+      {"req.repeated_messages.*.str", "r0, r1"},
+      {"req.rstr.*", "a, b"},
+      {"req.ru32.*", "1, 2"},
+      {"req.str", "hello"},
+      {"req.u32", "7"},
   };
 
   rpc_test::LightweightRequestPB pb;
@@ -198,39 +195,41 @@ TEST(LWProtoTest, TracingAttributes) {
   ASSERT_TRUE(rpc_test::LWLightweightRequestPB(&arena).TracingAttributes().empty());
 }
 
-// Through the generated code: equal consecutive repeated values collapse into a range key, a value
-// change splits the range, nested repeated fields collapse on their own index only, and singular
+// Through the generated code: duplicate repeated values collapse, distinct ones are listed sorted,
+// a repeated field nested in a repeated message merges across all outer elements, and singular
 // fields are emitted as they are.
-TEST(LWProtoTest, TracingAttributesCollapseRepeated) {
+TEST(LWProtoTest, TracingAttributesMergeRepeated) {
   using Attrs = std::vector<std::pair<std::string, std::string>>;
   const Attrs expected = {
-      {"req.u32", "7"},
-      {"req.ru32.0-2", "5"},
-      {"req.rstr.0-1", "a"},
-      {"req.rstr.2", "b"},
-      {"req.message.rbytes.0-1", "x"},
-      {"req.repeated_messages.0-2.str", "same"},
-      {"req.repeated_messages.0.rbytes.0-1", "y"},
-      {"req.repeated_messages.1.rbytes.0-1", "y"},
-      {"req.repeated_messages.2.rbytes.0-1", "y"},
       {"req.flag", "true"},
+      {"req.message.rbytes.*", "x"},
+      {"req.repeated_messages.*.rbytes.*", "w, y, z"},
+      {"req.repeated_messages.*.str", "other, same"},
+      {"req.rstr.*", "a, b"},
+      {"req.ru32.*", "5"},
+      {"req.u32", "7"},
   };
+
+  const std::vector<std::string> rstr = {"b", "a", "a"};
+  const std::vector<std::pair<std::string, std::vector<std::string>>> subs = {
+      {"same", {"y", "z"}}, {"other", {"y"}}, {"same", {"w"}}};
 
   rpc_test::LightweightRequestPB pb;
   pb.set_u32(7);
   for (int i = 0; i != 3; ++i) {
     pb.add_ru32(5);
   }
-  pb.add_rstr("a");
-  pb.add_rstr("a");
-  pb.add_rstr("b");
+  for (const auto& v : rstr) {
+    pb.add_rstr(v);
+  }
   pb.mutable_message()->add_rbytes("x");
   pb.mutable_message()->add_rbytes("x");
-  for (int i = 0; i != 3; ++i) {
+  for (const auto& [str, rbytes] : subs) {
     auto* sub = pb.add_repeated_messages();
-    sub->set_str("same");
-    sub->add_rbytes("y");
-    sub->add_rbytes("y");
+    sub->set_str(str);
+    for (const auto& v : rbytes) {
+      sub->add_rbytes(v);
+    }
   }
   pb.set_flag(true);
   ASSERT_EQ(TracingAttributes(pb), expected);
@@ -241,101 +240,50 @@ TEST(LWProtoTest, TracingAttributesCollapseRepeated) {
   for (int i = 0; i != 3; ++i) {
     lw.add_ru32(5);
   }
-  lw.add_dup_rstr("a");
-  lw.add_dup_rstr("a");
-  lw.add_dup_rstr("b");
+  for (const auto& v : rstr) {
+    lw.add_dup_rstr(v);
+  }
   lw.mutable_message()->add_dup_rbytes("x");
   lw.mutable_message()->add_dup_rbytes("x");
-  for (int i = 0; i != 3; ++i) {
+  for (const auto& [str, rbytes] : subs) {
     auto* sub = lw.add_repeated_messages();
-    sub->dup_str("same");
-    sub->add_dup_rbytes("y");
-    sub->add_dup_rbytes("y");
+    sub->dup_str(str);
+    for (const auto& v : rbytes) {
+      sub->add_dup_rbytes(v);
+    }
   }
   lw.set_flag(true);
   ASSERT_EQ(lw.TracingAttributes(), expected);
 }
 
-// Intermingled values through the generated code: a field yields several ranges, alternating
-// values never collapse, a repeat after a break opens a new range rather than rejoining the old
-// one, and one element's leaves interleaving with another's don't disturb either range.
-TEST(LWProtoTest, TracingAttributesIntermingledRepeated) {
-  using Attrs = std::vector<std::pair<std::string, std::string>>;
-  const Attrs expected = {
-      {"req.ru32.0-1", "1"},
-      {"req.ru32.2-4", "2"},
-      {"req.ru32.5", "1"},
-      {"req.ru32.6-7", "3"},
-      {"req.repeated_messages.0-1.str", "p"},
-      {"req.repeated_messages.0.rbytes.0", "z"},
-      {"req.repeated_messages.1.rbytes.0", "w"},
-      {"req.repeated_messages.2.str", "q"},
-      {"req.repeated_messages.2.rbytes.0", "z"},
-      {"req.repeated_messages.3-4.str", "p"},
-      {"req.repeated_messages.3.rbytes.0", "z"},
-      {"req.repeated_messages.4.rbytes.0", "z"},
-  };
-
-  const std::vector<uint32_t> ru32 = {1, 1, 2, 2, 2, 1, 3, 3};
-  const std::vector<std::pair<std::string, std::string>> subs = {
-      {"p", "z"}, {"p", "w"}, {"q", "z"}, {"p", "z"}, {"p", "z"}};
-
-  rpc_test::LightweightRequestPB pb;
-  for (auto v : ru32) {
-    pb.add_ru32(v);
-  }
-  for (const auto& [str, rbytes] : subs) {
-    auto* sub = pb.add_repeated_messages();
-    sub->set_str(str);
-    sub->add_rbytes(rbytes);
-  }
-  ASSERT_EQ(TracingAttributes(pb), expected);
-
-  ThreadSafeArena arena;
-  rpc_test::LWLightweightRequestPB lw(&arena);
-  for (auto v : ru32) {
-    lw.add_ru32(v);
-  }
-  for (const auto& [str, rbytes] : subs) {
-    auto* sub = lw.add_repeated_messages();
-    sub->dup_str(str);
-    sub->add_dup_rbytes(rbytes);
-  }
-  ASSERT_EQ(lw.TracingAttributes(), expected);
-}
-
-// Consecutive repeated elements with the same value collapse into one index-range key; a value
-// change or an index gap starts a new range, other leaves of the same element don't interfere,
-// and un-indexed keys pass through in order.
-TEST(LWProtoTest, TracingAttributeCollectorRanges) {
+// Keys come out sorted, repeated adds of one key collapse into its sorted distinct values (as
+// strings, so "10" sorts before "9"), and the collector is reusable after Finish.
+TEST(LWProtoTest, TracingAttributeCollector) {
   using Attrs = std::vector<std::pair<std::string, std::string>>;
   TracingAttributeCollector collector;
-  collector.Add("req.id", "7");
-  collector.Add("req.ops.0.write.table_id", "A");
-  collector.Add("req.ops.0.write.flag", "true");
-  collector.Add("req.ops.1.write.table_id", "A");
-  collector.Add("req.ops.1.write.flag", "false");
-  collector.Add("req.ops.2.write.table_id", "A");
-  collector.Add("req.ops.2.write.flag", "false");
-  collector.Add("req.ops.3.write.table_id", "B");
-  collector.Add("req.ops.4.write.table_id", "B");
-  collector.Add("req.ops.6.write.table_id", "B");
-  collector.Add("req.ops.6.read.cols.0", "c");
-  collector.Add("req.ops.6.read.cols.1", "c");
-  collector.Add("req.ops.7.read.cols.0", "c");
   collector.Add("req.tail", "end");
+  collector.Add("req.ops.*.write.table_id", "B");
+  collector.Add("req.ops.*.write.flag", "true");
+  collector.Add("req.ops.*.write.table_id", "A");
+  collector.Add("req.ops.*.write.flag", "false");
+  collector.Add("req.ops.*.write.table_id", "B");
+  collector.Add("req.ops.*.write.flag", "false");
+  collector.Add("req.ops.*.write.table_id", "A");
+  collector.Add("req.ids.*", "10");
+  collector.Add("req.ids.*", "9");
+  collector.Add("req.ids.*", "10");
+  collector.Add("req.id", "7");
   const Attrs expected = {
       {"req.id", "7"},
-      {"req.ops.0-2.write.table_id", "A"},
-      {"req.ops.0.write.flag", "true"},
-      {"req.ops.1-2.write.flag", "false"},
-      {"req.ops.3-4.write.table_id", "B"},
-      {"req.ops.6.write.table_id", "B"},
-      {"req.ops.6.read.cols.0-1", "c"},
-      {"req.ops.7.read.cols.0", "c"},
+      {"req.ids.*", "10, 9"},
+      {"req.ops.*.write.flag", "false, true"},
+      {"req.ops.*.write.table_id", "A, B"},
       {"req.tail", "end"},
   };
   ASSERT_EQ(collector.Finish(), expected);
+
+  collector.Add("req.id", "8");
+  ASSERT_EQ(collector.Finish(), (Attrs{{"req.id", "8"}}));
 }
 
 } // namespace rpc

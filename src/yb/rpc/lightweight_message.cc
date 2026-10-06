@@ -13,9 +13,6 @@
 
 #include "yb/rpc/lightweight_message.h"
 
-#include <algorithm>
-#include <cctype>
-
 #include <google/protobuf/message.h>
 
 #include "yb/util/pb_util.h"
@@ -385,83 +382,24 @@ ThreadSafeArena& empty_arena() {
   return arena;
 }
 
-namespace {
-
-// Splits "a.b.3.c" at its last all-digit segment into prefix "a.b.", index 3 and suffix ".c".
-bool SplitIndexedKey(
-    const std::string& key, size_t* prefix_len, size_t* index, size_t* suffix_pos) {
-  size_t end = key.size();
-  for (;;) {
-    const size_t dot = key.rfind('.', end - 1);
-    const size_t start = dot == std::string::npos ? 0 : dot + 1;
-    if (start < end &&
-        std::all_of(key.begin() + start, key.begin() + end,
-                    [](unsigned char c) { return std::isdigit(c); })) {
-      *prefix_len = start;
-      *index = std::stoul(key.substr(start, end - start));
-      *suffix_pos = end;
-      return true;
-    }
-    if (dot == std::string::npos) {
-      return false;
-    }
-    end = dot;
-  }
-}
-
-}  // namespace
-
 void TracingAttributeCollector::Add(std::string key, std::string value) {
-  size_t prefix_len = 0;
-  size_t index = 0;
-  size_t suffix_pos = 0;
-  if (!SplitIndexedKey(key, &prefix_len, &index, &suffix_pos)) {
-    entries_.push_back(Entry{
-        .key = std::move(key),
-        .suffix = {},
-        .first = 0,
-        .last = 0,
-        .indexed = false,
-        .value = std::move(value),
-    });
-    return;
-  }
-  auto path = key.substr(0, prefix_len) + key.substr(suffix_pos);
-  auto [it, inserted] = open_ranges_.try_emplace(std::move(path), entries_.size());
-  if (!inserted) {
-    auto& open = entries_[it->second];
-    if (open.value == value && index == open.last + 1) {
-      open.last = index;
-      return;
-    }
-    it->second = entries_.size();
-  }
-  entries_.push_back(Entry{
-      .key = key.substr(0, prefix_len),
-      .suffix = key.substr(suffix_pos),
-      .first = index,
-      .last = index,
-      .indexed = true,
-      .value = std::move(value),
-  });
+  entries_[std::move(key)].insert(std::move(value));
 }
 
 std::vector<std::pair<std::string, std::string>> TracingAttributeCollector::Finish() {
   std::vector<std::pair<std::string, std::string>> result;
   result.reserve(entries_.size());
-  for (auto& entry : entries_) {
-    if (entry.indexed) {
-      entry.key += std::to_string(entry.first);
-      if (entry.last != entry.first) {
-        entry.key += '-';
-        entry.key += std::to_string(entry.last);
+  for (auto& [key, values] : entries_) {
+    std::string joined;
+    for (const auto& value : values) {
+      if (!joined.empty()) {
+        joined += ", ";
       }
-      entry.key += entry.suffix;
+      joined += value;
     }
-    result.emplace_back(std::move(entry.key), std::move(entry.value));
+    result.emplace_back(std::move(key), std::move(joined));
   }
   entries_.clear();
-  open_ranges_.clear();
   return result;
 }
 

@@ -1245,7 +1245,8 @@ class Message {
         continue;
       }
 
-      // Repeated: index folded into the key; the collector merges equal consecutive elements.
+      // Repeated: every element shares one key with `*` for the index; the collector merges the
+      // distinct values.
       const bool pointer = lw && IsPointerField(field);
       if (pointer) {
         printer("if ($field_accessor$) {\n");
@@ -1255,22 +1256,18 @@ class Message {
           lw ? (pointer ? "*$field_accessor$"s : "$field_accessor$"s) : "msg.$field_name$()"s;
       printer("{\n");
       ScopedIndent loop_indent(printer);
-      printer("size_t index = 0;\n");
+      printer(
+          "const auto entry_prefix = prefix + \"$field_name$.*"s + (nested ? "." : "") + "\";\n");
       printer("for (const auto& entry : " + range + ") {\n");
       {
         ScopedIndent body_indent(printer);
         if (nested) {
           printer(
-              (lw ? "entry.AppendTracingAttributes(\n"s
-                  : "AppendTracingAttributes(entry,\n"s) +
-              "    prefix + \"$field_name$.\" + std::to_string(index) + \".\", out);\n");
+              (lw ? "entry.AppendTracingAttributes(entry_prefix, out);\n"s
+                  : "AppendTracingAttributes(entry, entry_prefix, out);\n"s));
         } else {
-          printer(
-              "out->Add(\n"
-              "    prefix + \"$field_name$.\" + std::to_string(index), " + value_expr("entry") +
-              ");\n");
+          printer("out->Add(entry_prefix, " + value_expr("entry") + ");\n");
         }
-        printer("++index;\n");
       }
       printer("}\n");
       loop_indent.Reset("}\n");

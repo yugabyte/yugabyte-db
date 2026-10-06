@@ -2004,7 +2004,7 @@ TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForRead) {
       << "rpc.table_names attribute missing on shared memory span";
   ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
   // Trace-tagged request fields are drained onto the shmem span by hand, not by a proxy stub.
-  ASSERT_EQ(span.str_attrs["req.ops.0.read.table_id"], ASSERT_RESULT(FetchYbTableId(kTableName)));
+  ASSERT_EQ(span.str_attrs["req.ops.*.read.table_id"], ASSERT_RESULT(FetchYbTableId(kTableName)));
 }
 
 TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
@@ -2026,9 +2026,9 @@ TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
   ASSERT_NE(table_names_it, span.str_attrs.end())
       << "rpc.table_names attribute missing on shared memory span";
   ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
-  // The five write ops share one table_id, so they collapse into a single index-range attribute.
+  // The five write ops share one table_id, so the merged attribute holds just that value.
   ASSERT_EQ(
-      span.str_attrs["req.ops.0-4.write.table_id"], ASSERT_RESULT(FetchYbTableId(kTableName)));
+      span.str_attrs["req.ops.*.write.table_id"], ASSERT_RESULT(FetchYbTableId(kTableName)));
 }
 
 TEST_F(DistTraceRpcTest, TestRpcSpans) {
@@ -2069,7 +2069,7 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
   // The generated proxy stub drains the request's trace-tagged fields onto the client span.
   const auto table_id = ASSERT_RESULT(FetchYbTableId("rpc_crossing_test"));
   ASSERT_OK(WaitForSpanWithAttr(
-      tp.trace_id, "rpc yb.tserver.PgClientService.Perform", "req.ops.0.read.table_id",
+      tp.trace_id, "rpc yb.tserver.PgClientService.Perform", "req.ops.*.read.table_id",
       table_id));
 
   // The tserver's Read to the tablet carries tablet_id, a bytes field emitted as text.
@@ -2084,12 +2084,16 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
   ASSERT_EQ(read_span.str_attrs["rpc.table_names"], Format("rpc_crossing_test($0)", table_id));
 
   // A bulk insert is one Perform with many write ops on the same table; the per-op table_id tags
-  // fold into a single index-range attribute instead of one attribute per op.
+  // merge into one attribute holding the single distinct id. The tserver's Write to the tablet
+  // carries rpc.table_names like its Read does.
   ASSERT_OK(conn_->Execute(
       "INSERT INTO rpc_crossing_test SELECT g, 'bulk' FROM generate_series(1000, 1099) g"));
   ASSERT_OK(WaitForSpanWithAttr(
-      tp.trace_id, "rpc yb.tserver.PgClientService.Perform", "req.ops.0-99.write.table_id",
+      tp.trace_id, "rpc yb.tserver.PgClientService.Perform", "req.ops.*.write.table_id",
       table_id));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp.trace_id, "rpc yb.tserver.TabletServerService.Write", "rpc.table_names",
+      Format("rpc_crossing_test($0)", table_id)));
 
   // CREATE TABLE runs the master RPC synchronously on the tserver's handler thread.
   ASSERT_OK(conn_->Execute(
