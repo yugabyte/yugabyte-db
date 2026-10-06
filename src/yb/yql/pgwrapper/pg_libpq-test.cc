@@ -4471,6 +4471,9 @@ class PgCatalogPreloadCacheListTestBase : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
+    // Without negative entries, the preload's lookup of the missing user namespace always misses.
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_enable_negative_catcache_entries=true");
     for (const auto& flag : ExtraTServerFlags()) {
       options->extra_tserver_flags.emplace_back(flag);
     }

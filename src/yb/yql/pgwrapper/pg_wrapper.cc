@@ -645,7 +645,13 @@ void AppendPgGFlags(vector<string>* lines) {
     }
 
     string pg_variable_name = flag.name.substr(pg_flag_prefix.length());
-    lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
+    string value = flag.current_value;
+    // Postgres cannot parse an unquoted list or an empty value. The validator allows only names
+    // and commas, so quoting is always safe.
+    if (flag.name == "ysql_yb_test_catalog_preload_cache_list") {
+      value = Format("'$0'", value);
+    }
+    lines->push_back(Format("$0=$1", pg_variable_name, value));
   }
 
   // Special handling for deprecated ysql_enable_pg_export_snapshot flag.
