@@ -5553,6 +5553,76 @@ TEST_F(XClusterDDLReplicationTest, VectorIndex) {
   ASSERT_EQ(p_search, c_search);
 }
 
+// Renaming a vector index, or moving its table to another schema, must not stall replication.
+TEST_F(XClusterDDLReplicationTest, AlterVectorIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test SELECT g, array_fill(g::real, ARRAY[3])::vector "
+      "FROM generate_series(1, 20) g"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto consumer_has_relation = [this](const std::string& name) {
+    return consumer_conn_->FetchRow<bool>(Format("SELECT to_regclass('$0') IS NOT NULL", name));
+  };
+
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX vec_test_idx RENAME TO vec_test_idx2"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(consumer_has_relation("public.vec_test_idx2")));
+
+  ASSERT_OK(producer_conn_->Execute("CREATE SCHEMA s"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE vec_test SET SCHEMA s"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(consumer_has_relation("s.vec_test_idx2")));
+
+  // Later table changes and writes still replicate.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE s.vec_test ADD COLUMN c int"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO s.vec_test SELECT g, array_fill(g::real, ARRAY[3])::vector, g "
+      "FROM generate_series(21, 30) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  constexpr auto kSelectAll = "SELECT id, embedding, c FROM s.vec_test ORDER BY id";
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kSelectAll)),
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kSelectAll)));
+
+  // Make sure the table's own schema changes weren't skipped too. Row checks can't tell, since
+  // both sides happen to have the same schema versions here.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+      &producer_cluster_, namespace_name, "s", "vec_test", /*verify_table_name=*/true,
+      /*verify_schema_name=*/true))));
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table->id()));
+  auto cluster_config = ASSERT_RESULT(GetClusterConfig(consumer_cluster_));
+  const auto& schema_versions = cluster_config.consumer_registry()
+                                    .producer_map()
+                                    .at(kReplicationGroupId.ToString())
+                                    .stream_map()
+                                    .at(stream_id.ToString())
+                                    .schema_versions();
+  ASSERT_EQ(
+      schema_versions.current_producer_schema_version(), producer_table->schema().version());
+
+  // Target search uses the renamed index. No distance ties, so the order is stable.
+  constexpr auto kSearch =
+      "SELECT id FROM s.vec_test ORDER BY embedding <-> '[25.1, 25.1, 25.1]' LIMIT 5";
+  auto c_explain =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(Format("EXPLAIN (COSTS OFF) $0", kSearch)));
+  ASSERT_STR_CONTAINS(c_explain, "vec_test_idx2");
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kSearch)),
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kSearch)));
+}
+
 // When updating the vector index during apply intent, we skip the row if commit_ht is less than
 // the vector index's hybrid_time, to avoid double write since backfill will handle the committed
 // intents. However, this is an issue on xCluster target: backfill on target does not see committed

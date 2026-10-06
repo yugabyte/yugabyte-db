@@ -34,6 +34,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 
 DEPRECATE_FLAG(int32, cdc_transaction_timeout_ms, "05_2021");
@@ -259,6 +260,22 @@ Result<bool> PopulateChangeMetadataRecord(
 
   if (msg.change_metadata_request().tablet_id() != context.tablet_id) {
     return false;
+  }
+
+  if (kIsDebug) {
+    // Today the target skips CM ops that have a colocation id in a non-colocated tablet,
+    // assuming they are for a vector index (XClusterOutputClient::ProcessChangeMetadataOp).
+    const auto& colocated_table_id =
+        msg.change_metadata_request().schema().colocated_table_id();
+    auto metadata = context.tablet_peer->tablet_metadata();
+    if (colocated_table_id.has_colocation_id() &&
+        colocated_table_id.colocation_id() != kColocationIdNotSet && !metadata->colocated()) {
+      auto table_info = metadata->GetTableInfo(colocated_table_id.colocation_id());
+      DCHECK(!table_info.ok() || (*table_info)->IsVectorIndex())
+          << "Table with colocation id " << colocated_table_id.colocation_id()
+          << " in non-colocated tablet " << context.tablet_id
+          << " is not a vector index, but the xCluster target would skip its schema changes";
+    }
   }
 
   auto* record = context.resp->add_records();
