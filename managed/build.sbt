@@ -751,6 +751,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
     version := "1.0.1",
+    openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
 
@@ -767,6 +768,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
     version := "1.8.6",
+    openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
 
@@ -817,6 +819,9 @@ lazy val pythongen = project.in(file("client/python"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/python/openapi-python-config.json",
+    version := "2.7.3.0",
+    openApiAdditionalProperties += ("packageVersion" -> version.value),
+    openApiHttpUserAgent := s"yba-python-client/${version.value}",
     target := file("client/python/target/v1"),
   )
 
@@ -830,6 +835,9 @@ lazy val pythonGenV2Client = project.in(file("client/python"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/python/openapi-python-config-v2.json",
+    version := "2.0.0",
+    openApiAdditionalProperties += ("packageVersion" -> version.value),
+    openApiHttpUserAgent := s"yba-python-client/${version.value}",
     target := file("client/python/target/v2"),
   )
 
@@ -843,6 +851,9 @@ lazy val gogen = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config.json",
+    version := "2.0.0",
+    openApiAdditionalProperties += ("packageVersion" -> version.value),
+    openApiHttpUserAgent := s"yba-go-client/${version.value}",
     openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v1"),
   )
@@ -857,6 +868,9 @@ lazy val goGenV2Client = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config-v2.json",
+    version := "2.0.0",
+    openApiAdditionalProperties += ("packageVersion" -> version.value),
+    openApiHttpUserAgent := s"yba-go-client/${version.value}",
     openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v2"),
     openApiGlobalProperties += ("skipFormModel" -> "false"),

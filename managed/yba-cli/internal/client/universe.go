@@ -259,6 +259,7 @@ func (a *AuthAPIClient) AttachUniverseRest(
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("X-AUTH-YW-API-TOKEN", token)
+	req.Header.Set("User-Agent", UserAgent())
 
 	r, err := a.RestClient.Client.Do(req)
 	if err != nil {

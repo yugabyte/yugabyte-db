@@ -84,6 +84,7 @@ public class CallHomeManager {
   @Inject private MetricQueryHelper metricQueryHelper;
   @Inject private UniverseTableHandler universeTableHandler;
   @Inject private CdcStreamManager cdcStreamManager;
+  @Inject private ApiUsageCollector apiUsageCollector;
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
 
@@ -196,7 +197,7 @@ public class CallHomeManager {
     ArrayNode errors = Json.newArray();
     // Build universe details json
     List<UniverseResp> universes =
-        c.getUniverses().stream().map(u -> new UniverseResp(u)).collect(Collectors.toList());
+        c.getUniverses().stream().map(UniverseResp::new).collect(Collectors.toList());
     Set<UUID> universeUuids =
         universes.stream().map(u -> u.universeUUID).collect(Collectors.toSet());
 
@@ -205,12 +206,12 @@ public class CallHomeManager {
       ObjectNode universeNode = (ObjectNode) Json.toJson(universeResp);
 
       List<UUID> sourceConfigUuids =
-          universeResp.universeDetails != null && universeResp.universeDetails.delegate != null
+          universeResp.universeDetails != null
               ? universeResp.universeDetails.delegate.xClusterInfo.getSourceXClusterConfigs()
               : Collections.emptyList();
 
       List<UUID> targetConfigUuids =
-          universeResp.universeDetails != null && universeResp.universeDetails.delegate != null
+          universeResp.universeDetails != null
               ? universeResp.universeDetails.delegate.xClusterInfo.getTargetXClusterConfigs()
               : Collections.emptyList();
 
@@ -253,17 +254,14 @@ public class CallHomeManager {
           universeNode.put("cdc_replication_slots", "");
         }
       } catch (Exception e) {
-        LOG.warn(
-            "Failed to fetch CDC info while building callhome payload for universe {}: {}",
-            universeResp.universeUUID,
-            e.getMessage());
+        addError(errors, universeResp.universeUUID, "cdc_info", e);
         universeNode.putNull("is_cdc_configured");
         universeNode.putNull("cdc_replication_slots");
       }
       universesPayload.add(universeNode);
     }
     payload.set("universes", universesPayload);
-    payload.set("universe_diagnostics", buildUniverseDiagnostics(c, universes));
+    payload.set("universe_diagnostics", buildUniverseDiagnostics(c, universes, errors));
     // Build provider details json
     ArrayNode providers = Json.newArray();
     Set<UUID> providerUuids = new HashSet<>();
@@ -295,7 +293,7 @@ public class CallHomeManager {
     for (CustomerTask ct : customerTasks) {
       if (ct == null) continue;
       Optional<TaskInfo> optional = TaskInfo.maybeGet(ct.getTaskUUID());
-      if (!optional.isPresent()) continue;
+      if (optional.isEmpty()) continue;
       TaskInfo taskInfo = optional.get();
       ObjectNode ctInfo = Json.newObject();
       ctInfo.put("task_name", Objects.toString(taskInfo.getTaskType()));
@@ -499,7 +497,23 @@ public class CallHomeManager {
     universeNode.set("xclusterSettings", xclusterSettings);
   }
 
-  private ArrayNode buildUniverseDiagnostics(Customer c, List<UniverseResp> universes) {
+  // Callhome is best-effort: a failed collection step leaves its fields empty and is reported in
+  // the payload's "errors", so empty values can be told apart from failures.
+  private void addError(ArrayNode errors, UUID universeUuid, String stage, Exception e) {
+    LOG.warn(
+        "Failed to collect {} for callhome payload of universe {}: {}",
+        stage,
+        universeUuid,
+        e.getMessage());
+    errors
+        .addObject()
+        .put("universe_uuid", universeUuid.toString())
+        .put("stage", stage)
+        .put("error", e.getMessage());
+  }
+
+  private ArrayNode buildUniverseDiagnostics(
+      Customer c, List<UniverseResp> universes, ArrayNode errors) {
     ArrayNode arr = Json.newArray();
     for (UniverseResp universeResp : universes) {
       UniverseDiagnostics diag = new UniverseDiagnostics();
@@ -525,7 +539,9 @@ public class CallHomeManager {
         }
       }
       boolean isK8s = Util.isKubernetesBasedUniverse(universeResp.universeDetails.delegate);
-      Map<String, Double> metrics = getUniverseMetrics(c, nodePrefix, isK8s, clock.instant());
+      Map<String, Double> metrics =
+          getUniverseMetrics(
+              c, universeResp.universeUUID, nodePrefix, isK8s, clock.instant(), errors);
       diag.setUniverseMetrics(metrics);
 
       int totalCores = 0;
@@ -560,6 +576,7 @@ public class CallHomeManager {
         diag.setNumTables(tableCount);
         diag.setNumDatabases(dbCount);
       } catch (Exception e) {
+        addError(errors, universeResp.universeUUID, "table_count", e);
       }
 
       arr.add(Json.toJson(diag));
@@ -568,7 +585,12 @@ public class CallHomeManager {
   }
 
   private Map<String, Double> getUniverseMetrics(
-      Customer customer, String nodePrefix, boolean isK8s, Instant now) {
+      Customer customer,
+      UUID universeUuid,
+      String nodePrefix,
+      boolean isK8s,
+      Instant now,
+      ArrayNode errors) {
 
     MetricQueryParams params = new MetricQueryParams();
     params.setNodePrefix(nodePrefix);
@@ -596,7 +618,7 @@ public class CallHomeManager {
       JsonNode response = metricQueryHelper.query(customer, params);
       for (JsonNode d : response.path(isK8s ? "container_cpu_usage" : "cpu_usage").path("data")) {
         JsonNode y = d.path("y");
-        if (y.isArray() && y.size() > 0) {
+        if (y.isArray() && !y.isEmpty()) {
           String name = isK8s ? "total" : d.path("name").asText().toLowerCase();
           result.put("cpu_" + name, Double.parseDouble(y.get(0).asText()));
         }
@@ -626,7 +648,7 @@ public class CallHomeManager {
 
       if (isK8s) {
         JsonNode data = response.path("container_memory_usage").path("data");
-        if (data.size() > 0) {
+        if (!data.isEmpty()) {
           result.put("memory_used_gb", Double.parseDouble(data.get(0).path("y").get(0).asText()));
         }
       } else {
@@ -663,7 +685,8 @@ public class CallHomeManager {
       result.put("ycql_read_ops", ycqlRead);
       result.put("ycql_write_ops", ycqlWrite);
 
-    } catch (Exception ex) {
+    } catch (Exception e) {
+      addError(errors, universeUuid, "metrics", e);
     }
     return result;
   }
@@ -675,19 +698,24 @@ public class CallHomeManager {
     if (!anyEnabled) {
       return;
     }
-    JsonNode payload = collectPlatformDiagnostics();
+
+    ApiUsageCollector.Snapshot apiUsage = apiUsageCollector.snapshot(clock.instant());
+    JsonNode payload = collectPlatformDiagnostics(apiUsage);
+
     if (LOG.isTraceEnabled()) {
       LOG.trace(
           "Sending platform diagnostics to {} with payload {}",
           YB_CALLHOME_URL,
           payload.toPrettyString());
     }
+
+    // Throws on a failed send, leaving the API usage counters for the next report.
     JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload, null);
+    apiUsageCollector.acknowledge(apiUsage);
     LOG.info("Platform callhome response: {}", response);
   }
 
-  @VisibleForTesting
-  public JsonNode collectPlatformDiagnostics() {
+  private JsonNode collectPlatformDiagnostics(ApiUsageCollector.Snapshot apiUsage) {
     ObjectNode payload = Json.newObject();
     payload.put("payload_type", "platform");
 
@@ -724,7 +752,7 @@ public class CallHomeManager {
           CustomerTask.findByTargetUUIDsAndTypesSince(
               Arrays.asList(yugawareUuid, Util.NULL_UUID),
               CustomerTask.TargetType.Yba,
-              Arrays.asList(CustomerTask.TaskType.CreateYbaBackup),
+              List.of(CustomerTask.TaskType.CreateYbaBackup),
               since)) {
         ObjectNode entry = (ObjectNode) Json.toJson(ct);
         if (ct.getTaskInfo() != null && ct.getTaskInfo().getTaskState() != null) {
@@ -743,7 +771,7 @@ public class CallHomeManager {
 
       for (CustomerTask ct :
           CustomerTask.findByTargetUUIDsAndTypesSince(
-              Arrays.asList(yugawareUuid),
+              List.of(yugawareUuid),
               CustomerTask.TargetType.Yba,
               Arrays.asList(
                   CustomerTask.TaskType.RestoreYbaBackup,
@@ -831,6 +859,8 @@ public class CallHomeManager {
     } else {
       payload.putNull("ldap_config");
     }
+
+    payload.set("api_usage", apiUsage.toJson());
     return RedactingService.filterSecretFields(payload, RedactingService.RedactionTarget.LOGS);
   }
 }

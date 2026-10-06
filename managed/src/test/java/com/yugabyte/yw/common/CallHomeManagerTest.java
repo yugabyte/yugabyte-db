@@ -6,6 +6,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -13,6 +14,9 @@ import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -70,6 +74,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
@@ -78,6 +83,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
@@ -111,6 +117,8 @@ public class CallHomeManagerTest extends FakeDBApplication {
   @Mock UniverseTableHandler universeTableHandler;
 
   @Mock CdcStreamManager cdcStreamManager;
+
+  @Spy ApiUsageCollector apiUsageCollector = new ApiUsageCollector();
 
   Customer defaultCustomer;
   Users defaultUser;
@@ -703,6 +711,44 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals(8.0, m.get("memory_used_gb").asDouble(), 0.01);
   }
 
+  private JsonNode sendPlatformDiagnosticsAndCapture() {
+    callHomeManager.sendPlatformDiagnostics();
+    ArgumentCaptor<JsonNode> payload = ArgumentCaptor.forClass(JsonNode.class);
+    verify(apiHelper, atLeastOnce()).postRequest(anyString(), payload.capture(), any());
+    return payload.getValue();
+  }
+
+  @Test
+  public void testUniverseDiagnosticsErrors() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(inv -> RuntimeConfigEntry.getAll(inv.getArgument(0, java.util.Set.class)));
+    when(universeTableHandler.listTables(
+            any(), any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenThrow(new RuntimeException("master unreachable"));
+    when(metricQueryHelper.query(any(Customer.class), any(MetricQueryParams.class)))
+        .thenThrow(new RuntimeException("prometheus unreachable"));
+
+    JsonNode errors =
+        callHomeManager
+            .collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW)
+            .get("errors");
+
+    String universeUuid = universe.getUniverseUUID().toString();
+    Map<String, String> universeErrors = new HashMap<>();
+    for (JsonNode e : errors) {
+      if (universeUuid.equals(e.get("universe_uuid").asText())) {
+        universeErrors.put(e.get("stage").asText(), e.get("error").asText());
+      }
+    }
+    assertEquals("master unreachable", universeErrors.get("table_count"));
+    assertEquals("prometheus unreachable", universeErrors.get("metrics"));
+  }
+
   @Test
   public void testSendPlatformDiagnosticsSkipsWhenCallhomeDisabled() {
     ModelFactory.setCallhomeLevel(defaultCustomer, "NONE");
@@ -718,7 +764,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     when(clock.instant()).thenReturn(Instant.parse("2024-03-25T10:00:00.000Z"));
     when(mockRuntimeConf.getGlobalConfValues(any())).thenReturn(Collections.emptyMap());
 
-    JsonNode payload = callHomeManager.collectPlatformDiagnostics();
+    JsonNode payload = sendPlatformDiagnosticsAndCapture();
     assertEquals("platform", payload.get("payload_type").asText());
     assertEquals(yugawareUuid, payload.get("yugaware_uuid").asText());
     assertEquals("2.25.0", payload.get("yba_version").asText());
@@ -741,7 +787,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     HighAvailabilityConfig haConfig = HighAvailabilityConfig.create("test-cluster-key");
     PlatformInstance.create(haConfig, "http://local.yba.example.com", true, true);
     PlatformInstance.create(haConfig, "http://standby.yba.example.com", false, false);
-    JsonNode haPayload = callHomeManager.collectPlatformDiagnostics();
+    JsonNode haPayload = sendPlatformDiagnosticsAndCapture();
     assertTrue(haPayload.get("is_yba_ha_enabled").asBoolean());
     JsonNode standbys = haPayload.get("hostname_of_standby_yba_ha_instances");
     assertEquals(1, standbys.size());
@@ -772,6 +818,31 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals("platform", params.getValue().get("payload_type").asText());
     assertEquals(yugawareUuid, params.getValue().get("yugaware_uuid").asText());
     assertNull(headers.getValue());
+  }
+
+  @Test
+  public void testPlatformDiagnosticsApiUsage() {
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.of("yugaware_uuid", "0146179d-a623-4b2a-a095-bfb0062eae9f"));
+    when(clock.instant()).thenReturn(Instant.parse("2024-03-25T10:00:00.000Z"));
+    when(mockRuntimeConf.getGlobalConfValues(any())).thenReturn(Collections.emptyMap());
+    ApiUsageCollector.ClientKey cli =
+        new ApiUsageCollector.ClientKey("v1", "yba-cli", "2025.2.0", "api_token");
+    apiUsageCollector.record(cli, null, 200);
+
+    doThrow(new RuntimeException("unreachable"))
+        .when(apiHelper)
+        .postRequest(anyString(), any(), any());
+    assertThrows(RuntimeException.class, () -> callHomeManager.sendPlatformDiagnostics());
+
+    // The failed send was not acknowledged, so its counts are sent again.
+    doReturn(Json.newObject()).when(apiHelper).postRequest(anyString(), any(), any());
+    JsonNode clients = sendPlatformDiagnosticsAndCapture().get("api_usage").get("clients");
+    assertEquals(1, clients.size());
+    assertEquals("yba-cli", clients.get(0).get("client").asText());
+    assertEquals(1, clients.get(0).get("calls").asLong());
+
+    assertEquals(0, sendPlatformDiagnosticsAndCapture().get("api_usage").get("clients").size());
   }
 
   @Test
