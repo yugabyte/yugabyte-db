@@ -388,12 +388,6 @@ static const ShmemCallbacks pgss_shmem_callbacks = {
 static int	nesting_level = 0;
 
 /*
- * YB_TODO_PG19MERGE(#30592): port the normalization-after-reset feature
- * (YB commit 1006ee929548). queryId is now int64 (was uint64). Kept below for
- * reference.
- */
-#if 0
-/*
  * YB: Session-local set of queryIds whose queries contain constants that
  * require normalization (i.e. clocations_count > 0 at parse time).
  *
@@ -420,10 +414,9 @@ static int	nesting_level = 0;
  * needing normalization and we discard a few stats, never the reverse error of
  * storing unnormalized text.
  */
-typedef uint64 YbPgssQueryNeedingNormalization;
+typedef int64 YbPgssQueryNeedingNormalization;
 
 static HTAB *yb_pgss_queries_needing_normalization = NULL;
-#endif
 
 /* Saved hook values */
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
@@ -598,11 +591,8 @@ static bool yb_track_nested_queries(void);
 static int	YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query);
 static char *yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
 												   int *query_len_p);
-/* YB_TODO_PG19MERGE(#30592): normalization-after-reset, kept for reference. */
-#if 0
-static void yb_pgss_mark_needs_normalization(uint64 queryId);
-static bool yb_pgss_needs_normalization(uint64 queryId);
-#endif
+static void yb_pgss_mark_needs_normalization(int64 queryId);
+static bool yb_pgss_needs_normalization(int64 queryId);
 
 /*
  * Module load callback
@@ -1450,11 +1440,6 @@ error:
 }
 
 /*
- * YB_TODO_PG19MERGE(#30592): normalization-after-reset helpers, kept for
- * reference. queryId is now int64 (was uint64).
- */
-#if 0
-/*
  * YB: Lazily initialize the session-local hash set that tracks which queryIds
  * need normalization.
  *
@@ -1478,7 +1463,7 @@ yb_pgss_init_normalization_set(void)
 }
 
 static void
-yb_pgss_mark_needs_normalization(uint64 queryId)
+yb_pgss_mark_needs_normalization(int64 queryId)
 {
 	if (!yb_pgss_queries_needing_normalization)
 		yb_pgss_init_normalization_set();
@@ -1486,14 +1471,13 @@ yb_pgss_mark_needs_normalization(uint64 queryId)
 }
 
 static bool
-yb_pgss_needs_normalization(uint64 queryId)
+yb_pgss_needs_normalization(int64 queryId)
 {
 	if (!yb_pgss_queries_needing_normalization)
 		return false;
 	return hash_search(yb_pgss_queries_needing_normalization, &queryId,
 					   HASH_FIND, NULL) != NULL;
 }
-#endif
 
 /*
  * Post-parse-analysis hook: mark query with a queryId
@@ -1532,10 +1516,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, const JumbleState *jst
 	 */
 	if (jstate && jstate->clocations_count > 0)
 	{
-		/* YB_TODO_PG19MERGE(#30592): normalization-after-reset, kept for reference. */
-#if 0
 		yb_pgss_mark_needs_normalization(query->queryId);
-#endif
 		pgss_store(pstate->p_sourcetext,
 				   query->queryId,
 				   query->stmt_location,
@@ -2077,8 +2058,6 @@ pgss_store(const char *query, int64 queryId,
 												   &query_len);
 			LWLockAcquire(&pgss->lock.lock, LW_SHARED);
 		}
-		/* YB_TODO_PG19MERGE(#30592): normalization-after-reset, kept for reference. */
-#if 0
 		else if (yb_pgss_needs_normalization(queryId))
 		{
 			/*
@@ -2090,7 +2069,6 @@ pgss_store(const char *query, int64 queryId,
 			 */
 			goto done;
 		}
-#endif
 
 		/* Append new query text to file with only shared lock held */
 		stored = qtext_store(norm_query ? norm_query : query, query_len,
