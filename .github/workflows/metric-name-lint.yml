@@ -1,0 +1,77 @@
+name: metric-name-lint
+
+# Quality gate: keep dimensions out of metric names (see src/yb/util/METRIC_NAMING.md).
+#
+# A metric name says what is measured; anything that varies (RPC method, statement type,
+# thread pool, task type, table, command, enum value) belongs in a label. Name-encoded
+# dimensions multiply streams in name-keyed backends (OpenObserve: 3,023 -> 1,458 streams in
+# a test environment when a few families were folded), break dashboards on renames,
+# and force every consumer to regex-parse __name__.
+#
+# Ratchet semantics:
+#   * NEW violations fail.
+#   * Existing debt lives in build-support/metric_name_lint_baseline.json and is reported only.
+#   * The baseline may only shrink: fixing an entry without removing it fails
+#     (--fail-on-stale), and a PR that ADDS entries fails unless it carries the
+#     `metric-naming-exception` label.
+#   * Queries that regex-match __name__ are warnings, never failures.
+#
+# The same checker also runs per-file via .arclint (build-support/lint.py), so authors see
+# findings locally before pushing. This workflow is the full-repo check the per-file mode can't
+# do: cross-file families, stale-baseline detection and baseline-growth protection.
+#
+# Advisory while the team evaluates it: not a required check yet.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - 'src/yb/**'
+      - 'src/postgres/yb-extensions/**'
+      - 'managed/src/main/**'
+      - 'managed/node-agent/**'
+      - 'troubleshoot/**'
+      - 'yugabyted-ui/apiserver/**'
+      - 'python/**'
+      - 'build-support/metric_name_lint*'
+      - '.metric-name-lint.json'
+      - '.github/workflows/metric-name-lint.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metric-name-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BYPASS_LABEL: metric-naming-exception
+
+jobs:
+  metric-name-lint:
+    name: Metric naming
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Needed to read the base branch's baseline for the growth check.
+          fetch-depth: 0
+          fetch-tags: 'false'
+
+      - name: Self-test the checker
+        run: python3 -m unittest discover -s build-support -p metric_name_lint_test.py
+
+      - name: Lint metric names
+        env:
+          METRIC_NAME_LINT_ALLOW_GROWTH: >-
+            ${{ contains(github.event.pull_request.labels.*.name, env.BYPASS_LABEL) && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          args=(--github --fail-on-stale)
+          if [[ -n "${{ github.base_ref }}" ]]; then
+            git fetch -q origin "${{ github.base_ref }}"
+            args+=(--no-baseline-growth "origin/${{ github.base_ref }}")
+          fi
+          python3 build-support/metric_name_lint.py "${args[@]}"

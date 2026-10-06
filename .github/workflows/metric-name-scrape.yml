@@ -1,0 +1,87 @@
+name: metric-name-scrape
+
+# Runtime companion to metric-name-lint (see src/yb/util/METRIC_NAMING.md).
+#
+# The static checker can't see names assembled at runtime from tables, trackers or registries.
+# This job starts the latest published YugabyteDB image, scrapes every /prometheus-metrics
+# endpoint, and flags families of names that differ only by a value-like suffix
+# (e.g. service_request_bytes_yb_tserver_TabletServerService_{Write,Read,...}).
+#
+# Nightly and advisory: it tests the released image, not the PR. It fails only on families
+# that are not in build-support/metric_name_scrape_baseline.json.
+#
+# First run / refresh: trigger manually with update_baseline=true, download the
+# `metric-name-scrape-baseline` artifact, and commit it as
+# build-support/metric_name_scrape_baseline.json.
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'YugabyteDB image to scrape'
+        default: 'yugabytedb/yugabyte:latest'
+      update_baseline:
+        description: 'Write a new scrape baseline as an artifact instead of checking'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    name: Scrape live metric names
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Start single-node YugabyteDB
+        run: |
+          set -euo pipefail
+          docker run -d --name yb -p 7000:7000 -p 9000:9000 -p 12000:12000 -p 13000:13000 \
+            "${{ inputs.image || 'yugabytedb/yugabyte:latest' }}" \
+            bin/yugabyted start --background=false
+          for i in $(seq 1 90); do
+            if curl -fsS localhost:9000/prometheus-metrics >/dev/null 2>&1 &&
+               curl -fsS localhost:13000/prometheus-metrics >/dev/null 2>&1; then
+              echo "up after ${i}x5s"; break
+            fi
+            sleep 5
+          done
+          # Let per-method/per-pool metrics materialise.
+          sleep 30
+
+      - name: Scrape
+        run: |
+          set -euo pipefail
+          : > all.prom
+          for port in 7000 9000 12000 13000; do
+            curl -fsS "localhost:${port}/prometheus-metrics" >> all.prom || \
+              echo "::warning::no metrics on port ${port}"
+          done
+          wc -l all.prom
+
+      - name: Check (ratchet against scrape baseline)
+        if: ${{ !inputs.update_baseline }}
+        run: |
+          python3 build-support/metric_name_lint.py --scrape all.prom \
+            --baseline build-support/metric_name_scrape_baseline.json --github
+
+      - name: Write new scrape baseline
+        if: ${{ inputs.update_baseline }}
+        run: |
+          python3 build-support/metric_name_lint.py --scrape all.prom \
+            --baseline build-support/metric_name_scrape_baseline.json --update-baseline
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.update_baseline }}
+        with:
+          name: metric-name-scrape-baseline
+          path: build-support/metric_name_scrape_baseline.json
+
+      - name: Stop
+        if: always()
+        run: docker rm -f yb || true

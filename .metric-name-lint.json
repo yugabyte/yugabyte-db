@@ -1,0 +1,16 @@
+{
+  "baseline": "build-support/metric_name_lint_baseline.json",
+  "guide": "src/yb/util/METRIC_NAMING.md",
+  "include": ["src/yb/**/*.cc", "src/yb/**/*.h", "src/postgres/yb-extensions/**/*.c",
+              "src/postgres/yb-extensions/**/*.h", "managed/src/main/**/*.java",
+              "managed/node-agent/**/*.go", "managed/src/main/resources/**/*.yml",
+              "managed/src/main/resources/**/*.json", "troubleshoot/**/*.java",
+              "yugabyted-ui/apiserver/**/*.go", "python/**/*.py"],
+  "exclude": ["**/*-test.cc", "**/*_test.cc", "**/*-test-util*", "**/*test_util*", "**/*_test.go",
+              "**/test/**", "**/tests/**", "**/*Test.java", "**/node_modules/**",
+              "src/yb/util/metrics.h", "src/yb/util/metrics.cc", "src/yb/util/metric_entity.*",
+              "src/yb/util/metrics_writer.*", "src/yb/util/metrics_aggregator.*",
+              "managed/src/main/resources/metric/Dashboard.json"],
+  "warn_only_rules": ["PROMQL_NAME_REGEX"],
+  "family_min_size": 3
+}

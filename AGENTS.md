@@ -26,6 +26,38 @@ For agents that want to deploy, configure and run YugabyteDB refer to instructio
 
 When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test guidance
 
+### Metric naming gate (src/ and managed/)
+
+Applies whenever you add, rename, or restructure a metric: C++ `METRIC_DEFINE_*` / prototypes in `src/`, YBA `PlatformMetrics` / Prometheus collectors in `managed/`, and any codegen that emits metric names (e.g. `gen_yrpc`). Full guide with examples: `src/yb/util/METRIC_NAMING.md`.
+
+**A metric name says what is measured (+ unit). Any part of the name that is a *value* -- an RPC method, service, statement type, task type, thread pool, table, command, server type, enum number -- goes in a label.**
+
+Before you add a metric, apply the one-question test to every token after the base name:
+
+> Does this token name a value of a shared dimension (-> label), or a different quantity (-> separate metric)?
+
+- `threads_started_acceptor` vs `threads_started_rpc_worker`: same quantity, different pool -> label `thread_pool`.
+- `ybp_health_check_master_down` vs `ybp_health_check_tserver_down`: same check, different server -> label `server_type`.
+- `rocksdb_block_cache_add` vs `rocksdb_block_cache_add_failures`: different quantities -> separate metrics (correct as-is).
+
+Rules (IDs are shared with `REVIEW.md`):
+
+- **MN1 -- Static names only.** The name is a string literal. Do not build it with `Format()`, `+`, `StrCat`, `BOOST_PP_CAT`/token pasting, `Owning*Prototype(prefix + "_" + value)`, or codegen/macros that stamp one `METRIC_DEFINE` per method, command, statement, or pool.
+- **MN2 -- No values in names.** Never put enum numbers, task types, mem-tracker paths, service/method names, table/tablet IDs, or server types in a name.
+- **MN3 -- Labels via `MetricEntity`.** No new infra is needed: define a `MetricEntity` type for the dimension, put the value in its attributes, and instantiate the *same* prototype on one entity per value. Copy existing precedents: table/tablet entities (`rocksdb_*`), `METRIC_ENTITY_cgroup` in `tserver_cgroup_manager.cc`, the fixed `"PerTablet"` mem-tracker metric name in `tablet.cc`, YSQL catalog-cache `db_oid`/`table_name` labels.
+- **MN4 -- YBA: one enum constant per quantity.** `PlatformMetrics` derives the name from the constant, so do not add one constant per server type, check, or task. Add one constant and attach the varying value as a label.
+- **MN5 -- Honest prefix.** Counts (`NumRetriesToExecute`, `CatalogCacheMisses`) do not go under `handler_latency_`. The prefix and unit must match the metric type.
+- **MN6 -- Cardinality.** Bounded values (method, pool, op, check) -> label. Unbounded values (table, tablet, user, query) -> label on the right entity, and justify in the PR/diff summary why the metric needs that dimension at all.
+- **MN7 -- No hand-added suffixes.** Do not add `_sum`, `_count`, or `_total` yourself. YB histograms already emit `_sum`/`_count` and quantiles as a `quantile` label; some pipelines append `_total`.
+- **MN8 -- Renames are breaking.** Renaming or moving a metric (including moving an RPC to another service, which renames its generated metric, or refactoring a mem-tracker hierarchy) breaks YBA, YBM, and Perf Advisor dashboards and alerts. Call it out in the diff summary with the old -> new name and the consumers you checked. Prefer folding a name-encoded family into labels over another rename.
+
+Before you finish a change that touches metrics:
+
+1. List every metric name you added or changed in the diff summary.
+2. Confirm each one passes the one-question test and MN1-MN8.
+3. If `metric-name-lint` is installed, run `python3 build-support/metric_name_lint.py --files <changed files>`. Fix findings. Do not add a baseline entry or a `metric-name-lint: allow(...)` suppression unless the user asks for one; if they do, the suppression reason must name the migration issue.
+4. Existing name-encoded families (`handler_latency_yb_*`, `rpcs_in_queue_*`, `threads_started_*`, `<Task>_Task`/`_Attempt`, `mem_tracker_*` paths, `ybp_health_check_*`) are known debt. Do not extend them with new members. If you must touch one, ask the user whether to migrate it to labels in the same change or a follow-up.
+
 ## Cursor Cloud specific instructions
 
 ### Environment
