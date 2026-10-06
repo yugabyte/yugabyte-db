@@ -13,10 +13,14 @@
 
 #include <chrono>
 
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_net.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -728,6 +732,111 @@ TEST_F(PgCronTest, CancelJobOnLeaderChange) {
       "SELECT COUNT(*) FROM cron.job_run_details WHERE return_message = 'pg_cron leader changed'"));
   ASSERT_TRUE(count_killed == 1 || count_killed == 2)
       << count_killed << " rows found when only 1 or 2 is expected";
+}
+
+// The cluster balancer must not move the pg_cron leader tablet's leader to balance leader load,
+// but must move it off a leader blacklisted tserver.
+TEST_F(PgCronTest, ClusterBalancerMovesCronLeaderOnlyForLeaderBlacklist) {
+  // Enough single replica leaders on the pg_cron leader's tserver to keep its leader load at least
+  // 2 above the other tservers after every movable leader has left it.
+  constexpr int kNumUnmovableLeaders = 10;
+  constexpr int kNumMovableLeaders = 2;
+  const std::string kKeyspace = "cron_lb_test";
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
+  // Replica moves would eventually spread the single replica tablets.
+  ASSERT_OK(cluster_->SetFlagOnMasters("load_balancer_max_concurrent_adds", "0"));
+
+  const auto cron_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  auto* const cron_leader_ts = cluster_->tablet_server(cron_leader_idx);
+  LOG(INFO) << "pg_cron leader tablet " << tablet_id_ << " is led by tserver "
+            << cron_leader_ts->uuid();
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kKeyspace, YQLDatabase::YQL_DATABASE_CQL));
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("k")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  client::YBSchema schema;
+  ASSERT_OK(schema_builder.Build(&schema));
+
+  // Creates single tablet tables and returns their tablet ids once each tablet has a leader.
+  auto create_tables = [&](const std::string& prefix, int num_tables, int num_replicas)
+      -> Result<std::vector<TabletId>> {
+    ReplicationInfoPB replication_info;
+    replication_info.mutable_live_replicas()->set_num_replicas(num_replicas);
+    std::vector<TabletId> tablet_ids;
+    for (int i = 0; i < num_tables; ++i) {
+      const client::YBTableName table_name(
+          YQLDatabase::YQL_DATABASE_CQL, kKeyspace, Format("$0_$1", prefix, i));
+      RETURN_NOT_OK(client_->NewTableCreator()
+          ->table_name(table_name)
+          .schema(&schema)
+          .num_tablets(1)
+          .replication_info(replication_info)
+          .Create());
+      std::vector<TabletId> table_tablet_ids;
+      RETURN_NOT_OK(client_->GetTablets(
+          table_name, 0 /* max_tablets */, &table_tablet_ids, nullptr /* ranges */));
+      SCHECK_EQ(table_tablet_ids.size(), 1U, IllegalState, "Expected a single tablet");
+      tablet_ids.push_back(table_tablet_ids.front());
+    }
+    for (const auto& tablet_id : tablet_ids) {
+      RETURN_NOT_OK(WaitFor(
+          [&]() -> Result<bool> { return cluster_->GetTabletLeaderIndex(tablet_id).ok(); },
+          kTimeout, Format("Wait for a leader of tablet $0", tablet_id)));
+    }
+    return tablet_ids;
+  };
+
+  // New tablets are only placed on tservers that are not blacklisted, so blacklisting the other
+  // tservers puts the single replica tablets on the pg_cron leader's tserver.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (i != cron_leader_idx) {
+      ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), cluster_->tablet_server(i)));
+    }
+  }
+  const auto unmovable_tablet_ids =
+      ASSERT_RESULT(create_tables("unmovable", kNumUnmovableLeaders, /* num_replicas= */ 1));
+  for (const auto& tablet_id : unmovable_tablet_ids) {
+    ASSERT_EQ(ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id)), cron_leader_idx);
+  }
+  ASSERT_OK(cluster_->ClearBlacklist(cluster_->master()));
+
+  // Fully replicated single tablet tables with their leaders on the pg_cron leader's tserver. The
+  // cluster balancer must move these to balance leader load, which shows it acted on the imbalance.
+  const auto movable_tablet_ids =
+      ASSERT_RESULT(create_tables("movable", kNumMovableLeaders, /* num_replicas= */ 3));
+  for (const auto& tablet_id : movable_tablet_ids) {
+    if (ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id)) != cron_leader_idx) {
+      ASSERT_OK(cluster_->MoveTabletLeader(tablet_id, cron_leader_idx));
+    }
+  }
+  ASSERT_EQ(ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_)), cron_leader_idx);
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "true"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& tablet_id : movable_tablet_ids) {
+          auto leader_idx = cluster_->GetTabletLeaderIndex(tablet_id);
+          if (!leader_idx.ok() || *leader_idx == cron_leader_idx) {
+            return false;
+          }
+        }
+        return true;
+      },
+      kTimeout, "Wait for the cluster balancer to move the movable leaders"));
+  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client_, kTimeout));
+  ASSERT_EQ(ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_)), cron_leader_idx)
+      << "The cluster balancer moved the pg_cron leader to balance leader load";
+
+  ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(cluster_->master(), cron_leader_ts));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader_idx = cluster_->GetTabletLeaderIndex(tablet_id_);
+        return leader_idx.ok() && *leader_idx != cron_leader_idx;
+      },
+      kTimeout, "Wait for the cluster balancer to move the pg_cron leader off the leader "
+                "blacklisted tserver"));
+  ASSERT_OK(cluster_->ClearBlacklist(cluster_->master()));
 }
 
 }  // namespace yb

@@ -22,6 +22,8 @@
 #include "yb/master/load_balancer_mocked-test_base.h"
 #include "yb/tablet/tablet_types.pb.h"
 
+DECLARE_bool(cluster_balancer_skip_load_moves_for_pg_cron_table);
+
 namespace yb {
 namespace master {
 
@@ -823,6 +825,103 @@ TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
     }
   }
   LOG(INFO) << "Leader distribution: 2 1 1 -OR- 1 2 1";
+}
+
+// The table under test is the pg_cron leader service table, which has a single tablet. Another
+// table has 3 tablets with replicas on ts0, ts1 and ts2 and all of its leaders on ts0, so that ts0
+// has more global load than the tservers it can move the pg_cron tablet's leader or replicas to.
+class LoadBalancerMockedPgCronTest : public LoadBalancerMockedTest {
+ protected:
+  int NumTablets() const override { return 1; }
+
+  void SetUp() override {
+    LoadBalancerMockedTest::SetUp();
+    {
+      auto l = tables_.FindTableOrNull(kTableId)->LockForWrite();
+      l.mutable_data()->pb.add_hosted_stateful_services(StatefulServiceKind::PG_CRON_LEADER);
+      l.Commit();
+    }
+    other_table_ = make_scoped_refptr<TableInfo>("other_table_id", /* colocated */ false);
+    ASSERT_OK(CreateTable(
+        {"a", "b"}, NumReplicas(), /* setup_placement */ false, other_table_.get(),
+        &other_tablets_));
+    tables_.AddOrReplace(other_table_);
+  }
+
+  // Places the other table's tablets on ts0, ts1 and ts2 with every leader on ts0. Call after
+  // PrepareTestState.
+  void PlaceOtherTablets() {
+    for (const auto& tablet : other_tablets_) {
+      auto replicas = std::make_shared<TabletReplicaMap>();
+      for (size_t i = 0; i < 3; ++i) {
+        TabletReplica replica;
+        NewReplica(
+            ts_descs_[i], tablet::RUNNING, i == 0 ? PeerRole::LEADER : PeerRole::FOLLOWER,
+            consensus::PeerMemberType::VOTER, &replica);
+        InsertOrDie(replicas.get(), ts_descs_[i]->permanent_uuid(), replica);
+      }
+      tablet->SetReplicaLocations(replicas);
+      tablet_map_[tablet->tablet_id()] = tablet;
+    }
+  }
+
+  Status AnalyzeBothTablesAllowingGlobalMoves() {
+    RETURN_NOT_OK(ResetLoadBalancerAndAnalyzeTablets());
+    RETURN_NOT_OK(AnalyzeOtherTable(other_table_));
+    AllowGlobalMoves();
+    return Status::OK();
+  }
+
+  TableInfoPtr other_table_;
+  std::vector<TabletInfoPtr> other_tablets_;
+};
+
+TEST_F(LoadBalancerMockedPgCronTest, LeaderMovedOnlyForLeaderBlacklist) {
+  PrepareTestStateSingleAz();
+  PlaceOtherTablets();
+  const auto& cron_tablet_id = tablets_[0]->tablet_id();
+  const auto& ts0 = ts_descs_[0]->permanent_uuid();
+  const auto& ts1 = ts_descs_[1]->permanent_uuid();
+  std::string placeholder;
+  LOG(INFO) << "Global leader load: 4 0 0. The pg_cron tablet's leader is on ts0.";
+
+  ASSERT_OK(AnalyzeBothTablesAllowingGlobalMoves());
+  ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_balancer_skip_load_moves_for_pg_cron_table) = false;
+  ASSERT_OK(AnalyzeBothTablesAllowingGlobalMoves());
+  std::string tablet_id;
+  TestMoveLeader(&tablet_id, ts0, ts1);
+  ASSERT_EQ(tablet_id, cron_tablet_id);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_balancer_skip_load_moves_for_pg_cron_table) = true;
+
+  AddLeaderBlacklist(ts0);
+  ASSERT_OK(AnalyzeBothTablesAllowingGlobalMoves());
+  TestMoveLeader(&tablet_id, ts0, ts1);
+  ASSERT_EQ(tablet_id, cron_tablet_id);
+}
+
+TEST_F(LoadBalancerMockedPgCronTest, ReplicaMovedOnlyForBlacklist) {
+  PrepareTestStateSingleAz();
+  PlaceOtherTablets();
+  ts_descs_.push_back(SetupTS("3333", "a"));
+  const auto& cron_tablet_id = tablets_[0]->tablet_id();
+  const auto& ts0 = ts_descs_[0]->permanent_uuid();
+  const auto& ts3 = ts_descs_[3]->permanent_uuid();
+  std::string placeholder;
+  LOG(INFO) << "Global replica load: 4 4 4 0. The pg_cron tablet has no replica on ts3.";
+
+  ASSERT_OK(AnalyzeBothTablesAllowingGlobalMoves());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_balancer_skip_load_moves_for_pg_cron_table) = false;
+  ASSERT_OK(AnalyzeBothTablesAllowingGlobalMoves());
+  ASSERT_OK(TestAddLoad(cron_tablet_id, "" /* expected_from_ts */, ts3));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_balancer_skip_load_moves_for_pg_cron_table) = true;
+
+  blacklist_.add_hosts()->set_host(ts0);
+  ASSERT_OK(AnalyzeBothTablesAllowingGlobalMoves());
+  ASSERT_OK(TestAddLoad(cron_tablet_id, ts0, ts3));
 }
 
 class LoadBalancerMockedTestManyTablets : public LoadBalancerMockedTest {

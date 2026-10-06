@@ -104,6 +104,28 @@ class LoadBalancerMockedBase : public YBTest {
     cb_.ResetTableStatePtr(cur_table_uuid_, nullptr);
   }
 
+  // Analyzes another table in the same cluster balancer run, so that its replicas and leaders count
+  // toward the global load of the tservers. The current table stays selected.
+  Status AnalyzeOtherTable(const TableInfoPtr& table) NO_THREAD_SAFETY_ANALYSIS {
+    auto* const current_state = cb_.state_;
+    cb_.ResetTableStatePtr(table->id(), nullptr);
+    RETURN_NOT_OK(cb_.PopulateReplicationInfo(table, cb_.GetTableReplicationInfo(table)));
+    cb_.InitializeTSDescriptors();
+    int adds = 0;
+    int removes = 0;
+    int stepdowns = 0;
+    RETURN_NOT_OK(cb_.CountPendingTasks(table, &adds, &removes, &stepdowns));
+    RETURN_NOT_OK(cb_.AnalyzeTablets(table));
+    cb_.state_ = current_state;
+    cb_.state_->SortLoad();
+    cb_.state_->SortLeaderLoad();
+    return Status::OK();
+  }
+
+  void AllowGlobalMoves() {
+    cb_.can_perform_global_operations_ = true;
+  }
+
   void StopTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
     std::lock_guard l(ts_desc->mutex_);
     ts_desc->last_heartbeat_ = MonoTime();

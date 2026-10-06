@@ -627,6 +627,10 @@ class PerTableLoadState {
   // Boolean whether tablets for this table should respect the affinitized zones.
   bool use_preferred_zones_ = true;
 
+  // Whether the cluster balancer must not move replicas or leaders of this table only to balance
+  // load.
+  bool skip_load_moves_ = false;
+
   // check_ts_liveness_ is used to indicate if the TS descriptors
   // need to be checked if they are live and considered for Load balancing.
   // In most scenarios, this would be true, except when we use the cluster_balance_mocked.h

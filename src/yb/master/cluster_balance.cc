@@ -151,6 +151,12 @@ DEFINE_RUNTIME_bool(cluster_balancer_stepdown_to_preferred_leader_on_remove, tru
     "If true, when removing a replica which happens to be the leader from a tablet, the cluster "
     "balancer will step down the leader to a tserver in the most preferred zone.");
 
+DEFINE_RUNTIME_bool(cluster_balancer_skip_load_moves_for_pg_cron_table, true,
+    "If true, the cluster balancer does not move the replicas or the leader of the pg_cron leader "
+    "tablet to balance load. It still moves them off blacklisted and leader blacklisted tservers, "
+    "to repair placement, and to respect preferred zones. Each leader change of this tablet "
+    "changes the pg_cron leader, which delays pg_cron jobs.");
+
 DECLARE_int32(replication_factor);
 
 METRIC_DEFINE_gauge_int64(cluster,
@@ -293,6 +299,13 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
   state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
   if (state_->use_preferred_zones_) {
     GetAllAffinitizedZones(replication_info, &state_->affinitized_zones_);
+  }
+
+  if (FLAGS_cluster_balancer_skip_load_moves_for_pg_cron_table) {
+    const auto services = table->GetHostedStatefulServices();
+    state_->skip_load_moves_ =
+        std::find(services.begin(), services.end(), StatefulServiceKind::PG_CRON_LEADER) !=
+        services.end();
   }
 
   return Status::OK();
@@ -1322,6 +1335,9 @@ Result<std::optional<TabletId>> ClusterLoadBalancer::GetTabletToMove(
       if (ContainsKey(from_ts_meta.disabled_by_ts_tablets, tablet_id)) {
         continue;
       }
+      if (state_->skip_load_moves_) {
+        continue;
+      }
 
       if (VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts))) {
         filtered_drive_tablets.insert(tablet_id);
@@ -1537,6 +1553,9 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
       const std::set<TabletId>& leaders = state_->per_ts_meta_[high_load_uuid].leaders;
       for (const auto& [tablet_id, path] : GetLeadersOnTSToMove(
                global_state_->drive_aware_, leaders, state_->per_ts_meta_[low_load_uuid])) {
+        if (state_->skip_load_moves_ && !high_leader_blacklisted) {
+          continue;
+        }
 
         auto move_details = LeaderMoveDetails {
           .tablet_id = tablet_id,
