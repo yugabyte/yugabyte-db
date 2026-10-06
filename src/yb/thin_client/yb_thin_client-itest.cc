@@ -23,10 +23,17 @@
 #include <tuple>
 #include <utility>
 #include <array>
+#include <atomic>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
+#include <thread>
 #include <vector>
+
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/write.hpp>
 
 #include "yb/thin_client/yb_thin_client.h"
 
@@ -47,9 +54,11 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -59,6 +68,9 @@
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_uint64(TEST_thin_client_perform_delay_ms);
+DECLARE_bool(TEST_thin_client_omit_session_lost_code);
+DECLARE_uint64(pg_client_heartbeat_interval_ms);
+DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_bool(use_libunwind_for_stack_trace_collection);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(use_client_to_server_encryption);
@@ -1679,14 +1691,16 @@ namespace {
 
 // Upserts rows (hash_key, v) for v in [from, to) into a (k int, v int) table keyed on (k HASH, v).
 WriteOutcome UpsertKeys(
-    ybthin_client* client, ybthin_table* table, int hash_key, int from, int to) {
+    ybthin_client* client, ybthin_table* table, int hash_key, int from, int to,
+    uint64_t ignore_after_hybrid_time = 0) {
   std::vector<std::array<ybthin_bind, 2>> keys;
   for (int v = from; v < to; ++v) {
     keys.push_back({I32(hash_key), I32(v)});
   }
   std::vector<ybthin_upsert_row> rows;
   for (auto& key : keys) {
-    rows.push_back(ybthin_upsert_row{table, key.data(), 2, nullptr, nullptr, 0, 0});
+    rows.push_back(
+        ybthin_upsert_row{table, key.data(), 2, nullptr, nullptr, 0, ignore_after_hybrid_time});
   }
   std::promise<WriteOutcome> promise;
   auto future = promise.get_future();
@@ -1755,6 +1769,9 @@ Result<std::vector<int32_t>> ContinueScanKeys(
   std::vector<int32_t> values;
   int pages = 0;
   do {
+    if (pages++ == max_pages) {
+      return STATUS(IllegalState, "paging did not terminate");
+    }
     auto out = ReadKeys(client, table, hash_key, v_id, limit, paging_state, forward_scan);
     if (out.code != YBTHIN_OK) {
       return STATUS_FORMAT(
@@ -1764,9 +1781,6 @@ Result<std::vector<int32_t>> ContinueScanKeys(
       values.push_back(static_cast<int32_t>(out.cells[row_idx * out.n_cols].int_value));
     }
     paging_state = std::move(out.paging_state);
-    if (++pages >= max_pages) {
-      return STATUS(IllegalState, "paging did not terminate");
-    }
   } while (!paging_state.empty());
   return values;
 }
@@ -1861,6 +1875,93 @@ TEST_F(PgThinClientTest, LateFailureKeepsTheReopenedSession) {
         client.get(), table.get(), kHashKey, v_id, kPageLimit, new_page.paging_state);
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   }
+}
+
+// A fenced batch is an ordinary write failure, so it leaves the connection's other sessions open: a
+// scan paged on one of them continues after it.
+TEST_F(PgThinClientTest, FencedBatchKeepsOtherSessionsOpen) {
+  constexpr int kHashKey = 1;
+  constexpr int kRows = 10;
+  constexpr uint64_t kPageLimit = 4;
+  const auto oids = ASSERT_RESULT(CreateKeyTable());
+  auto client = ASSERT_RESULT(CreateThinClient({TServerAddr()}, &kOneConnectionPool, 60000));
+  auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+  const int32_t v_id = table.ColumnId(1);
+
+  ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+  auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
+  ASSERT_FALSE(first_page.paging_state.empty());
+
+  // More than one row, so the tserver combines the per-row errors into one status.
+  auto fenced = UpsertKeys(
+      client.get(), table.get(), kHashKey, kRows, kRows + 2, /* ignore_after_hybrid_time= */ 1);
+  ASSERT_EQ(fenced.code, YBTHIN_FENCED) << fenced.message;
+
+  auto next_page = ReadKeys(
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+  ASSERT_EQ(next_page.code, YBTHIN_OK) << next_page.message;
+}
+
+// Sessions expire after a few seconds. Postgres heartbeats its own sessions often enough to keep
+// them, while the thin client's keepalive does not.
+class PgThinClientSessionExpiryTest : public PgThinClientTest {
+ protected:
+  // Not scaled for sanitizers: it must stay below the thin client's 10s keepalive interval.
+  static constexpr uint64_t kSessionLifetimeMs = 5000;
+
+  void SetUp() override {
+    // Set before the cluster starts, since the session registry schedules its expiry checks by it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = kSessionLifetimeMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) = kSessionLifetimeMs / 3;
+    PgThinClientTest::SetUp();
+  }
+
+  // A Perform that finds its session just before the session expires is answered "Session is
+  // shutting down". That loses the session like an unknown one: the call fails with
+  // YBTHIN_NETWORK, and its session and the connection's other sessions reopen before their next
+  // use.
+  void HoldPerformPastSessionExpiry() {
+    constexpr int kHashKey = 1;
+    constexpr int kRows = 10;
+    constexpr uint64_t kPageLimit = 4;
+    const auto oids = ASSERT_RESULT(CreateKeyTable());
+    auto client = ASSERT_RESULT(CreateThinClient({TServerAddr()}, &kOneConnectionPool, 60000));
+    auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+    const int32_t v_id = table.ColumnId(1);
+
+    ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+    auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+    ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
+    ASSERT_FALSE(first_page.paging_state.empty());
+
+    // Held past two lifetimes, since a keepalive ping may postpone the expiry once.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) =
+        2 * kSessionLifetimeMs + 1000 * kTimeMultiplier;
+    auto lost = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) = 0;
+    ASSERT_EQ(lost.code, YBTHIN_NETWORK) << lost.message;
+    ASSERT_STR_CONTAINS(lost.message, "Session is shutting down");
+
+    // The read session shares the connection, so the scan pinned to it restarts.
+    auto next_page = ReadKeys(
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+    ASSERT_EQ(next_page.code, YBTHIN_READ_RESTART) << next_page.message;
+    // The write session reopens, so the retried upsert lands.
+    auto retried = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
+    ASSERT_EQ(retried.code, YBTHIN_OK) << retried.message;
+  }
+};
+
+TEST_F(PgThinClientSessionExpiryTest, ShuttingDownSessionIsLost) {
+  ASSERT_NO_FATALS(HoldPerformPastSessionExpiry());
+}
+
+// A tserver older than SESSION_LOST reports a shutting down session by its text alone, which the
+// client still treats as lost.
+TEST_F(PgThinClientSessionExpiryTest, ShuttingDownSessionIsLostOnOlderTservers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_omit_session_lost_code) = true;
+  ASSERT_NO_FATALS(HoldPerformPastSessionExpiry());
 }
 
 // Three tservers, so one can stop while its tablets stay served. Postgres runs on tserver 0, so the
@@ -2006,6 +2107,274 @@ TEST_F(PgThinClientFailoverTest, ScansOnOtherConnectionsKeepPaging) {
     const auto rest = ASSERT_RESULT(ContinueScanKeys(
         client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state));
     ASSERT_EQ(first_page.n_rows + rest.size(), static_cast<size_t>(kRows)) << "scan " << scan_idx;
+  }
+}
+
+namespace {
+
+// Forwards each accepted connection to the next backend in turn, as a Kubernetes ClusterIP Service
+// picks a pod per connection.
+class RoundRobinBalancer {
+ public:
+  explicit RoundRobinBalancer(std::vector<Endpoint> backends)
+      : backends_(std::move(backends)), acceptor_(io_context_) {}
+
+  ~RoundRobinBalancer() {
+    io_context_.stop();
+    if (thread_.joinable()) {
+      thread_.join();
+    }
+  }
+
+  Status Start(const Endpoint& local) {
+    boost::system::error_code ec;
+    acceptor_.open(local.protocol(), ec);
+    if (!ec) {
+      acceptor_.bind(local, ec);
+    }
+    if (!ec) {
+      acceptor_.listen(boost::asio::socket_base::max_listen_connections, ec);
+    }
+    if (ec) {
+      return STATUS_FORMAT(NetworkError, "Balancer cannot listen on $0: $1", local, ec.message());
+    }
+    Accept();
+    thread_ = std::thread([this] { io_context_.run(); });
+    return Status::OK();
+  }
+
+  // Connections accepted so far.
+  size_t Accepted() const { return next_backend_.load(std::memory_order_acquire); }
+
+  // Closes every forwarded connection, as when a backend restarts or the Service resets it.
+  void DropConnections() {
+    std::promise<void> done;
+    boost::asio::post(io_context_, [this, &done] {
+      for (auto& pipe : pipes_) {
+        if (auto live = pipe.lock()) {
+          live->Close();
+        }
+      }
+      pipes_.clear();
+      done.set_value();
+    });
+    done.get_future().wait();
+  }
+
+ private:
+  using Socket = boost::asio::ip::tcp::socket;
+  using Buffer = std::array<char, 4096>;
+
+  // Both directions of one forwarded connection; either side closing ends both.
+  struct Pipe : std::enable_shared_from_this<Pipe> {
+    Pipe(Socket&& client_socket, boost::asio::io_context& io_context)
+        : client(std::move(client_socket)), backend(io_context) {}
+
+    void Start(const Endpoint& to) {
+      backend.async_connect(to, [self = shared_from_this()](const boost::system::error_code& ec) {
+        if (ec) {
+          self->Close();
+          return;
+        }
+        self->Relay(self->client, self->backend, self->to_backend);
+        self->Relay(self->backend, self->client, self->to_client);
+      });
+    }
+
+    void Relay(Socket& from, Socket& to, Buffer& buffer) {
+      from.async_read_some(
+          boost::asio::buffer(buffer),
+          [self = shared_from_this(), &from, &to, &buffer](
+              const boost::system::error_code& ec, size_t size) {
+            if (ec) {
+              self->Close();
+              return;
+            }
+            boost::asio::async_write(
+                to, boost::asio::buffer(buffer.data(), size),
+                [self, &from, &to, &buffer](const boost::system::error_code& ec, size_t) {
+                  if (ec) {
+                    self->Close();
+                    return;
+                  }
+                  self->Relay(from, to, buffer);
+                });
+          });
+    }
+
+    void Close() {
+      boost::system::error_code ec;
+      client.close(ec);
+      backend.close(ec);
+    }
+
+    Socket client;
+    Socket backend;
+    Buffer to_backend;
+    Buffer to_client;
+  };
+
+  void Accept() {
+    acceptor_.async_accept([this](const boost::system::error_code& ec, Socket client) {
+      if (ec) {
+        return;
+      }
+      auto pipe = std::make_shared<Pipe>(std::move(client), io_context_);
+      pipes_.push_back(pipe);
+      pipe->Start(backends_[next_backend_++ % backends_.size()]);
+      Accept();
+    });
+  }
+
+  boost::asio::io_context io_context_;
+  const std::vector<Endpoint> backends_;
+  boost::asio::ip::tcp::acceptor acceptor_;
+  std::atomic<size_t> next_backend_{0};
+  std::vector<std::weak_ptr<Pipe>> pipes_;
+  std::thread thread_;
+};
+
+// Starts `balancer` on a free local port, held by `port_lock`, and returns its address.
+Result<std::string> StartBalancer(
+    RoundRobinBalancer& balancer, std::unique_ptr<FileLock>* port_lock) {
+  const auto addr = HostPort("127.0.0.1", GetFreePort(port_lock)).ToString();
+  RETURN_NOT_OK(balancer.Start(VERIFY_RESULT(ParseEndpoint(addr, 0))));
+  return addr;
+}
+
+}  // namespace
+
+// A balancer over the first and second tservers, in front of a one-connection client.
+class PgThinClientLoadBalancerTest : public PgThinClientFailoverTest {
+ protected:
+  static constexpr size_t kFirstTs = 1;
+  static constexpr size_t kSecondTs = 2;
+  static constexpr int kHashKey = 1;
+  static constexpr uint64_t kPageLimit = 4;
+
+  void DoTearDown() override {
+    table_.reset();
+    client_.reset();
+    other_client_.reset();
+    balancer_.reset();
+    PgThinClientFailoverTest::DoTearDown();
+  }
+
+  void StartClientBehindBalancer() {
+    const auto oids = ASSERT_RESULT(CreateKeyTable());
+
+    // Other clients' sessions on the tserver the balancer picks first put its session ids ahead of
+    // the other's, as on a shared universe. A Perform on the wrong tserver then finds no session,
+    // rather than another client's that happens to share its id.
+    constexpr ybthin_pool_opts kOtherClientsPool = {
+        /* read_sessions= */ 8, /* write_sessions= */ 1, /* sessions_per_conn= */ 0};
+    other_client_ = ASSERT_RESULT(
+        CreateThinClient({TServerAddrOf(kFirstTs)}, &kOtherClientsPool, 60000));
+
+    balancer_ = std::make_unique<RoundRobinBalancer>(std::vector<Endpoint>{
+        cluster_->mini_tablet_server(kFirstTs)->bound_rpc_addr(),
+        cluster_->mini_tablet_server(kSecondTs)->bound_rpc_addr()});
+    const auto balancer_addr = ASSERT_RESULT(StartBalancer(*balancer_, &port_lock_));
+
+    client_ = ASSERT_RESULT(CreateThinClient({balancer_addr}, &kOneConnectionPool, 60000));
+    table_.emplace(ASSERT_RESULT(ThinTable::Open(client_.get(), oids)));
+    v_id_ = table_->ColumnId(1);
+  }
+
+  // When the socket drops, the reconnect can reach the other tserver, where none of the
+  // connection's sessions exist. The first call to fail drops them all, so the others reopen
+  // without failing too.
+  void DropSocketsAndReopenSessions() {
+    constexpr int kRows = 10;
+    ASSERT_NO_FATALS(StartClientBehindBalancer());
+    ASSERT_EQ(UpsertKeys(client_.get(), table_->get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+    ASSERT_EQ(
+        ASSERT_RESULT(ScanKeys(client_.get(), table_->get(), kHashKey, v_id_, kPageLimit)).size(),
+        static_cast<size_t>(kRows));
+    ASSERT_EQ(PerformCount(kSecondTs), 0U);
+    const auto first_ts_performs = PerformCount(kFirstTs);
+
+    balancer_->DropConnections();
+
+    // The write session may be the first to find out.
+    auto out = UpsertKeys(client_.get(), table_->get(), kHashKey, kRows, 2 * kRows);
+    if (out.code != YBTHIN_OK) {
+      ASSERT_EQ(out.code, YBTHIN_NETWORK) << out.message;
+      out = UpsertKeys(client_.get(), table_->get(), kHashKey, kRows, 2 * kRows);
+      ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+    }
+    // The read session shares the connection, so it reopened with the write session.
+    ASSERT_EQ(
+        ASSERT_RESULT(ScanKeys(client_.get(), table_->get(), kHashKey, v_id_, kPageLimit)).size(),
+        static_cast<size_t>(2 * kRows));
+    // So both sessions now live on the second tserver.
+    ASSERT_EQ(PerformCount(kFirstTs), first_ts_performs);
+    ASSERT_GT(PerformCount(kSecondTs), 0U);
+  }
+
+  std::unique_ptr<FileLock> port_lock_;
+  std::unique_ptr<RoundRobinBalancer> balancer_;
+  ThinClientPtr other_client_;
+  ThinClientPtr client_;
+  std::optional<ThinTable> table_;
+  int32_t v_id_ = 0;
+};
+
+// A load balancer, like a Kubernetes ClusterIP Service, picks a tserver per TCP connection, while a
+// session id is known only to the tserver it opened on. So a connection's Performs must ride the
+// one socket its sessions opened on.
+TEST_F(PgThinClientLoadBalancerTest, ConnectionStaysOnOneTserverBehindALoadBalancer) {
+  constexpr int kRounds = 5;
+  constexpr int kRowsPerRound = 10;
+  ASSERT_NO_FATALS(StartClientBehindBalancer());
+
+  for (int round = 0; round < kRounds; ++round) {
+    auto out = UpsertKeys(
+        client_.get(), table_->get(), kHashKey, round * kRowsPerRound,
+        (round + 1) * kRowsPerRound);
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+    ASSERT_EQ(
+        ASSERT_RESULT(ScanKeys(client_.get(), table_->get(), kHashKey, v_id_, kPageLimit)).size(),
+        static_cast<size_t>((round + 1) * kRowsPerRound));
+  }
+  ASSERT_GT(PerformCount(kFirstTs), 0U);
+  ASSERT_EQ(PerformCount(kSecondTs), 0U) << "the pool's one connection should stay on one tserver";
+}
+
+TEST_F(PgThinClientLoadBalancerTest, SessionsReopenTogetherAfterTheSocketDrops) {
+  ASSERT_NO_FATALS(DropSocketsAndReopenSessions());
+}
+
+// A tserver older than SESSION_LOST reports an unknown session by its text alone, which the client
+// still treats as lost.
+TEST_F(PgThinClientLoadBalancerTest, SessionsReopenTogetherBehindOlderTservers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_omit_session_lost_code) = true;
+  ASSERT_NO_FATALS(DropSocketsAndReopenSessions());
+}
+
+// A connection keeps one socket to its host however many addresses it is given, since any of them
+// may be a load balancer.
+TEST_F(PgThinClientTest, OneSocketPerConnection) {
+  constexpr int kUpserts = 20;
+  const auto oids = ASSERT_RESULT(CreateKeyTable());
+  const std::vector<Endpoint> tserver = {cluster_->mini_tablet_server(0)->bound_rpc_addr()};
+  for (size_t num_addrs : {1, 2}) {
+    SCOPED_TRACE(Format("$0 addresses", num_addrs));
+    // Forwarders to the one tserver stand in for the addresses, and count the sockets opened.
+    std::vector<std::unique_ptr<FileLock>> port_locks(num_addrs);
+    std::vector<std::unique_ptr<RoundRobinBalancer>> forwarders;
+    std::vector<std::string> addrs;
+    for (auto& port_lock : port_locks) {
+      forwarders.push_back(std::make_unique<RoundRobinBalancer>(tserver));
+      addrs.push_back(ASSERT_RESULT(StartBalancer(*forwarders.back(), &port_lock)));
+    }
+    auto client = ASSERT_RESULT(CreateThinClient(addrs, &kOneConnectionPool, 60000));
+    auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+    for (int v = 0; v < kUpserts; ++v) {
+      ASSERT_EQ(UpsertKeys(client.get(), table.get(), /* hash_key= */ 1, v, v + 1).code, YBTHIN_OK);
+    }
+    // The pool's one connection talks to the first address.
+    ASSERT_EQ(forwarders.front()->Accepted(), 1U);
   }
 }
 

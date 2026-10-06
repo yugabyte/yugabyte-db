@@ -136,6 +136,10 @@ message TabletServerErrorPB {
     // it. Distinct from a bare Expired, which also covers causes that may have replicated: a
     // fenced write definitively did not take effect.
     WRITE_FENCE_EXPIRED = 34;
+
+    // The thin client session is unknown to this tablet server or is shutting down, so the client
+    // must open a new one.
+    SESSION_LOST = 35;
   }
 
   // The error code.

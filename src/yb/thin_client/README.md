@@ -30,9 +30,11 @@ hot read/write paths without embedding a full client.
   keepalive; optional TLS (server-auth or mTLS) via `SecureContext`. A session
   can have several Performs in flight; `ybthin_pool_opts` sizes the pool
   (read/write sessions packed onto connections), and connections spread the
-  sessions across tservers. Reads round-robin the read sessions; upserts
-  round-robin the write sessions. A connection whose tserver stops answering
-  moves on to the next configured tserver, and its sessions reopen there.
+  sessions across tservers. Each connection keeps one socket, so behind a load
+  balancer its sessions stay on one tserver. Reads round-robin the read
+  sessions; upserts round-robin the write sessions. A connection whose tserver
+  stops answering moves on to the next configured tserver, and its sessions
+  reopen there.
 - `ybthin_table_open` / `ybthin_table_close` / `ybthin_columns_free` -- resolve a
   table by `(db_oid, table_oid)` and fetch its schema (columns in schema order:
   hash, then range, then value). Also the startup health check.
