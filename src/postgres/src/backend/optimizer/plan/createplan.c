@@ -3404,20 +3404,19 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 }
 
 /*
- * Returns true if the query's target relation captures transition tables for
- * the given operation.  For a partitioned target, the transition-table
- * triggers live only on the relation named in the query, not on the leaf
- * that has_applicable_triggers() examines.
+ * Returns true if the given relation captures transition tables for the given
+ * operation.  For a partitioned target, the transition-table triggers live
+ * only on the relation named in the query, not on the leaf that
+ * has_applicable_triggers() examines.
  */
 static bool
-yb_target_has_transition_tables(PlannerInfo *root, CmdType operation)
+yb_target_has_transition_tables(Oid relid, CmdType operation)
 {
 	Relation	target_rel;
 	TriggerDesc *trigdesc;
 	bool		result = false;
 
-	target_rel = RelationIdGetRelation(planner_rt_fetch(root->parse->resultRelation,
-														root)->relid);
+	target_rel = RelationIdGetRelation(relid);
 	trigdesc = target_rel->trigdesc;
 	if (trigdesc)
 	{
@@ -3571,6 +3570,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 {
 	RelOptInfo *relInfo = NULL;
 	Oid			relid;
+	Oid			query_target_relid;
 	Relation	relation;
 	TupleDesc	tupDesc;
 	IndexPath  *index_path;
@@ -3906,10 +3906,12 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * old row will need to be passed to the trigger, requiring the scan.
 	 * Transition tables likewise need the old row.
 	 */
+	query_target_relid = planner_rt_fetch(root->parse->resultRelation,
+										  root)->relid;
 	*no_row_trigger = (!has_applicable_triggers(relation, path->operation,
 												update_attrs) &&
-					   (rt_index == root->parse->resultRelation ||
-						!yb_target_has_transition_tables(root,
+					   (relid == query_target_relid ||
+						!yb_target_has_transition_tables(query_target_relid,
 														 path->operation)));
 	if (!*no_row_trigger)
 	{
