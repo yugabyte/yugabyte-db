@@ -1651,9 +1651,14 @@ DetermineSleepTime(void)
 	 * If in ImmediateShutdown with a SIGKILL timeout, ignore everything else
 	 * and wait for that.
 	 *
+	 * YB: on fast shutdown too, ServerLoop() SIGKILLs children still running
+	 * SIGKILL_CHILDREN_AFTER_SECS after the shutdown started. Wake up in time
+	 * to do that.
+	 *
 	 * XXX Shouldn't this also test FatalError?
 	 */
-	if (Shutdown >= ImmediateShutdown)
+	if (Shutdown >= ImmediateShutdown ||
+		(YBIsEnabledInPostgresEnvVar() && Shutdown >= FastShutdown))
 	{
 		if (AbortStartTime != 0)
 		{
