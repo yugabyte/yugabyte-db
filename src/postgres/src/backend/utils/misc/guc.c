@@ -121,6 +121,7 @@
 #include "access/yb_scan_core.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
+#include "commands/yb_analyze.h"
 #include "common/ip.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/ybModifyTable.h"
@@ -3784,6 +3785,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_disable_auto_analyze,
 		false,
 		yb_disable_auto_analyze_check_hook, NULL, NULL
+	},
+
+	{
+		{"yb_enable_analyze_width_skip", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Do not materialize sampled values ANALYZE will not read."),
+			gettext_noop("The statistics code ignores varlena values wider than its "
+						 "per-type width threshold, so ANALYZE keeps only their size."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_analyze_width_skip,
+		true,
+		NULL, NULL, NULL
 	},
 
 	{
