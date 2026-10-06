@@ -23,7 +23,6 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -42,7 +41,6 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(disable_pitr);
 DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
 
 METRIC_DECLARE_counter(ysql_auth_catalog_follower_reads);
@@ -173,17 +171,6 @@ class MasterTabletServiceMultiMasterTest : public MasterTabletServiceTest {
     return STATUS(NotFound, "No master follower");
   }
 
-  Status WaitForPitrDisabledMode() {
-    return WaitFor([&] {
-      for (size_t i = 0; i < cluster_->num_masters(); ++i) {
-        if (!cluster_->mini_master(i)->master()->snapshot_coordinator().PitrDisabled()) {
-          return false;
-        }
-      }
-      return true;
-    }, 30s * kTimeMultiplier, "Wait for local PITR-disabled mode");
-  }
-
   tserver::ReadRequestPB AuthCatalogReadRequest(HybridTime read_time) {
     tserver::ReadRequestPB req;
     req.set_tablet_id(kSysCatalogTabletId);
@@ -244,14 +231,6 @@ class MasterTabletServiceMultiMasterTest : public MasterTabletServiceTest {
   std::unique_ptr<client::YBClient> auth_client_;
 };
 
-class MasterTabletServicePitrDisabledModeTest : public MasterTabletServiceMultiMasterTest {
- public:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = true;
-    ASSERT_NO_FATAL_FAILURE(MasterTabletServiceMultiMasterTest::SetUp());
-    ASSERT_OK(WaitForPitrDisabledMode());
-  }
-};
 
 TEST_F(MasterTabletServiceTest, ListMasterServers) {
   auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<tserver::TabletServerServiceProxy>());
@@ -324,25 +303,7 @@ TEST_F(MasterTabletServiceMultiMasterTest, FollowerReadRpcRemainsLeaderOnly) {
   }
 }
 
-TEST_F(MasterTabletServiceMultiMasterTest, AuthFollowerReadsRequirePitrDisabledMode) {
-  ASSERT_FALSE(FLAGS_disable_pitr);
-  ASSERT_OK(CreateAuthCatalogTable());
-  ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
-  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto* follower = ASSERT_RESULT(RestartFollower());
-  ASSERT_FALSE(leader->master()->snapshot_coordinator().PitrDisabled());
-  ASSERT_FALSE(follower->master()->snapshot_coordinator().PitrDisabled());
-  auto req = AuthCatalogReadRequest(leader->Now());
-  ASSERT_NOK_STR_CONTAINS(
-      ReadAuthCatalog(follower, req),
-      "Authentication catalog follower reads require persisted PITR-disabled mode");
-  req.set_consistency_level(YBConsistencyLevel::STRONG);
-  ASSERT_NOK_STR_CONTAINS(
-      ReadAuthCatalog(leader, req),
-      "Authentication catalog follower reads require persisted PITR-disabled mode");
-}
-
-TEST_F(MasterTabletServicePitrDisabledModeTest, AuthFollowerServingAndFixedTimeLeaderFallback) {
+TEST_F(MasterTabletServiceMultiMasterTest, AuthFollowerServingAndFixedTimeLeaderFallback) {
   ASSERT_OK(CreateAuthCatalogTable());
   ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
   auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
@@ -350,9 +311,7 @@ TEST_F(MasterTabletServicePitrDisabledModeTest, AuthFollowerServingAndFixedTimeL
       CoarseMonoClock::Now() + 30s * kTimeMultiplier));
   ASSERT_GE(auth_client_->GetLatestObservedHybridTime(), read_time.ToUint64());
   auto req = AuthCatalogReadRequest(read_time);
-  // Restart must recover both the physical catalog metadata and its durable PITR-disabled mode.
   auto* follower = ASSERT_RESULT(RestartFollower());
-  ASSERT_TRUE(follower->master()->snapshot_coordinator().PitrDisabled());
   auto tablet = ASSERT_RESULT(follower->tablet_peer()->shared_tablet());
   ASSERT_RESULT(tablet->SafeTime(
       tablet::RequireLease::kFalse, read_time, CoarseMonoClock::Now() + 30s * kTimeMultiplier));
@@ -414,7 +373,6 @@ TEST_F(MasterTabletServicePitrDisabledModeTest, AuthFollowerServingAndFixedTimeL
   ASSERT_EQ(ReadHybridTime::FromReadTimePB(req), ReadHybridTime::SingleTime(read_time));
   ASSERT_EQ(METRIC_ysql_auth_catalog_leader_reads.Instantiate(
       leader->master()->metric_entity())->value(), 1);
-  ASSERT_TRUE(leader->master()->snapshot_coordinator().PitrDisabled());
 }
 
 void MasterTabletServiceTest::SetUp() {

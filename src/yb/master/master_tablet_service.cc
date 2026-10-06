@@ -26,7 +26,6 @@
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -161,8 +160,6 @@ void MasterTabletServiceImpl::Read(const tserver::ReadRequestMsg* req,
       SCHECK(!master_->IsShellMode(), IllegalState, "Master is in shell mode");
       SCHECK(!follower_read || FLAGS_ysql_enable_auth_catalog_follower_reads, IllegalState,
              "Authentication catalog follower reads are disabled");
-      SCHECK(master_->snapshot_coordinator().PitrDisabled(), IllegalState,
-             "Authentication catalog follower reads require persisted PITR-disabled mode");
       auto peer_tablet = VERIFY_RESULT(tserver::LookupTabletPeer(
           master_->tablet_server(), req->tablet_id()));
       auto tablet = VERIFY_RESULT(GetTabletForRead(
@@ -186,7 +183,14 @@ void MasterTabletServiceImpl::Read(const tserver::ReadRequestMsg* req,
         return safe_time.status();
       }
       auto consensus = VERIFY_RESULT(peer_tablet.tablet_peer->GetConsensus());
-      if (!follower_read) {
+      if (follower_read) {
+        // Safe time does not wait for non-MVCC operations such as sys-catalog restore. Each
+        // operation at or before T arrives before safe time can reach T, so serve only after
+        // applying everything received; otherwise the client retries the leader at T.
+        const auto received = consensus->GetLastReceivedOpId();
+        SCHECK_GE(consensus->GetLastAppliedOpId().index, received.index, IllegalState,
+                  "Authentication catalog snapshot is not safe: unapplied operations");
+      } else {
         const auto leader_state = consensus->GetLeaderState();
         SCHECK(leader_state.ok() && leader_state.term == l.epoch().leader_term, IllegalState,
                "Master leadership changed while waiting for authentication catalog snapshot");
