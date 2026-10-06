@@ -21,6 +21,7 @@ export PROJECT_DIR="$project_dir"
 export GOPATH=$project_dir/third-party
 export GOBIN=$GOPATH/bin
 export PATH=$GOBIN:$PATH
+export GO_LDFLAGS="-w"
 mkdir -p "$GOBIN"
 
 readonly build_output_dir="${project_dir}/build"
@@ -174,13 +175,18 @@ build_ynp_python() {
     popd
 }
 
+GO_LDFLAGS_ARGS=()
+if [[ -n "$GO_LDFLAGS" ]]; then
+    GO_LDFLAGS_ARGS=(-ldflags "$GO_LDFLAGS")
+fi
+
 build_ynp_go() {
     local exec_name=$(get_ynp_executable_name "$os" "$arch")
     local executable="$build_output_dir/$exec_name"
     pushd "$project_dir"
     echo "Building ${exec_name}"
     env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
-    go build -o "$executable" "$project_dir"/ynp/cmd/main.go
+    go build "${GO_LDFLAGS_ARGS[@]}" -o "$executable" "$project_dir"/ynp/cmd/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
         exit 1
@@ -198,7 +204,7 @@ build_for_platform() {
     pushd "$project_dir"
     echo "Building ${exec_name}"
     env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
-    go build -o "$executable" "$project_dir"/cmd/cli/main.go
+    go build "${GO_LDFLAGS_ARGS[@]}" -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
         exit 1
