@@ -2963,7 +2963,6 @@ SELECT * FROM pk_nn_drop ORDER BY k;
 -- Test NOT NULL constraint enforcement on a stored generated column in
 -- single-row UPDATE: the column is not in the SET list, but it is recomputed
 -- from columns that are, so it must still be checked.
--- GH issue: https://github.com/yugabyte/yugabyte-db/issues/34653.
 CREATE TABLE gen_nn (k int PRIMARY KEY, a int, b int,
     g int GENERATED ALWAYS AS (a + b) STORED NOT NULL);
 -- The dropped column makes the leaf's attribute numbers differ from the root's.
