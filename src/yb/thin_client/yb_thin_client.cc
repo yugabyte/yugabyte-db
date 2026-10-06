@@ -244,10 +244,15 @@ bool IsAlreadyReplicatedWrite(const Status& status) {
 }
 
 // The tserver does not know the session or is shutting it down (ThinClientService's
-// SessionLostStatus).
+// SessionLostStatus). Tservers older than SESSION_LOST send these statuses without the code.
 bool IsSessionLost(const Status& status) {
-  return yb::PgsqlError::ValueFromStatus(status) ==
-         yb::YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST;
+  if (const auto ts_error = tserver::TabletServerError::ValueFromStatus(status)) {
+    return *ts_error == tserver::TabletServerErrorPB::SESSION_LOST;
+  }
+  if (status.IsInvalidArgument()) {
+    return status.message().starts_with(Slice("Unknown session"));
+  }
+  return status.IsShutdownInProgress() && status.message() == Slice("Session is shutting down");
 }
 
 ybthin_status FromStatus(const Status& status) {

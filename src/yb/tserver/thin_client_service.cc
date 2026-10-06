@@ -47,6 +47,7 @@
 #include "yb/tserver/session_registry.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -62,6 +63,10 @@ DECLARE_uint64(rpc_max_message_size);
 DEFINE_test_flag(uint64, thin_client_perform_delay_ms, 0,
                  "Delay between a thin client Perform finding its session and being applied.");
 
+DEFINE_test_flag(bool, thin_client_omit_session_lost_code, false,
+                 "Send a lost thin client session's status without its error code, as older "
+                 "tservers do.");
+
 namespace yb::tserver {
 
 namespace {
@@ -69,10 +74,12 @@ namespace {
 // Thin clients only need the schema info of an opened table.
 using ThinOpenTableQuery = OpenTableQueryBase<ThinOpenTableRequestPB, ThinOpenTableResponsePB>;
 
-// The status for a session this tserver no longer serves. The thin client reopens the session on
-// this error code, which PgClientService's unknown session status also carries.
+// The status for a session this tserver no longer serves. The thin client reopens on its code.
 Status SessionLostStatus(const Status& status) {
-  return status.CloneAndAddErrorCode(PgsqlError(YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST));
+  if (PREDICT_FALSE(FLAGS_TEST_thin_client_omit_session_lost_code)) {
+    return status;
+  }
+  return status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::SESSION_LOST));
 }
 
 class ThinSession;

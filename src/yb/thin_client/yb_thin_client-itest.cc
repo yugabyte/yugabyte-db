@@ -65,6 +65,7 @@
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_uint64(TEST_thin_client_perform_delay_ms);
+DECLARE_bool(TEST_thin_client_omit_session_lost_code);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_bool(use_libunwind_for_stack_trace_collection);
@@ -1912,40 +1913,52 @@ class PgThinClientSessionExpiryTest : public PgThinClientTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) = kSessionLifetimeMs / 3;
     PgThinClientTest::SetUp();
   }
+
+  // A Perform that finds its session just before the session expires is answered "Session is
+  // shutting down". That loses the session like an unknown one: the call fails with
+  // YBTHIN_NETWORK, and its session and the connection's other sessions reopen before their next
+  // use.
+  void HoldPerformPastSessionExpiry() {
+    constexpr int kHashKey = 1;
+    constexpr int kRows = 10;
+    constexpr uint64_t kPageLimit = 4;
+    const auto oids = ASSERT_RESULT(CreateKeyTable());
+    auto client = ASSERT_RESULT(CreateThinClient({TServerAddr()}, &kOneConnectionPool, 60000));
+    auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+    const int32_t v_id = table.ColumnId(1);
+
+    ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+    auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+    ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
+    ASSERT_FALSE(first_page.paging_state.empty());
+
+    // Held past two lifetimes, since a keepalive ping may postpone the expiry once.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) =
+        2 * kSessionLifetimeMs + 1000 * kTimeMultiplier;
+    auto lost = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) = 0;
+    ASSERT_EQ(lost.code, YBTHIN_NETWORK) << lost.message;
+    ASSERT_STR_CONTAINS(lost.message, "Session is shutting down");
+
+    // The read session shares the connection, so the scan pinned to it restarts.
+    auto next_page = ReadKeys(
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+    ASSERT_EQ(next_page.code, YBTHIN_READ_RESTART) << next_page.message;
+    // The write session reopens, so the retried upsert lands.
+    auto retried = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
+    ASSERT_EQ(retried.code, YBTHIN_OK) << retried.message;
+  }
 };
 
-// A Perform that finds its session just before the session expires is answered "Session is
-// shutting down". That loses the session like an unknown one: the call fails with YBTHIN_NETWORK,
-// and its session and the connection's other sessions reopen before their next use.
 TEST_F(PgThinClientSessionExpiryTest, ShuttingDownSessionIsLost) {
-  constexpr int kHashKey = 1;
-  constexpr int kRows = 10;
-  constexpr uint64_t kPageLimit = 4;
-  const auto oids = ASSERT_RESULT(CreateKeyTable());
-  auto client = ASSERT_RESULT(CreateThinClient({TServerAddr()}, &kOneConnectionPool, 60000));
-  auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
-  const int32_t v_id = table.ColumnId(1);
+  ASSERT_NO_FATALS(HoldPerformPastSessionExpiry());
+}
 
-  ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
-  auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
-  ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
-  ASSERT_FALSE(first_page.paging_state.empty());
-
-  // Held past two lifetimes, since a keepalive ping may postpone the expiry once.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) =
-      2 * kSessionLifetimeMs + 1000 * kTimeMultiplier;
-  auto lost = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) = 0;
-  ASSERT_EQ(lost.code, YBTHIN_NETWORK) << lost.message;
-  ASSERT_STR_CONTAINS(lost.message, "Session is shutting down");
-
-  // The read session shares the connection, so the scan pinned to it restarts.
-  auto next_page = ReadKeys(
-      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
-  ASSERT_EQ(next_page.code, YBTHIN_READ_RESTART) << next_page.message;
-  // The write session reopens, so the retried upsert lands.
-  auto retried = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
-  ASSERT_EQ(retried.code, YBTHIN_OK) << retried.message;
+// A tserver older than SESSION_LOST reports a shutting down session by its text alone, which the
+// client still treats as lost.
+TEST_F(PgThinClientSessionExpiryTest, ShuttingDownSessionIsLostOnOlderTservers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_omit_session_lost_code) = true;
+  ASSERT_NO_FATALS(HoldPerformPastSessionExpiry());
 }
 
 // Three tservers, so one can stop while its tablets stay served. Postgres runs on tserver 0, so the
@@ -2265,6 +2278,37 @@ class PgThinClientLoadBalancerTest : public PgThinClientFailoverTest {
     v_id_ = table_->ColumnId(1);
   }
 
+  // When the socket drops, the reconnect can reach the other tserver, where none of the
+  // connection's sessions exist. The first call to fail drops them all, so the others reopen
+  // without failing too.
+  void DropSocketsAndReopenSessions() {
+    constexpr int kRows = 10;
+    ASSERT_NO_FATALS(StartClientBehindBalancer());
+    ASSERT_EQ(UpsertKeys(client_.get(), table_->get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+    ASSERT_EQ(
+        ASSERT_RESULT(ScanKeys(client_.get(), table_->get(), kHashKey, v_id_, kPageLimit)).size(),
+        static_cast<size_t>(kRows));
+    ASSERT_EQ(PerformCount(kSecondTs), 0U);
+    const auto first_ts_performs = PerformCount(kFirstTs);
+
+    balancer_->DropConnections();
+
+    // The write session may be the first to find out.
+    auto out = UpsertKeys(client_.get(), table_->get(), kHashKey, kRows, 2 * kRows);
+    if (out.code != YBTHIN_OK) {
+      ASSERT_EQ(out.code, YBTHIN_NETWORK) << out.message;
+      out = UpsertKeys(client_.get(), table_->get(), kHashKey, kRows, 2 * kRows);
+      ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+    }
+    // The read session shares the connection, so it reopened with the write session.
+    ASSERT_EQ(
+        ASSERT_RESULT(ScanKeys(client_.get(), table_->get(), kHashKey, v_id_, kPageLimit)).size(),
+        static_cast<size_t>(2 * kRows));
+    // So both sessions now live on the second tserver.
+    ASSERT_EQ(PerformCount(kFirstTs), first_ts_performs);
+    ASSERT_GT(PerformCount(kSecondTs), 0U);
+  }
+
   std::unique_ptr<FileLock> port_lock_;
   std::unique_ptr<RoundRobinBalancer> balancer_;
   ThinClientPtr other_client_;
@@ -2294,34 +2338,15 @@ TEST_F(PgThinClientLoadBalancerTest, ConnectionStaysOnOneTserverBehindALoadBalan
   ASSERT_EQ(PerformCount(kSecondTs), 0U) << "the pool's one connection should stay on one tserver";
 }
 
-// When the socket drops, the reconnect can reach the other tserver, where none of the connection's
-// sessions exist. The first call to fail drops them all, so the others reopen without failing too.
 TEST_F(PgThinClientLoadBalancerTest, SessionsReopenTogetherAfterTheSocketDrops) {
-  constexpr int kRows = 10;
-  ASSERT_NO_FATALS(StartClientBehindBalancer());
-  ASSERT_EQ(UpsertKeys(client_.get(), table_->get(), kHashKey, 0, kRows).code, YBTHIN_OK);
-  ASSERT_EQ(
-      ASSERT_RESULT(ScanKeys(client_.get(), table_->get(), kHashKey, v_id_, kPageLimit)).size(),
-      static_cast<size_t>(kRows));
-  ASSERT_EQ(PerformCount(kSecondTs), 0U);
-  const auto first_ts_performs = PerformCount(kFirstTs);
+  ASSERT_NO_FATALS(DropSocketsAndReopenSessions());
+}
 
-  balancer_->DropConnections();
-
-  // The write session may be the first to find out.
-  auto out = UpsertKeys(client_.get(), table_->get(), kHashKey, kRows, 2 * kRows);
-  if (out.code != YBTHIN_OK) {
-    ASSERT_EQ(out.code, YBTHIN_NETWORK) << out.message;
-    out = UpsertKeys(client_.get(), table_->get(), kHashKey, kRows, 2 * kRows);
-    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
-  }
-  // The read session shares the connection, so it reopened with the write session.
-  ASSERT_EQ(
-      ASSERT_RESULT(ScanKeys(client_.get(), table_->get(), kHashKey, v_id_, kPageLimit)).size(),
-      static_cast<size_t>(2 * kRows));
-  // So both sessions now live on the second tserver.
-  ASSERT_EQ(PerformCount(kFirstTs), first_ts_performs);
-  ASSERT_GT(PerformCount(kSecondTs), 0U);
+// A tserver older than SESSION_LOST reports an unknown session by its text alone, which the client
+// still treats as lost.
+TEST_F(PgThinClientLoadBalancerTest, SessionsReopenTogetherBehindOlderTservers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_omit_session_lost_code) = true;
+  ASSERT_NO_FATALS(DropSocketsAndReopenSessions());
 }
 
 // A connection keeps one socket to its host however many addresses it is given, since any of them
