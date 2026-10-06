@@ -1903,7 +1903,8 @@ TEST_F(PgThinClientTest, FencedBatchKeepsOtherSessionsOpen) {
 // them, while the thin client's keepalive does not.
 class PgThinClientSessionExpiryTest : public PgThinClientTest {
  protected:
-  static constexpr uint64_t kSessionLifetimeMs = 4000 * kTimeMultiplier;
+  // Not scaled for sanitizers: it must stay below the thin client's 10s keepalive interval.
+  static constexpr uint64_t kSessionLifetimeMs = 5000;
 
   void SetUp() override {
     // Set before the cluster starts, since the session registry schedules its expiry checks by it.
