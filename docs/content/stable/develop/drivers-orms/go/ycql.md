@@ -67,7 +67,7 @@ $ go get github.com/yugabyte/gocql/v2
 
 ## Write the YCQL sample application
 
-In the `ybcql_hello_world` directory, create a file `ybcql_hello_world.go` and copy the contents below into it.
+In the `ybcql_hello_world` directory, create a file `ybcql_hello_world.go` and copy the following into it.
 
 ```go
 package main;
