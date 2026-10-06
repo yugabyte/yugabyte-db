@@ -4451,6 +4451,18 @@ class PgVectorIndexBackupRestoreTest
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
+
+  Result<TableId> GetTableId(const std::string& db, const std::string& name) {
+    master::GetNamespaceInfoResponsePB ns;
+    RETURN_NOT_OK(client_->GetNamespaceInfo(db, YQL_DATABASE_PGSQL, &ns));
+    const auto& namespace_id = ns.namespace_().id();
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.has_table() && table.table_name() == name && table.namespace_id() == namespace_id) {
+        return table.table_id();
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Didn't find $0.$1", db, name);
+  }
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexBackupRestoreTest);
@@ -4466,20 +4478,9 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
   constexpr auto kTable = "t";
   constexpr auto kIndex = "v_idx";
 
-  auto table_id = [this](const std::string& db, const std::string& name) -> Result<TableId> {
-    master::GetNamespaceInfoResponsePB ns;
-    RETURN_NOT_OK(client_->GetNamespaceInfo(db, YQL_DATABASE_PGSQL, &ns));
-    const auto& namespace_id = ns.namespace_().id();
-    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
-      if (table.has_table() && table.table_name() == name && table.namespace_id() == namespace_id) {
-        return table.table_id();
-      }
-    }
-    return STATUS_FORMAT(NotFound, "Didn't find $0.$1", db, name);
-  };
-  auto column_id = [this, kTable, &table_id](
+  auto column_id = [this, kTable](
       const std::string& db, const std::string& column) -> Result<int32_t> {
-    auto table = VERIFY_RESULT(client_->OpenTable(VERIFY_RESULT(table_id(db, kTable))));
+    auto table = VERIFY_RESULT(client_->OpenTable(VERIFY_RESULT(GetTableId(db, kTable))));
     const auto& schema = table->schema();
     const auto& columns = schema.columns();
     for (size_t i = 0; i < columns.size(); ++i) {
@@ -4515,7 +4516,7 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
 
   const auto restored_v_column_id = ASSERT_RESULT(column_id(kRestoredDb, "v"));
   ASSERT_EQ(restored_v_column_id, source_v_column_id);
-  auto index = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(table_id(kRestoredDb, kIndex))));
+  auto index = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kIndex))));
   ASSERT_TRUE(index->index_info().is_vector_index());
   ASSERT_EQ(index->index_info().vector_idx_options().column_id(), source_v_column_id);
 
@@ -4540,6 +4541,83 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
   auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
       "SELECT id FROM $0 ORDER BY v <-> '[0, 1, 0]' LIMIT 1", kTable)));
   ASSERT_EQ(rows, (std::vector<int32_t>{7}));
+}
+
+// CREATE INDEX on restore takes the backend and store_payload from the restore cluster's flags,
+// but the restored chunk files were written with the source's. Restore has to apply the source
+// options.
+TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
+  }
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  constexpr auto kSourceDb = "vec_restore_db";
+  constexpr auto kRestoredDb = "vec_restored_db";
+  constexpr auto kTable = "t";
+  constexpr auto kIndex = "v_idx";
+  constexpr int kNumRows = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  {
+    auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(admin.ExecuteFormat(
+        "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+    auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id int PRIMARY KEY, v vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
+    ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
+        kNumRows));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto source_index =
+      ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kSourceDb, kIndex))));
+  const auto source_options = source_index->index_info().vector_idx_options();
+  ASSERT_TRUE(source_options.store_payload());
+  ASSERT_EQ(source_options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
+
+  auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
+    ASSERT_EQ(options.store_payload(), source_options.store_payload());
+    ASSERT_EQ(options.hnsw().backend(), source_options.hnsw().backend());
+    ASSERT_EQ(options.id(), source_options.id());
+  };
+
+  auto index = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kIndex))));
+  ASSERT_NO_FATALS(check_options(index->index_info().vector_idx_options()));
+  auto table = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kTable))));
+  const auto* index_in_table = ASSERT_RESULT(table->index_map().FindIndex(index->id()));
+  ASSERT_NO_FATALS(check_options(index_in_table->vector_idx_options()));
+
+  size_t num_restored_indexes = 0;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      if (vector_index->table_id() != index->id()) {
+        continue;
+      }
+      ++num_restored_indexes;
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index->id()));
+      ASSERT_NO_FATALS(check_options(*table_info->doc_read_context->vector_idx_options));
+    }
+  }
+  ASSERT_EQ(num_restored_indexes, 1);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT id FROM $0 ORDER BY v <-> '[0, 0, 0]' LIMIT 3", kTable)));
+  ASSERT_EQ(rows, (std::vector<int32_t>{1, 2, 3}));
 }
 
 // Covers table-owned V1 reverse-mapping packing GC across packing modes.

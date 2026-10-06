@@ -2501,51 +2501,60 @@ Status CatalogManager::ImportTableEntry(
       notify_ts_for_schema_change = true;
     }
 
-    // The CREATE TABLE that recreates the indexed table on restore assigns column ids sequentially.
-    // If a column was dropped from the indexed table before the snapshot was taken, the snapshotted
-    // and restored tables can have different column ids. Phase 3 fixes the indexed table's column
-    // ids when it imports that table. Here in phase 4, while importing the vector index, we fix the
-    // column id in vector_idx_options, if necessary, in both the index's and the indexed table's
-    // metadata.
-    //
-    // We do not update vector_idx_options.id here: the master currently ignores it, and the tserver
-    // receives the snapshotted id in the snapshot's tablet metadata. There is no mechanism for a
-    // tserver to overwrite vector_idx_options.id once it is set.
+    // CREATE INDEX on the restore cluster fills vector_idx_options from local state, which can
+    // differ from the snapshot's:
+    // - The CREATE TABLE that recreates the indexed table on restore assigns column ids
+    //   sequentially. If a column was dropped from the indexed table before the snapshot was
+    //   taken, the snapshotted and restored tables can have different column ids. Phase 3 fixes
+    //   the indexed table's column ids when it imports that table.
+    // - hnsw.backend and store_payload come from --vector_index_backend and
+    //   --vector_index_store_payload, which can differ between the two clusters.
+    // - id names the tablet's vector index directory. The tablet takes it from the snapshot
+    //   superblock, so the restored files are found under the snapshot's id.
+    // Here in phase 4, while importing the vector index, we copy the snapshot's options, if
+    // necessary, into both the index's and the indexed table's metadata, so they match the
+    // tablets'.
     //
     // Do not bump either schema version. The tablets do not need this rewrite: their copy comes
     // from the superblock merge.
-    if (meta.has_index_info() && meta.index_info().has_vector_idx_options()) {
-      const auto source_column_id = meta.index_info().vector_idx_options().column_id();
-      TableId indexed_table_id;
-      {
-        auto l = table->LockForWrite();
-        if (l->pb.has_index_info() && l->pb.index_info().has_vector_idx_options()) {
-          indexed_table_id = l->pb.index_info().indexed_table_id();
-          auto* options = l.mutable_data()->pb.mutable_index_info()->mutable_vector_idx_options();
-          if (options->column_id() != source_column_id) {
-            LOG_WITH_FUNC(INFO) << "Restoring vector index column id for " << table->ToString()
-                                << " from " << options->column_id() << " to " << source_column_id;
-            options->set_column_id(source_column_id);
-            RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
-            l.Commit();
-          }
+    if (meta.has_index_info() && meta.index_info().has_vector_idx_options() &&
+        table->is_vector_index()) {
+      const auto& source_options = meta.index_info().vector_idx_options();
+      // Returns whether `options` changed.
+      auto restore_options = [&source_options](PgVectorIdxOptionsPB* options) {
+        if (pb_util::ArePBsEqual(*options, source_options, /* diff_str= */ nullptr)) {
+          return false;
+        }
+        *options = source_options;
+        return true;
+      };
+      auto indexed_table = VERIFY_RESULT(FindTableById(table->indexed_table_id()));
+      // Write-lock tables in increasing table id order, and commit in reverse.
+      const bool index_first = table->id() < indexed_table->id();
+      auto first_l = (index_first ? table : indexed_table)->LockForWrite();
+      auto second_l = (index_first ? indexed_table : table)->LockForWrite();
+      auto& index_l = index_first ? first_l : second_l;
+      auto& indexed_l = index_first ? second_l : first_l;
+
+      auto* options =
+          index_l.mutable_data()->pb.mutable_index_info()->mutable_vector_idx_options();
+      const auto old_options = options->ShortDebugString();
+      bool updated = restore_options(options);
+      if (updated) {
+        LOG_WITH_FUNC(INFO) << "Restoring vector index options for " << table->ToString()
+                            << " from " << old_options << " to " << options->ShortDebugString();
+      }
+      for (auto& index_info : *indexed_l.mutable_data()->pb.mutable_indexes()) {
+        if (index_info.table_id() == table->id() && index_info.has_vector_idx_options() &&
+            restore_options(index_info.mutable_vector_idx_options())) {
+          updated = true;
         }
       }
-      if (!indexed_table_id.empty()) {
-        auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
-        auto l = indexed_table->LockForWrite();
-        bool updated = false;
-        for (auto& index_info : *l.mutable_data()->pb.mutable_indexes()) {
-          if (index_info.table_id() == table->id() && index_info.has_vector_idx_options() &&
-              index_info.vector_idx_options().column_id() != source_column_id) {
-            index_info.mutable_vector_idx_options()->set_column_id(source_column_id);
-            updated = true;
-          }
-        }
-        if (updated) {
-          RETURN_NOT_OK(sys_catalog_->Upsert(epoch, indexed_table));
-          l.Commit();
-        }
+      if (updated) {
+        // Upsert skips whichever of the two entries is unchanged.
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, indexed_table));
+        second_l.Commit();
+        first_l.Commit();
       }
     }
 
