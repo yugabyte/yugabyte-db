@@ -65,6 +65,7 @@
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_uint64(TEST_thin_client_perform_delay_ms);
+DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_bool(use_libunwind_for_stack_trace_collection);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(use_client_to_server_encryption);
@@ -1895,6 +1896,47 @@ TEST_F(PgThinClientTest, FencedBatchKeepsOtherSessionsOpen) {
   auto next_page = ReadKeys(
       client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
   ASSERT_EQ(next_page.code, YBTHIN_OK) << next_page.message;
+}
+
+// A Perform that finds its session just before the session expires is answered "Session is
+// shutting down". That loses the session like an unknown one: the call fails with YBTHIN_NETWORK,
+// and its session and the connection's other sessions reopen before their next use.
+TEST_F(PgThinClientTest, ShuttingDownSessionIsLost) {
+  constexpr int kHashKey = 1;
+  constexpr int kRows = 10;
+  constexpr uint64_t kPageLimit = 4;
+  const uint64_t session_lifetime_ms = 3000 * kTimeMultiplier;
+  const auto oids = ASSERT_RESULT(CreateKeyTable());
+
+  // Only the client's first sessions get the short lifetime; reopened ones get the default.
+  const auto default_lifetime_ms = FLAGS_pg_client_session_expiration_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = session_lifetime_ms;
+  auto created = CreateThinClient({TServerAddr()}, &kOneConnectionPool, 60000);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = default_lifetime_ms;
+  auto client = ASSERT_RESULT(std::move(created));
+  auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+  const int32_t v_id = table.ColumnId(1);
+
+  ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+  auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
+  ASSERT_FALSE(first_page.paging_state.empty());
+
+  // Held past two lifetimes, since a keepalive ping may postpone the expiry once.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) =
+      2 * session_lifetime_ms + 1000 * kTimeMultiplier;
+  auto lost = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) = 0;
+  ASSERT_EQ(lost.code, YBTHIN_NETWORK) << lost.message;
+  ASSERT_STR_CONTAINS(lost.message, "Session is shutting down");
+
+  // The read session shares the connection, so the scan pinned to it restarts.
+  auto next_page = ReadKeys(
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+  ASSERT_EQ(next_page.code, YBTHIN_READ_RESTART) << next_page.message;
+  // The write session reopens, so the retried upsert lands.
+  auto retried = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
+  ASSERT_EQ(retried.code, YBTHIN_OK) << retried.message;
 }
 
 // Three tservers, so one can stop while its tablets stay served. Postgres runs on tserver 0, so the

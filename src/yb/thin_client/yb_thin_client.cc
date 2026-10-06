@@ -243,24 +243,20 @@ bool IsAlreadyReplicatedWrite(const Status& status) {
   return status.IsAlreadyPresent() && !yb::PgsqlError::ValueFromStatus(status);
 }
 
-// The tserver's SessionRegistryContext::UnknownSessionStatus.
-bool IsUnknownSession(const Status& status) {
-  return status.IsInvalidArgument() && status.message().starts_with(Slice("Unknown session"));
+// The tserver does not know the session or is shutting it down (ThinClientService's
+// SessionLostStatus).
+bool IsSessionLost(const Status& status) {
+  return yb::PgsqlError::ValueFromStatus(status) ==
+         yb::YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST;
 }
 
 ybthin_status FromStatus(const Status& status) {
   if (status.ok()) {
     return OkStatus();
   }
-  auto code = ClassifyStatus(status);
-  const auto msg = status.ToString();
-  // A dropped/expired session surfaces as an app error; steer the caller to reconnect.
-  if (code == YBTHIN_OTHER || code == YBTHIN_INVALID) {
-    if (IsUnknownSession(status)) {
-      code = YBTHIN_NETWORK;
-    }
-  }
-  return MakeStatus(code, msg);
+  // A lost session surfaces as an app error; steer the caller to reconnect.
+  const auto code = IsSessionLost(status) ? YBTHIN_NETWORK : ClassifyStatus(status);
+  return MakeStatus(code, status.ToString());
 }
 
 Status BindToQLValue(const ybthin_bind& bind, yb::QLValuePB* out) {
@@ -333,8 +329,8 @@ Result<std::string> ReadFile(const char* path) {
   return data.ToString();
 }
 
-// Our socket to the connection's host broke, or the tserver does not know the session: the next
-// socket may reach a tserver that never issued the connection's session ids, so drop them all. A
+// Our socket to the connection's host broke, or the tserver lost the session: the next socket
+// may reach a tserver that never issued the connection's session ids, so drop them all. A
 // NetworkError the tserver returns is about its own work. Only the first loss seen at `epoch` bumps
 // it, and a call to a host the connection has moved off bumps nothing.
 void MaybeDropConnectionSessions(
@@ -342,7 +338,7 @@ void MaybeDropConnectionSessions(
   if (host != conn.host_index.load(std::memory_order_acquire)) {
     return;
   }
-  if (from_tserver ? IsUnknownSession(status) : status.IsNetworkError()) {
+  if (from_tserver ? IsSessionLost(status) : status.IsNetworkError()) {
     conn.epoch.compare_exchange_strong(epoch, epoch + 1, std::memory_order_acq_rel);
   }
 }
