@@ -43,7 +43,7 @@ After you have created the VMs with the operating system and additional software
 
 These steps prepare the node for use by YugabyteDB Anywhere, including setting ulimits and transparent hugepages. If you have already [installed YugabyteDB Anywhere](../../../install-yugabyte-platform/) and it is running (recommended), the script additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
-{{< tip title="Brownfield provisioning" >}}
+{{< tip title="Brownfield provisioning (Re-provision existing nodes)" >}}
 
 For brownfield use-cases where the nodes are already added to the node instances of the provider, you can generate config files. See [Generate configuration files](#generate-configuration-files).
 
