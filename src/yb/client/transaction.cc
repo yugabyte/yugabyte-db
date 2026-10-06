@@ -870,6 +870,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       LOG_WITH_PREFIX(DFATAL) << "Attempting to promote transaction not in running state";
     }
     ready_ = false;
+    metadata_future_ = {};
+    metadata_promise_ = std::make_shared<std::promise<Result<TransactionMetadata>>>();
     metadata_.locality = TransactionFullLocality::Global();
 
     transaction_status_move_tablets_.reserve(tablets_.size());
@@ -894,33 +896,55 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (metadata_future_.valid()) {
       return metadata_future_;
     }
+    if (!metadata_promise_) {
+      metadata_promise_ = std::make_shared<std::promise<Result<TransactionMetadata>>>();
+    }
     metadata_future_ = std::shared_future<Result<TransactionMetadata>>(
-        metadata_promise_.get_future());
+        metadata_promise_->get_future());
     if (ready_) {
-      metadata_promise_.set_value(metadata_);
+      metadata_promise_->set_value(metadata_);
       return metadata_future_;
     }
 
     if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
-      metadata_promise_.set_value(STATUS(IllegalState, "Transaction aborted"));
+      metadata_promise_->set_value(STATUS(IllegalState, "Transaction aborted"));
       return metadata_future_;
     }
 
-    auto transaction = transaction_->shared_from_this();
-    waiters_.push_back([this, transaction](const Status& status) {
-      WARN_NOT_OK(status, "Transaction request failed");
-      UniqueLock lock(mutex_);
-      if (status.ok()) {
-        metadata_promise_.set_value(metadata_);
-      } else {
-        metadata_promise_.set_value(status);
-      }
-    });
+    QueueGetMetadataWaiter(transaction_->shared_from_this(), metadata_promise_);
 
     auto result = metadata_future_;
     lock.unlock();
     RequestStatusTablet(deadline);
     return result;
+  }
+
+  void QueueGetMetadataWaiter(
+      const YBTransactionPtr& transaction,
+      const std::shared_ptr<std::promise<Result<TransactionMetadata>>>& metadata_promise)
+      REQUIRES(mutex_) {
+    waiters_.push_back([this, transaction, metadata_promise](const Status& status) {
+      DoGetMetadata(status, transaction, metadata_promise);
+    });
+  }
+
+  void DoGetMetadata(
+      const Status& status, const YBTransactionPtr& transaction,
+      const std::shared_ptr<std::promise<Result<TransactionMetadata>>>& metadata_promise)
+      EXCLUDES(mutex_) {
+    WARN_NOT_OK(status, "Transaction request failed");
+    UniqueLock lock(mutex_);
+    if (!status.ok()) {
+      metadata_promise->set_value(status);
+      return;
+    }
+    // Waiters are invoked outside mutex_, so a promotion may have started after this waiter was
+    // dequeued, leaving metadata_ partially updated. Requeue; the promotion notifies waiters again.
+    if (!ready_) {
+      QueueGetMetadataWaiter(transaction, metadata_promise);
+      return;
+    }
+    metadata_promise->set_value(metadata_);
   }
 
   Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
@@ -1962,7 +1986,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto status = HandleLookupTabletCases(result, &waiters, promoting);
 
     if (status == TransactionStatus::ABORTED) {
-      DCHECK(promoting);
+      DCHECK(!promoting);
       decltype(old_status_tablet_) old_status_tablet;
       {
         SharedLock lock(mutex_);
@@ -2045,11 +2069,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status_tablet_id.empty()) {
         // Initial status lookup, not pre-created.
         status_tablet_id = status_tablet_->tablet_id();
-        notify_waiters = false;
         status = TransactionStatus::CREATED;
       } else {
         // Pre-created transaction.
-        notify_waiters = true;
         status = TransactionStatus::PENDING;
       }
 
@@ -2063,11 +2085,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           old_status_tablet_state_.store(OldTransactionState::kRunning, std::memory_order_release);
         }
 
-        notify_waiters = false;
-
         // Return status ABORTED here to trigger abort to old status tablet if needed.
         status = TransactionStatus::ABORTED;
       }
+      notify_waiters = !promotion_lookup_finished &&
+                       state_.load(std::memory_order_acquire) != TransactionState::kPromoting &&
+                       status == TransactionStatus::PENDING;
     }
 
     if (notify_waiters) {
@@ -2091,7 +2114,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     NotifyWaitersAndRelease(&lock, status, operation, set_ready);
   }
 
-  // Notify all waiters. The transaction will be aborted if it is running and status is not OK.
+  // Notify all waiters iff they can progress, that is either the transaction is ready_ or has
+  // failed. The transaction will be aborted if it is running and status is not OK.
   // `lock` will be released in this function. If `set_ready` is true and status is OK, `ready_`
   // must be false, and will be set to true.
   void NotifyWaitersAndRelease(UniqueLock<std::shared_mutex>* lock,
@@ -2113,7 +2137,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       DCHECK(!ready_);
       ready_ = true;
     }
-    waiters_.swap(waiters);
+    if (ready_ || !status.ok()) {
+      waiters_.swap(waiters);
+    }
 
     lock->unlock();
 
@@ -2781,7 +2807,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   std::atomic<OldTransactionState> old_status_tablet_state_{OldTransactionState::kNone};
 
-  std::promise<Result<TransactionMetadata>> metadata_promise_ GUARDED_BY(mutex_);
+  std::shared_ptr<std::promise<Result<TransactionMetadata>>> metadata_promise_ GUARDED_BY(mutex_);
   std::shared_future<Result<TransactionMetadata>> metadata_future_ GUARDED_BY(mutex_);
   // As of 2021-04-05 running_requests_ reflects number of ops in progress within this transaction
   // only if no in-transaction operations have failed.
