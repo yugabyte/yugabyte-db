@@ -522,6 +522,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
+  void SetCronLeaderActive(bool active);
+
   // Loads cluster_ysql_db_oldest_pinned_read_times_ in memory from the persisted pins file
   // on disk. Called on tserver startup to prevent accidental compaction before heartbeat.
   // Returns OK immediately if the pins file does not exist.

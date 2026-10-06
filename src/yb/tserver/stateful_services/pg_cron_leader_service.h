@@ -32,6 +32,7 @@ class PgCronLeaderService : public StatefulRpcServiceBase<PgCronLeaderServiceIf>
  public:
   PgCronLeaderService(
       std::function<void(MonoTime)> set_cron_leader_lease_fn,
+      std::function<void(bool)> set_cron_leader_active_fn,
       const scoped_refptr<MetricEntity>& metric_entity,
       const std::shared_future<client::YBClient*>& client_future);
 
@@ -54,6 +55,7 @@ class PgCronLeaderService : public StatefulRpcServiceBase<PgCronLeaderServiceIf>
   static Result<int64_t> ExtractLastMinute(const QLValue& column_value);
 
   std::function<void(MonoTime)> set_cron_leader_lease_fn_;
+  std::function<void(bool)> set_cron_leader_active_fn_;
 
   std::shared_mutex mutex_;
   // The time from which the leader can be active.
