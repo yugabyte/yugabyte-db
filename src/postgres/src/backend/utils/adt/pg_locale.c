@@ -85,6 +85,7 @@ extern pg_locale_t create_pg_locale_icu(Oid collid, MemoryContext context);
 /* pg_locale_libc.c */
 extern pg_locale_t create_pg_locale_libc(Oid collid, MemoryContext context);
 extern char *get_collation_actual_version_libc(const char *collcollate);
+extern void yb_set_libc_utf8_ctype(pg_locale_t locale, const char *ctype);
 
 /* GUC settings */
 char	   *locale_messages;
@@ -122,12 +123,14 @@ static struct pg_locale_struct c_locale = {
  * YB: On the PG side, the default locale has collate_is_c = true,
  * ctype_is_c = false and the ctype methods point to the UTF-8 implementation.
  * On the DocDB/YbGate side, init_database_collation() cannot be invoked (no syscache).
- * This struct provides a C-collation default so that DEFAULT_COLLATION_OID is
- * safe for expression pushdown and sets ctype_is_c = true as the UTF-8 pointer
- * is unavailable.
- * PG is allowed to push down only those operations that rely only on collate.
- * Operations that rely on ctype (such as UPPER) must not be pushed down as PG
- * and DocDB's ctype implementations differ (UTF-8 vs C).
+ * This struct provides the equivalent default locale for DocDB so that
+ * DEFAULT_COLLATION_OID is safe for expression pushdown: C collate, and a
+ * libc UTF-8 ctype set up by YbgInitDefaultLocale() (falling back to C ctype
+ * if that locale is unavailable). PG only pushes down DEFAULT_COLLATION_OID
+ * expressions when the database uses the libc provider with C collate, a non-C
+ * ctype and UTF-8 encoding (see YBIsDbLocaleDefault). That check does not
+ * verify the ctype name, but libc databases can only use en_US.UTF-8 as a
+ * non-C ctype (see YbCheckUnsupportedLibcLocale).
  */
 static struct pg_locale_struct yb_docdb_default_locale = {
 	.deterministic = true,
@@ -1346,13 +1349,6 @@ pg_newlocale_from_collation(Oid collid)
 	if (!found || yb_force_locale_lookup)
 	{
 		/*
-		 * YB_TODO_PG19MERGE: PG19 moved per-provider locale construction into
-		 * create_pg_locale / create_pg_locale_libc / create_pg_locale_icu.
-		 * Port the YB YbCheckUnsupportedLibcLocale(collcollate) /
-		 * YbCheckUnsupportedLibcLocale(collctype) calls.
-		 */
-
-		/*
 		 * YB: We leak a reference to the old cache_entry locale when yb_test_collation is true
 		 * as this flag is only a test flag and is visible to users and not supposed to be enabled
 		 * in regular usage. The only other way to hit this code path is on the first locale lookup,
@@ -1409,12 +1405,12 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 #endif
 	}
 
-	if (yb_test_collation)
-
-		/*
-		 * Make unit test output stable across different OS types and
-		 * versions.
-		 */
+	/*
+	 * Make unit test output stable across different OS types and versions.
+	 * The builtin provider's version does not depend on the OS, so leave it
+	 * as is.
+	 */
+	if (yb_test_collation && collprovider != COLLPROVIDER_BUILTIN)
 		return collversion ? "yb-test-2.28" : NULL;
 	return collversion;
 }
@@ -2018,8 +2014,9 @@ icu_validate_locale(const char *loc_str)
 /*
  * Point default_locale at yb_docdb_default_locale for DocDB/YbGate.
  *
- * Safe for collate-only pushdown of DEFAULT_COLLATION_OID.  Callers on the
- * PG side must not push ctype-dependent ops (see yb_docdb_default_locale).
+ * The ctype matches the one YB initdb uses for databases (see setlocales in
+ * initdb.c), so that ctype-dependent ops such as UPPER give the same results
+ * whether evaluated in PG or pushed down to DocDB.
  */
 void
 YbgInitDefaultLocale(void)
@@ -2027,6 +2024,8 @@ YbgInitDefaultLocale(void)
 	Assert(IsMultiThreadedMode());
 	Assert(default_locale == NULL || default_locale == &yb_docdb_default_locale);
 
+	if (yb_docdb_default_locale.ctype_is_c)
+		yb_set_libc_utf8_ctype(&yb_docdb_default_locale, "en_US.UTF-8");
 	default_locale = &yb_docdb_default_locale;
 
 	/*

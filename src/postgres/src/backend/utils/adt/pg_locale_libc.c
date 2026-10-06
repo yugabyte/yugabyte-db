@@ -25,6 +25,9 @@
 #include "utils/pg_locale.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 #ifdef __GLIBC__
 #include <gnu/libc-version.h>
 #endif
@@ -89,8 +92,10 @@ static size_t strnxfrm_libc(char *dest, size_t destsize,
 							const char *src, ssize_t srclen,
 							pg_locale_t locale);
 extern char *get_collation_actual_version_libc(const char *collcollate);
+extern void yb_set_libc_utf8_ctype(pg_locale_t locale, const char *ctype);
 static locale_t make_libc_collator(const char *collate,
-								   const char *ctype);
+								   const char *ctype,
+								   bool yb_check_unsupported);
 
 #ifdef WIN32
 static int	strncoll_libc_win32_utf8(const char *arg1, ssize_t len1,
@@ -782,7 +787,12 @@ create_pg_locale_libc(Oid collid, MemoryContext context)
 	}
 
 
-	loc = make_libc_collator(collate, ctype);
+	/*
+	 * YB: Reject libc locales that YB does not support. The database default
+	 * locale was already checked at CREATE DATABASE time.
+	 */
+	loc = make_libc_collator(collate, ctype,
+							 collid != DEFAULT_COLLATION_OID);
 
 	result = MemoryContextAllocZero(context, sizeof(struct pg_locale_struct));
 	result->deterministic = true;
@@ -814,6 +824,47 @@ create_pg_locale_libc(Oid collid, MemoryContext context)
 }
 
 /*
+ * YB: Give a locale without catalog access (DocDB/YbGate default locale) the
+ * libc ctype behavior of the given UTF-8 locale. Leave it with C ctype if libc
+ * does not have the locale.
+ */
+void
+yb_set_libc_utf8_ctype(pg_locale_t locale, const char *ctype)
+{
+	locale_t	loc;
+
+	Assert(GetDatabaseEncoding() == PG_UTF8);
+	Assert(locale->collate_is_c);
+
+	loc = newlocale(LC_CTYPE_MASK, ctype, NULL);
+	if (!loc)
+		return;
+
+	locale->lt = loc;
+	locale->ctype_is_c = false;
+	locale->ctype = &ctype_methods_libc_utf8;
+}
+
+/*
+ * YB: Error out if YB does not support the given libc locale, freeing the
+ * already-created locale_t so that it does not leak.
+ */
+static void
+yb_check_libc_locale(const char *localename, locale_t loc)
+{
+	PG_TRY();
+	{
+		YbCheckUnsupportedLibcLocale(localename);
+	}
+	PG_CATCH();
+	{
+		freelocale(loc);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+}
+
+/*
  * Create a locale_t with the given collation and ctype.
  *
  * The "C" and "POSIX" locales are not actually handled by libc, so return
@@ -822,7 +873,8 @@ create_pg_locale_libc(Oid collid, MemoryContext context)
  * Ensure that no path leaks a locale_t.
  */
 static locale_t
-make_libc_collator(const char *collate, const char *ctype)
+make_libc_collator(const char *collate, const char *ctype,
+				   bool yb_check_unsupported)
 {
 	locale_t	loc = 0;
 
@@ -840,6 +892,8 @@ make_libc_collator(const char *collate, const char *ctype)
 #endif
 			if (!loc)
 				report_newlocale_failure(collate);
+			if (yb_check_unsupported)
+				yb_check_libc_locale(collate, loc);
 		}
 	}
 	else
@@ -854,6 +908,8 @@ make_libc_collator(const char *collate, const char *ctype)
 			loc1 = newlocale(LC_COLLATE_MASK, collate, NULL);
 			if (!loc1)
 				report_newlocale_failure(collate);
+			if (yb_check_unsupported)
+				yb_check_libc_locale(collate, loc1);
 		}
 
 		if (strcmp(ctype, "C") != 0 && strcmp(ctype, "POSIX") != 0)
@@ -866,6 +922,8 @@ make_libc_collator(const char *collate, const char *ctype)
 					freelocale(loc1);
 				report_newlocale_failure(ctype);
 			}
+			if (yb_check_unsupported)
+				yb_check_libc_locale(ctype, loc);
 		}
 		else
 			loc = loc1;

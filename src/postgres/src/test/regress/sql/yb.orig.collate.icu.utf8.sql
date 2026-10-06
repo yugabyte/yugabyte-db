@@ -222,6 +222,22 @@ SELECT :'id' = :'utf8_result';
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
 SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
 
+-- test YB builtin provider db: C collate and non-C ctype like the YB default,
+-- but case mapping differs from libc, so ctype-dependent functions such as
+-- upper() must not be pushed down
+\c yugabyte
+CREATE DATABASE test_builtin_db
+LOCALE_PROVIDER builtin
+BUILTIN_LOCALE 'PG_UNICODE_FAST'
+TEMPLATE template0;
+\c test_builtin_db
+CREATE TABLE tab(id text);
+INSERT INTO tab VALUES ('aaa'), ('äää'), ('ZZZ'), ('ß');
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
+SELECT COUNT(*) FROM tab WHERE upper(id) = 'ÄÄÄ';
+EXPLAIN (COSTS OFF) SELECT id FROM tab WHERE upper(id) = 'SS';
+SELECT id FROM tab WHERE upper(id) = 'SS';
+
 -- test YB blar db, invalid locale name
 \c yugabyte
 CREATE DATABASE test_blar_db
@@ -275,6 +291,9 @@ CREATE COLLATION english6 (LC_COLLATE = :en_us_collname, LC_CTYPE = :fr_fr_colln
 -- test YB restrictions
 \c yugabyte
 SET search_path = collate_tests;
+-- Avoid collation version mismatch warnings for collations created by initdb,
+-- whose recorded versions are OS dependent.
+SET yb_test_collation = false;
 CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE template0; -- fail;
 
 CREATE TABLE tab3(id char(10) COLLATE "en-US-x-icu");
@@ -333,15 +352,9 @@ SELECT datcollversion FROM pg_database WHERE datname = 'test_db5';
 -- Should no longer see a collation version mismatch warning.
 \c test_db5
 \c yugabyte
--- Test collation version has no effect for C collation.
--- Should not see a collation version mismatch warning.
+-- Test that a version cannot be recorded for C collation, which has no
+-- actual version (PG 15 allowed this, PG 19 gives an error, so does YB).
 CREATE COLLATION test_coll1 (LOCALE = "C", VERSION = 'blar');
-SELECT collversion FROM pg_collation WHERE collname = 'test_coll1';
-CREATE TABLE test_tab1(id text COLLATE test_coll1);
-
--- PG 15 gives an error of "invalid collation version change", so does YB.
-ALTER COLLATION test_coll1 REFRESH VERSION;
-
 SELECT collversion FROM pg_collation WHERE collname = 'test_coll1';
 
 -- Create a new collation with a fake version 'blar' to test PG's collation version mismatch

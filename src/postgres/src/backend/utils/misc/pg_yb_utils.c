@@ -6687,10 +6687,28 @@ YBIsDbLocaleDefault()
 	 * LC_COLLATE. If a database changes its locale to a non-UTF-8 locale, then
 	 * DocDB may have different semantics and return different results.
 	 * (See CheckMyDatabase in postinit.c and setlocales in initdb.c)
+	 *
+	 * DocDB evaluates ctype-dependent functions with a libc UTF-8 ctype (see
+	 * YbgInitDefaultLocale), so also require the libc provider. A database
+	 * using the builtin provider can have C collate and a non-C ctype too,
+	 * but its case mapping differs from libc.
 	 */
 	pg_locale_t locale = pg_database_locale();
+	HeapTuple	tup;
+	char		datlocprovider;
+
 	Assert(locale != NULL);
-	return locale->collate_is_c && !locale->ctype_is_c && GetDatabaseEncoding() == PG_UTF8;
+	if (!(locale->collate_is_c && !locale->ctype_is_c &&
+		  GetDatabaseEncoding() == PG_UTF8))
+		return false;
+
+	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId));
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for database %u", MyDatabaseId);
+	datlocprovider = ((Form_pg_database) GETSTRUCT(tup))->datlocprovider;
+	ReleaseSysCache(tup);
+
+	return datlocprovider == COLLPROVIDER_LIBC;
 }
 
 Oid
