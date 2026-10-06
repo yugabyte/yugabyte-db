@@ -154,7 +154,7 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_startup_client_connection_check, true,
     "check for client disconnects during backend initialization.");
 TAG_FLAG(ysql_enable_startup_client_connection_check, advanced);
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, true,
     "If true, the connection-auth catalog prefetch (pg_authid, pg_database, "
     "...) is served from the tserver response cache, turning per-connection "
     "master reads for the auth catalogs into shared-cache hits under connection "
