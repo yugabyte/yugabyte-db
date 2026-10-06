@@ -12,6 +12,7 @@
 //
 
 #include <chrono>
+#include <optional>
 
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
@@ -27,6 +28,7 @@
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/tostring.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -39,6 +41,10 @@ namespace yb {
 constexpr auto kTableName = "tbl1";
 constexpr auto kDefaultJobName = "Job1";
 constexpr auto kJobListRefreshInterval = 10;
+// pg_cron_leader_lease_sec for the fixture. A new leader starts running jobs one lease after it
+// became leader.
+constexpr auto kLeaderLeaseSec = kJobListRefreshInterval;
+constexpr auto kServerRestartedMessage = "server restarted";
 constexpr auto kFailedJobStatus = "failed";
 constexpr auto kRunningJobStatus = "running";
 const client::YBTableName service_table_name =
@@ -65,7 +71,7 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
         Format("--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=$0", kJobListRefreshInterval));
     opts.extra_tserver_flags.push_back("--pg_cron_leadership_refresh_sec=1");
     opts.extra_tserver_flags.push_back(
-        Format("--pg_cron_leader_lease_sec=$0", kJobListRefreshInterval));
+        Format("--pg_cron_leader_lease_sec=$0", kLeaderLeaseSec));
 
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
@@ -201,7 +207,9 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
 
           return row_block->row_count() > 0;
         },
-        CoarseMonoClock::Now() + kTimeout, "Waiting for data in pg cron leader table");
+        // The leader writes the first row at the first minute boundary after it becomes active,
+        // which can itself take one lease if the leader moves during setup.
+        CoarseMonoClock::Now() + kTimeout + 60s, "Waiting for data in pg cron leader table");
   }
 
   Result<int64_t> GetPersistedLastMinute() {
@@ -232,6 +240,189 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
         "Unexpected key value");
 
     return stateful_service::PgCronLeaderService::ExtractLastMinute(row.column(1));
+  }
+
+  // Returns the runid, and the pid of the backend executing it, of the most recent run of the job
+  // that is in the 'running' state.
+  Result<std::tuple<int64_t, int32_t>> GetRunningRun(int64 job_id) {
+    return conn_->FetchRow<int64_t, int32_t>(Format(
+        "SELECT runid, job_pid FROM cron.job_run_details WHERE jobid = $0 AND status = '$1' "
+        "ORDER BY start_time DESC LIMIT 1",
+        job_id, kRunningJobStatus));
+  }
+
+  Result<std::string> GetRunMessage(int64 runid) {
+    return conn_->FetchRow<std::string>(Format(
+        "SELECT return_message FROM cron.job_run_details WHERE runid = $0", runid));
+  }
+
+  // Number of runs of the job that started after the given run.
+  Result<int64_t> CountRunsAfter(int64 job_id, int64 runid) {
+    return conn_->FetchRow<pgwrapper::PGUint64>(Format(
+        "SELECT COUNT(*) FROM cron.job_run_details WHERE jobid = $0 AND runid > $1", job_id,
+        runid));
+  }
+
+  // Waits for a specific run (identified by runid) to reach the given status. Unlike
+  // WaitForJobStatus this tracks a single run, so it is stable even as the job keeps rescheduling.
+  Status WaitForRunStatus(int64 runid, const std::string& status) {
+    Status s = LoggedWaitFor(
+        [this, runid, status]() -> Result<bool> {
+          return VERIFY_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(Format(
+                     "SELECT COUNT(*) FROM cron.job_run_details WHERE runid = $0 AND status = '$1'",
+                     runid, status))) > 0;
+        },
+        kTimeout, Format("Wait for run $0 to have status '$1'", runid, status));
+    if (!s.ok()) {
+      LOG(INFO) << "job_run_details on failure:\n"
+                << conn_->FetchAllAsString(
+                       "SELECT runid, jobid, status, return_message FROM cron.job_run_details "
+                       "ORDER BY runid",
+                       " | ", "\n");
+    }
+    return s;
+  }
+
+  // Returns the indexes of the tservers that have a backend executing the given job command.
+  Result<std::set<size_t>> NodesRunningQuery(const std::string& job_command) {
+    std::set<size_t> nodes;
+    for (size_t idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
+      auto conn = VERIFY_RESULT(cluster_->ConnectToDB("yugabyte", idx));
+      if (VERIFY_RESULT(conn.FetchRow<pgwrapper::PGUint64>(Format(
+              "SELECT COUNT(*) FROM pg_stat_activity WHERE query = '$0'", job_command))) > 0) {
+        nodes.insert(idx);
+      }
+    }
+    return nodes;
+  }
+
+  Status WaitForQueryOnlyOnNode(const std::string& job_command, size_t idx) {
+    return LoggedWaitFor(
+        [this, &job_command, idx]() -> Result<bool> {
+          return VERIFY_RESULT(NodesRunningQuery(job_command)) == std::set<size_t>{idx};
+        },
+        std::chrono::seconds(kLeaderLeaseSec) + kTimeout,
+        Format("Wait for '$0' to run only on node $1", job_command, idx));
+  }
+
+  // Returns the pid of the pg_cron launcher of the given tserver's postgres.
+  Result<int32_t> LauncherPid(size_t idx) {
+    auto conn = VERIFY_RESULT(cluster_->ConnectToDB("yugabyte", idx));
+    return conn.FetchRow<int32_t>(
+        "SELECT pid FROM pg_stat_activity WHERE backend_type = 'pg_cron launcher'");
+  }
+
+  // Moves the pg_cron leader from from_idx to to_idx while the job runs `job_command` on from_idx
+  // as run `runid`, and checks that to_idx takes the job over: one node at a time, no earlier than
+  // one lease after the move, the old run ends 'failed', and to_idx then runs the job without its
+  // launcher having restarted.
+  void MoveLeaderAndCheckHandOver(
+      const std::string& job_command, int64 runid, size_t from_idx, size_t to_idx) {
+    const auto launcher_pid = ASSERT_RESULT(LauncherPid(to_idx));
+    const auto t0 = CoarseMonoClock::Now();
+    ASSERT_OK(cluster_->MoveTabletLeader(tablet_id_, to_idx));
+    const auto sample = ASSERT_RESULT(SampleNodesRunningQuery(
+        job_command, from_idx, t0 + std::chrono::seconds(kLeaderLeaseSec) + 10s));
+    ASSERT_NO_FATALS(CheckHandOver(sample, t0, to_idx));
+    ASSERT_OK(WaitForRunStatus(runid, kFailedJobStatus));
+    ASSERT_EQ(ASSERT_RESULT(NodesRunningQuery(job_command)), std::set<size_t>{to_idx});
+    ASSERT_EQ(ASSERT_RESULT(LauncherPid(to_idx)), launcher_pid)
+        << "pg_cron launcher on the new leader restarted";
+  }
+
+  Status ReconnectToNode(size_t idx) {
+    conn_ = std::make_unique<pgwrapper::PGConn>(VERIFY_RESULT(cluster_->ConnectToDB(
+        "yugabyte", idx)));
+    return Status::OK();
+  }
+
+  struct ExecutionSample {
+    // Largest number of nodes that ran the job command at the same time in one sample.
+    size_t max_concurrent_nodes = 0;
+    // First node other than old_leader_idx that ran the job command, and when it was first seen.
+    std::optional<size_t> first_new_node;
+    CoarseTimePoint first_new_node_time;
+    // When old_leader_idx was last seen running the job command.
+    std::optional<CoarseTimePoint> old_leader_last_seen;
+  };
+
+  // Every 500 ms until `until`, finds the nodes that run each command in `job_commands` (one
+  // sample per command). When old_run_pid is set, the old leader is not queried (it may be stopped
+  // or paused); it counts as running job_commands[0] while the process old_run_pid exists.
+  Result<std::vector<ExecutionSample>> SampleNodesRunningQueries(
+      const std::vector<std::string>& job_commands, size_t old_leader_idx, CoarseTimePoint until,
+      std::optional<pid_t> old_run_pid = std::nullopt) {
+    SCHECK(!old_run_pid || job_commands.size() == 1, InvalidArgument,
+           "old_run_pid needs one job command");
+    std::map<size_t, pgwrapper::PGConn> conns;
+    for (size_t idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
+      if (idx != old_leader_idx || !old_run_pid) {
+        conns.emplace(idx, VERIFY_RESULT(cluster_->ConnectToDB("yugabyte", idx)));
+      }
+    }
+
+    std::vector<ExecutionSample> samples(job_commands.size());
+    while (CoarseMonoClock::Now() < until) {
+      for (size_t q = 0; q < job_commands.size(); ++q) {
+        std::set<size_t> nodes;
+        if (old_run_pid && kill(*old_run_pid, 0) == 0) {
+          nodes.insert(old_leader_idx);
+        }
+        for (auto& [idx, conn] : conns) {
+          if (VERIFY_RESULT(conn.FetchRow<pgwrapper::PGUint64>(Format(
+                  "SELECT COUNT(*) FROM pg_stat_activity WHERE query = '$0'",
+                  job_commands[q]))) > 0) {
+            nodes.insert(idx);
+          }
+        }
+        const auto now = CoarseMonoClock::Now();
+        auto& sample = samples[q];
+        if (nodes.size() > sample.max_concurrent_nodes) {
+          LOG(INFO) << "Job command '" << job_commands[q] << "' running on nodes "
+                    << AsString(nodes);
+          sample.max_concurrent_nodes = nodes.size();
+        }
+        if (nodes.contains(old_leader_idx)) {
+          sample.old_leader_last_seen = now;
+        }
+        for (auto idx : nodes) {
+          if (idx != old_leader_idx && !sample.first_new_node) {
+            LOG(INFO) << "Job command '" << job_commands[q] << "' first seen on new node "
+                      << idx;
+            sample.first_new_node = idx;
+            sample.first_new_node_time = now;
+          }
+        }
+      }
+      SleepFor(500ms);
+    }
+    return samples;
+  }
+
+  Result<ExecutionSample> SampleNodesRunningQuery(
+      const std::string& job_command, size_t old_leader_idx, CoarseTimePoint until,
+      std::optional<pid_t> old_run_pid = std::nullopt) {
+    return VERIFY_RESULT(
+        SampleNodesRunningQueries({job_command}, old_leader_idx, until, old_run_pid)).front();
+  }
+
+  // Asserts that at most one node ran the job command at a time, that the old leader stopped
+  // running it before any other node started it, and that the first other node started it no
+  // earlier than one lease after `t0`.
+  void CheckHandOver(
+      const ExecutionSample& sample, CoarseTimePoint t0,
+      std::optional<size_t> expected_new_node = std::nullopt) {
+    ASSERT_LE(sample.max_concurrent_nodes, 1) << "job ran on two nodes at once";
+    ASSERT_TRUE(sample.first_new_node.has_value()) << "no new leader started the job";
+    if (expected_new_node) {
+      ASSERT_EQ(*sample.first_new_node, *expected_new_node);
+    }
+    if (sample.old_leader_last_seen) {
+      ASSERT_LT(*sample.old_leader_last_seen, sample.first_new_node_time)
+          << "old leader still ran the job when the new leader started it";
+    }
+    ASSERT_GE(sample.first_new_node_time, t0 + std::chrono::seconds(kLeaderLeaseSec) - 1s)
+        << "new leader started running jobs before the old lease expired";
   }
 
   std::unique_ptr<pgwrapper::PGConn> conn_;
@@ -728,6 +919,65 @@ TEST_F(PgCronTest, CancelJobOnLeaderChange) {
       "SELECT COUNT(*) FROM cron.job_run_details WHERE return_message = 'pg_cron leader changed'"));
   ASSERT_TRUE(count_killed == 1 || count_killed == 2)
       << count_killed << " rows found when only 1 or 2 is expected";
+}
+
+// Ungraceful leader change: the leader tserver is killed. The new leader starts one lease after
+// it became leader and marks the orphaned run failed.
+TEST_F(PgCronTest, UngracefulLeaderChangeMarksJobFailed) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
+
+  const std::string long_query = "SELECT pg_sleep(1000)";
+  const auto job_name = "Sleep Job";
+  const auto job_id = ASSERT_RESULT(ScheduleJob(job_name, "1 second", long_query));
+  ASSERT_OK(WaitForJobStatus(job_id, job_name, kRunningJobStatus));
+  const auto [runid, pid] = ASSERT_RESULT(GetRunningRun(job_id));
+  const auto a_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  ASSERT_OK(ReconnectToNode((a_idx + 1) % cluster_->num_tablet_servers()));
+
+  const auto t0 = CoarseMonoClock::Now();
+  cluster_->tablet_server(a_idx)->Shutdown();
+
+  const auto sample = ASSERT_RESULT(SampleNodesRunningQuery(
+      long_query, a_idx, t0 + std::chrono::seconds(kLeaderLeaseSec) + 15s, pid));
+  ASSERT_NO_FATALS(CheckHandOver(sample, t0));
+
+  ASSERT_OK(WaitForRunStatus(runid, kFailedJobStatus));
+  ASSERT_EQ(ASSERT_RESULT(GetRunMessage(runid)), kServerRestartedMessage);
+  ASSERT_EQ(ASSERT_RESULT(CountRunsAfter(job_id, runid)), 1);
+
+  // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
+  cluster_->Shutdown();
+}
+
+// pg_cron is dropped and created again on another node, so its tables get new OIDs while a former
+// leader still caches the old ones. When that node becomes leader again, it must use the new
+// tables: mark the old run failed and run the new job.
+TEST_F(PgCronTest, LeaderChangeAfterRecreatingExtension) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
+
+  const std::string long_query = "SELECT pg_sleep(1000)";
+  const auto job_name = "Sleep Job";
+  const auto job_id = ASSERT_RESULT(ScheduleJob(job_name, "1 second", long_query));
+  ASSERT_OK(WaitForJobStatus(job_id, job_name, kRunningJobStatus));
+  const auto a_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto b_idx = (a_idx + 1) % cluster_->num_tablet_servers();
+  const auto a_runid = std::get<0>(ASSERT_RESULT(GetRunningRun(job_id)));
+  ASSERT_NO_FATALS(MoveLeaderAndCheckHandOver(long_query, a_runid, a_idx, b_idx));
+
+  // Recreate the extension on B's node, so only B's launcher gets local invalidation messages.
+  auto b_conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", b_idx));
+  ASSERT_OK(UnscheduleJob(job_id, &b_conn));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(NodesRunningQuery(long_query)).empty(); },
+      kTimeout, "Wait for the unscheduled job to stop"));
+  ASSERT_OK(b_conn.Execute("DROP EXTENSION pg_cron"));
+  ASSERT_OK(b_conn.Execute("CREATE EXTENSION pg_cron"));
+  const auto new_job_id = ASSERT_RESULT(ScheduleJob(job_name, "1 second", long_query, &b_conn));
+  ASSERT_OK(WaitForJobStatus(new_job_id, job_name, kRunningJobStatus));
+  ASSERT_OK(WaitForQueryOnlyOnNode(long_query, b_idx));
+  const auto b_runid = std::get<0>(ASSERT_RESULT(GetRunningRun(new_job_id)));
+
+  ASSERT_NO_FATALS(MoveLeaderAndCheckHandOver(long_query, b_runid, b_idx, a_idx));
 }
 
 }  // namespace yb
