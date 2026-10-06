@@ -539,7 +539,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/14);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/13);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
