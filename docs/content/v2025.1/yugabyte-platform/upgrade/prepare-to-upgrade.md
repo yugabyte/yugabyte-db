@@ -45,15 +45,15 @@ To update your universes to use systemd:
 
 ## Node provisioning
 
-As of v2024.2, [legacy on-premises node provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) workflows have been deprecated. Going forward, provision nodes for on-premises universes using the `node-agent-provision.sh` script. For more information, refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+As of v2024.2, [legacy on-premises node provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) is deprecated. For new nodes, use the `node-agent-provision.sh` script. For more information, refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
-{{< warning title="Legacy provisioning no longer available in v2025.2" >}}
+{{< warning title="Legacy provisioning deprecated" >}}
 
-v2025.2 (available late 2025) will not support legacy node provisioning. Before upgrading to 2025.2, be sure to update your node provisioning workflows to support automatic provisioning.
+Legacy automatic provisioning and fully manual provisioning still work on v2025.2 and later. You can upgrade YugabyteDB Anywhere without moving existing universes off those methods. Assisted manual provisioning has been removed.
 
 {{< /warning >}}
 
-To upgrade a running on-premises universe to automatic provisioning, follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
+To move a running on-premises universe to the node agent provisioning script, follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
 
 ### Transparent hugepages
 
