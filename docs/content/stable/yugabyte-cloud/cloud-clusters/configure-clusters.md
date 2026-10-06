@@ -20,6 +20,8 @@ You can scale the following cluster properties:
 - Disk size per node
 - IOPS (AWS clusters only)
 
+To add or remove nodes automatically as CPU and connection load change, refer to [Autoscaling](autoscaling/).
+
 Cluster edit operations are performed using the **Edit Infrastructure** option under **Regions** on the cluster **Settings > Infrastructure** tab.
 
 {{< youtube id="Dhb-R-tlFKM" title="Perform a live infrastructure upgrade in YugabyteDB Aeon" >}}
