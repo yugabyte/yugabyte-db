@@ -964,6 +964,33 @@ INSERT INTO pk_nn_drop VALUES (5, 10, 20);
 \i :run_query
 SELECT * FROM pk_nn_drop ORDER BY k;
 
+-- Test NOT NULL constraint enforcement on a stored generated column in
+-- single-row UPDATE: the column is not in the SET list, but it is recomputed
+-- from columns that are, so it must still be checked.
+-- GH issue: https://github.com/yugabyte/yugabyte-db/issues/34653.
+CREATE TABLE gen_nn (k int PRIMARY KEY, a int, b int,
+    g int GENERATED ALWAYS AS (a + b) STORED NOT NULL);
+-- The dropped column makes the leaf's attribute numbers differ from the root's.
+CREATE TABLE gen_nn_part (k int, dropme int, a int, b int,
+    g int GENERATED ALWAYS AS (a + b) STORED NOT NULL, PRIMARY KEY (k))
+    PARTITION BY RANGE (k);
+ALTER TABLE gen_nn_part DROP COLUMN dropme;
+CREATE TABLE gen_nn_part1 PARTITION OF gen_nn_part FOR VALUES FROM (1) TO (100);
+INSERT INTO gen_nn VALUES (5, 1, 2);
+INSERT INTO gen_nn_part VALUES (5, 1, 2);
+-- All plans should USE single-row.  The first two updates should fail because
+-- g becomes NULL; the third should succeed.
+\set Q1 'a = NULL, b = 5'
+\set Q2 'a = 1, b = NULL'
+\set Q3 'a = 3, b = 4'
+\set R1 'gen_nn'
+\set R2 'gen_nn_part'
+\set query ':P UPDATE :R SET :Q WHERE k = 5;'
+\i :run_query
+\unset Q3
+SELECT * FROM gen_nn ORDER BY k;
+SELECT * FROM gen_nn_part ORDER BY k;
+
 -- Test single-shard transactions in a partition table.
 -- The absence of flushes and storage scans in the EXPLAIN plan indicate the use
 -- of single-shard transactions.
@@ -1104,6 +1131,8 @@ DROP TABLE p_test;
 DROP TABLE pk;
 DROP TABLE pk_nn;
 DROP TABLE pk_nn_drop;
+DROP TABLE gen_nn;
+DROP TABLE gen_nn_part;
 DROP TABLE t_simple;
 DROP TABLE t_temp;
 DROP TYPE rt;
