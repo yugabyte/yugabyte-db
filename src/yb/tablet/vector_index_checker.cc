@@ -87,7 +87,8 @@ class VectorIndexChecker {
   }
 
   Result<VectorIndexCheckResultPB> Run() {
-    SCHECK(vector_index_.BackfillDone(), TryAgain, "Vector index backfill is in progress");
+    SCHECK(VERIFY_RESULT(vector_index_.BackfillDone()), TryAgain,
+           "Vector index backfill is in progress");
 
     auto read_ht = VERIFY_RESULT(tablet_.SafeTime(RequireLease::kFalse));
     if (auto* participant = tablet_.transaction_participant()) {

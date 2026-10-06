@@ -38,7 +38,14 @@ option java_package = "org.yb.tablet";
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/opid.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/tablet/tablet_types.proto";
+
+// A vector index whose backfill failed on the tablet.
+message VectorIndexBackfillFailurePB {
+  optional bytes table_id = 1;
+  optional AppStatusPB status = 2;
+}
 
 message TabletStatusPB {
   required string tablet_id = 1;
@@ -89,6 +96,8 @@ message TabletStatusPB {
   // vector indexes, or vector index post-split compaction is disabled. Unset if the tablet is
   // not available (e.g. bootstrapping or shutting down).
   optional bool vector_indexes_parent_data_compacted = 29;
+  // Vector indexes whose backfill failed on this tablet. See PollVectorIndexReady.
+  repeated VectorIndexBackfillFailurePB vector_index_failed_backfills = 30;
 }
 
 // Used to present the maintenance manager's internal state.

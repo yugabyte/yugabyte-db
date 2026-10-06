@@ -13,11 +13,15 @@
 
 #pragma once
 
+#include <mutex>
+
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/docdb/docdb_fwd.h"
+
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/hnsw/hnsw_fwd.h"
 
@@ -34,6 +38,7 @@
 #include "yb/util/kv_util.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -219,7 +224,10 @@ class DocVectorIndex {
   virtual bool TEST_HasBackgroundInserts() const = 0;
   virtual size_t TEST_NextManifestFileNo() const = 0;
 
-  bool BackfillDone();
+  // Returns whether the backfill is done. If it isn't and the last attempt failed, returns that
+  // error instead, so whoever waits for the backfill doesn't wait forever.
+  Result<bool> BackfillDone() EXCLUDES(backfill_status_mutex_);
+  void SetBackfillStatus(const Status& status) EXCLUDES(backfill_status_mutex_);
 
   // Returns true if all inherited parent-tablet chunks have been compacted away.
   // Caches the true result; ComputeParentDataCompacted() is the uncached check.
@@ -236,6 +244,8 @@ class DocVectorIndex {
 
   std::atomic<bool> backfill_done_cache_{false};
   std::atomic<bool> parent_data_compacted_cache_{false};
+  std::mutex backfill_status_mutex_;
+  Status backfill_status_ GUARDED_BY(backfill_status_mutex_);
 };
 
 struct DocVectorIndexThreadPools {
