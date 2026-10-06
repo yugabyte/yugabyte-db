@@ -2683,6 +2683,28 @@ SearchCatCacheList(CatCache *cache,
 						break;	/* A-OK */
 					}
 				}
+				else
+				{
+					/*
+					 * YB: Reuse a byte-identical entry instead, so rebuilding
+					 * a list that an invalidation dropped does not duplicate
+					 * the members that survived it.
+					 */
+					dlist_foreach(iter, bucket)
+					{
+						ct = dlist_container(CatCTup, cache_elem, iter.cur);
+
+						if (ct->dead || ct->negative || ct->c_list ||
+							ct->hash_value != hashValue ||
+							ct->tuple.t_len != ntp->t_len ||
+							memcmp(ct->tuple.t_data, ntp->t_data,
+								   ntp->t_len) != 0)
+							continue;
+
+						found = true;
+						break;
+					}
+				}
 
 				if (!found)
 				{
@@ -3267,6 +3289,83 @@ void
 YbCatCListIteratorFree(YbCatCListIterator *iterator)
 {
 	ReleaseCatCacheList(iterator->list);
+}
+
+/*
+ * YbCatCacheIsLookupLocal
+ *
+ * Return true if SearchCatCache() with the given full key would be answered
+ * without reading the catalog: a live positive or negative entry exists, or
+ * the cache is fully loaded and a miss would become a negative entry.
+ */
+bool
+YbCatCacheIsLookupLocal(CatCache *cache, Datum v1, Datum v2, Datum v3,
+						Datum v4)
+{
+	Datum		arguments[CATCACHE_MAXKEYS];
+	uint32		hashValue;
+	dlist_iter	iter;
+	dlist_head *bucket;
+
+	if (unlikely(cache->cc_tupdesc == NULL))
+		CatalogCacheInitializeCache(cache);
+
+	if (cache->yb_cc_is_fully_loaded &&
+		YbAllowNegativeCacheEntries(cache->id, DatumGetObjectId(v2),
+									true /* implicit negative entry */ ))
+		return true;
+
+	arguments[0] = v1;
+	arguments[1] = v2;
+	arguments[2] = v3;
+	arguments[3] = v4;
+
+	hashValue = CatalogCacheComputeHashValue(cache, cache->cc_nkeys,
+											 v1, v2, v3, v4);
+	bucket = &cache->cc_bucket[HASH_INDEX(hashValue, cache->cc_nbuckets)];
+	dlist_foreach(iter, bucket)
+	{
+		CatCTup    *ct = dlist_container(CatCTup, cache_elem, iter.cur);
+
+		if (!ct->dead && ct->hash_value == hashValue &&
+			CatalogCacheCompareTuple(cache, cache->cc_nkeys, ct->keys,
+									 arguments))
+			return true;
+	}
+	return false;
+}
+
+/*
+ * YbCatCacheAddNegativeEntry
+ *
+ * Record that no catalog row exists for the given full key, as
+ * SearchCatCacheMiss() does after a scan finds nothing.  The caller must have
+ * just scanned the catalog over a range covering the key without finding it.
+ * No-op if the key is already cached or the cache does not allow negative
+ * entries.
+ */
+void
+YbCatCacheAddNegativeEntry(CatCache *cache, Datum v1, Datum v2, Datum v3,
+						   Datum v4)
+{
+	Datum		arguments[CATCACHE_MAXKEYS];
+	uint32		hashValue;
+
+	if (IsBootstrapProcessingMode() ||
+		YbCatCacheIsLookupLocal(cache, v1, v2, v3, v4) ||
+		!YbAllowNegativeCacheEntries(cache->id, DatumGetObjectId(v2),
+									 false /* implicit negative entry */ ))
+		return;
+
+	arguments[0] = v1;
+	arguments[1] = v2;
+	arguments[2] = v3;
+	arguments[3] = v4;
+
+	hashValue = CatalogCacheComputeHashValue(cache, cache->cc_nkeys,
+											 v1, v2, v3, v4);
+	CatalogCacheCreateEntry(cache, NULL, arguments, hashValue,
+							HASH_INDEX(hashValue, cache->cc_nbuckets));
 }
 
 void

@@ -2385,6 +2385,29 @@ YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4)
 }
 
 /*
+ * See YbCatCacheIsLookupLocal().
+ */
+bool
+YbSysCacheIsLookupLocal(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4)
+{
+	Assert(cache_id >= 0 && cache_id < SysCacheSize &&
+		   PointerIsValid(SysCache[cache_id]));
+	return YbCatCacheIsLookupLocal(SysCache[cache_id], v1, v2, v3, v4);
+}
+
+/*
+ * See YbCatCacheAddNegativeEntry().
+ */
+void
+YbSysCacheAddNegativeEntry(int cache_id, Datum v1, Datum v2, Datum v3,
+						   Datum v4)
+{
+	Assert(cache_id >= 0 && cache_id < SysCacheSize &&
+		   PointerIsValid(SysCache[cache_id]));
+	YbCatCacheAddNegativeEntry(SysCache[cache_id], v1, v2, v3, v4);
+}
+
+/*
  * Copies data from the cacheinfo array to the supplied values array.
  * The values array is expected to have space for at least 10 Datums.
  */

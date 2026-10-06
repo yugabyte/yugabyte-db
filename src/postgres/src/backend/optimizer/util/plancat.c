@@ -1306,11 +1306,21 @@ get_relation_data_width(Oid relid, int32 *attr_widths)
  *		Warm the catalog cache with all of a relation's pg_statistic rows in one
  *		batched list lookup, so the planner's per-column get_attavgwidth() calls
  *		hit warm cache instead of issuing a catalog RPC each.
+ *
+ * The list lookup only runs when some column's entry is missing.  Any
+ * pg_statistic invalidation drops every list in the cache, so relying on the
+ * list itself would re-read the stats of every relation after an ANALYZE of
+ * any one of them; the per-column entries of relations that were not
+ * analyzed survive it.
  */
 static void
 yb_prefetch_column_stats(Relation relation)
 {
+	Oid			relid = RelationGetRelid(relation);
+	TupleDesc	tupdesc = RelationGetDescr(relation);
 	CatCList   *list;
+	bool		all_cached = true;
+	int			i;
 
 	switch (relation->rd_rel->relkind)
 	{
@@ -1324,14 +1334,38 @@ yb_prefetch_column_stats(Relation relation)
 			return;
 	}
 
+	/* Keys match the lookups in get_attavgwidth(). */
+	for (i = 1; i <= tupdesc->natts && all_cached; i++)
+	{
+		if (TupleDescAttr(tupdesc, i - 1)->attisdropped)
+			continue;
+		all_cached = YbSysCacheIsLookupLocal(STATRELATTINH,
+											 ObjectIdGetDatum(relid),
+											 Int16GetDatum(i),
+											 BoolGetDatum(false), 0);
+	}
+	if (all_cached)
+		return;
+
 	/*
 	 * Prefix scan on the leading key (starelid).  Releasing the list keeps the
 	 * per-tuple member entries cached for the upcoming point lookups; we only
 	 * want the side effect of populating the cache, not the list itself.
 	 */
-	list = SearchSysCacheList1(STATRELATTINH,
-							   ObjectIdGetDatum(RelationGetRelid(relation)));
+	list = SearchSysCacheList1(STATRELATTINH, ObjectIdGetDatum(relid));
 	ReleaseSysCacheList(list);
+
+	/*
+	 * Columns without a pg_statistic row get negative entries, so they do not
+	 * trigger the list lookup again on the next plan.
+	 */
+	for (i = 1; i <= tupdesc->natts; i++)
+	{
+		if (TupleDescAttr(tupdesc, i - 1)->attisdropped)
+			continue;
+		YbSysCacheAddNegativeEntry(STATRELATTINH, ObjectIdGetDatum(relid),
+								   Int16GetDatum(i), BoolGetDatum(false), 0);
+	}
 }
 
 
