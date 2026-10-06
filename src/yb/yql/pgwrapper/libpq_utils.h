@@ -465,6 +465,8 @@ struct PGConnSettings {
   std::string user = kDefaultUser;
   std::string password = {};
   std::string replication = {};
+  // Command-line options sent to the backend at connection start, e.g. "-c name=value".
+  std::string options = {};
   size_t connect_timeout = 0;
   // Wire name of the YbInternalConnKind this connection should be assigned.
   // Empty for a regular client connection.

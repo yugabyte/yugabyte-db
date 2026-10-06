@@ -25,6 +25,8 @@
 #define YB_TCMALLOC_UTILS_H
 
 extern int	yb_log_heap_snapshot_on_exit_threshold;
+extern bool yb_enable_tcmalloc_background_thread;
+extern int	yb_tcmalloc_background_release_rate;
 
 /*
  * Handle and process logging of heap snapshot interrupt.
@@ -37,5 +39,11 @@ extern void ProcessLogHeapSnapshotInterrupt(void);
  * Setup the hook to log the heap snapshot when a backend process exits.
  */
 extern void YbSetupHeapSnapshotProcExit(void);
+
+/*
+ * Start the TCMalloc background thread if yb_enable_tcmalloc_background_thread
+ * is set.
+ */
+extern void YbMaybeStartTCMallocBackgroundThread(void);
 
 #endif							/* YB_TCMALLOC_UTILS_H */
