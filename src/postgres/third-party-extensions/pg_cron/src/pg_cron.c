@@ -686,6 +686,15 @@ PgCronLauncherMain(Datum arg)
 
 		AcceptInvalidationMessages();
 
+		/*
+		 * YB Note: Catalog changes made on other nodes reach a backend through
+		 * a catalog version check, which PostgresMain does before each
+		 * statement and AcceptInvalidationMessages does with object locking.
+		 * Without object locking, do it here for the launcher.
+		 */
+		if (IsYugaByteEnabled() && !YBCIsObjectLockingEnabled())
+			YbMaybeRefreshCache();
+
 		if (CronReloadConfig)
 		{
 			/* set the desired log_min_messages */

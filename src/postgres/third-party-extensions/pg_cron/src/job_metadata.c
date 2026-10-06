@@ -830,7 +830,8 @@ void
 InvalidateJobCacheCallback(Datum argument, Oid relationId)
 {
 	if (relationId == CachedCronJobRelationId ||
-		CachedCronJobRelationId == InvalidOid)
+		CachedCronJobRelationId == InvalidOid ||
+		(IsYugaByteEnabled() && relationId == InvalidOid))	/* YB: all relations */
 	{
 		CronJobCacheValid = false;
 		CachedCronJobRelationId = InvalidOid;
@@ -1449,6 +1450,10 @@ MarkPendingRunsAsFailed(void)
 
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UPDATE)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+
+	if (IsYugaByteEnabled())
+		ereport(LOG, (errmsg("pg_cron marked " UINT64_FORMAT " pending runs as failed",
+							 SPI_processed)));
 
 	pfree(querybuf.data);
 
