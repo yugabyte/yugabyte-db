@@ -2273,20 +2273,16 @@ TEST_F(PgThinClientLoadBalancerTest, SessionsReopenTogetherAfterTheSocketDrops) 
   ASSERT_GT(PerformCount(kSecondTs), 0U);
 }
 
-// A connection keeps one socket to a single address, taken to be a load balancer, and 8 to each of
-// several addresses.
-TEST_F(PgThinClientTest, SocketsPerHost) {
+// A connection keeps one socket to its host however many addresses it is given, since any of them
+// may be a load balancer.
+TEST_F(PgThinClientTest, OneSocketPerConnection) {
   constexpr int kUpserts = 20;
   const auto oids = ASSERT_RESULT(CreateKeyTable());
   const std::vector<Endpoint> tserver = {cluster_->mini_tablet_server(0)->bound_rpc_addr()};
-  struct Case {
-    size_t num_addrs;
-    size_t expected_sockets;
-  };
-  for (const auto& test_case : {Case{1, 1}, Case{2, 8}}) {
-    SCOPED_TRACE(Format("$0 addresses", test_case.num_addrs));
+  for (size_t num_addrs : {1, 2}) {
+    SCOPED_TRACE(Format("$0 addresses", num_addrs));
     // Forwarders to the one tserver stand in for the addresses, and count the sockets opened.
-    std::vector<std::unique_ptr<FileLock>> port_locks(test_case.num_addrs);
+    std::vector<std::unique_ptr<FileLock>> port_locks(num_addrs);
     std::vector<std::unique_ptr<RoundRobinBalancer>> forwarders;
     std::vector<std::string> addrs;
     for (auto& port_lock : port_locks) {
@@ -2299,7 +2295,7 @@ TEST_F(PgThinClientTest, SocketsPerHost) {
       ASSERT_EQ(UpsertKeys(client.get(), table.get(), /* hash_key= */ 1, v, v + 1).code, YBTHIN_OK);
     }
     // The pool's one connection talks to the first address.
-    ASSERT_EQ(forwarders.front()->Accepted(), test_case.expected_sockets);
+    ASSERT_EQ(forwarders.front()->Accepted(), 1U);
   }
 }
 
