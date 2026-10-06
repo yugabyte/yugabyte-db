@@ -59,4 +59,8 @@ extern List *FetchPreparedStatementTargetList(PreparedStatement *stmt);
 
 extern void DropAllPreparedStatements(void);
 
+/* YB: */
+extern void YbForceDropPreparedStatement(PreparedStatement *entry);
+extern void YbDropProtoPrepStmtIfInvalid(PreparedStatement *entry);
+
 #endif							/* PREPARE_H */
