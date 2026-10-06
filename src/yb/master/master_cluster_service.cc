@@ -31,7 +31,6 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base-internal.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/sys_catalog.h"
@@ -567,8 +566,6 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
              "Authentication snapshot expired in queue");
       SCHECK(FLAGS_ysql_enable_auth_catalog_follower_reads, NotSupported,
              "Authentication catalog follower reads are disabled");
-      SCHECK(server_->snapshot_coordinator().PitrDisabled(), IllegalState,
-             "Authentication catalog follower reads require persisted PITR-disabled mode");
       if (req.has_propagated_hybrid_time()) {
         SCHECK(!HybridTime(req.propagated_hybrid_time()).is_special(), InvalidArgument,
                "Invalid propagated hybrid time");

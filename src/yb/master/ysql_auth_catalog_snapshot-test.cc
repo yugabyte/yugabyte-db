@@ -24,7 +24,6 @@
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster.service.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -49,7 +48,6 @@
 #include "yb/util/thread.h"
 
 DECLARE_bool(TEST_enable_sync_points);
-DECLARE_bool(disable_pitr);
 DECLARE_bool(ysql_enable_auth_catalog_follower_reads);
 
 METRIC_DECLARE_counter(master_ysql_auth_snapshot_deadline_expirations);
@@ -92,17 +90,6 @@ class MasterAuthSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     return STATUS(NotFound, "No master follower");
   }
 
-  Status WaitForPitrDisabledMode() {
-    return WaitFor([&] {
-      for (size_t i = 0; i < cluster_->num_masters(); ++i) {
-        if (!cluster_->mini_master(i)->master()->snapshot_coordinator().PitrDisabled()) {
-          return false;
-        }
-      }
-      return true;
-    }, 30s * kTimeMultiplier, "Wait for local PITR-disabled mode");
-  }
-
   Result<HybridTime> AuthReadTime(
       MiniMaster* master, HybridTime propagated = HybridTime::kInvalid) {
     MasterClusterProxy proxy(&cluster_->proxy_cache(), master->bound_rpc_addr());
@@ -123,19 +110,10 @@ class MasterAuthSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
 };
 
-class MasterAuthSnapshotPitrDisabledModeTest : public MasterAuthSnapshotTest {
+class MasterAuthSnapshotTaskPoolTest : public MasterAuthSnapshotTest {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_pitr) = true;
     ASSERT_NO_FATAL_FAILURE(MasterAuthSnapshotTest::SetUp());
-    ASSERT_OK(WaitForPitrDisabledMode());
-  }
-};
-
-class MasterAuthSnapshotTaskPoolTest : public MasterAuthSnapshotPitrDisabledModeTest {
- public:
-  void SetUp() override {
-    ASSERT_NO_FATAL_FAILURE(MasterAuthSnapshotPitrDisabledModeTest::SetUp());
     ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
   }
 
@@ -305,17 +283,7 @@ class MasterAuthSnapshotTaskPoolTest : public MasterAuthSnapshotPitrDisabledMode
   std::atomic<MasterClusterIf*> snapshot_service_{nullptr};
 };
 
-TEST_F(MasterAuthSnapshotTest, AuthSnapshotRequiresPitrDisabledMode) {
-  ASSERT_FALSE(FLAGS_disable_pitr);
-  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  ASSERT_FALSE(leader->master()->snapshot_coordinator().PitrDisabled());
-  ASSERT_OK(SET_FLAG(ysql_enable_auth_catalog_follower_reads, true));
-  ASSERT_NOK_STR_CONTAINS(
-      AuthReadTime(leader),
-      "Authentication catalog follower reads require persisted PITR-disabled mode");
-}
-
-TEST_F(MasterAuthSnapshotPitrDisabledModeTest, AuthSnapshotRequiresLeaderAndRoutingFlag) {
+TEST_F(MasterAuthSnapshotTest, AuthSnapshotRequiresLeaderAndRoutingFlag) {
   auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   auto* follower = ASSERT_RESULT(RestartFollower());
   ASSERT_NOK(AuthReadTime(follower));
