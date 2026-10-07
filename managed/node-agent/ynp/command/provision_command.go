@@ -589,6 +589,9 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 		values["os_family"] = pc.osFamily
 		values["os_version"] = pc.osVersion
 		values["os_distribution"] = pc.osDistribution
+		// Lets a precheck tell the standalone preflight (RunPreflightChecks) apart from the one that
+		// follows provisioning in Execute.
+		values["is_preflight_check"] = pc.args.PreflightCheck
 		util.FileLogger().Infof(pc.ctx, "Rendering templates for module %s", key)
 		rendered, err := module.RenderTemplates(pc.ctx, values)
 		if err != nil {
