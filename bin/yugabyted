@@ -12575,6 +12575,10 @@ def rmcontents(dirname, exclude_names=[]):
 class RetryableError(Exception):
     pass
 
+# Each attempt usually runs a yb-admin command, so a short interval keeps startup fast without
+# busy-looping.
+RETRY_OP_INTERVAL_SEC = 0.1
+
 # Retry as long as func throws RetryableError.
 def retry_op(func, timeout=180):
     start_time = time.time()
@@ -12587,7 +12591,7 @@ def retry_op(func, timeout=180):
         now = time.time()
         if now - start_time > timeout:
             break
-        time.sleep(0.5)
+        time.sleep(RETRY_OP_INTERVAL_SEC)
 
     raise RuntimeError("Failed after retrying operation for {} secs.".format(
         now - start_time))
@@ -12604,7 +12608,7 @@ def retry_op_with_argument(func, argument, timeout=180):
         now = time.time()
         if now - start_time > timeout:
             break
-        time.sleep(0.5)
+        time.sleep(RETRY_OP_INTERVAL_SEC)
 
     raise RuntimeError("Failed after retrying operation for {} secs.".format(
         now - start_time))
