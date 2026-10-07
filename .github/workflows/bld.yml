@@ -1,9 +1,9 @@
 name: "bld"
 
-# Jenkins builds are opt-in, so a push does not pay for a full test run by default. A build starts
-# on a "trigger jenkins" PR comment from a repo member, or on every push once the PR has the
-# jenkins-ready label. Merge requires the yb-required commit status, which Jenkins posts on the
-# head SHA it built, so a push after the last build blocks merge until a new build passes.
+# Jenkins builds are opt-in, so a push does not pay for a full test run. A build starts only on a
+# "trigger jenkins" PR comment from a repo member. Merge requires the yb-required commit status,
+# which Jenkins posts on the head SHA it built, so a push after the last build blocks merge until
+# a new build passes.
 #
 # SECURITY: issue_comment runs from the default branch with repo secrets and feeds the
 # self-hosted ybdbghr runner, so only members and collaborators can trigger, and no PR code is
@@ -13,8 +13,6 @@ name: "bld"
 on:
   issue_comment:
     types: [created]
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review, labeled]
 
 permissions:
   contents: read
@@ -25,15 +23,10 @@ jobs:
   route:
     # startsWith and contains are case-insensitive, so "Trigger Jenkins" works too.
     if: >-
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.pull_request &&
-       startsWith(github.event.comment.body, 'trigger jenkins') &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-                github.event.comment.author_association)) ||
-      (github.event_name == 'pull_request' &&
-       ((github.event.action == 'labeled' && github.event.label.name == 'jenkins-ready') ||
-        (github.event.action != 'labeled' &&
-         contains(github.event.pull_request.labels.*.name, 'jenkins-ready'))))
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, 'trigger jenkins') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+               github.event.comment.author_association)
     runs-on: ubuntu-latest
     outputs:
       pr: ${{ steps.route.outputs.pr }}
@@ -51,13 +44,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.issue.number || github.event.pull_request.number }}
-          SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-          if [[ -z $SHA ]]; then
-            SHA=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
-          fi
+          SHA=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
           # Best-effort dedup of repeated triggers. A finished build can be re-triggered, e.g.
           # after a flaky failure. If the lookup fails, build anyway.
           # shellcheck disable=SC2016  # $owner etc. are GraphQL variables, not shell ones.
@@ -89,7 +79,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Acknowledge trigger comment
-        if: github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
