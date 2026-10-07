@@ -258,6 +258,15 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       if (verifier_state->txn_state != TxnState::kCommitted &&
           verifier_state->txn_state != TxnState::kAborted) {
         verifier_state->txn_state = txn_state;
+      } else if (txn_state != verifier_state->txn_state) {
+        // The outcome is already known (e.g. reported by PG) and a retry after a failed post
+        // processing must not override it: schema comparison can be wrong once a newer DDL has
+        // changed the table.
+        LOG(WARNING) << "Using already known state " << verifier_state->txn_state
+                     << " for transaction " << txn << " instead of " << txn_state
+                     << ", debug_caller_info " << debug_caller_info;
+        txn_state = verifier_state->txn_state;
+        is_committed = txn_state == TxnState::kCommitted;
       }
       verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessing;
     }
