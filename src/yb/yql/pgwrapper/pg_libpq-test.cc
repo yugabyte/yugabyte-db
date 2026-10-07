@@ -6466,6 +6466,18 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
 }
 
+// pg_stat_replication on a universe that never used CDC (so the cdc_state table does not exist)
+// used to wait for the table to be created, taking yb_client_admin_operation_timeout_sec and
+// holding a tserver RPC worker for that long.
+TEST_F(PgLibPqTest, PgStatReplicationWithoutCdcStateTable) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET statement_timeout = '10s'"));
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_EQ(
+        ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 0);
+  }
+}
+
 // Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of
 // tablets, but same data returns the same XOR hash.
 TEST_F(PgLibPqTest, TestGetTableXorHash) {

@@ -170,6 +170,11 @@ class CDCStateTable {
   Result<CDCStateTableRange> GetTableRangeAsync(
       CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
 
+  // Returns false if the CDC state table has not been created. The master creates it along with
+  // the first CDC or xCluster stream, so it does not exist on universes that never used either.
+  // Unlike GetTableRange, this does not wait for the table to be created.
+  Result<bool> TableExists() EXCLUDES(mutex_);
+
   // Get a single row from the table. If the row is not found, returns an nullopt.
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
       const CDCStateTableKey& key, CDCStateTableEntrySelector&& field_filter = {}) EXCLUDES(mutex_);

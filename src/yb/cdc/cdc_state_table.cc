@@ -704,6 +704,16 @@ Result<CDCStateTableRange> CDCStateTable::GetTableRangeAsync(
   return GetTableRange(std::move(field_filter), iteration_status);
 }
 
+Result<bool> CDCStateTable::TableExists() {
+  {
+    SharedLock sl(mutex_);
+    if (cdc_table_) {
+      return true;
+    }
+  }
+  return VERIFY_RESULT_REF(client()).TableExists(kCdcStateYBTableName);
+}
+
 Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
     const CDCStateTableKey& key, CDCStateTableEntrySelector&& field_filter) {
   DCHECK(!key.tablet_id.empty() && key.stream_id);
