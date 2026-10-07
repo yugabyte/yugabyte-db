@@ -171,14 +171,6 @@ After the node is provisioned, reboot the node.
 
 If the preflight check fails, rebooting the node may solve some issues (for example, incorrect ulimit settings).
 
-<!-- TODO for 2026.1
-#### Run root or non-root
-
-Use the `--noroot` flag to run only the modules specific to the `yugabyte` user. The script must be run as the user `yugabyte`.
-
-Use the `--root` flag to run only the modules that require root privileges. Modules which do not require root are skipped. The script must be run as the user `root`.
--->
-
 ### Per-node overrides
 
 Using the `--config_override` flag (available in v2025.2.4.0 and later), you can use a single `node-agent-provision.yaml` configuration file for a fleet (for specifying YugabyteDB Anywhere URL, API token, chrony servers, home directories, provider defaults, and so on), while varying only a few fields per VM (such as node IP/FQDN, node name, zone, mount points, and so on) from the command line.
