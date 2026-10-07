@@ -2942,7 +2942,7 @@ public class UniverseCRUDHandler {
         throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
       }
       if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
-        PlacementInfoUtil.validatePartitions(newCluster);
+        PlacementInfoUtil.validatePartitions(newCluster, curCluster);
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
             curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =

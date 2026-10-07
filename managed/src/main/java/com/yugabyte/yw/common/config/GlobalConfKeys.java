@@ -1632,6 +1632,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePrimaryRf9 =
+      new ConfKeyInfo<>(
+          "yb.universe.enable_primary_rf_9",
+          ScopeType.GLOBAL,
+          "Enable primary replication factor 9",
+          "When enabled, allows creating universes and increasing primary cluster replication"
+              + " factor to 9.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",
