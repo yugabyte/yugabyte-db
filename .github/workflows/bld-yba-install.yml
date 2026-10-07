@@ -10,7 +10,9 @@ on:
 
 # Can be skipped if PR is draft or the commit message contains [skip ci] or [ci skip]
 # The jenkins environment requires approval, so the job waits until a yugabyte-dev member
-# approves it, and a new push cancels the waiting run of the previous push.
+# approves it. A newer run for the same PR (push, reopen, ready for review) cancels the older
+# one, whether it is still waiting or already running ybbld for the older commit; a waiting
+# run would otherwise hold the group and block the newer run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true

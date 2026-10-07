@@ -6,6 +6,10 @@
 # until a yugabyte-dev member approves it, so the gh login running this must be in that team.
 # Same as clicking "Review deployments" -> Approve on the PR's workflow runs.
 #
+# Exits 0 when it approved runs, or when Jenkins already started for the head commit (an earlier
+# approval, or a branch whose bld-* workflows are not gated). Exits 1 when there is nothing to
+# approve.
+#
 # usage: trigger-jenkins <pr-number> [-R owner/repo]
 
 set -euo pipefail
@@ -27,17 +31,26 @@ while getopts "R:" opt; do
 done
 [[ $pr =~ ^[0-9]+$ ]] || usage
 
-sha=$(gh api "repos/$repo/pulls/$pr" --jq .head.sha)
+read -r sha draft < <(gh api "repos/$repo/pulls/$pr" --jq '"\(.head.sha) \(.draft)"')
+if [[ $draft == true ]]; then
+  echo "PR #$pr is a draft, so its bld-* jobs are skipped. Mark it ready first (gh pr ready)." >&2
+  exit 1
+fi
 
+# One line per run: "<id> <status> <conclusion> <name>". conclusion is null until it completes.
 bld_runs() {
   gh api "repos/$repo/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
-    --jq '.workflow_runs[] | select(.name | startswith("bld-")) | "\(.id) \(.status) \(.name)"'
+    --jq '.workflow_runs[] | select(.name | startswith("bld-"))
+          | "\(.id) \(.status) \(.conclusion) \(.name)"'
 }
 
-# Right after a push the runs may still be queued; wait for them to reach the approval gate.
-for _ in {1..12}; do
+# The runs for a push or for "gh pr ready" can take a while to be created and to reach the
+# approval gate, and the commit may already carry completed runs (skipped jobs from its draft
+# phase), so wait for a run that is waiting or already started rather than for any run at all.
+for _ in {1..18}; do
   runs=$(bld_runs)
-  if ! grep -qE ' (queued|requested|pending) ' <<<"$runs"; then
+  if ! grep -qE '^[0-9]+ (queued|requested|pending) ' <<<"$runs" &&
+     grep -qE '^[0-9]+ (waiting|in_progress) |^[0-9]+ completed success ' <<<"$runs"; then
     break
   fi
   sleep 10
@@ -45,17 +58,21 @@ done
 
 waiting=$(awk '$2 == "waiting"' <<<"$runs")
 if [[ -z $waiting ]]; then
+  if grep -qE '^[0-9]+ (in_progress|completed success) ' <<<"$runs"; then
+    echo "Jenkins already started for $sha; nothing to approve."
+    exit 0
+  fi
   echo "No bld-* runs are waiting for approval on $sha." >&2
   if [[ -n $runs ]]; then
     echo "Runs on that commit:" >&2
     sed 's/^/  /' <<<"$runs" >&2
   else
-    echo "None ran: the PR may be a draft, or the commit has [skip ci]." >&2
+    echo "None were created; the head commit may have [skip ci]." >&2
   fi
   exit 1
 fi
 
-while read -r run_id _ name; do
+while read -r run_id _ _ name; do
   env_ids=$(gh api "repos/$repo/actions/runs/$run_id/pending_deployments" \
     --jq '.[] | select(.environment.name == "jenkins" and .current_user_can_approve)
           | .environment.id')

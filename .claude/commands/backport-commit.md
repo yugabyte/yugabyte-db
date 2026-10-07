@@ -141,7 +141,7 @@ Approve the waiting Jenkins runs on each PR (whether or not it had conflicts):
 .agents/scripts/trigger-jenkins.sh <pr-number>
 ```
 
-If it reports no waiting runs because the release branch's `bld-*` workflows are not gated on the `jenkins` environment, Jenkins already started on push; nothing more to do.
+On a release branch whose `bld-*` workflows are not gated on the `jenkins` environment yet, Jenkins starts on push and the script reports that it already started.
 
 ### Step 6: Report back to the user
 
