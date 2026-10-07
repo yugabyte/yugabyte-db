@@ -14,6 +14,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
@@ -25,6 +27,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+DECLARE_bool(openssl_require_fips);
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
@@ -366,6 +369,13 @@ Status YsqlConnMgrWrapper::Start() {
   }
 
   proc_->SetEnv(YSQL_CONN_MGR_WARMUP_DB, FLAGS_ysql_conn_mgr_warmup_db);
+
+  rpc::SetOpenSSLEnv(&*proc_);
+
+  // Conn mgr cannot tell from OPENSSL_CONF alone that FIPS was required, since that variable can
+  // also be inherited from this process's environment, so pass the intent separately. It refuses
+  // to start if the provider did not come up.
+  proc_->SetEnv(YSQL_CONN_MGR_REQUIRE_FIPS, FLAGS_openssl_require_fips ? "true" : "false");
 
 #ifdef THREAD_SANITIZER
   // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.
