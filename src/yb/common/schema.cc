@@ -44,11 +44,11 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/compare_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -131,9 +131,9 @@ void ColumnSchema::DoDebugCellAppend(const void* cell, std::string* ret) const {
 // TODO: include attributes_.ToString() -- need to fix unit tests
 // first
 string ColumnSchema::ToString() const {
-  return strings::Substitute("$0[$1]",
-                             name_,
-                             TypeToString());
+  return Format("$0[$1]",
+                name_,
+                TypeToString());
 }
 
 string ColumnSchema::TypeToString() const {

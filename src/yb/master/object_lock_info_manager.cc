@@ -29,8 +29,6 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -98,7 +96,6 @@ namespace master {
 using namespace std::literals;
 using namespace std::placeholders;
 using server::MonitoredTaskState;
-using strings::Substitute;
 using tserver::AcquireObjectLockRequestPB;
 using tserver::AcquireObjectLockResponsePB;
 using tserver::ReleaseObjectLockRequestPB;

@@ -23,6 +23,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
@@ -302,7 +303,7 @@ class UsearchIndex :
         "$0 nodes, $1 edges, $2 average edges per node",
         stats.nodes,
         stats.edges,
-        StringPrintf("%.2f", stats.edges * 1.0 / stats.nodes));
+        FixedPoint(stats.edges * 1.0 / stats.nodes, 2));
   }
 
   std::string IndexStatsStr() const override {

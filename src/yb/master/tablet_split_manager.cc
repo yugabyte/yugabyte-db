@@ -39,6 +39,7 @@
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -153,7 +154,6 @@ METRIC_DEFINE_gauge_uint64(cluster, outstanding_tablet_splits,
 
 namespace yb::master {
 
-using strings::Substitute;
 using namespace std::literals;
 
 namespace {
@@ -494,15 +494,15 @@ void TabletSplitManager::DisableSplittingFor(
     const MonoDelta& disable_duration, const std::string& feature_name) {
   DCHECK(!feature_name.empty());
   UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  LOG(INFO) << Substitute("Disabling tablet splitting for $0 milliseconds for feature $1.",
-                          disable_duration.ToMilliseconds(), feature_name);
+  LOG(INFO) << Format("Disabling tablet splitting for $0 milliseconds for feature $1.",
+                      disable_duration.ToMilliseconds(), feature_name);
   splitting_disabled_until_[feature_name] = CoarseMonoClock::Now() + disable_duration;
 }
 
 void TabletSplitManager::ReenableSplittingFor(const std::string& feature_name) {
   DCHECK(!feature_name.empty());
   UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  LOG(INFO) << Substitute("Re-enabling tablet splitting for feature $0.", feature_name);
+  LOG(INFO) << Format("Re-enabling tablet splitting for feature $0.", feature_name);
   splitting_disabled_until_.erase(feature_name);
 }
 

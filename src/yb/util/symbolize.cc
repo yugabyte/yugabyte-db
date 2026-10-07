@@ -21,6 +21,7 @@
 #include <thread>
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/libbacktrace_util.h"
 
@@ -139,11 +140,15 @@ void SymbolizeAddress(
     }
   }
 
-  StringAppendF(buf, kStackTraceEntryFormat, kPrintfPointerFieldWidth, pc, symbol);
+  *buf += Format(kStackTraceEntryFormat, FormatStackTraceAddress(pc), symbol);
   // We are appending the end-of-line character separately because we want to reuse the same
   // format string for libbacktrace callback and glog-based symbolization, and we have an extra
   // file name / line number component before the end-of-line in the libbacktrace case.
   buf->push_back('\n');
+}
+
+std::string FormatStackTraceAddress(const void* pc) {
+  return PadLeft("0x" + HexString(reinterpret_cast<uintptr_t>(pc)), kStackTraceAddressWidth);
 }
 
 std::string DemangleName(const char* mangled_name) {

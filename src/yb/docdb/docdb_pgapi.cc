@@ -25,6 +25,7 @@
 
 #include "yb/qlexpr/ql_expr.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -1387,7 +1388,7 @@ Status SetValueFromQLBinaryHelper(
         datum_message.set_datum_string(decoded_str, strlen(decoded_str));
       } else {
         LOG(INFO) << "For record of type : " << type_id << " no attributes found in the cache";
-        return STATUS_SUBSTITUTE(CacheMissError, "composite");  // Do not change the message.
+        return STATUS_FORMAT(CacheMissError, "composite");  // Do not change the message.
       }
       break;
     }
@@ -1473,7 +1474,7 @@ Status SetValueFromQLBinaryHelper(
         VLOG(2) << "For enum oid: " << enum_oid << " found label" << label;
       } else {
         LOG(INFO) << "For enum oid: " << enum_oid << " no label found in cache";
-        return STATUS_SUBSTITUTE(CacheMissError, "enum");  // Do not change the message.
+        return STATUS_FORMAT(CacheMissError, "enum");  // Do not change the message.
       }
       datum_message.set_datum_string(label.c_str(), strlen(label.c_str()));
       break;

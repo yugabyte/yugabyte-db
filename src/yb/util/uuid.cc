@@ -103,7 +103,7 @@ Slice Uuid::AsSlice() const {
 
 Result<Uuid> Uuid::FromSlice(const Slice& slice) {
   if (slice.size() != kUuidSize) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice is invalid: $0", slice.size());
+    return STATUS_FORMAT(InvalidArgument, "Size of slice is invalid: $0", slice.size());
   }
   Uuid result;
   memcpy(result.boost_uuid_.data, slice.data(), kUuidSize);
@@ -132,8 +132,8 @@ Result<Uuid> Uuid::FromHexString(const std::string& hex_string) {
 
   constexpr size_t kInputLen = kUuidSize * 2;
   if (hex_string.length() != kInputLen) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of hex_string is invalid: $0, expected: $1",
-                             hex_string.size(), kInputLen);
+    return STATUS_FORMAT(InvalidArgument, "Size of hex_string is invalid: $0, expected: $1",
+                         hex_string.size(), kInputLen);
   }
   using Word = unsigned long long; // NOLINT
   constexpr size_t kWordLen = sizeof(Word) * 2;
@@ -163,8 +163,8 @@ Result<Uuid> Uuid::FromComparable(const Slice& slice) {
   Uuid result;
   size_t expected_size = slice.size();
   if (expected_size != kUuidSize) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-                             "Decode error: Size of slice is invalid: $0", expected_size);
+    return STATUS_FORMAT(InvalidArgument,
+                         "Decode error: Size of slice is invalid: $0", expected_size);
   }
   const uint8_t* bytes = slice.data();
   if ((bytes[0] & 0xF0) == 0x10) {
@@ -237,8 +237,8 @@ Status Uuid::IsTimeUuid() const {
     return Status::OK();
   }
 
-  return STATUS_SUBSTITUTE(InvalidArgument,
-                           "Not a type 1 UUID. Current type: $0", boost_uuid_.version());
+  return STATUS_FORMAT(InvalidArgument,
+                       "Not a type 1 UUID. Current type: $0", boost_uuid_.version());
 }
 
 bool operator<(const Uuid& lhs, const Uuid& rhs) {

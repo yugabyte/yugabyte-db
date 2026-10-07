@@ -59,7 +59,6 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_parser.h"
@@ -83,6 +82,7 @@
 #include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
@@ -107,7 +107,6 @@ using std::endl;
 using std::shared_ptr;
 using std::vector;
 using std::string;
-using strings::Substitute;
 
 using namespace std::placeholders;  // NOLINT(build/namespaces)
 
@@ -939,17 +938,17 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
 
     peer->GetInFlightOperations(trace_type, &inflight);
     for (const auto& inflight_tx : inflight) {
-      string total_time_str = Substitute("$0 us.", inflight_tx.running_for_micros());
+      string total_time_str = Format("$0 us.", inflight_tx.running_for_micros());
       string description;
       if (trace_type == Operation::TRACE_TXNS) {
-        description = Substitute("$0, Trace: $1",
-                                  inflight_tx.description(), inflight_tx.trace_buffer());
+        description = Format("$0, Trace: $1",
+                              inflight_tx.description(), inflight_tx.trace_buffer());
       } else {
         description = inflight_tx.description();
       }
 
       if (!as_text) {
-        (*output) << Substitute(
+        (*output) << Format(
           "<tr><th>$0</th><th>$1</th><th>$2</th><th>$3</th><th>$4</th></tr>\n",
           EscapeForHtmlToString(peer->tablet_id()),
           EscapeForHtmlToString(inflight_tx.op_id().ShortDebugString()),
@@ -1029,9 +1028,9 @@ void TabletServerPathHandlers::HandleCgroupsPage(
 
 namespace {
 string TabletLink(const string& id) {
-  return Substitute("<a href=\"/tablet?id=$0\">$1</a>",
-                    UrlEncodeToString(id),
-                    EscapeForHtmlToString(id));
+  return Format("<a href=\"/tablet?id=$0\">$1</a>",
+                UrlEncodeToString(id),
+                EscapeForHtmlToString(id));
 }
 
 bool CompareByTabletId(const std::shared_ptr<TabletPeer>& a,
@@ -1260,13 +1259,13 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
         : peer.permanent_uuid();
     peer_addr_or_uuid = EscapeForHtmlToString(peer_addr_or_uuid);
     string role_name = PeerRole_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
-    string formatted = Substitute("$0: $1", role_name, peer_addr_or_uuid);
+    string formatted = Format("$0: $1", role_name, peer_addr_or_uuid);
     // Make the local peer bold.
     if (peer.permanent_uuid() == tserver_->instance_pb().permanent_uuid()) {
-      formatted = Substitute("<b>$0</b>", formatted);
+      formatted = Format("<b>$0</b>", formatted);
     }
 
-    html << Substitute(" <li>$0</li>\n", formatted);
+    html << Format(" <li>$0</li>\n", formatted);
   }
   html << "</ul>\n";
   return html.str();
@@ -1372,10 +1371,10 @@ void TabletServerPathHandlers::HandleIntentsDBPage(const Webserver::WebRequest& 
 string TabletServerPathHandlers::GetDashboardLine(const std::string& link,
                                                   const std::string& text,
                                                   const std::string& desc) {
-  return Substitute("  <tr><td><a href=\"$0\">$1</a></td><td>$2</td></tr>\n",
-                    EscapeForHtmlToString(link),
-                    EscapeForHtmlToString(text),
-                    EscapeForHtmlToString(desc));
+  return Format("  <tr><td><a href=\"$0\">$1</a></td><td>$2</td></tr>\n",
+                EscapeForHtmlToString(link),
+                EscapeForHtmlToString(text),
+                EscapeForHtmlToString(desc));
 }
 
 void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
@@ -1398,9 +1397,9 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   for (int i = 0; i < ops_count; i++) {
     MaintenanceManagerStatusPB_MaintenanceOpPB op_pb = pb.registered_operations(i);
     if (op_pb.running() > 0) {
-      *output <<  Substitute("<tr><td>$0</td><td>$1</td></tr>\n",
-                             EscapeForHtmlToString(op_pb.name()),
-                             op_pb.running());
+      *output <<  Format("<tr><td>$0</td><td>$1</td></tr>\n",
+                         EscapeForHtmlToString(op_pb.name()),
+                         op_pb.running());
     }
   }
   *output << "</table>\n";
@@ -1410,12 +1409,12 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   *output << "  <tr><th>Name</th><th>Duration</th><th>Time since op started</th></tr>\n";
   for (int i = 0; i < pb.completed_operations_size(); i++) {
     MaintenanceManagerStatusPB_CompletedOpPB op_pb = pb.completed_operations(i);
-    *output <<  Substitute("<tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
-                           EscapeForHtmlToString(op_pb.name()),
-                           HumanReadableElapsedTime::ToShortString(
-                               op_pb.duration_millis() / 1000.0),
-                           HumanReadableElapsedTime::ToShortString(
-                               op_pb.secs_since_start()));
+    *output <<  Format("<tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
+                       EscapeForHtmlToString(op_pb.name()),
+                       HumanReadableElapsedTime::ToShortString(
+                           op_pb.duration_millis() / 1000.0),
+                       HumanReadableElapsedTime::ToShortString(
+                           op_pb.secs_since_start()));
   }
   *output << "</table>\n";
 
@@ -1427,11 +1426,11 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   for (int i = 0; i < ops_count; i++) {
     MaintenanceManagerStatusPB_MaintenanceOpPB op_pb = pb.registered_operations(i);
     if (op_pb.running() == 0) {
-      *output << Substitute(
+      *output << Format(
           "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td></tr>\n",
-          EscapeForHtmlToString(op_pb.name()), op_pb.runnable(),
+          EscapeForHtmlToString(op_pb.name()), op_pb.runnable() ? "true" : "false",
           HumanizeBytes(op_pb.ram_anchored_bytes()),
-          HumanizeBytes(op_pb.logs_retained_bytes()), op_pb.perf_improvement(),
+          HumanizeBytes(op_pb.logs_retained_bytes()), SimpleDtoa(op_pb.perf_improvement()),
           op_pb.cdcsdk_reset_stale_retention_barrier() ? "Yes" : "No");
     }
   }
@@ -1518,8 +1517,8 @@ void TabletServerPathHandlers::HandleXClusterPage(
       xcluster_streams
           .AddRow(
               stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
-              stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
-              StringPrintf("%.3f", stat.mbs_sent), stat.records_sent,
+              stat.avg_poll_delay_ms, FixedPoint(stat.avg_throughput_kbps, 3),
+              FixedPoint(stat.mbs_sent, 3), stat.records_sent,
               stat.avg_get_changes_latency_ms, stat.sent_index, stat.latest_index,
               stat.last_poll_time.ToFormattedString(), stat.status)
           .SetColor(stat.status);
@@ -1541,8 +1540,8 @@ void TabletServerPathHandlers::HandleXClusterPage(
           .AddRow(
               stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
               stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
-              StringPrintf("%.3f", stat.avg_throughput_kbps),
-              StringPrintf("%.3f", stat.mbs_received), stat.records_received,
+              FixedPoint(stat.avg_throughput_kbps, 3),
+              FixedPoint(stat.mbs_received, 3), stat.records_received,
               stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms, stat.received_index,
               stat.last_poll_time.ToFormattedString(), stat.status)
           .SetColor(stat.status);

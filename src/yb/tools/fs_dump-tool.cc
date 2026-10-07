@@ -34,10 +34,9 @@
 #include <memory>
 #include <vector>
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/tools/fs_tool.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -60,7 +59,6 @@ namespace tools {
 
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 namespace {
 
@@ -146,9 +144,9 @@ static int FsDumpToolMain(int argc, char** argv) {
     {
       if (argc < 3) {
         Usage(argv[0],
-              Substitute("dump_tablet requires tablet id: $0 "
-                         "dump_tablet <tablet_id>",
-                         argv[0]));
+              Format("dump_tablet requires tablet id: $0 "
+                     "dump_tablet <tablet_id>",
+                     argv[0]));
         return 2;
       }
       CHECK_OK(fs_tool.DumpTabletData(argv[2]));
@@ -157,8 +155,8 @@ static int FsDumpToolMain(int argc, char** argv) {
 
     case PRINT_TABLET_META: {
       if (argc < 3) {
-        Usage(argv[0], Substitute("print_meta requires a tablet id: $0"
-                                  "print_meta <tablet_id>", argv[0]));
+        Usage(argv[0], Format("print_meta requires a tablet id: $0"
+                              "print_meta <tablet_id>", argv[0]));
         return 2;
       }
       CHECK_OK(fs_tool.PrintTabletMeta(argv[2], 0));
@@ -166,7 +164,7 @@ static int FsDumpToolMain(int argc, char** argv) {
     }
     case PRINT_UUID: {
       if (argc < 2) {
-        Usage(argv[0], Substitute("$0 print_uuid", argv[0]));
+        Usage(argv[0], Format("$0 print_uuid", argv[0]));
         return 2;
       }
       CHECK_OK(fs_tool.PrintUUID(0));

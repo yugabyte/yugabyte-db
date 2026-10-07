@@ -1392,14 +1392,14 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   bool is_stale = false, is_ts_found = false;
   for (int i = 0; i < resp.servers_size(); i++) {
     if (!resp.servers(i).has_instance_id()) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         Uninitialized,
         "ListTabletServers RPC returned a TS with uninitialized instance id."
       );
     }
 
     if (!resp.servers(i).instance_id().has_permanent_uuid()) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         Uninitialized,
         "ListTabletServers RPC returned a TS with uninitialized UUIDs."
       );
@@ -1412,7 +1412,7 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   }
 
   if (!is_ts_found) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         NotFound,
         "Given TS not found in ListTabletServers RPC."
     );

@@ -63,7 +63,6 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -180,7 +179,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
 using consensus::MakeOpIdPB;
-using strings::Substitute;
 
 static string DebugInfo(const string& tablet_id,
                         uint64_t segment_seqno,
@@ -194,9 +192,9 @@ static string DebugInfo(const string& tablet_id,
     debug_str.resize(500);
     debug_str.append("...");
   }
-  return Substitute("Debug Info: Error playing entry $0 of segment $1 of tablet $2. "
-                    "Segment path: $3. Entry: $4", entry_idx, segment_seqno, tablet_id,
-                    segment_path, debug_str);
+  return Format("Debug Info: Error playing entry $0 of segment $1 of tablet $2. "
+                "Segment path: $3. Entry: $4", entry_idx, segment_seqno, tablet_id,
+                segment_path, debug_str);
 }
 
 // ================================================================================================
@@ -376,11 +374,11 @@ void ReplayState::DumpReplayStateToStrings(
       stored_op_ids.intents,
       stored_op_ids.vector_indexes));
   if (num_entries_applied_to_rocksdb > 0) {
-    strings->push_back(Substitute("Log entries applied to RocksDB: $0",
-                                  num_entries_applied_to_rocksdb));
+    strings->push_back(Format("Log entries applied to RocksDB: $0",
+                              num_entries_applied_to_rocksdb));
   }
   if (!pending_replicates.empty()) {
-    strings->push_back(Substitute("Dumping REPLICATES ($0 items):", pending_replicates.size()));
+    strings->push_back(Format("Dumping REPLICATES ($0 items):", pending_replicates.size()));
     AddEntriesToStrings(pending_replicates, strings, half_limit);
   }
 }
@@ -587,7 +585,7 @@ class TabletBootstrap {
     // always need to know the term and index of the last logged op in order to vote, know how to
     // respond to AppendEntries(), etc.
     if (has_blocks && !needs_recovery) {
-      return STATUS(IllegalState, Substitute("Tablet $0: Found rowsets but no log "
+      return STATUS(IllegalState, Format("Tablet $0: Found rowsets but no log "
                                             "segments could be found.",
                                             tablet_id));
     }
@@ -787,7 +785,7 @@ class TabletBootstrap {
       LOG_WITH_PREFIX(INFO) << "Moving log directory " << log_dir << " to recovery directory "
                             << recovery_path << " in preparation for log replay";
       RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(log_dir, recovery_path),
-                            Substitute("Could not move log directory $0 to recovery dir $1",
+                            Format("Could not move log directory $0 to recovery dir $1",
                                       log_dir, recovery_path));
       RETURN_NOT_OK_PREPEND(GetEnv()->CreateDir(log_dir),
                             "Failed to recreate log directory " + log_dir);
@@ -838,11 +836,11 @@ class TabletBootstrap {
     LOG_WITH_PREFIX(INFO) << "Preparing to delete log recovery files and directory "
                           << recovery_path;
 
-    string tmp_path = Substitute("$0-$1", recovery_path, GetCurrentTimeMicros());
+    string tmp_path = Format("$0-$1", recovery_path, GetCurrentTimeMicros());
     LOG_WITH_PREFIX(INFO) << "Renaming log recovery dir from "  << recovery_path
                           << " to " << tmp_path;
     RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(recovery_path, tmp_path),
-                          Substitute("Could not rename old recovery dir from: $0 to: $1",
+                          Format("Could not rename old recovery dir from: $0 to: $1",
                                     recovery_path, tmp_path));
 
     if (FLAGS_skip_remove_old_recovery_dir) {
@@ -917,7 +915,7 @@ class TabletBootstrap {
         RETURN_NOT_OK(HandleReplicateMessage(entry_metadata, entry_ptr));
         break;
       default:
-        return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
+        return STATUS(Corruption, Format("Unexpected log entry type: $0", entry.type()));
     }
     MAYBE_FAULT(FLAGS_TEST_fault_crash_during_log_replay);
     return Status::OK();
@@ -1049,7 +1047,7 @@ class TabletBootstrap {
 
       // Unexpected cases:
       case consensus::UNKNOWN_OP:
-        return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
+        return STATUS(IllegalState, Format("Unsupported operation type: $0", op_type));
     }
 
     LOG_WITH_PREFIX(DFATAL) << "Invalid operation type " << op_type

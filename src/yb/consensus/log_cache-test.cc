@@ -51,6 +51,7 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -507,8 +508,8 @@ TEST_F(LogCacheTest, TestReplaceMessages) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
   EXPECT_EQ(size_with_one_msg, tracker->consumption());
-  EXPECT_EQ(Substitute("Pinned index: 2, LogCacheStats(num_ops=1, bytes=$0, disk_reads=0)",
-                       size_with_one_msg),
+  EXPECT_EQ(Format("Pinned index: 2, LogCacheStats(num_ops=1, bytes=$0, disk_reads=0)",
+                   size_with_one_msg),
             cache_->ToString());
 }
 

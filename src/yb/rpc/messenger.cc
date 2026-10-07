@@ -45,7 +45,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/constants.h"

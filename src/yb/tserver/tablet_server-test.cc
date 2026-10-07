@@ -37,7 +37,6 @@
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -66,6 +65,7 @@
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
@@ -75,7 +75,6 @@ using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::HybridClock;
 using std::string;
-using strings::Substitute;
 
 DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
              "Number of rows to insert in the warmup phase of the single threaded"
@@ -182,7 +181,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(server::SetFlagResponsePB::SUCCESS, resp.result());
     ASSERT_EQ(resp.msg(), "metrics_retirement_age_ms set to 12345\n");
-    ASSERT_EQ(Substitute("$0", old_val), resp.old_value());
+    ASSERT_EQ(Format("$0", old_val), resp.old_value());
     ASSERT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 
@@ -235,17 +234,17 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   string addr = yb::ToString(mini_server_->bound_http_addr());
 
   // Tablets page should list tablet.
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tablets", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/tablets", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), kTabletId);
 
   // Tablet page should include the schema.
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet?id=$1", addr, kTabletId),
+  ASSERT_OK(c.FetchURL(Format("http://$0/tablet?id=$1", addr, kTabletId),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "<th>key</th>");
   ASSERT_STR_CONTAINS(buf.ToString(), "<td>string NULLABLE VALUE</td>");
 
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet-consensus-status?id=$1",
+  ASSERT_OK(c.FetchURL(Format("http://$0/tablet-consensus-status?id=$1",
                        addr, kTabletId), &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), kTabletId);
 
@@ -258,7 +257,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 0;
   for (int i = 0; i < 3; i++) {
     SCOPED_TRACE(i);
-    ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/jsonmetricz", addr, kTabletId),
+    ASSERT_OK(c.FetchURL(Format("http://$0/jsonmetricz", addr, kTabletId),
                                 &buf));
 
     // Check that the tablet entry shows up.
@@ -280,7 +279,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
 
   // Smoke-test the tracing infrastructure.
   ASSERT_OK(c.FetchURL(
-                Substitute("http://$0/tracing/json/get_buffer_percent_full", addr, kTabletId),
+                Format("http://$0/tracing/json/get_buffer_percent_full", addr, kTabletId),
                 &buf));
   ASSERT_EQ(buf.ToString(), "0");
 
@@ -289,19 +288,19 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   string req_b64;
   Base64Escape(enable_req_json, &req_b64);
 
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tracing/json/begin_recording?$1",
-                                         addr,
-                                         req_b64), &buf));
+  ASSERT_OK(c.FetchURL(Format("http://$0/tracing/json/begin_recording?$1",
+                                     addr,
+                                     req_b64), &buf));
   ASSERT_EQ(buf.ToString(), "");
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tracing/json/end_recording", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/tracing/json/end_recording", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "__metadata");
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/tracing/json/categories", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/tracing/json/categories", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "\"rpc\"");
 
   // Smoke test the pprof contention profiler handler.
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/pprof/contention?seconds=1", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/pprof/contention?seconds=1", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "Discarded samples = 0");
 #if defined(__linux__)
@@ -314,7 +313,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // This parameter allow user to have percentile not to be reseted for every web page fetch.
   // Here, handler_latency_yb_tserver_TabletServerService_Write's percentile is used for testing.
   // In the begining, we expect it's value is zero.
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=false", addr),
                 &buf));
   // Find our target metric and concatenate value zero to it. metric_instance_with_zero_value is a
   // string looks like: handler_latency_yb_tserver_TabletServerService_Write{...quantile=p50...} 0
@@ -352,21 +351,21 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   }
 
   // Check that its percentile become none zero after inserting data
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=false", addr),
                 &buf));
   ASSERT_STR_NOT_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
 
   // Check that percentile should not to be reseted to zero after refreshing the page
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=false", addr),
                 &buf));
   ASSERT_STR_NOT_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
 
   // Fetch the page again with reset_histograms=true to reset the percentile
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=true", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=true", addr),
                 &buf));
 
   // Verify that the percentile has been reseted back to zero
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=true", addr),
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics?reset_histograms=true", addr),
                 &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
   tablet.reset();
@@ -697,8 +696,8 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // Verify that fetching metrics doesn't crash. Regression test for KUDU-638.
   EasyCurl c;
   faststring buf;
-  ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/jsonmetricz",
-                                           AsString(mini_server_->bound_http_addr())),
+  ASSERT_OK(c.FetchURL(Format("http://$0/jsonmetricz",
+                              AsString(mini_server_->bound_http_addr())),
                                            &buf));
 
   // Verify that after restarting the TS, the tablet is still not in the tablet manager.
@@ -906,7 +905,7 @@ namespace {
 void CalcTestRowChecksum(uint64_t *out, int32_t key, uint8_t string_field_defined = true) {
   QLValue value;
 
-  string strval = strings::Substitute("original$0", key);
+  string strval = Format("original$0", key);
   string buffer;
   uint32_t index = 0;
   buffer.append(pointer_cast<const char*>(&index), sizeof(index));

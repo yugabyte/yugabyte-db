@@ -36,7 +36,6 @@
 #include <google/protobuf/message.h>
 
 #include "yb/gutil/endian.h"
-#include "yb/gutil/stringprintf.h"
 
 #include "yb/rpc/constants.h"
 #include "yb/rpc/lightweight_message.h"
@@ -47,6 +46,7 @@
 
 #include "yb/util/crc.h"
 #include "yb/util/faststring.h"
+#include "yb/util/format.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
@@ -300,13 +300,13 @@ Result<Slice> ParseYBHeader(Slice buf, Header* parsed_header) {
 
   if (PREDICT_FALSE(!in.Skip(main_msg_len))) {
     return STATUS(Corruption,
-        StringPrintf("Invalid packet: data too short, expected %d byte main_msg", main_msg_len),
+        Format("Invalid packet: data too short, expected $0 byte main_msg", main_msg_len),
         buf.ToDebugString());
   }
 
   if (PREDICT_FALSE(in.BytesUntilLimit() > 0)) {
     return STATUS(Corruption,
-      StringPrintf("Invalid packet: %d extra bytes at end of packet", in.BytesUntilLimit()),
+      Format("Invalid packet: $0 extra bytes at end of packet", in.BytesUntilLimit()),
       buf.ToDebugString());
   }
 

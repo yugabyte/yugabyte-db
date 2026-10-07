@@ -39,6 +39,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
@@ -1015,10 +1016,10 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   for (int i = 0; i < 9; i += 2) {
     CassandraResult res =  ASSERT_RESULT(
         session.ExecuteWithResult(sel_prepared.Bind().Bind(0, i)));
-    ASSERT_EQ(res.RenderToString(), strings::Substitute("$0,$1", i, i));
+    ASSERT_EQ(res.RenderToString(), Format("$0,$1", i, i));
   }
 
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements", ToString(addrs[0])), &buf));
   JsonDocument doc;
   auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
   auto stmt_stats = root["prepared_statements"];
@@ -1070,7 +1071,7 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
 
   EasyCurl curl;
   faststring buf;
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements", ToString(addrs[0])), &buf));
 
   JsonDocument doc;
   auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
@@ -1097,10 +1098,10 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   }
 
   // reset the counters and verify
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
-                                              ToString(addrs[0])), &buf));
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
-                                              ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements-reset",
+                                 ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements",
+                                 ToString(addrs[0])), &buf));
 
   auto post_reset_root = ASSERT_RESULT(doc.Parse(buf.ToString()));
   auto stmt_stats_post_reset = ASSERT_RESULT(post_reset_root["unprepared_statements"].GetArray());

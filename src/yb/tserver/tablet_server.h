@@ -126,8 +126,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.
-  static const uint16_t kDefaultPort = 9100;
-  static const uint16_t kDefaultWebPort = 9000;
+  static constexpr uint16_t kDefaultPort = 9100;
+  static constexpr uint16_t kDefaultWebPort = 9000;
 
   // Default tserver and consensus RPC queue length per service.
   static constexpr uint32_t kDefaultSvcQueueLength = 5000;

@@ -74,7 +74,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/hnsw/hnsw_block_cache.h"
 
@@ -454,7 +453,6 @@ using std::unordered_set;
 using std::vector;
 using std::min;
 using std::deque;
-using strings::Substitute;
 using tablet::BOOTSTRAPPING;
 using tablet::NOT_STARTED;
 using tablet::RaftGroupMetadata;
@@ -1749,9 +1747,9 @@ Status CheckLeaderTermNotLower(
     int64_t last_logged_term) {
   if (PREDICT_FALSE(leader_term < last_logged_term)) {
     Status s = STATUS(InvalidArgument,
-        Substitute("Leader has replica of tablet $0 with term $1 lower than last "
-                   "logged term $2 on local replica. Rejecting remote bootstrap request",
-                   tablet_id, leader_term, last_logged_term));
+        Format("Leader has replica of tablet $0 with term $1 lower than last "
+               "logged term $2 on local replica. Rejecting remote bootstrap request",
+               tablet_id, leader_term, last_logged_term));
     LOG(WARNING) << LogPrefix(tablet_id, uuid) << "Remote bootstrap: " << s;
     return s;
   }
@@ -1800,8 +1798,8 @@ Status HandleReplacingStaleTablet(
     }
     default: {
       return STATUS(IllegalState,
-          Substitute("Found tablet $0 in unexpected state $1 for remote bootstrap.",
-                     tablet_id, TabletDataState_Name(data_state)));
+          Format("Found tablet $0 in unexpected state $1 for remote bootstrap.",
+                 tablet_id, TabletDataState_Name(data_state)));
     }
   }
 
@@ -2060,7 +2058,7 @@ Status TSTabletManager::DeleteTablet(
         InvalidArgument,
         "DeleteTablet() requires an argument that is one of "
         "TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED",
-        Substitute("Given: $0 ($1)", TabletDataState_Name(delete_type), delete_type));
+        Format("Given: $0 ($1)", TabletDataState_Name(delete_type), delete_type));
   }
 
   TRACE("Deleting tablet $0", tablet_id);
@@ -2124,10 +2122,10 @@ Status TSTabletManager::DeleteTablet(
           tablet_id,
           std::make_shared<consensus::StateChangeContext>(
               consensus::StateChangeReason::DELETE_TABLET_CAS_FAILED));
-      return STATUS(IllegalState, Substitute("Request specified cas_config_opid_index_less_or_equal"
-                                             " of $0 but the committed config has opid_index of $1",
-                                             *cas_config_opid_index_less_or_equal,
-                                             committed_config.committed_op_index()));
+      return STATUS(IllegalState, Format("Request specified cas_config_opid_index_less_or_equal"
+                                         " of $0 but the committed config has opid_index of $1",
+                                         *cas_config_opid_index_less_or_equal,
+                                         committed_config.committed_op_index()));
     }
   }
 
@@ -2206,8 +2204,8 @@ Status TSTabletManager::DeleteTablet(
                                 this,
                                 fs_manager_);
     if (PREDICT_FALSE(!s.ok())) {
-      s = s.CloneAndPrepend(Substitute("Unable to delete on-disk data from tablet $0",
-                                       tablet_id));
+      s = s.CloneAndPrepend(Format("Unable to delete on-disk data from tablet $0",
+                                   tablet_id));
       LOG(WARNING) << s.ToString();
       tablet_peer->SetFailed(s);
       return s;
@@ -2252,7 +2250,7 @@ Status TSTabletManager::CheckRunningUnlocked(
   *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
   return STATUS(
       ServiceUnavailable,
-      Substitute("Tablet Manager is not running: $0", TSTabletManagerStatePB_Name(state_)));
+      Format("Tablet Manager is not running: $0", TSTabletManagerStatePB_Name(state_)));
 }
 
 // NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.

@@ -91,6 +91,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/pb_util.h"
@@ -2440,13 +2441,13 @@ class PgClientSession::Impl {
     int64_t row_count;
     PgDocData::LoadCache(context->sidecars().GetFirst(), &row_count, &cursor);
     if (row_count != 2) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         InternalError, "Invalid row count has been fetched from sequence $0", req.seq_oid());
     }
 
     // Get the range start
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
-      return STATUS_SUBSTITUTE(InternalError,
+      return STATUS_FORMAT(InternalError,
                               "Invalid value range start has been fetched from sequence $0",
                               req.seq_oid());
     }
@@ -2454,7 +2455,7 @@ class PgClientSession::Impl {
 
     // Get the range end
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
-      return STATUS_SUBSTITUTE(InternalError,
+      return STATUS_FORMAT(InternalError,
                               "Invalid value range end has been fetched from sequence $0",
                               req.seq_oid());
     }
@@ -2525,16 +2526,16 @@ class PgClientSession::Impl {
     int64_t row_count = 0;
     PgDocData::LoadCache(context->sidecars().GetFirst(), &row_count, &cursor);
     if (row_count == 0) {
-      return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+      return STATUS_FORMAT(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
     }
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
-      return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+      return STATUS_FORMAT(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
     }
     auto last_val = PgDocData::ReadNumber<int64_t>(&cursor);
     resp->set_last_val(last_val);
 
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
-      return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+      return STATUS_FORMAT(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
     }
     auto is_called = PgDocData::ReadNumber<bool>(&cursor);
     resp->set_is_called(is_called);
