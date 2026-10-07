@@ -45,7 +45,7 @@ These steps prepare the node for use by YugabyteDB Anywhere, including setting u
 
 {{< tip title="Brownfield provisioning (Re-provision existing nodes)" >}}
 
-For brownfield use-cases where the nodes are already added to the node instances of the provider, you can generate config files. See [Generate configuration files](#generate-configuration-files).
+For brownfield use cases where the nodes are already added to the node instances of the provider, you can generate config files. See [Generate configuration files](#generate-configuration-files).
 
 {{< /tip >}}
 
@@ -218,7 +218,7 @@ The page lists the node agents that have been activated and their status.
 
 ## Generate configuration files
 
-Use the `--generate_config` flag to generate a new YAML config by pulling information from YugabyteDB Anywhere without actually executing any other command. Use this for brownfield use-cases where the nodes are already added to the node instances of the provider and they need to be _re-provisioned_. This option allows you to generate the configuration YAML file without having to manually create it. The YugabyteDB Anywhere URL, API token, and the node FQDN/IP added to node instances in the provider minimally are required in `node-agent-provision.yaml`. (Available in v2025.2.4.0 and later.)
+Use the `--generate_config` flag to generate a new YAML config by pulling information from YugabyteDB Anywhere without actually executing any other command. Use this for brownfield use cases where the nodes are already added to the node instances of the provider and they need to be _re-provisioned_. This option allows you to generate the configuration YAML file without having to manually create it. The YugabyteDB Anywhere URL, API token, and the node FQDN/IP added to node instances in the provider minimally are required in `node-agent-provision.yaml`. (Available in v2025.2.4.0 and later.)
 
 When you combine [--config_override](#per-node-overrides) with `--generate_config`, overrides apply to fields used to contact YugabyteDB Anywhere (for example, `yba.url`), not to values that YugabyteDB Anywhere returns into the generated file.
 

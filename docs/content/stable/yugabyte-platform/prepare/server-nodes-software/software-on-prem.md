@@ -45,7 +45,7 @@ These steps prepare the node for use by YugabyteDB Anywhere, including setting u
 
 {{< tip title="Brownfield provisioning (Re-provision existing nodes)" >}}
 
-For brownfield use-cases where the nodes are already added to the node instances of the provider, you can generate config files. See [Generate configuration files](#generate-configuration-files).
+For brownfield use cases where the nodes are already added to the node instances of the provider, you can generate config files. See [Generate configuration files](#generate-configuration-files).
 
 {{< /tip >}}
 
