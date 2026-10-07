@@ -14,7 +14,17 @@ type: docs
 
 This tutorial guides you through constructing a Retrieval-Augmented Generation (RAG) pipeline using YugabyteDB, a distributed SQL database. By integrating YugabyteDB with vector search capabilities, you can enhance your AI applications with scalable, resilient, and low-latency access to semantically rich data.
 
-If an AI coding agent builds this pipeline for you, install the [yb-rag-langchain](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-rag-langchain) skill first. See [YugabyteDB Agent Skills](mcp-server/#yugabytedb-agent-skills) for the install command.
+## Build RAG with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) builds this pipeline for you, install the official [yb-rag-langchain skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-rag-langchain) first. The skill supplies vector-index and hybrid-search setup for LangChain, so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-rag-langchain
+```
+
+The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
 
 ## Why use RAG?
 

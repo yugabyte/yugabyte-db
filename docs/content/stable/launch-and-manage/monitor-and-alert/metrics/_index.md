@@ -21,7 +21,17 @@ This section describes the most frequently used metrics, along with how you can 
 
 For information on query tuning, refer to [Query tuning](../../../launch-and-manage/monitor-and-alert/query-tuning/).
 
-If an AI coding agent analyzes these metrics for you, install the [yb-metrics-analysis](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-metrics-analysis) skill first. See [YugabyteDB Agent Skills](../../../develop/AI/mcp-server/#yugabytedb-agent-skills) for the install command.
+## Analyze metrics with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) analyzes these metrics for you, install the official [yb-metrics-analysis skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-metrics-analysis) first. The skill supplies the Prometheus metrics and what they indicate, so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-metrics-analysis
+```
+
+The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
 
 ## Frequently used metrics
 
