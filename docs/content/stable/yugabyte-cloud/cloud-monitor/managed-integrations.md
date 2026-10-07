@@ -110,7 +110,7 @@ To create an export configuration, do the following:
 
 The [Grafana Mimir](https://grafana.com/docs/mimir/latest/) integration requires the following:
 
-- Grafana Mimir instance that accepts [OpenTelemetry (OTLP) metrics](https://grafana.com/docs/mimir/latest/configure/configure-otel-collector/).
+- Grafana Mimir instance that accepts [OpenTelemetry (OTLP) metrics](https://grafana.com/docs/mimir/latest/configure/configure-otel-collector/)
 - OTLP endpoint URL for that instance
 - Authorization header used to authenticate with Grafana Mimir
 - For a multi-tenant instance, the tenant organization ID. Grafana Mimir reads this value from the [`X-Scope-OrgID`](https://grafana.com/docs/mimir/latest/references/http-api/#authentication) header
