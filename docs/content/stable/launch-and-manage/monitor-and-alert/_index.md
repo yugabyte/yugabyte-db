@@ -18,6 +18,8 @@ type: indexpage
   {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-monitor/" >}}
 {{< /page-finder/head >}}
 
+If an AI coding agent assesses universe performance for you, install the [yb-performance-assessment](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-performance-assessment) skill first. See [YugabyteDB Agent Skills](../../develop/AI/mcp-server/#yugabytedb-agent-skills) for the install command.
+
 {{<index/block>}}
 
   {{<index/item

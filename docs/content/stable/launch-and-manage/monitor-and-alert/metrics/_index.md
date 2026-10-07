@@ -21,6 +21,8 @@ This section describes the most frequently used metrics, along with how you can 
 
 For information on query tuning, refer to [Query tuning](../../../launch-and-manage/monitor-and-alert/query-tuning/).
 
+If an AI coding agent analyzes these metrics for you, install the [yb-metrics-analysis](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-metrics-analysis) skill first. See [YugabyteDB Agent Skills](../../../develop/AI/mcp-server/#yugabytedb-agent-skills) for the install command.
+
 ## Frequently used metrics
 
 To learn about some of the categories of metrics and how to use them for your use case, refer to the following. Note that these sections cover only the most frequently used metrics and is not an exhaustive list of all the metrics exported by YugabyteDB.

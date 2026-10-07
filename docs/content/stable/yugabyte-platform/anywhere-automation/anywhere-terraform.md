@@ -18,6 +18,8 @@ Use the YugabyteDB Anywhere Terraform Provider to deploy and manage universes pr
 
 The provider documentation includes guides to help you get started.
 
+If an AI coding agent writes this Terraform for you, install the [yba-terraform](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-terraform) skill first. See [YugabyteDB Agent Skills](../../../develop/AI/mcp-server/#yugabytedb-agent-skills) for the install command.
+
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Get Started"

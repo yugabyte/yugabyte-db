@@ -21,6 +21,8 @@ The YugabyteDB Aeon REST API allows you to deploy and manage your database clust
 - Change backup and maintenance schedules
 - Configure monitoring and alerts
 
+If an AI coding agent calls this API for you, install the [aeon-api](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/aeon-api) skill first. See [YugabyteDB Agent Skills](../../../develop/AI/mcp-server/#yugabytedb-agent-skills) for the install command.
+
 {{< youtube id="bD9CNHwet74?si=UpNu1jedrvni2mht" title="YugabyteDB Aeon REST API" >}}
 
 {{< sections/2-boxes >}}

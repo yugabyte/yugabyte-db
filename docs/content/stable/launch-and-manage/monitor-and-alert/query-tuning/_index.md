@@ -19,6 +19,8 @@ Query tuning is the art and science of improving the performance of SQL queries.
 
 This guide provides an overview of query tuning techniques for distributed SQL databases, including strategies, best practices, and tools to help you optimize queries, and achieve optimal performance.
 
+If an AI coding agent analyzes query performance for you, install the [yb-query-analysis](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-query-analysis) skill first. See [YugabyteDB Agent Skills](../../../develop/AI/mcp-server/#yugabytedb-agent-skills) for the install command.
+
 ## Identify slow queries
 
 The pg_stat_statements extension provides a comprehensive view of query performance, and is essential for database administrators and developers aiming to enhance database efficiency. You can use the pg_stat_statements extension to get statistics on past queries. It collects detailed statistics on query execution, including the number of executions, total execution time, and resource usage metrics like block hits and reads. This data can help you identify performance bottlenecks and optimize query performance.

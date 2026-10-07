@@ -9,6 +9,8 @@ aliases:
 type: indexpage
 ---
 
+If an AI coding agent designs a YSQL application for you, install the [ysql](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/ysql) skill first. See [YugabyteDB Agent Skills](../AI/mcp-server/#yugabytedb-agent-skills) for the install command.
+
 ## YSQL
 
 {{<index/block>}}
