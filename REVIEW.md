@@ -36,7 +36,7 @@ Default comment severity threshold: **MEDIUM**. Suppress LOW-severity nits unles
 
 ## Reuse and terminology
 
-These two checks need searching the repo, not just reading the diff. Do the searches; a finding here without a `path:line` citation of the existing code is not a finding. Report each at **MEDIUM**, so the LOW threshold above does not suppress them. Raise to HIGH when the duplicate already behaves differently from the code it copies, since that is a correctness bug. Skip both checks for backport PRs and for test-only changes.
+These two checks need searching the repo, not just reading the diff. Do the searches; a finding here without a citation of the existing code or term (`path:line`, or a commit SHA for a term found only in history) is not a finding. Report each at **MEDIUM**, so the LOW threshold above does not suppress them. Raise to HIGH when the duplicate already behaves differently from the code it copies, since that is a correctness bug. Skip both checks for backport PRs and for test-only changes.
 
 ### Reuse
 
