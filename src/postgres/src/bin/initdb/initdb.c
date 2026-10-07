@@ -351,6 +351,26 @@ IsYugaByteLocalNodeInitdb()
 	return IsEnvSet("YB_PG_LOCAL_NODE_INITDB");
 }
 
+/*
+ * Like find_other_exec(argv0, "postgres", ...) but without running
+ * "postgres -V" to check its version, which costs a postgres process start.
+ * Used for the local node initdb, which the tserver runs from the same
+ * installation as postgres on every new node.
+ */
+static int
+yb_find_backend_exec_without_version_check(const char *argv0, char *retpath)
+{
+	if (find_my_exec(argv0, retpath) < 0)
+		return -1;
+	*last_dir_separator(retpath) = '\0';
+	canonicalize_path(retpath);
+	snprintf(retpath + strlen(retpath), MAXPGPATH - strlen(retpath),
+			 "/postgres%s", EXE);
+	if (access(retpath, X_OK) != 0)
+		return -1;
+	return 0;
+}
+
 bool
 YBIsMajorUpgradeInitDb()
 {
@@ -1056,6 +1076,26 @@ test_config_settings(void)
 	fflush(stdout);
 	dynamic_shared_memory_type = choose_dsm_implementation();
 	printf("%s\n", dynamic_shared_memory_type);
+
+	/*
+	 * YB: Every tserver runs the local node initdb on its first start, and
+	 * the probes below, each a separate postgres process, make up a large
+	 * part of the time until YSQL is available. Use the first trial values,
+	 * which are what the probes pick on any host that can run a tserver.
+	 */
+	if (IsYugaByteLocalNodeInitdb())
+	{
+		n_connections = trial_conns[0];
+		n_buffers = (trial_bufs[0] * 8192) / BLCKSZ;
+		printf(_("selecting default max_connections ... %d\n"), n_connections);
+		printf(_("selecting default shared_buffers ... %dMB\n"),
+			   (n_buffers * (BLCKSZ / 1024)) / 1024);
+		printf(_("selecting default time zone ... "));
+		fflush(stdout);
+		default_timezone = select_default_timezone(share_path);
+		printf("%s\n", default_timezone ? default_timezone : "GMT");
+		return;
+	}
 
 	/*
 	 * Probe for max_connections before shared_buffers, since it is subject to
@@ -2619,20 +2659,29 @@ setup_bin_paths(const char *argv0)
 {
 	int			ret;
 
-	if ((ret = find_other_exec(argv0, "postgres", PG_BACKEND_VERSIONSTR,
-							   backend_exec)) < 0)
+	if (IsYugaByteLocalNodeInitdb())
 	{
-		char		full_path[MAXPGPATH];
+		if (yb_find_backend_exec_without_version_check(argv0, backend_exec) < 0)
+			pg_fatal("program \"%s\" is needed by %s but was not found in the same directory",
+					 "postgres", progname);
+	}
+	else
+	{
+		if ((ret = find_other_exec(argv0, "postgres", PG_BACKEND_VERSIONSTR,
+								   backend_exec)) < 0)
+		{
+			char		full_path[MAXPGPATH];
 
-		if (find_my_exec(argv0, full_path) < 0)
-			strlcpy(full_path, progname, sizeof(full_path));
+			if (find_my_exec(argv0, full_path) < 0)
+				strlcpy(full_path, progname, sizeof(full_path));
 
-		if (ret == -1)
-			pg_fatal("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"",
-					 "postgres", progname, full_path);
-		else
-			pg_fatal("program \"%s\" was found by \"%s\" but was not the same version as %s",
-					 "postgres", full_path, progname);
+			if (ret == -1)
+				pg_fatal("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"",
+						 "postgres", progname, full_path);
+			else
+				pg_fatal("program \"%s\" was found by \"%s\" but was not the same version as %s",
+						 "postgres", full_path, progname);
+		}
 	}
 
 	/* store binary directory */
