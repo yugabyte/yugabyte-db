@@ -179,7 +179,7 @@ By default (no flag), `sudo ./node-agent-provision.sh` performs a full provision
 
 To separate privileged OS work from user-scoped YugabyteDB Anywhere onboarding, you can split provisioning between two teams using the `--root` and `--noroot` flags:
 
-1. **OS / infrastructure**: Has root or sudo on the VM. Hardens the host and prepares OS-level prerequisites.
+1. **OS / infrastructure**: Has root or sudo on the VM. Opens the [required ports](../../networking/) and installs the [additional software](../#additional-software), then runs `--root`.
 2. **DB / platform**: Runs as `yugabyte` with no sudo. Installs and registers node agent with YugabyteDB Anywhere.
 
 This way, DB operators never need sudo after OS prep, and both teams use the same tooling.
@@ -188,7 +188,7 @@ This way, DB operators never need sudo after OS prep, and both teams use the sam
 
 Both teams download the node agent package from the running YugabyteDB Anywhere instance and use the same `node-agent-provision.sh` script and configuration file (with YugabyteDB Anywhere URL, API token, node identity, and provider details).
 
-1. The OS team runs the script as root using the `--root` flag. This runs only modules that need elevated privileges (create the `yugabyte` user, chrony/THP/ulimits/sysctl, sudoers, root systemd units, and firewall/packages as applicable). Non-root modules are skipped.
+1. The OS team runs the script as root using the `--root` flag. This runs only modules that need elevated privileges (create the `yugabyte` user, chrony/THP/ulimits/sysctl, sudoers, and root systemd units). Non-root modules are skipped.
 
     ```sh
     sudo ./node-agent-provision.sh --root
