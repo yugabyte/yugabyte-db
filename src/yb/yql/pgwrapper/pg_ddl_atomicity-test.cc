@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <atomic>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -49,6 +50,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -2101,6 +2103,63 @@ TEST_F(PgDdlAtomicityMiniClusterTest, AbortedCreateTableWithUnlistedIndex) {
 
   ASSERT_OK(WaitForNoTablesLeftBehind(
       kTableName, "Wait for the table and its index to be deleted"));
+}
+
+// Drops a colocated index that is not listed in its indexed table's index list while a CREATE
+// INDEX on the same table runs. Expects both to complete.
+TEST_F(PgDdlAtomicityMiniClusterTest, DropUnlistedIndexConcurrentWithCreateIndex) {
+  const auto kDbName = "colo_db"s;
+  const auto kTableName = "unlisted_colocated_index"s;
+  const auto kIndexName = kTableName + "_idx1";
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", kDbName));
+  }
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v1 INT, v2 INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (v1)", kIndexName, kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDbName, kTableName));
+  const auto index_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDbName, kIndexName));
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), table_id));
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), index_id));
+  ASSERT_OK(UnlinkIndexFromTable(table_id, index_id));
+
+  // The drop pauses after its change is applied in memory, until the CREATE INDEX has had time to
+  // wait for the indexed table.
+  CountDownLatch drop_paused(1);
+  CountDownLatch resume_drop(1);
+  SyncPoint::GetInstance()->SetCallBack(
+      "DeleteTableInternal::FailAfterTableMarkedInSysCatalog", [&](void*) {
+        drop_paused.CountDown();
+        resume_drop.Wait();
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  std::atomic<bool> drop_done{false};
+  std::atomic<bool> create_done{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&client, &index_id, &drop_done] {
+    ASSERT_OK(client->DeleteIndexTable(
+        index_id, nullptr /* indexed_table_name */, false /* wait */));
+    drop_done = true;
+  });
+  ASSERT_TRUE(drop_paused.WaitFor(MonoDelta::FromSeconds(60)));
+
+  auto create_conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  thread_holder.AddThreadFunctor([&create_conn, &kTableName, &create_done] {
+    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0 (v2)", kTableName));
+    create_done = true;
+  });
+  SleepFor(MonoDelta::FromSeconds(3) * kTimeMultiplier);
+  resume_drop.CountDown();
+
+  ASSERT_OK(LoggedWaitFor(
+      [&drop_done, &create_done] { return drop_done.load() && create_done.load(); },
+      MonoDelta::FromSeconds(60), "Wait for the drop and the create to complete"));
+  thread_holder.JoinAll();
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->ClearAllCallBacks();
 }
 
 // Restarts the master with a committed DROP TABLE whose indexed table is already deleted from the

@@ -3821,8 +3821,9 @@ std::string CatalogManager::DeletingTableData::ToString() const {
 // The state of one delete table operation, owned by the caller of DeleteTableInMemory for the
 // requested table. The table being deleted, the indexes deleted along with it and the
 // indexed table an index is removed from are all written in a single sys catalog operation, so
-// that no failure can persist a subset of them. The write locks are released, and the uncommitted
-// changes discarded, when the operation is destroyed.
+// that no failure can persist a subset of them. The write locks of the tables the delete leaves
+// unchanged are released once the change is committed. If the operation is destroyed before then,
+// its locks are released and the uncommitted changes discarded.
 struct CatalogManager::DeleteTableOperation {
   // The write locks of all the tables involved, taken before any of them is changed. The entry of
   // a deleted table is moved to tables.
@@ -7539,6 +7540,11 @@ Status CatalogManager::DeleteTableInternal(
           deleting_table.table_info_with_write_lock->id());
     }
     deleting_table.table_info_with_write_lock.Commit();
+  }
+  // Release the locks of the tables this delete leaves unchanged before the steps below take
+  // mutex_. The entries stay in data_map, since altered_indexed_table points into it.
+  for (auto& [_, data] : op.data_map) {
+    data.table_info_with_write_lock.lock.Unlock();
   }
 
   // The deletion is persisted, so a failure from here on is returned without undoing it. The
