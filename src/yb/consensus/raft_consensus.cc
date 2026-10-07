@@ -272,6 +272,12 @@ DEFINE_UNKNOWN_bool(quick_leader_election_on_create, false,
 TAG_FLAG(quick_leader_election_on_create, advanced);
 TAG_FLAG(quick_leader_election_on_create, hidden);
 
+DEFINE_NON_RUNTIME_bool(quick_leader_election_on_restart, false,
+    "Whether a restarted replica starts a (pre-)election after a short random delay instead of "
+    "waiting for the leader failure timeout. Meant for tablets with few replicas, such as the "
+    "sys catalog.");
+TAG_FLAG(quick_leader_election_on_restart, advanced);
+
 DEFINE_UNKNOWN_bool(stepdown_disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
@@ -590,6 +596,11 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
               MonoDelta::FromMilliseconds(rng_.Uniform(FLAGS_raft_heartbeat_interval_ms));
         }
       }
+    } else if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection) &&
+               FLAGS_quick_leader_election_on_restart) {
+      // If there is a live leader, the pre-election this starts fails without disturbing it.
+      initial_delta =
+          MonoDelta::FromMilliseconds(rng_.Uniform(FLAGS_raft_heartbeat_interval_ms));
     }
     RETURN_NOT_OK(BecomeReplicaUnlocked(std::string(), initial_delta));
   }
