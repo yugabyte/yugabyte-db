@@ -111,7 +111,6 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/socket.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
 #include "yb/util/path_util.h"
@@ -122,7 +121,6 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/thread.h"
 #include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
@@ -190,10 +188,6 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
     "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
     "Ysql Connection Manager process as a child process.");
-
-DEFINE_RUNTIME_bool(ysql_prewarm_relcache_init_file, true,
-    "Build the relcache init file of the yugabyte database as soon as PostgreSQL starts, instead "
-    "of in the first client connection to it.");
 
 DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_pools, 10000,
     "Max total pools supported in YSQL Connection Manager.");
@@ -998,10 +992,6 @@ void TabletServer::Shutdown() {
   // callbacks. Probably due to the way the MiniCluster sets up the PgSupervisor.
   // Fix them and ensure PG is stopped here.
   ysql_lease_manager_->Shutdown();
-  if (relcache_prewarm_thread_) {
-    WARN_NOT_OK(ThreadJoiner(relcache_prewarm_thread_.get()).Join(),
-                "Failed to join relcache init file prewarm thread");
-  }
   auto relinquish_lease_future = ysql_lease_manager_->RelinquishLease(
       MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_rpc_timeout_ms));
 
@@ -1539,55 +1529,6 @@ void TabletServer::TriggerRelcacheInitConnection(
         MakeRelcacheInitConnection(dbname);
       },
       std::chrono::steady_clock::duration(0));
-}
-
-void TabletServer::PrewarmRelcacheInitFile() {
-  if (!FLAGS_ysql_prewarm_relcache_init_file || relcache_prewarm_started_.exchange(true)) {
-    return;
-  }
-  auto thread = Thread::Make("pg", "relcache_prewarm", [this] {
-    const std::string dbname = "yugabyte";
-    // Wait for postgres to listen, polling with a short fixed interval: the connect retry in
-    // MakeRelcacheInitConnection backs off exponentially, which could start the build well after
-    // postgres becomes ready. A TCP connect does not start a backend, unlike a libpq ping.
-    std::vector<Endpoint> endpoints;
-    auto status = pgsql_proxy_bind_address().ResolveAddresses(&endpoints);
-    if (!status.ok() || endpoints.empty()) {
-      LOG(WARNING) << "Skipping relcache init file prewarm: " << status;
-      return;
-    }
-    const auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-    for (;;) {
-      Socket socket;
-      if (socket.Init(0).ok() && socket.Connect(endpoints.front()).ok()) {
-        break;
-      }
-      if (shutting_down_ || CoarseMonoClock::Now() > deadline) {
-        return;
-      }
-      SleepFor(5ms);
-    }
-    {
-      std::lock_guard l(lock_);
-      if (shutting_down_) {
-        return;
-      }
-      auto& callbacks = in_flight_superuser_connections_[dbname];
-      if (!callbacks.empty()) {
-        // A client connection already triggered the build.
-        return;
-      }
-      callbacks.push_back([](const Status& status) {
-        LOG_IF(WARNING, !status.ok()) << "Relcache init file prewarm failed: " << status;
-      });
-    }
-    MakeRelcacheInitConnection(dbname);
-  });
-  if (!thread.ok()) {
-    LOG(WARNING) << "Failed to start relcache init file prewarm: " << thread.status();
-    return;
-  }
-  relcache_prewarm_thread_ = std::move(*thread);
 }
 
 void TabletServer::RelcacheInitConnectionDone(

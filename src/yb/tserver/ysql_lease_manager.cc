@@ -170,7 +170,6 @@ Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
   }
   if (restart_pg) {
     WARN_NOT_OK(server_.RestartPG(), "Failed to restart PG postmaster.");
-    server_.PrewarmRelcacheInitFile();
     if (lock_manager) {
       // Re-enable shared memory object lock state as it gets disabled as part of shutdown
       // of the old lock manager. Disabling shared object lock state during switch of lock

@@ -88,7 +88,6 @@ class Cgroup;
 class Env;
 class MaintenanceManager;
 class ObjectLockTracker;
-class Thread;
 
 namespace cdc {
 
@@ -348,10 +347,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) EXCLUDES(lock_) override;
-
-  // Builds the relcache init file of the default database in the background once PostgreSQL
-  // accepts connections, so the first client connection does not have to. Only acts once.
-  void PrewarmRelcacheInitFile();
 
   void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
@@ -784,9 +779,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // finishes.
   std::map<std::string, std::vector<StdStatusCallback>> in_flight_superuser_connections_
       GUARDED_BY(lock_);
-
-  std::atomic<bool> relcache_prewarm_started_{false};
-  scoped_refptr<Thread> relcache_prewarm_thread_;
 
 #ifdef __linux__
   std::unique_ptr<TServerCgroupManager> cgroup_manager_;

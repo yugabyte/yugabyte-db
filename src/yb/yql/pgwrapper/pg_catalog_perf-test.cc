@@ -59,7 +59,6 @@ DECLARE_bool(ysql_use_relcache_file);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_bool(ysql_enable_read_request_cache_for_connection_auth);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_prewarm_relcache_init_file);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
@@ -195,8 +194,6 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     // queires. Disable auto-analyze for more stable test results.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_relcache_init_optimization) = false;
-    // The prewarm connection's RPCs would add to the counts these tests check.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_prewarm_relcache_init_file) = false;
     PgMiniTestBase::SetUp();
     metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());
