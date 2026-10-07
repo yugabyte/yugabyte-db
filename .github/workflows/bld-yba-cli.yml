@@ -11,6 +11,7 @@ on:
 jobs:
   bld-yba-cli:
     if: github.event.pull_request.draft == false
+    environment: jenkins
     runs-on: ybdbghr
     steps:
       - name: Build Trigger
