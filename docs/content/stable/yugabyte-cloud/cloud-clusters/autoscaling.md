@@ -18,7 +18,7 @@ Autoscaling adds or removes nodes in a YugabyteDB Aeon cluster as CPU and connec
 
 Many workloads follow a pattern: traffic that climbs through the business day, or demand that grows or declines over weeks and months. Those clusters are usually sized for peak load and adjusted by hand. Autoscaling keeps the cluster matched to demand, with less manual work.
 
-Autoscaling fits gradual, sustained changes in demand. For a sudden spike, such as a product launch or flash sale, [scale the cluster manually](../configure-clusters/) ahead of time.
+Autoscaling fits gradual, sustained changes in demand. For a sudden spike, such as a product launch or flash sale, [scale the cluster manually](../configure-clusters/) ahead of time. Note that when Autoscaling is enabled, manual horizontal scaling is restricted to the configured Autoscaling policy range; raise the policy maximum first.
 
 Autoscaling can help you:
 
@@ -94,7 +94,7 @@ Choose a minimum that covers your normal workload and availability requirements.
 
 The minimum and maximum must be multiples of the number of availability zones, so each zone keeps the same number of nodes. In a 3-AZ cluster, the smallest minimum is 3, and the maximum must also be a multiple of 3.
 
-YugabyteDB Aeon [displays an alert](../../cloud-monitor/cloud-alerts/) when the maximum or minimum is reached.
+YugabyteDB Aeon [displays an alert](../../cloud-monitor/cloud-alerts/) when the maximum or minimum (if the minimum is greater than 3) is reached.
 
 ### Scale out rules
 

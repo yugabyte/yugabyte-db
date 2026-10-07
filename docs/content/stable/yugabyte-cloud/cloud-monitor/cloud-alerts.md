@@ -277,7 +277,7 @@ If CPU use is continuously higher than 80%, your workload may also exceed the ca
 
 YugabyteDB Aeon sends a notification when [Autoscaling](../../cloud-clusters/autoscaling/) reaches its limits, as follows:
 
-- Autoscaling minimum node limit reached (Warning). (This alert is not triggered when the Autoscaling policy's minimum node count is set to 3, because 3 nodes is the minimum supported configuration for Autoscaling.)
+- Autoscaling minimum node limit reached (Warning). (This alert is not triggered when the Autoscaling policy's minimum node count is set to 3.)
 - Autoscaling maximum node limit reached (Warning).
 
 When configured, Autoscaling adds or removes nodes in a YugabyteDB Aeon cluster as CPU and connection load rise and fall. If your cluster frequently reaches the maximum node limit, or stays there, consider increasing the limit. To monitor Autoscaling history, go to the [Autoscaling](../../cloud-clusters/autoscaling/#monitor-autoscaling) settings.

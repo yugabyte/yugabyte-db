@@ -20,7 +20,7 @@ You can scale the following cluster properties:
 - Disk size per node
 - IOPS (AWS clusters only)
 
-To add or remove nodes automatically as CPU and connection load change, refer to [Autoscaling](../autoscaling/). Horizontal scaling is restricted to the configured autoscaling policy range.
+To add or remove nodes automatically as CPU and connection load change, refer to [Autoscaling](../autoscaling/). When Autoscaling is enabled, horizontal scaling is restricted to the configured autoscaling policy range.
 
 Cluster edit operations are performed using the **Edit Infrastructure** option under **Regions** on the cluster **Settings > Infrastructure** tab.
 
