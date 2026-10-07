@@ -5316,6 +5316,11 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		pfree(relation->rd_pubdesc);
 	if (relation->rd_options)
 		pfree(relation->rd_options);
+
+	/* YB: heap_copytuple allocates the ybctid separately from the tuple */
+	if (relation->rd_indextuple && HEAPTUPLE_YBCTID(relation->rd_indextuple))
+		pfree(DatumGetPointer(HEAPTUPLE_YBCTID(relation->rd_indextuple)));
+
 	if (relation->rd_indextuple)
 		pfree(relation->rd_indextuple);
 	if (relation->rd_amcache)
@@ -9785,6 +9790,12 @@ load_relcache_init_file(bool shared, bool yb_retry)
 			/* Fix up internal pointers in the tuple -- see heap_copytuple */
 			rel->rd_indextuple->t_data = (HeapTupleHeader) ((char *) rel->rd_indextuple + HEAPTUPLESIZE);
 			rel->rd_index = (Form_pg_index) GETSTRUCT(rel->rd_indextuple);
+
+			/*
+			 * YB: the ybctid pointer was written to the file verbatim and is
+			 * stale here.
+			 */
+			HEAPTUPLE_YBCTID(rel->rd_indextuple) = (Datum) 0;
 
 			/*
 			 * prepare index info context --- parameters should match
