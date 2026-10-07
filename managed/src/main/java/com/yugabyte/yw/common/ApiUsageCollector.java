@@ -58,14 +58,16 @@ public class ApiUsageCollector {
       Instant windowEnd,
       Map<ClientKey, Counts> clients,
       Map<DeprecatedApiKey, Counts> deprecatedApis,
-      long droppedEntries) {
+      long droppedClientCalls,
+      long droppedDeprecatedApiCalls) {
 
     public ObjectNode toJson() {
       ObjectNode json =
           Json.newObject()
               .put("window_start", windowStart.getEpochSecond())
               .put("window_end", windowEnd.getEpochSecond())
-              .put("dropped_entries", droppedEntries);
+              .put("dropped_client_calls", droppedClientCalls)
+              .put("dropped_deprecated_api_calls", droppedDeprecatedApiCalls);
       ArrayNode clientsJson = json.putArray("clients");
       clients.forEach(
           (k, c) ->
@@ -99,21 +101,23 @@ public class ApiUsageCollector {
 
   private final Map<ClientKey, Counts> clients = new ConcurrentHashMap<>();
   private final Map<DeprecatedApiKey, Counts> deprecatedApis = new ConcurrentHashMap<>();
-  private final AtomicLong droppedEntries = new AtomicLong();
+  // Calls left out of the counts above because their key was over MAX_ENTRIES.
+  private final AtomicLong droppedClientCalls = new AtomicLong();
+  private final AtomicLong droppedDeprecatedApiCalls = new AtomicLong();
   private volatile Instant windowStart = Instant.now();
 
   public void record(ClientKey clientKey, @Nullable DeprecatedApiKey deprecatedKey, int status) {
     Counts counts = Counts.of(status);
-    add(clients, clientKey, counts);
+    add(clients, clientKey, counts, droppedClientCalls);
     if (deprecatedKey != null) {
-      add(deprecatedApis, deprecatedKey, counts);
+      add(deprecatedApis, deprecatedKey, counts, droppedDeprecatedApiCalls);
     }
   }
 
-  private <K> void add(Map<K, Counts> map, K key, Counts counts) {
+  private <K> void add(Map<K, Counts> map, K key, Counts counts, AtomicLong droppedCalls) {
     // The size check races with concurrent inserts; overshooting the cap by a few is fine.
     if (map.size() >= MAX_ENTRIES && !map.containsKey(key)) {
-      droppedEntries.incrementAndGet();
+      droppedCalls.incrementAndGet();
       return;
     }
     map.merge(key, counts, Counts::plus);
@@ -122,7 +126,12 @@ public class ApiUsageCollector {
   /** Copies the current counters without resetting them; see {@link #acknowledge(Snapshot)}. */
   public Snapshot snapshot(Instant now) {
     return new Snapshot(
-        windowStart, now, Map.copyOf(clients), Map.copyOf(deprecatedApis), droppedEntries.get());
+        windowStart,
+        now,
+        Map.copyOf(clients),
+        Map.copyOf(deprecatedApis),
+        droppedClientCalls.get(),
+        droppedDeprecatedApiCalls.get());
   }
 
   /**
@@ -132,7 +141,8 @@ public class ApiUsageCollector {
   public void acknowledge(Snapshot snapshot) {
     snapshot.clients().forEach((k, c) -> subtract(clients, k, c));
     snapshot.deprecatedApis().forEach((k, c) -> subtract(deprecatedApis, k, c));
-    droppedEntries.addAndGet(-snapshot.droppedEntries());
+    droppedClientCalls.addAndGet(-snapshot.droppedClientCalls());
+    droppedDeprecatedApiCalls.addAndGet(-snapshot.droppedDeprecatedApiCalls());
     windowStart = snapshot.windowEnd();
   }
 

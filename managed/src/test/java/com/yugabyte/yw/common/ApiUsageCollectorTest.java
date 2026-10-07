@@ -59,16 +59,30 @@ public class ApiUsageCollectorTest {
   @Test
   public void testEntriesAreCapped() {
     ApiUsageCollector collector = new ApiUsageCollector();
-    for (int i = 0; i < ApiUsageCollector.MAX_ENTRIES + 5; i++) {
-      collector.record(new ClientKey("v1", "client" + i, "", "none"), null, 200);
+    for (int i = 0; i < ApiUsageCollector.MAX_ENTRIES; i++) {
+      collector.record(
+          new ClientKey("v1", "client" + i, "", "none"),
+          new DeprecatedApiKey("v1", "GET", "/api/v1/old" + i, "client" + i),
+          200);
+    }
+    // Over the cap: counted as dropped calls, once per call and per map.
+    ClientKey overCap = new ClientKey("v1", "overcap", "", "none");
+    DeprecatedApiKey overCapRoute = new DeprecatedApiKey("v1", "GET", "/api/v1/new", "overcap");
+    for (int i = 0; i < 3; i++) {
+      collector.record(overCap, overCapRoute, 200);
     }
     collector.record(new ClientKey("v1", "client0", "", "none"), null, 200);
 
     Snapshot snapshot = collector.snapshot(Instant.now());
     assertEquals(ApiUsageCollector.MAX_ENTRIES, snapshot.clients().size());
-    assertEquals(5, snapshot.droppedEntries());
+    assertEquals(ApiUsageCollector.MAX_ENTRIES, snapshot.deprecatedApis().size());
+    assertEquals(3, snapshot.droppedClientCalls());
+    assertEquals(3, snapshot.droppedDeprecatedApiCalls());
     assertEquals(
         new Counts(2, 0, 0), snapshot.clients().get(new ClientKey("v1", "client0", "", "none")));
+
+    collector.acknowledge(snapshot);
+    assertEquals(0, collector.snapshot(Instant.now()).droppedClientCalls());
   }
 
   @Test
