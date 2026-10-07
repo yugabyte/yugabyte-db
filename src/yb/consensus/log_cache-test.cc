@@ -51,6 +51,7 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -230,21 +231,37 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   cache_->EvictThroughOp(1);
   ASSERT_EQ(cache_->num_cached_ops(), 0);
 
+  // Every Log::Sync() call pauses (and logs this message) before syncing its batch.
+  StringWaiterLogSink sync_pause_log("Pausing due to flag TEST_pause_before_wal_sync");
+  auto wait_for_sync_pauses = [&sync_pause_log](int64_t num_pauses) {
+    return WaitFor(
+        [&sync_pause_log, num_pauses] { return sync_pause_log.GetEventCount() >= num_pauses; },
+        30s * kTimeMultiplier, Format("Log::Sync() pause #$0", num_pauses));
+  };
+
+  // Unpause the appender even if an assertion fails, otherwise TearDown() hangs in
+  // WaitUntilAllFlushed().
+  auto unpause_wal_sync = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
+  });
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
 
   // Append (1.2).
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 1, /* index = */ 2));
+  // Wait until Log::Sync() is paused on the batch containing (1.2), so (2.1) goes into a
+  // separate batch.
+  ASSERT_OK(wait_for_sync_pauses(1));
   // Append (2.1) and (1.2) should be erased from log cache.
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 2, /* index = */ 1));
   ASSERT_EQ(cache_->num_cached_ops(), 1);
 
-  // Wait several seconds for actaully pausing at Log::Sync().
-  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
-
-  // Resume Log::Sync and set FLAGS_TEST_pause_before_wal_sync to true again.
+  // Resume Log::Sync(). Since TEST_set_pause_before_wal_sync is set, Log::Sync() sets
+  // TEST_pause_before_wal_sync back to true, so the next batch pauses too. Wait until the batch
+  // containing (1.2) is synced and Log::Sync() is paused on the batch containing (2.1).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
-  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  ASSERT_OK(wait_for_sync_pauses(2));
 
   // Shouldn't evict (2.1).
   cache_->EvictThroughOp(1);
@@ -257,16 +274,16 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
 
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 3, /* index = */ 1));
   ASSERT_EQ(cache_->num_cached_ops(), 1);
+  // Resume Log::Sync(). Wait until the batch containing (2.1) is synced and Log::Sync() is
+  // paused on the batch containing (3.1).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
-  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  ASSERT_OK(wait_for_sync_pauses(3));
 
   // Shouldn't evict (3.1).
   cache_->EvictThroughOp(1);
   ASSERT_EQ(cache_->num_cached_ops(), 1);
 
-  // Let Appender continue doing Log::Sync and normally exit.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
+  // unpause_wal_sync lets the appender continue doing Log::Sync and normally exit.
 }
 
 // Ensure that the cache always yields at least one message,
