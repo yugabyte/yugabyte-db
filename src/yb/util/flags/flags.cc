@@ -1099,12 +1099,19 @@ Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::strin
   std::ifstream xml_file(full_path, std::ios_base::in);
   SCHECK(xml_file, IOError, Format("Could not open XML file $0: $1", full_path, strerror(errno)));
 
-  static std::regex re(R"#(<name>(.*?)</name>)#");
+  // std::regex is slow enough here to show up in server startup time.
+  static constexpr std::string_view kNameStart = "<name>";
+  static constexpr std::string_view kNameEnd = "</name>";
   std::string line;
   while (std::getline(xml_file, line)) {
-    std::smatch match;
-    if (std::regex_search(line, match, re)) {
-      flag_names.insert(match.str(1));
+    auto start = line.find(kNameStart);
+    if (start == std::string::npos) {
+      continue;
+    }
+    start += kNameStart.size();
+    auto end = line.find(kNameEnd, start);
+    if (end != std::string::npos) {
+      flag_names.emplace(line, start, end - start);
     }
   }
 
