@@ -23,6 +23,7 @@ on:
       - 'license/**'
       - NOTICE.txt
       - '**/*.md'
+      - '!docs/**'
       - '**/README*'
       - 'sample/**'
       - 'src/lint/**'
