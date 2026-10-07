@@ -115,8 +115,10 @@ Result<std::vector<dockv::KeyBytes>> BuildVectorKeyPrefixes(
           dockv::KeyEntryValue::FromQLValuePB(*value, key_columns[i].sorting_type));
       hashed_values.push_back(value);
     }
-    // Encoding a key without range components and dropping the end of its (empty) range group
-    // leaves a byte prefix of every key with these components.
+    // Dropping the group end that closes the encoded key leaves a byte prefix of every key with
+    // these components: for a hash partitioned table the key has only the hash group, so the
+    // dropped byte closes its empty range group; for a range partitioned table it closes the
+    // group of the leading range components.
     auto key = num_hash_key_columns
         ? dockv::DocKey(
               VERIFY_RESULT(table.partition_schema().PgsqlHashColumnCompoundValue(hashed_values)),

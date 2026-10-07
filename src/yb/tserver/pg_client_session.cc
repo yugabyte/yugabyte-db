@@ -128,7 +128,10 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 DEFINE_RUNTIME_bool(use_tablespace_based_transaction_placement, false,
                     "Use tablespace-local locality will be used instead of region-local locality.");
 
-DEFINE_RUNTIME_bool(vector_index_enable_pk_routing, true,
+// Postgres sends PgVectorReadOptionsPB.key_prefixes only to its local tserver, and the per-tablet
+// copies drop them, so the field never reaches a process of another version. The AutoFlag still
+// keeps the routing off until the whole universe is upgraded.
+DEFINE_RUNTIME_AUTO_bool(vector_index_enable_pk_routing, kLocalVolatile, false, true,
     "When a vector index query filters on the primary key (all hash columns, or a leading prefix "
     "of the range columns), only search the tablets that can hold the matching rows.");
 
@@ -396,8 +399,12 @@ class VectorIndexQuery {
               > partition_state.number_of_vectors_fetched_from_tablet) {
         auto new_read_req = arena->NewArenaObject<LWPgsqlReadRequestPB>(read_req);
         new_read_req->dup_partition_key(key);
-        new_read_req->mutable_index_request()->mutable_vector_idx_options()
-            ->set_num_top_vectors_to_remove(partition_state.number_of_vectors_fetched_from_tablet);
+        auto& vector_idx_options = *new_read_req->mutable_index_request()
+            ->mutable_vector_idx_options();
+        vector_idx_options.set_num_top_vectors_to_remove(
+            partition_state.number_of_vectors_fetched_from_tablet);
+        // Tablets don't use the key prefixes, they only select the partitions above.
+        vector_idx_options.mutable_key_prefixes()->clear();
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(
             table, arena, *sidecars_, new_read_req);
         ops.push_back(PgClientSessionOperation {
