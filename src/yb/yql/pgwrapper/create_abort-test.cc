@@ -90,16 +90,11 @@ TEST_F(CreateAbortTest, TestAbortTableCreation) {
 
   // create table should not abort if the test flag is 2
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 2;
-  ASSERT_OK(cconn.Execute("CREATE TABLE test_create_abort_t2 (k1 int primary key, k2 int)"));
-
-  // create table should not abort if the test flag is 3
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 3;
   ASSERT_OK(cconn.Execute("CREATE TABLE test_create_abort_t3 (k1 int primary key, k2 int)"));
 
   // restore things back
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 0;
   ASSERT_OK(cconn.Execute("DROP TABLE rand_table"));
-  ASSERT_OK(cconn.Execute("DROP TABLE test_create_abort_t2"));
   ASSERT_OK(cconn.Execute("DROP TABLE test_create_abort_t3"));
 }
 
@@ -135,18 +130,8 @@ TEST_F(CreateAbortTest, TestAbortIndexCreation) {
   // create index with a different name should not abort
   ASSERT_OK(cconn.Execute("CREATE INDEX rand_table_idx ON test_create_abort_t1 (k2)"));
 
-  // set the test flag to 2
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 2;
   // create index should abort if the test flag is 2
-  s = cconn.Execute("CREATE INDEX test_create_abort_t3_idx1 ON test_create_abort_t3 (k2)");
-  ASSERT_NOK(s);
-  ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
-  ASSERT_FALSE(TableExistsInCatalog(cm, "test_create_abort_t3_idx1"));
-  ASSERT_TRUE(TableNotQueryable(qconn, "test_create_abort_t3_idx1"));
-  ASSERT_FALSE(TableExistsInClientList("test_create_abort_t3_idx1"));
-
-  // create index should abort if the test flag is 3
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 2;
   s = cconn.Execute("CREATE INDEX test_create_abort_t3_idx1 ON test_create_abort_t3 (k2)");
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
@@ -174,7 +159,7 @@ TEST_F(CreateAbortTest, TestAbortColocatedIndexCreation) {
   ASSERT_OK(cconn.Execute("CREATE TABLE test_create_abort_t1 (k1 int primary key, k2 int)"));
   ASSERT_OK(cconn.Execute("INSERT INTO test_create_abort_t1 VALUES (1, 10)"));
 
-  for (uint32_t abort_case = 1; abort_case <= 3; ++abort_case) {
+  for (uint32_t abort_case : {1u, 2u}) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = abort_case;
     auto s = cconn.Execute("CREATE INDEX test_create_abort_t1_idx ON test_create_abort_t1 (k2)");
     ASSERT_NOK(s);

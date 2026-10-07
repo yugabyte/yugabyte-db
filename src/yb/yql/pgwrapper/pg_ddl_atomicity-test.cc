@@ -30,11 +30,20 @@
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.pb.h"
 
@@ -64,13 +73,19 @@ using yb::tserver::ListTabletsForTabletServerResponsePB;
 
 DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
+DECLARE_uint32(TEST_abort_create_table);
 DECLARE_string(TEST_block_alter_table);
 DECLARE_bool(TEST_fail_alter_table_after_commit);
+DECLARE_bool(TEST_simulate_crash_after_table_marked_deleting);
+DECLARE_bool(TEST_disable_ysql_ddl_txn_verification);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(TEST_hang_on_ddl_verification_progress);
 DECLARE_bool(TEST_pause_ddl_rollback);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 DECLARE_double(TEST_ysql_ddl_transaction_verification_failure_probability);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 
 namespace yb {
 namespace pgwrapper {
@@ -1727,6 +1742,136 @@ class PgDdlAtomicityMiniClusterTest : public PgMiniTestBase {
       return !has_state;
     }, MonoDelta::FromSeconds(60), "Wait for DDL verification to finish for table " + table_id);
   }
+
+  // Returns the tables and indexes whose name contains name_filter that the master has not
+  // deleted. Tables that are not running yet, or that no longer are, are included: a table left
+  // behind by a failed DDL is not necessarily in the RUNNING state.
+  Result<std::vector<master::ListTablesResponsePB::TableInfo>> ListTablesNotDeleted(
+      const std::string& name_filter) {
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+    req.set_name_filter(name_filter);
+    req.set_include_not_running(true);
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>());
+    RETURN_NOT_OK(proxy.ListTables(req, &resp, &controller));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    std::vector<master::ListTablesResponsePB::TableInfo> tables;
+    for (const auto& table : resp.tables()) {
+      if (table.state() != master::SysTablesEntryPB::DELETING &&
+          table.state() != master::SysTablesEntryPB::DELETED) {
+        tables.push_back(table);
+      }
+    }
+    return tables;
+  }
+
+  // Returns whether the sys catalog holds a DDL log entry of the given action for the table. The
+  // entry is written together with the change it describes, so it tells whether that change was
+  // persisted, which a change that is not applied in memory does not.
+  Result<bool> HasDdlLogEntry(const std::string& table_id, const std::string& action) {
+    master::DdlLogRequestPB req;
+    master::DdlLogResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>());
+    RETURN_NOT_OK(proxy.DdlLog(req, &resp, &controller));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    for (const auto& entry : resp.entries()) {
+      if (entry.table_id() == table_id && entry.action() == action) {
+        LOG(INFO) << "Found DDL log entry: " << entry.ShortDebugString();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Status WaitForNoTablesLeftBehind(const std::string& name_filter, const std::string& description) {
+    return LoggedWaitFor([this, &name_filter]() -> Result<bool> {
+      auto tables = VERIFY_RESULT(ListTablesNotDeleted(name_filter));
+      for (const auto& table : tables) {
+        LOG(INFO) << "Table left behind: " << table.ShortDebugString();
+      }
+      return tables.empty();
+    }, MonoDelta::FromSeconds(120), description);
+  }
+
+  // Removes the index from the index list of its indexed table, in memory and in the sys catalog.
+  Status UnlinkIndexFromTable(const TableId& indexed_table_id, const TableId& index_id) {
+    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+    auto indexed_table = catalog_manager.GetTableInfo(indexed_table_id);
+    SCHECK(indexed_table, NotFound, Format("Table $0 not found", indexed_table_id));
+    auto l = indexed_table->LockForWrite();
+    auto* indexes = l.mutable_data()->pb.mutable_indexes();
+    auto it = std::find_if(indexes->begin(), indexes->end(), [&index_id](const auto& index) {
+      return index.table_id() == index_id;
+    });
+    SCHECK(it != indexes->end(), IllegalState,
+           Format("Index $0 not listed in table $1", index_id, indexed_table_id));
+    indexes->erase(it);
+    RETURN_NOT_OK(catalog_manager.sys_catalog()->Upsert(
+        catalog_manager.GetLeaderEpochInternal(), indexed_table));
+    l.Commit();
+    return Status::OK();
+  }
+
+  // Writes the table to the sys catalog in the given state, leaving the in-memory state as is. For
+  // DELETED, its tablets are written as DELETED too, and the master does not load the table once it
+  // reloads the sys catalog.
+  Status WriteTableStateToSysCatalog(
+      const TableId& table_id, master::SysTablesEntryPB::State state) {
+    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+    auto table = catalog_manager.GetTableInfo(table_id);
+    SCHECK(table, NotFound, Format("Table $0 not found", table_id));
+    master::TabletInfos tablets;
+    if (state == master::SysTablesEntryPB::DELETED) {
+      tablets = VERIFY_RESULT(table->GetTablets());
+    }
+    auto l = table->LockForWrite();
+    l.mutable_data()->set_state(state, "Set by test");
+    std::vector<master::TabletInfo::WriteLock> tablet_locks;
+    for (const auto& tablet : tablets) {
+      tablet_locks.push_back(tablet->LockForWrite());
+      tablet_locks.back().mutable_data()->set_state(
+          master::SysTabletsEntryPB::DELETED, "Deleted by test");
+    }
+    // The locks are released without committing, so only the sys catalog has the change.
+    return catalog_manager.sys_catalog()->Upsert(
+        catalog_manager.GetLeaderEpochInternal(), table, tablets);
+  }
+
+  // Commits a DROP TABLE on a new table with an index while DDL verification is paused, so the
+  // table and the index stay running with the drop pending. Returns the table and index ids.
+  Result<std::pair<TableId, TableId>> DropTableWithIndexPendingVerification(
+      const std::string& table_name) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", table_name));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0 (v)", table_name));
+    const auto table_id =
+        VERIFY_RESULT(GetTableIdByTableName(client.get(), "yugabyte", table_name));
+    const auto index_id =
+        VERIFY_RESULT(GetTableIdByTableName(client.get(), "yugabyte", table_name + "_idx"));
+    RETURN_NOT_OK(WaitForDdlVerificationToFinish(client.get(), table_id));
+    RETURN_NOT_OK(WaitForDdlVerificationToFinish(client.get(), index_id));
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_ysql_ddl_txn_verification) = true;
+    RETURN_NOT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+
+    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    auto table = catalog_manager.GetTableInfo(table_id);
+    auto index = catalog_manager.GetTableInfo(index_id);
+    SCHECK(table && table->LockForRead()->is_running(), IllegalState, "Table is not running");
+    SCHECK(index && index->LockForRead()->is_running(), IllegalState, "Index is not running");
+    SCHECK(index->LockForRead()->has_ysql_ddl_txn_verifier_state(), IllegalState,
+           "Index has no pending DDL verification");
+    return std::make_pair(table_id, index_id);
+  }
 };
 
 TEST_F(PgDdlAtomicityMiniClusterTest, TestWaitForRollbackWithMasterRestart) {
@@ -1841,6 +1986,193 @@ TEST_F(PgDdlAtomicityMiniClusterTest, AlterTableRollbackOnMasterCrash) {
   ASSERT_EQ(columns.size(), 2);
   ASSERT_EQ(columns[0].name(), "key");
   ASSERT_EQ(columns[1].name(), "value");
+}
+
+// Fails a CREATE TABLE with a unique index after the index and the table that references it are
+// persisted. Expects neither the table nor the index to be left behind, before or after a master
+// restart.
+TEST_F(PgDdlAtomicityMiniClusterTest, CreateTableWithIndexFailure) {
+  // The create table abort flag only applies to tables with this name prefix.
+  const auto kTableName = "test_create_abort_t"s;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 2;
+  ASSERT_NOK(conn.ExecuteFormat("CREATE TABLE $0 (col TEXT UNIQUE, value TEXT)", kTableName));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 0;
+
+  // The rollback of the create table must leave neither the table nor its index behind, also after
+  // the master rebuilds its state from the sys catalog.
+  ASSERT_OK(WaitForNoTablesLeftBehind(
+      kTableName, "Wait for the create table rollback to complete"));
+  ASSERT_OK(RestartMaster());
+  ASSERT_OK(WaitForNoTablesLeftBehind(
+      kTableName, "Wait for the reloaded catalog to have nothing left behind"));
+}
+
+// Restarts the master after a DROP TABLE on a table with indexes is written to the sys catalog and
+// before it is applied in memory. Expects the table and both indexes to be deleted.
+TEST_F(PgDdlAtomicityMiniClusterTest, DropTableWithIndexesOnMasterCrash) {
+  const auto kTableName = "drop_with_indexes"s;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v1 INT, v2 INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0 (v1)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0 (v2)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  const std::vector<TableId> dropped_table_ids = {
+      table_id,
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName + "_idx1")),
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName + "_idx2"))};
+
+  // The master persists the deletion and then fails before it applies it in memory. The DROP TABLE
+  // statement waits for a DDL verification that only completes once the flag is cleared.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = true;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn, &kTableName] {
+    LOG(INFO) << "DROP TABLE returned: " << conn.ExecuteFormat("DROP TABLE $0", kTableName);
+  });
+
+  ASSERT_OK(LoggedWaitFor([this, &table_id]() -> Result<bool> {
+    return HasDdlLogEntry(table_id, "Drop");
+  }, MonoDelta::FromSeconds(120), "Wait for the deletion to be written to the sys catalog"));
+
+  // The new master picks up the deletion of the table and both indexes the failed master
+  // persisted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = false;
+  ASSERT_OK(RestartMaster());
+  {
+    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    for (const auto& id : dropped_table_ids) {
+      auto table = catalog_manager.GetTableInfo(id);
+      ASSERT_TRUE(table == nullptr || table->LockForRead()->started_deleting()) << id;
+    }
+  }
+
+  ASSERT_OK(WaitForNoTablesLeftBehind(
+      kTableName, "Wait for the table and its indexes to be deleted"));
+
+  thread_holder.JoinAll();
+}
+
+// Restarts the master after the rollback of a CREATE TABLE with a unique index is written to the
+// sys catalog and before it is applied in memory. Expects the table and index to be deleted.
+TEST_F(PgDdlAtomicityMiniClusterTest, CreateTableWithIndexRollbackOnMasterCrash) {
+  const auto kTableName = "rollback_with_index"s;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = true;
+  ASSERT_OK(conn.TestFailDdl(
+      Format("CREATE TABLE $0 (a INT, b INT, CONSTRAINT $0_uniq UNIQUE (b))", kTableName)));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+
+  ASSERT_OK(LoggedWaitFor([this, &table_id]() -> Result<bool> {
+    return HasDdlLogEntry(table_id, "Drop");
+  }, MonoDelta::FromSeconds(120), "Wait for the rollback to be written to the sys catalog"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = false;
+  ASSERT_OK(RestartMaster());
+
+  ASSERT_OK(WaitForNoTablesLeftBehind(
+      kTableName, "Wait for the table and its index to be deleted"));
+}
+
+// Restarts the master with an aborted CREATE TABLE whose unique index is not listed in the
+// table's index list. Expects the table and the index to be deleted.
+TEST_F(PgDdlAtomicityMiniClusterTest, AbortedCreateTableWithUnlistedIndex) {
+  const auto kTableName = "unlisted_index"s;
+  const auto kIndexName = kTableName + "_uniq";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_ysql_ddl_txn_verification) = true;
+  ASSERT_OK(conn.TestFailDdl(
+      Format("CREATE TABLE $0 (a INT, b INT, CONSTRAINT $1 UNIQUE (b))", kTableName, kIndexName)));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  const auto index_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kIndexName));
+  ASSERT_OK(UnlinkIndexFromTable(table_id, index_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_ysql_ddl_txn_verification) = false;
+  ASSERT_OK(RestartMaster());
+
+  ASSERT_OK(WaitForNoTablesLeftBehind(
+      kTableName, "Wait for the table and its index to be deleted"));
+}
+
+// Restarts the master with a committed DROP TABLE whose indexed table is already deleted from the
+// sys catalog while its index is still running. Expects the index to be deleted.
+TEST_F(PgDdlAtomicityMiniClusterTest, DropTableWithIndexAfterTableDeleted) {
+  const auto kTableName = "deleted_indexed_table"s;
+  const auto [table_id, index_id] =
+      ASSERT_RESULT(DropTableWithIndexPendingVerification(kTableName));
+  ASSERT_OK(WriteTableStateToSysCatalog(table_id, master::SysTablesEntryPB::DELETED));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_ysql_ddl_txn_verification) = false;
+  ASSERT_OK(RestartMaster());
+  {
+    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    ASSERT_EQ(catalog_manager.GetTableInfo(table_id), nullptr);
+  }
+
+  ASSERT_OK(WaitForNoTablesLeftBehind(kTableName, "Wait for the index to be deleted"));
+}
+
+// Restarts the master with a committed DROP TABLE whose indexed table is DELETING in the sys
+// catalog while its index is still running. Expects the index to be deleted and the table to stay
+// deleted.
+TEST_F(PgDdlAtomicityMiniClusterTest, DropTableWithIndexAfterTableMarkedDeleting) {
+  const auto kTableName = "deleting_indexed_table"s;
+  const auto [table_id, index_id] =
+      ASSERT_RESULT(DropTableWithIndexPendingVerification(kTableName));
+  ASSERT_OK(WriteTableStateToSysCatalog(table_id, master::SysTablesEntryPB::DELETING));
+
+  // Verification on the DELETING table fails after the restart. The index is verified by the
+  // periodic retry once the table is deleted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_ysql_ddl_txn_verification) = false;
+  ASSERT_OK(RestartMaster());
+
+  ASSERT_OK(WaitForNoTablesLeftBehind(
+      kTableName, "Wait for the index to be deleted"));
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table = catalog_manager.GetTableInfo(table_id);
+  ASSERT_TRUE(table == nullptr || table->LockForRead()->started_deleting());
+}
+
+class PgDdlAtomicitySavepointMiniClusterTest : public PgDdlAtomicityMiniClusterTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
+    PgDdlAtomicityMiniClusterTest::SetUp();
+  }
+};
+
+// Rolls back to a savepoint taken before a CREATE TABLE whose unique index is not listed in the
+// table's index list. Expects the table and the index to be deleted.
+TEST_F(PgDdlAtomicitySavepointMiniClusterTest, RollbackToSavepointWithUnlistedIndex) {
+  const auto kTableName = "savepoint_unlisted_index"s;
+  const auto kIndexName = kTableName + "_uniq";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (a INT, b INT, CONSTRAINT $1 UNIQUE (b))", kTableName, kIndexName));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  const auto index_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kIndexName));
+  ASSERT_OK(UnlinkIndexFromTable(table_id, index_id));
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(WaitForNoTablesLeftBehind(
+      kTableName, "Wait for the table and its index to be deleted"));
 }
 
 // Test that the table cache is correctly invalidated after transaction verification
