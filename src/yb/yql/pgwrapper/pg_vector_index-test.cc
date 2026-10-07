@@ -2354,10 +2354,18 @@ TEST_F(PgVectorIndexPkRoutingTest, HashKey) {
     ASSERT_EQ(stats.partitions, kNumTablets);
   }
 
-  // A cross-type equality isn't routed, but still returns the right rows.
-  stats = ASSERT_RESULT(Query(conn, KnnQuery("th", "tenant = 4::bigint", 4, 5)));
+  // A non-integer cross-type equality isn't routed, but still returns the right rows.
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("th", "tenant = 4.0", 4, 5)));
   ASSERT_EQ(stats.ids, Ids(0, 5));
   ASSERT_EQ(stats.partitions, kNumTablets);
+
+  // With several equalities on the key, the one with the fewest values bounds the search.
+  for (const auto* where : {"tenant = 3 AND tenant IN (3, 4)", "tenant IN (3, 4) AND tenant = 3"}) {
+    SCOPED_TRACE(where);
+    stats = ASSERT_RESULT(Query(conn, KnnQuery("th", where, 3, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
 
   // IN list: one partition per distinct partition of the tenants.
   auto hashes = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
@@ -2457,6 +2465,49 @@ TEST_F(PgVectorIndexPkRoutingTest, TextHashKey) {
     ASSERT_EQ(stats.ids, Ids(0, 3));
     ASSERT_EQ(stats.partitions, kNumTablets);
   }
+}
+
+// Integer literals are int4 and parameters can be int8, so equalities on integer keys are often
+// cross-type (e.g. int8 = int4). Those are routed after converting the value to the column type.
+TEST_F(PgVectorIndexPkRoutingTest, IntegerCrossTypeKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tb", "tenant BIGINT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  ASSERT_OK(CreateAndFill(
+      conn, "ts", "tenant SMALLINT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  for (const auto* where : {"tenant = 6", "6 = tenant", "tenant = 6::smallint", "tenant IN (6)"}) {
+    SCOPED_TRACE(where);
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tb", where, 6, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+  for (const auto* where : {"tenant = 6", "tenant = 6::bigint", "tenant IN (6::bigint)"}) {
+    SCOPED_TRACE(where);
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", where, 6, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+
+  // A value outside the smallint range matches no row, so the column isn't routed.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", "tenant = 70000", 6, 5)));
+  ASSERT_EQ(stats.ids, std::vector<int32_t>{});
+  ASSERT_EQ(stats.partitions, kNumTablets);
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", "tenant IN (6, 70000)", 6, 5)));
+  ASSERT_EQ(stats.ids, Ids(0, 5));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+
+  // A bigint parameter against a smallint column, with a generic plan.
+  ASSERT_OK(conn.Execute("SET plan_cache_mode = force_generic_plan"));
+  ASSERT_OK(conn.Execute(
+      "PREPARE knn(bigint, vector) AS /*+IndexScan(ts ts_embedding_idx)*/ SELECT id FROM ts "
+      "WHERE tenant = $1 ORDER BY embedding <-> $2 LIMIT 4"));
+  stats = ASSERT_RESULT(Query(conn, "EXECUTE knn(9, '[9, 0, 0]')"));
+  ASSERT_EQ(stats.ids, Ids(0, 4));
+  ASSERT_EQ(stats.partitions, 1);
 }
 
 TEST_F(PgVectorIndexPkRoutingTest, FloatKey) {

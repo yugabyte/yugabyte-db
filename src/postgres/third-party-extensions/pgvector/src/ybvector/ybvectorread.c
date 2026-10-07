@@ -92,6 +92,77 @@ getKeyEqualityOperator(Oid column_type, Oid *input_type)
 							   *input_type, BTEqualStrategyNumber);
 }
 
+static bool
+isIntegerType(Oid type)
+{
+	return type == INT2OID || type == INT4OID || type == INT8OID;
+}
+
+/*
+ * Converts value, of integer type value_type, to integer type column_type.
+ * Returns false when it is out of the column type's range: no row can match
+ * it then.
+ */
+static bool
+convertIntegerValue(Datum value, Oid value_type, Oid column_type, Datum *result)
+{
+	int64		v;
+
+	switch (value_type)
+	{
+		case INT2OID:
+			v = DatumGetInt16(value);
+			break;
+		case INT4OID:
+			v = DatumGetInt32(value);
+			break;
+		default:
+			v = DatumGetInt64(value);
+			break;
+	}
+	switch (column_type)
+	{
+		case INT2OID:
+			if (v < PG_INT16_MIN || v > PG_INT16_MAX)
+				return false;
+			*result = Int16GetDatum((int16) v);
+			return true;
+		case INT4OID:
+			if (v < PG_INT32_MIN || v > PG_INT32_MAX)
+				return false;
+			*result = Int32GetDatum((int32) v);
+			return true;
+		default:
+			*result = Int64GetDatum(v);
+			return true;
+	}
+}
+
+/*
+ * Whether opno compares an integer column with a value of another integer
+ * type for equality, e.g. int8 = int4 for "bigint_col = 3".  The integer
+ * types share one btree operator family, whose cross-type equality is exact.
+ * Sets *value_type to the type of the compared value.
+ */
+static bool
+isIntegerCrossTypeEquality(Oid opno, Oid column_type, bool var_on_right,
+						   Oid *value_type)
+{
+	Oid			opclass = GetDefaultOpClass(column_type, BTREE_AM_OID);
+	Oid			left_type;
+	Oid			right_type;
+
+	if (!isIntegerType(column_type) || !OidIsValid(opclass) ||
+		get_op_opfamily_strategy(opno, get_opclass_family(opclass)) !=
+		BTEqualStrategyNumber)
+		return false;
+	op_input_types(opno, &left_type, &right_type);
+	if ((var_on_right ? right_type : left_type) != column_type)
+		return false;
+	*value_type = var_on_right ? left_type : right_type;
+	return isIntegerType(*value_type) && *value_type != column_type;
+}
+
 static Expr *
 stripRelabel(Expr *expr)
 {
@@ -115,6 +186,7 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	Expr	   *lhs;
 	Expr	   *rhs;
 	bool		is_array;
+	bool		var_on_right = false;
 
 	if (IsA(qual, OpExpr) && list_length(((OpExpr *) qual)->args) == 2)
 	{
@@ -124,13 +196,13 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 		inputcollid = op->inputcollid;
 		lhs = stripRelabel(linitial(op->args));
 		rhs = stripRelabel(lsecond(op->args));
-		/* Equality operators of a single type are their own commutators. */
 		if (IsA(rhs, Var) && IsA(lhs, Const))
 		{
 			Expr	   *tmp = lhs;
 
 			lhs = rhs;
 			rhs = tmp;
+			var_on_right = true;
 		}
 		is_array = false;
 	}
@@ -159,14 +231,28 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 
 	Form_pg_attribute att = TupleDescAttr(tupdesc, var->varattno - 1);
 	Oid			input_type = InvalidOid;
+	Oid			cross_type = InvalidOid;
 
 	if (!keyEqualityIsExact(att->atttypid) ||
-		opno != getKeyEqualityOperator(att->atttypid, &input_type) ||
 		inputcollid != att->attcollation)
+		return InvalidAttrNumber;
+	if (opno != getKeyEqualityOperator(att->atttypid, &input_type) &&
+		!isIntegerCrossTypeEquality(opno, att->atttypid, var_on_right,
+									&cross_type))
 		return InvalidAttrNumber;
 
 	if (!is_array)
 	{
+		if (OidIsValid(cross_type))
+		{
+			if (value->consttype != cross_type)
+				return InvalidAttrNumber;
+			*values = palloc(sizeof(Datum));
+			*nvalues = 1;
+			return convertIntegerValue(value->constvalue, cross_type,
+									   att->atttypid, &(*values)[0]) ?
+				var->varattno : InvalidAttrNumber;
+		}
 		if (value->consttype != input_type && value->consttype != att->atttypid)
 			return InvalidAttrNumber;
 		*values = palloc(sizeof(Datum));
@@ -182,7 +268,8 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	char		elmalign;
 	bool	   *nulls;
 
-	if (elemtype != input_type && elemtype != att->atttypid)
+	if (OidIsValid(cross_type) ? elemtype != cross_type :
+		elemtype != input_type && elemtype != att->atttypid)
 		return InvalidAttrNumber;
 	get_typlenbyvalalign(elemtype, &elmlen, &elmbyval, &elmalign);
 	deconstruct_array(array, elemtype, elmlen, elmbyval, elmalign, values,
@@ -190,6 +277,10 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	for (int i = 0; i < *nvalues; ++i)
 	{
 		if (nulls[i])
+			return InvalidAttrNumber;
+		if (OidIsValid(cross_type) &&
+			!convertIntegerValue((*values)[i], cross_type, att->atttypid,
+								 &(*values)[i]))
 			return InvalidAttrNumber;
 	}
 	return var->varattno;
@@ -228,7 +319,7 @@ bindKeyFilter(IndexScanDesc scan, YbOpaque yb_scan)
 		AttrNumber	attnum = extractKeyColumnValues(lfirst(lc), tupdesc,
 													&values, &nvalues);
 		YbcPgColumnInfo column_info = {0};
-		bool		already_bound = false;
+		int			idx = 0;
 
 		if (attnum == InvalidAttrNumber)
 			continue;
@@ -241,11 +332,12 @@ bindKeyFilter(IndexScanDesc scan, YbOpaque yb_scan)
 
 		/*
 		 * Matching rows satisfy every qual, so with several equalities on a
-		 * column, any one of them bounds the tablets.
+		 * column, any one of them bounds the tablets: keep the one with the
+		 * fewest values.
 		 */
-		for (int i = 0; i < ncolumns; ++i)
-			already_bound |= (columns[i].attr_num == attnum);
-		if (already_bound)
+		while (idx < ncolumns && columns[idx].attr_num != attnum)
+			++idx;
+		if (idx < ncolumns && columns[idx].nvalues <= nvalues)
 			continue;
 
 		YbcPgAttrValueDescriptor *attrs =
@@ -261,10 +353,11 @@ bindKeyFilter(IndexScanDesc scan, YbOpaque yb_scan)
 			attrs[i].collation_id = ybc_get_attcollation(tupdesc, attnum);
 			YBSetupAttrCollationInfo(&attrs[i], &column_info);
 		}
-		columns[ncolumns].attr_num = attnum;
-		columns[ncolumns].nvalues = nvalues;
-		columns[ncolumns].values = attrs;
-		++ncolumns;
+		columns[idx].attr_num = attnum;
+		columns[idx].nvalues = nvalues;
+		columns[idx].values = attrs;
+		if (idx == ncolumns)
+			++ncolumns;
 	}
 
 	if (ncolumns > 0)
