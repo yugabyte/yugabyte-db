@@ -43,7 +43,7 @@ After you have created the VMs with the operating system and additional software
 
 These steps prepare the node for use by YugabyteDB Anywhere, including setting ulimits and transparent hugepages. If you have already [installed YugabyteDB Anywhere](../../../install-yugabyte-platform/) and it is running (recommended), the script additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
-{{< tip title="Brownfield provisioning" >}}
+{{< tip title="Brownfield provisioning (Re-provision existing nodes)" >}}
 
 For brownfield use-cases where the nodes are already added to the node instances of the provider, you can generate config files. See [Generate configuration files](#generate-configuration-files).
 
@@ -195,14 +195,14 @@ Without `--config_override`, per-node changes require either:
 1. Keep one common provision YAML checked into ops tooling or shared across the OS/DB teams.
 2. For each node, run the script with that file and pass only the node-specific deltas:
 
-   ```sh
-   ./node-agent-provision.sh \
-     --config_override yba.node_external_fqdn=\"db-node-03.example.com\" \
-     --config_override ynp.node_ip=\"10.1.2.3\" \
-     --config_override yba.node_name=\"db-node-03\"
-   ```
+    ```sh
+    ./node-agent-provision.sh \
+        --config_override yba.node_external_fqdn=\"db-node-03.example.com\" \
+        --config_override ynp.node_ip=\"10.1.2.3\" \
+        --config_override yba.node_name=\"db-node-03\"
+    ```
 
-Types are validated; nested keys use dotted paths. Multiple overrides can be stacked on one invocation.
+The value after `=` is JSON, and it must match that field's type in the provision configuration: a quoted string, a number, `true` or `false`, or a JSON array. Nested fields use dotted paths, such as `yba.instance_type.name`.
 
 For example:
 
@@ -217,6 +217,12 @@ For example:
     ```sh
     ./node-agent-provision.sh --config_override yba.node_external_fqdn=\"my-new-fqdn\" --config_override yba.url=\"https://new-yba-url.com\"
     ```
+
+## Verify provisioning
+
+After running the script and rebooting the VM, you can verify that provisioning was successful and YugabyteDB Anywhere can communicate with the node by navigating to `https://<yugabytedbanywhere-host-ip>/nodeagent`, where `yugabytedbanywhere-host-ip` is the IP address hosting your YugabyteDB Anywhere instance.
+
+The page lists the node agents that have been activated and their status.
 
 ## Generate configuration files
 
@@ -239,12 +245,6 @@ To do a dry run with the generated configuration file:
 ```sh
 ./node-agent-provision.sh  --generate_and_run --dry_run
 ```
-
-## Verify provisioning
-
-After running the script and rebooting the VM, you can verify that provisioning was successful and YugabyteDB Anywhere can communicate with the node by navigating to `https://<yugabytedbanywhere-host-ip>/nodeagent`, where `yugabytedbanywhere-host-ip` is the IP address hosting your YugabyteDB Anywhere instance.
-
-The page lists the node agents that have been activated and their status.
 
 ## Preflight check
 
