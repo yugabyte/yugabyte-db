@@ -14,10 +14,10 @@ import com.yugabyte.yw.common.ApiUsageCollector;
 import com.yugabyte.yw.common.ApiUsageCollector.ClientKey;
 import com.yugabyte.yw.common.ApiUsageCollector.DeprecatedApiKey;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.YWErrorHandler;
 import com.yugabyte.yw.models.common.YbaApi;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -87,11 +87,11 @@ public class ApiUsageFilter extends Filter {
     collector.record(clientKey, deprecatedKey, status);
   }
 
-  // Exceptions reach the error handler after the filters, so map them the same way it does.
+  // Exceptions reach YWErrorHandler after the filters; count the status it will respond with.
   private static int statusOf(Throwable ex) {
-    Throwable cause =
-        ex instanceof CompletionException && ex.getCause() != null ? ex.getCause() : ex;
-    return cause instanceof PlatformServiceException pse ? pse.getHttpStatus() : 500;
+    return YWErrorHandler.toPlatformServiceException(ex)
+        .map(PlatformServiceException::getHttpStatus)
+        .orElse(Http.Status.INTERNAL_SERVER_ERROR);
   }
 
   static String apiVersion(String path) {

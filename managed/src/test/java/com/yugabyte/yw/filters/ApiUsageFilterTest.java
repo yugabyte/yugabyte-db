@@ -4,7 +4,6 @@ package com.yugabyte.yw.filters;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Results.status;
 
@@ -15,6 +14,8 @@ import com.yugabyte.yw.common.ApiUsageCollector.DeprecatedApiKey;
 import com.yugabyte.yw.common.ApiUsageCollector.Snapshot;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.common.YbaApi;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.OptimisticLockException;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -166,28 +167,33 @@ public class ApiUsageFilterTest {
             .get(new DeprecatedApiKey("v2", "POST", "/api/v2/customers/$cUUID/thing", "unknown")));
   }
 
-  @Test
-  public void testFailedRequest() {
-    filter
+  private Counts failWith(Throwable ex) {
+    ApiUsageCollector collector = new ApiUsageCollector();
+    new ApiUsageFilter(Materializer.matFromSystem(actorSystem), collector)
         .apply(
-            rh -> CompletableFuture.failedFuture(new PlatformServiceException(403, "Forbidden")),
+            rh -> CompletableFuture.failedFuture(ex),
             new Http.RequestBuilder()
                 .uri("/api/v1/customers")
                 .cookie(Http.Cookie.builder("PLAY_SESSION", "x").build())
                 .build())
-        .exceptionally(ex -> null)
+        .exceptionally(e -> null)
         .toCompletableFuture()
         .join();
-    Counts counts =
-        collector
-            .snapshot(Instant.now())
-            .clients()
-            .get(new ClientKey("v1", "unknown", "", "session"));
-    assertEquals(new Counts(1, 1, 0), counts);
-    assertNull(
-        collector
-            .snapshot(Instant.now())
-            .clients()
-            .get(new ClientKey("v1", "unknown", "", "none")));
+    return collector
+        .snapshot(Instant.now())
+        .clients()
+        .get(new ClientKey("v1", "unknown", "", "session"));
+  }
+
+  @Test
+  public void testFailedRequest() {
+    assertEquals(new Counts(1, 1, 0), failWith(new PlatformServiceException(403, "Forbidden")));
+    // Statuses must match what YWErrorHandler responds with.
+    assertEquals(
+        new Counts(1, 1, 0),
+        failWith(new RuntimeException(new PlatformServiceException(400, "Bad request"))));
+    assertEquals(new Counts(1, 1, 0), failWith(new OptimisticLockException("changed")));
+    assertEquals(new Counts(1, 0, 1), failWith(new EntityNotFoundException("gone")));
+    assertEquals(new Counts(1, 0, 1), failWith(new IllegalStateException("bug")));
   }
 }

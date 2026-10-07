@@ -22,6 +22,7 @@ import com.typesafe.config.Config;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.persistence.QueryTimeoutException;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import javax.inject.Provider;
@@ -59,26 +60,36 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
         request.method(),
         request.uri(),
         exception.getMessage());
+    Optional<PlatformServiceException> mapped = toPlatformServiceException(exception);
+    if (mapped.isPresent()) {
+      return CompletableFuture.completedFuture(
+          mapped.get().buildResult(request.method(), request.uri()));
+    }
+    return super.onServerError(request, exception);
+  }
+
+  /**
+   * The exception {@link #onServerError} builds its response from, or empty when the exception is
+   * left to the default handler (500). Also used to count errors in ApiUsageFilter.
+   */
+  public static Optional<PlatformServiceException> toPlatformServiceException(Throwable exception) {
     for (Throwable cause : Throwables.getCausalChain(exception)) {
       if (cause instanceof PlatformServiceException) {
-        return CompletableFuture.completedFuture(
-            ((PlatformServiceException) cause).buildResult(request.method(), request.uri()));
+        return Optional.of((PlatformServiceException) cause);
       }
       if (cause instanceof OptimisticLockException) {
-        return CompletableFuture.completedFuture(
+        return Optional.of(
             new PlatformServiceException(
-                    BAD_REQUEST, "Data has changed, please refresh and try again")
-                .buildResult(request.method(), request.uri()));
+                BAD_REQUEST, "Data has changed, please refresh and try again"));
       }
       if (cause instanceof EntityNotFoundException || cause instanceof QueryTimeoutException) {
         // 529 was proposed for YBM. This can happen when entity object is already fetched but
         // deleted before fetching the fields.
-        return CompletableFuture.completedFuture(
-            new PlatformServiceException(529, "Transient error. Please refresh and try again")
-                .buildResult(request.method(), request.uri()));
+        return Optional.of(
+            new PlatformServiceException(529, "Transient error. Please refresh and try again"));
       }
     }
-    return super.onServerError(request, exception);
+    return Optional.empty();
   }
 
   @Override
