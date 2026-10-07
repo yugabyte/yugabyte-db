@@ -20815,16 +20815,6 @@ ATPrepChangePersistence(AlteredTableInfo *tab, Relation rel, bool toLogged)
 	SysScanDesc scan;
 	ScanKeyData skey[1];
 
-	if (IsYugaByteEnabled())
-	{
-		/* UNLOGGED persistence is NO-OP in YB. */
-		tab->chgPersistence = false;
-		ereport(NOTICE,
-				(errmsg("unlogged option is currently ignored in YugabyteDB, "
-						"all non-temp relations will be logged")));
-		return;
-	}
-
 	/*
 	 * Disallow changing status for a temp table.  Also verify whether we can
 	 * get away with doing nothing; in such cases we don't need to run the
@@ -20929,6 +20919,20 @@ ATPrepChangePersistence(AlteredTableInfo *tab, Relation rel, bool toLogged)
 	systable_endscan(scan);
 
 	table_close(pg_constraint, AccessShareLock);
+
+	if (IsYugaByteEnabled() && !toLogged)
+	{
+		/*
+		 * UNLOGGED persistence is a NO-OP in YB: report it and leave
+		 * chgPersistence false so no rewrite is queued. The checks above still
+		 * run, so an invalid request (e.g. a logged table referencing another
+		 * logged table) is still rejected.
+		 */
+		ereport(NOTICE,
+				(errmsg("unlogged option is currently ignored in YugabyteDB, "
+						"all non-temp relations will be logged")));
+		return;
+	}
 
 	/* force rewrite if necessary; see comment in ATRewriteTables */
 	tab->rewrite |= AT_REWRITE_ALTER_PERSISTENCE;
