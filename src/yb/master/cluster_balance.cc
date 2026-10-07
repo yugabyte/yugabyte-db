@@ -1225,27 +1225,23 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
   // the interval between left and right cannot have load > kMinLoadVarianceToBalance.
   ssize_t last_pos = state_->sorted_load_.size() - 1;
   for (ssize_t left = 0; left <= last_pos; ++left) {
-    // Blacklisted tservers cannot receive load. Using one as the destination could end the search
-    // early via the global load check below. last_pos is never skipped: its iteration
-    // (left == right, load_variance == 0) terminates the loop via return false instead of
-    // falling through to the IllegalState below.
-    if (left < last_pos &&
-        global_state_->blacklisted_servers_.contains(state_->sorted_load_[left])) {
+    // Loads are sorted ascending, so there is no tserver to move load from once left reaches
+    // last_pos: the scan is exhausted. Return rather than let the outer loop end, which would fall
+    // through to the IllegalState below.
+    if (left == last_pos) {
+      return false;
+    }
+    // Blacklisted tservers cannot receive load.
+    if (global_state_->blacklisted_servers_.contains(state_->sorted_load_[left])) {
       continue;
     }
-    for (auto right = last_pos; right >= 0; --right) {
+    for (auto right = last_pos; right > left; --right) {
       const TabletServerId& low_load_uuid = state_->sorted_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_load_[right];
       ssize_t load_variance = state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid);
       bool is_global_balancing_move = false;
 
-      // Check for state change or end conditions.
-      if (left == right || load_variance < state_->options_->kMinLoadVarianceToBalance) {
-        if (right == last_pos && load_variance == 0) {
-          // Either both left and right are at the end, or there is no load_variance, which means
-          // there will be no load_variance for any TSs between left and right, so we can return.
-          return false;
-        }
+      if (load_variance < state_->options_->kMinLoadVarianceToBalance) {
         // If there is load variance, then there is a chance we can benefit from globally balancing.
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
           int global_load_variance = global_state_->GetGlobalLoad(high_load_uuid) -
@@ -1261,8 +1257,9 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
           // Mark this move as a global balancing move and try to find a tablet to move.
           is_global_balancing_move = true;
         } else {
-          // The load_variance is too low, which means we weren't able to find a load to move to
-          // the left tserver. Continue and try with the next left tserver.
+          // Loads are sorted ascending, so no tserver at or before right has enough extra load to
+          // move to left. If right is the most loaded tserver, the same holds for every later left
+          // tserver, so we are done. Otherwise, try the next left tserver.
           if (right == last_pos) {
             return false;
           } else {
