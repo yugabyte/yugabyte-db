@@ -2943,7 +2943,8 @@ TEST_F_EX(AdminCliTest, TestSplitTabletDefault, AdminCliListTabletsTest) {
 }
 
 TEST_F_EX(AdminCliTest, TestSplitTabletMultiWay, AdminCliListTabletsTest) {
-  BuildAndStart();
+  // 256B data blocks so Cross has enough cut points for a 5-way split.
+  BuildAndStart({"--db_block_size_bytes=256"});
   const auto& keyspace = kTableName.namespace_name();
   const auto& table_name = kTableName.table_name();
 
