@@ -1261,6 +1261,8 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 
 	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
 	YbcOtelSpanContext span_ctx = NULL;
+	YbcOtelSpanContext guc_span_ctx = yb_guc_remote_span_ctx;
+	YbcOtelSpanContext sampled_comment_ctx;
 
 	/*
 	 * YB: query_string may be NULL for protocol messages that don't carry a
@@ -1294,29 +1296,33 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 							YbGetTraceparentResultErrmsg(tp_result))));
 	}
 
+	/* YB: An unsampled traceparent (flags 00) is treated as absent. */
+	if (guc_span_ctx && !YBCIsSpanContextSampled(guc_span_ctx))
+		guc_span_ctx = NULL;
+	sampled_comment_ctx =
+		comment_span_ctx && YBCIsSpanContextSampled(comment_span_ctx)
+		? comment_span_ctx : NULL;
+
 	/* YB: GUC traceparent is higher priority over SQL comment traceparent. */
-	if (yb_guc_remote_span_ctx)
+	if (guc_span_ctx)
 	{
-		if (comment_span_ctx)
+		if (sampled_comment_ctx)
 			ereport(WARNING,
 					(errmsg("yb_dist_tracecontext GUC takes priority; "
 							"skipping SQL comment traceparent")));
-		span_ctx = yb_guc_remote_span_ctx;
+		span_ctx = guc_span_ctx;
 	}
 	else
-		span_ctx = comment_span_ctx;
-
-	/* YB: An unsampled traceparent (flags 00) is treated as absent. */
-	if (span_ctx && !YBCIsSpanContextSampled(span_ctx))
-		span_ctx = NULL;
+		span_ctx = sampled_comment_ctx;
 
 	if (!span_ctx)
 	{
 		/* No traceparent: sampling mints a fresh trace. */
 		if (!sample || yb_dist_trace_sample_rate <= 0)
 			return comment_span_ctx;
-		/* Tserver internal connections are not sampled. */
-		if (MyProcPort && MyProcPort->yb_is_tserver_auth_method)
+		/* Skip tserver internal connections, which conn-mgr backends are not. */
+		if (MyProcPort && MyProcPort->yb_is_tserver_auth_method &&
+			!YbIsClientYsqlConnMgr())
 			return comment_span_ctx;
 		/* One draw per cycle: a dropped Bind must not let Execute re-roll. */
 		if (!YBCDistTraceClaimSampleDraw() ||

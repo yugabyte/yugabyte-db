@@ -1364,6 +1364,13 @@ TEST_F(DistTraceTest, TestGucPriorityOverComment) {
   ASSERT_EQ(warnings.size(), 1);
   ASSERT_STR_CONTAINS(warnings.back(),
       "yb_dist_tracecontext GUC takes priority");
+
+  // The comment is parsed before the GUC is considered, so a malformed one reports its own
+  // error instead of the priority warning.
+  ASSERT_OK(conn_->FetchFormat(
+      "/*traceparent='$0'*/ SELECT 1;", kInvalidTraceparentValues[0]));
+  ASSERT_EQ(warnings.size(), 2);
+  ASSERT_STR_CONTAINS(warnings.back(), "traceparent format is invalid");
 }
 
 TEST_F(DistTraceTest, TestTraceparentGucSetLocal) {
@@ -2027,8 +2034,8 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolPreparedStatementReuse) {
   ASSERT_OK(ext_conn.Fetch("SELECT 2"));
 }
 
-// With the GUC set, sampling is not consulted: every cycle gets its own root under the GUC
-// parent.
+// With a sampled GUC set, sampling is not consulted: every cycle gets its own root under the
+// GUC parent.
 TEST_F(DistTraceTest, TestExtendedQueryProtocolGucTracesEveryCycle) {
   auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
   auto tp = GenerateTraceparent();
@@ -2087,7 +2094,8 @@ TEST_F(DistTraceTest, TestOneSampleDrawPerCycle) {
 }
 
 // A traceparent whose sampled flag is clear (-00) is treated as absent: with sampling off
-// it starts no trace, through the GUC or a comment.
+// it starts no trace, through the GUC or a comment, and an unsampled GUC neither takes
+// priority over a sampled comment traceparent nor warns about it.
 TEST_F(DistTraceTest, TestUnsampledTraceparentNotTraced) {
   auto tp = GenerateTraceparentWithFlags("00");
   ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
@@ -2096,6 +2104,16 @@ TEST_F(DistTraceTest, TestUnsampledTraceparentNotTraced) {
   auto query = Format("/*traceparent='$0'*/ SELECT 15", tp.full);
   ASSERT_OK(conn_->Fetch(query));
   ASSERT_OK(collector_.VerifyNoTracesEmitted());
+
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  const auto& warnings = CaptureWarnings();
+  auto sampled_tp = GenerateTraceparent();
+  ASSERT_OK(conn_->Fetch(Format("/*traceparent='$0'*/ SELECT 24", sampled_tp.full)));
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(sampled_tp.trace_id, "query"));
+  auto root = collector_.FindRootSpan(sampled_tp.trace_id);
+  ASSERT_TRUE(root.has_value());
+  ASSERT_EQ(root->parent_span_id, sampled_tp.span_id);
+  ASSERT_TRUE(warnings.empty()) << warnings.front();
 }
 
 // The rate is a runtime tserver flag; a change reaches sessions that are already open.
@@ -2282,6 +2300,25 @@ TEST_F(DistTraceSamplingTest, TestInternalConnectionNotSampled) {
   ASSERT_OK(internal.ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
   ASSERT_OK(internal.Fetch("SELECT 22"));
   ASSERT_OK(collector_.VerifyTraceContainsOpName(tp.trace_id, "query"));
+}
+
+class DistTraceSamplingConnMgrTest : public DistTraceSamplingTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceSamplingTest::ConfigureDistTraceOptions(options);
+    options->enable_ysql_conn_mgr = true;
+  }
+};
+
+// Conn-mgr backends authenticate with the tserver key like internal connections, but their
+// client queries are sampled.
+TEST_F(DistTraceSamplingConnMgrTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestSimpleQuerySampledViaConnMgr)) {
+  ASSERT_OK(conn_->Fetch("SELECT 23"));
+  auto trace = ASSERT_RESULT(collector_.WaitForTraceWithQueryText("SELECT 23"));
+  auto root = collector_.FindRootSpan(trace.trace_id);
+  ASSERT_TRUE(root.has_value());
+  ASSERT_TRUE(root->parent_span_id.empty());
 }
 
 // --- SPI tracing tests ---
