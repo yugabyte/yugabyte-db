@@ -1626,6 +1626,18 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_LT(start_time, history_event["timestamp"].GetInt64());
   // cooldown value is stored in microseconds and its flag value is in unit of miliseconds.
   ASSERT_EQ(1000 * cooldown_value, history_event["cooldown"].GetInt64());
+
+  // Auto-analyze on this node should publish last_autoanalyze, not last_analyze.
+  auto [has_last_analyze, has_last_autoanalyze, analyze_count, autoanalyze_count] =
+      ASSERT_RESULT((conn.FetchRow<bool, bool, PGUint64, PGUint64>(
+          Format("SELECT last_analyze IS NOT NULL, last_autoanalyze IS NOT NULL, "
+                 "analyze_count, autoanalyze_count "
+                 "FROM pg_stat_user_tables WHERE schemaname = '$0' AND relname = '$1'",
+                 schema_name, table_name))));
+  ASSERT_FALSE(has_last_analyze);
+  ASSERT_TRUE(has_last_autoanalyze);
+  ASSERT_EQ(0, analyze_count);
+  ASSERT_GE(autoanalyze_count, 1);
 }
 
 // yb_stat_auto_analyze must keep reporting pg_class.oid after a rewrite, when
