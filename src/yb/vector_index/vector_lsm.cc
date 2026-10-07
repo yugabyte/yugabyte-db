@@ -542,7 +542,7 @@ class VectorLSMInsertRegistryBase
     }
   }
 
-  virtual void DoTaskDoneUnlocked(InsertTask* /*task*/) REQUIRES(mutex_) {
+  virtual void DoTaskDoneUnlocked(InsertTask* task) REQUIRES(mutex_) {
     // Nothing to do, could be used in derived classes.
   }
 
