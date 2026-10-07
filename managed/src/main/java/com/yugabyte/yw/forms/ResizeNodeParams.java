@@ -70,8 +70,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
 
   private boolean forceResizeNode;
 
-  // Set only on RollbackResizeNode params: the Azure disk cooldown clock when a node's
-  // lastVolumeUpdateTime is unset.
+  // Set only on RollbackResizeNode params. Azure disk cooldown starts at the later of this and the
+  // node's lastVolumeUpdateTime, which can be older than a modify the failed resize never saved.
   @ApiModelProperty(hidden = true)
   private Date failedTaskCreateTime;
 
