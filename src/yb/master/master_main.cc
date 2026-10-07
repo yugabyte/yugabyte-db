@@ -74,6 +74,8 @@ DECLARE_int32(logbuflevel);
 DECLARE_int32(webserver_port);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(durable_wal_write);
+DECLARE_bool(quick_leader_election_on_create);
+DECLARE_bool(quick_leader_election_on_restart);
 DECLARE_int32(stderrthreshold);
 
 DECLARE_string(metric_node_name);
@@ -109,6 +111,10 @@ static int MasterMain(int argc, char** argv) {
 
   // For masters we always want to fsync the WAL files (except in testing).
   FLAGS_durable_wal_write = true;
+  // The sys catalog tablet does not need to wait a full election timeout for its peers before
+  // electing a leader when the masters of a new universe start together, or after a restart.
+  FLAGS_quick_leader_election_on_create = true;
+  FLAGS_quick_leader_election_on_restart = true;
   // Master has a lot less memory and relatively less data. So by default, let's keep the
   // RBS chunk size small.
   FLAGS_remote_bootstrap_max_chunk_size = 1_MB;
