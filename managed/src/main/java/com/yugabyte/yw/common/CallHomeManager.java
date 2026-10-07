@@ -233,6 +233,7 @@ public class CallHomeManager {
         }
       } catch (Exception e) {
         backupPolicies = Json.newArray();
+        addError(errors, universeResp.universeUUID, "backup_policies", e);
       }
       universeNode.set("scheduled_backup_policies", backupPolicies);
 
@@ -497,8 +498,8 @@ public class CallHomeManager {
     universeNode.set("xclusterSettings", xclusterSettings);
   }
 
-  // Callhome is best-effort: a failed collection step leaves its fields empty and is reported in
-  // the payload's "errors", so empty values can be told apart from failures.
+  // Callhome is best-effort: a failed collection step is reported in the payload's "errors" and
+  // leaves its fields empty, or partially filled for metrics, instead of failing the payload.
   private void addError(ArrayNode errors, UUID universeUuid, String stage, Exception e) {
     LOG.warn(
         "Failed to collect {} for callhome payload of universe {}: {}",
