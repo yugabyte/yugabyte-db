@@ -907,182 +907,6 @@ RelationBuildTupleDesc(Relation relation)
 }
 
 /*
- * A special version of RelationBuildRuleLock (initializes rewrite rules for a relation).
- *
- * Its only difference from the original is that instead of doing a direct scan
- * on RewriteRelationId, it uses partial query against RULERELNAME cache
- * (which we pre-initialized in YBPreloadRelCache).
- */
-static void
-YBRelationBuildRuleLock(Relation relation)
-{
-	MemoryContext rulescxt;
-	MemoryContext oldcxt;
-	Relation	rewrite_desc;
-	TupleDesc	rewrite_tupdesc;
-	RuleLock   *rulelock;
-	int			numlocks;
-	RewriteRule **rules;
-	int			maxlocks;
-
-	/*
-	 * Make the private context.  Assume it'll not contain much data.
-	 */
-	rulescxt = AllocSetContextCreate(CacheMemoryContext,
-									 "relation rules",
-									 ALLOCSET_SMALL_SIZES);
-	relation->rd_rulescxt = rulescxt;
-	MemoryContextCopyAndSetIdentifier(rulescxt,
-									  RelationGetRelationName(relation));
-
-	/*
-	 * allocate an array to hold the rewrite rules (the array is extended if
-	 * necessary)
-	 */
-	maxlocks = 4;
-	rules = (RewriteRule **)
-		MemoryContextAlloc(rulescxt, sizeof(RewriteRule *) * maxlocks);
-	numlocks = 0;
-
-	/*
-	 * # ORIGINAL POSTGRES COMMENT:
-	 *
-	 * open pg_rewrite and begin a scan
-	 *
-	 * Note: since we scan the rules using RewriteRelRulenameIndexId, we will
-	 * be reading the rules in name order, except possibly during
-	 * emergency-recovery operations (ie, IgnoreSystemIndexes). This in turn
-	 * ensures that rules will be fired in name order.
-	 *
-	 *
-	 * # YB NOTE (alex):
-	 *
-	 * Instead of full scan, we're doing partial cache lookup. This cache is also using
-	 * RewriteRelRulenameIndexId, so the order persists.
-	 */
-	rewrite_desc = table_open(RewriteRelationId, AccessShareLock);
-	rewrite_tupdesc = RelationGetDescr(rewrite_desc);
-
-	CatCList   *rewrite_list = SearchSysCacheList1(RULERELNAME,
-												   ObjectIdGetDatum(RelationGetRelid(relation)));
-
-	for (int i = 0; i < rewrite_list->n_members; i++)
-	{
-		HeapTuple	rewrite_tuple = &rewrite_list->members[i]->tuple;
-		Form_pg_rewrite rewrite_form = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
-
-		bool		isnull;
-		Datum		rule_datum;
-		char	   *rule_str;
-		RewriteRule *rule;
-		Oid			check_as_user;
-
-		rule = (RewriteRule *) MemoryContextAlloc(rulescxt,
-												  sizeof(RewriteRule));
-
-		rule->ruleId = rewrite_form->oid;
-
-		rule->event = rewrite_form->ev_type - '0';
-		rule->enabled = rewrite_form->ev_enabled;
-		rule->isInstead = rewrite_form->is_instead;
-
-		/*
-		 * Must use heap_getattr to fetch ev_action and ev_qual.  Also, the
-		 * rule strings are often large enough to be toasted.  To avoid
-		 * leaking memory in the caller's context, do the detoasting here so
-		 * we can free the detoasted version.
-		 */
-		rule_datum = heap_getattr(rewrite_tuple,
-								  Anum_pg_rewrite_ev_action,
-								  rewrite_tupdesc,
-								  &isnull);
-		Assert(!isnull);
-		rule_str = TextDatumGetCString(rule_datum);
-		oldcxt = MemoryContextSwitchTo(rulescxt);
-		rule->actions = (List *) stringToNode(rule_str);
-		MemoryContextSwitchTo(oldcxt);
-		pfree(rule_str);
-
-		rule_datum = heap_getattr(rewrite_tuple,
-								  Anum_pg_rewrite_ev_qual,
-								  rewrite_tupdesc,
-								  &isnull);
-		Assert(!isnull);
-		rule_str = TextDatumGetCString(rule_datum);
-		oldcxt = MemoryContextSwitchTo(rulescxt);
-		rule->qual = (Node *) stringToNode(rule_str);
-		MemoryContextSwitchTo(oldcxt);
-		pfree(rule_str);
-
-		/*
-		 * If this is a SELECT rule defining a view, and the view has
-		 * "security_invoker" set, we must perform all permissions checks on
-		 * relations referred to by the rule as the invoking user.
-		 *
-		 * In all other cases (including non-SELECT rules on security invoker
-		 * views), perform the permissions checks as the relation owner.
-		 */
-		if (rule->event == CMD_SELECT &&
-			relation->rd_rel->relkind == RELKIND_VIEW &&
-			RelationHasSecurityInvoker(relation))
-			check_as_user = InvalidOid;
-		else
-			check_as_user = relation->rd_rel->relowner;
-
-		/*
-		 * Scan through the rule's actions and set the checkAsUser field on
-		 * all rtable entries. We have to look at the qual as well, in case it
-		 * contains sublinks.
-		 *
-		 * The reason for doing this when the rule is loaded, rather than when
-		 * it is stored, is that otherwise ALTER TABLE OWNER would have to
-		 * grovel through stored rules to update checkAsUser fields. Scanning
-		 * the rule tree during load is relatively cheap (compared to
-		 * constructing it in the first place), so we do it here.
-		 */
-		setRuleCheckAsUser((Node *) rule->actions, check_as_user);
-		setRuleCheckAsUser(rule->qual, check_as_user);
-
-		if (numlocks >= maxlocks)
-		{
-			maxlocks *= 2;
-			rules = (RewriteRule **)
-				repalloc(rules, sizeof(RewriteRule *) * maxlocks);
-		}
-		rules[numlocks++] = rule;
-	}
-
-	/*
-	 * We don't use those preloaded pg_rewrite partial-match lists anywhere else in the code,
-	 * so there's no point of keeping them in memory.
-	 * We mark them dead so that ReleaseCatCacheList would evict them.
-	 */
-	rewrite_list->dead = true;
-	ReleaseCatCacheList(rewrite_list);
-	table_close(rewrite_desc, AccessShareLock);
-
-	/*
-	 * there might not be any rules (if relhasrules is out-of-date)
-	 */
-	if (numlocks == 0)
-	{
-		relation->rd_rules = NULL;
-		relation->rd_rulescxt = NULL;
-		MemoryContextDelete(rulescxt);
-		return;
-	}
-
-	/*
-	 * form a RuleLock and insert into relation
-	 */
-	rulelock = (RuleLock *) MemoryContextAlloc(rulescxt, sizeof(RuleLock));
-	rulelock->numLocks = numlocks;
-	rulelock->rules = rules;
-
-	relation->rd_rules = rulelock;
-}
-
-/*
  *		RelationBuildRuleLock
  *
  *		Form the relation's rewrite rules from information in
@@ -1098,9 +922,13 @@ YBRelationBuildRuleLock(Relation relation)
  * to be easy to free explicitly, anyway.
  *
  * Note: The relation's reloptions must have been extracted first.
+ *
+ * YB: The relcache preload passes yb_use_rule_cache to read the rules from
+ * the RULERELNAME catcache, which it filled from the prefetched pg_rewrite,
+ * instead of scanning pg_rewrite once per relation.
  */
 static void
-RelationBuildRuleLock(Relation relation)
+RelationBuildRuleLock(Relation relation, bool yb_use_rule_cache)
 {
 	MemoryContext rulescxt;
 	MemoryContext oldcxt;
@@ -1113,6 +941,9 @@ RelationBuildRuleLock(Relation relation)
 	int			numlocks;
 	RewriteRule **rules;
 	int			maxlocks;
+
+	/* YB declarations */
+	YbCatCListIterator yb_rewrite_iter;
 
 	/*
 	 * Make the private context.  Assume it'll not contain much data.
@@ -1148,15 +979,28 @@ RelationBuildRuleLock(Relation relation)
 	 * be reading the rules in name order, except possibly during
 	 * emergency-recovery operations (ie, IgnoreSystemIndexes). This in turn
 	 * ensures that rules will be fired in name order.
+	 *
+	 * YB: The RULERELNAME catcache is also keyed on
+	 * RewriteRelRulenameIndexId, so its list is in name order too.
 	 */
 	rewrite_desc = table_open(RewriteRelationId, AccessShareLock);
 	rewrite_tupdesc = RelationGetDescr(rewrite_desc);
-	rewrite_scan = systable_beginscan(rewrite_desc,
-									  RewriteRelRulenameIndexId,
-									  true, NULL,
-									  1, &key);
+	if (yb_use_rule_cache)
+	{
+		CatCList   *list = SearchSysCacheList1(RULERELNAME,
+											   ObjectIdGetDatum(RelationGetRelid(relation)));
 
-	while (HeapTupleIsValid(rewrite_tuple = systable_getnext(rewrite_scan)))
+		yb_rewrite_iter = YbCatCListIteratorBegin(list);
+	}
+	else
+		rewrite_scan = systable_beginscan(rewrite_desc,
+										  RewriteRelRulenameIndexId,
+										  true, NULL,
+										  1, &key);
+
+	while (HeapTupleIsValid(rewrite_tuple = yb_use_rule_cache ?
+							YbCatCListIteratorGetNext(&yb_rewrite_iter) :
+							systable_getnext(rewrite_scan)))
 	{
 		Form_pg_rewrite rewrite_form = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
 		bool		isnull;
@@ -1243,7 +1087,17 @@ RelationBuildRuleLock(Relation relation)
 	/*
 	 * end the scan and close the attribute relation
 	 */
-	systable_endscan(rewrite_scan);
+	if (yb_use_rule_cache)
+	{
+		/*
+		 * Nothing else reads these RULERELNAME lists, so mark this one dead
+		 * to have ReleaseCatCacheList evict it.
+		 */
+		yb_rewrite_iter.list->dead = true;
+		YbCatCListIteratorFree(&yb_rewrite_iter);
+	}
+	else
+		systable_endscan(rewrite_scan);
 	table_close(rewrite_desc, AccessShareLock);
 
 	/*
@@ -2000,7 +1854,7 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 
 	/* Fetch rules and triggers that affect this relation */
 	if (relation->rd_rel->relhasrules)
-		YBRelationBuildRuleLock(relation);
+		RelationBuildRuleLock(relation, true);
 	else
 	{
 		relation->rd_rules = NULL;
@@ -4057,7 +3911,7 @@ retry:
 	 * extracting the relation's reloptions.
 	 */
 	if (relation->rd_rel->relhasrules)
-		RelationBuildRuleLock(relation);
+		RelationBuildRuleLock(relation, false /* yb_use_rule_cache */ );
 	else
 	{
 		relation->rd_rules = NULL;
@@ -7585,7 +7439,7 @@ RelationCacheInitializePhase3(void)
 		 */
 		if (relation->rd_rel->relhasrules && relation->rd_rules == NULL)
 		{
-			RelationBuildRuleLock(relation);
+			RelationBuildRuleLock(relation, false /* yb_use_rule_cache */ );
 			if (relation->rd_rules == NULL)
 				relation->rd_rel->relhasrules = false;
 			restart = true;
