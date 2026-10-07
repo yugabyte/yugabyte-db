@@ -94,6 +94,8 @@ Choose a minimum that covers your normal workload and availability requirements.
 
 The minimum and maximum must be multiples of the number of availability zones, so each zone keeps the same number of nodes. In a 3-AZ cluster, the smallest minimum is 3, and the maximum must also be a multiple of 3.
 
+YugabyteDB Aeon [displays an alert](../../cloud-monitor/cloud-alerts/) when the maximum or minimum is reached.
+
 ### Scale out rules
 
 Scale-out rules determine when nodes are added.

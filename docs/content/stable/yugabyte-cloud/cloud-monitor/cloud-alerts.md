@@ -86,6 +86,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | [YSQL Connections](#fix-ysql-connection-alerts) | YSQL Operations/Sec metric |
 | [CMK Unavailable](#fix-cmk-unavailable-alerts) | N/A |
 | [CPU Utilization](#fix-cpu-alerts) | CPU Usage metric |
+| [Autoscaling](#fix-autoscaling-alerts) | Go to the cluster [Autoscaling](../../cloud-clusters/autoscaling/#monitor-autoscaling) settings |
 
 You can view metrics on the cluster **Performance** tab. Refer to [Performance Metrics](../monitor-metrics/).
 
@@ -271,6 +272,17 @@ Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-quer
 High CPU use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
 If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+#### Fix Autoscaling alerts
+
+YugabyteDB Aeon sends a notification when [Autoscaling](../../cloud-clusters/autoscaling/) reaches its limits, as follows:
+
+- Autoscaling minimum node limit reached (Warning). (This alert is not triggered when the Autoscaling policy's minimum node count is set to 3, because 3 nodes is the minimum supported configuration for Autoscaling.)
+- Autoscaling maximum node limit reached (Warning).
+
+When configured, Autoscaling adds or removes nodes in a YugabyteDB Aeon cluster as CPU and connection load rise and fall. If your cluster frequently reaches the maximum node limit, or stays there, consider increasing the limit. To monitor Autoscaling history, go to the [Autoscaling](../../cloud-clusters/autoscaling/#monitor-autoscaling) settings.
+
+If you are at the limit and CPU and connection load is continuously high, your workload may also exceed the capacity of your cluster. Consider scaling your cluster vertically by adding vCPUs to increase capacity per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 ### Disaster recovery alerts
 

@@ -20,7 +20,7 @@ You can scale the following cluster properties:
 - Disk size per node
 - IOPS (AWS clusters only)
 
-To add or remove nodes automatically as CPU and connection load change, refer to [Autoscaling](../autoscaling/).
+To add or remove nodes automatically as CPU and connection load change, refer to [Autoscaling](../autoscaling/). Horizontal scaling is restricted to the configured autoscaling policy range.
 
 Cluster edit operations are performed using the **Edit Infrastructure** option under **Regions** on the cluster **Settings > Infrastructure** tab.
 
@@ -40,6 +40,7 @@ The **Regions** section on the cluster **Settings > Infrastructure** tab summari
 ## Limitations
 
 - You can horizontally scale nodes in clusters with Node Level [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) in increments of 1. Nodes in clusters with Availability Zone Level fault tolerance are scaled in increments of 3 or 5 (1 per zone, depending on the configuration). Nodes in clusters with Region Level fault tolerance are scaled in increments of 1 per region.
+- Horizontal scaling is restricted to the configured [Autoscaling](../autoscaling/) policy limits. If you want to scale beyond the Autoscaling limits, first change the policy.
 - You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
 - Currently, you can't change the cluster fault tolerance using the YugabyteDB Aeon UI; you can change it using the [API](../../managed-automation/managed-api/) or [CLI](../../managed-automation/managed-cli/).
