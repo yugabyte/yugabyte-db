@@ -47,12 +47,12 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     indexes_.emplace_back(
         "usearch",
         ASSERT_RESULT((CreateUsearchIndexTraits<Vector, DistanceResult>(
-            block_cache_, options, HnswBackend::YB_HNSW_USEARCH, mem_tracker_)))
+            block_cache_, options, mem_tracker_)))
             ->Create(vector_index::FactoryMode::kCreate, vector_index::StoreVectorPayload::kFalse));
     indexes_.emplace_back(
         "hnswlib",
         ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
-            block_cache_, options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
+            block_cache_, options, mem_tracker_)))
             ->Create(vector_index::FactoryMode::kCreate, vector_index::StoreVectorPayload::kFalse));
     for (const auto& [_, index] : indexes_) {
       ASSERT_OK(index->Reserve(

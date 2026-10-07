@@ -1025,6 +1025,7 @@ Status TabletVectorIndexes::Verify() {
     RETURN_NOT_OK(reader.Init(read_ht, Slice()));
     auto reverse_mapping_reader = VERIFY_RESULT(vector_index->context().CreateReverseMappingReader(
         ReadHybridTime::SingleTime(read_ht), nullptr));
+    auto vector_ids = VERIFY_RESULT(vector_index->AllVectorIds());
     while (VERIFY_RESULT(reader.FetchNext())) {
       auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
       auto vector_id = VERIFY_RESULT(value.DecodeId());
@@ -1034,7 +1035,7 @@ Status TabletVectorIndexes::Verify() {
             << "Wrong reverse record for: " << vector_id << ": " << ybctid.ToDebugHexString()
             << ", while expected: " << reader.current_ybctid().ToDebugHexString();
       }
-      if (!VERIFY_RESULT(vector_index->HasVectorId(vector_id))) {
+      if (!vector_ids.contains(vector_id)) {
         LOG_WITH_FUNC(DFATAL) << "Missing vector id in index: " << vector_id;
       }
     }

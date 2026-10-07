@@ -16,6 +16,7 @@
 #include <condition_variable>
 #include <future>
 #include <map>
+#include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -156,7 +157,7 @@ class VectorLSM {
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
+  Result<std::unordered_set<vector_index::VectorId>> AllVectorIds() const;
   Result<size_t> TotalEntries() const;
 
   Status Flush(bool wait);

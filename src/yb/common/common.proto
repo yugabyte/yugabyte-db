@@ -135,10 +135,12 @@ enum PgVectorIndexType {
   HNSW = 3;
 }
 
+// DEPRECATED_* backends stored chunks in the native usearch/hnswlib file formats. They are no
+// longer created or loaded; indexes using them must be dropped and recreated.
 enum HnswBackend {
-  USEARCH = 0;
+  DEPRECATED_USEARCH = 0;
   YB_HNSW_USEARCH = 1;
-  HNSWLIB = 2;
+  DEPRECATED_HNSWLIB = 2;
   YB_HNSW_HNSWLIB = 3;
 };
 

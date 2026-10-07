@@ -58,7 +58,6 @@ using unum::usearch::index_dense_config_t;
 using unum::usearch::index_dense_gt;
 using unum::usearch::metric_kind_t;
 using unum::usearch::metric_punned_t;
-using unum::usearch::output_file_t;
 using unum::usearch::scalar_kind_t;
 
 using vector_index::HNSWOptions;
@@ -131,14 +130,13 @@ class UsearchIndex :
   using IndexImpl = index_dense_gt<VectorId>;
 
   UsearchIndex(
-      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
       const MemTrackerPtr& mem_tracker, vector_index::StoreVectorPayload store_vector_payload)
       : Base(store_vector_payload),
         block_cache_(block_cache),
         dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
         metric_(options.CreateMetric<Vector>()),
-        backend_(backend),
         index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))) {
     CHECK_GT(dimensions_, 0);
     consumption_.Init(mem_tracker);
@@ -219,38 +217,13 @@ class UsearchIndex :
 
   Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> DoSaveIndex(
       const std::string& path) {
-    // TODO(vector_index) Reload via memory mapped file
-    VLOG_WITH_FUNC(2)
-        << path << ", size: " << index_.size() << ", backend: " << HnswBackend_Name(backend_);
-    if (backend_ == HnswBackend::YB_HNSW_USEARCH) {
-      return ImportYbHnsw<Vector, DistanceResult>(index_, path, block_cache_, this->payloads());
-    }
-    try {
-      if (!index_.save(output_file_t(path.c_str()))) {
-        return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
-      }
-    } catch(std::exception& exc) {
-      return STATUS_FORMAT(IOError, "Failed to save index to file $0: $1", path, exc.what());
-    }
-    return nullptr;
+    VLOG_WITH_FUNC(2) << path << ", size: " << index_.size();
+    return ImportYbHnsw<Vector, DistanceResult>(index_, path, block_cache_, this->payloads());
   }
 
-  Status DoLoadIndex(const std::string& path, size_t max_concurrent_reads) {
-    // Loading replaces the index entirely, which can invalidate both data and search context
-    // sizes; refresh both children.
-    auto se = UpdateAllConsumptionOnExit();
-    try {
-      auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
-      if (result) {
-        search_semaphore_.emplace(max_concurrent_reads);
-        index_ = std::move(result.index);
-        VLOG_WITH_FUNC(2) << path << ": " << index_.size();
-        return Status::OK();
-      }
-      return STATUS_FORMAT(IOError, "Failed to load index from file: $0", path);
-    } catch (std::runtime_error& exc) {
-      return STATUS_FORMAT(IOError, "Failed to load index from file $0: $1", path, exc.what());
-    }
+  Status DoLoadIndex(const std::string& path, size_t) {
+    // Saved chunks are always loaded as YbHnsw, see UsearchIndexTraits::Create.
+    return STATUS_FORMAT(NotSupported, "Usearch index cannot be loaded from file: $0", path);
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
@@ -357,7 +330,6 @@ class UsearchIndex :
   size_t dimensions_;
   DistanceKind distance_kind_;
   metric_punned_t metric_;
-  const HnswBackend backend_;
   IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
   IndexMemoryConsumption consumption_;
@@ -370,23 +342,20 @@ class UsearchIndexTraits :
   using IndexImpl = index_dense_gt<VectorId>;
 
   UsearchIndexTraits(
-      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
       const MemTrackerPtr& mem_tracker)
-      : block_cache_(block_cache), options_(options), backend_(backend),
-        mem_tracker_(mem_tracker),
+      : block_cache_(block_cache), options_(options), mem_tracker_(mem_tracker),
         metric_(options.CreateMetric<Vector>()) {
-    LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
-        "Invalid backend for usearch index: " << HnswBackend_Name(backend);
   }
 
   vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
       vector_index::FactoryMode mode,
       vector_index::StoreVectorPayload store_vector_payload) const override {
-    if (backend_ == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
+    if (mode == vector_index::FactoryMode::kLoad) {
       return CreateYbHnsw<Vector, DistanceResult>(block_cache_, options_);
     }
     return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
-        block_cache_, options_, backend_, mem_tracker_, store_vector_payload);
+        block_cache_, options_, mem_tracker_, store_vector_payload);
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
@@ -406,7 +375,6 @@ class UsearchIndexTraits :
  private:
   const hnsw::BlockCachePtr block_cache_;
   const HNSWOptions options_;
-  const HnswBackend backend_;
   const MemTrackerPtr mem_tracker_;
   const metric_punned_t metric_;
 };
@@ -417,14 +385,14 @@ template <vector_index::IndexableVectorType Vector,
           vector_index::ValidDistanceResultType DistanceResult>
 Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateUsearchIndexTraits(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-    HnswBackend backend, const MemTrackerPtr& mem_tracker) {
+    const MemTrackerPtr& mem_tracker) {
   return std::make_shared<UsearchIndexTraits<Vector, DistanceResult>>(
-      block_cache, options, backend, mem_tracker);
+      block_cache, options, mem_tracker);
 }
 
 template Result<vector_index::VectorIndexTraitsPtr<FloatVector, float>>
     CreateUsearchIndexTraits<FloatVector, float>(
         const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-        HnswBackend backend, const MemTrackerPtr& mem_tracker);
+        const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::ann_methods

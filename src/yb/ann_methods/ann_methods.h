@@ -43,7 +43,7 @@ struct ANNMethodTraits<ANNMethodKind::kUsearch> {
   static Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateIndexTraits(
       const vector_index::HNSWOptions& options) {
     return CreateUsearchIndexTraits<Vector, DistanceResult>(
-        /* block_cache= */ nullptr, options, HnswBackend::USEARCH, /* mem_tracker= */ nullptr);
+        /* block_cache= */ nullptr, options, /* mem_tracker= */ nullptr);
   }
 };
 
@@ -54,7 +54,7 @@ struct ANNMethodTraits<ANNMethodKind::kHnswlib> {
   static Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateIndexTraits(
       const vector_index::HNSWOptions& options) {
     return CreateHnswlibIndexTraits<Vector, DistanceResult>(
-        /* block_cache= */ nullptr, options, HnswBackend::HNSWLIB, /* mem_tracker= */ nullptr);
+        /* block_cache= */ nullptr, options, /* mem_tracker= */ nullptr);
   }
 };
 

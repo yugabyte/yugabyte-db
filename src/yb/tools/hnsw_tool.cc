@@ -110,9 +110,7 @@ struct BenchmarkArguments {
   size_t num_index_shards = 1;
   std::string build_vecs_path;
   std::string ground_truth_path;
-  std::string load_index_from_path;
   std::string query_vecs_path;
-  std::string save_index_to_path;
   ann_methods::ANNMethodKind ann_method;
 
   // Parsed version of k_values.
@@ -207,11 +205,6 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs format.")
       (OPTIONAL_ARG_FIELD(query_vecs_path),
        "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs format.")
-      (OPTIONAL_ARG_FIELD(save_index_to_path),
-       "Save the index to this path.")
-      (OPTIONAL_ARG_FIELD(load_index_from_path),
-       "Load the index from this path, or read it from disk without loading fully into memory, "
-       "if the index supports it. This supersedes the index build procedure.")
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query.")
@@ -382,23 +375,7 @@ class BenchmarkTool {
         std::thread::hardware_concurrency(),
         std::thread::hardware_concurrency(),
         rocksdb::Cache::ReservationMode::kAlways));
-    if (!args_.load_index_from_path.empty()) {
-      LOG(INFO) << "Loading index from " << args_.load_index_from_path;
-      auto load_start_time = MonoTime::Now();
-      RETURN_NOT_OK(vector_index_->LoadFromFile(args_.load_index_from_path, 0));
-      LOG(INFO) << "Loaded index from " << args_.load_index_from_path
-                << " in " << MonoTime::Now().GetDeltaSince(load_start_time);
-    } else {
-      RETURN_NOT_OK(BuildIndex());
-      if (!args_.save_index_to_path.empty()) {
-        auto save_start_time = MonoTime::Now();
-        LOG(INFO) << "Saving index to " << args_.save_index_to_path;
-        RETURN_NOT_OK(vector_index_->SaveToFile(args_.save_index_to_path));
-        LOG(INFO) << "Saved index to " << args_.save_index_to_path
-                  << " in " << MonoTime::Now().GetDeltaSince(save_start_time);
-
-      }
-    }
+    RETURN_NOT_OK(BuildIndex());
 
     RETURN_NOT_OK(Validate());
 
@@ -813,7 +790,7 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
     ((Usearch, InnerProduct, float,      float  ))        \
     ((Usearch, InnerProduct, uint8_t,    float  ))        \
     ((Hnswlib, InnerProduct, float,      float  ))        \
-    ((Hnswlib, InnerProduct, uint8_t,    uint8_t))
+    ((Hnswlib, InnerProduct, uint8_t,    float  ))
 
 #define YB_VECTOR_INDEX_BENCHMARK_HELPER(method, distance_enum_element, input_type, indexed_type) \
     if (auto status = BenchmarkExecuteHelper< \
