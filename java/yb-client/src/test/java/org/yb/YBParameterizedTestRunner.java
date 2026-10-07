@@ -14,9 +14,11 @@
  */
 package org.yb;
 
+import org.junit.Ignore;
 import org.junit.runner.Description;
 import org.junit.runner.Runner;
 import org.junit.runner.manipulation.Filter;
+import org.junit.runner.manipulation.NoTestsRemainException;
 import org.junit.runners.Parameterized;
 import org.junit.runners.parameterized.BlockJUnit4ClassRunnerWithParameters;
 import org.slf4j.Logger;
@@ -44,21 +46,31 @@ public class YBParameterizedTestRunner extends Parameterized {
       return;
     }
     if (ConfForTesting.onlyCollectingTests()) {
+      Filter collectingFilter = new Filter() {
+        @Override
+        public boolean shouldRun(Description description) {
+          // @Ignore'd methods are only skipped during collection, so that regular runs still
+          // report them as skipped.
+          if (description.getAnnotation(Ignore.class) != null) {
+            return false;
+          }
+          TestUtils.reportCollectedTest(description.getClassName(), description.getMethodName());
+          return true;
+        }
+
+        @Override
+        public String describe() {
+          return "test collection with annotation filtering";
+        }
+      };
       for (Runner runner : super.getChildren()) {
         BlockJUnit4ClassRunnerWithParameters r = ((BlockJUnit4ClassRunnerWithParameters) runner);
-        r.filter(new Filter() {
-          @Override
-          public boolean shouldRun(Description description) {
-            TestUtils.reportCollectedTest(description.getClassName(), description.getMethodName());
-            // To avoid NoTestsRemainException.
-            return true;
-          }
-
-          @Override
-          public String describe() {
-            return "<none>";
-          }
-        });
+        try {
+          r.filter(collectingFilter);
+        } catch (NoTestsRemainException e) {
+          LOG.info("No tests to collect in " + klass.getName() + " for parameters " +
+                   r.getDescription().getDisplayName());
+        }
       }
     }
   }
