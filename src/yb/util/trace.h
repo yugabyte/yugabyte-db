@@ -137,7 +137,8 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // Logs a message into the trace buffer. format and args follow Format(); without args, format
   // is logged verbatim.
   //
-  // The message is formatted directly into the trace arena, without a temporary string.
+  // The message is formatted directly into the trace arena. Integer, C string and std::string
+  // arguments are used in place; other arguments are first converted with ToString().
   //
   // N.B.: the file path passed here is not copied, so should be a static
   // constant (eg __FILE__).

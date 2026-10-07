@@ -109,6 +109,30 @@ class FormatValue<T, std::enable_if_t<std::is_convertible<T, const char*>::value
   const size_t len_;
 };
 
+// Strings are referenced in place rather than copied. The referenced object outlives the
+// FormatValue, which only exists for the duration of a single Format() call.
+template <class T>
+class FormatValue<T, std::enable_if_t<std::is_same_v<T, std::string> ||
+                                      std::is_same_v<T, std::string_view>>> {
+ public:
+  explicit FormatValue(std::string_view value) : value_(value) {}
+
+  FormatValue(const FormatValue& rhs) = delete;
+  void operator=(const FormatValue& rhs) = delete;
+
+  size_t Add(size_t position) const {
+    return position + value_.size();
+  }
+
+  char* Add(char* position) const {
+    memcpy(position, value_.data(), value_.size());
+    return position + value_.size();
+  }
+
+ private:
+  std::string_view value_;
+};
+
 template <class T>
 using FormatValueType =
     FormatValue<typename std::remove_cv_t<typename std::remove_reference_t<T>>>;

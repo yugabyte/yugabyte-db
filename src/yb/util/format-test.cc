@@ -182,6 +182,8 @@ TEST(FormatTest, String) {
     std::string string = "String";
     CheckPlain(format, string);
     CheckPlain(format, "TempString"s);
+    CheckPlain(format, std::string_view("StringView"));
+    CheckPlain(format, std::string_view("Embedded\0zero", 13));
   }
 }
 
