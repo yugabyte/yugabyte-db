@@ -347,7 +347,9 @@ CREATE TABLE colocated_t (k INT PRIMARY KEY, v TEXT);
 SELECT yb_get_tablet_for_key(current_database(), 'colocated_t'::regclass::oid, ROW(1, 'a'));
 
 \c :orig_db
-DROP DATABASE IF EXISTS tablet_key_colocated_test;
+-- FORCE: the backend of the connection above may still be exiting, and without it the drop
+-- fails with "database is being accessed by other users".
+DROP DATABASE IF EXISTS tablet_key_colocated_test WITH (FORCE);
 
 -- -----------------------------------------------------------------------------
 -- 10. Cleanup

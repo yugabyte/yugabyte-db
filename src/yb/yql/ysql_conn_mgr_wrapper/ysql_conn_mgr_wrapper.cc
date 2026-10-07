@@ -148,9 +148,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
     "milliseconds for an available server. Disconnect client on timeout reach. "
     "If the value is set to zero, the client waits for the server connection indefinitely");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
-    "Enable optimized extended query protocol in Ysql Connection Manager. "
-    "If set to false, extended query protocol handling is fully correct but unoptimized.");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_optimized_extended_query_protocol, "10_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_prep_stmt_close, "07_2026");
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_parse_queue_tracking, "09_2026");

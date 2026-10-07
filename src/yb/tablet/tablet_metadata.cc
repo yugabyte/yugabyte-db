@@ -685,26 +685,25 @@ Status CheckLocalVectorIndexesInSnapshot(
   return Status::OK();
 }
 
-// ysql_dump assigns dense DocDB ids and CREATE INDEX records that id. The snapshot superblock
-// still has the source vector_idx_options, including the column id and the permanent index id
-// the restored graph files are stored under. SetSchema keeps the local index_info, so copy the
-// snapshot options onto the local index, matched by colocation id. table_id stays local.
+// CREATE INDEX on the restore cluster fills the local vector_idx_options, but the restored chunk
+// files were written with the snapshot superblock's:
+// - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
+// - id is the permanent index id the restored graph files are stored under.
+// - hnsw.backend and store_payload come from --vector_index_backend and
+//   --vector_index_store_payload; they set the chunk file names and whether each vector carries a
+//   ybctid.
+// SetSchema keeps the local index_info, so copy the snapshot options onto the local index,
+// matched by colocation id. table_id stays local.
 Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_table) {
   if (!snapshot_table.index_info().has_vector_idx_options() || !target->IsVectorIndex()) {
     return Status::OK();
   }
   const auto& source_options = snapshot_table.index_info().vector_idx_options();
-  // TODO(#34559): when column_id and id already match, this keeps the restore cluster's
-  // backend and store_payload, which CREATE INDEX took from that cluster's flags. The restored
-  // chunk files were written with the source values, so this assumes both clusters share
-  // --vector_index_backend and --vector_index_store_payload.
-  if (target->index_info->vector_idx_options().column_id() == source_options.column_id() &&
-      target->index_info->vector_idx_options().id() == source_options.id()) {
+  std::string diff;
+  if (pb_util::ArePBsEqual(target->index_info->vector_idx_options(), source_options, &diff)) {
     return Status::OK();
   }
-  LOG(INFO) << "Restoring vector index options for " << target->table_id << " column id "
-            << target->index_info->vector_idx_options().column_id() << " -> "
-            << source_options.column_id();
+  LOG(INFO) << "Restoring vector index options for " << target->table_id << ": " << diff;
   IndexInfoPB index_info_pb;
   target->index_info->ToPB(&index_info_pb);
   *index_info_pb.mutable_vector_idx_options() = source_options;

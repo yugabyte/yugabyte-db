@@ -193,6 +193,7 @@ void YBCSetObjectLockingInfraForCurrTxn();
 bool YBCIsObjectLockingInfraEnabled();
 
 bool YBCIsObjectLockingEnabled();
+
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 
 bool YBCIsAutoAnalyzeEnabled();

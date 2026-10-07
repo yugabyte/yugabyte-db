@@ -38,6 +38,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
 
@@ -3021,17 +3022,8 @@ TEST_F_EX(PgLibPqTest, LoadBalanceMultipleTablegroups, PgLibPqLoadBalanceMultipl
 class PgLibPqTestDisableObjectLocking : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 };
 
@@ -3397,11 +3389,8 @@ Result<string> PgLibPqTest::GetPostmasterPidViaShell(PGConn* conn) {
 class PgLibPqConcurrentDdlDml : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=true");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -6309,17 +6298,8 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // TODO(#28742): Fix interaction with ysql_yb_ddl_transaction_block_enabled here.
     // Enabling table locks+concurrent DDLs causes the ConcurrentAnalyzeWithDDL fail.
-    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -6564,25 +6544,8 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     // Disable object locking and transactional DDL. If they are enabled, DDL conflicts
     // are either avoided or DDL statement retries are not supported in READ COMMITTED,
     // which would prevent us from exercising the DDL retry path.
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_master_flags.push_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_enable_concurrent_ddl");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
 
     // DDL statement retries are only supported in READ COMMITTED isolation.
     // In debug builds, this flag defaults to false, causing READ COMMITTED to fall back

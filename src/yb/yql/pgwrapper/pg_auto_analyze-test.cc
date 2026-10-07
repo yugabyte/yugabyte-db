@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_value.h"
 #include "yb/gutil/integral_types.h"
 
@@ -71,7 +72,6 @@ DECLARE_bool(TEST_sort_auto_analyze_target_table_ids);
 DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
 DECLARE_int64(TEST_delay_after_table_analyze_ms);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_user_ddls_preempt_auto_analyze);
 DECLARE_uint64(TEST_ysql_auto_analyze_max_history_entries);
 DECLARE_int32(ysql_auto_analyze_max_retry_backoff);
@@ -1831,28 +1831,8 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back("--ysql_yb_user_ddls_preempt_auto_analyze=true");
     // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
     // prevents this so we're disabling it to keep the test's original intent.
-    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    options->extra_master_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    options->extra_master_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_enable_concurrent_ddl");
-
-    // The test is specifically written for cases when txn ddl is disabled.
-    // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    options->extra_master_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_master_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
@@ -2054,22 +2034,7 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
     ts2->Shutdown(SafeShutdown::kFalse);
 }
 
-class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
- protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // The base class appends --ysql_yb_ddl_transaction_block_enabled=false, and gflags takes the
-    // last occurrence, so these must come after it to win.
-    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-  }
-};
-
-TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeTxnDDLMode) {
-  testConcurrentDDLAnalyze();
-}
-
-TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeMultiTable) {
+TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLAnalyzeMultiTable) {
   auto* ts1 = cluster_->tserver_daemons()[0];
   auto* ts2 = cluster_->tserver_daemons()[1];
 

@@ -16,6 +16,7 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
@@ -26,7 +27,6 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(xcluster_ddl_queue_enable_transactional_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb::tserver {
 
@@ -403,7 +403,7 @@ class XClusterTransactionalDDLQueueHandlerMockedTest
   void SetUp() override {
     XClusterDDLQueueHandlerMockedTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_enable_transactional_ddl) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
   }
 };
 

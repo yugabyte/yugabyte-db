@@ -14,6 +14,7 @@
 
 #include "yb/client/client-test-util.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/transaction.h"
 
@@ -32,9 +33,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_bool(TEST_ysql_ddl_fail_transaction_status_poll);
@@ -90,29 +90,14 @@ class PgDdlTransactionTest : public LibPqTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
-    opts->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    ToggleDDLMode(opts->extra_master_flags, /* use_legacy = */ false);
     opts->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
     opts->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    ToggleDDLMode(opts->extra_tserver_flags, /* use_legacy = */ false);
     opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
     opts->extra_tserver_flags.push_back(
         Format("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0",
                (RandomUniformBool() ? "true" : "false")));
-  }
-
-  // ysql_yb_disable_ddl_transaction_block_for_read_committed is a non-runtime flag for now, so we
-  // need to restart the cluster.
-  void RestartClusterSetDisableTxnBlockForReadCommitted(bool value) {
-    LOG(INFO) << "Restart the cluster and turn " << (value ? "on" : "off")
-              << " --ysql_yb_disable_ddl_transaction_block_for_read_committed";
-    cluster_->Shutdown();
-    const std::string flag_value = Format(
-        "--ysql_yb_disable_ddl_transaction_block_for_read_committed=$0",
-        value ? "true" : "false");
-    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      cluster_->tablet_server(i)->mutable_flags()->push_back(flag_value);
-    }
-    ASSERT_OK(cluster_->Restart());
   }
 };
 
@@ -224,40 +209,10 @@ TEST_F(PgDdlTransactionTest, TestRewriteAndDropMaterializedViewInTxn) {
   ASSERT_EQ(row, expected_row);
 }
 
-TEST_F(PgDdlTransactionTest, TestReadCommittedTxnDdlDisabled) {
-  auto conn = ASSERT_RESULT(Connect());
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
-  ASSERT_OK(conn.Execute("CREATE TABLE foo (id SERIAL PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
-  ASSERT_OK(conn.Execute("ROLLBACK"));
-  auto res = GetTableIdByTableName(client.get(), "yugabyte", "foo");
-  ASSERT_NOK(res);
-  ASSERT_TRUE(res.status().IsNotFound());
-
-  // Disable transactional DDL for READ COMMITTED isolation level. This will make DDLs use
-  // autonomous transactions, which are not rolled back by the enclosing transaction block.
-  RestartClusterSetDisableTxnBlockForReadCommitted(true /* value */);
-  conn = ASSERT_RESULT(Connect());
-  client = ASSERT_RESULT(cluster_->CreateClient());
-
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
-  ASSERT_OK(conn.Execute("CREATE TABLE foo (id SERIAL PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
-  ASSERT_OK(conn.Execute("ROLLBACK"));
-
-  // The table 'foo' should exist in DocDB after the transaction rollback, as the DDLs were executed
-  // in autonomous transactions.
-  // The column 'new_col' should also exist in the table 'foo'.
-  ASSERT_OK(GetTableIdByTableName(client.get(), "yugabyte", "foo"));
-  ASSERT_OK(conn.Execute("INSERT INTO foo (id, new_col) VALUES (1, 42)"));
-}
-
 class PgDdlTransactionMiniClusterTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 5;
     pgwrapper::PgMiniTestBase::SetUp();
   }
@@ -491,7 +446,7 @@ class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
                                       public ::testing::WithParamInterface<TestCommit> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
 
     // Disable READ_COMMITTED isolation because it creates additional savepoints (sub_transactions)
@@ -1050,59 +1005,36 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithSlowIndexDeleti
   ASSERT_OK(conn.Execute("DROP TABLE existing_table"));
 }
 
-// Probe for #29139 / D51840: when sys.catalog raft replication on yb-master is delayed,
-// the master's safe time lags current hybrid time and this can cause a read restart error
+// Probe for #29139 / D51840: without the fix, when sys.catalog raft replication on yb-master is
+// delayed, the master's safe time lags current hybrid time and this can cause a read restart error
 // even without concurrent sessions. This can happen in a single connection in auto-commit mode
-// running sequential commands that modify the PG catalog (say stmt1 and stmt2), and stmt2 picks
-// safe_time as its read time which can predate stmt1's catalog write time -- causing a read restart
-// error. Also, note that the read restart error is faced by any rpc other than the 1st one in stmt2
-// because the error is retried internally on yb-master if faced by the 1st rpc.
+// running sequential autonomous DDLs (i.e., the legacy DDL mode) that modify the PG catalog (say
+// stmt1 and stmt2), and stmt2 picks safe_time as its read time which can predate stmt1's catalog
+// write time -- causing a read restart error. Also, note that the read restart error is faced by
+// any rpc other than the 1st one in stmt2 because the error is retried internally on yb-master if
+// faced by the 1st rpc.
 //
-// D51840 fixes this issue for autonomous DDLs by picking the current time as read time on the
-// tserver proxy instead of picking the safe time on master. The transactional DDL path
-// (ysql_yb_ddl_transaction_block_enabled=true) still faces the issue because it still picks safe
-// time as the read time.
+// Note that in the new mode (i.e., transactional DDL + object locking) this wouldn't happen because
+// catalog reads "clamp" the uncertainty window that causes read restart errors (see the reasoning
+// in PgTxnManager::ClampCatalogReadTime).
 class PgMasterDDLReadRestartProbeTest : public LibPqTestBase {
  public:
   int GetNumMasters() const override { return 3; }
 
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back(
-        "--ysql_yb_ddl_transaction_block_enabled=false");
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_master_flags.push_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    options->extra_tserver_flags.push_back(
-        Format("--enable_object_locking_for_table_locks=false"));
-    options->extra_master_flags.push_back(
-        Format("--enable_object_locking_for_table_locks=false"));
-    options->extra_tserver_flags.push_back(
-        Format("--ysql_enable_concurrent_ddl=false"));
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    options->extra_master_flags.push_back(
-        Format("--ysql_enable_concurrent_ddl=false"));
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
     LibPqTestBase::UpdateMiniClusterOptions(options);
   }
 
   Status RunRepro(bool expect_error);
 
-  void RestartClusterSetDdlTransactionBlockEnabled(bool value) {
-    LOG(INFO) << "Restart the cluster and turn " << (value ? "on" : "off")
-              << " --ysql_yb_ddl_transaction_block_enabled";
+  void RestartClusterSetDDLMode(bool use_legacy) {
+    LOG(INFO) << "Restart the cluster in the " << (use_legacy ? "legacy" : "new") << " DDL mode";
     cluster_->Shutdown();
     for (const auto& daemon : cluster_->daemons()) {
-      daemon->AddExtraFlag("ysql_yb_ddl_transaction_block_enabled", value ? "true" : "false");
+      ToggleDDLMode(*daemon->mutable_flags(), use_legacy);
     }
     ASSERT_OK(cluster_->Restart());
   }
@@ -1191,10 +1123,9 @@ TEST_F(PgMasterDDLReadRestartProbeTest,
        YB_DISABLE_TEST_IN_SANITIZERS(DDLStaleSafeTimeReadRestart)) {
   ASSERT_OK(RunRepro(false /* expect_error */));
 
-  // Restart with transactional DDL enabled but object locking disabled.
-  ASSERT_NO_FATALS(RestartClusterSetDdlTransactionBlockEnabled(true));
+  ASSERT_NO_FATALS(RestartClusterSetDDLMode(/* use_legacy = */ false));
 
-  ASSERT_OK(RunRepro(true /* expect_error */));
+  ASSERT_OK(RunRepro(false /* expect_error */));
 }
 
 } // namespace yb::pgwrapper

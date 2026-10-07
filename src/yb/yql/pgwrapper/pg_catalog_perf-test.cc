@@ -17,6 +17,8 @@
 #include <string_view>
 #include <thread>
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/json_util.h"
 
 #include "yb/master/master.h"
@@ -69,8 +71,6 @@ DECLARE_uint32(pg_response_cache_size_percentage);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(ysql_enable_relcache_init_optimization);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_ysql_catalog_prefetch_rejections_to_inject);
 DECLARE_int32(master_max_concurrent_ysql_catalog_prefetches);
@@ -182,13 +182,9 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
         FLAGS_ysql_enable_read_request_cache_for_connection_auth) =
         config.enable_read_request_cache_for_connection_auth;
 
-    // Object locking and concurrent DDL require invalidation messages (see the gflag validator in
-    // common_flags.cc), so enable/ disable them based on whether invalidation messages are
-    // turned on/ off above.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) =
-        config.enable_invalidation_messages;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) =
-        config.enable_invalidation_messages;
+    // The new DDL mode requires invalidation messages (see the gflag validators in
+    // common_flags.cc), so follow whether they are turned on/ off above.
+    ToggleDDLMode(/* use_legacy = */ !config.enable_invalidation_messages);
 
     // Auto-Analyze runs ANALYZEs and increments catalog version, causing more response cache
     // queires. Disable auto-analyze for more stable test results.

@@ -15,6 +15,8 @@
 #include <unordered_set>
 #include <gmock/gmock.h>
 
+#include "yb/common/ddl_mode-test-util.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -250,7 +252,11 @@ class PgBuiltinGlobalViewsTest : public LibPqTestBase {
     AppendCsvFlagValue(tserver_flags, kYsqlPgConfCsv, "yb_pg_stat_plans_track=top");
     AppendCsvFlagValue(tserver_flags, kYsqlPgConfCsv, "track_functions='all'");
     tserver_flags.push_back("--ysql_yb_ash_sampling_interval_ms=50");
-    tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+
+    // TestAdHocCreation runs DDL inside a transaction block and expects it to be part of that
+    // transaction, so it needs the new DDL mode in every build type.
+    ToggleDDLMode(tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
   }
 
  protected:

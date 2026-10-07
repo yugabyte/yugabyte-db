@@ -712,6 +712,7 @@ class PgApiImpl {
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
   bool IsDdlModeWithRegularTransactionBlock() const;
+  bool IsTableLockingEnabledForCurrentTxn() const;
   Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------

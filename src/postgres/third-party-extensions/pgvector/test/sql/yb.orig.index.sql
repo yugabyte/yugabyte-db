@@ -141,6 +141,16 @@ INSERT INTO vec_analyze VALUES (1, '[1.0, 0.4, 0.3]');
 ANALYZE vec_analyze;
 DROP TABLE vec_analyze;
 
+-- Creating a ybhnsw index shouldn't reset an analyzed table's reltuples to 0.
+SET yb_enable_update_reltuples_after_create_index = on;
+CREATE TABLE vec_reltuples (id int PRIMARY KEY, embedding vector(3));
+INSERT INTO vec_reltuples SELECT g, '[1, 1, 1]' FROM generate_series(1, 10) AS g;
+ANALYZE vec_reltuples;
+CREATE INDEX ON vec_reltuples USING ybhnsw (embedding vector_l2_ops);
+SELECT reltuples FROM pg_class WHERE relname = 'vec_reltuples';
+RESET yb_enable_update_reltuples_after_create_index;
+DROP TABLE vec_reltuples;
+
 -- KNN queries with an equality on the primary key only search the tablets that
 -- can hold the matching rows. The results must match the unrouted ones.
 CREATE TABLE vec_tenant (tenant int, id int, embedding vector(3),

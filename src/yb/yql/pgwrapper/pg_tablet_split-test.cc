@@ -23,6 +23,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -84,7 +85,6 @@ DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_write_pipelining);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -436,14 +436,11 @@ TEST_F(PgTabletSplitTest, TestDisableSplitWhenTableIsBeingHidden) {
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
 }
 
-// yb_ddl_transaction_block_enabled is PGC_POSTMASTER and non-runtime, and defaults to false in
-// debug builds, so it has to be set before postgres starts. Assigning it inside a test body has no
-// effect on the already-running postmaster, which is why these tests only exercised the transaction
-// block in release.
 class PgTabletSplitUncommittedDdlTest : public PgTabletSplitTest {
  protected:
-  void BeforePgProcessStart() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  void SetUp() override {
+    ToggleDDLMode(/* use_legacy = */ false);
+    PgTabletSplitTest::SetUp();
   }
 };
 

@@ -47,7 +47,9 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -117,9 +119,6 @@ DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_bool(TEST_pause_before_enabling_db_connections);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
 
@@ -880,8 +879,7 @@ TEST_F(PgCloneTest, CloneVectorIndex) {
 class PgCloneObjectLocksTest : public PgCloneInitiallyEmptyDBTest {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgCloneInitiallyEmptyDBTest::SetUp();
   }
 };
@@ -2213,7 +2211,7 @@ class SysCatalogRestoreWithWritePipeliningTest : public PgCloneInitiallyEmptyDBT
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
     // Run both DDLs in one multi-statement transaction so its writes span the restore.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgCloneInitiallyEmptyDBTest::SetUp();
   }
 };

@@ -3360,13 +3360,15 @@ YbCommitTransactionCommandIntermediate(void)
 	bool		is_ddl_mode = YBCPgIsDdlMode();
 	YbDdlMode	ddl_mode;
 
+	bool		ddl_txn_block_enabled = YBIsDdlTransactionBlockEnabled();
+
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 
 	/*
 	 * Remember DDL state of the statement currently being executed so that we
 	 * can restore it on the next transaction.
 	 */
-	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
 		YBGetDdlOriginalStmtState(&yb_ddl_stmt_state);
 		ddl_mode = YBGetCurrentDdlMode();
@@ -3378,7 +3380,23 @@ YbCommitTransactionCommandIntermediate(void)
 	CommitTransactionCommand();
 	StartTransactionCommand();
 
-	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	/*
+	 * YB: The new transaction latched the object locking infra auto flag
+	 * afresh. If it disagrees with what this statement started with, the rest
+	 * of the statement would run in the other mode while the state it already
+	 * built belongs to this one, so fail the statement instead.
+	 * TODO(#34635): Keep the statement in one mode by pinning the latched
+	 * value across the intermediate commit.
+	 */
+	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("transactional DDL was %s while the statement was "
+						"running",
+						ddl_txn_block_enabled ? "disabled" : "enabled"),
+				 errhint("Retry the statement.")));
+
+	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
 		YBAddDdlTxnState(ddl_mode);
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);

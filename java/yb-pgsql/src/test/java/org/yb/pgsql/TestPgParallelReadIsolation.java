@@ -47,10 +47,18 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
-    flagMap.put("enable_object_locking_for_table_locks", "true");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
-    flagMap.put("ysql_enable_concurrent_ddl", "true");
+    // testParallelReadWithConcurrentAlters runs ALTER TABLE alongside parallel readers, and
+    // testFreshUserSnapshotInConcurrentDDLMode needs the concurrent DDL mode. Without object
+    // locking to serialize the DDL against the readers, a worker can target a just-dropped
+    // attribute and trip Assert(!attr->attisdropped) in YbDmlAppendTargetRegularAttr.
+    toggleDDLMode(flagMap, /* useLegacy */ false);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     return flagMap;
   }
 

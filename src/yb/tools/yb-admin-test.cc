@@ -46,6 +46,7 @@
 #include "yb/client/table_creator.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/json_util.h"
 #include "yb/common/transaction.h"
 
@@ -654,8 +655,8 @@ class AdminCliTestForTableLocks : public AdminCliTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->enable_ysql = true;
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
   }
 
  protected:

@@ -1,0 +1,13 @@
+# src/test/regress/yb_pg_misc_object_locking_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# The tests here are part of yb_pg_misc_serial_schedule, split out because their expected output
+# only holds with the DDL mode enabled (object locking, concurrent DDL and transactional DDL move
+# together). create_procedure drops overloaded procedures inside a transaction block and relies on
+# the rollback restoring them, which needs transactional DDL.
+####################################################################################################
+# Dependency for create_procedure
+test: yb.port.test_setup
+
+test: create_procedure
