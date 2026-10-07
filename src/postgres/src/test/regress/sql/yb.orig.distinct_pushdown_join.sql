@@ -205,6 +205,7 @@ ANALYZE distinct_inner;
 \i :run_query
 
 -- Handle propagated uniqkeys from the nullable side of a left join.
+-- YBTODO: Redundant grouping in this query due to GHI #34714
 \set query ':P SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;'
 \i :run_query
 

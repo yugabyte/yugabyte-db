@@ -145,7 +145,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2, r3 FRO
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  HashAggregate (actual rows=1.00 loops=1)
-   Group Key: r2, r3
+   Group Key: r2
    ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Index Cond: (r3 = 1)
          Distinct Keys: r1, r2
@@ -165,7 +165,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2, r3 FRO
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  HashAggregate (actual rows=0.00 loops=1)
-   Group Key: r2, r3
+   Group Key: r2
    ->  Distinct Index Scan using t_pkey on t (actual rows=0.00 loops=1)
          Index Cond: (r3 = 5)
          Distinct Keys: r1, r2
@@ -205,8 +205,8 @@ SELECT DISTINCT r2, r3 FROM t WHERE r2 = r3 AND r3 = 1;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t WHERE v = 1;
                    QUERY PLAN                   
 ------------------------------------------------
- Unique (actual rows=1.00 loops=1)
-   ->  Seq Scan on t (actual rows=6.00 loops=1)
+ Limit (actual rows=1.00 loops=1)
+   ->  Seq Scan on t (actual rows=1.00 loops=1)
          Storage Filter: (v = 1)
 (3 rows)
 
@@ -224,7 +224,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, v FROM
                    QUERY PLAN                   
 ------------------------------------------------
  HashAggregate (actual rows=2.00 loops=1)
-   Group Key: r1, v
+   Group Key: r1
    ->  Seq Scan on t (actual rows=6.00 loops=1)
          Storage Filter: (v = 1)
 (4 rows)
@@ -232,8 +232,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, v FROM
 SELECT DISTINCT r1, v FROM t WHERE v = 1;
  r1 | v 
 ----+---
-  1 | 1
   2 | 1
+  1 | 1
 (2 rows)
 
 -- Non-index predicates, see comment (6) above.
@@ -786,8 +786,8 @@ SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th WHERE r1 = 1;
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
- Unique (actual rows=1.00 loops=1)
-   ->  Distinct Index Scan using th_pkey on th (actual rows=2.00 loops=1)
+ Limit (actual rows=1.00 loops=1)
+   ->  Distinct Index Scan using th_pkey on th (actual rows=1.00 loops=1)
          Distinct Keys: h1, h2, r1
          Storage Filter: (r1 = 1)
 (4 rows)
@@ -870,18 +870,18 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v, r2 FROM
 (3 rows)
 
 SELECT DISTINCT v, r2 FROM t LIMIT 10;
-  v  | r2 
------+----
- 236 |  2
- 282 |  2
- 112 |  1
-   1 |  1
-  59 |  2
- 234 |  1
-   6 |  2
- 160 |  1
- 146 |  2
- 211 |  1
+ v | r2 
+---+----
+ 0 |  1
+ 0 |  2
+ 1 |  0
+ 1 |  1
+ 1 |  2
+ 2 |  0
+ 2 |  1
+ 2 |  2
+ 3 |  0
+ 3 |  1
 (10 rows)
 
 DROP INDEX irv;
