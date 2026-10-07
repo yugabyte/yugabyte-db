@@ -263,6 +263,7 @@ extern bool YbCheckCatalogCacheIndexNameTable();
 extern bool YbCheckSysCacheNames();
 #endif
 extern const char *YbGetCatalogCacheIndexName(int cache_id);
+extern const char *YbGetCatalogCacheName(int cache_id);
 extern const char *YbGetCatalogCacheTableNameFromTableId(int table_id);
 extern const char *YbGetCatalogCacheTableNameFromCacheId(int cache_id);
 extern int	YbGetCatalogCacheTableIdFromCacheId(int cache_id);
