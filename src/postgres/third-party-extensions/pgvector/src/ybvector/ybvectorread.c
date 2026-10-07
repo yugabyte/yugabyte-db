@@ -42,11 +42,43 @@
 #include "ybvector.h"
 
 /*
+ * Whether the btree equality of the type holds only for values with identical
+ * key encodings, so the key encoded from a compared value is exactly the key
+ * of every matching row.  It doesn't for float4/float8 (-0 = 0), numeric
+ * (1.0 = 1.00), interval ('1 day' = '24 hours') or bpchar (trailing spaces),
+ * so routing on them could skip the tablet holding a matching row.  Text and
+ * varchar qualify because only quals under the C collation are pushed down.
+ */
+static bool
+keyEqualityIsExact(Oid type)
+{
+	switch (type)
+	{
+		case BOOLOID:
+		case CHAROID:
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+		case OIDOID:
+		case TEXTOID:
+		case VARCHAROID:
+		case BYTEAOID:
+		case UUIDOID:
+		case DATEOID:
+		case TIMEOID:
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+			return true;
+		default:
+			return false;
+	}
+}
+
+/*
  * Returns the btree equality operator of the column's type that an equality
- * on a primary key column has to use for its values to be encodable into the
- * key, as done for primary key lookups.  Sets *input_type to the operator's
- * input type, which can differ from the column type for binary-compatible
- * types (e.g. varchar uses text's operator).
+ * on a primary key column has to use, as done for primary key lookups.  Sets
+ * *input_type to the operator's input type, which can differ from the column
+ * type for binary-compatible types (e.g. varchar uses text's operator).
  */
 static Oid
 getKeyEqualityOperator(Oid column_type, Oid *input_type)
@@ -128,7 +160,8 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	Form_pg_attribute att = TupleDescAttr(tupdesc, var->varattno - 1);
 	Oid			input_type = InvalidOid;
 
-	if (opno != getKeyEqualityOperator(att->atttypid, &input_type) ||
+	if (!keyEqualityIsExact(att->atttypid) ||
+		opno != getKeyEqualityOperator(att->atttypid, &input_type) ||
 		inputcollid != att->attcollation)
 		return InvalidAttrNumber;
 

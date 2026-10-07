@@ -2459,6 +2459,19 @@ TEST_F(PgVectorIndexPkRoutingTest, TextHashKey) {
   }
 }
 
+TEST_F(PgVectorIndexPkRoutingTest, FloatKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tf", "tenant FLOAT8, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  // -0 equals 0 but has a different key encoding, so float keys are never routed.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tf", "tenant = '-0'", 0, 3)));
+  ASSERT_EQ(stats.ids, Ids(0, 3));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+}
+
 TEST_F(PgVectorIndexPkRoutingTest, RangeKey) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
