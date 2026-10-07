@@ -197,9 +197,9 @@ SELECT typname FROM pg_type WHERE oid = 'attmp_array[]'::regtype;
 (1 row)
 
 SELECT typname FROM pg_type WHERE oid = '_attmp_array[]'::regtype;
-    typname     
-----------------
- ___attmp_array
+     typname     
+-----------------
+ __attmp_array_1
 (1 row)
 
 DROP TABLE _attmp_array;
@@ -2220,10 +2220,10 @@ select current_setting('data_directory') || 'describe.out' as desc_output_file -
 \o :desc_output_file \\ -- YB remove temp table schema name UUID
 \d+ test_storage
 \o \\ -- YB remove temp table schema name UUID
-select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'); -- YB remove temp table schema name UUID
+select regexp_replace(regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'), '^ +', ''); -- YB remove temp table schema name UUID and title centering (depends on ProcNumber digits)
                                             regexp_replace                                             
 -------------------------------------------------------------------------------------------------------
-                    Table "pg_temp_x.test_storage"                                                    +
+ Table "pg_temp_x.test_storage"                                                                       +
   Column |  Type   | Collation | Nullable |      Default      | Storage  | Stats target | Description +
  --------+---------+-----------+----------+-------------------+----------+--------------+-------------+
   a      | text    |           |          |                   | external |              |             +
@@ -2237,7 +2237,7 @@ select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'p
 \o :desc_output_file \\ -- YB remove temp table schema name UUID
 \d+ test_storage_idx
 \o \\ -- YB remove temp table schema name UUID
-select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'); -- YB remove temp table schema name UUID
+select regexp_replace(regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'), '^ +', ''); -- YB remove temp table schema name UUID and title centering (depends on ProcNumber digits)
                           regexp_replace                          
 ------------------------------------------------------------------
  Index "pg_temp_x.test_storage_idx"                              +
@@ -3215,6 +3215,7 @@ DROP TABLE tt9;
 -- Check that comments on constraints and indexes are not lost at ALTER TABLE.
 CREATE TABLE comment_test (
   id int,
+  constraint id_notnull_constraint not null id,
   positive_col int CHECK (positive_col > 0),
   indexed_col int,
   CONSTRAINT comment_test_pk PRIMARY KEY (id));
@@ -3223,6 +3224,7 @@ COMMENT ON COLUMN comment_test.id IS 'Column ''id'' on comment_test';
 COMMENT ON INDEX comment_test_index IS 'Simple index on comment_test';
 COMMENT ON CONSTRAINT comment_test_positive_col_check ON comment_test IS 'CHECK constraint on comment_test.positive_col';
 COMMENT ON CONSTRAINT comment_test_pk ON comment_test IS 'PRIMARY KEY constraint of comment_test';
+COMMENT ON CONSTRAINT id_notnull_constraint ON comment_test IS 'NOT NULL constraint of comment_test';
 COMMENT ON INDEX comment_test_pk IS 'Index backing the PRIMARY KEY of comment_test';
 SELECT col_description('comment_test'::regclass, 1) as comment;
            comment           
@@ -3242,7 +3244,8 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 ---------------------------------+-----------------------------------------------
  comment_test_pk                 | PRIMARY KEY constraint of comment_test
  comment_test_positive_col_check | CHECK constraint on comment_test.positive_col
-(2 rows)
+ id_notnull_constraint           | NOT NULL constraint of comment_test
+(3 rows)
 
 -- Change the datatype of all the columns. ALTER TABLE is optimized to not
 -- rebuild an index if the new data type is binary compatible with the old
@@ -3282,7 +3285,8 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 ---------------------------------+-----------------------------------------------
  comment_test_pk                 | PRIMARY KEY constraint of comment_test
  comment_test_positive_col_check | CHECK constraint on comment_test.positive_col
-(2 rows)
+ id_notnull_constraint           | NOT NULL constraint of comment_test
+(3 rows)
 
 -- Check compatibility for foreign keys and comments. This is done
 -- separately as rebuilding the column type of the parent leads
@@ -3327,7 +3331,9 @@ SELECT
     oid, mapped_oid, reltablespace, relfilenode, relname
 FROM pg_class,
     pg_filenode_relation(reltablespace, pg_relation_filenode(oid)) AS mapped_oid
-WHERE relkind IN ('r', 'i', 'S', 't', 'm') AND mapped_oid IS DISTINCT FROM oid AND relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
+WHERE relkind IN ('r', 'i', 'S', 't', 'm')
+  AND relpersistence != 't'
+  AND mapped_oid IS DISTINCT FROM oid AND relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
 SELECT m.* FROM filenode_mapping m LEFT JOIN pg_class c ON c.oid = m.oid
 WHERE (c.oid IS NOT NULL OR m.mapped_oid IS NOT NULL) AND m.relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
  oid | mapped_oid | reltablespace | relfilenode | relname 
@@ -4088,11 +4094,9 @@ DROP TABLE fail_part;
 --
 -- check that the table is partitioned at all
 CREATE TABLE regular_table (a int);
--- YB note: upstream PG shows a different error message because YB hits this
--- one first in a YB codepath (see ATRewriteCatalogs, YBCPrepareAlterTable,
--- ATExecCmd).
 ALTER TABLE regular_table DETACH PARTITION any_name;
-ERROR:  relation "any_name" does not exist
+ERROR:  ALTER action DETACH PARTITION cannot be performed on relation "regular_table"
+DETAIL:  This operation is not supported for tables.
 DROP TABLE regular_table;
 -- check that the partition being detached exists at all
 ALTER TABLE list_parted2 DETACH PARTITION part_4;

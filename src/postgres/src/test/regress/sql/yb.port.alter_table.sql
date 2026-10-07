@@ -1506,11 +1506,11 @@ select current_setting('data_directory') || 'describe.out' as desc_output_file -
 \o :desc_output_file \\ -- YB remove temp table schema name UUID
 \d+ test_storage
 \o \\ -- YB remove temp table schema name UUID
-select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'); -- YB remove temp table schema name UUID
+select regexp_replace(regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'), '^ +', ''); -- YB remove temp table schema name UUID and title centering (depends on ProcNumber digits)
 \o :desc_output_file \\ -- YB remove temp table schema name UUID
 \d+ test_storage_idx
 \o \\ -- YB remove temp table schema name UUID
-select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'); -- YB remove temp table schema name UUID
+select regexp_replace(regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'), '^ +', ''); -- YB remove temp table schema name UUID and title centering (depends on ProcNumber digits)
 
 -- ALTER COLUMN TYPE with a check constraint and a child table (bug #13779)
 CREATE TABLE test_inh_check (a float check (a > 10.2), b float);
@@ -1971,6 +1971,7 @@ DROP TABLE tt9;
 -- Check that comments on constraints and indexes are not lost at ALTER TABLE.
 CREATE TABLE comment_test (
   id int,
+  constraint id_notnull_constraint not null id,
   positive_col int CHECK (positive_col > 0),
   indexed_col int,
   CONSTRAINT comment_test_pk PRIMARY KEY (id));
@@ -1980,6 +1981,7 @@ COMMENT ON COLUMN comment_test.id IS 'Column ''id'' on comment_test';
 COMMENT ON INDEX comment_test_index IS 'Simple index on comment_test';
 COMMENT ON CONSTRAINT comment_test_positive_col_check ON comment_test IS 'CHECK constraint on comment_test.positive_col';
 COMMENT ON CONSTRAINT comment_test_pk ON comment_test IS 'PRIMARY KEY constraint of comment_test';
+COMMENT ON CONSTRAINT id_notnull_constraint ON comment_test IS 'NOT NULL constraint of comment_test';
 COMMENT ON INDEX comment_test_pk IS 'Index backing the PRIMARY KEY of comment_test';
 
 SELECT col_description('comment_test'::regclass, 1) as comment;
@@ -2031,7 +2033,9 @@ SELECT
     oid, mapped_oid, reltablespace, relfilenode, relname
 FROM pg_class,
     pg_filenode_relation(reltablespace, pg_relation_filenode(oid)) AS mapped_oid
-WHERE relkind IN ('r', 'i', 'S', 't', 'm') AND mapped_oid IS DISTINCT FROM oid AND relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
+WHERE relkind IN ('r', 'i', 'S', 't', 'm')
+  AND relpersistence != 't'
+  AND mapped_oid IS DISTINCT FROM oid AND relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
 
 SELECT m.* FROM filenode_mapping m LEFT JOIN pg_class c ON c.oid = m.oid
 WHERE (c.oid IS NOT NULL OR m.mapped_oid IS NOT NULL) AND m.relname NOT LIKE 'pg_%'; /* YB: relfilenode is 0 for pg catalog tables in YB */
@@ -2589,9 +2593,6 @@ DROP TABLE fail_part;
 
 -- check that the table is partitioned at all
 CREATE TABLE regular_table (a int);
--- YB note: upstream PG shows a different error message because YB hits this
--- one first in a YB codepath (see ATRewriteCatalogs, YBCPrepareAlterTable,
--- ATExecCmd).
 ALTER TABLE regular_table DETACH PARTITION any_name;
 DROP TABLE regular_table;
 

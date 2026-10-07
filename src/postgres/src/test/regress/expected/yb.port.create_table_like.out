@@ -391,8 +391,11 @@ Check constraints:
     "ctlt1_a_check" CHECK (length(a) > 2)
     "ctlt3_a_check" CHECK (length(a) < 5)
     "ctlt3_c_check" CHECK (length(c) < 7)
-Inherits: ctlt1,
-          ctlt3
+Not-null constraints:
+    "ctlt1_a_not_null" NOT NULL "a" (inherited)
+Inherits:
+    ctlt1
+    ctlt3
 
 CREATE TABLE ctlt13_like (LIKE ctlt3 INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING COMMENTS INCLUDING STORAGE) INHERITS (ctlt1);
 NOTICE:  merging column "a" with inherited definition
@@ -409,7 +412,10 @@ Check constraints:
     "ctlt1_a_check" CHECK (length(a) > 2)
     "ctlt3_a_check" CHECK (length(a) < 5)
     "ctlt3_c_check" CHECK (length(c) < 7)
-Inherits: ctlt1
+Not-null constraints:
+    "ctlt1_a_not_null" NOT NULL "a" (inherited)
+Inherits:
+    ctlt1
 
 SELECT description FROM pg_description, pg_constraint c WHERE classoid = 'pg_constraint'::regclass AND objoid = c.oid AND c.conrelid = 'ctlt13_like'::regclass;
  description 
