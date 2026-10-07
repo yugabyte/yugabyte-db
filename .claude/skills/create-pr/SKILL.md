@@ -190,7 +190,7 @@ Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-
 - **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script.
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
 - Never force-push without explicit user permission; when authorized, prefer `--force-with-lease`.
-- Jenkins does not run on push. It runs only when a member comments `trigger jenkins` on the PR. Merge needs a passing build on the latest commit, so tell the user to trigger it once the PR is ready for CI.
+- Jenkins does not start on push: each `bld-*` run waits for approval in the `jenkins` environment, and merge needs a passing build on the latest commit. Don't trigger it automatically; when the user says the PR is ready for CI, run `.agents/scripts/trigger-jenkins.sh <pr-number>` (or they click "Review deployments" -> Approve on the PR).
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
 - **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:
   - **Body update:** `jq -Rs '{body: .}' < new-body.md | gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<num> --input -`

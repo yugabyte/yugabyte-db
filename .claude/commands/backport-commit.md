@@ -1,7 +1,7 @@
 ---
 description: Backport a commit to one or more YugabyteDB release branches as GitHub PRs
 argument-hint: <commit-sha> [<branch> ...]
-allowed-tools: Bash(.agents/scripts/backport-commit.sh *)
+allowed-tools: Bash(.agents/scripts/backport-commit.sh *), Bash(.agents/scripts/trigger-jenkins.sh *)
 model: sonnet
 ---
 
@@ -135,11 +135,13 @@ jq -Rs '{body: .}' < /tmp/claude/pr-body-<pr-number>.md |
 
 ### Step 5: Trigger Jenkins on every PR
 
-Comment `Trigger Jenkins` on each PR (whether or not it had conflicts):
+Approve the waiting Jenkins runs on each PR (whether or not it had conflicts):
 
 ```
-gh pr comment <pr-number> -R yugabyte/yugabyte-db --body "Trigger Jenkins"
+.agents/scripts/trigger-jenkins.sh <pr-number>
 ```
+
+If it reports no waiting runs because the release branch's `bld-*` workflows are not gated on the `jenkins` environment, Jenkins already started on push; nothing more to do.
 
 ### Step 6: Report back to the user
 
