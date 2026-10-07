@@ -45,3 +45,12 @@ For example, to modify the **Enforce Auth** runtime configuration key (applicabl
 1. In the **Search** bar, enter "Enforce Auth".
 1. Click **Actions** for the **Enforce Auth** configuration and choose **Edit Configuration**.
 1. Change **Config value** to "True" and click **Save**.
+
+## Node agent provisioning
+
+These two keys affect on-premises node provisioning with `node-agent-provision.sh`. Both are global, so the value applies to every provider and every universe. There is no provider or universe override. For information about the defaults, and when to set them, see [Keep provisioning current](../../prepare/server-nodes-software/software-on-prem/#runtime-configuration).
+
+| Key | Scope | Default |
+| :--- | :--- | :--- |
+| `yb.node_agent.enable_ynp_version_check` | Global | `false` |
+| `yb.node_agent.disable_ynp_node_preflight_check` | Global | `false` |

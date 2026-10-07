@@ -61,15 +61,18 @@ To update your universes to use systemd:
 
 ## Node provisioning
 
-As of v2024.2, [legacy on-premises node provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) is deprecated. For new nodes, use the `node-agent-provision.sh` script. For more information, refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+As of v2024.2, [legacy on-premises node provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) is deprecated. The legacy methods needed SSH for YugabyteDB Anywhere, or a command list that drifted between releases. For information about why the legacy methods were replaced, see [Why the script exists](../../prepare/server-nodes-software/software-on-prem/#why-the-script-exists). For new nodes where YugabyteDB Anywhere has no sudo, use `node-agent-provision.sh`. To learn which on-premises provisioning method you are using, and whether that method is still supported, see [Choose a provisioning method](../../prepare/server-nodes-software/software-on-prem/#choose-a-provisioning-method).
 
 {{< warning title="Legacy provisioning deprecated" >}}
 
-Legacy automatic provisioning and fully manual provisioning still work on v2025.2 and later. You can upgrade YugabyteDB Anywhere without moving existing universes off those methods. Assisted manual provisioning has been removed.
+Legacy automatic provisioning and fully manual provisioning still work on v2025.2 and later. You can upgrade YugabyteDB Anywhere without moving existing universes off those methods. Assisted manual provisioning (`provision_instance.py`) has been removed in v2025.2.
 
 {{< /warning >}}
 
-To move a running on-premises universe to the node agent provisioning script, follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
+To move a running on-premises universe onto current node provisioning, use one of these:
+
+- **Passwordless sudo (Manually Provision Nodes off).** YugabyteDB Anywhere already provisions the nodes. Re-apply OS settings with [Reprovision universe nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later). Replacing a boot disk still follows [node patching](../../manage-deployments/upgrade-nodes/).
+- **No sudo for YugabyteDB Anywhere (Manually Provision Nodes on).** Follow the [rolling runbook](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises). Node patching remains the procedure when you are replacing the operating system or the boot disk, not when you only need to re-run provisioning.
 
 ### Transparent hugepages
 
@@ -84,7 +87,7 @@ What action you take will depend on the type of provider used to create a univer
 | Provider | Action |
 | :--- | :--- |
 | AWS, Google, Azure, OCI | Minimal user action needed.<br><br>For new universes, YBA automatically configures nodes with the correct THP settings.<br><br>For existing universes that lack THP or have THP mis-configured, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later), or run any universe task that causes node re-provisioning (for example, [upgrading Linux](../../manage-deployments/upgrade-nodes-csp/) to apply security patches). |
-| On-premises | Some user action is needed.<br><br>New nodes that you provision using [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/) are automatically configured with the correct THP settings.<br><br>For existing nodes that lack THP or have THP mis-configured, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later), or follow the boot disk replacement procedure in [Patch and upgrade the Linux operating system](../../manage-deployments/upgrade-nodes/) when you apply a regular Linux security patch. |
+| On-premises | Some user action is needed.<br><br>New nodes that you provision using [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/) are automatically configured with the correct THP settings.<br><br>For existing nodes that lack THP or have THP mis-configured: when **Manually Provision Nodes** is off, [reprovision the nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later). When it is on, follow the [rolling runbook](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises). Boot disk replacement still follows [Patch and upgrade the Linux operating system](../../manage-deployments/upgrade-nodes/). |
 
 ## Node agent
 
