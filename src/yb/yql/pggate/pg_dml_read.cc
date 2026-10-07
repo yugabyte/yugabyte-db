@@ -444,6 +444,10 @@ Status PgDmlRead::HnswSetReadOptions(int ef_search) {
   return Status::OK();
 }
 
+void PgDmlRead::ANNAddKeyPrefix(Slice key_prefix) {
+  read_req_->mutable_vector_idx_options()->add_dup_key_prefixes(key_prefix);
+}
+
 InPermutationGenerator PgDmlRead::MergeStreamPermutations() {
   DCHECK(merge_sort_keys_);
   DCHECK(bind_);

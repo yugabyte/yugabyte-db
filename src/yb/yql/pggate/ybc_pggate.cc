@@ -1555,6 +1555,12 @@ YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search) {
   return ToYBCStatus(pgapi->DmlHnswSetReadOptions(handle, ef_search));
 }
 
+YbcStatus YBCPgDmlANNBindKeyFilter(
+    YbcPgStatement handle, int ncolumns, const YbcPgVectorKeyColumn *columns) {
+  return ToYBCStatus(pgapi->DmlANNBindKeyFilter(
+      handle, std::span(columns, static_cast<size_t>(ncolumns))));
+}
+
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YbcPgSysColumns *syscols, bool *has_data) {
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));

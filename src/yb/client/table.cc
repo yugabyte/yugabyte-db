@@ -18,6 +18,9 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/master/master_client.pb.h"
@@ -354,6 +357,33 @@ PartitionKeyPtr FindPartitionStart(
     size_t group_by) {
   const auto idx = FindPartitionStartIndex(versioned_partitions->keys, partition_key, group_by);
   return PartitionKeyPtr(versioned_partitions, &versioned_partitions->keys[idx]);
+}
+
+Result<std::vector<bool>> FindPartitionsForKeyPrefixes(
+    const TablePartitionList& partitions, bool is_hash_partitioned,
+    std::span<const Slice> key_prefixes) {
+  std::vector<bool> result(partitions.size(), false);
+  for (const auto& prefix : key_prefixes) {
+    if (is_hash_partitioned) {
+      dockv::DocKeyDecoder decoder(prefix);
+      uint16_t hash = 0;
+      SCHECK(VERIFY_RESULT(decoder.DecodeHashCode(&hash)), InvalidArgument,
+             Format("Key prefix without hash code: $0", prefix.ToDebugHexString()));
+      result[FindPartitionStartIndex(
+          partitions, dockv::PartitionSchema::EncodeMultiColumnHashValue(hash))] = true;
+      continue;
+    }
+    SCHECK(!prefix.empty(), InvalidArgument, "Empty key prefix");
+    // Partition keys are sorted, so after the partition holding the prefix itself, only the
+    // partitions whose start keys begin with the prefix can hold keys that begin with it: a start
+    // key that is greater than the prefix and does not begin with it is greater than all of them.
+    auto idx = FindPartitionStartIndex(partitions, prefix.AsStringView());
+    result[idx] = true;
+    for (++idx; idx < partitions.size() && Slice(partitions[idx]).starts_with(prefix); ++idx) {
+      result[idx] = true;
+    }
+  }
+  return result;
 }
 
 std::string VersionedTablePartitionList::ToString() const {

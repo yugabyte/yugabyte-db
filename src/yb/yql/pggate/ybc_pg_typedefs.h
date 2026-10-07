@@ -430,6 +430,14 @@ typedef struct {
   YbcPgAttrValueDescriptor *attrs;
 } YbcPgYBTupleIdDescriptor;
 
+// The values a primary key column of the indexed table is compared for equality with
+// (col = value, or col IN (values)) in a vector index search.
+typedef struct {
+  int attr_num;
+  size_t nvalues;
+  const YbcPgAttrValueDescriptor *values;
+} YbcPgVectorKeyColumn;
+
 typedef struct {
   const char *host;
   const char *cloud;

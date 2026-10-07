@@ -185,6 +185,11 @@ message PgVectorReadOptionsPB {
   oneof index_params {
     PgHnswReadOptionsPB hnsw_options = 3;
   }
+  // Encoded ybctid prefixes; every row matching the query starts with one of them. When set,
+  // PgClient only searches the partitions these prefixes can fall in. For a hash partitioned
+  // table a prefix is the DocKey up to the end of the hash group, for a range partitioned table
+  // it is the leading range components without the group end.
+  repeated bytes key_prefixes = 5;
 }
 
 message TablePropertiesPB {
