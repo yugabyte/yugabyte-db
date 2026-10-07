@@ -6468,14 +6468,18 @@ TEST_F(PgLibPqTest, DumpTabletData) {
 
 // pg_stat_replication on a universe that never used CDC (so the cdc_state table does not exist)
 // used to wait for the table to be created, taking yb_client_admin_operation_timeout_sec and
-// holding a tserver RPC worker for that long.
+// holding a tserver RPC worker for that long (#34797).
 TEST_F(PgLibPqTest, PgStatReplicationWithoutCdcStateTable) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET statement_timeout = '10s'"));
-  for (int i = 0; i < 3; ++i) {
-    ASSERT_EQ(
-        ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 0);
-  }
+
+  // No walsenders: the slot entries are not fetched at all.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 0);
+
+  // An idle replication connection registers a walsender without creating a slot, so the slot
+  // entries are fetched and ListSlotEntries has to answer without the cdc_state table.
+  auto repl_conn = ASSERT_RESULT(ConnectToDBWithReplication("yugabyte"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 1);
 }
 
 // Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of

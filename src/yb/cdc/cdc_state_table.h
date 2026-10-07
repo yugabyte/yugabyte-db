@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <future>
 #include <memory>
 #include <optional>
@@ -172,8 +173,9 @@ class CDCStateTable {
 
   // Returns false if the CDC state table has not been created. The master creates it along with
   // the first CDC or xCluster stream, so it does not exist on universes that never used either.
-  // Unlike GetTableRange, this does not wait for the table to be created.
-  Result<bool> TableExists() EXCLUDES(mutex_);
+  // Unlike GetTableRange, this neither waits for the table to be created nor takes mutex_, so it
+  // does not block behind a GetTable() call that is waiting for the creation to finish.
+  Result<bool> TableExists();
 
   // Get a single row from the table. If the row is not found, returns an nullopt.
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
@@ -207,6 +209,8 @@ class CDCStateTable {
   std::shared_future<client::YBClient*> client_future_;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
+  // Set once cdc_table_ has been opened, so that TableExists() can check it without mutex_.
+  std::atomic<bool> table_opened_{false};
   bool created_ GUARDED_BY(mutex_) = false;
   std::shared_ptr<ShutDownState> shutdown_;
 };
