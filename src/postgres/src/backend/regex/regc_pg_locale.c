@@ -976,6 +976,7 @@ out_of_memory:
  */
 static pthread_key_t yb_ctype_cache_key;
 static pthread_once_t yb_ctype_cache_key_once = PTHREAD_ONCE_INIT;
+static bool yb_ctype_cache_key_created = false;
 
 static void
 yb_free_ctype_cache(void *head)
@@ -993,11 +994,15 @@ yb_free_ctype_cache(void *head)
 	}
 }
 
+/*
+ * No elog here: in multi-threaded mode it longjmps, and a longjmp out of a
+ * pthread_once routine leaves every later caller blocked.
+ */
 static void
 yb_create_ctype_cache_key(void)
 {
-	if (pthread_key_create(&yb_ctype_cache_key, yb_free_ctype_cache) != 0)
-		elog(FATAL, "could not create the regex ctype cache thread key");
+	yb_ctype_cache_key_created =
+		pthread_key_create(&yb_ctype_cache_key, yb_free_ctype_cache) == 0;
 }
 
 static void
@@ -1006,5 +1011,7 @@ yb_track_ctype_cache_for_thread_exit(void)
 	if (!IsMultiThreadedMode())
 		return;
 	pthread_once(&yb_ctype_cache_key_once, yb_create_ctype_cache_key);
-	pthread_setspecific(yb_ctype_cache_key, pg_ctype_cache_list);
+	/* If tracking fails, the list is not freed at thread exit, as before */
+	if (yb_ctype_cache_key_created)
+		(void) pthread_setspecific(yb_ctype_cache_key, pg_ctype_cache_list);
 }
