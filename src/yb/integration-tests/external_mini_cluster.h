@@ -597,8 +597,9 @@ class ExternalMiniCluster : public MiniClusterBase {
     return opts_.timeout;
   }
 
-  // Start a leader election on this master.
-  Status StartElection(ExternalMaster* master);
+  // Start a leader election on this master. An initial election is skipped if the sys catalog
+  // already left term 0.
+  Status StartElection(ExternalMaster* master, bool initial_election = false);
 
   bool running() const { return running_; }
 
