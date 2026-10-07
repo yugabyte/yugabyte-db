@@ -172,6 +172,34 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
     write_pair->dup_value(value.AsSlice());
   }
 
+  // Writes one column-keyed external intent (column_id 11) and applies it with `vector_indexes`
+  // and `apply_to_storages`. Each CountingVectorIndex then reports whether it was fed.
+  void ApplyExternalVectorColumnWrite(
+      const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages,
+      const char* txn_hex, uint16_t hash) {
+    Uuid involved_tablet = CHECK_RESULT(Uuid::FromString(kTabletUUID));
+    TransactionId txn = CHECK_RESULT(FullyDecodeTransactionId(txn_hex));
+    const DocKey hk(hash, MakeKeyEntryValues("h1"));
+    auto column_path = DocPath(hk.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)));
+
+    const auto kBatchHT = 5000_usec_ht;
+    const auto kWriteHT = 6000_usec_ht;
+
+    docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+    std::vector<ExternalIntent> intents = {
+        {column_path, EncodeValue(QLValue::Primitive("vec"))}};
+    AddExternalIntentsWritePair(&put_batch, txn, kMinSubTransactionId, intents, involved_tablet);
+    CHECK_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
+
+    put_batch.Clear();
+    AddApplyExternalTxn(&put_batch, txn, kWriteHT);
+    CHECK_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT, vector_indexes, apply_to_storages));
+  }
+
+  static std::shared_ptr<CountingVectorIndex> MakeCountingIndex() {
+    return std::make_shared<CountingVectorIndex>(/* table_key_prefix = */ Slice(), ColumnId(11));
+  }
+
  protected:
   ThreadSafeArena arena_;
 };
@@ -583,29 +611,10 @@ TEST_F(NonTransactionalBatchWriterTest, ExternalApplyGatesVectorIndexFeed) {
   // StorageSet, and returns how many entries the external apply fed into the vector index.
   auto fed_entries = [&](const StorageSet& apply_to_storages, const char* txn_hex,
                          uint16_t hash) -> size_t {
-    auto index = std::make_shared<CountingVectorIndex>(/*table_key_prefix=*/Slice(), ColumnId(11));
+    auto index = MakeCountingIndex();
     auto indexes = std::make_shared<DocVectorIndexes>();
     indexes->push_back(index);
-
-    Uuid involved_tablet = CHECK_RESULT(Uuid::FromString(kTabletUUID));
-    TransactionId txn = CHECK_RESULT(FullyDecodeTransactionId(txn_hex));
-    const DocKey hk(hash, MakeKeyEntryValues("h1"));
-    auto column_path = DocPath(hk.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)));
-
-    const auto kBatchHT = 5000_usec_ht;
-    const auto kWriteHT = 6000_usec_ht;
-
-    // Write the external intent (a single column value)...
-    docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
-    std::vector<ExternalIntent> intents = {
-        {column_path, EncodeValue(QLValue::Primitive("vec"))}};
-    AddExternalIntentsWritePair(&put_batch, txn, kMinSubTransactionId, intents, involved_tablet);
-    CHECK_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
-
-    // ...then apply it, passing the vector index and the StorageSet under test.
-    put_batch.Clear();
-    AddApplyExternalTxn(&put_batch, txn, kWriteHT);
-    CHECK_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT, indexes, apply_to_storages));
+    ApplyExternalVectorColumnWrite(indexes, apply_to_storages, txn_hex, hash);
     return index->inserted_entries();
   };
 
@@ -613,14 +622,43 @@ TEST_F(NonTransactionalBatchWriterTest, ExternalApplyGatesVectorIndexFeed) {
   // The regular bit is left clear too, so the apply doesn't also write the regular-DB reverse
   // mapping (which would require a real encoded vector value); this isolates the vector-feed gate.
   StorageSet vector_flushed;
+  vector_flushed.Resize(1);
   EXPECT_EQ(fed_entries(vector_flushed, "0000000000000001", 0), 0)
       << "External apply re-fed a vector index whose bit was clear (already durably flushed).";
 
   // Vector-index bit set (lagging index) -> the apply feeds the vector index.
   StorageSet vector_lagging;
+  vector_lagging.Resize(1);
   vector_lagging.SetVectorIndex(0);
   EXPECT_EQ(fed_entries(vector_lagging, "0000000000000002", 100), 1)
       << "External apply did not feed a vector index whose bit was set.";
+}
+
+// GH#33923: StorageSet used to be a std::bitset<64> -- bit 0 for the regular DB, bit 1 + i for
+// vector index i -- so a tablet could address only 63 vector indexes, and the writer threw
+// std::out_of_range for the 64th. Every index matches the written column, so every index must be
+// fed exactly once.
+TEST_F(NonTransactionalBatchWriterTest, StorageSetAddresses64VectorIndexes) {
+  constexpr size_t kNumIndexes = 64;
+  auto indexes = std::make_shared<DocVectorIndexes>();
+  std::vector<std::shared_ptr<CountingVectorIndex>> counting;
+  for (size_t i = 0; i != kNumIndexes; ++i) {
+    counting.push_back(MakeCountingIndex());
+    indexes->push_back(counting.back());
+  }
+
+  // The regular bit is left clear, so the apply doesn't also write the regular-DB reverse mapping,
+  // which would need a real encoded vector value; only the vector feed is exercised.
+  StorageSet apply_to_storages;
+  apply_to_storages.Resize(kNumIndexes);
+  for (size_t i = 0; i != kNumIndexes; ++i) {
+    apply_to_storages.SetVectorIndex(i);
+  }
+  ApplyExternalVectorColumnWrite(indexes, apply_to_storages, "0000000000000001", 0);
+
+  for (size_t i = 0; i != kNumIndexes; ++i) {
+    EXPECT_EQ(counting[i]->inserted_entries(), 1) << "Vector index " << i;
+  }
 }
 
 namespace {
