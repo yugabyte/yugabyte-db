@@ -336,6 +336,45 @@ COPY tt_test FROM stdin;
 
 DROP INDEX tt_test_val_idx;
 
+-- COPY with row batching requested.  The test harness disables batching by
+-- default, so request it explicitly.  A statement-level transition trigger
+-- forces a single transaction (with a WARNING), so the trigger fires once
+-- with every copied row.
+CREATE TABLE tt_copy (id int PRIMARY KEY, val text);
+CREATE TRIGGER tt_copy_ins AFTER INSERT ON tt_copy
+  REFERENCING NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_insert();
+
+SET yb_default_copy_from_rows_per_transaction = 2;
+COPY tt_copy FROM stdin;
+1	batch_a
+2	batch_b
+3	batch_c
+4	batch_d
+5	batch_e
+\.
+RESET yb_default_copy_from_rows_per_transaction;
+
+COPY tt_copy FROM stdin WITH (ROWS_PER_TRANSACTION 2);
+6	rpt_a
+7	rpt_b
+8	rpt_c
+9	rpt_d
+10	rpt_e
+\.
+
+-- COPY ... WHERE: new_table holds only the rows that pass the filter
+COPY tt_copy FROM stdin WHERE id % 2 = 0;
+11	where_a
+12	where_b
+13	where_c
+14	where_d
+\.
+
+SELECT * FROM tt_copy ORDER BY id;
+
+DROP TABLE tt_copy;
+
 ----------------------------------------------------------------------
 -- Section 8: Tuplestore spill behavior
 ----------------------------------------------------------------------
@@ -649,8 +688,518 @@ ON CONFLICT (a) DO UPDATE SET b = excluded.b, c = excluded.c;
 -- Verify final state: column values and lengths must line up exactly.
 SELECT a, length(b) AS b_len, left(b,1) AS b_first, c FROM tt_ioc_root ORDER BY a;
 
+-- Same statement with smaller read batches, so that rows are flushed from
+-- more than one batch.  Output must match the default-batch-size run above.
+SET yb_insert_on_conflict_read_batch_size = 1;
+TRUNCATE tt_ioc_root;
+INSERT INTO tt_ioc_root (a,b,c) VALUES (1,'one',1.1), (2,'two',2.2);
+INSERT INTO tt_ioc_root (a,b,c) VALUES
+  (1, repeat('A',60),  11.11),
+  (3, repeat('B',80),  33.33),
+  (2, repeat('C',100), 22.22),
+  (4, repeat('D',150), 44.44)
+ON CONFLICT (a) DO UPDATE SET b = excluded.b, c = excluded.c;
+SELECT a, length(b) AS b_len, left(b,1) AS b_first, c FROM tt_ioc_root ORDER BY a;
+
+SET yb_insert_on_conflict_read_batch_size = 3;
+TRUNCATE tt_ioc_root;
+INSERT INTO tt_ioc_root (a,b,c) VALUES (1,'one',1.1), (2,'two',2.2);
+INSERT INTO tt_ioc_root (a,b,c) VALUES
+  (1, repeat('A',60),  11.11),
+  (3, repeat('B',80),  33.33),
+  (2, repeat('C',100), 22.22),
+  (4, repeat('D',150), 44.44)
+ON CONFLICT (a) DO UPDATE SET b = excluded.b, c = excluded.c;
+SELECT a, length(b) AS b_len, left(b,1) AS b_first, c FROM tt_ioc_root ORDER BY a;
+RESET yb_insert_on_conflict_read_batch_size;
+
 DROP TABLE tt_ioc_root;
 DROP FUNCTION tt_ioc_cap();
+
+----------------------------------------------------------------------
+-- Section 14: Prepared statements
+----------------------------------------------------------------------
+
+-- Whether the wholerow junk column is needed is decided at plan time, so
+-- cached plans need the same coverage as one-shot statements.  Each
+-- statement is executed 6 times so that "auto" mode gets past the custom
+-- plan threshold.  The three runs below are identical apart from
+-- plan_cache_mode, and so is their output: every EXECUTE fires once with only
+-- its own rows, and 0-row EXECUTEs fire with empty transition tables.
+
+CREATE TABLE tt_prep (id int PRIMARY KEY, val text, n int);
+
+CREATE TRIGGER tt_prep_ins AFTER INSERT ON tt_prep
+  REFERENCING NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_insert();
+CREATE TRIGGER tt_prep_upd AFTER UPDATE ON tt_prep
+  REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_update();
+CREATE TRIGGER tt_prep_del AFTER DELETE ON tt_prep
+  REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
+
+SET plan_cache_mode = force_custom_plan;
+PREPARE tt_prep_ins_values(int) AS INSERT INTO tt_prep VALUES ($1, 'v', 0);
+PREPARE tt_prep_ins_select(int, int) AS
+  INSERT INTO tt_prep SELECT g, 's', 0 FROM generate_series($1, $2) g;
+PREPARE tt_prep_ioc_nothing(int) AS
+  INSERT INTO tt_prep VALUES ($1, 'dn', 0) ON CONFLICT DO NOTHING;
+PREPARE tt_prep_ioc_update(int, int) AS
+  INSERT INTO tt_prep VALUES ($1, 'du', 0), ($2, 'du', 0)
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val, n = tt_prep.n + 1;
+PREPARE tt_prep_update(int, int) AS
+  UPDATE tt_prep SET n = n + 10 WHERE id BETWEEN $1 AND $2;
+PREPARE tt_prep_delete(int, int) AS
+  DELETE FROM tt_prep WHERE id BETWEEN $1 AND $2;
+EXECUTE tt_prep_ins_values(1);
+EXECUTE tt_prep_ins_values(2);
+EXECUTE tt_prep_ins_values(3);
+EXECUTE tt_prep_ins_values(4);
+EXECUTE tt_prep_ins_values(5);
+EXECUTE tt_prep_ins_values(6);
+EXECUTE tt_prep_ins_select(11, 12);
+EXECUTE tt_prep_ins_select(13, 14);
+EXECUTE tt_prep_ins_select(15, 16);
+EXECUTE tt_prep_ins_select(17, 18);
+EXECUTE tt_prep_ins_select(19, 20);
+EXECUTE tt_prep_ins_select(21, 22);
+EXECUTE tt_prep_ins_select(2, 1);
+EXECUTE tt_prep_ioc_nothing(1);
+EXECUTE tt_prep_ioc_nothing(7);
+EXECUTE tt_prep_ioc_nothing(2);
+EXECUTE tt_prep_ioc_nothing(8);
+EXECUTE tt_prep_ioc_nothing(3);
+EXECUTE tt_prep_ioc_nothing(9);
+EXECUTE tt_prep_ioc_update(1, 31);
+EXECUTE tt_prep_ioc_update(2, 32);
+EXECUTE tt_prep_ioc_update(3, 33);
+EXECUTE tt_prep_ioc_update(4, 34);
+EXECUTE tt_prep_ioc_update(5, 35);
+EXECUTE tt_prep_ioc_update(6, 36);
+EXECUTE tt_prep_update(11, 12);
+EXECUTE tt_prep_update(13, 14);
+EXECUTE tt_prep_update(15, 16);
+EXECUTE tt_prep_update(17, 18);
+EXECUTE tt_prep_update(19, 20);
+EXECUTE tt_prep_update(21, 22);
+EXECUTE tt_prep_update(90, 99);
+EXECUTE tt_prep_delete(11, 12);
+EXECUTE tt_prep_delete(13, 14);
+EXECUTE tt_prep_delete(15, 16);
+EXECUTE tt_prep_delete(17, 18);
+EXECUTE tt_prep_delete(19, 20);
+EXECUTE tt_prep_delete(21, 22);
+EXECUTE tt_prep_delete(90, 99);
+SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
+  ORDER BY name;
+DEALLOCATE ALL;
+TRUNCATE tt_prep;
+
+SET plan_cache_mode = force_generic_plan;
+PREPARE tt_prep_ins_values(int) AS INSERT INTO tt_prep VALUES ($1, 'v', 0);
+PREPARE tt_prep_ins_select(int, int) AS
+  INSERT INTO tt_prep SELECT g, 's', 0 FROM generate_series($1, $2) g;
+PREPARE tt_prep_ioc_nothing(int) AS
+  INSERT INTO tt_prep VALUES ($1, 'dn', 0) ON CONFLICT DO NOTHING;
+PREPARE tt_prep_ioc_update(int, int) AS
+  INSERT INTO tt_prep VALUES ($1, 'du', 0), ($2, 'du', 0)
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val, n = tt_prep.n + 1;
+PREPARE tt_prep_update(int, int) AS
+  UPDATE tt_prep SET n = n + 10 WHERE id BETWEEN $1 AND $2;
+PREPARE tt_prep_delete(int, int) AS
+  DELETE FROM tt_prep WHERE id BETWEEN $1 AND $2;
+EXECUTE tt_prep_ins_values(1);
+EXECUTE tt_prep_ins_values(2);
+EXECUTE tt_prep_ins_values(3);
+EXECUTE tt_prep_ins_values(4);
+EXECUTE tt_prep_ins_values(5);
+EXECUTE tt_prep_ins_values(6);
+EXECUTE tt_prep_ins_select(11, 12);
+EXECUTE tt_prep_ins_select(13, 14);
+EXECUTE tt_prep_ins_select(15, 16);
+EXECUTE tt_prep_ins_select(17, 18);
+EXECUTE tt_prep_ins_select(19, 20);
+EXECUTE tt_prep_ins_select(21, 22);
+EXECUTE tt_prep_ins_select(2, 1);
+EXECUTE tt_prep_ioc_nothing(1);
+EXECUTE tt_prep_ioc_nothing(7);
+EXECUTE tt_prep_ioc_nothing(2);
+EXECUTE tt_prep_ioc_nothing(8);
+EXECUTE tt_prep_ioc_nothing(3);
+EXECUTE tt_prep_ioc_nothing(9);
+EXECUTE tt_prep_ioc_update(1, 31);
+EXECUTE tt_prep_ioc_update(2, 32);
+EXECUTE tt_prep_ioc_update(3, 33);
+EXECUTE tt_prep_ioc_update(4, 34);
+EXECUTE tt_prep_ioc_update(5, 35);
+EXECUTE tt_prep_ioc_update(6, 36);
+EXECUTE tt_prep_update(11, 12);
+EXECUTE tt_prep_update(13, 14);
+EXECUTE tt_prep_update(15, 16);
+EXECUTE tt_prep_update(17, 18);
+EXECUTE tt_prep_update(19, 20);
+EXECUTE tt_prep_update(21, 22);
+EXECUTE tt_prep_update(90, 99);
+EXECUTE tt_prep_delete(11, 12);
+EXECUTE tt_prep_delete(13, 14);
+EXECUTE tt_prep_delete(15, 16);
+EXECUTE tt_prep_delete(17, 18);
+EXECUTE tt_prep_delete(19, 20);
+EXECUTE tt_prep_delete(21, 22);
+EXECUTE tt_prep_delete(90, 99);
+SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
+  ORDER BY name;
+DEALLOCATE ALL;
+TRUNCATE tt_prep;
+
+SET plan_cache_mode = auto;
+PREPARE tt_prep_ins_values(int) AS INSERT INTO tt_prep VALUES ($1, 'v', 0);
+PREPARE tt_prep_ins_select(int, int) AS
+  INSERT INTO tt_prep SELECT g, 's', 0 FROM generate_series($1, $2) g;
+PREPARE tt_prep_ioc_nothing(int) AS
+  INSERT INTO tt_prep VALUES ($1, 'dn', 0) ON CONFLICT DO NOTHING;
+PREPARE tt_prep_ioc_update(int, int) AS
+  INSERT INTO tt_prep VALUES ($1, 'du', 0), ($2, 'du', 0)
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val, n = tt_prep.n + 1;
+PREPARE tt_prep_update(int, int) AS
+  UPDATE tt_prep SET n = n + 10 WHERE id BETWEEN $1 AND $2;
+PREPARE tt_prep_delete(int, int) AS
+  DELETE FROM tt_prep WHERE id BETWEEN $1 AND $2;
+EXECUTE tt_prep_ins_values(1);
+EXECUTE tt_prep_ins_values(2);
+EXECUTE tt_prep_ins_values(3);
+EXECUTE tt_prep_ins_values(4);
+EXECUTE tt_prep_ins_values(5);
+EXECUTE tt_prep_ins_values(6);
+EXECUTE tt_prep_ins_select(11, 12);
+EXECUTE tt_prep_ins_select(13, 14);
+EXECUTE tt_prep_ins_select(15, 16);
+EXECUTE tt_prep_ins_select(17, 18);
+EXECUTE tt_prep_ins_select(19, 20);
+EXECUTE tt_prep_ins_select(21, 22);
+EXECUTE tt_prep_ins_select(2, 1);
+EXECUTE tt_prep_ioc_nothing(1);
+EXECUTE tt_prep_ioc_nothing(7);
+EXECUTE tt_prep_ioc_nothing(2);
+EXECUTE tt_prep_ioc_nothing(8);
+EXECUTE tt_prep_ioc_nothing(3);
+EXECUTE tt_prep_ioc_nothing(9);
+EXECUTE tt_prep_ioc_update(1, 31);
+EXECUTE tt_prep_ioc_update(2, 32);
+EXECUTE tt_prep_ioc_update(3, 33);
+EXECUTE tt_prep_ioc_update(4, 34);
+EXECUTE tt_prep_ioc_update(5, 35);
+EXECUTE tt_prep_ioc_update(6, 36);
+EXECUTE tt_prep_update(11, 12);
+EXECUTE tt_prep_update(13, 14);
+EXECUTE tt_prep_update(15, 16);
+EXECUTE tt_prep_update(17, 18);
+EXECUTE tt_prep_update(19, 20);
+EXECUTE tt_prep_update(21, 22);
+EXECUTE tt_prep_update(90, 99);
+EXECUTE tt_prep_delete(11, 12);
+EXECUTE tt_prep_delete(13, 14);
+EXECUTE tt_prep_delete(15, 16);
+EXECUTE tt_prep_delete(17, 18);
+EXECUTE tt_prep_delete(19, 20);
+EXECUTE tt_prep_delete(21, 22);
+EXECUTE tt_prep_delete(90, 99);
+SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
+  ORDER BY name;
+DEALLOCATE ALL;
+
+DROP TABLE tt_prep;
+
+-- Trigger created after PREPARE: the cached plan was built without the
+-- wholerow column, so it must be replanned once the trigger exists.  OLD
+-- and NEW must include the non-PK columns.  The two runs differ only in
+-- plan_cache_mode.
+CREATE TABLE tt_late (id int PRIMARY KEY, a text, b int, c text);
+
+SET plan_cache_mode = force_generic_plan;
+INSERT INTO tt_late SELECT g, 'a' || g, g, 'c' || g FROM generate_series(1, 16) g;
+PREPARE tt_late_update(int) AS UPDATE tt_late SET b = b + 100 WHERE id = $1;
+PREPARE tt_late_delete(int) AS DELETE FROM tt_late WHERE id = $1;
+EXECUTE tt_late_update(1);
+EXECUTE tt_late_update(3);
+EXECUTE tt_late_update(5);
+EXECUTE tt_late_update(7);
+EXECUTE tt_late_update(9);
+EXECUTE tt_late_update(11);
+EXECUTE tt_late_delete(2);
+EXECUTE tt_late_delete(4);
+EXECUTE tt_late_delete(6);
+EXECUTE tt_late_delete(8);
+EXECUTE tt_late_delete(10);
+EXECUTE tt_late_delete(12);
+SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
+  ORDER BY name;
+CREATE TRIGGER tt_late_upd AFTER UPDATE ON tt_late
+  REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_update();
+CREATE TRIGGER tt_late_del AFTER DELETE ON tt_late
+  REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
+EXECUTE tt_late_update(13);
+EXECUTE tt_late_delete(14);
+DROP TRIGGER tt_late_upd ON tt_late;
+DROP TRIGGER tt_late_del ON tt_late;
+EXECUTE tt_late_update(15);
+EXECUTE tt_late_delete(16);
+SELECT * FROM tt_late ORDER BY id;
+DEALLOCATE ALL;
+TRUNCATE tt_late;
+
+SET plan_cache_mode = auto;
+INSERT INTO tt_late SELECT g, 'a' || g, g, 'c' || g FROM generate_series(1, 16) g;
+PREPARE tt_late_update(int) AS UPDATE tt_late SET b = b + 100 WHERE id = $1;
+PREPARE tt_late_delete(int) AS DELETE FROM tt_late WHERE id = $1;
+EXECUTE tt_late_update(1);
+EXECUTE tt_late_update(3);
+EXECUTE tt_late_update(5);
+EXECUTE tt_late_update(7);
+EXECUTE tt_late_update(9);
+EXECUTE tt_late_update(11);
+EXECUTE tt_late_delete(2);
+EXECUTE tt_late_delete(4);
+EXECUTE tt_late_delete(6);
+EXECUTE tt_late_delete(8);
+EXECUTE tt_late_delete(10);
+EXECUTE tt_late_delete(12);
+SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
+  ORDER BY name;
+CREATE TRIGGER tt_late_upd AFTER UPDATE ON tt_late
+  REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_update();
+CREATE TRIGGER tt_late_del AFTER DELETE ON tt_late
+  REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
+EXECUTE tt_late_update(13);
+EXECUTE tt_late_delete(14);
+DROP TRIGGER tt_late_upd ON tt_late;
+DROP TRIGGER tt_late_del ON tt_late;
+EXECUTE tt_late_update(15);
+EXECUTE tt_late_delete(16);
+SELECT * FROM tt_late ORDER BY id;
+DEALLOCATE ALL;
+
+RESET plan_cache_mode;
+DROP TABLE tt_late;
+
+----------------------------------------------------------------------
+-- Section 15: INSERT ... ON CONFLICT
+----------------------------------------------------------------------
+
+CREATE FUNCTION tt_ioc_ids() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    RAISE NOTICE 'INSERT new: %',
+      (SELECT string_agg(format('%s:%s', id, val), ',' ORDER BY id)
+         FROM new_table);
+  ELSE
+    RAISE NOTICE 'UPDATE old: %',
+      (SELECT string_agg(format('%s:%s', id, val), ',' ORDER BY id)
+         FROM old_table);
+    RAISE NOTICE 'UPDATE new: %',
+      (SELECT string_agg(format('%s:%s', id, val), ',' ORDER BY id)
+         FROM new_table);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE TABLE tt_ioc (id int PRIMARY KEY, val text);
+INSERT INTO tt_ioc SELECT g, 'old' FROM generate_series(1, 100) g;
+
+CREATE TRIGGER tt_ioc_ins AFTER INSERT ON tt_ioc
+  REFERENCING NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_ioc_ids();
+CREATE TRIGGER tt_ioc_upd AFTER UPDATE ON tt_ioc
+  REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_ioc_ids();
+
+-- DO NOTHING: the INSERT trigger sees only ids 101..150, and the UPDATE
+-- trigger does not fire.
+INSERT INTO tt_ioc SELECT g, 'new' FROM generate_series(50, 150) g
+  ON CONFLICT DO NOTHING;
+
+-- DO UPDATE with 20 input rows, every third of which conflicts, across
+-- read batch sizes (0 disables batching; 7 does not divide 20).  Each run
+-- must produce the same output, with no id in both the INSERT trigger's NEW
+-- and the UPDATE trigger's OLD/NEW.
+TRUNCATE tt_ioc;
+INSERT INTO tt_ioc SELECT g, 'old' FROM generate_series(3, 18, 3) g;
+SET yb_insert_on_conflict_read_batch_size = 0;
+INSERT INTO tt_ioc SELECT g, 'new' FROM generate_series(1, 20) g
+  ON CONFLICT (id) DO UPDATE SET val = 'upd';
+
+TRUNCATE tt_ioc;
+INSERT INTO tt_ioc SELECT g, 'old' FROM generate_series(3, 18, 3) g;
+SET yb_insert_on_conflict_read_batch_size = 1;
+INSERT INTO tt_ioc SELECT g, 'new' FROM generate_series(1, 20) g
+  ON CONFLICT (id) DO UPDATE SET val = 'upd';
+
+TRUNCATE tt_ioc;
+INSERT INTO tt_ioc SELECT g, 'old' FROM generate_series(3, 18, 3) g;
+SET yb_insert_on_conflict_read_batch_size = 7;
+INSERT INTO tt_ioc SELECT g, 'new' FROM generate_series(1, 20) g
+  ON CONFLICT (id) DO UPDATE SET val = 'upd';
+
+TRUNCATE tt_ioc;
+INSERT INTO tt_ioc SELECT g, 'old' FROM generate_series(3, 18, 3) g;
+RESET yb_insert_on_conflict_read_batch_size;
+INSERT INTO tt_ioc SELECT g, 'new' FROM generate_series(1, 20) g
+  ON CONFLICT (id) DO UPDATE SET val = 'upd';
+
+DROP TABLE tt_ioc;
+DROP FUNCTION tt_ioc_ids();
+
+----------------------------------------------------------------------
+-- Section 16: ATTACH / DETACH PARTITION
+----------------------------------------------------------------------
+
+-- Statement-level triggers fire only on the relation named in the DML, and
+-- each relation's transition tables use that relation's own column order.
+-- tt_ad_c has a dropped column and a different column order than tt_ad.
+CREATE FUNCTION tt_log_ad() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    RAISE NOTICE '%: INSERT new=%', TG_TABLE_NAME,
+      (SELECT string_agg(t::text, ', ' ORDER BY id) FROM new_table t);
+  ELSIF TG_OP = 'UPDATE' THEN
+    RAISE NOTICE '%: UPDATE old=%, new=%', TG_TABLE_NAME,
+      (SELECT string_agg(t::text, ', ' ORDER BY id) FROM old_table t),
+      (SELECT string_agg(t::text, ', ' ORDER BY id) FROM new_table t);
+  ELSE
+    RAISE NOTICE '%: DELETE old=%', TG_TABLE_NAME,
+      (SELECT string_agg(t::text, ', ' ORDER BY id) FROM old_table t);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE TABLE tt_ad (id int, region text, val text, PRIMARY KEY (id, region))
+  PARTITION BY LIST (region);
+CREATE TABLE tt_ad_us PARTITION OF tt_ad FOR VALUES IN ('US');
+CREATE TABLE tt_ad_eu PARTITION OF tt_ad FOR VALUES IN ('EU');
+CREATE TABLE tt_ad_c (xdrop int, val text, region text, id int,
+                      PRIMARY KEY (id, region));
+ALTER TABLE tt_ad_c DROP COLUMN xdrop;
+
+CREATE PROCEDURE tt_ad_add_triggers(r text) LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE format('CREATE TRIGGER %I AFTER INSERT ON %I '
+                 'REFERENCING NEW TABLE AS new_table '
+                 'FOR EACH STATEMENT EXECUTE FUNCTION tt_log_ad()',
+                 r || '_ins', r);
+  EXECUTE format('CREATE TRIGGER %I AFTER UPDATE ON %I '
+                 'REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table '
+                 'FOR EACH STATEMENT EXECUTE FUNCTION tt_log_ad()',
+                 r || '_upd', r);
+  EXECUTE format('CREATE TRIGGER %I AFTER DELETE ON %I '
+                 'REFERENCING OLD TABLE AS old_table '
+                 'FOR EACH STATEMENT EXECUTE FUNCTION tt_log_ad()',
+                 r || '_del', r);
+END;
+$$;
+
+CALL tt_ad_add_triggers('tt_ad');
+CALL tt_ad_add_triggers('tt_ad_us');
+CALL tt_ad_add_triggers('tt_ad_eu');
+
+-- As in PG, a table with any transition-table trigger (statement-level
+-- included, despite the message) cannot be attached, so tt_ad_c gets its
+-- triggers once it is a partition.
+CALL tt_ad_add_triggers('tt_ad_c');
+ALTER TABLE tt_ad ATTACH PARTITION tt_ad_c FOR VALUES IN ('APAC');
+DROP TRIGGER tt_ad_c_ins ON tt_ad_c;
+DROP TRIGGER tt_ad_c_upd ON tt_ad_c;
+DROP TRIGGER tt_ad_c_del ON tt_ad_c;
+ALTER TABLE tt_ad ATTACH PARTITION tt_ad_c FOR VALUES IN ('APAC');
+CALL tt_ad_add_triggers('tt_ad_c');
+
+-- DML on the parent: only tt_ad's triggers fire, with tt_ad_c's rows
+-- converted to the parent's column order.
+INSERT INTO tt_ad VALUES (1, 'US', 'us1'), (2, 'EU', 'eu2'), (3, 'APAC', 'ap3');
+UPDATE tt_ad SET val = val || '_u';
+-- Cross-partition move into tt_ad_c
+UPDATE tt_ad SET region = 'APAC' WHERE id = 1;
+DELETE FROM tt_ad WHERE id = 2;
+
+-- DML on tt_ad_c: only tt_ad_c's triggers fire, in tt_ad_c's column order.
+INSERT INTO tt_ad_c (id, region, val) VALUES (4, 'APAC', 'ap4');
+UPDATE tt_ad_c SET val = val || '_c';
+DELETE FROM tt_ad_c WHERE id = 4;
+
+ALTER TABLE tt_ad DETACH PARTITION tt_ad_c;
+
+-- DML on the parent no longer sees tt_ad_c's rows.
+INSERT INTO tt_ad VALUES (5, 'US', 'us5'), (6, 'EU', 'eu6');
+UPDATE tt_ad SET val = val || '_d';
+DELETE FROM tt_ad;
+
+-- DML on the detached tt_ad_c still fires only its own triggers.
+INSERT INTO tt_ad_c (id, region, val) VALUES (7, 'APAC', 'ap7');
+UPDATE tt_ad_c SET val = val || '_d';
+DELETE FROM tt_ad_c;
+
+DROP TABLE tt_ad, tt_ad_c;
+DROP PROCEDURE tt_ad_add_triggers(text);
+DROP FUNCTION tt_log_ad();
+
+----------------------------------------------------------------------
+-- Section 17: Single-row UPDATE / DELETE
+----------------------------------------------------------------------
+
+-- A single-row UPDATE/DELETE by primary key normally skips the scan and
+-- writes directly (a Result plan with no scan under it).  Transition
+-- triggers need the old row, so that fast path must be skipped.
+CREATE TABLE tt_sr (id int PRIMARY KEY, a text, b int, c text);
+INSERT INTO tt_sr SELECT g, 'a' || g, g, 'c' || g FROM generate_series(1, 8) g;
+
+-- UPDATE with only a NEW TABLE trigger, DELETE with only an OLD TABLE trigger
+CREATE TRIGGER tt_sr_upd AFTER UPDATE ON tt_sr
+  REFERENCING NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_insert();
+CREATE TRIGGER tt_sr_del AFTER DELETE ON tt_sr
+  REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
+
+EXPLAIN (COSTS OFF) UPDATE tt_sr SET b = 100 WHERE id = 1;
+EXPLAIN (COSTS OFF) DELETE FROM tt_sr WHERE id = 2;
+
+-- NEW must carry the unchanged columns; OLD must carry all non-PK columns.
+UPDATE tt_sr SET b = 100 WHERE id = 1;
+DELETE FROM tt_sr WHERE id = 2;
+
+-- Parameterized form, with both custom and generic plans
+PREPARE tt_sr_update(int) AS UPDATE tt_sr SET b = 100 WHERE id = $1;
+PREPARE tt_sr_delete(int) AS DELETE FROM tt_sr WHERE id = $1;
+SET plan_cache_mode = force_custom_plan;
+EXPLAIN (COSTS OFF) EXECUTE tt_sr_update(3);
+EXPLAIN (COSTS OFF) EXECUTE tt_sr_delete(4);
+EXECUTE tt_sr_update(3);
+EXECUTE tt_sr_delete(4);
+SET plan_cache_mode = force_generic_plan;
+EXPLAIN (COSTS OFF) EXECUTE tt_sr_update(5);
+EXPLAIN (COSTS OFF) EXECUTE tt_sr_delete(6);
+EXECUTE tt_sr_update(5);
+EXECUTE tt_sr_delete(6);
+RESET plan_cache_mode;
+
+-- Without the triggers, the fast path is used again.
+DROP TRIGGER tt_sr_upd ON tt_sr;
+DROP TRIGGER tt_sr_del ON tt_sr;
+EXPLAIN (COSTS OFF) UPDATE tt_sr SET b = 100 WHERE id = 7;
+EXPLAIN (COSTS OFF) DELETE FROM tt_sr WHERE id = 8;
+EXPLAIN (COSTS OFF) EXECUTE tt_sr_update(7);
+EXPLAIN (COSTS OFF) EXECUTE tt_sr_delete(8);
+
+SELECT * FROM tt_sr ORDER BY id;
+
+DEALLOCATE ALL;
+DROP TABLE tt_sr;
 
 ----------------------------------------------------------------------
 -- Cleanup
