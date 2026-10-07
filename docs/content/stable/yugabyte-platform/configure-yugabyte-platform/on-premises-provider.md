@@ -98,16 +98,16 @@ DB Nodes have public internet access
 Manually Provision Nodes
 : Indicates whether you are providing [SSH Key Pairs](#ssh-key-pairs) (sudo privileges) to YugabyteDB Anywhere for it to automatically manage VM provisioning. This toggle is how you tell the two go-forward paths apart. For information about when to run the provisioning script, see [When to use the provisioning script](../../prepare/server-nodes-software/software-on-prem/#when-to-use-the-provisioning-script).
 : **Off.** Provide [SSH Key Pairs](#ssh-key-pairs) for a user with passwordless sudo. YugabyteDB Anywhere uses that key to sign in and provision the nodes ([legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/)). Running `node-agent-provision.sh` on these database nodes is unsupported. Re-apply OS settings with [Reprovision Universe Nodes](../../manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later).
-: **On.** YugabyteDB Anywhere has no sudo SSH key. Prepare nodes with the [node agent provisioning script](../../prepare/server-nodes-software/software-on-prem/). The script selects this option when it creates or updates the provider. [Legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning also uses this setting.
+: **On.** YugabyteDB Anywhere has no sudo SSH key. Prepare nodes with the [node agent provisioning script](../../prepare/server-nodes-software/software-on-prem/). The script turns this option on when it creates the provider. If the provider named in the YAML already exists with this option off, the script refuses it. [Legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning also uses this setting.
 
 YB Nodes Home Directory
 : Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
 
 Install Node Exporter
 : Enable this option if you want the Prometheus Node Exporter installed when YugabyteDB Anywhere provisions the node (**Manually Provision Nodes** off). You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
-: On the script path (**Manually Provision Nodes** on), `node-agent-provision.sh` installs the bundled node exporter during the root modules and restarts `node_exporter.service` on `node_exporter_port`. This provider setting does not skip that install. For information about what the script installs, see [What the script configures](../../prepare/server-nodes-software/software-on-prem/#what-the-script-configures).
+: On the script path (**Manually Provision Nodes** on), `node-agent-provision.sh` installs the bundled node exporter during the root modules and restarts `node_exporter.service` on port 9300. The YAML key `node_exporter_port` is not applied. This provider setting does not skip that install. For information about what the script installs, see [What the script configures](../../prepare/server-nodes-software/software-on-prem/#what-the-script-configures).
 : The **Node Exporter User** field allows you to override the default `prometheus` user. This is helpful when the user is pre-provisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
-: Use the **Node Exporter Port** field to specify the port number for the Prometheus Node Exporter. The default value is 9300.
+: Use the **Node Exporter Port** field to specify the port number for the Prometheus Node Exporter. The default value is 9300. On the script path, set this field and the universe port mapping to 9300. That is the port the script binds.
 
 NTP Setup
 : You can customize the Network Time Protocol server.

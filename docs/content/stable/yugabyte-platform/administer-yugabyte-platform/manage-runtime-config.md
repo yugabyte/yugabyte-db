@@ -48,7 +48,7 @@ For example, to modify the **Enforce Auth** runtime configuration key (applicabl
 
 ## Node agent provisioning
 
-These two keys affect on-premises node provisioning with `node-agent-provision.sh`. Both are global, so the value applies to every provider and every universe. There is no provider or universe override. For information about the defaults, and when to set them, see [Keep provisioning current](../../prepare/server-nodes-software/software-on-prem/#runtime-configuration).
+Both keys are global, so the value applies to every provider and every universe. There is no provider or universe override. For information about what each key changes, see [Keep provisioning current](../../prepare/server-nodes-software/software-on-prem/#runtime-configuration).
 
 | Key | Scope | Default |
 | :--- | :--- | :--- |

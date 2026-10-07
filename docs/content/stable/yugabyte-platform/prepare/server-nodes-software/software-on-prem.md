@@ -25,7 +25,7 @@ Check the on-premises provider's **Manually Provision Nodes** toggle (**Integrat
 | Manually Provision Nodes | What to do |
 | :--- | :--- |
 | **Off**<br>YugabyteDB Anywhere has passwordless sudo over SSH. | YugabyteDB Anywhere provisions the nodes.<br>Running `node-agent-provision.sh` on these database nodes is _unsupported_.<br>To re-apply OS settings, use **Actions > More > Reprovision Universe Nodes** (v2026.1.2.0 and later). See [Reprovision universe nodes](../../../manage-deployments/reprovision-nodes/). |
-| **On**<br>YugabyteDB Anywhere has no sudo SSH key. | Use this procedure. The script creates or updates the provider and turns **Manually Provision Nodes** on. |
+| **On**<br>YugabyteDB Anywhere has no sudo SSH key. | Use this procedure. The script turns **Manually Provision Nodes** on when it creates the provider. An existing provider with the toggle off is refused (`Provider is configured for sudo provisioning, which is not supported`). |
 
 To compare this script with legacy manual, legacy automatic, and assisted provisioning, see [Choose a provisioning method](#choose-a-provisioning-method).
 
@@ -122,7 +122,7 @@ The package you download matches the YugabyteDB Anywhere version you are running
 | Transparent hugepages | Root | v2024.2. Required settings were updated in May 2025. A wrong setting raises **Incorrect THP settings**. **THP Issue Threshold Reached** fires when the node is under memory pressure and RSS is higher than TCMalloc accounts for. |
 | chrony | Root | v2024.2 |
 | ClockBound | Root. Optional (`is_configure_clockbound`, default false). Requires chrony. | v2025.2.3.0 |
-| Node exporter | Root. Installs the bundled node exporter and restarts `node_exporter.service`. An exporter already running under that unit is replaced with the bundled binary and the configured port, then restarted. | v2024.2 |
+| Node exporter | Root. Installs the bundled node exporter and restarts `node_exporter.service` on port 9300. An exporter already running under that unit is replaced with the bundled binary, then restarted. | v2024.2 |
 | cgroups | User (`--noroot`). Controlled by `configure_cgroup` (default true). | v2024.2 |
 | User-level systemd | User. Default (`use_system_level_systemd` false). | Cron-based universes are not supported in v2025.2 and later. |
 | Node agent | User. Installed as `yugabyte` under user-level systemd. | v2024.2. Running as `yugabyte` rather than root is the v2025.2 behavior. |
@@ -192,13 +192,15 @@ Edit the `node-agent-provision.yaml` file in the scripts directory.
 
 You can [review the file](https://github.com/yugabyte/yugabyte-db/blob/{{< yb-version version="stable" format="short">}}/managed/node-agent/resources/node-agent-provision.yaml) and its defaults on GitHub. The sample values below match that file. `--config_override` addresses the same fields with dotted paths (`ynp.node_ip`, `yba.url`).
 
-Set at least the following. Everything else has a default.
+Set at least the following. Other fields in the sample have usable defaults.
 
 - `ynp.node_ip`
 - `yba.url`, `yba.customer_uuid`, `yba.api_key`
 - `yba.node_name`, `yba.node_external_fqdn`
 - `yba.provider.name`, `yba.provider.region.name`, `yba.provider.region.zone.name`
-- `yba.instance_type.name` and `yba.instance_type.mount_points` (plus cores, memory, and volume size when the instance type is new)
+- `yba.instance_type.name` and `yba.instance_type.mount_points`. For an existing instance type, `mount_points` must match that type. `cores`, `memory_size`, and `volume_size` are required when the instance type is new.
+
+Every run validates `node-agent-provision.yaml` first, including `--generate_config`, `--dry_run`, and `--preflight_check`. The sample `instance_type.cores`, `memory_size`, and `volume_size` values (`<number_of_cores>`, `<memory_in_gb>`, `<volume_in_gb>`) are not integers, so that check fails with `Failed to validate config`. Replace each with an integer, or delete the key when the instance type already exists.
 
 `node_name` is a free-form label for the instance in YugabyteDB Anywhere. `node_external_fqdn` is the address YugabyteDB Anywhere uses to reach the node. You can set `node_name` to a hostname while `node_external_fqdn` is an IP address, or the other way around. Both the script and the manual add-instance flow accept that split.
 
@@ -208,7 +210,7 @@ Set at least the following. Everything else has a default.
 | :--- | :--- | :--- |
 | `chrony_servers` | Default `[]` | Addresses of your NTP servers. Set this when the node does not already use those servers. |
 | `yb_home_dir` | Default `/home/yugabyte` | Directory where YugabyteDB is installed. |
-| `yb_user_home` | Default `yb_home_dir` | Home directory of the `yugabyte` user. v2025.2.4.0 and later. |
+| `yb_user_home` | Default `yb_home_dir` | Home directory used when the script creates the `yugabyte` user. When that user already exists, the script uses the existing home and ignores this value. v2025.2.4.0 and later. |
 | `yb_user_id` | Default `1004` | UID for a `yugabyte` user the script creates. Use the same UID on every node. Ignored when the user already exists. |
 | `no_proxy_list` | Default `[]` | Hosts and addresses to exclude from an HTTP proxy. |
 | `is_airgap` | Default `false` | Set to `true` for an airgapped node. |
@@ -216,7 +218,7 @@ Set at least the following. Everything else has a default.
 | `node_ip` | Required | IP address other nodes use to reach this node. Replace the sample `127.0.0.1`. |
 | `tmp_directory` | Default `/tmp` | Directory for temporary files during provisioning. Dry-run scripts are written in this directory. |
 | `node_agent_port` | Default `9070` | Node agent listen port. Must match the YugabyteDB Anywhere runtime configuration, and must be the same on every node. |
-| `node_exporter_port` | Default `9300` | Node exporter listen port. Must match the universe port mapping in YugabyteDB Anywhere, and must be the same on every node. The script installs the bundled exporter and restarts `node_exporter.service` on this port. |
+| `node_exporter_port` | Not applied | The sample sets `9300`. The script always listens on 9300 and, when it creates the provider, registers 9300. A value in this key, including one `--generate_config` copies from the provider, is not applied. Set the universe port mapping to 9300. |
 | `is_configure_clockbound` | Default `false` | Set to `true` to install [ClockBound](https://github.com/aws/clock-bound) and point the provider at it, so universes created from the provider set [time_source](../../../../reference/configuration/yb-master/#time-source) to `clockbound`. ClockBound requires chrony. v2025.2.3.0 and later. |
 | `configure_cgroup` | Default `true` | When `true`, the script configures TServer cgroup isolation. When `false`, it skips cgroup tuning. |
 
@@ -239,12 +241,12 @@ Set these so the script can create or update the [on-premises provider](../../..
 | `provider.region.latitude` | Default `360` | Region latitude. Replace the placeholder when you want a real coordinate. |
 | `provider.region.longitude` | Default `360` | Region longitude. Replace the placeholder when you want a real coordinate. |
 | `instance_type.name` | Required | Instance type name. For a new type, this is the name YugabyteDB Anywhere stores (for example `c5.large`). |
-| `instance_type.cores` | Required for a new instance type | Number of cores. Optional when the instance type already exists. |
-| `instance_type.memory_size` | Required for a new instance type | Memory in GB. Optional when the instance type already exists. |
-| `instance_type.volume_size` | Required for a new instance type | Storage volume in GB. Optional when the instance type already exists. |
-| `instance_type.mount_points` | Required for a new instance type | Data mount points you created before running the script. Optional when the instance type already exists. |
+| `instance_type.cores` | Required for a new instance type | Number of cores. Replace the sample `<number_of_cores>` with an integer, or delete the key when the instance type already exists. |
+| `instance_type.memory_size` | Required for a new instance type | Memory in GB. Replace the sample `<memory_in_gb>` with an integer, or delete the key when the instance type already exists. |
+| `instance_type.volume_size` | Required for a new instance type | Storage volume in GB. Replace the sample `<volume_in_gb>` with an integer, or delete the key when the instance type already exists. |
+| `instance_type.mount_points` | Required | Data mount points you created before running the script. For an existing instance type, the list must match the mount paths of that instance type in YugabyteDB Anywhere. |
 
-If the provider does not exist, the script creates it. If it exists, the script adds the node to that provider.
+If the provider does not exist, the script creates it and turns **Manually Provision Nodes** on. If it exists with that option on, the script adds the node. If it exists with the option off, the script refuses the provider.
 
 #### `logging`
 
@@ -272,7 +274,7 @@ Available in v2024.2 and later. With no extra flag, this is a full provision: ro
 
 If the `yba` fields are set, node agent creates the on-premises provider, or adds the instance when the provider already exists.
 
-The script is idempotent. If a run stops partway through, run the same command again. In almost all cases the node agent directories and unit files stay in place and the re-run finishes the work. One mismatch is fatal and a re-run will not clear it: if the `yugabyte` user already exists, `ynp.yb_user_home` must be that user's home directory. On an existing universe, `--generate_config` writes the home YugabyteDB Anywhere already has for the node. Manual removal is for uninstalling YugabyteDB from a node you are taking out of service. See [Remove node agent](../../../administer-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
+The script is idempotent. If a run stops partway through, run the same command again. The node agent directories and unit files stay in place and the re-run finishes the work. When the `yugabyte` user already exists, that user's home directory wins: the script replaces `ynp.yb_user_home` with it before the modules run. `--generate_config` writes the local user's home when the user exists, and the provider **YB Nodes Home Directory** when the user does not. Manual removal is for uninstalling YugabyteDB from a node you are taking out of service. See [Remove node agent](../../../administer-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
 
 After the node is provisioned, reboot the node.
 
@@ -290,7 +292,7 @@ You can `su` to root for `--root`. A `sudo` prefix is only needed when sudo is t
 
 ### New universes
 
-1. Database administrators download the node agent package from the target YugabyteDB Anywhere version and run a root dry run. That writes the root command list and does not change the node:
+1. Database administrators download the node agent package from the target YugabyteDB Anywhere version. In `node-agent-provision.yaml`, replace `yba.instance_type.cores`, `memory_size`, and `volume_size` with integers, or delete those keys. The sample placeholders fail validation before the script writes a command list. Then run a root dry run. That writes the root command list and does not change the node:
 
     ```sh
     sudo ./node-agent-provision.sh --root --dry_run
@@ -344,6 +346,8 @@ Available in v2025.1 and later. `--dry_run` renders the shell the script would r
 - **Precheck script** (`*_precheck`). The checks that would run afterward.
 
 The command prints each path twice: once as `Install Script:` or `Precheck Script:`, and again from the provisioning log. They are the same two files. Open the paths on the `Install Script:` and `Precheck Script:` lines.
+
+Replace the sample `instance_type.cores`, `memory_size`, and `volume_size` placeholders with integers, or delete those keys. The script validates the file before it writes the scripts.
 
 ```sh
 ./node-agent-provision.sh --dry_run
@@ -406,7 +410,7 @@ Override the FQDN and the YugabyteDB Anywhere URL together:
 
 Use the `--generate_config` flag (v2025.2.4.0 and later) to write a YAML file from the node's current provider registration. The command does not provision the node. This is how you hydrate a configuration for a node that is already in the provider, before [re-provisioning an existing universe](#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
 
-The seed `node-agent-provision.yaml` needs `yba.url`, `yba.api_key`, and the node FQDN or IP (`yba.node_external_fqdn`). The generated file is named `node-agent-provision-generated.yaml` in the same directory. `--config_file` (default `./node-agent-provision.yaml`, available in v2024.2 and later) selects which file a later run reads. Point it at the generated file:
+The seed `node-agent-provision.yaml` needs `yba.url`, `yba.api_key`, and the node FQDN or IP (`yba.node_external_fqdn`). Replace `yba.instance_type.cores`, `memory_size`, and `volume_size` with integers, or delete those keys. The sample placeholders fail validation, and the script checks the seed before it writes a file. The generated file is named `node-agent-provision-generated.yaml` in the same directory. `--config_file` (default `./node-agent-provision.yaml`, available in v2024.2 and later) selects which file a later run reads. Point it at the generated file:
 
 ```sh
 ./node-agent-provision.sh --generate_config
@@ -436,13 +440,13 @@ If **Manually Provision Nodes** is off, use [Reprovision universe nodes](../../.
 Do this one node at a time. On a universe with replication factor 3 or more, the universe stays available for reads and writes. Stopping a second node while the first is still in maintenance mode makes tablets unavailable.
 
 {{< warning title="Maintenance window" >}}
-If the node stays in maintenance mode longer than the WAL retention time (15 minutes by default), YugabyteDB Anywhere treats it as failed and re-replicates its data. Raise `--log_min_seconds_to_retain` before a slow run. See [Enter maintenance mode](../../../manage-deployments/remove-nodes/#enter-and-exit-maintenance-mode).
+If the node stays in maintenance mode longer than 15 minutes, the Raft leader treats the follower as failed and re-replicates its data. The timeout is [follower_unavailable_considered_failed_sec](../../../reference/configuration/yb-tserver/#follower-unavailable-considered-failed-sec) (default 900 seconds). Raise that flag on YB-TServer and YB-Master before a slow run, and set [log_min_seconds_to_retain](../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) to the same value so the WAL is kept until the node returns. Change the flags in [Edit configuration flags](../../../manage-deployments/edit-config-flags/). See [Enter maintenance mode](../../../manage-deployments/remove-nodes/#enter-and-exit-maintenance-mode).
 {{< /warning >}}
 
 ### On every node, before you stop anything
 
 1. [Download the node agent package](#download-the-package) that matches the YugabyteDB Anywhere version.
-1. In `node-agent-provision.yaml`, set `yba.url`, `yba.api_key`, and the node FQDN or IP (`yba.node_external_fqdn`).
+1. In `node-agent-provision.yaml`, set `yba.url`, `yba.api_key`, and the node FQDN or IP (`yba.node_external_fqdn`). Replace `yba.instance_type.cores`, `memory_size`, and `volume_size` with integers, or delete those keys. The sample values `<number_of_cores>`, `<memory_in_gb>`, and `<volume_in_gb>` fail validation, and `--generate_config` does not run until they are replaced or removed.
 1. Hydrate the rest from YugabyteDB Anywhere (v2025.2.4.0 and later):
 
     ```sh
@@ -462,7 +466,7 @@ If the node stays in maintenance mode longer than the WAL retention time (15 min
 
 1. Put the node in maintenance mode.
 
-    In YugabyteDB Anywhere, open the universe **Nodes** tab, click the node **Actions**, and choose **Enter Maintenance Mode**.
+    In YugabyteDB Anywhere, open the universe **Nodes** tab, click the node **Actions**, and choose **Enter Maintenance Mode**. Wait until that task succeeds before you run the script.
 
     With the API:
 
@@ -471,7 +475,13 @@ If the node stays in maintenance mode longer than the WAL retention time (15 min
     --data-raw '{"nodeAction":"STOP"}'
     ```
 
-    Read the response. YugabyteDB Anywhere rejects the stop when another node is already down or stopping this node would under-replicate the universe. On an error, do not run the script. Wait until the universe is healthy and try this node again.
+    A successful PUT returns a task UUID (`taskUUID`). The PUT itself fails only when the remaining live nodes would fall below quorum. Under-replication and whether the node is safe to take down run inside the task, after that response. Poll the task and run the script only when `status` is `Success`:
+
+    ```sh
+    curl '<platform-url>/api/v1/customers/<customer_uuid>/tasks/<task_uuid>' -H 'X-AUTH-YW-API-TOKEN: <api-token>'
+    ```
+
+    On `Failure` or `Aborted`, the node is still up. Wait until the universe is healthy and try this node again.
 
     Maintenance mode is required because the preflight checks bind the database ports. Against a live node those checks collide with YB-Master and YB-TServer.
 
@@ -494,7 +504,7 @@ If the node stays in maintenance mode longer than the WAL retention time (15 min
 
 1. Start the node.
 
-    In YugabyteDB Anywhere, on the **Nodes** tab, click **Actions > Exit Maintenance Mode**.
+    In YugabyteDB Anywhere, on the **Nodes** tab, click **Actions > Exit Maintenance Mode**. Wait until that task succeeds before you continue to the next node.
 
     With the API:
 
@@ -503,7 +513,9 @@ If the node stays in maintenance mode longer than the WAL retention time (15 min
     --data-raw '{"nodeAction":"START"}'
     ```
 
-1. Confirm the node agent is registered at `https://<yba>/nodeagent`. Confirm the universe and the provider are unchanged (same provider, same instance list aside from agent metadata, same universe configuration).
+    A successful PUT returns a task UUID. Poll `GET /api/v1/customers/<customer_uuid>/tasks/<task_uuid>` until `status` is `Success` before you continue to the next node.
+
+1. Confirm this node's agent is registered at `https://<yba>/nodeagent`. Confirm the provider and its instance list are unchanged, aside from agent metadata. Master placement can move: stopping a master node can start a replacement master on another node in the same zone (`yb.start_master_on_stop_node`, default `true`), and starting the node does not move that master back. See [Enter maintenance mode](../../../manage-deployments/remove-nodes/#enter-and-exit-maintenance-mode).
 1. Continue with the next node.
 
 ### Adding a script-provisioned node to a legacy universe
@@ -514,11 +526,11 @@ A node you provision with the script joins the provider and zone you name in the
 
 After you upgrade YugabyteDB Anywhere, download the matching node agent package and re-run the script when node-level requirements have changed. Re-running is recommended. It is not mandatory on an upgrade that did not change those requirements.
 
-The package carries a `ynp_version`. A successful provision stores it under the `yugabyte` user's home in `.yugabyte/` (v2025.2.3.0 and later). The value changes when node-level requirements change, not on every YugabyteDB Anywhere build.
+The package carries a `ynp_version`. After the provision and precheck scripts run, the script writes that version under the `yugabyte` user's home in `.yugabyte/`, including when either script failed (v2025.2.3.0 and later). The value changes when node-level requirements change, not on every YugabyteDB Anywhere build.
 
 YugabyteDB Anywhere can flag a mismatch:
 
-- **YNP Version Skew** warns when a node's YNP version is behind YugabyteDB Anywhere, or the version file is missing. The check runs only when `yb.node_agent.enable_ynp_version_check` is true.
+- **YNP Version Skew** warns when the version in that file is behind YugabyteDB Anywhere, or the file is missing. The check runs only when `yb.node_agent.enable_ynp_version_check` is true. A failed re-provision still writes the package version, so the alert can clear while the node is missing the new requirements. Confirm the script exited successfully.
 - **Incorrect THP settings** warns when THP does not match the [required settings](../#transparent-hugepages).
 - **THP Issue Threshold Reached** fires when the node is already under memory pressure and TServer RSS is higher than TCMalloc accounts for.
 
@@ -531,7 +543,7 @@ Both keys are global. A global key applies to every provider and every universe.
 | Key | Scope | Default | Effect |
 | :--- | :--- | :--- | :--- |
 | `yb.node_agent.enable_ynp_version_check` | Global | `false` | When `true`, adding a node requires the node's YNP major version to match YugabyteDB Anywhere, and health checks raise **YNP Version Skew** on a mismatch or a missing version file. There is no provider or universe override. |
-| `yb.node_agent.disable_ynp_node_preflight_check` | Global | `false` | When `true`, YugabyteDB Anywhere skips the YNP preflight check while provisioning a node agent. |
+| `yb.node_agent.disable_ynp_node_preflight_check` | Global | `false` | When `true`, YugabyteDB Anywhere runs the legacy `preflight_checks.sh` instead of the YNP preflight checks while it adds or validates a manual on-premises node. A preflight still runs. The checks inside `node-agent-provision.sh` are unchanged. |
 
 ## sudo whitelist
 
