@@ -111,9 +111,9 @@ To create an export configuration, do the following:
 The [Grafana Mimir](https://grafana.com/docs/mimir/latest/) integration requires the following:
 
 - Grafana Mimir instance that accepts [OpenTelemetry (OTLP) metrics](https://grafana.com/docs/mimir/latest/configure/configure-otel-collector/).
-- OTLP endpoint URL for that instance.
-- Authorization header used to authenticate with Grafana Mimir.
-- For a multi-tenant instance, the tenant organization ID. Grafana Mimir reads this value from the [`X-Scope-OrgID`](https://grafana.com/docs/mimir/latest/references/http-api/#authentication) header.
+- OTLP endpoint URL for that instance
+- Authorization header used to authenticate with Grafana Mimir
+- For a multi-tenant instance, the tenant organization ID. Grafana Mimir reads this value from the [`X-Scope-OrgID`](https://grafana.com/docs/mimir/latest/references/http-api/#authentication) header
 
 To create an export configuration, do the following:
 
@@ -301,7 +301,7 @@ The [Tsuga](https://www.tsuga.com/) integration requires the following:
 
 - Tsuga account
 - OTLP endpoint URL for your Tsuga intake
-- Tsuga API token. The token is sent as an `Authorization: Bearer` header.
+- Tsuga API token; the token is sent as an `Authorization: Bearer` header
 
 To create an export configuration, do the following:
 
