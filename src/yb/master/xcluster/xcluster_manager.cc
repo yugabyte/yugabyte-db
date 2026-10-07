@@ -144,6 +144,14 @@ Status ValidateUniverseUUID(const RequestType& req, CatalogManager& catalog_mana
   return Status::OK();
 }
 
+// Returns a deadline for the persisting RPCs' calls a little before the caller's so that the caller
+// gets master's error -- e.g., which TServer propagation failed for -- instead of its own RPC
+// timeout.
+MonoTime ComputePersistingRpcDeadline(const rpc::RpcContext& rpc) {
+  constexpr auto kDeadlineBuffer = 2s;
+  return MonoTime(ToSteady(rpc.GetClientDeadline() - kDeadlineBuffer));
+}
+
 bool IsYsqlAutoAddNewIndexToBiDirectionalXClusterEnabled() {
   return FLAGS_ysql_auto_add_new_index_to_bidirectional_xcluster_infra &&
          FLAGS_ysql_auto_add_new_index_to_bidirectional_xcluster;
@@ -712,6 +720,33 @@ Status XClusterManager::XClusterEnsureSequenceUpdatesAreInWal(
   std::vector<NamespaceId> namespace_ids{req->namespace_ids().begin(), req->namespace_ids().end()};
   return EnsureSequenceUpdatesAreInWal(
       xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids);
+}
+
+Status XClusterManager::XClusterStopPersisting(
+    const XClusterStopPersistingRequestPB* req, XClusterStopPersistingResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  return StopPersisting(
+      {req->namespace_ids().begin(), req->namespace_ids().end()},
+      ComputePersistingRpcDeadline(*rpc), epoch);
+}
+
+Status XClusterManager::XClusterStartPersisting(
+    const XClusterStartPersistingRequestPB* req, XClusterStartPersistingResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  return StartPersisting(
+      {req->namespace_ids().begin(), req->namespace_ids().end()},
+      ComputePersistingRpcDeadline(*rpc), epoch);
+}
+
+Status XClusterManager::XClusterGetPersistenceBlockMap(
+    const XClusterGetPersistenceBlockMapRequestPB* req,
+    XClusterGetPersistenceBlockMapResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  *resp->mutable_persistence_block_map() = VERIFY_RESULT(GetPersistenceBlockMap());
+  return Status::OK();
 }
 
 Status XClusterManager::GetXClusterStreams(

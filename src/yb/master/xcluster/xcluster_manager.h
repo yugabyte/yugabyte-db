@@ -260,6 +260,16 @@ class XClusterManager : public XClusterManagerIf,
       const XClusterEnsureSequenceUpdatesAreInWalRequestPB* req,
       XClusterEnsureSequenceUpdatesAreInWalResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+  Status XClusterStopPersisting(
+      const XClusterStopPersistingRequestPB* req, XClusterStopPersistingResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status XClusterStartPersisting(
+      const XClusterStartPersistingRequestPB* req, XClusterStartPersistingResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status XClusterGetPersistenceBlockMap(
+      const XClusterGetPersistenceBlockMapRequestPB* req,
+      XClusterGetPersistenceBlockMapResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
   Status GetXClusterStreams(
       const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);

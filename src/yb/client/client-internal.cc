@@ -338,6 +338,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplications);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, WaitForReplicationDrain);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterEnsureSequenceUpdatesAreInWal);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterStopPersisting);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterStartPersisting);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterGetPersistenceBlockMap);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 

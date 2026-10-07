@@ -31,6 +31,8 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/tools/admin-test-base.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
@@ -40,6 +42,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -491,6 +494,53 @@ TEST_F(XClusterPersistenceBlockMapTest, ConcurrentCallsSerialize) {
   ASSERT_EQ(ASSERT_RESULT(GetMasterMapVersion()), initial_version + kThreads * kCallsPerThread);
   ASSERT_EQ(map.blocked_through_ht().size(), namespace_ids.size());
   ASSERT_OK(CheckTServersHaveMasterMap());
+}
+
+// Tests that the yb-admin commands take database names, reach master through the RPCs, and that
+// get_persistence_block_map reports what master holds.
+TEST_F(XClusterPersistenceBlockMapTest, YbAdminCommands) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto [namespace_id1, oid1] = ASSERT_RESULT(CreateDatabase(conn, "db1"));
+  const auto [namespace_id2, oid2] = ASSERT_RESULT(CreateDatabase(conn, "db2"));
+  const auto master_addresses = cluster_->GetMasterAddresses();
+
+  ASSERT_RESULT(tools::RunAdminToolCommand(master_addresses, "stop_persisting", "db1,db2"));
+  auto map = ASSERT_RESULT(GetMasterMap());
+  ASSERT_EQ(GetBlockedThroughHt(map, oid1), HybridTime::kMax);
+  ASSERT_EQ(GetBlockedThroughHt(map, oid2), HybridTime::kMax);
+
+  ASSERT_RESULT(tools::RunAdminToolCommand(master_addresses, "start_persisting", "db1"));
+  map = ASSERT_RESULT(GetMasterMap());
+  const auto blocked_through = GetBlockedThroughHt(map, oid1);
+  ASSERT_TRUE(blocked_through.has_value());
+  ASSERT_NE(*blocked_through, HybridTime::kMax);
+
+  const auto output =
+      ASSERT_RESULT(tools::RunAdminToolCommand(master_addresses, "get_persistence_block_map"));
+  LOG(INFO) << "get_persistence_block_map output:\n" << output;
+  rapidjson::Document document;
+  ASSERT_FALSE(document.Parse(output.c_str(), output.length()).HasParseError()) << output;
+  ASSERT_EQ(document["version"].GetString(), std::to_string(ASSERT_RESULT(GetMasterMapVersion())));
+  struct DumpedEntry {
+    std::string database_oid;
+    std::string blocked_through;
+  };
+  std::map<std::string, DumpedEntry> entries_by_name;
+  for (const auto& database : document["databases"].GetArray()) {
+    entries_by_name[database["database_name"].GetString()] = {
+        database["database_oid"].GetString(), database["blocked_through"].GetString()};
+  }
+
+  ASSERT_EQ(entries_by_name.size(), 2) << output;
+  ASSERT_EQ(entries_by_name["db1"].database_oid, std::to_string(oid1));
+  // yb-admin formats times this way (tools::HybridTimeToString).
+  ASSERT_EQ(
+      entries_by_name["db1"].blocked_through,
+      Timestamp(blocked_through->GetPhysicalValueMicros()).ToHumanReadableTime());
+  ASSERT_EQ(entries_by_name["db2"].database_oid, std::to_string(oid2));
+  ASSERT_EQ(entries_by_name["db2"].blocked_through, "max");
+
+  ASSERT_NOK(tools::RunAdminToolCommand(master_addresses, "stop_persisting", "no_such_db"));
 }
 
 }  // namespace yb
