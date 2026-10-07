@@ -509,6 +509,23 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
   ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
 
+// Dropping the last trigger of a table leaves relhastriggers set in pg_class. A connection that
+// preloads the relcache must not read the (empty) trigger list of such a table from the master
+// again.
+TEST_F(PgCatalogPerfTest, StartupRPCCountWithStaleRelHasTriggers) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE p (k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE c (k INT REFERENCES p)"));
+    ASSERT_OK(conn.Execute("ALTER TABLE c DROP CONSTRAINT c_k_fkey"));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM pg_class WHERE relname IN ('p', 'c') AND relhastriggers")), 2);
+  }
+  // The DDL above invalidated the relcache init file, so this connection preloads the relcache.
+  const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountDefault);
+}
+
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithoutPartitionTables) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
