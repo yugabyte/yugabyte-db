@@ -224,10 +224,6 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
 }
 
 CQLServiceImpl::~CQLServiceImpl() {
-  if (jwt_ident_memctx_) {
-    ScopedSetMemoryContext set_memctx(jwt_ident_memctx_);
-    YbgDeleteMemoryContext();
-  }
 }
 
 client::YBClient* CQLServiceImpl::client() const {
