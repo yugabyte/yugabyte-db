@@ -331,40 +331,54 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
   }
 
   // Test checks that after an ANALYZE, a warm backend with the cost model on plans the tables the
-  // ANALYZE did not touch without any RPC to a master. The ANALYZE invalidates pg_statistic rows
-  // of the analyzed table only, but it also drops all of the backend's pg_statistic catcache
-  // lists.
+  // ANALYZE did not touch without any RPC to a master, and the analyzed tables with one list read
+  // of pg_statistic each rather than one read per column. The ANALYZE invalidates pg_statistic
+  // rows of the analyzed tables only, but it also drops all of the backend's pg_statistic catcache
+  // lists. A partitioned table only has stainherit = true rows, which the GROUP BY estimate reads.
   void TestPlanRPCCountAfterAnalyzeOfOtherTable() {
     constexpr auto kNumColumns = 20;
     constexpr auto kAnalyzed = "analyzed";
     constexpr auto kNotReanalyzed = "not_reanalyzed";
     constexpr auto kNeverAnalyzed = "never_analyzed";
+    constexpr auto kPartitioned = "partitioned";
 
     auto aux_conn = ASSERT_RESULT(Connect());
     std::string columns = "k INT PRIMARY KEY";
+    std::string group_by_columns;
     for (int i = 1; i <= kNumColumns; ++i) {
       columns += Format(", c$0 INT", i);
+      group_by_columns += Format("$0c$1", i == 1 ? "" : ", ", i);
     }
     for (const auto* table : {kAnalyzed, kNotReanalyzed, kNeverAnalyzed}) {
       ASSERT_OK(aux_conn.ExecuteFormat("CREATE TABLE $0 ($1)", table, columns));
+    }
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "CREATE TABLE $0 ($1) PARTITION BY RANGE (k)", kPartitioned, columns));
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "CREATE TABLE $0_1 PARTITION OF $0 FOR VALUES FROM (MINVALUE) TO (MAXVALUE)",
+        kPartitioned));
+    for (const auto* table : {kAnalyzed, kNotReanalyzed, kNeverAnalyzed, kPartitioned}) {
       ASSERT_OK(aux_conn.ExecuteFormat(
           "INSERT INTO $0 (k, c1) SELECT i, i FROM generate_series(1, 100) i", table));
     }
-    ASSERT_OK(aux_conn.ExecuteFormat("ANALYZE $0, $1", kAnalyzed, kNotReanalyzed));
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "ANALYZE $0, $1, $2", kAnalyzed, kNotReanalyzed, kPartitioned));
 
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("SET yb_enable_cbo = on"));
-    const auto plan_rpc_count = [this, &conn](const std::string& table) -> Result<uint64_t> {
-      return VERIFY_RESULT(metrics_->Delta([&conn, &table] {
-        return ResultToStatus(conn.FetchFormat("EXPLAIN SELECT * FROM $0", table));
+    const auto plan_rpc_count =
+        [this, &conn, &group_by_columns](const std::string& table) -> Result<uint64_t> {
+      return VERIFY_RESULT(metrics_->Delta([&conn, &table, &group_by_columns] {
+        return ResultToStatus(conn.FetchFormat(
+            "EXPLAIN SELECT $0 FROM $1 GROUP BY $0", group_by_columns, table));
       })).master_read_rpc;
     };
-    for (const auto* table : {kAnalyzed, kNotReanalyzed, kNeverAnalyzed}) {
+    for (const auto* table : {kAnalyzed, kNotReanalyzed, kNeverAnalyzed, kPartitioned}) {
       ASSERT_RESULT(plan_rpc_count(table));
       ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(table)), 0) << table;
     }
 
-    ASSERT_OK(aux_conn.ExecuteFormat("ANALYZE $0", kAnalyzed));
+    ASSERT_OK(aux_conn.ExecuteFormat("ANALYZE $0, $1", kAnalyzed, kPartitioned));
     const auto target_version = ASSERT_RESULT(aux_conn.FetchRow<int64_t>(
         "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = "
         "(SELECT oid FROM pg_database WHERE datname = current_database())"));
@@ -378,8 +392,11 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
 
     ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kNotReanalyzed)), 0);
     ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kNeverAnalyzed)), 0);
-    ASSERT_GT(ASSERT_RESULT(plan_rpc_count(kAnalyzed)), 0);
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kAnalyzed)), 1);
     ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kAnalyzed)), 0);
+    // One list read for the partitioned table and one for its partition.
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kPartitioned)), 2);
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kPartitioned)), 0);
   }
 };
 

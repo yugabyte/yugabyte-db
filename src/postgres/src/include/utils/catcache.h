@@ -261,10 +261,8 @@ extern void YbIncrementHintCacheMisses();
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);
 extern void YbCatCListIteratorFree(YbCatCListIterator *iterator);
-extern bool YbCatCacheIsLookupLocal(CatCache *cache, Datum v1, Datum v2,
-									Datum v3, Datum v4);
-extern void YbCatCacheAddNegativeEntry(CatCache *cache, Datum v1, Datum v2,
-									   Datum v3, Datum v4);
+extern void YbCatCachePrefetchList(CatCache *cache, Datum v1, int nfull_keys,
+								   const Datum *full_keys);
 
 extern uint32 YbCatalogCacheComputeHashValue(CatCache *cache, Datum v1, Datum v2, Datum v3, Datum v4);
 

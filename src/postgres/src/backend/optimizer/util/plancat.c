@@ -1304,7 +1304,7 @@ get_relation_data_width(Oid relid, int32 *attr_widths)
 /*
  * yb_prefetch_column_stats
  *		Warm the catalog cache with all of a relation's pg_statistic rows in one
- *		batched list lookup, so the planner's per-column get_attavgwidth() calls
+ *		batched list lookup, so the planner's per-column pg_statistic lookups
  *		hit warm cache instead of issuing a catalog RPC each.
  *
  * The list lookup only runs when some column's entry is missing.  Any
@@ -1318,8 +1318,9 @@ yb_prefetch_column_stats(Relation relation)
 {
 	Oid			relid = RelationGetRelid(relation);
 	TupleDesc	tupdesc = RelationGetDescr(relation);
-	CatCList   *list;
-	bool		all_cached = true;
+	Datum	   *keys;
+	int			nkeys = 0;
+	bool		inh;
 	int			i;
 
 	switch (relation->rd_rel->relkind)
@@ -1334,38 +1335,24 @@ yb_prefetch_column_stats(Relation relation)
 			return;
 	}
 
-	/* Keys match the lookups in get_attavgwidth(). */
-	for (i = 1; i <= tupdesc->natts && all_cached; i++)
-	{
-		if (TupleDescAttr(tupdesc, i - 1)->attisdropped)
-			continue;
-		all_cached = YbSysCacheIsLookupLocal(STATRELATTINH,
-											 ObjectIdGetDatum(relid),
-											 Int16GetDatum(i),
-											 BoolGetDatum(false), 0);
-	}
-	if (all_cached)
-		return;
-
 	/*
-	 * Prefix scan on the leading key (starelid).  Releasing the list keeps the
-	 * per-tuple member entries cached for the upcoming point lookups; we only
-	 * want the side effect of populating the cache, not the list itself.
+	 * Use the keys the planner looks up: get_attavgwidth() reads
+	 * stainherit = false rows, but a partitioned table only has
+	 * stainherit = true rows, which examine_variable() reads for it.
 	 */
-	list = SearchSysCacheList1(STATRELATTINH, ObjectIdGetDatum(relid));
-	ReleaseSysCacheList(list);
-
-	/*
-	 * Columns without a pg_statistic row get negative entries, so they do not
-	 * trigger the list lookup again on the next plan.
-	 */
+	inh = relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
+	keys = palloc(tupdesc->natts * 3 * sizeof(Datum));
 	for (i = 1; i <= tupdesc->natts; i++)
 	{
 		if (TupleDescAttr(tupdesc, i - 1)->attisdropped)
 			continue;
-		YbSysCacheAddNegativeEntry(STATRELATTINH, ObjectIdGetDatum(relid),
-								   Int16GetDatum(i), BoolGetDatum(false), 0);
+		keys[nkeys * 3] = ObjectIdGetDatum(relid);
+		keys[nkeys * 3 + 1] = Int16GetDatum(i);
+		keys[nkeys * 3 + 2] = BoolGetDatum(inh);
+		nkeys++;
 	}
+	YbSysCachePrefetchList(STATRELATTINH, ObjectIdGetDatum(relid), nkeys, keys);
+	pfree(keys);
 }
 
 

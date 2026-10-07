@@ -2385,26 +2385,15 @@ YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4)
 }
 
 /*
- * See YbCatCacheIsLookupLocal().
- */
-bool
-YbSysCacheIsLookupLocal(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4)
-{
-	Assert(cache_id >= 0 && cache_id < SysCacheSize &&
-		   PointerIsValid(SysCache[cache_id]));
-	return YbCatCacheIsLookupLocal(SysCache[cache_id], v1, v2, v3, v4);
-}
-
-/*
- * See YbCatCacheAddNegativeEntry().
+ * See YbCatCachePrefetchList().
  */
 void
-YbSysCacheAddNegativeEntry(int cache_id, Datum v1, Datum v2, Datum v3,
-						   Datum v4)
+YbSysCachePrefetchList(int cache_id, Datum key1, int nfull_keys,
+					   const Datum *full_keys)
 {
 	Assert(cache_id >= 0 && cache_id < SysCacheSize &&
 		   PointerIsValid(SysCache[cache_id]));
-	YbCatCacheAddNegativeEntry(SysCache[cache_id], v1, v2, v3, v4);
+	YbCatCachePrefetchList(SysCache[cache_id], key1, nfull_keys, full_keys);
 }
 
 /*
