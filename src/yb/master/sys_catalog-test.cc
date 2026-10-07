@@ -45,9 +45,13 @@
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/sys_catalog-test_base.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_initialization.h"
 
+#include "yb/tablet/operations.pb.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tserver_admin.pb.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/net/sockaddr.h"
@@ -915,6 +919,48 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespaceId) {
   auto tablet = ASSERT_RESULT(sys_catalog_->TEST_GetTabletPeer()->shared_tablet());
   auto primary_table_info = tablet->metadata()->primary_table_info();
   ASSERT_EQ(primary_table_info->namespace_id, kSystemNamespaceId);
+}
+
+TEST(SysCatalogInitializationTest, MergeAddTableChanges) {
+  tserver::ExportedTabletMetadataChanges changes;
+  auto add_change = [&changes](const std::string& tablet_id) {
+    auto* change = changes.add_metadata_changes();
+    change->set_tablet_id(tablet_id);
+    return change;
+  };
+  auto add_table = [&add_change](const std::string& tablet_id, const std::string& table_id) {
+    auto* change = add_change(tablet_id);
+    change->mutable_add_table()->set_table_id(table_id);
+    return change;
+  };
+  add_table("t1", "a");
+  add_table("t1", "b");
+  add_change("t1")->set_remove_table_id("b");
+  add_table("t1", "c");
+  add_table("t2", "d");
+  add_table("t2", "e")->set_only_abort_txns_not_using_table_locks(true);
+  add_table("t2", "f");
+
+  auto merged = MergeAddTableChanges(std::move(changes));
+
+  auto merged_table_ids = [](const tablet::ChangeMetadataRequestPB& change) {
+    EXPECT_FALSE(change.has_add_table());
+    vector<string> result;
+    for (const auto& table : change.add_multiple_tables()) {
+      result.push_back(table.table_id());
+    }
+    return result;
+  };
+  ASSERT_EQ(merged.size(), 6);
+  ASSERT_EQ(merged[0].tablet_id(), "t1");
+  ASSERT_EQ(merged_table_ids(merged[0]), (vector<string>{"a", "b"}));
+  ASSERT_EQ(merged[1].remove_table_id(), "b");
+  ASSERT_EQ(merged_table_ids(merged[2]), (vector<string>{"c"}));
+  ASSERT_EQ(merged[3].tablet_id(), "t2");
+  ASSERT_EQ(merged_table_ids(merged[3]), (vector<string>{"d"}));
+  ASSERT_EQ(merged[4].add_table().table_id(), "e");
+  ASSERT_TRUE(merged[4].only_abort_txns_not_using_table_locks());
+  ASSERT_EQ(merged_table_ids(merged[5]), (vector<string>{"f"}));
 }
 
 } // namespace master
