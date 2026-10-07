@@ -330,6 +330,13 @@ extern YbObjectLockMode YBGetObjectLockMode();
  */
 extern bool YbNeedAdditionalCatalogTables();
 
+/* yb_test_catalog_preload_cache_list, implemented in relcache.c. */
+extern bool yb_check_test_catalog_preload_cache_list(char **newval, void **extra,
+													 GucSource source);
+extern void yb_assign_test_catalog_preload_cache_list(const char *newval,
+													  void *extra);
+extern bool YbCatalogPreloadCacheListIsSet(void);
+
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
  * in an atomic fashion, it is possible that we could have a table existing in

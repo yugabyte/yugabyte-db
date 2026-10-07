@@ -880,6 +880,7 @@ static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
+static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
 static bool yb_conn_mgr_selective_deallocate;
 
@@ -7490,6 +7491,22 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		yb_check_neg_catcache_ids,
 		yb_set_neg_catcache_ids, NULL
+	},
+
+	{
+		{"yb_test_catalog_preload_cache_list", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Catalog caches to fill when preloading the catalog."),
+			gettext_noop("A comma separated list of catalogs, catalog caches, or "
+						 "indexes of catalog caches. If set, "
+						 "ysql_catalog_preload_additional_tables and "
+						 "ysql_catalog_preload_additional_table_list are "
+						 "ignored for prefetch and prefill."),
+			GUC_LIST_INPUT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_catalog_preload_cache_list_string,
+		"",
+		yb_check_test_catalog_preload_cache_list,
+		yb_assign_test_catalog_preload_cache_list, NULL
 	},
 
 	{
