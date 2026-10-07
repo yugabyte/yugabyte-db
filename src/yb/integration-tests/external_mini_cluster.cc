@@ -438,8 +438,16 @@ void ExternalMiniCluster::Shutdown(NodeSelectionMode mode, RequireExitCode0 requ
     }
   }
 
+  // Each tablet server takes a while to shut down gracefully, so do it in parallel.
+  std::vector<std::thread> threads;
+  threads.reserve(tablet_servers_.size());
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
-    ts->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
+    threads.emplace_back([&ts, require_exit_code_0] {
+      ts->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
   }
 
   for (const auto& yb_controller : yb_controller_servers_) {
