@@ -5,7 +5,7 @@
 #   change - run by default for DB changes
 #   full - run for full official build
 #
-# gratuitious temporary change to test PR workflow
+# Gratuitious temporary change to test PR workflow
 
 jobs:
   - os: alma9
