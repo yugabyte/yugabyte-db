@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
@@ -296,6 +297,12 @@ func upgradeCmd() *cobra.Command {
 					log.Fatal("Failed restarting " + service.Name() + " after upgrade: " + err.Error())
 				}
 				log.Info("Completed restart of component " + service.Name())
+			}
+
+			if viper.GetBool("postgres.install.enabled") {
+				if err := serviceManager.ServiceByName(PostgresServiceName).(Postgres).MaybeVacuumStats(); err != nil {
+					log.Warn("unable to vacuum postgres stats after upgrade: " + err.Error())
+				}
 			}
 
 			if err := common.WaitForYBAReady(ybactl.Version); err != nil {

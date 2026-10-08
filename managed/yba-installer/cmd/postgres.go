@@ -401,6 +401,10 @@ func (pg Postgres) Upgrade() error {
 		return err
 	}
 	if oldMajorVersion != pgMajorVersion(pg.version) {
+		if strings.Compare(oldDataDir, pg.dataDir) == 0 {
+			return fmt.Errorf("cannot upgrade postgres from %d to %d in existing data directory %s",
+				oldMajorVersion, pgMajorVersion(pg.version), pg.dataDir)
+		}
 		if err := pg.majorversionUpgradeDataDir(oldDataDir); err != nil {
 			return err
 		}
@@ -449,7 +453,10 @@ func (pg Postgres) majorversionUpgradeDataDir(oldDataDir string) error {
 	if err := pg.Stop(); err != nil {
 		return err
 	}
-	return pg.runPgUpgrade(oldBinDir, oldDataDir)
+	if err := pg.runPgUpgrade(oldBinDir, oldDataDir); err != nil {
+		return err
+	}
+	return nil
 }
 
 // runPgUpgrade runs pg_upgrade from the cluster in oldDataDir into the one in pg.dataDir.
@@ -510,6 +517,52 @@ func (pg Postgres) removeOldDataDirs(activeDataDir string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// MaybeVacuumStats must be called before updating active symlink on upgrade
+func (pg Postgres) MaybeVacuumStats() error {
+	oldDataDir, err := installedDataDir()
+	if err != nil {
+		return err
+	}
+	oldMajorVersion, err := clusterMajorVersion(oldDataDir)
+	if err != nil {
+		return err
+	}
+	if oldMajorVersion == pgMajorVersion(pg.version) {
+		log.Debug("Skipping vacuumdb stats because major version did not change")
+		return nil
+	}
+	return pg.vacuumStats()
+}
+
+func (pg Postgres) vacuumStats() error {
+	log.Info("Starting vacuumdb stats for postgres")
+	rf := func(cmd string, args ...string) *shell.Output {
+		if common.HasSudoAccess() {
+			return shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
+		}
+		return shell.Run(cmd, args...)
+	}
+	if out := rf(
+		pg.PgBin+"/vacuumdb",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"--all", "--analyze-in-stages", "--missing-stats-only"); !out.SucceededOrLog() {
+		return out.Error
+	}
+	if out := rf(
+		pg.PgBin+"/vacuumdb",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"--all", "--analyze-only"); !out.SucceededOrLog() {
+		return out.Error
+	}
+
+	log.Info("Finished vacuumdb stats for postgres")
 	return nil
 }
 
