@@ -463,6 +463,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  // Mark replicas hosted by these tservers as permanently failed in the shared client's meta
+  // cache. Driven by the master's blacklisted_tservers_with_no_tablets heartbeat hint.
+  void MarkTServersAsFailed(const std::vector<std::string>& ts_uuids);
+
   Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
