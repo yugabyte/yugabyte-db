@@ -3027,6 +3027,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     session_context_.TEST_mock_service = mock;
   }
 
+  PgTableCache& TEST_TableCache() { return table_cache_; }
+
  private:
   client::YBClient& client() { return *client_future_.get(); }
 
@@ -3253,6 +3255,8 @@ size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
 void PgClientServiceImpl::TEST_SetMockService(PgClientServiceMockImpl* mock) {
   impl_->TEST_SetMockService(mock);
 }
+
+PgTableCache& PgClientServiceImpl::TEST_TableCache() { return impl_->TEST_TableCache(); }
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 
