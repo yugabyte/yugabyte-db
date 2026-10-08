@@ -251,6 +251,18 @@
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+)/m"
     },
+    "yb": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/.+[.](c|cc|cpp|h|hpp)$)"
+      ],
+      "exclude": [
+        "(^src/yb/gutil/)"
+      ],
+      "script-and-regex.script": "src/lint/yb.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
     "ybc_pg": {
       "type": "script-and-regex",
       "include": [
