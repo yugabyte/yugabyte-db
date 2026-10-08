@@ -18,6 +18,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 #include <utility>
 
@@ -52,6 +53,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
@@ -2125,6 +2127,7 @@ TEST_F(PgDdlAtomicityMiniClusterTest, DropUnlistedIndexConcurrentWithCreateIndex
   ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), index_id));
   ASSERT_OK(UnlinkIndexFromTable(table_id, index_id));
 
+  auto create_conn = ASSERT_RESULT(ConnectToDB(kDbName));
   // The drop pauses after its change is applied in memory, until the CREATE INDEX has had time to
   // wait for the indexed table.
   CountDownLatch drop_paused(1);
@@ -2139,6 +2142,12 @@ TEST_F(PgDdlAtomicityMiniClusterTest, DropUnlistedIndexConcurrentWithCreateIndex
   std::atomic<bool> drop_done{false};
   std::atomic<bool> create_done{false};
   TestThreadHolder thread_holder;
+  // Resumes the drop and removes the callback on every exit, before the threads are joined.
+  auto se = ScopeExit([&resume_drop] {
+    resume_drop.CountDown();
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
   thread_holder.AddThreadFunctor([&client, &index_id, &drop_done] {
     ASSERT_OK(client->DeleteIndexTable(
         index_id, nullptr /* indexed_table_name */, false /* wait */));
@@ -2146,7 +2155,6 @@ TEST_F(PgDdlAtomicityMiniClusterTest, DropUnlistedIndexConcurrentWithCreateIndex
   });
   ASSERT_TRUE(drop_paused.WaitFor(MonoDelta::FromSeconds(60)));
 
-  auto create_conn = ASSERT_RESULT(ConnectToDB(kDbName));
   thread_holder.AddThreadFunctor([&create_conn, &kTableName, &create_done] {
     ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0 (v2)", kTableName));
     create_done = true;
@@ -2158,8 +2166,6 @@ TEST_F(PgDdlAtomicityMiniClusterTest, DropUnlistedIndexConcurrentWithCreateIndex
       [&drop_done, &create_done] { return drop_done.load() && create_done.load(); },
       MonoDelta::FromSeconds(60), "Wait for the drop and the create to complete"));
   thread_holder.JoinAll();
-  SyncPoint::GetInstance()->DisableProcessing();
-  SyncPoint::GetInstance()->ClearAllCallBacks();
 }
 
 // Restarts the master with a committed DROP TABLE whose indexed table is already deleted from the
@@ -2200,6 +2206,118 @@ TEST_F(PgDdlAtomicityMiniClusterTest, DropTableWithIndexAfterTableMarkedDeleting
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table = catalog_manager.GetTableInfo(table_id);
   ASSERT_TRUE(table == nullptr || table->LockForRead()->started_deleting());
+}
+
+class PgDdlAtomicityTxnBlockMiniClusterTest : public PgDdlAtomicityMiniClusterTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgDdlAtomicityMiniClusterTest::SetUp();
+  }
+};
+
+// Commits a transaction that alters a table with an index and then drops it, so the table comes
+// before the index in the transaction's DDL verification and the index is verified while the drop
+// is being applied. Expects the index's verification to find the index already being deleted, and
+// no table's verification to fail.
+TEST_F(PgDdlAtomicityTxnBlockMiniClusterTest, DropTableWithIndexAfterAlterInSameTransaction) {
+  const auto kTableName = "altered_then_dropped"s;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 0;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0 (v)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  const auto index_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName + "_idx"));
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), table_id));
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), index_id));
+
+  CountDownLatch table_committed(1);
+  CountDownLatch index_state_read(1);
+  // Counted down when the index's verification finds the index deleting or any verification fails.
+  CountDownLatch index_verification_finished(1);
+  // The first index check's result: 1 if the table's drop was committed by then, 0 if not.
+  std::atomic<int> first_index_check_result{-1};
+  std::atomic<bool> index_state_read_before_commit{false};
+  std::atomic<bool> table_verification_failed{false};
+  std::atomic<bool> index_already_deleting{false};
+  // Set before COMMIT so the verification callbacks can ignore other transactions.
+  TransactionId txn_id = TransactionId::Nil();
+  std::atomic<bool> txn_id_known{false};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("DeleteTableInternal::TableCommitted", [&](void* arg) {
+    if (static_cast<master::TableInfo*>(arg)->id() != table_id) {
+      return;
+    }
+    table_committed.CountDown();
+    index_state_read_before_commit = index_state_read.WaitFor(MonoDelta::FromSeconds(60));
+  });
+  sync_point->SetCallBack("YsqlDdlTxnCompleteCallback::AfterIndexStateRead", [&](void*) {
+    if (!txn_id_known) {
+      return;
+    }
+    const int result = table_committed.WaitFor(MonoDelta::FromSeconds(60)) ? 1 : 0;
+    int expected = -1;
+    first_index_check_result.compare_exchange_strong(expected, result);
+    index_state_read.CountDown();
+  });
+  sync_point->SetCallBack("YsqlDdlTxnCompleteCallback::TableVerificationDone", [&](void* arg) {
+    const auto& verification =
+        *static_cast<std::tuple<master::TableInfo*, const TransactionId*, Status*>*>(arg);
+    const auto* txn = std::get<1>(verification);
+    const auto* status = std::get<2>(verification);
+    if (!txn_id_known || *txn != txn_id) {
+      return;
+    }
+    if (!status->ok()) {
+      table_verification_failed = true;
+      index_verification_finished.CountDown();
+    }
+  });
+  sync_point->SetCallBack("YsqlDdlTxnCompleteCallbackInternal::AlreadyDeleting", [&](void* arg) {
+    if (txn_id_known && static_cast<master::TableInfo*>(arg)->id() == index_id) {
+      index_already_deleting = true;
+      index_verification_finished.CountDown();
+    }
+  });
+  // Keeps the index from being marked DELETED before its verification finishes.
+  sync_point->SetCallBack("CatalogManager::PrepareTableDeletion", [&](void* arg) {
+    if (txn_id_known && static_cast<master::TableInfo*>(arg)->id() == index_id) {
+      index_verification_finished.WaitFor(MonoDelta::FromSeconds(60));
+    }
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([&] {
+    table_committed.CountDown();
+    index_state_read.CountDown();
+    index_verification_finished.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v2 INT", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  txn_id = ASSERT_RESULT(FullyDecodeTransactionId(
+      catalog_manager.GetTableInfo(table_id)->LockForRead()->pb_transaction_id()));
+  txn_id_known = true;
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(WaitForNoTablesLeftBehind(
+      kTableName, "Wait for the table and its index to be deleted"));
+  ASSERT_EQ(first_index_check_result.load(), 1);
+  ASSERT_TRUE(index_state_read_before_commit);
+  ASSERT_TRUE(index_verification_finished.WaitFor(MonoDelta::FromSeconds(30)));
+  ASSERT_FALSE(table_verification_failed);
+  ASSERT_TRUE(index_already_deleting);
+  ASSERT_OK(LoggedWaitFor(
+      [&catalog_manager, &txn_id] {
+        return !catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id).has_value();
+      },
+      MonoDelta::FromSeconds(30), "Wait for the DDL verification of the transaction to complete"));
 }
 
 class PgDdlAtomicitySavepointMiniClusterTest : public PgDdlAtomicityMiniClusterTest {

@@ -60,7 +60,6 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -2418,9 +2417,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   table->CloseAndWaitForAllTasksToAbort();
 
   // For an index, must release the indexed_table COW lock
-  // that was acquired earlier. The indexed_table lock may be
-  // already released depending on the error causing the abort.
-  // Unlock() api checks for that internally.
+  // that was acquired earlier, discarding the uncommitted index info.
   // Note that the two locks are acquired based on the table_id
   // order to avoid deadlocks. But can be released in any order
   // w/o affecting correctness.
@@ -3818,15 +3815,12 @@ std::string CatalogManager::DeletingTableData::ToString() const {
   return Format("table: $0, $1", *table_info_with_write_lock.info, delete_retainer.ToString());
 }
 
-// The state of one delete table operation, owned by the caller of DeleteTableInMemory for the
-// requested table. The table being deleted, the indexes deleted along with it and the
-// indexed table an index is removed from are all written in a single sys catalog operation, so
-// that no failure can persist a subset of them. The write locks of the tables the delete leaves
-// unchanged are released once the change is committed. If the operation is destroyed before then,
-// its locks are released and the uncommitted changes discarded.
+// The changes of one delete table operation: the table being deleted, the indexes deleted along
+// with it, and the indexed table an index is removed from. They are written in a single sys
+// catalog operation, so that no failure can persist a subset of them. Changes that are not
+// committed are discarded when the operation is destroyed.
 struct CatalogManager::DeleteTableOperation {
-  // The write locks of all the tables involved, taken before any of them is changed. The entry of
-  // a deleted table is moved to tables.
+  // All the tables involved, by id. The entry of a deleted table is moved to tables.
   std::map<TableId, DeletingTableData> data_map;
 
   // The deleted tables, in the order they are committed and deleted.
@@ -3840,23 +3834,17 @@ struct CatalogManager::DeleteTableOperation {
 
 Status CatalogManager::PersistDeleteTableOperation(
     const LeaderEpoch& epoch, const DeleteTableOperation& op, DeleteTableResponsePB* resp) {
-  std::vector<const DdlLogEntry*> ddl_log_entries;
-  ddl_log_entries.reserve(op.ddl_log_entries.size());
-  std::transform(
-      op.ddl_log_entries.begin(), op.ddl_log_entries.end(), std::back_inserter(ddl_log_entries),
-      [](const DdlLogEntry& entry) { return &entry; });
-
-  std::vector<const TableInfo*> tables_to_upsert;
-  tables_to_upsert.reserve(op.tables.size() + 1);
-  std::transform(
-      op.tables.begin(), op.tables.end(), std::back_inserter(tables_to_upsert),
-      [](const DeletingTableData& table) { return table.table_info_with_write_lock.info.get(); });
-  if (op.altered_indexed_table) {
-    tables_to_upsert.push_back(op.altered_indexed_table->info.get());
-  }
+  auto ddl_log_entries = op.ddl_log_entries |
+      std::views::transform([](const DdlLogEntry& entry) { return &entry; });
+  auto deleted_tables = op.tables | std::views::transform([](const DeletingTableData& table) {
+    return table.table_info_with_write_lock.info.get();
+  });
 
   TRACE("Updating metadata on disk");
-  auto s = sys_catalog_->Upsert(epoch, ddl_log_entries, tables_to_upsert);
+  auto s = op.altered_indexed_table
+      ? sys_catalog_->Upsert(
+            epoch, ddl_log_entries, deleted_tables, op.altered_indexed_table->info)
+      : sys_catalog_->Upsert(epoch, ddl_log_entries, deleted_tables);
   if (!s.ok()) {
     s = s.CloneAndPrepend("An error occurred while updating sys tables");
     LOG(WARNING) << s;
@@ -7540,10 +7528,13 @@ Status CatalogManager::DeleteTableInternal(
           deleting_table.table_info_with_write_lock->id());
     }
     deleting_table.table_info_with_write_lock.Commit();
+    TEST_SYNC_POINT_CALLBACK(
+        "DeleteTableInternal::TableCommitted",
+        deleting_table.table_info_with_write_lock.info.get());
   }
-  // Release the locks of the tables this delete leaves unchanged before the steps below take
-  // mutex_. The entries stay in data_map, since altered_indexed_table points into it.
-  for (auto& [_, data] : op.data_map) {
+  // Release the tables this delete leaves unchanged. Their entries stay in data_map, since
+  // altered_indexed_table points into it.
+  for (auto& data : op.data_map | std::views::values) {
     data.table_info_with_write_lock.lock.Unlock();
   }
 
@@ -7964,6 +7955,7 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
 
 std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDeletion(
     const TableInfoPtr& table) {
+  TEST_SYNC_POINT_CALLBACK("CatalogManager::PrepareTableDeletion", table.get());
   auto lock = table->LockForWrite();
   if (lock->is_hiding()) {
     LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
