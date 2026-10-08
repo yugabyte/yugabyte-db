@@ -13,8 +13,6 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
-#include <optional>
-
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/entity_ids.h"
@@ -69,29 +67,20 @@ const char* kSysCatalogSnapshotTabletMetadataChangesFile =
     "exported_tablet_metadata_changes";
 const char* kUseInitialSysCatalogSnapshotEnvVar = "YB_USE_INITIAL_SYS_CATALOG_SNAPSHOT";
 
-// Database of the table that req adds, if req is a change that CatalogManager::CopyPgsqlSysTables
-// would batch: add_table plus at most only_abort_txns_not_using_table_locks.
-std::optional<uint32_t> BatchableAddTableDatabaseOid(const tablet::ChangeMetadataRequestPB& req) {
-  if (!req.has_add_table()) {
-    return std::nullopt;
-  }
-  std::vector<const google::protobuf::FieldDescriptor*> fields;
-  req.GetReflection()->ListFields(req, &fields);
-  for (const auto* field : fields) {
-    switch (field->number()) {
-      case tablet::ChangeMetadataRequestPB::kTabletIdFieldNumber:
-      case tablet::ChangeMetadataRequestPB::kAddTableFieldNumber:
-      case tablet::ChangeMetadataRequestPB::kOnlyAbortTxnsNotUsingTableLocksFieldNumber:
-        continue;
-      default:
-        return std::nullopt;
-    }
-  }
-  auto database_oid = GetPgsqlDatabaseOidByTableId(req.add_table().table_id());
-  if (!database_oid.ok()) {
-    return std::nullopt;
-  }
-  return *database_oid;
+bool SameDatabase(const TableId& table_id1, const TableId& table_id2) {
+  auto database_oid1 = GetPgsqlDatabaseOidByTableId(table_id1);
+  auto database_oid2 = GetPgsqlDatabaseOidByTableId(table_id2);
+  return database_oid1.ok() && database_oid2.ok() && *database_oid1 == *database_oid2;
+}
+
+// Whether CatalogManager::CopyPgsqlSysTables would replicate change in the same request as batch.
+bool CanAddToBatch(
+    const tablet::ChangeMetadataRequestPB& batch, const tablet::ChangeMetadataRequestPB& change) {
+  return !batch.add_multiple_tables().empty() &&
+         batch.tablet_id() == change.tablet_id() &&
+         batch.only_abort_txns_not_using_table_locks() ==
+             change.only_abort_txns_not_using_table_locks() &&
+         SameDatabase(batch.add_multiple_tables(0).table_id(), change.add_table().table_id());
 }
 
 }  // anonymous namespace
@@ -145,29 +134,23 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
 // ------------------------------------------------------------------------------------------------
 
 // Each change metadata operation on the sys catalog rewrites and fsyncs the whole superblock, so
-// replaying the snapshot's add_table changes one by one is quadratic. Merge consecutive ones into
-// one add_multiple_tables request per database, as CREATE DATABASE replicates them.
+// replaying the snapshot's add_table changes one by one is quadratic. Batch them the way CREATE
+// DATABASE does. CatalogManager::CompleteCreateYsqlSysTable, which records these changes, sets no
+// fields other than tablet_id, add_table and only_abort_txns_not_using_table_locks.
 std::vector<tablet::ChangeMetadataRequestPB> MergeAddTableChanges(
     tserver::ExportedTabletMetadataChanges&& changes) {
   std::vector<tablet::ChangeMetadataRequestPB> result;
-  std::optional<uint32_t> last_database_oid;
   for (auto& change : *changes.mutable_metadata_changes()) {
-    auto database_oid = BatchableAddTableDatabaseOid(change);
-    if (!database_oid) {
+    if (!change.has_add_table()) {
       result.push_back(std::move(change));
-      last_database_oid.reset();
       continue;
     }
-    if (database_oid != last_database_oid ||
-        result.back().tablet_id() != change.tablet_id() ||
-        result.back().only_abort_txns_not_using_table_locks() !=
-            change.only_abort_txns_not_using_table_locks()) {
+    if (result.empty() || !CanAddToBatch(result.back(), change)) {
       auto& batch = result.emplace_back();
       batch.set_tablet_id(change.tablet_id());
       if (change.only_abort_txns_not_using_table_locks()) {
         batch.set_only_abort_txns_not_using_table_locks(true);
       }
-      last_database_oid = database_oid;
     }
     *result.back().add_add_multiple_tables() = std::move(*change.mutable_add_table());
   }

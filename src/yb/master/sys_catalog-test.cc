@@ -950,7 +950,7 @@ TEST(SysCatalogInitializationTest, MergeAddTableChanges) {
   add_table("t1", e)->set_only_abort_txns_not_using_table_locks(true);
   add_table("t1", f)->set_only_abort_txns_not_using_table_locks(true);
   add_table("t2", g);
-  add_table("t2", h)->set_wal_retention_secs(1);
+  add_table("t2", h);
   add_table("t2", "not_a_pg_table");
 
   auto merged = MergeAddTableChanges(std::move(changes));
@@ -963,7 +963,7 @@ TEST(SysCatalogInitializationTest, MergeAddTableChanges) {
     }
     return result;
   };
-  ASSERT_EQ(merged.size(), 8);
+  ASSERT_EQ(merged.size(), 7);
   ASSERT_EQ(merged[0].tablet_id(), "t1");
   ASSERT_EQ(merged_table_ids(merged[0]), (vector<string>{a, b}));
   ASSERT_EQ(merged[1].remove_table_id(), b);
@@ -973,10 +973,8 @@ TEST(SysCatalogInitializationTest, MergeAddTableChanges) {
   ASSERT_EQ(merged_table_ids(merged[4]), (vector<string>{e, f}));
   ASSERT_TRUE(merged[4].only_abort_txns_not_using_table_locks());
   ASSERT_EQ(merged[5].tablet_id(), "t2");
-  ASSERT_EQ(merged_table_ids(merged[5]), (vector<string>{g}));
-  ASSERT_EQ(merged[6].add_table().table_id(), h);
-  ASSERT_EQ(merged[6].wal_retention_secs(), 1);
-  ASSERT_EQ(merged[7].add_table().table_id(), "not_a_pg_table");
+  ASSERT_EQ(merged_table_ids(merged[5]), (vector<string>{g, h}));
+  ASSERT_EQ(merged_table_ids(merged[6]), (vector<string>{"not_a_pg_table"}));
 }
 
 } // namespace master
