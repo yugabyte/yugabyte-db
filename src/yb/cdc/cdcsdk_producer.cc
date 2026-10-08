@@ -3333,8 +3333,9 @@ Status GetChangesForCDCSDK(
                              leader_safe_time, safe_hybrid_time_resp, have_more_messages,
                              consistent_stream_safe_time, snapshot_operation);
 
-  if (!snapshot_operation && !CheckResponseSafeTimeCorrectness(
-                                 last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
+  if (!snapshot_operation && safe_time != computed_safe_hybrid_time_req &&
+      !CheckResponseSafeTimeCorrectness(
+          last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
     LOG(DFATAL) << "Stream_id: " << stream_id << ", tablet_id: " << tablet_id
                 << ", response safe time: " << safe_time
                 << " is greater than last read WAL OP's record time: "
