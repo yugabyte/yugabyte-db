@@ -1538,3 +1538,255 @@ SELECT yb_hash_code(repeat('x', n)) IS NOT NULL FROM large_hash_input;
 (1 row)
 
 DROP TABLE large_hash_input;
+-- GH-34733: yb_hash_code is not unique.  Keys 534 and 1970 share hash code
+-- 63516, so a yb_hash_code condition must not prove uniqueness of a key
+-- column.
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
+CREATE TABLE hash_pk (k int PRIMARY KEY);
+INSERT INTO hash_pk VALUES (1), (534), (1970), (2000);
+CREATE TABLE hash_range_pk (k int, r int, PRIMARY KEY (k HASH, r ASC));
+INSERT INTO hash_range_pk SELECT k, k FROM hash_pk;
+CREATE TABLE hash_codes (id int PRIMARY KEY, h int);
+INSERT INTO hash_codes VALUES (1, yb_hash_code(534));
+SELECT k, yb_hash_code(k) FROM hash_pk ORDER BY k;
+  k   | yb_hash_code 
+------+--------------
+    1 |         4624
+  534 |        63516
+ 1970 |        63516
+ 2000 |        61538
+(4 rows)
+
+-- A LEFT JOIN whose inner table appears only in its ON clause can be removed
+-- only if each outer row matches at most one inner row.  The hash_codes row
+-- matches both 534 and 1970, so the join stays and returns 2 rows.
+\set query 'SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h'
+:explain1run1
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Merge Left Join
+   Merge Cond: (hash_codes.h = (yb_hash_code(hash_pk.k)))
+   ->  Sort
+         Sort Key: hash_codes.h
+         ->  Seq Scan on hash_codes
+   ->  Sort
+         Sort Key: (yb_hash_code(hash_pk.k))
+         ->  Seq Scan on hash_pk
+(8 rows)
+
+ id 
+----
+  1
+  1
+(2 rows)
+
+\set query 'SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = yb_hash_code(534)'
+:explain1run1
+                      QUERY PLAN                      
+------------------------------------------------------
+ Nested Loop Left Join
+   ->  Seq Scan on hash_codes
+   ->  Materialize
+         ->  Index Scan using hash_pk_pkey on hash_pk
+               Index Cond: (yb_hash_code(k) = 63516)
+(5 rows)
+
+ id 
+----
+  1
+  1
+(2 rows)
+
+-- Different keys can share a hash code, so yb_hash_code(hash_pk.k) =
+-- hash_codes.h can match several hash_pk rows, and no join method may treat
+-- hash_pk as unique.  So the plans must not show Inner Unique, which only
+-- EXPLAIN VERBOSE prints in text format, and each count is 2.
+\set explain 'EXPLAIN (VERBOSE, COSTS OFF)'
+\set hint1 '/*+ Leading((hash_codes hash_pk)) HashJoin(hash_codes hash_pk) */'
+\set hint2 '/*+ Leading((hash_codes hash_pk)) MergeJoin(hash_codes hash_pk) */'
+\set hint3 '/*+ Leading((hash_codes hash_pk)) NestLoop(hash_codes hash_pk) SeqScan(hash_pk) */'
+\set query 'SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h'
+:explain3run3
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Hash Join
+         Hash Cond: (hash_codes.h = yb_hash_code(hash_pk.k))
+         ->  Seq Scan on public.hash_codes
+               Output: hash_codes.h
+         ->  Hash
+               Output: hash_pk.k
+               ->  Seq Scan on public.hash_pk
+                     Output: hash_pk.k
+(10 rows)
+
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Merge Join
+         Merge Cond: (hash_codes.h = (yb_hash_code(hash_pk.k)))
+         ->  Sort
+               Output: hash_codes.h
+               Sort Key: hash_codes.h
+               ->  Seq Scan on public.hash_codes
+                     Output: hash_codes.h
+         ->  Sort
+               Output: hash_pk.k, (yb_hash_code(hash_pk.k))
+               Sort Key: (yb_hash_code(hash_pk.k))
+               ->  Seq Scan on public.hash_pk
+                     Output: hash_pk.k, yb_hash_code(hash_pk.k)
+(14 rows)
+
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Nested Loop
+         Join Filter: (hash_codes.h = yb_hash_code(hash_pk.k))
+         ->  Seq Scan on public.hash_codes
+               Output: hash_codes.h
+         ->  Materialize
+               Output: hash_pk.k
+               ->  Seq Scan on public.hash_pk
+                     Output: hash_pk.k
+(10 rows)
+
+ count 
+-------
+     2
+(1 row)
+
+ count 
+-------
+     2
+(1 row)
+
+ count 
+-------
+     2
+(1 row)
+
+\set hint2 ''
+\set hint3 ''
+\set explain 'EXPLAIN (COSTS OFF)'
+-- GH-34733, GH-31403: yb_hash_code(k) is not key column k or r, so a NullTest
+-- on it is not an index condition on either column.
+-- TODO(#34807): use the fact that yb_hash_code never returns NULL to avoid a
+-- post-scan filter.
+\set hint1 '/*+ IndexScan(hash_range_pk) */'
+\set query 'SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NULL'
+:explain1run1
+                QUERY PLAN                 
+-------------------------------------------
+ Aggregate
+   ->  Seq Scan on hash_range_pk
+         Filter: (yb_hash_code(k) IS NULL)
+(3 rows)
+
+ count 
+-------
+     0
+(1 row)
+
+\set query 'SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NOT NULL'
+:explain1run1
+                  QUERY PLAN                   
+-----------------------------------------------
+ Aggregate
+   ->  Seq Scan on hash_range_pk
+         Filter: (yb_hash_code(k) IS NOT NULL)
+(3 rows)
+
+ count 
+-------
+     4
+(1 row)
+
+-- The comparison value of an index condition must be known before the scan
+-- starts, so a yb_hash_code comparison with a column of the scanned row or
+-- with a volatile value is a filter.
+CREATE TABLE same_row_cmp (k int PRIMARY KEY, j int);
+INSERT INTO same_row_cmp SELECT k, yb_hash_code(k) + (k % 2) FROM hash_pk;
+-- A column of the scanned row.  Both operand orders are tested because
+-- yb_match_clause_to_index checks each separately.
+\set hint1 '/*+ IndexScan(same_row_cmp) */'
+\set query 'SELECT * FROM same_row_cmp WHERE yb_hash_code(k) = j ORDER BY k'
+:explain1run1
+              QUERY PLAN               
+---------------------------------------
+ Sort
+   Sort Key: k
+   ->  Seq Scan on same_row_cmp
+         Filter: (yb_hash_code(k) = j)
+(4 rows)
+
+  k   |   j   
+------+-------
+  534 | 63516
+ 1970 | 63516
+ 2000 | 61538
+(3 rows)
+
+\set query 'SELECT * FROM same_row_cmp WHERE j = yb_hash_code(k) ORDER BY k'
+:explain1run1
+              QUERY PLAN               
+---------------------------------------
+ Sort
+   Sort Key: k
+   ->  Seq Scan on same_row_cmp
+         Filter: (j = yb_hash_code(k))
+(4 rows)
+
+  k   |   j   
+------+-------
+  534 | 63516
+ 1970 | 63516
+ 2000 | 61538
+(3 rows)
+
+-- A volatile value.  PG evaluates a volatile function at every row where its
+-- value is needed, and never in an index condition, which evaluates its
+-- comparison value once.  So each row is compared with a new value: the first
+-- with 0, which passes, and every later one with 100000 or more, which fails,
+-- so the count is 1.
+CREATE SEQUENCE hash_code_seq MINVALUE 0 START 0 INCREMENT 100000;
+\set query 'SELECT count(*) FROM same_row_cmp WHERE yb_hash_code(k) >= nextval(''hash_code_seq'')'
+:explain1run1
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Aggregate
+   ->  Seq Scan on same_row_cmp
+         Filter: (yb_hash_code(k) >= nextval('hash_code_seq'::regclass))
+(3 rows)
+
+ count 
+-------
+     1
+(1 row)
+
+\set hint1 ''
+DROP SEQUENCE hash_code_seq;
+DROP TABLE hash_pk, hash_range_pk, hash_codes, same_row_cmp;

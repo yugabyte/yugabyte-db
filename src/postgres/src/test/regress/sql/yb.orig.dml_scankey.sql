@@ -17,7 +17,6 @@ SELECT * FROM hashcode_rowfilter
 \set filter 'row(i, yb_hash_code(k)) > row(1, yb_hash_code(4))'
 \set query 'SELECT * FROM hashcode_rowfilter WHERE :filter ORDER BY j'
 \set is '/*+IndexScan(hashcode_rowfilter)*/'
--- TODO(#18347): fix output.
 :explain :query; :explain :is :query; :query; :is :query;
 
 --
@@ -56,7 +55,6 @@ INSERT INTO large_filter VALUES (0), (1);
 \set query 'SELECT * FROM hashcode_rowfilter WHERE :filter ORDER BY j'
 \set filter 'row(:sixtyi,i,i,i) > row(:sixty0,0,0,0) AND yb_hash_code(k) = yb_hash_code(4)'
 :explain :is :query; :is :query;
--- TODO(#18347): fix output.
 \set filter 'row(:sixtyi,i,i,i,yb_hash_code(k)) >= row(:sixty0,0,0,0,0)'
 :explain :is :query; :is :query;
 

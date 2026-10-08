@@ -380,3 +380,72 @@ CREATE TEMP TABLE large_hash_input (n int);
 INSERT INTO large_hash_input VALUES (10000000);
 SELECT yb_hash_code(repeat('x', n)) IS NOT NULL FROM large_hash_input;
 DROP TABLE large_hash_input;
+
+-- GH-34733: yb_hash_code is not unique.  Keys 534 and 1970 share hash code
+-- 63516, so a yb_hash_code condition must not prove uniqueness of a key
+-- column.
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+\set explain 'EXPLAIN (COSTS OFF)'
+CREATE TABLE hash_pk (k int PRIMARY KEY);
+INSERT INTO hash_pk VALUES (1), (534), (1970), (2000);
+CREATE TABLE hash_range_pk (k int, r int, PRIMARY KEY (k HASH, r ASC));
+INSERT INTO hash_range_pk SELECT k, k FROM hash_pk;
+CREATE TABLE hash_codes (id int PRIMARY KEY, h int);
+INSERT INTO hash_codes VALUES (1, yb_hash_code(534));
+SELECT k, yb_hash_code(k) FROM hash_pk ORDER BY k;
+-- A LEFT JOIN whose inner table appears only in its ON clause can be removed
+-- only if each outer row matches at most one inner row.  The hash_codes row
+-- matches both 534 and 1970, so the join stays and returns 2 rows.
+\set query 'SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h'
+:explain1run1
+\set query 'SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = yb_hash_code(534)'
+:explain1run1
+-- Different keys can share a hash code, so yb_hash_code(hash_pk.k) =
+-- hash_codes.h can match several hash_pk rows, and no join method may treat
+-- hash_pk as unique.  So the plans must not show Inner Unique, which only
+-- EXPLAIN VERBOSE prints in text format, and each count is 2.
+\set explain 'EXPLAIN (VERBOSE, COSTS OFF)'
+\set hint1 '/*+ Leading((hash_codes hash_pk)) HashJoin(hash_codes hash_pk) */'
+\set hint2 '/*+ Leading((hash_codes hash_pk)) MergeJoin(hash_codes hash_pk) */'
+\set hint3 '/*+ Leading((hash_codes hash_pk)) NestLoop(hash_codes hash_pk) SeqScan(hash_pk) */'
+\set query 'SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h'
+:explain3run3
+\set hint2 ''
+\set hint3 ''
+\set explain 'EXPLAIN (COSTS OFF)'
+
+-- GH-34733, GH-31403: yb_hash_code(k) is not key column k or r, so a NullTest
+-- on it is not an index condition on either column.
+-- TODO(#34807): use the fact that yb_hash_code never returns NULL to avoid a
+-- post-scan filter.
+\set hint1 '/*+ IndexScan(hash_range_pk) */'
+\set query 'SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NULL'
+:explain1run1
+\set query 'SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NOT NULL'
+:explain1run1
+
+-- The comparison value of an index condition must be known before the scan
+-- starts, so a yb_hash_code comparison with a column of the scanned row or
+-- with a volatile value is a filter.
+CREATE TABLE same_row_cmp (k int PRIMARY KEY, j int);
+INSERT INTO same_row_cmp SELECT k, yb_hash_code(k) + (k % 2) FROM hash_pk;
+-- A column of the scanned row.  Both operand orders are tested because
+-- yb_match_clause_to_index checks each separately.
+\set hint1 '/*+ IndexScan(same_row_cmp) */'
+\set query 'SELECT * FROM same_row_cmp WHERE yb_hash_code(k) = j ORDER BY k'
+:explain1run1
+\set query 'SELECT * FROM same_row_cmp WHERE j = yb_hash_code(k) ORDER BY k'
+:explain1run1
+-- A volatile value.  PG evaluates a volatile function at every row where its
+-- value is needed, and never in an index condition, which evaluates its
+-- comparison value once.  So each row is compared with a new value: the first
+-- with 0, which passes, and every later one with 100000 or more, which fails,
+-- so the count is 1.
+CREATE SEQUENCE hash_code_seq MINVALUE 0 START 0 INCREMENT 100000;
+\set query 'SELECT count(*) FROM same_row_cmp WHERE yb_hash_code(k) >= nextval(''hash_code_seq'')'
+:explain1run1
+\set hint1 ''
+DROP SEQUENCE hash_code_seq;
+DROP TABLE hash_pk, hash_range_pk, hash_codes, same_row_cmp;
