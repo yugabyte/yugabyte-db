@@ -32,6 +32,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -2647,5 +2648,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       }
       assertEquals(newIntent.tserverGFlags, ImmutableMap.of("tserverFlag", "123"));
     }
+  }
+
+  @Test
+  public void testResizeNodeIsAbortable() {
+    // The task list reports abortable from the @Abortable annotation, which gates the Abort button.
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.ResizeNode));
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.RollbackResizeNode));
   }
 }

@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -45,6 +46,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Retryable
+@Abortable
 @CanRollback
 public class ResizeNode extends UpgradeTaskBase {
 
