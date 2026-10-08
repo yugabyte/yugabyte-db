@@ -45,15 +45,16 @@ namespace {
 
 const MonoDelta kRpcTimeout = 20s * kTimeMultiplier;
 
-// Returns the URL for the current build type and os platform. Returns empty string if a valid URL
-// does not exist.
+// Returns the URL for the current os platform. Returns empty string if a valid URL does not exist.
+// The old version is always a release build, whatever the build type of the current version: debug
+// builds are on-disk compatible with release builds, and customers only run release builds.
 std::string GetRelevantUrl(const BuildInfo& info) {
 #if defined(__APPLE__) && defined(__aarch64__)
-  return kIsDebug ? info.darwin_debug_arm64_url : info.darwin_release_arm64_url;
+  return info.darwin_release_arm64_url;
 #elif defined(__linux__) && defined(__x86_64__)
-  return kIsDebug ? info.linux_debug_x86_url : info.linux_release_x86_url;
+  return info.linux_release_x86_url;
 #elif defined(__linux__) && defined(__aarch64__)
-  return kIsDebug ? "" : info.linux_release_aarch64_url;
+  return info.linux_release_aarch64_url;
 #endif
 
   return "";
@@ -88,10 +89,8 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
         BuildInfo build_info;
         build_info.version = version;
         build_info.build_number = GetXmlPathAsString(node, "build_number");
-        build_info.linux_debug_x86_url = GetXmlPathAsString(node, "linux_debug_x86");
         build_info.linux_release_x86_url = GetXmlPathAsString(node, "linux_release_x86");
         build_info.linux_release_aarch64_url = GetXmlPathAsString(node, "linux_release_aarch64");
-        build_info.darwin_debug_arm64_url = GetXmlPathAsString(node, "darwin_debug_arm64");
         build_info.darwin_release_arm64_url = GetXmlPathAsString(node, "darwin_release_arm64");
         return build_info;
       }
@@ -114,7 +113,7 @@ Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
   arch = "darwin";
   tar_bin = "gtar";
 #endif
-  arch += kIsDebug ? "_debug" : "_release";
+  arch += "_release";
 
   auto env = Env::Default();
   const std::string build_root =
