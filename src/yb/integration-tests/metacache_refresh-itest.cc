@@ -454,8 +454,8 @@ TEST_F(RemovedTServerMetacacheITest, SharedSqlClientInvalidatesUntouchedWarmedTa
   ASSERT_OK(cluster_client.RemoveTabletServer(std::string(victim_uuid)));
   ASSERT_OK(WaitFor([&] {
     std::lock_guard lock(mutex);
-    return matching_batches != 0;
-  }, timeout, "Gateway applied the victim's removal hint"));
+    return matching_batches == 3;
+  }, timeout, "Gateway applied all three removal hints"));
   std::vector<TabletId> affected_untouched_tablets;
   {
     std::lock_guard lock(mutex);
@@ -464,7 +464,7 @@ TEST_F(RemovedTServerMetacacheITest, SharedSqlClientInvalidatesUntouchedWarmedTa
         affected_untouched_tablets.push_back(tablet_id);
       }
     }
-    ASSERT_EQ(matching_batches, 1);
+    ASSERT_EQ(matching_batches, 3);
   }
   ASSERT_FALSE(affected_untouched_tablets.empty())
       << "Ordinary refresh must not mask a missing invalidation of warmed, untouched tablets";

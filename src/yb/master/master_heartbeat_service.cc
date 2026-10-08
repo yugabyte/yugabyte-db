@@ -455,6 +455,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
 
   int64_t leader_term;
+  TSDescriptorPtr ts_desc;
   {
     // If CatalogManager is not initialized don't even know whether or not we will
     // be a leader (so we can't tell whether or not we can accept tablet reports).
@@ -490,7 +491,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     if (!desc_result.ok()) {
       return;
     }
-    TSDescriptorPtr& ts_desc = *desc_result;
+    ts_desc = *desc_result;
 
     // Correctness requires that this occur after UpdateAndReturnTSDescriptorOrRespond.
     auto fill_status = catalog_manager_->GetXClusterManager()->FillXClusterGuardedInfo(
@@ -595,11 +596,6 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
                    << cluster_config.status().ToUserMessage();
     }
 
-    for (const auto& uuid : ts_desc->TakeRemovedTServers()) {
-      resp->add_removed_tserver_uuids(uuid);
-    }
-    TEST_SYNC_POINT_CALLBACK("MasterHeartbeatService::RemovedTServersTaken", ts_desc.get());
-
     uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
     resp->set_transaction_tables_version(transaction_tables_version);
 
@@ -621,6 +617,15 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       return;
     }
     resp->set_leader_master(true);
+
+    TEST_SYNC_POINT_CALLBACK("MasterHeartbeatService::BeforeRemovedTServers", &rpc);
+    // Do not spend attempts on responses already known to be unusable by the recipient.
+    if (rpc.GetClientDeadline() > CoarseMonoClock::Now()) {
+      for (const auto& uuid : ts_desc->TakeRemovedTServers()) {
+        resp->add_removed_tserver_uuids(uuid);
+      }
+      TEST_SYNC_POINT_CALLBACK("MasterHeartbeatService::RemovedTServersTaken", ts_desc.get());
+    }
   }
 
   rpc.RespondSuccess();

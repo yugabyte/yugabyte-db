@@ -177,7 +177,9 @@ TEST_P(RemovedTServerHintsTest, SuccessfulRemovalQueuesOnlyLiveRecipients) {
   MakeRemovable(victim);
 
   ASSERT_OK(Remove("victim", 9100));
-  ASSERT_EQ(live->TakeRemovedTServers(), std::set<std::string>{"victim"});
+  for (int attempt = 0; attempt != 3; ++attempt) {
+    ASSERT_EQ(live->TakeRemovedTServers(), std::set<std::string>{"victim"});
+  }
   ASSERT_TRUE(victim->TakeRemovedTServers().empty());
   ASSERT_TRUE(unresponsive->TakeRemovedTServers().empty());
   ASSERT_TRUE(replaced->TakeRemovedTServers().empty());
@@ -199,7 +201,9 @@ TEST_P(RemovedTServerHintsTest, PendingRemovalsCoalesceAndDrainWhenDisabled) {
   auto disabled_victim = ASSERT_RESULT(Register("disabled-victim", 9101));
   MakeRemovable(disabled_victim);
   ASSERT_OK(Remove("disabled-victim", 9101));
-  ASSERT_EQ(live->TakeRemovedTServers(), (std::set<std::string>{"victim-1", "victim-2"}));
+  for (int attempt = 0; attempt != 3; ++attempt) {
+    ASSERT_EQ(live->TakeRemovedTServers(), (std::set<std::string>{"victim-1", "victim-2"}));
+  }
   ASSERT_TRUE(live->TakeRemovedTServers().empty());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_removed_tservers_on_heartbeat) = true;
   ASSERT_TRUE(live->TakeRemovedTServers().empty());

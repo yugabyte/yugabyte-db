@@ -379,8 +379,9 @@ message TSHeartbeatResponsePB {
   // of this duration from when the TServer sent the heartbeat request.
   optional uint32 xcluster_guarded_lease_duration_ms = 36;
 
-  // Advisory invalidation of cached replicas after explicit tserver removal. This is a single
-  // delivery attempt, not a membership list or permanent exclusion; metadata may restore replicas.
+  // Advisory invalidation of cached replicas after explicit tserver removal, repeated for up to
+  // three response attempts without acknowledgment. This is not a membership list or permanent
+  // exclusion; metadata may restore replicas.
   repeated string removed_tserver_uuids = 37;
 }
 

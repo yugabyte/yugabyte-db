@@ -2609,8 +2609,9 @@ void MetaCache::InvalidateTServerReplicas(const std::vector<std::string>& ts_uui
       }
     }
   }
-  LOG_WITH_PREFIX(INFO) << "Invalidated replicas for removed tservers " << AsString(ts_uuids)
-                        << " in " << affected_tablets << " cached tablets";
+  LOG_IF_WITH_PREFIX(INFO, affected_tablets > 0)
+      << "Invalidated replicas for removed tservers " << AsString(ts_uuids)
+      << " in " << affected_tablets << " cached tablets";
   if (collect_tablets) {
     InvalidationTestData data{client_, ts_uuids, changed_tablets};
     TEST_SYNC_POINT_CALLBACK("MetaCache::InvalidateTServerReplicas:Done", &data);

@@ -50,6 +50,7 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/heartbeater.h"
@@ -1136,11 +1137,70 @@ class RemovedTServerHeartbeatTest : public MasterHeartbeatITest {
     return Send(req, 10s * kTimeMultiplier);
   }
 
+  void TestTimedOutHeartbeat(bool expire_before_take) {
+    const auto* pause_point = expire_before_take
+        ? "MasterHeartbeatService::BeforeRemovedTServers"
+        : "MasterHeartbeatService::RemovedTServersTaken";
+    mini_cluster_->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
+    desc_->EnqueueRemovedTServer("lost");
+    CountDownLatch paused(1), release(1), released(1);
+    std::atomic<bool> first{true};
+    CoarseTimePoint server_deadline;
+    auto* sync_point = SyncPoint::GetInstance();
+    auto cleanup = ScopeExit([&] {
+      sync_point->DisableProcessing();
+      sync_point->ClearAllCallBacks();
+    });
+    sync_point->SetCallBack(pause_point, [&](void* arg) {
+      if (first.exchange(false)) {
+        if (expire_before_take) {
+          server_deadline = static_cast<rpc::RpcContext*>(arg)->GetClientDeadline();
+        } else {
+          ASSERT_EQ(arg, desc_.get());
+        }
+        paused.CountDown();
+        release.Wait();
+        released.CountDown();
+      }
+    });
+    sync_point->EnableProcessing();
+    std::promise<Result<master::TSHeartbeatResponsePB>> result;
+    auto future = result.get_future();
+    const auto req = Request();
+    TestThreadHolder threads;
+    auto unblock = ScopeExit([&] { release.CountDown(); });
+    threads.AddThreadFunctor([&] { result.set_value(Send(req, 1s * kTimeMultiplier)); });
+    ASSERT_TRUE(paused.WaitFor(10s * kTimeMultiplier));
+    desc_->EnqueueRemovedTServer("later");
+    ASSERT_OK(Wait(future, CoarseMonoClock::Now() + 10s * kTimeMultiplier));
+    const auto lost_response = future.get();
+    ASSERT_NOK(lost_response);
+    ASSERT_TRUE(lost_response.status().IsTimedOut());
+    if (expire_before_take) {
+      ASSERT_OK(WaitFor([&] { return CoarseMonoClock::Now() >= server_deadline; },
+                        10s * kTimeMultiplier, "Server heartbeat deadline expires"));
+    }
+    release.CountDown();
+    ASSERT_TRUE(released.WaitFor(10s * kTimeMultiplier));
+    threads.JoinAll();
+    for (int attempt = 0; attempt != 3; ++attempt) {
+      const auto next = ASSERT_RESULT(Send(req));
+      ASSERT_FALSE(next.has_error());
+      std::set<std::string> expected{"later"};
+      if (attempt < (expire_before_take ? 3 : 2)) {
+        expected.insert("lost");
+      }
+      ASSERT_EQ((std::set<std::string>(next.removed_tserver_uuids().begin(),
+                                       next.removed_tserver_uuids().end())), expected);
+    }
+    ASSERT_TRUE(ASSERT_RESULT(Send(req)).removed_tserver_uuids().empty());
+  }
+
  protected:
   master::TSDescriptorPtr desc_;
 };
 
-TEST_F(RemovedTServerHeartbeatTest, EarlyRepliesPreserveHintsAndNormalReplyTakesOnce) {
+TEST_F(RemovedTServerHeartbeatTest, EarlyRepliesPreserveHintsAndNormalRepliesRepeatThreeTimes) {
   mini_cluster_->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
   desc_->EnqueueRemovedTServer("victim-1");
   desc_->EnqueueRemovedTServer("victim-2");
@@ -1155,54 +1215,24 @@ TEST_F(RemovedTServerHeartbeatTest, EarlyRepliesPreserveHintsAndNormalReplyTakes
   req.set_universe_uuid(Uuid::Generate().ToString());
   ASSERT_NOK(Send(req));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_removed_tservers_on_heartbeat) = false;
-  const auto normal = ASSERT_RESULT(Send(Request()));
-  ASSERT_FALSE(normal.has_error());
-  ASSERT_FALSE(normal.needs_reregister());
-  ASSERT_EQ((std::set<std::string>(normal.removed_tserver_uuids().begin(),
-                                   normal.removed_tserver_uuids().end())),
-            (std::set<std::string>{"victim-1", "victim-2"}));
+  for (int attempt = 0; attempt != 3; ++attempt) {
+    const auto normal = ASSERT_RESULT(Send(Request()));
+    ASSERT_FALSE(normal.has_error());
+    ASSERT_FALSE(normal.needs_reregister());
+    ASSERT_EQ((std::set<std::string>(normal.removed_tserver_uuids().begin(),
+                                     normal.removed_tserver_uuids().end())),
+              (std::set<std::string>{"victim-1", "victim-2"}));
+  }
   const auto next = ASSERT_RESULT(Send(Request()));
   ASSERT_TRUE(next.removed_tserver_uuids().empty());
 }
 
-TEST_F(RemovedTServerHeartbeatTest, LostReplyIsNotRetriedAndEnqueueAfterTakeSurvives) {
-  mini_cluster_->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
-  desc_->EnqueueRemovedTServer("lost");
-  CountDownLatch taken(1), release(1), released(1);
-  std::atomic<bool> first{true};
-  auto* sync_point = SyncPoint::GetInstance();
-  auto cleanup = ScopeExit([&] {
-    sync_point->DisableProcessing();
-    sync_point->ClearAllCallBacks();
-  });
-  sync_point->SetCallBack("MasterHeartbeatService::RemovedTServersTaken", [&](void* arg) {
-    if (arg == desc_.get() && first.exchange(false)) {
-      taken.CountDown();
-      release.Wait();
-      released.CountDown();
-    }
-  });
-  sync_point->EnableProcessing();
-  std::promise<Result<master::TSHeartbeatResponsePB>> result;
-  auto future = result.get_future();
-  const auto req = Request();
-  TestThreadHolder threads;
-  auto unblock = ScopeExit([&] { release.CountDown(); });
-  threads.AddThreadFunctor([&] { result.set_value(Send(req, 1s * kTimeMultiplier)); });
-  ASSERT_TRUE(taken.WaitFor(10s * kTimeMultiplier));
-  desc_->EnqueueRemovedTServer("later");
-  ASSERT_OK(Wait(future, CoarseMonoClock::Now() + 10s * kTimeMultiplier));
-  const auto lost_response = future.get();
-  ASSERT_NOK(lost_response);
-  ASSERT_TRUE(lost_response.status().IsTimedOut());
-  release.CountDown();
-  ASSERT_TRUE(released.WaitFor(10s * kTimeMultiplier));
-  threads.JoinAll();
-  const auto next = ASSERT_RESULT(Send(req));
-  ASSERT_FALSE(next.has_error());
-  ASSERT_EQ(next.removed_tserver_uuids_size(), 1);
-  ASSERT_EQ(next.removed_tserver_uuids(0), "later");
-  ASSERT_TRUE(ASSERT_RESULT(Send(req)).removed_tserver_uuids().empty());
+TEST_F(RemovedTServerHeartbeatTest, LostReplyIsRetriedAndNewHintsHaveIndependentBudgets) {
+  ASSERT_NO_FATALS(TestTimedOutHeartbeat(/* expire_before_take= */ false));
+}
+
+TEST_F(RemovedTServerHeartbeatTest, ExpiredReplyPreservesAllAttempts) {
+  ASSERT_NO_FATALS(TestTimedOutHeartbeat(/* expire_before_take= */ true));
 }
 
 TEST_F(RemovedTServerHeartbeatTest, DescriptorReplacementLosesPendingHints) {
@@ -1274,7 +1304,7 @@ TEST_F(RemovedTServerHeartbeatTest, ConsumerAcceptsOnlySuccessfulNormalReplies) 
     server->heartbeater()->TriggerASAP();
     ASSERT_OK(WaitFor([&] {
       std::lock_guard lock(mutex);
-      return received.contains(hint);
+      return received[hint] == 3;
     }, 10s * kTimeMultiplier, "Receive removal hint"));
     const auto observed = responses.load();
     ASSERT_OK(WaitFor([&] { return responses.load() > observed; },
@@ -1282,9 +1312,9 @@ TEST_F(RemovedTServerHeartbeatTest, ConsumerAcceptsOnlySuccessfulNormalReplies) 
   }
   std::lock_guard lock(mutex);
   for (const auto& [hint, count] : received) {
-    ASSERT_EQ(count, 1) << hint;
+    ASSERT_EQ(count, 3) << hint;
   }
-  ASSERT_EQ(applied, (std::map<std::string, int>{{"full-report", 1}, {"normal", 1}}));
+  ASSERT_EQ(applied, (std::map<std::string, int>{{"full-report", 3}, {"normal", 3}}));
 }
 
 class RemovedTServerConsumerTest : public YBTest {};

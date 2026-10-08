@@ -498,14 +498,19 @@ bool TSDescriptor::HasTabletDeletePending() const {
 
 void TSDescriptor::EnqueueRemovedTServer(const std::string& uuid) {
   std::lock_guard l(mutex_);
-  pending_removed_tservers_.insert(uuid);
+  pending_removed_tservers_[uuid] = 3;
 }
 
 std::set<std::string> TSDescriptor::TakeRemovedTServers() {
   std::set<std::string> result;
-  {
-    std::lock_guard l(mutex_);
-    result.swap(pending_removed_tservers_);
+  std::lock_guard l(mutex_);
+  for (auto it = pending_removed_tservers_.begin(); it != pending_removed_tservers_.end();) {
+    result.insert(it->first);
+    if (--it->second == 0) {
+      it = pending_removed_tservers_.erase(it);
+    } else {
+      ++it;
+    }
   }
   return result;
 }

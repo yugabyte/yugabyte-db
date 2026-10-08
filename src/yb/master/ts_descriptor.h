@@ -33,6 +33,7 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -258,7 +259,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   void EnqueueRemovedTServer(const std::string& uuid) EXCLUDES(mutex_);
 
-  // Consumes one delivery attempt. Pending hints are neither persisted nor acknowledged.
+  // Consumes one of three delivery attempts per UUID. Hints are not persisted or acknowledged.
   std::set<std::string> TakeRemovedTServers() EXCLUDES(mutex_);
 
   MicrosTime physical_time() const {
@@ -493,7 +494,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // due to leader blacklist.
   std::atomic<uint32> pending_leader_drain_notification_{0};
 
-  std::set<std::string> pending_removed_tservers_ GUARDED_BY(mutex_);
+  std::map<std::string, int> pending_removed_tservers_ GUARDED_BY(mutex_);
 
   // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
   DbOidToHybridTimeMap ts_ysql_db_oldest_pinned_read_times_ GUARDED_BY(mutex_);

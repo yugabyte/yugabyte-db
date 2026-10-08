@@ -72,7 +72,7 @@ DEFINE_RUNTIME_bool(skip_tserver_version_checks, false, "Skip all tserver versio
 
 DEFINE_RUNTIME_bool(send_removed_tservers_on_heartbeat, false,
     "Queue advisory cache invalidations for live tservers after explicit tablet server removal. "
-    "Each hint is attempted once through a heartbeat response. Disabling stops new hints; "
+    "Each hint is attempted in three heartbeat responses. Disabling stops new hints; "
     "previously queued hints still drain.");
 TAG_FLAG(send_removed_tservers_on_heartbeat, advanced);
 
