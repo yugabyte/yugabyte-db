@@ -314,29 +314,13 @@ typedef struct YbcPgExecOutParamValue {
 
 // Structure to hold the execution-control parameters.
 typedef struct YbcPgExecParameters {
-  // TODO(neil) Move forward_scan flag here.
-  // Scan parameters.
-  // bool is_forward_scan;
-
-  // LIMIT parameters for executing DML read.
-  // - limit_count is the value of SELECT ... LIMIT
-  // - limit_offset is value of SELECT ... OFFSET
-  // - limit_use_default: Although count and offset are pushed down to YugaByte from Postgres,
-  //   they are not always being used to identify the number of rows to be read from DocDB.
-  //   Full-scan is needed when further operations on the rows are not done by YugaByte.
+  // - plan_limit is the limit imposed by the upper plan, most commonly by the Limit node.
   // - out_param is an output parameter of an execution while all other parameters are IN params.
   //
-  //   Examples:
-  //   o WHERE clause is not processed by YugaByte. All rows must be sent to Postgres code layer
-  //     for filtering before LIMIT is applied.
-  //   o ORDER BY clause is not processed by YugaByte. Similarly all rows must be fetched and sent
-  //     to Postgres code layer.
   // For now we only support one rowmark.
 
 #ifdef __cplusplus
-  uint64_t limit_count = 0;
-  uint64_t limit_offset = 0;
-  bool limit_use_default = true;
+  uint64_t plan_limit = 0;
   int rowmark = YBC_NO_ROW_MARK;
   // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
@@ -353,9 +337,7 @@ typedef struct YbcPgExecParameters {
   int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
 #else
-  uint64_t limit_count;
-  uint64_t limit_offset;
-  bool limit_use_default;
+  uint64_t plan_limit;
   int rowmark;
   // Cast these *_wait_policy fields to LockWaitPolicy for C use.
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
@@ -628,6 +610,13 @@ typedef enum {
   YB_YQL_PREFETCHER_RENEW_CACHE_HARD
 } YbcPgSysTablePrefetcherCacheMode;
 
+// Mirrors YsqlCatalogPrefetchKindPB in pgsql_protocol.proto.
+typedef enum {
+  YB_YQL_PREFETCH_KIND_NONE = 0,
+  YB_YQL_PREFETCH_KIND_CONNECTION_START = 1,
+  YB_YQL_PREFETCH_KIND_CACHE_REFRESH = 2,
+} YbcPgSysTablePrefetchKind;
+
 typedef struct {
   uint64_t read;
   uint64_t local_limit;
@@ -737,6 +726,9 @@ typedef struct {
   uint64_t commit_time;
   // The hybrid time of the commit. Used to set the correct read time for catalog changes.
   uint64_t commit_time_ht;
+  // The hybrid time of the record's intent write. Used as in_txn_limit when reading catalog
+  // tables after an interleaved DDL in the same transaction.
+  uint64_t record_time_ht;
   YbcPgRowMessageAction action;
   // Valid for DMLs and kPgInvalidOid for other (BEGIN/COMMIT) records.
   YbcPgOid table_oid;
@@ -745,6 +737,9 @@ typedef struct {
   uint32_t xid;
   // Replication origin id associated with the transaction.
   uint32_t xrepl_origin_id;
+  // DocDB transaction id associated with the record.
+  bool has_docdb_txn_id;
+  char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
 } YbcPgRowMessage;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -1115,7 +1110,7 @@ typedef struct {
 //   on transaction state (nesting level, savepoints, whether the optimization was already
 //   disabled), so it can turn off partway through a transaction.
 //
-// - read_at_in_txn_limit: this operation must read at the statement's in_txn_limit rather than at
+// - read_at_in_txn_limit: this operation must read at in_txn_limit rather than at
 //   the transaction read time. It depends only on the relation, so it holds for the whole
 //   transaction and stays set after skip_intents turns off. That is the point of keeping it
 //   separate: rows an earlier skip intents write put in the regular db sit above the transaction

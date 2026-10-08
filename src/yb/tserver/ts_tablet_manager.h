@@ -390,11 +390,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
   //
-  // 'target_tier', when non-empty, restricts data-directory candidates to disks tagged with
-  // that tier (see FsManager::GetDataRootDirsForTier), so the tablet's home dir lands on the
-  // requested tier (e.g. from a tablespace's storage_tier). WAL directory selection is always
-  // tier-agnostic, since WAL dirs are not part of tier_paths. If no disks are configured for
-  // the requested tier on this node, falls back to the default (all-disk) policy.
+  // 'target_tier' (e.g. from a tablespace's storage_tier) restricts data-directory candidates
+  // to disks tagged with that tier (see FsManager::GetDataRootDirsForTier), so the tablet's
+  // home dir lands on the requested tier. When empty, this defaults to kDefaultStorageTier
+  // ("ssd") rather than spreading across every configured disk regardless of tier -- see
+  // storage_tier.h. WAL directory selection is always tier-agnostic, since WAL dirs are not
+  // part of tier_paths. By default, WAL lives on the fastest tier with disks ("ssd").
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
                                    const TabletId& tablet_id,
@@ -409,11 +410,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
   //
   // This is the primitive that AlterTabletTier will call to resolve which path_id to pass to
-  // light_weight_compact when migrating SSTs to a different tier.
+  // ScheduleDBPathMove when migrating SSTs to a different tier.
   //
   // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
   // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
-  // place data on the returned path_id (e.g. after a successful light_weight_compact) are
+  // place data on the returned path_id (e.g. after a successful ScheduleDBPathMove) are
   // responsible for calling RegisterDataAndWalDir themselves to commit the assignment, so later
   // calls to this function and to GetAndRegisterDataAndWalDir see accurate load counts.
   //
@@ -422,6 +423,24 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const tablet::RaftGroupMetadata& meta,
       const std::string& table_id,
       const std::string& target_tier) EXCLUDES(dir_assignment_mutex_);
+
+  // Tiered storage: repairs and returns the path_id this tablet's regular DB should target for
+  // new flushes/compactions.
+  //
+  // meta's persisted (target_storage_tier, target_tier_path_id) is the cached resolution from a
+  // prior AlterTabletTier/creation. It is only trustworthy on the node that wrote it, so it is
+  // re-validated here on every load:
+  //   - target_tier_path_id must be a real entry in meta's tier_paths.
+  //   - that entry's tier must equal target_storage_tier (catches stale ids after e.g. a split
+  //     child got a different tier_paths layout than its parent).
+  //   - that entry's data root must still be configured for target_storage_tier on this node
+  //     (catches disks removed from --fs_data_dirs or relabeled to a different tier).
+  // If any check fails, re-resolves via SelectPathIdForTier and persists the repair so this
+  // does not need to happen again on the next load. If the tier has no disks on this node at
+  // all, returns 0 (home) without touching the persisted value, so the intent survives until a
+  // disk for that tier reappears.
+  Result<uint32_t> ResolveTargetTierPathId(const tablet::RaftGroupMetadataPtr& meta)
+      EXCLUDES(dir_assignment_mutex_);
   // Updates the map of table to the set of tablets assigned per table per disk
   // for both of the given data and wal directories.
   void RegisterDataAndWalDir(FsManager* fs_manager,
@@ -452,6 +471,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
+
+  // Background task that recomputes each tablet's DocDB SST statistics aggregate. The poller only
+  // hands the sweep to sst_stats_resync_pool_; ResyncSstStatsForAllTablets is the sweep itself.
+  void ResyncSstStats();
+  void ResyncSstStatsForAllTablets();
 
   // Background task that emits metrics.
   void EmitMetrics();
@@ -734,9 +758,27 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Returns the data root from candidate_dirs with the fewest tablets for table_id (tie-break:
   // fewest tablets overall on that drive). candidate_dirs must be a subset of the dirs tracked in
   // table_data_assignment_map_. Caller must hold dir_assignment_mutex_.
+  //
+  // extra_counts, if non-empty, is added on top of the per-table count for each candidate dir
+  // before comparing -- see CountMigrationTargets, which is how SelectPathIdForTier accounts for
+  // tablets that were *migrated* onto a disk (as opposed to created there), since those never
+  // touch table_data_assignment_map_.
   std::string PickMinLoadDataRootUnlocked(
       const std::string& table_id,
-      const std::vector<std::string>& candidate_dirs) REQUIRES(dir_assignment_mutex_);
+      const std::vector<std::string>& candidate_dirs,
+      const std::unordered_map<std::string, size_t>& extra_counts = {})
+      REQUIRES(dir_assignment_mutex_);
+
+  // Tiered storage: counts, for table_id, how many currently-loaded tablets have a persisted
+  // migration target (target_storage_tier/target_tier_path_id) resolving to each of
+  // candidate_dirs. table_data_assignment_map_ only tracks each tablet's *home* dir, so without
+  // this a repeated AlterTabletTier call would keep "seeing" an empty disk and piling every
+  // migrated tablet of a table onto the same one. Must be called without holding
+  // dir_assignment_mutex_ (it walks tablet_map_ via GetTabletPeersWithTableId, which takes the
+  // separate mutex_).
+  std::unordered_map<std::string, size_t> CountMigrationTargets(
+      const std::string& table_id, const std::vector<std::string>& candidate_dirs) const
+      EXCLUDES(dir_assignment_mutex_);
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
   PriorityThreadPoolTokenPtr VectorIndexCompactionToken();
@@ -864,6 +906,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // on the server, accounting for hardlinks.
   std::unique_ptr<TsDataSizeMetrics> ts_data_size_metrics_;
   std::unique_ptr<rpc::Poller> data_size_metric_updater_;
+
+  // Recomputes each tablet's DocDB SST statistics aggregate from its whole live file set. The
+  // sweep reads a properties block per SST file not already in the table cache, so it runs on its
+  // own thread rather than on the messenger scheduler's IO threads, which also dispatch RPCs.
+  // Both are null unless the collector is enabled.
+  std::unique_ptr<rpc::Poller> sst_stats_resync_poller_;
+  std::unique_ptr<ThreadPool> sst_stats_resync_pool_;
+  // Set while a sweep is queued or running, so that a sweep outlasting the interval does not
+  // accumulate duplicate passes behind it.
+  std::atomic<bool> sst_stats_resync_active_{false};
 
   std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
 

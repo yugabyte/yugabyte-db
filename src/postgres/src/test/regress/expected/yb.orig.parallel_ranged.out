@@ -532,8 +532,10 @@ SELECT pctest1.* FROM pctest1, pctest2
  1000 |  0 | 333 |  0 | Value1000
 (20 rows)
 
+-- Keep Gather Merge over a sorted BNL on record; the copy in the parallel
+-- hints section shows the Sort variant.
 EXPLAIN (costs off)
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
                               QUERY PLAN                              
@@ -549,7 +551,7 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
          Index Cond: (k = ANY (ARRAY[pctest1.k, $2, $3, ..., $1024]))
 (9 rows)
 
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
   k  |  a  | b  | c  |    d     |  k  
@@ -1347,28 +1349,27 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
- Merge Join
-   Merge Cond: (pctest2.k = pctest1.k)
-   Join Filter: (pctest1.c = pctest2.c)
-   ->  Gather Merge
-         Workers Planned: 2
-         ->  Parallel Index Scan using pctest2_pkey on pctest2
-   ->  Materialize
-         ->  Nested Loop
-               Join Filter: (pctest2_1.c = pctest1.b)
-               ->  Gather Merge
-                     Workers Planned: 2
-                     ->  Parallel Index Scan using pctest1_pkey on pctest1
-               ->  Materialize
-                     ->  Merge Join
-                           Merge Cond: (pctest1_1.k = pctest2_1.k)
-                           Join Filter: (pctest1_1.b = pctest2_1.b)
-                           ->  Index Scan using pctest1_pkey on pctest1 pctest1_1
-                           ->  Materialize
-                                 ->  Index Scan using pctest2_pkey on pctest2 pctest2_1
-(19 rows)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Nested Loop
+   ->  Hash Join
+         Hash Cond: (pctest2_1.c = pctest1.b)
+         ->  Index Scan using pctest2_pkey on pctest2 pctest2_1
+         ->  Hash
+               ->  Merge Join
+                     Merge Cond: (pctest1.k = pctest2.k)
+                     Join Filter: (pctest1.c = pctest2.c)
+                     ->  Gather Merge
+                           Workers Planned: 2
+                           ->  Parallel Index Scan using pctest1_pkey on pctest1
+                     ->  Materialize
+                           ->  Gather Merge
+                                 Workers Planned: 2
+                                 ->  Parallel Index Scan using pctest2_pkey on pctest2
+   ->  Index Scan using pctest1_pkey on pctest1 pctest1_1
+         Index Cond: (k = pctest2_1.k)
+         Storage Filter: (pctest2_1.b = b)
+(18 rows)
 
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
 SELECT * FROM
@@ -1378,12 +1379,12 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
  k |  a  | b | c |   d    | k |  a  | b | c |       d       
 ---+-----+---+---+--------+---+-----+---+---+---------------
- 3 | 997 | 1 | 3 | Value3 | 1 | 201 | 0 | 1 | Other value 1
- 4 | 996 | 1 | 4 | Value4 | 1 | 201 | 0 | 1 | Other value 1
  5 | 995 | 1 | 5 | Value5 | 1 | 201 | 0 | 1 | Other value 1
- 6 | 994 | 2 | 6 | Value6 | 2 | 202 | 0 | 2 | Other value 2
- 7 | 993 | 2 | 7 | Value7 | 2 | 202 | 0 | 2 | Other value 2
+ 4 | 996 | 1 | 4 | Value4 | 1 | 201 | 0 | 1 | Other value 1
+ 3 | 997 | 1 | 3 | Value3 | 1 | 201 | 0 | 1 | Other value 1
  8 | 992 | 2 | 8 | Value8 | 2 | 202 | 0 | 2 | Other value 2
+ 7 | 993 | 2 | 7 | Value7 | 2 | 202 | 0 | 2 | Other value 2
+ 6 | 994 | 2 | 6 | Value6 | 2 | 202 | 0 | 2 | Other value 2
 (6 rows)
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation

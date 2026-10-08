@@ -67,6 +67,7 @@
 
 namespace yb {
 
+class CountDownLatch;
 class CurlGlobalInitializer;
 
 namespace rpc {
@@ -117,7 +118,7 @@ bool AllowSlowTests();
 //
 // OverrideFlagForSlowTests(
 //     "client_inserts_per_thread",
-//     strings::Substitute("$0", FLAGS_client_inserts_per_thread * 100));
+//     Format("$0", FLAGS_client_inserts_per_thread * 100));
 //
 void OverrideFlagForSlowTests(const std::string& flag_name,
                               const std::string& new_value);
@@ -293,6 +294,10 @@ auto ChangeFlagTemporary(T& flag, V new_value) {
   ANNOTATE_UNPROTECTED_WRITE(flag) = new_value;
   return ScopeExit([&flag, original_value] { ANNOTATE_UNPROTECTED_WRITE(flag) = original_value; });
 }
+
+Status StoppableWait(
+    CountDownLatch& latch, std::atomic<bool>& stop_flag,
+    MonoDelta stop_check_interval = MonoDelta::FromSeconds(3));
 
 } // namespace yb
 

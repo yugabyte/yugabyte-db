@@ -38,6 +38,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -53,9 +54,11 @@ import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
@@ -65,6 +68,8 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -74,6 +79,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -113,6 +119,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
+          TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
@@ -330,8 +338,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             });
     UniverseDefinitionTaskParams taskParams1 = universe.getUniverseDetails();
     taskParams1.setUniverseUUID(universe.getUniverseUUID());
-    taskParams1.getPrimaryCluster().userIntent.instanceTags =
-        ImmutableMap.of("q", "vq", "q2", "v2");
+    TestUtils.existingProviderInitializer(taskParams1.getPrimaryCluster().userIntent)
+        .setInstanceTags(ImmutableMap.of("q", "vq", "q2", "v2"));
     taskParams1.setRunOnlyPrechecks(true);
 
     TaskInfo taskInfo1 = submitTask(taskParams1);
@@ -346,8 +354,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     UniverseDefinitionTaskParams taskParams2 = universe.getUniverseDetails();
     taskParams2.setUniverseUUID(universe.getUniverseUUID());
-    taskParams2.getPrimaryCluster().userIntent.instanceTags =
-        ImmutableMap.of("q", "vq2", "q2", "v2b");
+
+    TestUtils.existingProviderInitializer(taskParams2.getPrimaryCluster().userIntent)
+        .setInstanceTags(ImmutableMap.of("q", "vq2", "q2", "v2b"));
     taskParams2.setRunOnlyPrechecks(true);
     taskParams2.setPreviousTaskUUID(taskInfo1.getUuid());
 
@@ -368,14 +377,16 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Universe.saveDetails(
             universe.getUniverseUUID(),
             univ -> {
-              univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
-                  ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3");
+              TestUtils.existingProviderInitializer(
+                      univ.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setInstanceTags(ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3"));
             });
     factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     Map<String, String> newTags = ImmutableMap.of("q", "vq", "q2", "v2");
-    taskParams.getPrimaryCluster().userIntent.instanceTags = newTags;
+    TestUtils.existingProviderInitializer(taskParams.getPrimaryCluster().userIntent)
+        .setInstanceTags(newTags);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -407,16 +418,17 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Universe.saveDetails(
             universe.getUniverseUUID(),
             univ -> {
-              univ.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
-                  Common.CloudType.onprem;
-              univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
-                  ImmutableMap.of("q", "v");
+              TestUtils.existingProviderInitializer(
+                      univ.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setProviderType(Common.CloudType.onprem)
+                  .setInstanceTags(ImmutableMap.of("q", "v"));
             });
     factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     Map<String, String> newTags = ImmutableMap.of("q1", "v1");
-    taskParams.getPrimaryCluster().userIntent.instanceTags = newTags;
+    TestUtils.existingProviderInitializer(taskParams.getPrimaryCluster().userIntent)
+        .setInstanceTags(newTags);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -472,11 +484,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         AzureReservationGroup.of(
             region,
             Map.of(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(azuProvider.getUuid()),
                 Map.of("1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        20,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -507,11 +523,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     verifyCapacityReservationAws(
         universe.getUniverseUUID(),
         Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(defaultProvider.getUuid()),
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        18,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -519,7 +539,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 universe.getUniverseUUID(),
                 UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "1",
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+                universe
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .getBaseInstanceType(defaultProvider.getUuid())),
             Arrays.asList("host-n4", "host-n5")));
   }
 
@@ -543,7 +567,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     verifyCapacityReservationGcp(
         universe.getUniverseUUID(),
         Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(gcpProvider.getUuid()),
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
 
     // GCP reservation names are random "r-<uuid>"; capture them to map by zone.
@@ -564,7 +592,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     }
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        18,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(zoneToName.get("az-1"), Arrays.asList("host-n4", "host-n5")));
@@ -665,8 +693,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .forUniverse(universe)
         .setValue(UniverseConfKeys.targetNodeDiskUsagePercentage.getKey(), "0");
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    TestUtils.updateDeviceInfo(
+        taskParams.getPrimaryCluster().userIntent,
+        UniverseTaskBase.ServerType.TSERVER,
+        deviceInfo -> {
+          deviceInfo.volumeSize--;
+          deviceInfo.numVolumes++;
+          // Provisioning validates that mount points match the volume count.
+          deviceInfo.mountPoints = ApiUtils.getDummyMountPoints(deviceInfo.numVolumes);
+        });
     setDumpEntitiesMock(defaultUniverse, "", false);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
@@ -995,6 +1030,118 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertNotNull(universe.getUniverseDetails().placementModificationTaskUuid);
   }
 
+  // Moves all nodes of the primary cluster to the zone, which is in another region.
+  private UniverseDefinitionTaskParams moveToZone(Universe universe, AvailabilityZone zone) {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = universe.getUniverseDetails().clusters;
+    taskParams.creatingUser = defaultUser;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
+    newUserIntent.regionList = ImmutableList.of(zone.getRegion().getUuid());
+    primaryCluster.userIntent = newUserIntent;
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(
+        zone.getUuid(), placementInfo, newUserIntent.replicationFactor, newUserIntent.numNodes);
+    primaryCluster.placementInfo = placementInfo;
+    taskParams.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+    List<String> newIps = new ArrayList<>();
+    int iter = 1;
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      node.cloudInfo.private_ip = "10.9.22." + iter++;
+      if (node.state == NodeState.ToBeAdded) {
+        newIps.add(node.cloudInfo.private_ip);
+      }
+    }
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, newIps);
+    return taskParams;
+  }
+
+  @Test
+  public void testEditMovingToNewRegionCreatesItsLoadBalancerAndDeletesTheOldOne() {
+    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    String lbName = ManagedLoadBalancerUtil.getPrivateName(clusterUUID);
+    UUID oldRegionUUID = Region.getByCode(defaultProvider, "region-1").getUuid();
+    Region newRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone newZone =
+        AvailabilityZone.createOrThrow(newRegion, "az-3", "AZ 3", "subnet-3");
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
+                  new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+              lbConfig.setEnablePrivate(true);
+              details.getPrimaryCluster().userIntent.setManagedLoadBalancer(lbConfig);
+              ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+              state.put(
+                  new ManagedLoadBalancer(
+                      clusterUUID,
+                      oldRegionUUID,
+                      ManagedLoadBalancer.Scheme.PRIVATE,
+                      ImmutableList.of(),
+                      lbName,
+                      "old.elb"));
+              details.setManagedLoadBalancerState(state);
+            });
+    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-2"), any(), any(), any()))
+        .thenReturn("new.elb");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    setDumpEntitiesMock(universe, "", false);
+    UniverseDefinitionTaskParams taskParams = moveToZone(universe, newZone);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == Failure)
+            .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+            .collect(Collectors.toList())
+            .toString(),
+        Success,
+        taskInfo.getTaskState());
+    List<TaskType> subTasks =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    int ensure = subTasks.indexOf(TaskType.EnsureManagedLoadBalancer);
+    assertTrue(
+        subTasks.toString(),
+        0 <= ensure && ensure < subTasks.indexOf(TaskType.AnsibleCreateServer));
+    assertTrue(
+        subTasks.toString(),
+        subTasks.lastIndexOf(TaskType.AnsibleDestroyServer)
+            < subTasks.indexOf(TaskType.DeleteManagedLoadBalancer));
+    verify(cloudAPI).deleteManagedLoadBalancer(any(), eq("region-1"), eq(lbName));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    PlacementRegion region =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .placementInfo
+            .cloudList
+            .get(0)
+            .regionList
+            .get(0);
+    assertEquals(newRegion.getUuid(), region.uuid);
+    List<ManagedLoadBalancer> lbs =
+        universe.getUniverseDetails().getManagedLoadBalancerState().getLoadBalancers();
+    assertEquals(
+        ImmutableSet.of(newRegion.getUuid()),
+        lbs.stream().map(ManagedLoadBalancer::getRegionUuid).collect(Collectors.toSet()));
+    // Later subtasks that write the universe details must keep the state.
+    assertEquals("new.elb", lbs.get(0).getAddress());
+    assertEquals(ImmutableList.of(newZone.getUuid()), lbs.get(0).getAzUuids());
+  }
+
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {
     Cluster primayCluster = universe.getUniverseDetails().getPrimaryCluster();
     if (primayCluster.userIntent.getAllCloudTypes().iterator().next() == CloudType.onprem) {
@@ -1030,7 +1177,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
     taskParams.getPrimaryCluster().userIntent = newUserIntent;
-    newUserIntent.instanceType = "c10.large";
+    TestUtils.existingProviderInitializer(newUserIntent).setInstanceType("c10.large");
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
 
@@ -1120,14 +1267,14 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       PlacementInfoUtil.addPlacementZone(zone.getUuid(), pi);
       placementRegion.azList.get(0).numNodesInAZ = numNodes - 1;
       placementRegion.azList.get(1).numNodesInAZ = 1;
-      if (primaryCluster.userIntent.providerType == CloudType.onprem) {
+      if (primaryCluster.userIntent.getAllCloudTypes().iterator().next() == CloudType.onprem) {
         createOnpremInstance(zone);
       }
     } else {
       placementRegion.azList.get(0).numNodesInAZ = numNodes;
     }
     newUserIntent.numNodes = numNodes;
-    newUserIntent.instanceType = instanceType;
+    TestUtils.existingProviderInitializer(newUserIntent).setInstanceType(instanceType);
     taskParams.getPrimaryCluster().userIntent = newUserIntent;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
@@ -1268,6 +1415,25 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
     // Listing canRollback: ownership still on the failed edit.
     assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe));
+  }
+
+  @Test
+  public void testCanTaskRollbackFalseWhenAbortedAtPrecheck() {
+    // PLAT-22685: an edit aborted before the freeze/checkpoint captures no state_transition_details
+    // (and never took placement ownership), so submit eligibility must be false - matching listing
+    // - even though @CanRollback + error state + the feature flag all hold.
+    Universe universe = defaultUniverse;
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditUniverse, null);
+    taskInfo.setUuid(UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(params));
+    taskInfo.setTaskState(Aborted);
+    assertNull(universe.getStateTransitionDetails());
+    // Type is rollbackable in general; the missing checkpoint is what makes it ineligible.
+    assertTrue(Commissioner.canTaskTypeRollback(TaskType.EditUniverse));
+    assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
   }
 
   @Test

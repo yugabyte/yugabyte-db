@@ -15,6 +15,7 @@
 #include <optional>
 #include <vector>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/result.h"
@@ -27,7 +28,6 @@
 
 using namespace std::literals;
 
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb::pgwrapper {
 namespace {
@@ -58,15 +58,9 @@ class PgStatActivityTest : public LibPqTestBase {
     // Also, enabling table locks causes more backends to be tracked in
     // AllBackendsTransaction test than just the queries launched by the test.
     // So disable table locks for these tests.
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
     LibPqTestBase::UpdateMiniClusterOptions(options);
-  }
-
-  bool IsTransactionalDdlEnabled() const {
-    return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
   }
 
   static Result<TxnInfo> GetTransactionInfo(PGConn* conn) {
@@ -168,23 +162,23 @@ TEST_F(PgStatActivityTest, DDLInsideDMLTransaction) {
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
   const auto dml_txn_id = ASSERT_RESULT(GetTransactionId(&conn));
-  bool is_transactional_ddl_enabled = IsTransactionalDdlEnabled();
+  // The fixture pins the legacy DDL mode, so the DDL runs in its own transaction rather than the
+  // enclosing one.
   Uuid ddl_txn_id;
   {
     CountDownLatch latch(1);
     TestThreadHolder threads;
-    threads.AddThreadFunctor([&aux_conn, &latch, &dml_txn_id, &is_transactional_ddl_enabled,
-                              result = &ddl_txn_id] {
+    threads.AddThreadFunctor([&aux_conn, &latch, &dml_txn_id, result = &ddl_txn_id] {
       auto info = ASSERT_RESULT(FetchTxnInfoFromStatActivity(&aux_conn));
       ASSERT_EQ(info.size(), 1);
       ASSERT_EQ(info.back().txn_id, dml_txn_id);
       latch.CountDown();
       ASSERT_OK(WaitFor(
-          [&aux_conn, &dml_txn_id, is_transactional_ddl_enabled, result]() -> Result<bool> {
+          [&aux_conn, &dml_txn_id, result]() -> Result<bool> {
             auto info = VERIFY_RESULT(FetchTxnInfoFromStatActivity(&aux_conn));
             SCHECK_EQ(info.size(), 1, IllegalState, "Unexpected size");
             *result = info.back().txn_id;
-            return is_transactional_ddl_enabled ? *result == dml_txn_id : *result != dml_txn_id;
+            return *result != dml_txn_id;
           },
           5s, "Wait for txn id switch"));
     });
@@ -192,11 +186,7 @@ TEST_F(PgStatActivityTest, DDLInsideDMLTransaction) {
     ASSERT_OK(conn.Execute("CREATE TABLE tmp AS SELECT c FROM (SELECT 1 as c, pg_sleep(5)) AS s"));
   }
   ASSERT_FALSE(ddl_txn_id.IsNil());
-  if (is_transactional_ddl_enabled) {
-    ASSERT_EQ(ddl_txn_id, dml_txn_id);
-  } else {
-    ASSERT_NE(ddl_txn_id, dml_txn_id);
-  }
+  ASSERT_NE(ddl_txn_id, dml_txn_id);
   ASSERT_EQ(dml_txn_id, ASSERT_RESULT(GetTransactionId(&conn)));
   ASSERT_OK(conn.RollbackTransaction());
   ASSERT_TRUE(ASSERT_RESULT(GetTransactionId(&conn)).IsNil());

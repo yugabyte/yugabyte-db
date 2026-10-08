@@ -96,6 +96,37 @@ TEST_F(OptionsFileTest, NumberOfOptionsFiles) {
   }
 }
 
+TEST_F(OptionsFileTest, PersistOptionsFileDisabled) {
+  Options opt;
+  opt.create_if_missing = true;
+  ASSERT_OK(DestroyDB(dbname_, opt));
+  std::unordered_set<std::string> filename_history;
+  int num_options_files = 0;
+  DB* db;
+
+  // A DB that persisted its options leaves OPTIONS files behind.
+  ASSERT_OK(DB::Open(opt, dbname_, &db));
+  UpdateOptionsFiles(db, &filename_history, &num_options_files);
+  ASSERT_GT(num_options_files, 0);
+  delete db;
+  const auto files_before = filename_history;
+
+  // Reopened without persistence neither open nor an options change writes a new one.
+  opt.persist_options_file = false;
+  ASSERT_OK(DB::Open(opt, dbname_, &db));
+  ASSERT_OK(db->SetOptions({{"disable_auto_compactions", "true"}}));
+  UpdateOptionsFiles(db, &filename_history, &num_options_files);
+  ASSERT_EQ(filename_history, files_before);
+  delete db;
+
+  // A fresh DB never gets one.
+  ASSERT_OK(DestroyDB(dbname_, opt));
+  ASSERT_OK(DB::Open(opt, dbname_, &db));
+  UpdateOptionsFiles(db, &filename_history, &num_options_files);
+  ASSERT_EQ(num_options_files, 0);
+  delete db;
+}
+
 TEST_F(OptionsFileTest, OptionsFileName) {
   const uint64_t kOptionsFileNum = 12345;
   uint64_t number;

@@ -130,6 +130,16 @@ TEST_F(PgDbPinTrackerTest, TransactionRegistersAndClearsPin) {
   ASSERT_OK(WaitForNoDbPin(db_oid));
 }
 
+// Template1 backends do not attribute pins to a database.
+TEST_F(PgDbPinTrackerTest, Template1BackendDoesNotPin) {
+  auto conn = ASSERT_RESULT(ConnectToDB("template1"));
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_database"));
+  SleepFor(2s);
+  ASSERT_FALSE(GetDbPin(kTemplate1Oid).has_value());
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
 TEST_F(PgDbPinTrackerTest, RollbackClearsPin) {
   auto conn = ASSERT_RESULT(Connect());
   const auto db_oid = ASSERT_RESULT(GetCurrentDbOid(conn));

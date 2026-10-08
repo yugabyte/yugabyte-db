@@ -88,7 +88,11 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - Log Sequence Number ([LSN](../using-logical-replication/key-concepts/#lsn-type)) Comparisons Across Slots.
 
-    In the case of YugabyteDB, the LSN  does not represent the byte offset of a WAL record. Hence, arithmetic on LSN and any other usages of the LSN making this assumption will not work. Also, currently, comparison of LSN values from messages coming from different replication slots is not supported.
+    In YugabyteDB, the LSN  does not represent the byte offset of a WAL record. **So, arithmetic on LSN and any other usages of the LSN making this assumption will not work.** Also, currently, comparison of LSN values from messages coming from different replication slots is not supported.
+
+    {{< note title="Note" >}}
+Because LSNs aren't comparable across replication slots, avoid re-using Kafka topics across slots. For more information, see [Avoid reusing Kafka topics across slots](./best-practices/#avoid-reusing-kafka-topics-across-slots).
+    {{< /note >}}
 
 - The following functions are currently unsupported:
 
@@ -104,7 +108,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
     DDL operations should not be performed from the time of replication slot creation till the start of snapshot consumption of the last table.
 
-- CDC currently doesn't support [Transactional DDL](../../../explore/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
+- CDC currently doesn't support [Transactional DDL](../../../architecture/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
 
 - CDC is not supported on tables that are also the target of xCluster replication (see issue {{<issue 15534>}}). However, both CDC and xCluster can work simultaneously on the same source tables.
 
@@ -130,8 +134,12 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
     To handle updates/deletes with a non-CHANGE replica identity when no before image is available, set the YB-TServer flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC sends a null before-image instead of failing with an error.
 
-- Adding an expired or not-of-interest table to a publication renders the replication slot associated with this publication unusable. In such a scenario, the slot must be dropped and a new slot must be created to proceed. Tracked in issue {{<issue 28310>}}.
+- Adding an expired or not-of-interest (unqualified) table to a publication being polled causes streaming errors. To have CDC proceed by skipping unqualified tables, set the the [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) YB-TServer flag to `true`.
+ 
+    When the flag is set to `true`, the virtual WAL skips unqualified tables and keeps streaming the qualified ones. A skipped table is not polled again, so its changes are never streamed by this slot.
+
+    If errors due to addition of unqualified tables are not resolved within the stream expiry duration, the replication slot would be rendered unusable.
 
 ### CDC with point-in-time recovery
 
-[Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with logical replication configured, you need to create new replication slots after the restore is complete, and start streaming from that point. Creating new slots ensures that you start streaming from the correct checkpoints.
+[Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to recover data to a specific point in time. For databases and tables with logical replication configured, you need to create new replication slots after a [Rewind](../../../manage/backup-restore/point-in-time-recovery/rewind/) is complete, and start streaming from that point. Creating new slots ensures that you start streaming from the correct checkpoints.

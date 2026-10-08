@@ -72,6 +72,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
 #include "yb/util/result.h"
@@ -711,6 +712,9 @@ struct TableRowFetch {
   // Whether an index row was read.  Only a scan driven by a colocated index reads one, and it
   // reads none once the index is exhausted.
   bool read_index_row;
+  // Whether a table row was read.  A row that the condition of a colocated index filters out
+  // never reaches the table, and a fetch that finds nothing reads no row at all.
+  bool read_table_row;
 };
 
 Result<TableRowFetch> FetchTableRow(
@@ -721,10 +725,10 @@ Result<TableRowFetch> FetchTableRow(
     auto& index_row = index->row;
     switch(VERIFY_RESULT(index->iter.FetchNext(&index_row))) {
       case FetchResult::NotFound:
-        return TableRowFetch{FetchResult::NotFound, false};
+        return TableRowFetch{FetchResult::NotFound, false, false};
       case FetchResult::FilteredOut:
         VLOG(1) << "Row filtered out by colocated index condition";
-        return TableRowFetch{FetchResult::FilteredOut, true};
+        return TableRowFetch{FetchResult::FilteredOut, true, false};
       case FetchResult::Found:
         break;
     }
@@ -755,12 +759,14 @@ Result<TableRowFetch> FetchTableRow(
     case FetchResult::Found:
       break;
   }
-  return TableRowFetch{fetch_result, index != nullptr};
+  return TableRowFetch{
+      fetch_result, index != nullptr, fetch_result != FetchResult::NotFound};
 }
 
 struct RowPackerData {
   SchemaVersion schema_version;
   const dockv::SchemaPacking& packing;
+  dockv::VectorValueFormat vector_value_format;
 
   static Result<RowPackerData> Create(
       const PgsqlWriteRequestMsg& request, const DocReadContext& read_context) {
@@ -768,6 +774,7 @@ struct RowPackerData {
     return RowPackerData {
       .schema_version = schema_version,
       .packing = VERIFY_RESULT(read_context.schema_packing_storage.GetPacking(schema_version)),
+      .vector_value_format = read_context.vector_value_format(),
     };
   }
 
@@ -783,7 +790,7 @@ struct RowPackerData {
   dockv::RowPackerVariant MakePackerHelper(bool is_update) const {
     return dockv::RowPackerVariant(
         std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
-        Slice(), is_update);
+        Slice(), is_update, vector_value_format);
   }
 };
 
@@ -1030,7 +1037,10 @@ class PgsqlVectorFilter {
     if (FLAGS_vector_index_skip_filter_check) {
       return false;
     }
-    if (!data.table_has_vector_deletion && !FilteringIterator::NeedFilter(data.request) &&
+    // An index which stores payloads keeps deleted vectors, they are detected only by fetching the
+    // row the stored ybctid points to, so it always needs the filter.
+    if (!data.table_has_vector_deletion && !data.vector_index->StoresPayload() &&
+        !FilteringIterator::NeedFilter(data.request) &&
         FLAGS_vector_index_no_deletions_skip_filter_check) {
       LOG_IF(INFO, FLAGS_vector_index_dump_stats)
           << "VI_STATS: PgsqlVectorFilter, "
@@ -1062,8 +1072,6 @@ class PgsqlVectorFilter {
     return true;
   }
 
-  // TODO(vector_index): payload stores the ybctid attached to the vector, use it to filter
-  // without reading the reverse mapping in a follow up to #33353.
   bool operator()(const vector_index::VectorId& vector_id, Slice payload) {
     if (!row_) {
       return true;
@@ -1073,23 +1081,45 @@ class PgsqlVectorFilter {
     }
     ++num_checked_entries_;
 
-    auto ybctid = reverse_mapping_reader_->FetchYbctid(vector_id);
-    if (!ybctid.ok()) {
-      status_ = std::move(ybctid.status());
-      return false;
+    Slice ybctid;
+    if (!payload.empty()) {
+      auto extracted_ybctid = dockv::DocVectorIndexPayloadYbctid(payload);
+      if (!extracted_ybctid.ok()) {
+        status_ = std::move(extracted_ybctid.status());
+        return false;
+      }
+      ybctid = *extracted_ybctid;
     }
-    if (ybctid->empty()) {
-      ++num_removed_;
-      return false;
+    // Resolving the ybctid via the reverse mapping also proves the row exists and still
+    // references this vector, since the entry is tombstoned when the row is deleted or its
+    // vector is replaced. A ybctid from the vector payload proves neither: such vectors have no
+    // reverse mapping entries, so the row has to be fetched to detect deleted rows and vectors
+    // left behind by an update. An index either stores a payload for all its vectors or for
+    // none of them, so the two cases never mix within an index.
+    bool resolved_via_reverse_mapping = false;
+    if (ybctid.empty()) {
+      // The vector does not store its ybctid, resolve it via the reverse mapping. Missing entry
+      // or tombstone means the vector was removed.
+      auto fetched_ybctid = reverse_mapping_reader_->FetchYbctid(vector_id);
+      if (!fetched_ybctid.ok()) {
+        status_ = std::move(fetched_ybctid.status());
+        return false;
+      }
+      if (fetched_ybctid->empty()) {
+        ++num_removed_;
+        return false;
+      }
+      ybctid = *fetched_ybctid;
+      resolved_via_reverse_mapping = true;
     }
-    if (!iter_.has_filter()) {
+    if (resolved_via_reverse_mapping && !iter_.has_filter()) {
       ++num_accepted_entries_;
       return true;
     }
     if (need_refresh_) {
       iter_.Refresh();
     }
-    auto fetch_result = iter_.FetchTuple(*ybctid, &*row_);
+    auto fetch_result = iter_.FetchTuple(ybctid, &*row_);
     if (!fetch_result.ok()) {
       status_ = std::move(fetch_result.status());
       return false;
@@ -1100,6 +1130,10 @@ class PgsqlVectorFilter {
 
     need_refresh_ = *fetch_result == FetchResult::NotFound;
     if (*fetch_result != FetchResult::Found) {
+      if (*fetch_result == FetchResult::NotFound) {
+        // The row is gone, so the vector belongs to a deleted row.
+        ++num_removed_;
+      }
       return false;
     }
     ++num_found_entries_;
@@ -1109,9 +1143,13 @@ class PgsqlVectorFilter {
     }
     auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
     if (vector_id.AsSlice() != encoded_value.id) {
-      LOG(DFATAL)
+      // The row no longer references this vector, i.e. the vector was replaced by an update.
+      // Such a vector is filtered out above when the reverse mapping is used, so a mismatch
+      // here means the reverse mapping and the row disagree.
+      LOG_IF(DFATAL, resolved_via_reverse_mapping)
           << "Referenced row with wrong vector id: " << encoded_value.DecodeId()
           << ", expected: " << vector_id;
+      ++num_removed_;
       return false;
     }
     ++num_accepted_entries_;
@@ -1302,12 +1340,15 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
   VLOG_WITH_FUNC(2) << "doc key: " << doc_key_;
 
+  char highest = dockv::KeyEntryTypeAsChar::kHighest;
+  KeyBuffer upperbound_buffer(encoded_doc_key_.as_slice(), Slice(&highest, 1));
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
       BloomFilterOptions::Fixed(encoded_doc_key_.as_slice()),
       rocksdb::kDefaultQueryId,
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), iter.get());
 
   VLOG_WITH_FUNC(4) << "whole row: " << doc_key_;
   DocHybridTime oldest_past_min_dht = VERIFY_RESULT(
@@ -2159,6 +2200,12 @@ Status PgsqlWriteOperation::HandleDeletedVectorIds(
 
 Status PgsqlWriteOperation::FillRemovedVectorId(
     const DocOperationApplyData& data, const dockv::PgTableRow& table_row, ColumnId column_id) {
+  // A table which writes no reverse mapping has nothing to tombstone: its indexes store the ybctid
+  // with every vector, so search detects the deletion by fetching the row it points to.
+  if (!doc_read_context_->schema().table_properties().writes_vector_reverse_mapping()) {
+    return Status::OK();
+  }
+
   auto old_vector_value = table_row.GetValueByColumnId(column_id);
   if (!old_vector_value) {
     return Status::OK();
@@ -2891,7 +2938,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         ++fetched_rows;
       }
     }
-    ++scanned_table_rows_;
+    if (fetch.read_table_row) {
+      ++scanned_table_rows_;
+    }
     if (fetch.read_index_row) {
       ++index_state->scanned_rows;
     }
@@ -3185,7 +3234,7 @@ Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
     return table_iter_->GetTupleId();
   }
 
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", column_id);
+  return STATUS_FORMAT(InvalidArgument, "Invalid column ID: $0", column_id);
 }
 
 Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {

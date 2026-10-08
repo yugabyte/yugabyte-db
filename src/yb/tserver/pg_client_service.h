@@ -16,6 +16,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -173,6 +174,10 @@ class PgClientServiceImpl : public PgClientServiceIf {
   std::unordered_map<PgOid, HybridTime> GetDatabasePins();
 
   size_t TEST_SessionsCount();
+
+  // The database recorded by the session of the backend with the given pid: kInvalidOid if the
+  // session has recorded none yet, nullopt if no session belongs to that pid.
+  std::optional<PgOid> TEST_SessionDatabaseOid(pid_t pid);
 
   // Cumulative number of worker threads ever created by the shared memory exchange thread pool.
   // Used to verify that the pool reuses threads across postgres connections.

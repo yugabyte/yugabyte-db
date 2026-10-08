@@ -23,6 +23,7 @@ import api.v2.models.ClusterStorageBase;
 import api.v2.models.ClusterStorageSpec;
 import api.v2.models.ClusterStorageType;
 import api.v2.models.ExposingServiceState;
+import api.v2.models.ManagedLoadBalancerSpec;
 import api.v2.models.NodeProxyConfig;
 import api.v2.models.PerProcessNodeSpec;
 import api.v2.models.PerProviderResizeNodesSpec;
@@ -49,6 +50,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -197,6 +199,8 @@ public interface UserIntentMapper {
     }
     ClusterNetworkingSpec clusterNetworkingSpec = new ClusterNetworkingSpec();
     clusterNetworkingSpec.setEnableLb(userIntent.enableLB);
+    clusterNetworkingSpec.setManagedLoadBalancer(
+        toV2ManagedLoadBalancerSpec(userIntent.getManagedLoadBalancer()));
     clusterNetworkingSpec.setEnableExposingService(
         toV2ExposingServiceState(userIntent.enableExposingService));
     clusterNetworkingSpec.setProxyConfig(toV2ProxyConfig(userIntent.getProxyConfig()));
@@ -217,6 +221,8 @@ public interface UserIntentMapper {
   }
 
   NodeProxyConfig toV2ProxyConfig(ProxyConfig v1ProxyConfig);
+
+  ManagedLoadBalancerSpec toV2ManagedLoadBalancerSpec(ManagedLoadBalancerConfig v1Config);
 
   ExposingServiceState toV2ExposingServiceState(
       UniverseDefinitionTaskParams.ExposingServiceState v1ExposingServiceState);
@@ -397,7 +403,9 @@ public interface UserIntentMapper {
       fillUserIntentFromClusterResizeNodeSpec(source.getNodeSpec(), userIntent);
     }
     // node_spec / provider_nodes_specs may be omitted for gflags-only resize requests
-    userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    if (source.getGflags() != null) {
+      userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    }
     return userIntent;
   }
 
@@ -898,6 +906,8 @@ public interface UserIntentMapper {
 
   ProxyConfig toV1ProxyConfig(NodeProxyConfig nodeProxyConfig);
 
+  ManagedLoadBalancerConfig toV1ManagedLoadBalancerConfig(ManagedLoadBalancerSpec v2Spec);
+
   UniverseDefinitionTaskParams.ExposingServiceState toV1ExposingServiceState(
       ExposingServiceState v2ExposingServiceState);
 
@@ -913,7 +923,11 @@ public interface UserIntentMapper {
     if (clusterNetworkingSpec == null) {
       return userIntent;
     }
-    userIntent.enableLB = clusterNetworkingSpec.getEnableLb();
+    if (clusterNetworkingSpec.getEnableLb() != null) {
+      userIntent.enableLB = clusterNetworkingSpec.getEnableLb();
+    }
+    userIntent.setManagedLoadBalancer(
+        toV1ManagedLoadBalancerConfig(clusterNetworkingSpec.getManagedLoadBalancer()));
     userIntent.setProxyConfig(toV1ProxyConfig(clusterNetworkingSpec.getProxyConfig()));
     userIntent.enableExposingService =
         toV1ExposingServiceState(clusterNetworkingSpec.getEnableExposingService());

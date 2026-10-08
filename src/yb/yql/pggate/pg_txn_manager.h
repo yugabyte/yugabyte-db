@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "yb/common/clock.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -199,6 +200,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
+  void SetConnectedDatabaseOid(PgOid oid) { connected_database_oid_ = oid; }
+  PgOid connected_database_oid() const { return connected_database_oid_; }
+
  private:
   class SerialNo {
    public:
@@ -306,6 +310,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::optional<uint64_t> priority_;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
+  PgOid connected_database_oid_ = kPgInvalidOid;
   bool crosstxn_snapshot_read_time_is_used_ = false;
   bool has_exported_snapshots_ = false;
 

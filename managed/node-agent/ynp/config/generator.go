@@ -231,6 +231,18 @@ func (gen *YNPConfigGenerator) registerResolvers() error {
 	gen.resolvers["ynp_configure_thp_settings"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return true, nil
 	}
+	// This generator serves on-prem manual provisioning, which runs before any universe exists, so
+	// there is no universe fipsEnabled to read. YBA's own FIPS status stands in for it: every
+	// universe created on a FIPS enabled YBA is marked FIPS enabled, so a node being provisioned
+	// for that YBA has to be provisioned for FIPS. Automatically provisioned nodes do not come
+	// through here - YugabyteDB Anywhere renders their config from the universe.
+	gen.resolvers["ynp_is_fips_enabled"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
+		ybaInfo, err := dataProvider.GetYBAInfo(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return ybaInfo.FipsEnabled, nil
+	}
 	gen.resolvers["ynp_is_ybcontroller_disabled"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return false, nil
 	}

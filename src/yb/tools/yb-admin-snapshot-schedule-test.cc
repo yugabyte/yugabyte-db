@@ -286,7 +286,24 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
             Aborted, "Clone aborted: $0", common::PrettyWriteRapidJsonToString(entries[0]));
       }
       return state == master::SysCloneStatePB::COMPLETE;
-    }, timeout, "Wait for clone to complete");
+    }, timeout * kTimeMultiplier, "Wait for clone to complete");
+  }
+
+  // Brings up a cluster with a ysql database holding one row and a snapshot schedule over it,
+  // which is the minimum a clone needs as a source.
+  Status PrepareCloneSource(const std::string& source_db) {
+    RETURN_NOT_OK(PrepareCommon());
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
+
+    auto conn = VERIFY_RESULT(PgConnect());
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", source_db));
+    auto source_conn = VERIFY_RESULT(PgConnect(source_db));
+    RETURN_NOT_OK(source_conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+    RETURN_NOT_OK(source_conn.Execute("INSERT INTO test_table VALUES (1, 'one')"));
+
+    RETURN_NOT_OK(CreateSnapshotScheduleAndWaitSnapshot(
+        "ysql." + source_db, kInterval, kRetention));
+    return Status::OK();
   }
 
   Status PrepareCommon() {
@@ -553,7 +570,20 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
     opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
-    opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
+    // Sanitizer masters can stall heartbeats for 10+s (e.g. during clone), expiring short leases.
+    opts->extra_master_flags.emplace_back(
+        Format("--master_ysql_operation_lease_ttl_ms=$0", 10000 * kTimeMultiplier));
+    // Followers applying a sys catalog snapshot op can block UpdateConsensus for 5+s, causing a
+    // master failover that aborts in-progress clones.
+    opts->extra_master_flags.emplace_back(
+        Format("--leader_failure_max_missed_heartbeat_periods=$0", 10 * kTimeMultiplier));
+    // Such stalls (up to ~8s) outlast the default 2s raft lease, so the master leader keeps losing
+    // its lease and cannot refresh YSQL leases. Must stay below the 15s leader failure timeout.
+    if (IsSanitizer()) {
+      for (auto flag : {"leader_lease_duration_ms", "ht_lease_duration_ms"}) {
+        opts->extra_master_flags.emplace_back(Format("--$0=$1", flag, 4000 * kTimeMultiplier));
+      }
+    }
     opts->num_masters = 3;
   }
 
@@ -1027,6 +1057,69 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteRowsFromCloneYcql) {
   ASSERT_EQ(row_count.RenderToString(), "0");
 }
 
+// A ysql clone sends a ClearMetacache RPC to every tserver and enables connections to the target
+// database once they have all answered. The per-tserver callbacks run concurrently, so electing
+// the one that runs EnableDbConnections has to be atomic: a second EnableDbConnections task runs
+// ALTER DATABASE against the same pg_database row, both DDLs hold kHighestPriority, and neither
+// can win the conflict, so the clone is aborted instead of retried.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, CloneConcurrentClearMetacacheCallbacks,
+    YbAdminSnapshotScheduleTestWithYsql) {
+  const std::string kSourceDb = "source_database";
+  const std::string kTargetDb = "cloned_database";
+
+  ASSERT_OK(PrepareCloneSource(kSourceDb));
+  // Hold every callback after it has recorded its tserver, so that they all reach the election
+  // together. Without this the callbacks are far enough apart that only the last one sees a zero
+  // count, which is why the race only shows up on loaded (sanitizer) CI hosts.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_after_clearing_tserver_metacache_ms", "3000"));
+
+  ASSERT_OK(CloneAndWait("ysql." + kSourceDb, kTargetDb, 2min /* timeout */));
+
+  auto target_conn = ASSERT_RESULT(PgConnect(kTargetDb));
+  ASSERT_EQ(
+      ASSERT_RESULT(target_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test_table")), 1);
+}
+
+// A tserver that did not clear its metacache may still route to the source namespace's tablets, so
+// a clone that cannot confirm every tserver has to abort rather than enable connections. Before
+// the ClearMetacache callback carried a status, the failure counted as a successful clear and the
+// clone completed.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, CloneAbortsWhenClearMetacacheFails,
+    YbAdminSnapshotScheduleTestWithYsql) {
+  const std::string kSourceDb = "source_database";
+  const std::string kTargetDb = "cloned_database";
+
+  ASSERT_OK(PrepareCloneSource(kSourceDb));
+  // One tserver is enough: the clone must abort even though the others cleared successfully.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(0), "TEST_fail_clear_metacache", "true"));
+
+  auto status = CloneAndWait("ysql." + kSourceDb, kTargetDb, 2min /* timeout */);
+  ASSERT_NOK(status);
+  ASSERT_TRUE(status.IsAborted()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Failing ClearMetacache for test");
+}
+
+// The EnableDbConns callback runs from the task's Finished hook, so it reports the failure and
+// aborts.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, CloneAbortsWhenEnableDbConnsFails,
+    YbAdminSnapshotScheduleTestWithYsql) {
+  const std::string kSourceDb = "source_database";
+  const std::string kTargetDb = "cloned_database";
+
+  ASSERT_OK(PrepareCloneSource(kSourceDb));
+  // The master picks the tserver for this task itself, so every one of them has to fail.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fail_enable_db_conns", "true"));
+
+  auto status = CloneAndWait("ysql." + kSourceDb, kTargetDb, 2min /* timeout */);
+  ASSERT_NOK(status);
+  ASSERT_TRUE(status.IsAborted()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Failing EnableDbConns for test");
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalZero) {
   ASSERT_OK(PrepareCommon());
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
@@ -1408,6 +1501,19 @@ class YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam:
   int HistoryRetentionIntervalSec() override {
     return 30;
   }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsqlParam::UpdateMiniClusterOptions(opts);
+    // On sanitizer builds clone and schedule snapshots stall master UpdateConsensus for 5-7s.
+    // With 5s consensus timeouts this causes master failover (aborting the clone) or leader lease
+    // loss long enough for the ysql lease to expire, killing the clone's ysqlsh.
+    // Keep the wait RPC timeout above the lease TTL.
+    opts->extra_tserver_flags.emplace_back(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=120000");
+    opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=60000");
+    opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=30000");
+    opts->extra_master_flags.emplace_back("--leader_failure_max_missed_heartbeat_periods=60");
+  }
 };
 
 namespace {
@@ -1519,6 +1625,15 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlCreateTable) {
     }, 30s, "Restore failed."));
 
     ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'now')", table_name));
+    // A restore bumps pg_yb_catalog_version directly in the sys catalog, bypassing the fast DDL
+    // propagation path, so this backend keeps serving its pre-restore catcache until the new
+    // version arrives via a heartbeat. Both to_regclass and CREATE TABLE resolve the name through
+    // that catcache, so waiting for the former makes the latter see the restored catalog.
+    ASSERT_OK(LoggedWaitFor(
+        [&conn, &table_name]() -> Result<bool> {
+          return conn.FetchRow<bool>(Format("SELECT to_regclass('$0') IS NULL", table_name));
+        },
+        30s * kTimeMultiplier, "Wait for the restored catalog to reach this backend"));
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
         table_name, option));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'after')", table_name));
@@ -1912,6 +2027,11 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_clearing_fully_applied_ms", "3000"));
+
+  // Master rejects backends catalog version waits for a lease TTL after becoming leader.
+  // Absorb that delay here, so it does not shift restore_time out of the backfill.
+  ASSERT_OK(conn.Execute("CREATE TABLE warmup_table (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX warmup_table_idx ON warmup_table (key)"));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table "
@@ -6470,6 +6590,58 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql,
       "SELECT oid::int4 FROM pg_class WHERE relname='post_truncate_probe'"));
   EXPECT_GT(probe_oid, decoy_oid)
       << "Post-TRUNCATE CREATE allocated an OID <= decoy's hidden table OID";
+}
+
+// Well above any healthy restore time, so that a restore which waits the delay out stays
+// unambiguous on a slow machine.
+constexpr int64_t kLongIntentsFlushMaxDelayMs = 60000;
+
+class YbAdminSnapshotScheduleTestWithYsqlAndLongIntentsFlushDelay
+    : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        Format("--intents_flush_max_delay_ms=$0", kLongIntentsFlushMaxDelayMs));
+  }
+};
+
+// A schedule's snapshots exclude hidden tables, so a restore has no snapshot for the tablet of a
+// table that a DROP hid. It restores such a tablet in place, which tears its RocksDBs down with
+// flush on shutdown enabled and waits for that flush. An unflushed transaction apply leaves the
+// regular DB behind the intents memtable, so Tablet::IntentsDbFlushFilter defers the intents flush
+// behind the regular DB; unless the filter short-circuits on rocksdb_shutdown_requested_, only
+// intents_flush_max_delay_ms clears the deferral and the restore waits it out per such tablet.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTestWithYsql, PitrRestoreDoesNotWaitOutIntentsFlushDelay,
+    YbAdminSnapshotScheduleTestWithYsqlAndLongIntentsFlushDelay) {
+  // A long interval keeps a periodic snapshot from landing between the transaction and the DROP,
+  // so the restore creates its snapshot on demand, when the table is already hidden.
+  auto schedule_id = ASSERT_RESULT(PreparePg(
+      YsqlColocationConfig::kNotColocated, 300s /* interval */, 1200s /* retention */));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1,100) i"));
+  ASSERT_OK(conn.CommitTransaction());
+  // Nothing flushes after the apply, so its records and the intent removal stay in the memtables.
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+
+  auto start = MonoTime::Now();
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+  ASSERT_OK(WaitRestorationDone(
+      restoration_id,
+      MonoDelta::FromMilliseconds(3 * kLongIntentsFlushMaxDelayMs) * kTimeMultiplier));
+  auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "Restore took " << elapsed;
+
+  ASSERT_LT(elapsed, MonoDelta::FromMilliseconds(kLongIntentsFlushMaxDelayMs))
+      << "the restored tablet's teardown flush waited out intents_flush_max_delay_ms";
 }
 
 // Fixture for the clone-with-multiple-colocation-parents repro. We need the

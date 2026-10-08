@@ -49,21 +49,19 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, "log_statement=all");
-    // The test suite asserts for DML failing with catalog version mismatch when run
-    // immediately after DDLs, which isn't true with object locking enabled.
-    flags.put("enable_object_locking_for_table_locks", "false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flags.put("ysql_enable_concurrent_ddl", "false");
-    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (existing, added) -> existing + "," + added);
+    // The test suite asserts for DML failing with catalog version mismatch when run immediately
+    // after DDLs, which isn't true with object locking enabled. It also asserts that a CREATE TABLE
+    // inside an aborted transaction block survives, which isn't true with transactional DDL.
+    // Therefore, the suite runs in the legacy DDL mode.
+    toggleDDLMode(flags, /* useLegacy */ true);
     return flags;
   }
 
-  private boolean isTransactionalDdlEnabled(Statement stmt) throws SQLException {
-    try (ResultSet rs = stmt.executeQuery("SHOW yb_ddl_transaction_block_enabled")) {
-      assertTrue(rs.next());
-      return "on".equalsIgnoreCase(rs.getString(1));
-    }
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
   }
 
   @Test
@@ -405,9 +403,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       waitForTServerHeartbeat();
 
       statement2.execute("BEGIN");
-      // Without transactional DDL, CREATE TABLE runs in an autonomous transaction and cannot be
-      // rolled back. With transactional DDL, it participates in the enclosing transaction and can
-      // be rolled back when the transaction aborts.
+      // CREATE TABLE runs in an autonomous transaction and cannot be rolled back.
       statement2.execute("CREATE TABLE other_table(id int)");
 
       statement2.execute("SELECT * FROM test_table");
@@ -423,13 +419,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // COMMIT will succeed as a command but will rollback the transaction due to the error above.
       statement2.execute("COMMIT");
 
-      if (isTransactionalDdlEnabled(statement2)) {
-        // CREATE TABLE was part of the aborted transaction and should be rolled back.
-        runInvalidQuery(statement2, "SELECT * FROM other_table", "does not exist");
-      } else {
-        // Check that the other table was created.
-        statement2.execute("SELECT * FROM other_table");
-      }
+      // Check that the other table was created.
+      statement2.execute("SELECT * FROM other_table");
     }
   }
 
@@ -844,8 +835,25 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         final int endPartition = 10 * (part_idx + 1);
 
         stmt1.execute("BEGIN");
-        stmt1.executeUpdate(String.format("INSERT INTO prt(a,b) VALUES (%d, 'abc')",
-                                          startPartition + 1));
+        // The previous iteration's DDL ran on connection 2's node and bumped the DocDB schema
+        // version of prt_default. Until its catalog version reaches this node, the insert is
+        // rejected with a retryable stale schema version error instead of reaching the commit.
+        for (int attempt = 0; ; ++attempt) {
+          try {
+            stmt1.executeUpdate(String.format("INSERT INTO prt(a,b) VALUES (%d, 'abc')",
+                                              startPartition + 1));
+            break;
+          } catch (PSQLException e) {
+            if (attempt == 30 || !e.getMessage().contains("schema version mismatch")) {
+              throw e;
+            }
+            LOG.info(String.format("Iteration %d: retrying insert after attempt %d: %s",
+                                   part_idx, attempt, e.getMessage()));
+            stmt1.execute("ROLLBACK");
+            Thread.sleep(100);
+            stmt1.execute("BEGIN");
+          }
+        }
 
         // Alternatively test creating a new partition and attaching a new partition.
         if (part_idx % 2 == 0) {

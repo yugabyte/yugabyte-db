@@ -54,12 +54,12 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -134,6 +134,13 @@ DEFINE_RUNTIME_uint32(max_remote_bootstrap_attempts_from_non_leader, 5,
     "number of times we attempt to remote bootstrap a new peer from a closest non-leader peer "
     "that result in a failure. We fallback to bootstrapping from the leader peer post this.");
 
+DEFINE_RUNTIME_uint32(retain_wal_secs_for_progressing_prevoter, 900,
+    "Seconds to pin WAL for a PRE_VOTER after its first pin request. During the first tenth of "
+    "this window the WAL is always pinned. After that, each GetWalGcPeerRetentionInfo() call pins "
+    "the WAL only while this window is still open and the PRE_VOTER has advanced at least as far "
+    "as the majority-replicated op since the previous call.");
+TAG_FLAG(retain_wal_secs_for_progressing_prevoter, advanced);
+
 DEFINE_test_flag(bool, assert_remote_bootstrap_happens_from_same_zone, false,
     "Assert that remote bootstrap is served by a peer in the same zone as the new peer.");
 
@@ -154,7 +161,6 @@ using log::Log;
 using std::unique_ptr;
 using std::string;
 using std::max;
-using strings::Substitute;
 
 METRIC_DEFINE_gauge_int64(tablet, majority_done_ops, "Leader Operations Acked by Majority",
                           MetricUnit::kOperations,
@@ -178,7 +184,7 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
       MonoTime::Now().GetDeltaSince(last_successful_communication_time).ToMilliseconds();
   return YB_STRUCT_TO_STRING(
       (peer, uuid), is_new, last_received, next_index, last_known_committed_idx,
-      is_last_exchange_successful, needs_remote_bootstrap,
+      is_last_exchange_successful, needs_remote_bootstrap, requested_wal_pin_info,
       (member_type, PeerMemberType_Name(member_type)), num_sst_files, last_applied,
       (last_successful_communication_time,
        std::to_string(time_since_last_communication_ms) + "ms ago"),
@@ -255,6 +261,7 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
   queue_state_.committed_op_id = committed_op_id;
   queue_state_.last_applied_op_id = last_applied_op_id;
   queue_state_.majority_replicated_op_id = committed_op_id;
+  queue_state_.previous_wal_gc_majority_replicated_op_id = OpId::Max();
   queue_state_.pending_config_op_id = pending_config_op_id;
   queue_state_.active_config.reset(new RaftConfigPB(active_config));
   CHECK(IsRaftConfigVoter(local_peer_uuid_, *queue_state_.active_config))
@@ -267,12 +274,11 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
       << queue_state_.ToString();
   CheckPeersInActiveConfigIfLeaderUnlocked();
 
-  // Reset last communication time with all peers to reset the clock on the
-  // failure timeout.
-  MonoTime now(MonoTime::Now());
+  // Leases are per leadership term. last_successful_communication_time is not: SetLeaderMode also
+  // runs on every config change, and restarting the failure clock there would make a dead follower
+  // look live again (blocking eviction and stepdown). Newly tracked peers already start at Now().
   for (const PeersMap::value_type& entry : peers_map_) {
     entry.second->ResetLeaderLeases();
-    entry.second->last_successful_communication_time = now;
   }
 }
 
@@ -345,10 +351,10 @@ void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
   }
   for (const PeersMap::value_type& entry : peers_map_) {
     if (!ContainsKey(config_peer_uuids, entry.first)) {
-      LOG_WITH_PREFIX_UNLOCKED(FATAL) << Substitute("Peer $0 is not in the active config. "
-                                                    "Queue state: $1",
-                                                    entry.first,
-                                                    queue_state_.ToString());
+      LOG_WITH_PREFIX_UNLOCKED(FATAL) << Format("Peer $0 is not in the active config. "
+                                                "Queue state: $1",
+                                                entry.first,
+                                                queue_state_.ToString());
     }
   }
 }
@@ -477,7 +483,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         LWReplicateMsgsHolder* msgs_holder,
                                         bool* needs_remote_bootstrap,
                                         PeerMemberType* member_type,
-                                        bool* last_exchange_successful) {
+                                        bool* last_exchange_successful,
+                                        bool* batch_reaches_majority_replicated) {
   static constexpr uint64_t kSendUnboundedLogOps = std::numeric_limits<uint64_t>::max();
   DCHECK(request->ops().empty()) << request->ShortDebugString();
 
@@ -603,11 +610,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       // We never drop from 2 voters to 1 voter automatically, at least for now (12/4/18). We may
       // want to revisit this later, we're just being cautious with this.
       // We remove unconditionally any failed non-voter replica (PRE_VOTER,PRE_OBSERVER,OBSERVER).
-      string msg = Substitute("Leader has been unable to successfully communicate "
-                              "with Peer $0 for more than $1 seconds ($2)",
-                              uuid,
-                              FLAGS_follower_unavailable_considered_failed_sec,
-                              unreachable_time.ToString());
+      string msg = Format("Leader has been unable to successfully communicate "
+                          "with Peer $0 for more than $1 seconds ($2)",
+                          uuid,
+                          FLAGS_follower_unavailable_considered_failed_sec,
+                          unreachable_time.ToString());
       NotifyObserversOfFailedFollower(uuid, current_term, msg);
     }
   }
@@ -660,6 +667,18 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       }
 
       peer->last_num_messages_sent = result->messages.size();
+      if (batch_reaches_majority_replicated &&
+          queue_state_.majority_replicated_op_id.is_valid_not_empty()) {
+        const auto majority_index = queue_state_.majority_replicated_op_id.index;
+        int64_t index_after_batch;
+        if (!request->ops().empty()) {
+          index_after_batch = request->ops().rbegin()->id().index();
+        } else {
+          index_after_batch = peer->last_received.index;
+        }
+        *batch_reaches_majority_replicated =
+            majority_index > 0 && index_after_batch >= majority_index;
+      }
     }
 
     ScopedTrackedConsumption consumption;
@@ -711,6 +730,89 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   }
 
   return Status::OK();
+}
+
+PeerMessageQueue::WalGcPeerRetentionInfo PeerMessageQueue::GetWalGcPeerRetentionInfo() {
+  LockGuard lock(queue_lock_);
+  WalGcPeerRetentionInfo result;
+  if (queue_state_.mode != Mode::LEADER) {
+    return result;
+  }
+
+  // Majority replicated op could drop when PRE_VOTER is promoted to VOTER. Prevent WAL GC
+  // from reclaiming the logs needed by the new VOTER. This is necessary to maintain a
+  // healthy quorum when few of the existing VOTERs are lagging.
+  // The new VOTER could still not have enough logs to catch up if other existing voters
+  // advance the majority replicated op, but we would still have a healthy quorum in that
+  // case, and kick the new VOTER out.
+  auto majority_replicated = OpIdWatermark();
+  if (majority_replicated != OpId::Min()) {
+    result.majority_replicated_op_id = majority_replicated.index == MaximumOpId().index()
+        ? local_peer_->last_received
+        : majority_replicated;
+  }
+
+  // Track advancement of the majority replicated op since the last WAL GC in the same term.
+  const auto previous_majority_replicated =
+      queue_state_.previous_wal_gc_majority_replicated_op_id;
+  int64_t majority_advancement_since_previous_gc = 0;
+  if (previous_majority_replicated != OpId::Max() &&
+      result.majority_replicated_op_id.term == previous_majority_replicated.term &&
+      result.majority_replicated_op_id.index >= previous_majority_replicated.index) {
+    majority_advancement_since_previous_gc =
+        result.majority_replicated_op_id.index - previous_majority_replicated.index;
+  }
+
+  const auto now = MonoTime::Now();
+  const auto kRetainWalPreVoterSecs = FLAGS_retain_wal_secs_for_progressing_prevoter;
+  // Hold WAL for PRE_VOTERs which are catching up at a rate as fast as the majority voters,
+  // for a max period of FLAGS_retain_wal_secs_for_progressing_prevoter, this is best effort.
+  // Called at maintenance_manager_polling_interval_ms (default 250ms). After warmup, a PRE_VOTER
+  // whose in-flight batch has not acked can look slower than the majority, though unlikely:
+  // majority advancement needs several peers, so it rarely outpaces one catching-up PRE_VOTER
+  // in a single poll.
+  for (const auto& entry : peers_map_) {
+    auto& peer = *entry.second;
+    if (peer.member_type != PeerMemberType::PRE_VOTER ||
+        !peer.is_last_exchange_successful ||
+        peer.needs_remote_bootstrap ||
+        !peer.last_received.is_valid_not_empty()) {
+      continue;
+    }
+
+    auto& prev_wal_pin_info = peer.requested_wal_pin_info;
+    auto se = ScopeExit([&]() {
+      prev_wal_pin_info.op_id = peer.last_received;
+    });
+    const bool first_pin_request =
+        prev_wal_pin_info.first_requested_time == MonoTime::kUninitialized ||
+        prev_wal_pin_info.op_id == OpId::Max();
+    if (first_pin_request) {
+      prev_wal_pin_info.first_requested_time = now;
+    }
+
+    const auto requested_pin_duration =
+        now.GetDeltaSince(prev_wal_pin_info.first_requested_time);
+    const bool retain_wal_time_window_active =
+        requested_pin_duration.ToSeconds() < kRetainWalPreVoterSecs;
+    if (!retain_wal_time_window_active) {
+      continue;
+    }
+
+    if (!first_pin_request &&
+        previous_majority_replicated != OpId::Max() &&
+        result.majority_replicated_op_id != OpId::Max() &&
+        requested_pin_duration > kRetainWalPreVoterSecs * 1s / 10 &&
+        peer.last_received.index - prev_wal_pin_info.op_id.index <
+            majority_advancement_since_previous_gc) {
+      continue;
+    }
+    result.min_progressing_pre_voter_op_id =
+        std::min(result.min_progressing_pre_voter_op_id, peer.last_received);
+  }
+
+  queue_state_.previous_wal_gc_majority_replicated_op_id = result.majority_replicated_op_id;
+  return result;
 }
 
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
@@ -1720,7 +1822,7 @@ void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
   out << "<table>" << endl;;
   out << "  <tr><th>Peer</th><th>Watermark</th></tr>" << endl;
   for (const PeersMap::value_type& entry : peers_map_) {
-    out << Substitute(
+    out << Format(
                "  <tr><td><ul><li>$0</li><li>$1</li></ul></td><td>$2</td></tr>",
                EscapeForHtmlToString("UUID: " + entry.first),
                EscapeForHtmlToString("Host: " + entry.second->last_known_private_addr[0].host()),
@@ -1755,10 +1857,10 @@ string PeerMessageQueue::ToString() const {
 }
 
 string PeerMessageQueue::ToStringUnlocked() const {
-  return Substitute("Consensus queue metrics:"
-                    "Only Majority Done Ops: $0, In Progress Ops: $1, Cache: $2",
-                    metrics_.num_majority_done_ops->value(), metrics_.num_in_progress_ops->value(),
-                    log_cache_.StatsString());
+  return Format("Consensus queue metrics:"
+                "Only Majority Done Ops: $0, In Progress Ops: $1, Cache: $2",
+                metrics_.num_majority_done_ops->value(), metrics_.num_in_progress_ops->value(),
+                log_cache_.StatsString());
 }
 
 void PeerMessageQueue::RegisterObserver(PeerMessageQueueObserver* observer) {
@@ -1926,6 +2028,18 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
   return peer_can_be_leader;
 }
 
+bool PeerMessageQueue::IsPeerLive(const std::string& peer_uuid) const {
+  std::lock_guard lock(queue_lock_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
+  // Untracked peers are treated as live so a just-added PRE_VOTER cannot race past this check
+  // before the queue starts tracking it.
+  if (peer == nullptr) {
+    return true;
+  }
+  return MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time).ToSeconds() <=
+         FLAGS_follower_unavailable_considered_failed_sec;
+}
+
 OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {
   std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
@@ -1980,10 +2094,10 @@ string PeerMessageQueue::LogPrefixUnlocked() const {
   // TODO: we should probably use an atomic here. We'll just annotate away the TSAN error for now,
   // since the worst case is a slightly out-of-date log message, and not very likely.
   Mode mode = ANNOTATE_UNPROTECTED_READ(queue_state_.mode);
-  return Substitute("T $0 P $1 [$2]: ",
-                    tablet_id_,
-                    local_peer_uuid_,
-                    ModeToStr(mode));
+  return Format("T $0 P $1 [$2]: ",
+                tablet_id_,
+                local_peer_uuid_,
+                ModeToStr(mode));
 }
 
 string PeerMessageQueue::QueueState::ToString() const {

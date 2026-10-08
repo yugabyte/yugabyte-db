@@ -37,8 +37,11 @@
 #include <iomanip>
 #include <map>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <sstream>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -56,15 +59,14 @@
 #include "yb/common/tablet_limits.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rbs_info_task.h"
 #include "yb/master/catalog_entity_info.h"
@@ -97,6 +99,7 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
@@ -127,6 +130,7 @@ DEFINE_test_flag(int32, sleep_before_reporting_lb_ui_ms, 0,
                  "Sleep before reporting tasks in the cluster balancer UI, to give tasks a chance "
                  "to complete.");
 
+DECLARE_bool(enable_ysql);
 DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_string(webserver_ca_certificate_file);
@@ -281,7 +285,6 @@ using std::string;
 using std::stringstream;
 using std::unique_ptr;
 using std::min;
-using strings::Substitute;
 using server::MonitoredTask;
 
 using namespace std::placeholders;
@@ -604,9 +607,9 @@ void MasterPathHandlers::TServerDisplay(
   auto html_table = html_print_helper.CreateTablePrinter(
       Format("$0_tserver", current_uuid),
       {"Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
-       "System Tablet-Peers / Leaders", "RAM Used", "Num SST Files", "Total SST Files Size",
-       "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec", "Placement",
-       "Active Tablet-Peers", "Lease Expiry", "Lease Epoch"});
+       "System Tablet-Peers / Leaders", "RAM Used", "Used / Total Disk Space", "Num SST Files",
+       "Total SST Files Size", "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec",
+       "Placement", "Active Tablet-Peers", "YSQL Lease Expiry & Epoch"});
 
   int max_peers = 0;
   for (const auto& desc : descs) {
@@ -631,7 +634,7 @@ void MasterPathHandlers::TServerDisplay(
       }
     }
     html_row.AddColumn(std::move(tserver_info.server_id));
-    html_row.AddColumn(StringPrintf("%.1fs", tserver_info.time_since_heartbeat.ToSeconds()));
+    html_row.AddColumn(FixedPoint(tserver_info.time_since_heartbeat.ToSeconds(), 1) + "s");
 
     if (desc->IsBlacklisted(blacklist)) {
       tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
@@ -663,28 +666,59 @@ void MasterPathHandlers::TServerDisplay(
     }
 
     html_row.AddColumn(HumanizeBytes(desc->total_memory_usage()));
+
+    {
+      uint64_t used_disk_space = 0;
+      uint64_t total_disk_space = 0;
+      for (const auto& path_metric : desc->path_metrics()) {
+        used_disk_space += path_metric.second.used_space;
+        total_disk_space += path_metric.second.total_space;
+      }
+      if (total_disk_space == 0) {
+        html_row.AddColumn("N/A");
+      } else {
+        html_row.AddColumn(
+            Format("$0 / $1", HumanizeBytes(used_disk_space), HumanizeBytes(total_disk_space)));
+      }
+    }
+
     html_row.AddColumn(desc->num_sst_files());
     html_row.AddColumn(HumanizeBytes(desc->total_sst_file_size()));
     html_row.AddColumn(HumanizeBytes(desc->uncompressed_sst_file_size()));
-    html_row.AddColumn(desc->read_ops_per_sec());
-    html_row.AddColumn(desc->write_ops_per_sec());
+    html_row.AddColumn(FixedPoint(desc->read_ops_per_sec(), 1));
+    html_row.AddColumn(FixedPoint(desc->write_ops_per_sec(), 1));
 
     html_row.AddColumn(tserver_info.placement);
 
     html_row.AddColumn(counts ? desc->num_live_replicas() : 0);
 
-    {
+    if (!FLAGS_enable_ysql || !IsYsqlLeaseEnabled()) {
+      html_row.AddColumn("N/A");
+    } else {
       auto lease_it = lease_infos.find(desc->permanent_uuid());
-      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1"};
-      if (lease_it != lease_infos.end() && lease_it->second.lease_info.live_lease()) {
-        html_row.AddColumn(
-            Format(kLeaseCellTemplate, "Green", lease_it->second.lease_expiry.ToString()));
+      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1</font>"};
+      if (lease_it == lease_infos.end() ||
+          lease_it->second.lease_info.instance_seqno() != desc->latest_seqno()) {
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+      } else if (lease_it->second.lease_info.lease_relinquished()) {
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Red",
+            Format("RELINQUISHED</br>$0", lease_it->second.lease_info.lease_epoch())));
+      } else if (!lease_it->second.lease_info.live_lease()) {
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Red",
+            Format(
+                "EXPIRED $0 ago</br>$1",
+                std::max(-lease_it->second.time_to_lease_deadline, MonoDelta::kZero).ToString(),
+                lease_it->second.lease_info.lease_epoch())));
+      } else {
         html_row.AddColumn(Format(
             kLeaseCellTemplate, "Green",
-            std::to_string(lease_it->second.lease_info.lease_epoch())));
-      } else {
-        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
-        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+            Format(
+                "$0</br>$1",
+                std::max(
+                    lease_it->second.time_to_lease_deadline, MonoDelta::kZero).ToString(),
+                lease_it->second.lease_info.lease_epoch())));
       }
     }
   }
@@ -708,7 +742,7 @@ void TServerClockDisplay(
     LocalTserverInfo tserver_info(*desc);
 
     html_row.AddColumn(std::move(tserver_info.server_id));
-    html_row.AddColumn(StringPrintf("%.1fs", tserver_info.time_since_heartbeat.ToSeconds()));
+    html_row.AddColumn(FixedPoint(tserver_info.time_since_heartbeat.ToSeconds(), 1) + "s");
     html_row.AddColumn(tserver_info.FormattedStatus());
 
     // Render physical time.
@@ -727,7 +761,7 @@ void TServerClockDisplay(
       html_row.AddColumn(std::move(uptime));
     }
 
-    html_row.AddColumn(StringPrintf("%.2fms", desc->heartbeat_rtt().ToMicroseconds() / 1000.0));
+    html_row.AddColumn(FixedPoint(desc->heartbeat_rtt().ToMicroseconds() / 1000.0, 2) + "ms");
 
     html_row.AddColumn(tserver_info.placement);
   }
@@ -754,7 +788,7 @@ void MasterPathHandlers::DisplayUniverseSummary(
        universe_counts.per_placement_cluster_counts) {
     auto placement_uuid_entry = Format(
         "$0 $1", placement_uuid == live_id ? "Primary Cluster" : "Read Replica", placement_uuid);
-    std::string limit_entry = "N/A";
+    std::string limit_entry = "limit undefined";
     if (cluster_counts.tablet_replica_limit.has_value()) {
       limit_entry = Format(
           cluster_counts.active_tablet_peer_count > *cluster_counts.tablet_replica_limit
@@ -1013,6 +1047,8 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     return;
   }
   auto descs = master_->ts_manager()->GetAllDescriptors();
+  const auto lease_infos =
+      master_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
   auto s = CalculateTabletMap(&tablet_map);
@@ -1043,7 +1079,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         // Some stats may be repeated as strings due to backwards compatability.
         jw.String("time_since_hb");
-        jw.String(StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds()));
+        jw.String(FixedPoint(desc->TimeSinceHeartbeat().ToSeconds(), 1) + "s");
         jw.String("time_since_hb_sec");
         jw.Double(desc->TimeSinceHeartbeat().ToSeconds());
 
@@ -1152,6 +1188,22 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.String("permanent_uuid");
         jw.String(desc->permanent_uuid());
+
+        if (FLAGS_enable_ysql && IsYsqlLeaseEnabled()) {
+          auto lease_it = lease_infos.find(desc->permanent_uuid());
+          if (lease_it != lease_infos.end() &&
+              lease_it->second.lease_info.instance_seqno() == desc->latest_seqno()) {
+            jw.String("lease_info");
+            jw.StartObject();
+            jw.String("is_live");
+            jw.Bool(lease_it->second.lease_info.live_lease());
+            jw.String("lease_expiry_sec");
+            jw.Double(std::max(lease_it->second.time_to_lease_deadline.ToSeconds(), 0.0));
+            jw.String("lease_epoch");
+            jw.Uint64(lease_it->second.lease_info.lease_epoch());
+            jw.EndObject();
+          }
+        }
 
         jw.EndObject();
       }
@@ -1753,7 +1805,7 @@ void MasterPathHandlers::HandleNamespacesHTML(
                 << "  <th>Colocated</th>\n";
 
       for (const auto& namespace_row : *namespaces) {
-        (*output) << Substitute(
+        (*output) << Format(
             "<tr>"
             "<td>$0</td>"
             "<td>$1</td>"
@@ -1836,6 +1888,92 @@ TabletReplicaMapToSortedVector(const TabletReplicaMap& replicas) {
   }
   std::sort(sorted_replicas.begin(), sorted_replicas.end(), &CompareByHost);
   return sorted_replicas;
+}
+
+// A table-page row for a split parent that is no longer in memory.
+struct RemovedSplitParentRow {
+  TabletId tablet_id;
+  std::string partition;
+  uint64_t split_depth;
+  std::string state_msg;
+};
+
+// A removed split parent keeps only its children and state message, so its partition and split
+// depth are rebuilt from its children's: it covers the union of their ranges, one split level up.
+// Resolved bottom-up, since a child can itself be a removed parent.
+std::vector<RemovedSplitParentRow> RemovedSplitParentRows(
+    const TabletInfos& tablets,
+    const std::vector<std::pair<TabletId, DeletedSplitParent>>& removed_split_parents,
+    const dockv::PartitionSchema& partition_schema, const Schema& partition_keys_schema) {
+  struct TabletRange {
+    std::string start;
+    std::string end;  // Empty means unbounded.
+    uint64_t split_depth;
+  };
+  std::unordered_map<TabletId, TabletRange> known;
+  for (const auto& tablet : tablets) {
+    auto l = tablet->LockForRead();
+    known.emplace(
+        tablet->tablet_id(),
+        TabletRange{
+            l->pb.partition().partition_key_start(), l->pb.partition().partition_key_end(),
+            l->pb.split_depth()});
+  }
+  std::vector<std::tuple<TabletId, std::string, TabletRange>> resolved;
+  auto pending = removed_split_parents;
+  for (bool progress = true; progress;) {
+    progress = false;
+    for (auto it = pending.begin(); it != pending.end();) {
+      const auto& [parent_id, parent] = *it;
+      std::optional<TabletRange> range;
+      for (const auto& child_id : parent.child_ids) {
+        auto child_it = known.find(child_id);
+        if (child_it == known.end()) {
+          range.reset();
+          break;
+        }
+        const auto& child = child_it->second;
+        if (!range) {
+          range = TabletRange{
+              child.start, child.end, child.split_depth > 0 ? child.split_depth - 1 : 0};
+          continue;
+        }
+        range->start = std::min(range->start, child.start);
+        if (!range->end.empty() && (child.end.empty() || child.end > range->end)) {
+          range->end = child.end;
+        }
+      }
+      if (!range) {
+        ++it;
+        continue;
+      }
+      known.emplace(parent_id, *range);
+      resolved.emplace_back(parent_id, parent.state_msg, *range);
+      it = pending.erase(it);
+      progress = true;
+    }
+  }
+  std::ranges::sort(resolved, [](const auto& lhs, const auto& rhs) {
+    const auto& l = std::get<2>(lhs);
+    const auto& r = std::get<2>(rhs);
+    return l.start == r.start ? l.split_depth < r.split_depth : l.start < r.start;
+  });
+
+  std::vector<RemovedSplitParentRow> rows;
+  rows.reserve(resolved.size());
+  for (auto& [tablet_id, state_msg, range] : resolved) {
+    PartitionPB partition_pb;
+    partition_pb.set_partition_key_start(range.start);
+    partition_pb.set_partition_key_end(range.end);
+    dockv::Partition partition;
+    dockv::Partition::FromPB(partition_pb, &partition);
+    rows.push_back(RemovedSplitParentRow{
+        .tablet_id = std::move(tablet_id),
+        .partition = partition_schema.PartitionDebugString(partition, partition_keys_schema),
+        .split_depth = range.split_depth,
+        .state_msg = std::move(state_msg)});
+  }
+  return rows;
 }
 
 }  // anonymous namespace
@@ -2045,7 +2183,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
   server::HtmlOutputSchemaTable(schema, output);
 
-  bool has_deleted_tablets = false;
+  // Split parents already dropped from memory are no longer among the table's tablets, but can
+  // still be listed with their children.
+  const auto removed_split_parents =
+      master_->catalog_manager_impl()->GetDeletedSplitParents(table->id());
+
+  bool has_deleted_tablets = !removed_split_parents.empty();
   for (const auto& tablet : tablets) {
     if (tablet->LockForRead()->is_deleted()) {
       has_deleted_tablets = true;
@@ -2101,6 +2244,16 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
         state,
         l->is_hidden(),
         EscapeForHtmlToString(l->pb.state_msg()));
+  }
+  if (show_deleted_tablets) {
+    for (const auto& row : RemovedSplitParentRows(
+             tablets, removed_split_parents, partition_schema, *partition_keys_schema)) {
+      *output << Format(
+          "<tr><th>$0</th><td>$1</td><td>$2</td><td></td><td>Deleted</td><td>0</td><td>$3</td>"
+          "</tr>\n",
+          row.tablet_id, EscapeForHtmlToString(row.partition), row.split_depth,
+          EscapeForHtmlToString(row.state_msg));
+    }
   }
   *output << "</table>\n";
 
@@ -2434,6 +2587,25 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
     jw.String("message");
     jw.String(l->pb.state_msg());
     RaftConfigToJson(sorted_locations, tablet->tablet_id(), &jw);
+    jw.EndObject();
+  }
+  for (const auto& row : RemovedSplitParentRows(
+           tablets, master_->catalog_manager_impl()->GetDeletedSplitParents(table->id()),
+           partition_schema, *partition_keys_schema)) {
+    jw.StartObject();
+    jw.String("tablet_id");
+    jw.String(row.tablet_id);
+    jw.String("partition");
+    jw.String(row.partition);
+    jw.String("split_depth");
+    jw.Uint64(row.split_depth);
+    jw.String("state");
+    jw.String("Deleted");
+    jw.String("hidden");
+    jw.String("false");
+    jw.String("message");
+    jw.String(row.state_msg);
+    RaftConfigToJson({}, row.tablet_id, &jw);
     jw.EndObject();
   }
   jw.EndArray();
@@ -3464,7 +3636,10 @@ void MasterPathHandlers::HandleXCluster(
 
         for (const auto& table_status : namespace_status.table_statuses) {
           auto color = HtmlTableRowColor::Default;
-          if (table_status.state.contains("PAUSED") || table_status.state.contains("INITIATED")) {
+          if (table_status.is_wal_anchor) {
+            // A WAL anchor is expected to sit unconsumed, so leave it uncolored.
+          } else if (table_status.state.contains("PAUSED") ||
+                     table_status.state.contains("INITIATED")) {
             color = HtmlTableRowColor::Yellow;
           } else if (table_status.state != "ACTIVE") {
             color = HtmlTableRowColor::Red;

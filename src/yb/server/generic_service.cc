@@ -102,8 +102,8 @@ void GenericServiceImpl::RefreshFlags(const RefreshFlagsRequestPB* req,
   if (yb::RefreshFlagsFile(FLAGS_flagfile)) {
     rpc.RespondSuccess();
   } else {
-    rpc.RespondFailure(STATUS_SUBSTITUTE(InternalError,
-                                         "Unable to refresh flagsfile: $0", FLAGS_flagfile));
+    rpc.RespondFailure(STATUS_FORMAT(InternalError,
+                                     "Unable to refresh flagsfile: $0", FLAGS_flagfile));
   }
 }
 

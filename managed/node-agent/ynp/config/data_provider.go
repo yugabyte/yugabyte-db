@@ -21,6 +21,7 @@ type ResolverDataProvider interface {
 	GetTmpDirectory(ctx context.Context) (string, error)
 	GetNodeAgentPort(ctx context.Context) (string, error)
 	GetCertificateName(ctx context.Context) (string, error)
+	GetYBAInfo(ctx context.Context) (*model.YBAInfo, error)
 }
 
 // DefaultResolverDataProvider is the default implementation of ResolverDataProvider that fetches data from YBA APIs.
@@ -33,6 +34,7 @@ type DefaultResolverDataProvider struct {
 	tmpDirectory    string
 	nodeAgentPort   string
 	certificateName string
+	ybaInfo         *model.YBAInfo
 }
 
 // NewDefaultResolverDataProvider creates a new instance of DefaultResolverDataProvider with the provided arguments.
@@ -69,6 +71,19 @@ func (dp *DefaultResolverDataProvider) Load(ctx context.Context) error {
 	)
 	if err != nil {
 		util.ConsoleLogger().Infof(ctx, "Could not fetch session info - %s", err.Error())
+		return err
+	}
+	// Manual provisioning runs before any universe exists, so there is no universe fipsEnabled to
+	// read. YBA's own FIPS status is the right stand-in: UniverseCRUDHandler marks every universe
+	// created on a FIPS enabled YBA as FIPS enabled, so a node being provisioned for that YBA has
+	// to be provisioned for FIPS.
+	dp.ybaInfo, err = yba.GetYBAInfo(ctx,
+		ybaUrl.(string),
+		ybaApiKey.(string),
+		skipTlsVerify.(bool),
+	)
+	if err != nil {
+		util.ConsoleLogger().Infof(ctx, "Could not fetch YBA info - %s", err.Error())
 		return err
 	}
 	dp.nodeInstance, err = yba.GetNodeInstanceByIp(ctx,
@@ -195,6 +210,11 @@ func (dp *DefaultResolverDataProvider) GetTmpDirectory(
 
 func (dp *DefaultResolverDataProvider) GetNodeAgentPort(ctx context.Context) (string, error) {
 	return dp.nodeAgentPort, nil
+}
+
+func (dp *DefaultResolverDataProvider) GetYBAInfo(
+	ctx context.Context) (*model.YBAInfo, error) {
+	return dp.ybaInfo, nil
 }
 
 func (dp *DefaultResolverDataProvider) GetCertificateName(ctx context.Context) (string, error) {

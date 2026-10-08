@@ -38,18 +38,16 @@ where
     pub unsafe fn raw_get_bit(this: *const Self, index: usize) -> bool {
         debug_assert!(index / 8 < core::mem::size_of::<Storage>());
         let byte_index = index / 8;
-        let byte = *(core::ptr::addr_of!((*this).storage) as *const u8).offset(byte_index as isize);
+        let byte = unsafe {
+            *(core::ptr::addr_of!((*this).storage) as *const u8).offset(byte_index as isize)
+        };
         Self::extract_bit(byte, index)
     }
     #[inline]
     fn change_bit(byte: u8, index: usize, val: bool) -> u8 {
         let bit_index = if cfg!(target_endian = "big") { 7 - (index % 8) } else { index % 8 };
         let mask = 1 << bit_index;
-        if val {
-            byte | mask
-        } else {
-            byte & !mask
-        }
+        if val { byte | mask } else { byte & !mask }
     }
     #[inline]
     pub fn set_bit(&mut self, index: usize, val: bool) {
@@ -62,9 +60,10 @@ where
     pub unsafe fn raw_set_bit(this: *mut Self, index: usize, val: bool) {
         debug_assert!(index / 8 < core::mem::size_of::<Storage>());
         let byte_index = index / 8;
-        let byte =
-            (core::ptr::addr_of_mut!((*this).storage) as *mut u8).offset(byte_index as isize);
-        *byte = Self::change_bit(*byte, index, val);
+        let byte = unsafe {
+            (core::ptr::addr_of_mut!((*this).storage) as *mut u8).offset(byte_index as isize)
+        };
+        unsafe { *byte = Self::change_bit(*byte, index, val) };
     }
     #[inline]
     pub fn get(&self, bit_offset: usize, bit_width: u8) -> u64 {
@@ -88,7 +87,7 @@ where
         debug_assert!((bit_offset + (bit_width as usize)) / 8 <= core::mem::size_of::<Storage>());
         let mut val = 0;
         for i in 0..(bit_width as usize) {
-            if Self::raw_get_bit(this, i + bit_offset) {
+            if unsafe { Self::raw_get_bit(this, i + bit_offset) } {
                 let index =
                     if cfg!(target_endian = "big") { bit_width as usize - 1 - i } else { i };
                 val |= 1 << index;
@@ -117,7 +116,7 @@ where
             let mask = 1 << i;
             let val_bit_is_set = val & mask == mask;
             let index = if cfg!(target_endian = "big") { bit_width as usize - 1 - i } else { i };
-            Self::raw_set_bit(this, index + bit_offset, val_bit_is_set);
+            unsafe { Self::raw_set_bit(this, index + bit_offset, val_bit_is_set) };
         }
     }
 }
@@ -184,18 +183,18 @@ pub const MAXIMUM_ALIGNOF: u32 = 8;
 pub const MEMSET_LOOP_LIMIT: u32 = 1024;
 pub const PACKAGE_BUGREPORT: &::core::ffi::CStr = c"pgsql-bugs@lists.postgresql.org";
 pub const PACKAGE_NAME: &::core::ffi::CStr = c"PostgreSQL";
-pub const PACKAGE_STRING: &::core::ffi::CStr = c"PostgreSQL 16.8";
+pub const PACKAGE_STRING: &::core::ffi::CStr = c"PostgreSQL 16.14";
 pub const PACKAGE_TARNAME: &::core::ffi::CStr = c"postgresql";
 pub const PACKAGE_URL: &::core::ffi::CStr = c"https://www.postgresql.org/";
-pub const PACKAGE_VERSION: &::core::ffi::CStr = c"16.8";
+pub const PACKAGE_VERSION: &::core::ffi::CStr = c"16.14";
 pub const PG_KRB_SRVNAM: &::core::ffi::CStr = c"postgres";
 pub const PG_MAJORVERSION: &::core::ffi::CStr = c"16";
 pub const PG_MAJORVERSION_NUM: u32 = 16;
-pub const PG_MINORVERSION_NUM: u32 = 8;
+pub const PG_MINORVERSION_NUM: u32 = 14;
 pub const PG_USE_STDBOOL: u32 = 1;
-pub const PG_VERSION: &::core::ffi::CStr = c"16.8";
-pub const PG_VERSION_NUM: u32 = 160008;
-pub const PG_VERSION_STR : & :: core :: ffi :: CStr = c"PostgreSQL 16.8 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0, 64-bit" ;
+pub const PG_VERSION: &::core::ffi::CStr = c"16.14";
+pub const PG_VERSION_NUM: u32 = 160014;
+pub const PG_VERSION_STR : & :: core :: ffi :: CStr = c"PostgreSQL 16.14 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit" ;
 pub const RELSEG_SIZE: u32 = 131072;
 pub const SIZEOF_BOOL: u32 = 1;
 pub const SIZEOF_LONG: u32 = 8;
@@ -255,7 +254,7 @@ pub const PG_BINARY_A: &::core::ffi::CStr = c"a";
 pub const PG_BINARY_R: &::core::ffi::CStr = c"r";
 pub const PG_BINARY_W: &::core::ffi::CStr = c"w";
 pub const PGINVALID_SOCKET: i32 = -1;
-pub const PG_BACKEND_VERSIONSTR: &::core::ffi::CStr = c"postgres (PostgreSQL) 16.8\n";
+pub const PG_BACKEND_VERSIONSTR: &::core::ffi::CStr = c"postgres (PostgreSQL) 16.14\n";
 pub const EXE: &::core::ffi::CStr = c"";
 pub const DEVNULL: &::core::ffi::CStr = c"/dev/null";
 pub const USE_REPL_SNPRINTF: u32 = 1;
@@ -814,6 +813,7 @@ pub const NO_MAX_DSIZE: i32 = -1;
 pub const IO_DIRECT_DATA: u32 = 1;
 pub const IO_DIRECT_WAL: u32 = 2;
 pub const IO_DIRECT_WAL_INIT: u32 = 4;
+pub const DEFAULT_FILE_EXTEND_METHOD: u32 = 0;
 pub const PG_O_DIRECT: u32 = 16384;
 pub const PG_TEMP_FILES_DIR: &::core::ffi::CStr = c"pgsql_tmp";
 pub const PG_TEMP_FILE_PREFIX: &::core::ffi::CStr = c"pgsql_tmp";
@@ -1284,6 +1284,10 @@ pub const InvalidLocalTransactionId: u32 = 0;
 pub const MAX_LOCKMODES: u32 = 10;
 pub const DEFAULT_LOCKMETHOD: u32 = 1;
 pub const USER_LOCKMETHOD: u32 = 2;
+pub const AMFLAG_HAS_TID_RANGE: u32 = 1;
+pub const GROUPING_CAN_USE_SORT: u32 = 1;
+pub const GROUPING_CAN_USE_HASH: u32 = 2;
+pub const GROUPING_CAN_PARTIAL_AGG: u32 = 4;
 pub const BITS_PER_HEAPBLOCK: u32 = 2;
 pub const VISIBILITYMAP_ALL_VISIBLE: u32 = 1;
 pub const VISIBILITYMAP_ALL_FROZEN: u32 = 2;
@@ -1315,12 +1319,31 @@ pub const MAX_IO_CONCURRENCY: u32 = 1000;
 pub const BUFFER_LOCK_UNLOCK: u32 = 0;
 pub const BUFFER_LOCK_SHARE: u32 = 1;
 pub const BUFFER_LOCK_EXCLUSIVE: u32 = 2;
+pub const NUM_SUBTRANS_BUFFERS: u32 = 32;
+pub const ReplicationOriginRelationId: Oid = Oid(6000);
+pub const PgReplicationOriginToastTable: u32 = 4181;
+pub const PgReplicationOriginToastIndex: u32 = 4182;
+pub const ReplicationOriginIdentIndex: u32 = 6001;
+pub const ReplicationOriginNameIndex: u32 = 6002;
+pub const Anum_pg_replication_origin_roident: u32 = 1;
+pub const Anum_pg_replication_origin_roname: u32 = 2;
+pub const Natts_pg_replication_origin: u32 = 2;
+pub const XLOG_REPLORIGIN_SET: u32 = 0;
+pub const XLOG_REPLORIGIN_DROP: u32 = 16;
+pub const InvalidRepOriginId: u32 = 0;
+pub const DoNotReplicateId: u32 = 65535;
+pub const COMMIT_TS_ZEROPAGE: u32 = 0;
+pub const COMMIT_TS_TRUNCATE: u32 = 16;
 pub const PERFORM_DELETION_INTERNAL: u32 = 1;
 pub const PERFORM_DELETION_CONCURRENTLY: u32 = 2;
 pub const PERFORM_DELETION_QUIETLY: u32 = 4;
 pub const PERFORM_DELETION_SKIP_ORIGINAL: u32 = 8;
 pub const PERFORM_DELETION_SKIP_EXTENSIONS: u32 = 16;
 pub const PERFORM_DELETION_CONCURRENT_LOCK: u32 = 32;
+pub const MAX_CATALOG_MULTI_INSERT_BYTES: u32 = 65535;
+pub const CHKATYPE_ANYARRAY: u32 = 1;
+pub const CHKATYPE_ANYRECORD: u32 = 2;
+pub const CHKATYPE_IS_PARTKEY: u32 = 4;
 pub const DEFAULT_INDEX_TYPE: &::core::ffi::CStr = c"btree";
 pub const REINDEXOPT_VERBOSE: u32 = 1;
 pub const REINDEXOPT_REPORT_PROGRESS: u32 = 2;
@@ -1343,7 +1366,6 @@ pub const REINDEX_REL_SUPPRESS_INDEX_USE: u32 = 2;
 pub const REINDEX_REL_CHECK_CONSTRAINTS: u32 = 4;
 pub const REINDEX_REL_FORCE_INDEXES_UNLOGGED: u32 = 8;
 pub const REINDEX_REL_FORCE_INDEXES_PERMANENT: u32 = 16;
-pub const MAX_CATALOG_MULTI_INSERT_BYTES: u32 = 65535;
 pub const AccessMethodRelationId: Oid = Oid(2601);
 pub const AmNameIndexId: u32 = 2651;
 pub const AmOidIndexId: u32 = 2652;
@@ -1787,6 +1809,24 @@ pub const Anum_pg_seclabel_objsubid: u32 = 3;
 pub const Anum_pg_seclabel_provider: u32 = 4;
 pub const Anum_pg_seclabel_label: u32 = 5;
 pub const Natts_pg_seclabel: u32 = 5;
+pub const StatisticExtRelationId: Oid = Oid(3381);
+pub const StatisticExtOidIndexId: u32 = 3380;
+pub const StatisticExtNameIndexId: u32 = 3997;
+pub const StatisticExtRelidIndexId: u32 = 3379;
+pub const Anum_pg_statistic_ext_oid: u32 = 1;
+pub const Anum_pg_statistic_ext_stxrelid: u32 = 2;
+pub const Anum_pg_statistic_ext_stxname: u32 = 3;
+pub const Anum_pg_statistic_ext_stxnamespace: u32 = 4;
+pub const Anum_pg_statistic_ext_stxowner: u32 = 5;
+pub const Anum_pg_statistic_ext_stxstattarget: u32 = 6;
+pub const Anum_pg_statistic_ext_stxkeys: u32 = 7;
+pub const Anum_pg_statistic_ext_stxkind: u32 = 8;
+pub const Anum_pg_statistic_ext_stxexprs: u32 = 9;
+pub const Natts_pg_statistic_ext: u32 = 9;
+pub const STATS_EXT_NDISTINCT: u8 = 100u8;
+pub const STATS_EXT_DEPENDENCIES: u8 = 102u8;
+pub const STATS_EXT_MCV: u8 = 109u8;
+pub const STATS_EXT_EXPRESSIONS: u8 = 101u8;
 pub const TableSpaceRelationId: Oid = Oid(1213);
 pub const PgTablespaceToastTable: u32 = 4185;
 pub const PgTablespaceToastIndex: u32 = 4186;
@@ -1958,6 +1998,7 @@ pub const PROGRESS_COPY_TYPE_FILE: u32 = 1;
 pub const PROGRESS_COPY_TYPE_PROGRAM: u32 = 2;
 pub const PROGRESS_COPY_TYPE_PIPE: u32 = 3;
 pub const PROGRESS_COPY_TYPE_CALLBACK: u32 = 4;
+pub const MAX_RELCACHE_INVAL_MSGS: u32 = 4096;
 pub const XLOG_TBLSPC_CREATE: u32 = 0;
 pub const XLOG_TBLSPC_DROP: u32 = 16;
 pub const TRIGGER_EVENT_INSERT: u32 = 0;
@@ -2144,10 +2185,6 @@ pub const SPI_OK_REL_UNREGISTER: u32 = 16;
 pub const SPI_OK_TD_REGISTER: u32 = 17;
 pub const SPI_OK_MERGE: u32 = 18;
 pub const SPI_OPT_NONATOMIC: u32 = 1;
-pub const AMFLAG_HAS_TID_RANGE: u32 = 1;
-pub const GROUPING_CAN_USE_SORT: u32 = 1;
-pub const GROUPING_CAN_USE_HASH: u32 = 2;
-pub const GROUPING_CAN_PARTIAL_AGG: u32 = 4;
 pub const FSV_MISSING_OK: u32 = 1;
 pub const FDW_MISSING_OK: u32 = 1;
 pub const PGJIT_NONE: u32 = 0;
@@ -2241,6 +2278,10 @@ pub const PVC_RECURSE_WINDOWFUNCS: u32 = 8;
 pub const PVC_INCLUDE_PLACEHOLDERS: u32 = 16;
 pub const PVC_RECURSE_PLACEHOLDERS: u32 = 32;
 pub const DEFAULT_CURSOR_TUPLE_FRACTION: f64 = 0.1;
+pub const UNRESERVED_KEYWORD: u32 = 0;
+pub const COL_NAME_KEYWORD: u32 = 1;
+pub const TYPE_FUNC_NAME_KEYWORD: u32 = 2;
+pub const RESERVED_KEYWORD: u32 = 3;
 pub const ER_MAGIC: u32 = 1384727874;
 pub const ER_FLAG_FVALUE_VALID: u32 = 1;
 pub const ER_FLAG_FVALUE_ALLOCED: u32 = 2;
@@ -2290,6 +2331,7 @@ pub const RBTXN_HAS_PARTIAL_CHANGE: u32 = 32;
 pub const RBTXN_PREPARE: u32 = 64;
 pub const RBTXN_SKIPPED_PREPARE: u32 = 128;
 pub const RBTXN_HAS_STREAMABLE_CHANGE: u32 = 256;
+pub const RBTXN_DISTR_INVAL_OVERFLOWED: u32 = 512;
 pub const LOGICALREP_PROTO_MIN_VERSION_NUM: u32 = 1;
 pub const LOGICALREP_PROTO_VERSION_NUM: u32 = 1;
 pub const LOGICALREP_PROTO_STREAM_VERSION_NUM: u32 = 2;
@@ -2301,6 +2343,26 @@ pub const LOGICALREP_COLUMN_UNCHANGED: u8 = 117u8;
 pub const LOGICALREP_COLUMN_TEXT: u8 = 116u8;
 pub const LOGICALREP_COLUMN_BINARY: u8 = 98u8;
 pub const MAXCONNINFO: u32 = 1024;
+pub const SYNC_REP_NO_WAIT: i32 = -1;
+pub const SYNC_REP_WAIT_WRITE: u32 = 0;
+pub const SYNC_REP_WAIT_FLUSH: u32 = 1;
+pub const SYNC_REP_WAIT_APPLY: u32 = 2;
+pub const NUM_SYNC_REP_WAIT_MODE: u32 = 3;
+pub const SYNC_REP_NOT_WAITING: u32 = 0;
+pub const SYNC_REP_WAITING: u32 = 1;
+pub const SYNC_REP_WAIT_COMPLETE: u32 = 2;
+pub const SYNC_REP_PRIORITY: u32 = 0;
+pub const SYNC_REP_QUORUM: u32 = 1;
+pub const SYNC_STANDBY_INIT: u32 = 1;
+pub const SYNC_STANDBY_DEFINED: u32 = 2;
+pub const STATS_MAX_DIMENSIONS: u32 = 8;
+pub const STATS_NDISTINCT_MAGIC: u32 = 2740109220;
+pub const STATS_NDISTINCT_TYPE_BASIC: u32 = 1;
+pub const STATS_DEPS_MAGIC: u32 = 3025443372;
+pub const STATS_DEPS_TYPE_BASIC: u32 = 1;
+pub const STATS_MCV_MAGIC: u32 = 3785773506;
+pub const STATS_MCV_TYPE_BASIC: u32 = 1;
+pub const STATS_MCVLIST_MAX_ITEMS: u32 = 10000;
 pub const BUF_REFCOUNT_ONE: u32 = 1;
 pub const BUF_REFCOUNT_MASK: u32 = 262143;
 pub const BUF_USAGECOUNT_MASK: u32 = 3932160;
@@ -5760,6 +5822,10 @@ pub const F_WINDOW_NTILE_SUPPORT: u32 = 6308;
 pub const F_PG_STAT_GET_DB_CONFLICT_LOGICALSLOT: u32 = 6309;
 pub const F_PG_STAT_GET_LASTSCAN: u32 = 6310;
 pub const F_SYSTEM_USER: u32 = 6311;
+pub const GUC_TABLES_H: u32 = 1;
+pub const GUC_IS_IN_FILE: u32 = 1;
+pub const GUC_PENDING_RESTART: u32 = 2;
+pub const GUC_NEEDS_REPORT: u32 = 4;
 pub const NUMERIC_MAX_PRECISION: u32 = 1000;
 pub const NUMERIC_MIN_SCALE: i32 = -1000;
 pub const NUMERIC_MAX_SCALE: u32 = 1000;
@@ -5796,6 +5862,7 @@ pub const JB_FOBJECT: u32 = 536870912;
 pub const JB_FARRAY: u32 = 1073741824;
 pub const ATTSTATSSLOT_VALUES: u32 = 1;
 pub const ATTSTATSSLOT_NUMBERS: u32 = 2;
+pub const DEFAULT_UPDATE_PROCESS_TITLE: u32 = 1;
 pub const FORMAT_PROC_INVALID_AS_NULL: u32 = 1;
 pub const FORMAT_PROC_FORCE_QUALIFY: u32 = 2;
 pub const FORMAT_OPERATOR_INVALID_AS_NULL: u32 = 1;
@@ -5835,7 +5902,8 @@ pub const RANGESTRAT_CONTAINED_BY: u32 = 8;
 pub const RANGESTRAT_CONTAINS_ELEM: u32 = 16;
 pub const RANGESTRAT_EQ: u32 = 18;
 pub type pg_int64 = ::core::ffi::c_long;
-pub type va_list = __builtin_va_list;
+pub type __gnuc_va_list = __builtin_va_list;
+pub type __uint64_t = ::core::ffi::c_ulong;
 pub type __uid_t = ::core::ffi::c_uint;
 pub type __gid_t = ::core::ffi::c_uint;
 pub type __ino_t = ::core::ffi::c_ulong;
@@ -5880,7 +5948,9 @@ pub struct _IO_FILE {
     pub _markers: *mut _IO_marker,
     pub _chain: *mut _IO_FILE,
     pub _fileno: ::core::ffi::c_int,
-    pub _flags2: ::core::ffi::c_int,
+    pub _bitfield_align_1: [u32; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 3usize]>,
+    pub _short_backupbuf: [::core::ffi::c_char; 1usize],
     pub _old_offset: __off_t,
     pub _cur_column: ::core::ffi::c_ushort,
     pub _vtable_offset: ::core::ffi::c_schar,
@@ -5891,9 +5961,11 @@ pub struct _IO_FILE {
     pub _wide_data: *mut _IO_wide_data,
     pub _freeres_list: *mut _IO_FILE,
     pub _freeres_buf: *mut ::core::ffi::c_void,
-    pub __pad5: usize,
+    pub _prevchain: *mut *mut _IO_FILE,
     pub _mode: ::core::ffi::c_int,
-    pub _unused2: [::core::ffi::c_char; 20usize],
+    pub _unused3: ::core::ffi::c_int,
+    pub _total_written: __uint64_t,
+    pub _unused2: [::core::ffi::c_char; 8usize],
 }
 impl Default for _IO_FILE {
     fn default() -> Self {
@@ -5904,6 +5976,51 @@ impl Default for _IO_FILE {
         }
     }
 }
+impl _IO_FILE {
+    #[inline]
+    pub fn _flags2(&self) -> ::core::ffi::c_int {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 24u8) as u32) }
+    }
+    #[inline]
+    pub fn set__flags2(&mut self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 24u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn _flags2_raw(this: *const Self) -> ::core::ffi::c_int {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                24u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set__flags2_raw(this: *mut Self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                24u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(_flags2: ::core::ffi::c_int) -> __BindgenBitfieldUnit<[u8; 3usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 3usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 24u8, {
+            let _flags2: u32 = unsafe { ::core::mem::transmute(_flags2) };
+            _flags2 as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+pub type va_list = __gnuc_va_list;
 pub type off_t = __off_t;
 pub type gid_t = __gid_t;
 pub type mode_t = __mode_t;
@@ -14744,6 +14861,11 @@ pub mod RecoveryInitSyncMethod {
     pub const RECOVERY_INIT_SYNC_METHOD_SYNCFS: Type = 1;
 }
 pub type File = ::core::ffi::c_int;
+pub mod FileExtendMethod {
+    pub type Type = ::core::ffi::c_uint;
+    pub const FILE_EXTEND_METHOD_POSIX_FALLOCATE: Type = 0;
+    pub const FILE_EXTEND_METHOD_WRITE_ZEROS: Type = 1;
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct FileSet {
@@ -17518,7 +17640,7 @@ pub mod TypeFuncClass {
     pub const TYPEFUNC_OTHER: Type = 4;
 }
 pub type sig_atomic_t = __sig_atomic_t;
-pub mod _bindgen_ty_13 {
+pub mod _bindgen_ty_14 {
     pub type Type = ::core::ffi::c_uint;
     pub const SIGEV_SIGNAL: Type = 0;
     pub const SIGEV_NONE: Type = 1;
@@ -21065,7 +21187,7 @@ impl Default for relopt_gen {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct relopt_value {
-    pub gen: *mut relopt_gen,
+    pub gen_: *mut relopt_gen,
     pub isset: bool,
     pub values: relopt_value__bindgen_ty_1,
 }
@@ -21099,7 +21221,7 @@ impl Default for relopt_value {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct relopt_bool {
-    pub gen: relopt_gen,
+    pub gen_: relopt_gen,
     pub default_val: bool,
 }
 impl Default for relopt_bool {
@@ -21114,7 +21236,7 @@ impl Default for relopt_bool {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct relopt_int {
-    pub gen: relopt_gen,
+    pub gen_: relopt_gen,
     pub default_val: ::core::ffi::c_int,
     pub min: ::core::ffi::c_int,
     pub max: ::core::ffi::c_int,
@@ -21131,7 +21253,7 @@ impl Default for relopt_int {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct relopt_real {
-    pub gen: relopt_gen,
+    pub gen_: relopt_gen,
     pub default_val: f64,
     pub min: f64,
     pub max: f64,
@@ -21163,7 +21285,7 @@ impl Default for relopt_enum_elt_def {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct relopt_enum {
-    pub gen: relopt_gen,
+    pub gen_: relopt_gen,
     pub members: *mut relopt_enum_elt_def,
     pub default_val: ::core::ffi::c_int,
     pub detailmsg: *const ::core::ffi::c_char,
@@ -21195,7 +21317,7 @@ pub type relopts_validator = ::core::option::Option<
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct relopt_string {
-    pub gen: relopt_gen,
+    pub gen_: relopt_gen,
     pub default_len: ::core::ffi::c_int,
     pub default_isnull: bool,
     pub validate_cb: validate_string_relopt,
@@ -21258,3702 +21380,6 @@ impl Default for local_relopts {
         }
     }
 }
-#[repr(C)]
-pub struct CheckPoint {
-    pub redo: XLogRecPtr,
-    pub ThisTimeLineID: TimeLineID,
-    pub PrevTimeLineID: TimeLineID,
-    pub fullPageWrites: bool,
-    pub nextXid: FullTransactionId,
-    pub nextOid: Oid,
-    pub nextMulti: MultiXactId,
-    pub nextMultiOffset: MultiXactOffset,
-    pub oldestXid: TransactionId,
-    pub oldestXidDB: Oid,
-    pub oldestMulti: MultiXactId,
-    pub oldestMultiDB: Oid,
-    pub time: pg_time_t,
-    pub oldestCommitTsXid: TransactionId,
-    pub newestCommitTsXid: TransactionId,
-    pub oldestActiveXid: TransactionId,
-}
-impl Default for CheckPoint {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod DBState {
-    pub type Type = ::core::ffi::c_uint;
-    pub const DB_STARTUP: Type = 0;
-    pub const DB_SHUTDOWNED: Type = 1;
-    pub const DB_SHUTDOWNED_IN_RECOVERY: Type = 2;
-    pub const DB_SHUTDOWNING: Type = 3;
-    pub const DB_IN_CRASH_RECOVERY: Type = 4;
-    pub const DB_IN_ARCHIVE_RECOVERY: Type = 5;
-    pub const DB_IN_PRODUCTION: Type = 6;
-}
-#[repr(C)]
-pub struct ControlFileData {
-    pub system_identifier: uint64,
-    pub pg_control_version: uint32,
-    pub catalog_version_no: uint32,
-    pub state: DBState::Type,
-    pub time: pg_time_t,
-    pub checkPoint: XLogRecPtr,
-    pub checkPointCopy: CheckPoint,
-    pub unloggedLSN: XLogRecPtr,
-    pub minRecoveryPoint: XLogRecPtr,
-    pub minRecoveryPointTLI: TimeLineID,
-    pub backupStartPoint: XLogRecPtr,
-    pub backupEndPoint: XLogRecPtr,
-    pub backupEndRequired: bool,
-    pub wal_level: ::core::ffi::c_int,
-    pub wal_log_hints: bool,
-    pub MaxConnections: ::core::ffi::c_int,
-    pub max_worker_processes: ::core::ffi::c_int,
-    pub max_wal_senders: ::core::ffi::c_int,
-    pub max_prepared_xacts: ::core::ffi::c_int,
-    pub max_locks_per_xact: ::core::ffi::c_int,
-    pub track_commit_timestamp: bool,
-    pub maxAlign: uint32,
-    pub floatFormat: f64,
-    pub blcksz: uint32,
-    pub relseg_size: uint32,
-    pub xlog_blcksz: uint32,
-    pub xlog_seg_size: uint32,
-    pub nameDataLen: uint32,
-    pub indexMaxKeys: uint32,
-    pub toast_max_chunk_size: uint32,
-    pub loblksize: uint32,
-    pub float8ByVal: bool,
-    pub data_checksum_version: uint32,
-    pub mock_authentication_nonce: [::core::ffi::c_char; 32usize],
-    pub crc: pg_crc32c,
-}
-impl Default for ControlFileData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod RecoveryTargetType {
-    pub type Type = ::core::ffi::c_uint;
-    pub const RECOVERY_TARGET_UNSET: Type = 0;
-    pub const RECOVERY_TARGET_XID: Type = 1;
-    pub const RECOVERY_TARGET_TIME: Type = 2;
-    pub const RECOVERY_TARGET_NAME: Type = 3;
-    pub const RECOVERY_TARGET_LSN: Type = 4;
-    pub const RECOVERY_TARGET_IMMEDIATE: Type = 5;
-}
-pub mod RecoveryTargetTimeLineGoal {
-    pub type Type = ::core::ffi::c_uint;
-    pub const RECOVERY_TARGET_TIMELINE_CONTROLFILE: Type = 0;
-    pub const RECOVERY_TARGET_TIMELINE_LATEST: Type = 1;
-    pub const RECOVERY_TARGET_TIMELINE_NUMERIC: Type = 2;
-}
-pub mod RecoveryPauseState {
-    pub type Type = ::core::ffi::c_uint;
-    pub const RECOVERY_NOT_PAUSED: Type = 0;
-    pub const RECOVERY_PAUSE_REQUESTED: Type = 1;
-    pub const RECOVERY_PAUSED: Type = 2;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct EndOfWalRecoveryInfo {
-    pub lastRec: XLogRecPtr,
-    pub lastRecTLI: TimeLineID,
-    pub endOfLog: XLogRecPtr,
-    pub endOfLogTLI: TimeLineID,
-    pub lastPageBeginPtr: XLogRecPtr,
-    pub lastPage: *mut ::core::ffi::c_char,
-    pub abortedRecPtr: XLogRecPtr,
-    pub missingContrecPtr: XLogRecPtr,
-    pub recoveryStopReason: *mut ::core::ffi::c_char,
-    pub standby_signal_file_found: bool,
-    pub recovery_signal_file_found: bool,
-}
-impl Default for EndOfWalRecoveryInfo {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type ResourceOwner = *mut ResourceOwnerData;
-pub mod ResourceReleasePhase {
-    pub type Type = ::core::ffi::c_uint;
-    pub const RESOURCE_RELEASE_BEFORE_LOCKS: Type = 0;
-    pub const RESOURCE_RELEASE_LOCKS: Type = 1;
-    pub const RESOURCE_RELEASE_AFTER_LOCKS: Type = 2;
-}
-pub type ResourceReleaseCallback = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        phase: ResourceReleasePhase::Type,
-        isCommit: bool,
-        isTopLevel: bool,
-        arg: *mut ::core::ffi::c_void,
-    ),
->;
-pub type Block = *mut ::core::ffi::c_void;
-pub mod BufferAccessStrategyType {
-    pub type Type = ::core::ffi::c_uint;
-    pub const BAS_NORMAL: Type = 0;
-    pub const BAS_BULKREAD: Type = 1;
-    pub const BAS_BULKWRITE: Type = 2;
-    pub const BAS_VACUUM: Type = 3;
-}
-pub mod ReadBufferMode {
-    pub type Type = ::core::ffi::c_uint;
-    pub const RBM_NORMAL: Type = 0;
-    pub const RBM_ZERO_AND_LOCK: Type = 1;
-    pub const RBM_ZERO_AND_CLEANUP_LOCK: Type = 2;
-    pub const RBM_ZERO_ON_ERROR: Type = 3;
-    pub const RBM_NORMAL_NO_LOG: Type = 4;
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct PrefetchBufferResult {
-    pub recent_buffer: Buffer,
-    pub initiated_io: bool,
-}
-pub mod ExtendBufferedFlags {
-    pub type Type = ::core::ffi::c_uint;
-    pub const EB_SKIP_EXTENSION_LOCK: Type = 1;
-    pub const EB_PERFORMING_RECOVERY: Type = 2;
-    pub const EB_CREATE_FORK_IF_NEEDED: Type = 4;
-    pub const EB_LOCK_FIRST: Type = 8;
-    pub const EB_CLEAR_SIZE_CACHE: Type = 16;
-    pub const EB_LOCK_TARGET: Type = 32;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BufferManagerRelation {
-    pub rel: Relation,
-    pub smgr: *mut SMgrRelationData,
-    pub relpersistence: ::core::ffi::c_char,
-}
-impl Default for BufferManagerRelation {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod HotStandbyState {
-    pub type Type = ::core::ffi::c_uint;
-    pub const STANDBY_DISABLED: Type = 0;
-    pub const STANDBY_INITIALIZED: Type = 1;
-    pub const STANDBY_SNAPSHOT_PENDING: Type = 2;
-    pub const STANDBY_SNAPSHOT_READY: Type = 3;
-}
-pub mod XLogRedoAction {
-    pub type Type = ::core::ffi::c_uint;
-    pub const BLK_NEEDS_REDO: Type = 0;
-    pub const BLK_DONE: Type = 1;
-    pub const BLK_RESTORED: Type = 2;
-    pub const BLK_NOTFOUND: Type = 3;
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ReadLocalXLogPageNoWaitPrivate {
-    pub end_of_wal: bool,
-}
-pub mod DependencyType {
-    pub type Type = ::core::ffi::c_uint;
-    pub const DEPENDENCY_NORMAL: Type = 110;
-    pub const DEPENDENCY_AUTO: Type = 97;
-    pub const DEPENDENCY_INTERNAL: Type = 105;
-    pub const DEPENDENCY_PARTITION_PRI: Type = 80;
-    pub const DEPENDENCY_PARTITION_SEC: Type = 83;
-    pub const DEPENDENCY_EXTENSION: Type = 101;
-    pub const DEPENDENCY_AUTO_EXTENSION: Type = 120;
-}
-pub mod SharedDependencyType {
-    pub type Type = ::core::ffi::c_uint;
-    pub const SHARED_DEPENDENCY_OWNER: Type = 111;
-    pub const SHARED_DEPENDENCY_ACL: Type = 97;
-    pub const SHARED_DEPENDENCY_POLICY: Type = 114;
-    pub const SHARED_DEPENDENCY_TABLESPACE: Type = 116;
-    pub const SHARED_DEPENDENCY_INVALID: Type = 0;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ObjectAddresses {
-    _unused: [u8; 0],
-}
-pub mod ObjectClass {
-    pub type Type = ::core::ffi::c_uint;
-    pub const OCLASS_CLASS: Type = 0;
-    pub const OCLASS_PROC: Type = 1;
-    pub const OCLASS_TYPE: Type = 2;
-    pub const OCLASS_CAST: Type = 3;
-    pub const OCLASS_COLLATION: Type = 4;
-    pub const OCLASS_CONSTRAINT: Type = 5;
-    pub const OCLASS_CONVERSION: Type = 6;
-    pub const OCLASS_DEFAULT: Type = 7;
-    pub const OCLASS_LANGUAGE: Type = 8;
-    pub const OCLASS_LARGEOBJECT: Type = 9;
-    pub const OCLASS_OPERATOR: Type = 10;
-    pub const OCLASS_OPCLASS: Type = 11;
-    pub const OCLASS_OPFAMILY: Type = 12;
-    pub const OCLASS_AM: Type = 13;
-    pub const OCLASS_AMOP: Type = 14;
-    pub const OCLASS_AMPROC: Type = 15;
-    pub const OCLASS_REWRITE: Type = 16;
-    pub const OCLASS_TRIGGER: Type = 17;
-    pub const OCLASS_SCHEMA: Type = 18;
-    pub const OCLASS_STATISTIC_EXT: Type = 19;
-    pub const OCLASS_TSPARSER: Type = 20;
-    pub const OCLASS_TSDICT: Type = 21;
-    pub const OCLASS_TSTEMPLATE: Type = 22;
-    pub const OCLASS_TSCONFIG: Type = 23;
-    pub const OCLASS_ROLE: Type = 24;
-    pub const OCLASS_ROLE_MEMBERSHIP: Type = 25;
-    pub const OCLASS_DATABASE: Type = 26;
-    pub const OCLASS_TBLSPACE: Type = 27;
-    pub const OCLASS_FDW: Type = 28;
-    pub const OCLASS_FOREIGN_SERVER: Type = 29;
-    pub const OCLASS_USER_MAPPING: Type = 30;
-    pub const OCLASS_DEFACL: Type = 31;
-    pub const OCLASS_EXTENSION: Type = 32;
-    pub const OCLASS_EVENT_TRIGGER: Type = 33;
-    pub const OCLASS_PARAMETER_ACL: Type = 34;
-    pub const OCLASS_POLICY: Type = 35;
-    pub const OCLASS_PUBLICATION: Type = 36;
-    pub const OCLASS_PUBLICATION_NAMESPACE: Type = 37;
-    pub const OCLASS_PUBLICATION_REL: Type = 38;
-    pub const OCLASS_SUBSCRIPTION: Type = 39;
-    pub const OCLASS_TRANSFORM: Type = 40;
-}
-pub mod IndexStateFlagsAction {
-    pub type Type = ::core::ffi::c_uint;
-    pub const INDEX_CREATE_SET_READY: Type = 0;
-    pub const INDEX_CREATE_SET_VALID: Type = 1;
-    pub const INDEX_DROP_CLEAR_VALID: Type = 2;
-    pub const INDEX_DROP_SET_DEAD: Type = 3;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ReindexParams {
-    pub options: bits32,
-    pub tablespaceOid: Oid,
-}
-impl Default for ReindexParams {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ValidateIndexState {
-    pub tuplesort: *mut Tuplesortstate,
-    pub htups: f64,
-    pub itups: f64,
-    pub tups_inserted: f64,
-}
-impl Default for ValidateIndexState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type CatalogIndexState = *mut ResultRelInfo;
-#[repr(C)]
-#[derive(Debug)]
-pub struct _FuncCandidateList {
-    pub next: *mut _FuncCandidateList,
-    pub pathpos: ::core::ffi::c_int,
-    pub oid: Oid,
-    pub nominalnargs: ::core::ffi::c_int,
-    pub nargs: ::core::ffi::c_int,
-    pub nvargs: ::core::ffi::c_int,
-    pub ndargs: ::core::ffi::c_int,
-    pub argnumbers: *mut ::core::ffi::c_int,
-    pub args: __IncompleteArrayField<Oid>,
-}
-impl Default for _FuncCandidateList {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type FuncCandidateList = *mut _FuncCandidateList;
-pub mod TempNamespaceStatus {
-    pub type Type = ::core::ffi::c_uint;
-    pub const TEMP_NAMESPACE_NOT_TEMP: Type = 0;
-    pub const TEMP_NAMESPACE_IDLE: Type = 1;
-    pub const TEMP_NAMESPACE_IN_USE: Type = 2;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct OverrideSearchPath {
-    pub schemas: *mut List,
-    pub addCatalog: bool,
-    pub addTemp: bool,
-    pub generation: uint64,
-}
-impl Default for OverrideSearchPath {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod RVROption {
-    pub type Type = ::core::ffi::c_uint;
-    pub const RVR_MISSING_OK: Type = 1;
-    pub const RVR_NOWAIT: Type = 2;
-    pub const RVR_SKIP_LOCKED: Type = 4;
-}
-pub type RangeVarGetRelidCallback = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        relation: *const RangeVar,
-        relId: Oid,
-        oldRelId: Oid,
-        callback_arg: *mut ::core::ffi::c_void,
-    ),
->;
-pub mod ObjectAccessType {
-    pub type Type = ::core::ffi::c_uint;
-    pub const OAT_POST_CREATE: Type = 0;
-    pub const OAT_DROP: Type = 1;
-    pub const OAT_POST_ALTER: Type = 2;
-    pub const OAT_NAMESPACE_SEARCH: Type = 3;
-    pub const OAT_FUNCTION_EXECUTE: Type = 4;
-    pub const OAT_TRUNCATE: Type = 5;
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ObjectAccessPostCreate {
-    pub is_internal: bool,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ObjectAccessDrop {
-    pub dropflags: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ObjectAccessPostAlter {
-    pub auxiliary_id: Oid,
-    pub is_internal: bool,
-}
-impl Default for ObjectAccessPostAlter {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ObjectAccessNamespaceSearch {
-    pub ereport_on_violation: bool,
-    pub result: bool,
-}
-pub type object_access_hook_type = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        access: ObjectAccessType::Type,
-        classId: Oid,
-        objectId: Oid,
-        subId: ::core::ffi::c_int,
-        arg: *mut ::core::ffi::c_void,
-    ),
->;
-pub type object_access_hook_type_str = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        access: ObjectAccessType::Type,
-        classId: Oid,
-        objectStr: *const ::core::ffi::c_char,
-        subId: ::core::ffi::c_int,
-        arg: *mut ::core::ffi::c_void,
-    ),
->;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_am {
-    pub oid: Oid,
-    pub amname: NameData,
-    pub amhandler: regproc,
-    pub amtype: ::core::ffi::c_char,
-}
-impl Default for FormData_pg_am {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_am = *mut FormData_pg_am;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_amop {
-    pub oid: Oid,
-    pub amopfamily: Oid,
-    pub amoplefttype: Oid,
-    pub amoprighttype: Oid,
-    pub amopstrategy: int16,
-    pub amoppurpose: ::core::ffi::c_char,
-    pub amopopr: Oid,
-    pub amopmethod: Oid,
-    pub amopsortfamily: Oid,
-}
-impl Default for FormData_pg_amop {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_amop = *mut FormData_pg_amop;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_amproc {
-    pub oid: Oid,
-    pub amprocfamily: Oid,
-    pub amproclefttype: Oid,
-    pub amprocrighttype: Oid,
-    pub amprocnum: int16,
-    pub amproc: regproc,
-}
-impl Default for FormData_pg_amproc {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_amproc = *mut FormData_pg_amproc;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_authid {
-    pub oid: Oid,
-    pub rolname: NameData,
-    pub rolsuper: bool,
-    pub rolinherit: bool,
-    pub rolcreaterole: bool,
-    pub rolcreatedb: bool,
-    pub rolcanlogin: bool,
-    pub rolreplication: bool,
-    pub rolbypassrls: bool,
-    pub rolconnlimit: int32,
-}
-impl Default for FormData_pg_authid {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_authid = *mut FormData_pg_authid;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_collation {
-    pub oid: Oid,
-    pub collname: NameData,
-    pub collnamespace: Oid,
-    pub collowner: Oid,
-    pub collprovider: ::core::ffi::c_char,
-    pub collisdeterministic: bool,
-    pub collencoding: int32,
-}
-impl Default for FormData_pg_collation {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_collation = *mut FormData_pg_collation;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_database {
-    pub oid: Oid,
-    pub datname: NameData,
-    pub datdba: Oid,
-    pub encoding: int32,
-    pub datlocprovider: ::core::ffi::c_char,
-    pub datistemplate: bool,
-    pub datallowconn: bool,
-    pub datconnlimit: int32,
-    pub datfrozenxid: TransactionId,
-    pub datminmxid: TransactionId,
-    pub dattablespace: Oid,
-}
-impl Default for FormData_pg_database {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_database = *mut FormData_pg_database;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_enum {
-    pub oid: Oid,
-    pub enumtypid: Oid,
-    pub enumsortorder: float4,
-    pub enumlabel: NameData,
-}
-impl Default for FormData_pg_enum {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_enum = *mut FormData_pg_enum;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_extension {
-    pub oid: Oid,
-    pub extname: NameData,
-    pub extowner: Oid,
-    pub extnamespace: Oid,
-    pub extrelocatable: bool,
-}
-impl Default for FormData_pg_extension {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_extension = *mut FormData_pg_extension;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_foreign_data_wrapper {
-    pub oid: Oid,
-    pub fdwname: NameData,
-    pub fdwowner: Oid,
-    pub fdwhandler: Oid,
-    pub fdwvalidator: Oid,
-}
-impl Default for FormData_pg_foreign_data_wrapper {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_foreign_data_wrapper = *mut FormData_pg_foreign_data_wrapper;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_foreign_server {
-    pub oid: Oid,
-    pub srvname: NameData,
-    pub srvowner: Oid,
-    pub srvfdw: Oid,
-}
-impl Default for FormData_pg_foreign_server {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_foreign_server = *mut FormData_pg_foreign_server;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_foreign_table {
-    pub ftrelid: Oid,
-    pub ftserver: Oid,
-}
-impl Default for FormData_pg_foreign_table {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_foreign_table = *mut FormData_pg_foreign_table;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_operator {
-    pub oid: Oid,
-    pub oprname: NameData,
-    pub oprnamespace: Oid,
-    pub oprowner: Oid,
-    pub oprkind: ::core::ffi::c_char,
-    pub oprcanmerge: bool,
-    pub oprcanhash: bool,
-    pub oprleft: Oid,
-    pub oprright: Oid,
-    pub oprresult: Oid,
-    pub oprcom: Oid,
-    pub oprnegate: Oid,
-    pub oprcode: regproc,
-    pub oprrest: regproc,
-    pub oprjoin: regproc,
-}
-impl Default for FormData_pg_operator {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_operator = *mut FormData_pg_operator;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_opclass {
-    pub oid: Oid,
-    pub opcmethod: Oid,
-    pub opcname: NameData,
-    pub opcnamespace: Oid,
-    pub opcowner: Oid,
-    pub opcfamily: Oid,
-    pub opcintype: Oid,
-    pub opcdefault: bool,
-    pub opckeytype: Oid,
-}
-impl Default for FormData_pg_opclass {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_opclass = *mut FormData_pg_opclass;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_opfamily {
-    pub oid: Oid,
-    pub opfmethod: Oid,
-    pub opfname: NameData,
-    pub opfnamespace: Oid,
-    pub opfowner: Oid,
-}
-impl Default for FormData_pg_opfamily {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_opfamily = *mut FormData_pg_opfamily;
-#[repr(C)]
-#[derive(Debug)]
-pub struct FormData_pg_proc {
-    pub oid: Oid,
-    pub proname: NameData,
-    pub pronamespace: Oid,
-    pub proowner: Oid,
-    pub prolang: Oid,
-    pub procost: float4,
-    pub prorows: float4,
-    pub provariadic: Oid,
-    pub prosupport: regproc,
-    pub prokind: ::core::ffi::c_char,
-    pub prosecdef: bool,
-    pub proleakproof: bool,
-    pub proisstrict: bool,
-    pub proretset: bool,
-    pub provolatile: ::core::ffi::c_char,
-    pub proparallel: ::core::ffi::c_char,
-    pub pronargs: int16,
-    pub pronargdefaults: int16,
-    pub prorettype: Oid,
-    pub proargtypes: oidvector,
-}
-impl Default for FormData_pg_proc {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_proc = *mut FormData_pg_proc;
-pub mod ParseExprKind {
-    pub type Type = ::core::ffi::c_uint;
-    pub const EXPR_KIND_NONE: Type = 0;
-    pub const EXPR_KIND_OTHER: Type = 1;
-    pub const EXPR_KIND_JOIN_ON: Type = 2;
-    pub const EXPR_KIND_JOIN_USING: Type = 3;
-    pub const EXPR_KIND_FROM_SUBSELECT: Type = 4;
-    pub const EXPR_KIND_FROM_FUNCTION: Type = 5;
-    pub const EXPR_KIND_WHERE: Type = 6;
-    pub const EXPR_KIND_HAVING: Type = 7;
-    pub const EXPR_KIND_FILTER: Type = 8;
-    pub const EXPR_KIND_WINDOW_PARTITION: Type = 9;
-    pub const EXPR_KIND_WINDOW_ORDER: Type = 10;
-    pub const EXPR_KIND_WINDOW_FRAME_RANGE: Type = 11;
-    pub const EXPR_KIND_WINDOW_FRAME_ROWS: Type = 12;
-    pub const EXPR_KIND_WINDOW_FRAME_GROUPS: Type = 13;
-    pub const EXPR_KIND_SELECT_TARGET: Type = 14;
-    pub const EXPR_KIND_INSERT_TARGET: Type = 15;
-    pub const EXPR_KIND_UPDATE_SOURCE: Type = 16;
-    pub const EXPR_KIND_UPDATE_TARGET: Type = 17;
-    pub const EXPR_KIND_MERGE_WHEN: Type = 18;
-    pub const EXPR_KIND_GROUP_BY: Type = 19;
-    pub const EXPR_KIND_ORDER_BY: Type = 20;
-    pub const EXPR_KIND_DISTINCT_ON: Type = 21;
-    pub const EXPR_KIND_LIMIT: Type = 22;
-    pub const EXPR_KIND_OFFSET: Type = 23;
-    pub const EXPR_KIND_RETURNING: Type = 24;
-    pub const EXPR_KIND_VALUES: Type = 25;
-    pub const EXPR_KIND_VALUES_SINGLE: Type = 26;
-    pub const EXPR_KIND_CHECK_CONSTRAINT: Type = 27;
-    pub const EXPR_KIND_DOMAIN_CHECK: Type = 28;
-    pub const EXPR_KIND_COLUMN_DEFAULT: Type = 29;
-    pub const EXPR_KIND_FUNCTION_DEFAULT: Type = 30;
-    pub const EXPR_KIND_INDEX_EXPRESSION: Type = 31;
-    pub const EXPR_KIND_INDEX_PREDICATE: Type = 32;
-    pub const EXPR_KIND_STATS_EXPRESSION: Type = 33;
-    pub const EXPR_KIND_ALTER_COL_TRANSFORM: Type = 34;
-    pub const EXPR_KIND_EXECUTE_PARAMETER: Type = 35;
-    pub const EXPR_KIND_TRIGGER_WHEN: Type = 36;
-    pub const EXPR_KIND_POLICY: Type = 37;
-    pub const EXPR_KIND_PARTITION_BOUND: Type = 38;
-    pub const EXPR_KIND_PARTITION_EXPRESSION: Type = 39;
-    pub const EXPR_KIND_CALL_ARGUMENT: Type = 40;
-    pub const EXPR_KIND_COPY_WHERE: Type = 41;
-    pub const EXPR_KIND_GENERATED_COLUMN: Type = 42;
-    pub const EXPR_KIND_CYCLE_MARK: Type = 43;
-}
-pub type PreParseColumnRefHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(pstate: *mut ParseState, cref: *mut ColumnRef) -> *mut Node,
->;
-pub type PostParseColumnRefHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        pstate: *mut ParseState,
-        cref: *mut ColumnRef,
-        var: *mut Node,
-    ) -> *mut Node,
->;
-pub type ParseParamRefHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(pstate: *mut ParseState, pref: *mut ParamRef) -> *mut Node,
->;
-pub type CoerceParamHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        pstate: *mut ParseState,
-        param: *mut Param,
-        targetTypeId: Oid,
-        targetTypeMod: int32,
-        location: ::core::ffi::c_int,
-    ) -> *mut Node,
->;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ParseState {
-    pub parentParseState: *mut ParseState,
-    pub p_sourcetext: *const ::core::ffi::c_char,
-    pub p_rtable: *mut List,
-    pub p_rteperminfos: *mut List,
-    pub p_joinexprs: *mut List,
-    pub p_nullingrels: *mut List,
-    pub p_joinlist: *mut List,
-    pub p_namespace: *mut List,
-    pub p_lateral_active: bool,
-    pub p_ctenamespace: *mut List,
-    pub p_future_ctes: *mut List,
-    pub p_parent_cte: *mut CommonTableExpr,
-    pub p_target_relation: Relation,
-    pub p_target_nsitem: *mut ParseNamespaceItem,
-    pub p_is_insert: bool,
-    pub p_windowdefs: *mut List,
-    pub p_expr_kind: ParseExprKind::Type,
-    pub p_next_resno: ::core::ffi::c_int,
-    pub p_multiassign_exprs: *mut List,
-    pub p_locking_clause: *mut List,
-    pub p_locked_from_parent: bool,
-    pub p_resolve_unknowns: bool,
-    pub p_queryEnv: *mut QueryEnvironment,
-    pub p_hasAggs: bool,
-    pub p_hasWindowFuncs: bool,
-    pub p_hasTargetSRFs: bool,
-    pub p_hasSubLinks: bool,
-    pub p_hasModifyingCTE: bool,
-    pub p_last_srf: *mut Node,
-    pub p_pre_columnref_hook: PreParseColumnRefHook,
-    pub p_post_columnref_hook: PostParseColumnRefHook,
-    pub p_paramref_hook: ParseParamRefHook,
-    pub p_coerce_param_hook: CoerceParamHook,
-    pub p_ref_hook_state: *mut ::core::ffi::c_void,
-}
-impl Default for ParseState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ParseNamespaceItem {
-    pub p_names: *mut Alias,
-    pub p_rte: *mut RangeTblEntry,
-    pub p_rtindex: ::core::ffi::c_int,
-    pub p_perminfo: *mut RTEPermissionInfo,
-    pub p_nscolumns: *mut ParseNamespaceColumn,
-    pub p_rel_visible: bool,
-    pub p_cols_visible: bool,
-    pub p_lateral_only: bool,
-    pub p_lateral_ok: bool,
-}
-impl Default for ParseNamespaceItem {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ParseNamespaceColumn {
-    pub p_varno: Index,
-    pub p_varattno: AttrNumber,
-    pub p_vartype: Oid,
-    pub p_vartypmod: int32,
-    pub p_varcollid: Oid,
-    pub p_varnosyn: Index,
-    pub p_varattnosyn: AttrNumber,
-    pub p_dontexpand: bool,
-}
-impl Default for ParseNamespaceColumn {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ParseCallbackState {
-    pub pstate: *mut ParseState,
-    pub location: ::core::ffi::c_int,
-    pub errcallback: ErrorContextCallback,
-}
-impl Default for ParseCallbackState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AclItem {
-    pub ai_grantee: Oid,
-    pub ai_grantor: Oid,
-    pub ai_privs: AclMode,
-}
-impl Default for AclItem {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Acl = ArrayType;
-pub mod AclMaskHow {
-    pub type Type = ::core::ffi::c_uint;
-    pub const ACLMASK_ALL: Type = 0;
-    pub const ACLMASK_ANY: Type = 1;
-}
-pub mod AclResult {
-    pub type Type = ::core::ffi::c_uint;
-    pub const ACLCHECK_OK: Type = 0;
-    pub const ACLCHECK_NO_PRIV: Type = 1;
-    pub const ACLCHECK_NOT_OWNER: Type = 2;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_namespace {
-    pub oid: Oid,
-    pub nspname: NameData,
-    pub nspowner: Oid,
-}
-impl Default for FormData_pg_namespace {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_namespace = *mut FormData_pg_namespace;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_seclabel {
-    pub objoid: Oid,
-    pub classoid: Oid,
-    pub objsubid: int32,
-}
-impl Default for FormData_pg_seclabel {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_tablespace {
-    pub oid: Oid,
-    pub spcname: NameData,
-    pub spcowner: Oid,
-}
-impl Default for FormData_pg_tablespace {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_tablespace = *mut FormData_pg_tablespace;
-#[repr(C)]
-#[derive(Debug)]
-pub struct FormData_pg_trigger {
-    pub oid: Oid,
-    pub tgrelid: Oid,
-    pub tgparentid: Oid,
-    pub tgname: NameData,
-    pub tgfoid: Oid,
-    pub tgtype: int16,
-    pub tgenabled: ::core::ffi::c_char,
-    pub tgisinternal: bool,
-    pub tgconstrrelid: Oid,
-    pub tgconstrindid: Oid,
-    pub tgconstraint: Oid,
-    pub tgdeferrable: bool,
-    pub tginitdeferred: bool,
-    pub tgnargs: int16,
-    pub tgattr: int2vector,
-}
-impl Default for FormData_pg_trigger {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_trigger = *mut FormData_pg_trigger;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_type {
-    pub oid: Oid,
-    pub typname: NameData,
-    pub typnamespace: Oid,
-    pub typowner: Oid,
-    pub typlen: int16,
-    pub typbyval: bool,
-    pub typtype: ::core::ffi::c_char,
-    pub typcategory: ::core::ffi::c_char,
-    pub typispreferred: bool,
-    pub typisdefined: bool,
-    pub typdelim: ::core::ffi::c_char,
-    pub typrelid: Oid,
-    pub typsubscript: regproc,
-    pub typelem: Oid,
-    pub typarray: Oid,
-    pub typinput: regproc,
-    pub typoutput: regproc,
-    pub typreceive: regproc,
-    pub typsend: regproc,
-    pub typmodin: regproc,
-    pub typmodout: regproc,
-    pub typanalyze: regproc,
-    pub typalign: ::core::ffi::c_char,
-    pub typstorage: ::core::ffi::c_char,
-    pub typnotnull: bool,
-    pub typbasetype: Oid,
-    pub typtypmod: int32,
-    pub typndims: int32,
-    pub typcollation: Oid,
-}
-impl Default for FormData_pg_type {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_type = *mut FormData_pg_type;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_user_mapping {
-    pub oid: Oid,
-    pub umuser: Oid,
-    pub umserver: Oid,
-}
-impl Default for FormData_pg_user_mapping {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_user_mapping = *mut FormData_pg_user_mapping;
-pub mod CopyHeaderChoice {
-    pub type Type = ::core::ffi::c_uint;
-    pub const COPY_HEADER_FALSE: Type = 0;
-    pub const COPY_HEADER_TRUE: Type = 1;
-    pub const COPY_HEADER_MATCH: Type = 2;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CopyFormatOptions {
-    pub file_encoding: ::core::ffi::c_int,
-    pub binary: bool,
-    pub freeze: bool,
-    pub csv_mode: bool,
-    pub header_line: CopyHeaderChoice::Type,
-    pub null_print: *mut ::core::ffi::c_char,
-    pub null_print_len: ::core::ffi::c_int,
-    pub null_print_client: *mut ::core::ffi::c_char,
-    pub default_print: *mut ::core::ffi::c_char,
-    pub default_print_len: ::core::ffi::c_int,
-    pub delim: *mut ::core::ffi::c_char,
-    pub quote: *mut ::core::ffi::c_char,
-    pub escape: *mut ::core::ffi::c_char,
-    pub force_quote: *mut List,
-    pub force_quote_all: bool,
-    pub force_quote_flags: *mut bool,
-    pub force_notnull: *mut List,
-    pub force_notnull_flags: *mut bool,
-    pub force_null: *mut List,
-    pub force_null_flags: *mut bool,
-    pub convert_selectively: bool,
-    pub convert_select: *mut List,
-}
-impl Default for CopyFormatOptions {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CopyFromStateData {
-    _unused: [u8; 0],
-}
-pub type CopyFromState = *mut CopyFromStateData;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CopyToStateData {
-    _unused: [u8; 0],
-}
-pub type CopyToState = *mut CopyToStateData;
-pub type copy_data_source_cb = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        outbuf: *mut ::core::ffi::c_void,
-        minread: ::core::ffi::c_int,
-        maxread: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int,
->;
-pub type copy_data_dest_cb = ::core::option::Option<
-    unsafe extern "C-unwind" fn(data: *mut ::core::ffi::c_void, len: ::core::ffi::c_int),
->;
-pub type EOM_get_flat_size_method =
-    ::core::option::Option<unsafe extern "C-unwind" fn(eohptr: *mut ExpandedObjectHeader) -> Size>;
-pub type EOM_flatten_into_method = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        eohptr: *mut ExpandedObjectHeader,
-        result: *mut ::core::ffi::c_void,
-        allocated_size: Size,
-    ),
->;
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ExpandedObjectMethods {
-    pub get_flat_size: EOM_get_flat_size_method,
-    pub flatten_into: EOM_flatten_into_method,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExpandedObjectHeader {
-    pub vl_len_: int32,
-    pub eoh_methods: *const ExpandedObjectMethods,
-    pub eoh_context: MemoryContext,
-    pub eoh_rw_ptr: [::core::ffi::c_char; 10usize],
-    pub eoh_ro_ptr: [::core::ffi::c_char; 10usize],
-}
-impl Default for ExpandedObjectHeader {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ArrayType {
-    pub vl_len_: int32,
-    pub ndim: ::core::ffi::c_int,
-    pub dataoffset: int32,
-    pub elemtype: Oid,
-}
-impl Default for ArrayType {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExpandedArrayHeader {
-    pub hdr: ExpandedObjectHeader,
-    pub ea_magic: ::core::ffi::c_int,
-    pub ndims: ::core::ffi::c_int,
-    pub dims: *mut ::core::ffi::c_int,
-    pub lbound: *mut ::core::ffi::c_int,
-    pub element_type: Oid,
-    pub typlen: int16,
-    pub typbyval: bool,
-    pub typalign: ::core::ffi::c_char,
-    pub dvalues: *mut Datum,
-    pub dnulls: *mut bool,
-    pub dvalueslen: ::core::ffi::c_int,
-    pub nelems: ::core::ffi::c_int,
-    pub flat_size: Size,
-    pub fvalue: *mut ArrayType,
-    pub fstartptr: *mut ::core::ffi::c_char,
-    pub fendptr: *mut ::core::ffi::c_char,
-}
-impl Default for ExpandedArrayHeader {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union AnyArrayType {
-    pub flt: ArrayType,
-    pub xpn: ExpandedArrayHeader,
-}
-impl Default for AnyArrayType {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ArrayBuildState {
-    pub mcontext: MemoryContext,
-    pub dvalues: *mut Datum,
-    pub dnulls: *mut bool,
-    pub alen: ::core::ffi::c_int,
-    pub nelems: ::core::ffi::c_int,
-    pub element_type: Oid,
-    pub typlen: int16,
-    pub typbyval: bool,
-    pub typalign: ::core::ffi::c_char,
-    pub private_cxt: bool,
-}
-impl Default for ArrayBuildState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ArrayBuildStateArr {
-    pub mcontext: MemoryContext,
-    pub data: *mut ::core::ffi::c_char,
-    pub nullbitmap: *mut bits8,
-    pub abytes: ::core::ffi::c_int,
-    pub nbytes: ::core::ffi::c_int,
-    pub aitems: ::core::ffi::c_int,
-    pub nitems: ::core::ffi::c_int,
-    pub ndims: ::core::ffi::c_int,
-    pub dims: [::core::ffi::c_int; 6usize],
-    pub lbs: [::core::ffi::c_int; 6usize],
-    pub array_type: Oid,
-    pub element_type: Oid,
-    pub private_cxt: bool,
-}
-impl Default for ArrayBuildStateArr {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ArrayBuildStateAny {
-    pub scalarstate: *mut ArrayBuildState,
-    pub arraystate: *mut ArrayBuildStateArr,
-}
-impl Default for ArrayBuildStateAny {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ArrayMetaState {
-    pub element_type: Oid,
-    pub typlen: int16,
-    pub typbyval: bool,
-    pub typalign: ::core::ffi::c_char,
-    pub typdelim: ::core::ffi::c_char,
-    pub typioparam: Oid,
-    pub typiofunc: Oid,
-    pub proc_: FmgrInfo,
-}
-impl Default for ArrayMetaState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ArrayMapState {
-    pub inp_extra: ArrayMetaState,
-    pub ret_extra: ArrayMetaState,
-}
-impl Default for ArrayMapState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ArrayIteratorData {
-    _unused: [u8; 0],
-}
-pub type ArrayIterator = *mut ArrayIteratorData;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_event_trigger {
-    pub oid: Oid,
-    pub evtname: NameData,
-    pub evtevent: NameData,
-    pub evtowner: Oid,
-    pub evtfoid: Oid,
-    pub evtenabled: ::core::ffi::c_char,
-}
-impl Default for FormData_pg_event_trigger {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_event_trigger = *mut FormData_pg_event_trigger;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct InternalGrant {
-    pub is_grant: bool,
-    pub objtype: ObjectType::Type,
-    pub objects: *mut List,
-    pub all_privs: bool,
-    pub privileges: AclMode,
-    pub col_privs: *mut List,
-    pub grantees: *mut List,
-    pub grant_option: bool,
-    pub behavior: DropBehavior::Type,
-}
-impl Default for InternalGrant {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod CollectedCommandType {
-    pub type Type = ::core::ffi::c_uint;
-    pub const SCT_Simple: Type = 0;
-    pub const SCT_AlterTable: Type = 1;
-    pub const SCT_Grant: Type = 2;
-    pub const SCT_AlterOpFamily: Type = 3;
-    pub const SCT_AlterDefaultPrivileges: Type = 4;
-    pub const SCT_CreateOpClass: Type = 5;
-    pub const SCT_AlterTSConfig: Type = 6;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CollectedATSubcmd {
-    pub address: ObjectAddress,
-    pub parsetree: *mut Node,
-}
-impl Default for CollectedATSubcmd {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct CollectedCommand {
-    pub type_: CollectedCommandType::Type,
-    pub in_extension: bool,
-    pub parsetree: *mut Node,
-    pub d: CollectedCommand__bindgen_ty_1,
-    pub parent: *mut CollectedCommand,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union CollectedCommand__bindgen_ty_1 {
-    pub simple: CollectedCommand__bindgen_ty_1__bindgen_ty_1,
-    pub alterTable: CollectedCommand__bindgen_ty_1__bindgen_ty_2,
-    pub grant: CollectedCommand__bindgen_ty_1__bindgen_ty_3,
-    pub opfam: CollectedCommand__bindgen_ty_1__bindgen_ty_4,
-    pub createopc: CollectedCommand__bindgen_ty_1__bindgen_ty_5,
-    pub atscfg: CollectedCommand__bindgen_ty_1__bindgen_ty_6,
-    pub defprivs: CollectedCommand__bindgen_ty_1__bindgen_ty_7,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_1 {
-    pub address: ObjectAddress,
-    pub secondaryObject: ObjectAddress,
-}
-impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_2 {
-    pub objectId: Oid,
-    pub classId: Oid,
-    pub subcmds: *mut List,
-}
-impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_2 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_3 {
-    pub istmt: *mut InternalGrant,
-}
-impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_3 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_4 {
-    pub address: ObjectAddress,
-    pub operators: *mut List,
-    pub procedures: *mut List,
-}
-impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_4 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_5 {
-    pub address: ObjectAddress,
-    pub operators: *mut List,
-    pub procedures: *mut List,
-}
-impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_5 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_6 {
-    pub address: ObjectAddress,
-    pub dictIds: *mut Oid,
-    pub ndicts: ::core::ffi::c_int,
-}
-impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_6 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_7 {
-    pub objtype: ObjectType::Type,
-}
-impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_7 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-impl Default for CollectedCommand__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-impl Default for CollectedCommand {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct EventTriggerData {
-    pub type_: NodeTag,
-    pub event: *const ::core::ffi::c_char,
-    pub parsetree: *mut Node,
-    pub tag: CommandTag::Type,
-}
-impl Default for EventTriggerData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod ExplainFormat {
-    pub type Type = ::core::ffi::c_uint;
-    pub const EXPLAIN_FORMAT_TEXT: Type = 0;
-    pub const EXPLAIN_FORMAT_XML: Type = 1;
-    pub const EXPLAIN_FORMAT_JSON: Type = 2;
-    pub const EXPLAIN_FORMAT_YAML: Type = 3;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExplainWorkersState {
-    pub num_workers: ::core::ffi::c_int,
-    pub worker_inited: *mut bool,
-    pub worker_str: *mut StringInfoData,
-    pub worker_state_save: *mut ::core::ffi::c_int,
-    pub prev_str: StringInfo,
-}
-impl Default for ExplainWorkersState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExplainState {
-    pub str_: StringInfo,
-    pub verbose: bool,
-    pub analyze: bool,
-    pub costs: bool,
-    pub buffers: bool,
-    pub wal: bool,
-    pub timing: bool,
-    pub summary: bool,
-    pub settings: bool,
-    pub generic: bool,
-    pub format: ExplainFormat::Type,
-    pub indent: ::core::ffi::c_int,
-    pub grouping_stack: *mut List,
-    pub pstmt: *mut PlannedStmt,
-    pub rtable: *mut List,
-    pub rtable_names: *mut List,
-    pub deparse_cxt: *mut List,
-    pub printed_subplans: *mut Bitmapset,
-    pub hide_workers: bool,
-    pub workers_state: *mut ExplainWorkersState,
-}
-impl Default for ExplainState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type ExplainOneQuery_hook_type = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        query: *mut Query,
-        cursorOptions: ::core::ffi::c_int,
-        into: *mut IntoClause,
-        es: *mut ExplainState,
-        queryString: *const ::core::ffi::c_char,
-        params: ParamListInfo,
-        queryEnv: *mut QueryEnvironment,
-    ),
->;
-pub type explain_get_index_name_hook_type =
-    ::core::option::Option<unsafe extern "C-unwind" fn(indexId: Oid) -> *const ::core::ffi::c_char>;
-pub mod PlanCacheMode {
-    pub type Type = ::core::ffi::c_uint;
-    pub const PLAN_CACHE_MODE_AUTO: Type = 0;
-    pub const PLAN_CACHE_MODE_FORCE_GENERIC_PLAN: Type = 1;
-    pub const PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN: Type = 2;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CachedPlanSource {
-    pub magic: ::core::ffi::c_int,
-    pub raw_parse_tree: *mut RawStmt,
-    pub query_string: *const ::core::ffi::c_char,
-    pub commandTag: CommandTag::Type,
-    pub param_types: *mut Oid,
-    pub num_params: ::core::ffi::c_int,
-    pub parserSetup: ParserSetupHook,
-    pub parserSetupArg: *mut ::core::ffi::c_void,
-    pub cursor_options: ::core::ffi::c_int,
-    pub fixed_result: bool,
-    pub resultDesc: TupleDesc,
-    pub context: MemoryContext,
-    pub query_list: *mut List,
-    pub relationOids: *mut List,
-    pub invalItems: *mut List,
-    pub search_path: *mut OverrideSearchPath,
-    pub query_context: MemoryContext,
-    pub rewriteRoleId: Oid,
-    pub rewriteRowSecurity: bool,
-    pub dependsOnRLS: bool,
-    pub gplan: *mut CachedPlan,
-    pub is_oneshot: bool,
-    pub is_complete: bool,
-    pub is_saved: bool,
-    pub is_valid: bool,
-    pub generation: ::core::ffi::c_int,
-    pub node: dlist_node,
-    pub generic_cost: f64,
-    pub total_custom_cost: f64,
-    pub num_custom_plans: int64,
-    pub num_generic_plans: int64,
-}
-impl Default for CachedPlanSource {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CachedPlan {
-    pub magic: ::core::ffi::c_int,
-    pub stmt_list: *mut List,
-    pub is_oneshot: bool,
-    pub is_saved: bool,
-    pub is_valid: bool,
-    pub planRoleId: Oid,
-    pub dependsOnRole: bool,
-    pub saved_xmin: TransactionId,
-    pub generation: ::core::ffi::c_int,
-    pub refcount: ::core::ffi::c_int,
-    pub context: MemoryContext,
-}
-impl Default for CachedPlan {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct CachedExpression {
-    pub magic: ::core::ffi::c_int,
-    pub expr: *mut Node,
-    pub is_valid: bool,
-    pub relationOids: *mut List,
-    pub invalItems: *mut List,
-    pub context: MemoryContext,
-    pub node: dlist_node,
-}
-impl Default for CachedExpression {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct PreparedStatement {
-    pub stmt_name: [::core::ffi::c_char; 64usize],
-    pub plansource: *mut CachedPlanSource,
-    pub from_sql: bool,
-    pub prepare_time: TimestampTz,
-}
-impl Default for PreparedStatement {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type check_object_relabel_type = ::core::option::Option<
-    unsafe extern "C-unwind" fn(object: *const ObjectAddress, seclabel: *const ::core::ffi::c_char),
->;
-#[repr(C)]
-#[derive(Debug)]
-pub struct xl_tblspc_create_rec {
-    pub ts_id: Oid,
-    pub ts_path: __IncompleteArrayField<::core::ffi::c_char>,
-}
-impl Default for xl_tblspc_create_rec {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct xl_tblspc_drop_rec {
-    pub ts_id: Oid,
-}
-impl Default for xl_tblspc_drop_rec {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct TableSpaceOpts {
-    pub vl_len_: int32,
-    pub random_page_cost: float8,
-    pub seq_page_cost: float8,
-    pub effective_io_concurrency: ::core::ffi::c_int,
-    pub maintenance_io_concurrency: ::core::ffi::c_int,
-}
-pub type TriggerEvent = uint32;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct TriggerData {
-    pub type_: NodeTag,
-    pub tg_event: TriggerEvent,
-    pub tg_relation: Relation,
-    pub tg_trigtuple: HeapTuple,
-    pub tg_newtuple: HeapTuple,
-    pub tg_trigger: *mut Trigger,
-    pub tg_trigslot: *mut TupleTableSlot,
-    pub tg_newslot: *mut TupleTableSlot,
-    pub tg_oldtable: *mut Tuplestorestate,
-    pub tg_newtable: *mut Tuplestorestate,
-    pub tg_updatedcols: *const Bitmapset,
-}
-impl Default for TriggerData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AfterTriggersTableData {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct TransitionCaptureState {
-    pub tcs_delete_old_table: bool,
-    pub tcs_update_old_table: bool,
-    pub tcs_update_new_table: bool,
-    pub tcs_insert_new_table: bool,
-    pub tcs_original_insert_tuple: *mut TupleTableSlot,
-    pub tcs_private: *mut AfterTriggersTableData,
-}
-impl Default for TransitionCaptureState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod PasswordType {
-    pub type Type = ::core::ffi::c_uint;
-    pub const PASSWORD_TYPE_PLAINTEXT: Type = 0;
-    pub const PASSWORD_TYPE_MD5: Type = 1;
-    pub const PASSWORD_TYPE_SCRAM_SHA_256: Type = 2;
-}
-pub mod GucContext {
-    pub type Type = ::core::ffi::c_uint;
-    pub const PGC_INTERNAL: Type = 0;
-    pub const PGC_POSTMASTER: Type = 1;
-    pub const PGC_SIGHUP: Type = 2;
-    pub const PGC_SU_BACKEND: Type = 3;
-    pub const PGC_BACKEND: Type = 4;
-    pub const PGC_SUSET: Type = 5;
-    pub const PGC_USERSET: Type = 6;
-}
-pub mod GucSource {
-    pub type Type = ::core::ffi::c_uint;
-    pub const PGC_S_DEFAULT: Type = 0;
-    pub const PGC_S_DYNAMIC_DEFAULT: Type = 1;
-    pub const PGC_S_ENV_VAR: Type = 2;
-    pub const PGC_S_FILE: Type = 3;
-    pub const PGC_S_ARGV: Type = 4;
-    pub const PGC_S_GLOBAL: Type = 5;
-    pub const PGC_S_DATABASE: Type = 6;
-    pub const PGC_S_USER: Type = 7;
-    pub const PGC_S_DATABASE_USER: Type = 8;
-    pub const PGC_S_CLIENT: Type = 9;
-    pub const PGC_S_OVERRIDE: Type = 10;
-    pub const PGC_S_INTERACTIVE: Type = 11;
-    pub const PGC_S_TEST: Type = 12;
-    pub const PGC_S_SESSION: Type = 13;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ConfigVariable {
-    pub name: *mut ::core::ffi::c_char,
-    pub value: *mut ::core::ffi::c_char,
-    pub errmsg: *mut ::core::ffi::c_char,
-    pub filename: *mut ::core::ffi::c_char,
-    pub sourceline: ::core::ffi::c_int,
-    pub ignore: bool,
-    pub applied: bool,
-    pub next: *mut ConfigVariable,
-}
-impl Default for ConfigVariable {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct config_enum_entry {
-    pub name: *const ::core::ffi::c_char,
-    pub val: ::core::ffi::c_int,
-    pub hidden: bool,
-}
-impl Default for config_enum_entry {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type GucBoolCheckHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        newval: *mut bool,
-        extra: *mut *mut ::core::ffi::c_void,
-        source: GucSource::Type,
-    ) -> bool,
->;
-pub type GucIntCheckHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        newval: *mut ::core::ffi::c_int,
-        extra: *mut *mut ::core::ffi::c_void,
-        source: GucSource::Type,
-    ) -> bool,
->;
-pub type GucRealCheckHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        newval: *mut f64,
-        extra: *mut *mut ::core::ffi::c_void,
-        source: GucSource::Type,
-    ) -> bool,
->;
-pub type GucStringCheckHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        newval: *mut *mut ::core::ffi::c_char,
-        extra: *mut *mut ::core::ffi::c_void,
-        source: GucSource::Type,
-    ) -> bool,
->;
-pub type GucEnumCheckHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        newval: *mut ::core::ffi::c_int,
-        extra: *mut *mut ::core::ffi::c_void,
-        source: GucSource::Type,
-    ) -> bool,
->;
-pub type GucBoolAssignHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(newval: bool, extra: *mut ::core::ffi::c_void),
->;
-pub type GucIntAssignHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(newval: ::core::ffi::c_int, extra: *mut ::core::ffi::c_void),
->;
-pub type GucRealAssignHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(newval: f64, extra: *mut ::core::ffi::c_void),
->;
-pub type GucStringAssignHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        newval: *const ::core::ffi::c_char,
-        extra: *mut ::core::ffi::c_void,
-    ),
->;
-pub type GucEnumAssignHook = ::core::option::Option<
-    unsafe extern "C-unwind" fn(newval: ::core::ffi::c_int, extra: *mut ::core::ffi::c_void),
->;
-pub type GucShowHook =
-    ::core::option::Option<unsafe extern "C-unwind" fn() -> *const ::core::ffi::c_char>;
-pub mod GucAction {
-    pub type Type = ::core::ffi::c_uint;
-    pub const GUC_ACTION_SET: Type = 0;
-    pub const GUC_ACTION_LOCAL: Type = 1;
-    pub const GUC_ACTION_SAVE: Type = 2;
-}
-pub type check_password_hook_type = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        username: *const ::core::ffi::c_char,
-        shadow_pass: *const ::core::ffi::c_char,
-        password_type: PasswordType::Type,
-        validuntil_time: Datum,
-        validuntil_null: bool,
-    ),
->;
-pub type bgworker_main_type = ::core::option::Option<unsafe extern "C-unwind" fn(main_arg: Datum)>;
-pub mod BgWorkerStartTime {
-    pub type Type = ::core::ffi::c_uint;
-    pub const BgWorkerStart_PostmasterStart: Type = 0;
-    pub const BgWorkerStart_ConsistentState: Type = 1;
-    pub const BgWorkerStart_RecoveryFinished: Type = 2;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BackgroundWorker {
-    pub bgw_name: [::core::ffi::c_char; 96usize],
-    pub bgw_type: [::core::ffi::c_char; 96usize],
-    pub bgw_flags: ::core::ffi::c_int,
-    pub bgw_start_time: BgWorkerStartTime::Type,
-    pub bgw_restart_time: ::core::ffi::c_int,
-    pub bgw_library_name: [::core::ffi::c_char; 96usize],
-    pub bgw_function_name: [::core::ffi::c_char; 96usize],
-    pub bgw_main_arg: Datum,
-    pub bgw_extra: [::core::ffi::c_char; 128usize],
-    pub bgw_notify_pid: pid_t,
-}
-impl Default for BackgroundWorker {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod BgwHandleStatus {
-    pub type Type = ::core::ffi::c_uint;
-    pub const BGWH_STARTED: Type = 0;
-    pub const BGWH_NOT_YET_STARTED: Type = 1;
-    pub const BGWH_STOPPED: Type = 2;
-    pub const BGWH_POSTMASTER_DIED: Type = 3;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BackgroundWorkerHandle {
-    _unused: [u8; 0],
-}
-pub type XidStatus = ::core::ffi::c_int;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct xl_clog_truncate {
-    pub pageno: ::core::ffi::c_int,
-    pub oldestXact: TransactionId,
-    pub oldestXactDb: Oid,
-}
-impl Default for xl_clog_truncate {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct Latch {
-    pub is_set: sig_atomic_t,
-    pub maybe_sleeping: sig_atomic_t,
-    pub is_shared: bool,
-    pub owner_pid: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct WaitEvent {
-    pub pos: ::core::ffi::c_int,
-    pub events: uint32,
-    pub fd: pgsocket,
-    pub user_data: *mut ::core::ffi::c_void,
-}
-impl Default for WaitEvent {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct PGSemaphoreData {
-    _unused: [u8; 0],
-}
-pub type PGSemaphore = *mut PGSemaphoreData;
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct XidCacheStatus {
-    pub count: uint8,
-    pub overflowed: bool,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct XidCache {
-    pub xids: [TransactionId; 64usize],
-}
-impl Default for XidCache {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod ProcWaitStatus {
-    pub type Type = ::core::ffi::c_uint;
-    pub const PROC_WAIT_STATUS_OK: Type = 0;
-    pub const PROC_WAIT_STATUS_WAITING: Type = 1;
-    pub const PROC_WAIT_STATUS_ERROR: Type = 2;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct PGPROC {
-    pub links: dlist_node,
-    pub procgloballist: *mut dlist_head,
-    pub sem: PGSemaphore,
-    pub waitStatus: ProcWaitStatus::Type,
-    pub procLatch: Latch,
-    pub xid: TransactionId,
-    pub xmin: TransactionId,
-    pub lxid: LocalTransactionId,
-    pub pid: ::core::ffi::c_int,
-    pub pgxactoff: ::core::ffi::c_int,
-    pub pgprocno: ::core::ffi::c_int,
-    pub backendId: BackendId,
-    pub databaseId: Oid,
-    pub roleId: Oid,
-    pub tempNamespaceId: Oid,
-    pub isBackgroundWorker: bool,
-    pub recoveryConflictPending: bool,
-    pub lwWaiting: uint8,
-    pub lwWaitMode: uint8,
-    pub lwWaitLink: proclist_node,
-    pub cvWaitLink: proclist_node,
-    pub waitLock: *mut LOCK,
-    pub waitProcLock: *mut PROCLOCK,
-    pub waitLockMode: LOCKMODE,
-    pub heldLocks: LOCKMASK,
-    pub waitStart: pg_atomic_uint64,
-    pub delayChkptFlags: ::core::ffi::c_int,
-    pub statusFlags: uint8,
-    pub waitLSN: XLogRecPtr,
-    pub syncRepState: ::core::ffi::c_int,
-    pub syncRepLinks: dlist_node,
-    pub myProcLocks: [dlist_head; 16usize],
-    pub subxidStatus: XidCacheStatus,
-    pub subxids: XidCache,
-    pub procArrayGroupMember: bool,
-    pub procArrayGroupNext: pg_atomic_uint32,
-    pub procArrayGroupMemberXid: TransactionId,
-    pub wait_event_info: uint32,
-    pub clogGroupMember: bool,
-    pub clogGroupNext: pg_atomic_uint32,
-    pub clogGroupMemberXid: TransactionId,
-    pub clogGroupMemberXidStatus: XidStatus,
-    pub clogGroupMemberPage: ::core::ffi::c_int,
-    pub clogGroupMemberLsn: XLogRecPtr,
-    pub fpInfoLock: LWLock,
-    pub fpLockBits: uint64,
-    pub fpRelId: [Oid; 16usize],
-    pub fpVXIDLock: bool,
-    pub fpLocalTransactionId: LocalTransactionId,
-    pub lockGroupLeader: *mut PGPROC,
-    pub lockGroupMembers: dlist_head,
-    pub lockGroupLink: dlist_node,
-}
-impl Default for PGPROC {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct PROC_HDR {
-    pub allProcs: *mut PGPROC,
-    pub xids: *mut TransactionId,
-    pub subxidStates: *mut XidCacheStatus,
-    pub statusFlags: *mut uint8,
-    pub allProcCount: uint32,
-    pub freeProcs: dlist_head,
-    pub autovacFreeProcs: dlist_head,
-    pub bgworkerFreeProcs: dlist_head,
-    pub walsenderFreeProcs: dlist_head,
-    pub procArrayGroupFirst: pg_atomic_uint32,
-    pub clogGroupFirst: pg_atomic_uint32,
-    pub walwriterLatch: *mut Latch,
-    pub checkpointerLatch: *mut Latch,
-    pub spins_per_delay: ::core::ffi::c_int,
-    pub startupBufferPinWaitBufId: ::core::ffi::c_int,
-}
-impl Default for PROC_HDR {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct shm_mq {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct shm_mq_handle {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct shm_mq_iovec {
-    pub data: *const ::core::ffi::c_char,
-    pub len: Size,
-}
-impl Default for shm_mq_iovec {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod shm_mq_result {
-    pub type Type = ::core::ffi::c_uint;
-    pub const SHM_MQ_SUCCESS: Type = 0;
-    pub const SHM_MQ_WOULD_BLOCK: Type = 1;
-    pub const SHM_MQ_DETACHED: Type = 2;
-}
-pub type parallel_worker_main_type =
-    ::core::option::Option<unsafe extern "C-unwind" fn(seg: *mut dsm_segment, toc: *mut shm_toc)>;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ParallelWorkerInfo {
-    pub bgwhandle: *mut BackgroundWorkerHandle,
-    pub error_mqh: *mut shm_mq_handle,
-    pub pid: int32,
-}
-impl Default for ParallelWorkerInfo {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ParallelContext {
-    pub node: dlist_node,
-    pub subid: SubTransactionId,
-    pub nworkers: ::core::ffi::c_int,
-    pub nworkers_to_launch: ::core::ffi::c_int,
-    pub nworkers_launched: ::core::ffi::c_int,
-    pub library_name: *mut ::core::ffi::c_char,
-    pub function_name: *mut ::core::ffi::c_char,
-    pub error_context_stack: *mut ErrorContextCallback,
-    pub estimator: shm_toc_estimator,
-    pub seg: *mut dsm_segment,
-    pub private_memory: *mut ::core::ffi::c_void,
-    pub toc: *mut shm_toc,
-    pub worker: *mut ParallelWorkerInfo,
-    pub nknown_attached_workers: ::core::ffi::c_int,
-    pub known_attached_workers: *mut bool,
-}
-impl Default for ParallelContext {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ParallelWorkerContext {
-    pub seg: *mut dsm_segment,
-    pub toc: *mut shm_toc,
-}
-impl Default for ParallelWorkerContext {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct FormData_pg_statistic {
-    pub starelid: Oid,
-    pub staattnum: int16,
-    pub stainherit: bool,
-    pub stanullfrac: float4,
-    pub stawidth: int32,
-    pub stadistinct: float4,
-    pub stakind1: int16,
-    pub stakind2: int16,
-    pub stakind3: int16,
-    pub stakind4: int16,
-    pub stakind5: int16,
-    pub staop1: Oid,
-    pub staop2: Oid,
-    pub staop3: Oid,
-    pub staop4: Oid,
-    pub staop5: Oid,
-    pub stacoll1: Oid,
-    pub stacoll2: Oid,
-    pub stacoll3: Oid,
-    pub stacoll4: Oid,
-    pub stacoll5: Oid,
-}
-impl Default for FormData_pg_statistic {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub type Form_pg_statistic = *mut FormData_pg_statistic;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ParallelVacuumState {
-    _unused: [u8; 0],
-}
-pub type VacAttrStatsP = *mut VacAttrStats;
-pub type AnalyzeAttrFetchFunc = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        stats: VacAttrStatsP,
-        rownum: ::core::ffi::c_int,
-        isNull: *mut bool,
-    ) -> Datum,
->;
-pub type AnalyzeAttrComputeStatsFunc = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        stats: VacAttrStatsP,
-        fetchfunc: AnalyzeAttrFetchFunc,
-        samplerows: ::core::ffi::c_int,
-        totalrows: f64,
-    ),
->;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct VacAttrStats {
-    pub attr: Form_pg_attribute,
-    pub attrtypid: Oid,
-    pub attrtypmod: int32,
-    pub attrtype: Form_pg_type,
-    pub attrcollid: Oid,
-    pub anl_context: MemoryContext,
-    pub compute_stats: AnalyzeAttrComputeStatsFunc,
-    pub minrows: ::core::ffi::c_int,
-    pub extra_data: *mut ::core::ffi::c_void,
-    pub stats_valid: bool,
-    pub stanullfrac: float4,
-    pub stawidth: int32,
-    pub stadistinct: float4,
-    pub stakind: [int16; 5usize],
-    pub staop: [Oid; 5usize],
-    pub stacoll: [Oid; 5usize],
-    pub numnumbers: [::core::ffi::c_int; 5usize],
-    pub stanumbers: [*mut float4; 5usize],
-    pub numvalues: [::core::ffi::c_int; 5usize],
-    pub stavalues: [*mut Datum; 5usize],
-    pub statypid: [Oid; 5usize],
-    pub statyplen: [int16; 5usize],
-    pub statypbyval: [bool; 5usize],
-    pub statypalign: [::core::ffi::c_char; 5usize],
-    pub tupattnum: ::core::ffi::c_int,
-    pub rows: *mut HeapTuple,
-    pub tupDesc: TupleDesc,
-    pub exprvals: *mut Datum,
-    pub exprnulls: *mut bool,
-    pub rowstride: ::core::ffi::c_int,
-}
-impl Default for VacAttrStats {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod VacOptValue {
-    pub type Type = ::core::ffi::c_uint;
-    pub const VACOPTVALUE_UNSPECIFIED: Type = 0;
-    pub const VACOPTVALUE_AUTO: Type = 1;
-    pub const VACOPTVALUE_DISABLED: Type = 2;
-    pub const VACOPTVALUE_ENABLED: Type = 3;
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct VacuumParams {
-    pub options: bits32,
-    pub freeze_min_age: ::core::ffi::c_int,
-    pub freeze_table_age: ::core::ffi::c_int,
-    pub multixact_freeze_min_age: ::core::ffi::c_int,
-    pub multixact_freeze_table_age: ::core::ffi::c_int,
-    pub is_wraparound: bool,
-    pub log_min_duration: ::core::ffi::c_int,
-    pub index_cleanup: VacOptValue::Type,
-    pub truncate: VacOptValue::Type,
-    pub nworkers: ::core::ffi::c_int,
-}
-impl Default for VacuumParams {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-pub struct VacuumCutoffs {
-    pub relfrozenxid: TransactionId,
-    pub relminmxid: MultiXactId,
-    pub OldestXmin: TransactionId,
-    pub OldestMxact: MultiXactId,
-    pub FreezeLimit: TransactionId,
-    pub MultiXactCutoff: MultiXactId,
-}
-impl Default for VacuumCutoffs {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default)]
-pub struct VacDeadItems {
-    pub max_items: ::core::ffi::c_int,
-    pub num_items: ::core::ffi::c_int,
-    pub items: __IncompleteArrayField<ItemPointerData>,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ConfigData {
-    pub name: *mut ::core::ffi::c_char,
-    pub setting: *mut ::core::ffi::c_char,
-}
-impl Default for ConfigData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AggStatePerTransData {
-    pub aggref: *mut Aggref,
-    pub aggshared: bool,
-    pub aggsortrequired: bool,
-    pub numInputs: ::core::ffi::c_int,
-    pub numTransInputs: ::core::ffi::c_int,
-    pub transfn_oid: Oid,
-    pub serialfn_oid: Oid,
-    pub deserialfn_oid: Oid,
-    pub aggtranstype: Oid,
-    pub transfn: FmgrInfo,
-    pub serialfn: FmgrInfo,
-    pub deserialfn: FmgrInfo,
-    pub aggCollation: Oid,
-    pub numSortCols: ::core::ffi::c_int,
-    pub numDistinctCols: ::core::ffi::c_int,
-    pub sortColIdx: *mut AttrNumber,
-    pub sortOperators: *mut Oid,
-    pub sortCollations: *mut Oid,
-    pub sortNullsFirst: *mut bool,
-    pub equalfnOne: FmgrInfo,
-    pub equalfnMulti: *mut ExprState,
-    pub initValue: Datum,
-    pub initValueIsNull: bool,
-    pub inputtypeLen: int16,
-    pub transtypeLen: int16,
-    pub inputtypeByVal: bool,
-    pub transtypeByVal: bool,
-    pub sortslot: *mut TupleTableSlot,
-    pub uniqslot: *mut TupleTableSlot,
-    pub sortdesc: TupleDesc,
-    pub lastdatum: Datum,
-    pub lastisnull: bool,
-    pub haslast: bool,
-    pub sortstates: *mut *mut Tuplesortstate,
-    pub transfn_fcinfo: FunctionCallInfo,
-    pub serialfn_fcinfo: FunctionCallInfo,
-    pub deserialfn_fcinfo: FunctionCallInfo,
-}
-impl Default for AggStatePerTransData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AggStatePerAggData {
-    pub aggref: *mut Aggref,
-    pub transno: ::core::ffi::c_int,
-    pub finalfn_oid: Oid,
-    pub finalfn: FmgrInfo,
-    pub numFinalArgs: ::core::ffi::c_int,
-    pub aggdirectargs: *mut List,
-    pub resulttypeLen: int16,
-    pub resulttypeByVal: bool,
-    pub shareable: bool,
-}
-impl Default for AggStatePerAggData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AggStatePerGroupData {
-    pub transValue: Datum,
-    pub transValueIsNull: bool,
-    pub noTransValue: bool,
-}
-impl Default for AggStatePerGroupData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AggStatePerPhaseData {
-    pub aggstrategy: AggStrategy::Type,
-    pub numsets: ::core::ffi::c_int,
-    pub gset_lengths: *mut ::core::ffi::c_int,
-    pub grouped_cols: *mut *mut Bitmapset,
-    pub eqfunctions: *mut *mut ExprState,
-    pub aggnode: *mut Agg,
-    pub sortnode: *mut Sort,
-    pub evaltrans: *mut ExprState,
-    pub evaltrans_cache: [[*mut ExprState; 2usize]; 2usize],
-}
-impl Default for AggStatePerPhaseData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AggStatePerHashData {
-    pub hashtable: TupleHashTable,
-    pub hashiter: TupleHashIterator,
-    pub hashslot: *mut TupleTableSlot,
-    pub hashfunctions: *mut FmgrInfo,
-    pub eqfuncoids: *mut Oid,
-    pub numCols: ::core::ffi::c_int,
-    pub numhashGrpCols: ::core::ffi::c_int,
-    pub largestGrpColIdx: ::core::ffi::c_int,
-    pub hashGrpColIdxInput: *mut AttrNumber,
-    pub hashGrpColIdxHash: *mut AttrNumber,
-    pub aggnode: *mut Agg,
-}
-impl Default for AggStatePerHashData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ScalarArrayOpExprHashTable {
-    _unused: [u8; 0],
-}
-pub type ExecEvalSubroutine = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        state: *mut ExprState,
-        op: *mut ExprEvalStep,
-        econtext: *mut ExprContext,
-    ),
->;
-pub type ExecEvalBoolSubroutine = ::core::option::Option<
-    unsafe extern "C-unwind" fn(
-        state: *mut ExprState,
-        op: *mut ExprEvalStep,
-        econtext: *mut ExprContext,
-    ) -> bool,
->;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalRowtypeCache {
-    pub cacheptr: *mut ::core::ffi::c_void,
-    pub tupdesc_id: uint64,
-}
-impl Default for ExprEvalRowtypeCache {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod ExprEvalOp {
-    pub type Type = ::core::ffi::c_uint;
-    pub const EEOP_DONE: Type = 0;
-    pub const EEOP_INNER_FETCHSOME: Type = 1;
-    pub const EEOP_OUTER_FETCHSOME: Type = 2;
-    pub const EEOP_SCAN_FETCHSOME: Type = 3;
-    pub const EEOP_INNER_VAR: Type = 4;
-    pub const EEOP_OUTER_VAR: Type = 5;
-    pub const EEOP_SCAN_VAR: Type = 6;
-    pub const EEOP_INNER_SYSVAR: Type = 7;
-    pub const EEOP_OUTER_SYSVAR: Type = 8;
-    pub const EEOP_SCAN_SYSVAR: Type = 9;
-    pub const EEOP_WHOLEROW: Type = 10;
-    pub const EEOP_ASSIGN_INNER_VAR: Type = 11;
-    pub const EEOP_ASSIGN_OUTER_VAR: Type = 12;
-    pub const EEOP_ASSIGN_SCAN_VAR: Type = 13;
-    pub const EEOP_ASSIGN_TMP: Type = 14;
-    pub const EEOP_ASSIGN_TMP_MAKE_RO: Type = 15;
-    pub const EEOP_CONST: Type = 16;
-    pub const EEOP_FUNCEXPR: Type = 17;
-    pub const EEOP_FUNCEXPR_STRICT: Type = 18;
-    pub const EEOP_FUNCEXPR_FUSAGE: Type = 19;
-    pub const EEOP_FUNCEXPR_STRICT_FUSAGE: Type = 20;
-    pub const EEOP_BOOL_AND_STEP_FIRST: Type = 21;
-    pub const EEOP_BOOL_AND_STEP: Type = 22;
-    pub const EEOP_BOOL_AND_STEP_LAST: Type = 23;
-    pub const EEOP_BOOL_OR_STEP_FIRST: Type = 24;
-    pub const EEOP_BOOL_OR_STEP: Type = 25;
-    pub const EEOP_BOOL_OR_STEP_LAST: Type = 26;
-    pub const EEOP_BOOL_NOT_STEP: Type = 27;
-    pub const EEOP_QUAL: Type = 28;
-    pub const EEOP_JUMP: Type = 29;
-    pub const EEOP_JUMP_IF_NULL: Type = 30;
-    pub const EEOP_JUMP_IF_NOT_NULL: Type = 31;
-    pub const EEOP_JUMP_IF_NOT_TRUE: Type = 32;
-    pub const EEOP_NULLTEST_ISNULL: Type = 33;
-    pub const EEOP_NULLTEST_ISNOTNULL: Type = 34;
-    pub const EEOP_NULLTEST_ROWISNULL: Type = 35;
-    pub const EEOP_NULLTEST_ROWISNOTNULL: Type = 36;
-    pub const EEOP_BOOLTEST_IS_TRUE: Type = 37;
-    pub const EEOP_BOOLTEST_IS_NOT_TRUE: Type = 38;
-    pub const EEOP_BOOLTEST_IS_FALSE: Type = 39;
-    pub const EEOP_BOOLTEST_IS_NOT_FALSE: Type = 40;
-    pub const EEOP_PARAM_EXEC: Type = 41;
-    pub const EEOP_PARAM_EXTERN: Type = 42;
-    pub const EEOP_PARAM_CALLBACK: Type = 43;
-    pub const EEOP_CASE_TESTVAL: Type = 44;
-    pub const EEOP_MAKE_READONLY: Type = 45;
-    pub const EEOP_IOCOERCE: Type = 46;
-    pub const EEOP_DISTINCT: Type = 47;
-    pub const EEOP_NOT_DISTINCT: Type = 48;
-    pub const EEOP_NULLIF: Type = 49;
-    pub const EEOP_SQLVALUEFUNCTION: Type = 50;
-    pub const EEOP_CURRENTOFEXPR: Type = 51;
-    pub const EEOP_NEXTVALUEEXPR: Type = 52;
-    pub const EEOP_ARRAYEXPR: Type = 53;
-    pub const EEOP_ARRAYCOERCE: Type = 54;
-    pub const EEOP_ROW: Type = 55;
-    pub const EEOP_ROWCOMPARE_STEP: Type = 56;
-    pub const EEOP_ROWCOMPARE_FINAL: Type = 57;
-    pub const EEOP_MINMAX: Type = 58;
-    pub const EEOP_FIELDSELECT: Type = 59;
-    pub const EEOP_FIELDSTORE_DEFORM: Type = 60;
-    pub const EEOP_FIELDSTORE_FORM: Type = 61;
-    pub const EEOP_SBSREF_SUBSCRIPTS: Type = 62;
-    pub const EEOP_SBSREF_OLD: Type = 63;
-    pub const EEOP_SBSREF_ASSIGN: Type = 64;
-    pub const EEOP_SBSREF_FETCH: Type = 65;
-    pub const EEOP_DOMAIN_TESTVAL: Type = 66;
-    pub const EEOP_DOMAIN_NOTNULL: Type = 67;
-    pub const EEOP_DOMAIN_CHECK: Type = 68;
-    pub const EEOP_CONVERT_ROWTYPE: Type = 69;
-    pub const EEOP_SCALARARRAYOP: Type = 70;
-    pub const EEOP_HASHED_SCALARARRAYOP: Type = 71;
-    pub const EEOP_XMLEXPR: Type = 72;
-    pub const EEOP_JSON_CONSTRUCTOR: Type = 73;
-    pub const EEOP_IS_JSON: Type = 74;
-    pub const EEOP_AGGREF: Type = 75;
-    pub const EEOP_GROUPING_FUNC: Type = 76;
-    pub const EEOP_WINDOW_FUNC: Type = 77;
-    pub const EEOP_SUBPLAN: Type = 78;
-    pub const EEOP_AGG_STRICT_DESERIALIZE: Type = 79;
-    pub const EEOP_AGG_DESERIALIZE: Type = 80;
-    pub const EEOP_AGG_STRICT_INPUT_CHECK_ARGS: Type = 81;
-    pub const EEOP_AGG_STRICT_INPUT_CHECK_NULLS: Type = 82;
-    pub const EEOP_AGG_PLAIN_PERGROUP_NULLCHECK: Type = 83;
-    pub const EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYVAL: Type = 84;
-    pub const EEOP_AGG_PLAIN_TRANS_STRICT_BYVAL: Type = 85;
-    pub const EEOP_AGG_PLAIN_TRANS_BYVAL: Type = 86;
-    pub const EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYREF: Type = 87;
-    pub const EEOP_AGG_PLAIN_TRANS_STRICT_BYREF: Type = 88;
-    pub const EEOP_AGG_PLAIN_TRANS_BYREF: Type = 89;
-    pub const EEOP_AGG_PRESORTED_DISTINCT_SINGLE: Type = 90;
-    pub const EEOP_AGG_PRESORTED_DISTINCT_MULTI: Type = 91;
-    pub const EEOP_AGG_ORDERED_TRANS_DATUM: Type = 92;
-    pub const EEOP_AGG_ORDERED_TRANS_TUPLE: Type = 93;
-    pub const EEOP_LAST: Type = 94;
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct ExprEvalStep {
-    pub opcode: isize,
-    pub resvalue: *mut Datum,
-    pub resnull: *mut bool,
-    pub d: ExprEvalStep__bindgen_ty_1,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union ExprEvalStep__bindgen_ty_1 {
-    pub fetch: ExprEvalStep__bindgen_ty_1__bindgen_ty_1,
-    pub var: ExprEvalStep__bindgen_ty_1__bindgen_ty_2,
-    pub wholerow: ExprEvalStep__bindgen_ty_1__bindgen_ty_3,
-    pub assign_var: ExprEvalStep__bindgen_ty_1__bindgen_ty_4,
-    pub assign_tmp: ExprEvalStep__bindgen_ty_1__bindgen_ty_5,
-    pub constval: ExprEvalStep__bindgen_ty_1__bindgen_ty_6,
-    pub func: ExprEvalStep__bindgen_ty_1__bindgen_ty_7,
-    pub boolexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_8,
-    pub qualexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_9,
-    pub jump: ExprEvalStep__bindgen_ty_1__bindgen_ty_10,
-    pub nulltest_row: ExprEvalStep__bindgen_ty_1__bindgen_ty_11,
-    pub param: ExprEvalStep__bindgen_ty_1__bindgen_ty_12,
-    pub cparam: ExprEvalStep__bindgen_ty_1__bindgen_ty_13,
-    pub casetest: ExprEvalStep__bindgen_ty_1__bindgen_ty_14,
-    pub make_readonly: ExprEvalStep__bindgen_ty_1__bindgen_ty_15,
-    pub iocoerce: ExprEvalStep__bindgen_ty_1__bindgen_ty_16,
-    pub sqlvaluefunction: ExprEvalStep__bindgen_ty_1__bindgen_ty_17,
-    pub nextvalueexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_18,
-    pub arrayexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_19,
-    pub arraycoerce: ExprEvalStep__bindgen_ty_1__bindgen_ty_20,
-    pub row: ExprEvalStep__bindgen_ty_1__bindgen_ty_21,
-    pub rowcompare_step: ExprEvalStep__bindgen_ty_1__bindgen_ty_22,
-    pub rowcompare_final: ExprEvalStep__bindgen_ty_1__bindgen_ty_23,
-    pub minmax: ExprEvalStep__bindgen_ty_1__bindgen_ty_24,
-    pub fieldselect: ExprEvalStep__bindgen_ty_1__bindgen_ty_25,
-    pub fieldstore: ExprEvalStep__bindgen_ty_1__bindgen_ty_26,
-    pub sbsref_subscript: ExprEvalStep__bindgen_ty_1__bindgen_ty_27,
-    pub sbsref: ExprEvalStep__bindgen_ty_1__bindgen_ty_28,
-    pub domaincheck: ExprEvalStep__bindgen_ty_1__bindgen_ty_29,
-    pub convert_rowtype: ExprEvalStep__bindgen_ty_1__bindgen_ty_30,
-    pub scalararrayop: ExprEvalStep__bindgen_ty_1__bindgen_ty_31,
-    pub hashedscalararrayop: ExprEvalStep__bindgen_ty_1__bindgen_ty_32,
-    pub xmlexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_33,
-    pub json_constructor: ExprEvalStep__bindgen_ty_1__bindgen_ty_34,
-    pub aggref: ExprEvalStep__bindgen_ty_1__bindgen_ty_35,
-    pub grouping_func: ExprEvalStep__bindgen_ty_1__bindgen_ty_36,
-    pub window_func: ExprEvalStep__bindgen_ty_1__bindgen_ty_37,
-    pub subplan: ExprEvalStep__bindgen_ty_1__bindgen_ty_38,
-    pub agg_deserialize: ExprEvalStep__bindgen_ty_1__bindgen_ty_39,
-    pub agg_strict_input_check: ExprEvalStep__bindgen_ty_1__bindgen_ty_40,
-    pub agg_plain_pergroup_nullcheck: ExprEvalStep__bindgen_ty_1__bindgen_ty_41,
-    pub agg_presorted_distinctcheck: ExprEvalStep__bindgen_ty_1__bindgen_ty_42,
-    pub agg_trans: ExprEvalStep__bindgen_ty_1__bindgen_ty_43,
-    pub is_json: ExprEvalStep__bindgen_ty_1__bindgen_ty_44,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_1 {
-    pub last_var: ::core::ffi::c_int,
-    pub fixed: bool,
-    pub known_desc: TupleDesc,
-    pub kind: *const TupleTableSlotOps,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_2 {
-    pub attnum: ::core::ffi::c_int,
-    pub vartype: Oid,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_2 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_3 {
-    pub var: *mut Var,
-    pub first: bool,
-    pub slow: bool,
-    pub tupdesc: TupleDesc,
-    pub junkFilter: *mut JunkFilter,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_3 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_4 {
-    pub resultnum: ::core::ffi::c_int,
-    pub attnum: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_5 {
-    pub resultnum: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_6 {
-    pub value: Datum,
-    pub isnull: bool,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_6 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_7 {
-    pub finfo: *mut FmgrInfo,
-    pub fcinfo_data: FunctionCallInfo,
-    pub fn_addr: PGFunction,
-    pub nargs: ::core::ffi::c_int,
-    pub make_ro: bool,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_7 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_8 {
-    pub anynull: *mut bool,
-    pub jumpdone: ::core::ffi::c_int,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_8 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_9 {
-    pub jumpdone: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_10 {
-    pub jumpdone: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_11 {
-    pub rowcache: ExprEvalRowtypeCache,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_11 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_12 {
-    pub paramid: ::core::ffi::c_int,
-    pub paramtype: Oid,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_12 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_13 {
-    pub paramfunc: ExecEvalSubroutine,
-    pub paramarg: *mut ::core::ffi::c_void,
-    pub paramid: ::core::ffi::c_int,
-    pub paramtype: Oid,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_13 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_14 {
-    pub value: *mut Datum,
-    pub isnull: *mut bool,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_14 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_15 {
-    pub value: *mut Datum,
-    pub isnull: *mut bool,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_15 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_16 {
-    pub finfo_out: *mut FmgrInfo,
-    pub fcinfo_data_out: FunctionCallInfo,
-    pub finfo_in: *mut FmgrInfo,
-    pub fcinfo_data_in: FunctionCallInfo,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_16 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_17 {
-    pub svf: *mut SQLValueFunction,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_17 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_18 {
-    pub seqid: Oid,
-    pub seqtypid: Oid,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_18 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_19 {
-    pub elemvalues: *mut Datum,
-    pub elemnulls: *mut bool,
-    pub nelems: ::core::ffi::c_int,
-    pub elemtype: Oid,
-    pub elemlength: int16,
-    pub elembyval: bool,
-    pub elemalign: ::core::ffi::c_char,
-    pub multidims: bool,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_19 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_20 {
-    pub elemexprstate: *mut ExprState,
-    pub resultelemtype: Oid,
-    pub amstate: *mut ArrayMapState,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_20 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_21 {
-    pub tupdesc: TupleDesc,
-    pub elemvalues: *mut Datum,
-    pub elemnulls: *mut bool,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_21 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_22 {
-    pub finfo: *mut FmgrInfo,
-    pub fcinfo_data: FunctionCallInfo,
-    pub fn_addr: PGFunction,
-    pub jumpnull: ::core::ffi::c_int,
-    pub jumpdone: ::core::ffi::c_int,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_22 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_23 {
-    pub rctype: RowCompareType::Type,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_23 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_24 {
-    pub values: *mut Datum,
-    pub nulls: *mut bool,
-    pub nelems: ::core::ffi::c_int,
-    pub op: MinMaxOp::Type,
-    pub finfo: *mut FmgrInfo,
-    pub fcinfo_data: FunctionCallInfo,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_24 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_25 {
-    pub fieldnum: AttrNumber,
-    pub resulttype: Oid,
-    pub rowcache: ExprEvalRowtypeCache,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_25 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_26 {
-    pub fstore: *mut FieldStore,
-    pub rowcache: *mut ExprEvalRowtypeCache,
-    pub values: *mut Datum,
-    pub nulls: *mut bool,
-    pub ncolumns: ::core::ffi::c_int,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_26 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_27 {
-    pub subscriptfunc: ExecEvalBoolSubroutine,
-    pub state: *mut SubscriptingRefState,
-    pub jumpdone: ::core::ffi::c_int,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_27 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_28 {
-    pub subscriptfunc: ExecEvalSubroutine,
-    pub state: *mut SubscriptingRefState,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_28 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_29 {
-    pub constraintname: *mut ::core::ffi::c_char,
-    pub checkvalue: *mut Datum,
-    pub checknull: *mut bool,
-    pub resulttype: Oid,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_29 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_30 {
-    pub inputtype: Oid,
-    pub outputtype: Oid,
-    pub incache: *mut ExprEvalRowtypeCache,
-    pub outcache: *mut ExprEvalRowtypeCache,
-    pub map: *mut TupleConversionMap,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_30 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_31 {
-    pub element_type: Oid,
-    pub useOr: bool,
-    pub typlen: int16,
-    pub typbyval: bool,
-    pub typalign: ::core::ffi::c_char,
-    pub finfo: *mut FmgrInfo,
-    pub fcinfo_data: FunctionCallInfo,
-    pub fn_addr: PGFunction,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_31 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_32 {
-    pub has_nulls: bool,
-    pub inclause: bool,
-    pub elements_tab: *mut ScalarArrayOpExprHashTable,
-    pub finfo: *mut FmgrInfo,
-    pub fcinfo_data: FunctionCallInfo,
-    pub saop: *mut ScalarArrayOpExpr,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_32 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_33 {
-    pub xexpr: *mut XmlExpr,
-    pub named_argvalue: *mut Datum,
-    pub named_argnull: *mut bool,
-    pub argvalue: *mut Datum,
-    pub argnull: *mut bool,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_33 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_34 {
-    pub jcstate: *mut JsonConstructorExprState,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_34 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_35 {
-    pub aggno: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_36 {
-    pub clauses: *mut List,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_36 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_37 {
-    pub wfstate: *mut WindowFuncExprState,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_37 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_38 {
-    pub sstate: *mut SubPlanState,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_38 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_39 {
-    pub fcinfo_data: FunctionCallInfo,
-    pub jumpnull: ::core::ffi::c_int,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_39 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_40 {
-    pub args: *mut NullableDatum,
-    pub nulls: *mut bool,
-    pub nargs: ::core::ffi::c_int,
-    pub jumpnull: ::core::ffi::c_int,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_40 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_41 {
-    pub setoff: ::core::ffi::c_int,
-    pub jumpnull: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_42 {
-    pub pertrans: AggStatePerTrans,
-    pub aggcontext: *mut ExprContext,
-    pub jumpdistinct: ::core::ffi::c_int,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_42 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_43 {
-    pub pertrans: AggStatePerTrans,
-    pub aggcontext: *mut ExprContext,
-    pub setno: ::core::ffi::c_int,
-    pub transno: ::core::ffi::c_int,
-    pub setoff: ::core::ffi::c_int,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_43 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_44 {
-    pub pred: *mut JsonIsPredicate,
-}
-impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_44 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-impl Default for ExprEvalStep__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-impl Default for ExprEvalStep {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct SubscriptingRefState {
-    pub isassignment: bool,
-    pub workspace: *mut ::core::ffi::c_void,
-    pub numupper: ::core::ffi::c_int,
-    pub upperprovided: *mut bool,
-    pub upperindex: *mut Datum,
-    pub upperindexnull: *mut bool,
-    pub numlower: ::core::ffi::c_int,
-    pub lowerprovided: *mut bool,
-    pub lowerindex: *mut Datum,
-    pub lowerindexnull: *mut bool,
-    pub replacevalue: Datum,
-    pub replacenull: bool,
-    pub prevvalue: Datum,
-    pub prevnull: bool,
-}
-impl Default for SubscriptingRefState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct SubscriptExecSteps {
-    pub sbs_check_subscripts: ExecEvalBoolSubroutine,
-    pub sbs_fetch: ExecEvalSubroutine,
-    pub sbs_assign: ExecEvalSubroutine,
-    pub sbs_fetch_old: ExecEvalSubroutine,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct JsonConstructorExprState {
-    pub constructor: *mut JsonConstructorExpr,
-    pub arg_values: *mut Datum,
-    pub arg_nulls: *mut bool,
-    pub arg_types: *mut Oid,
-    pub arg_type_cache: *mut JsonConstructorExprState__bindgen_ty_1,
-    pub nargs: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct JsonConstructorExprState__bindgen_ty_1 {
-    pub category: ::core::ffi::c_int,
-    pub outfuncid: Oid,
-}
-impl Default for JsonConstructorExprState__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-impl Default for JsonConstructorExprState {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-pub mod RawParseMode {
-    pub type Type = ::core::ffi::c_uint;
-    pub const RAW_PARSE_DEFAULT: Type = 0;
-    pub const RAW_PARSE_TYPE_NAME: Type = 1;
-    pub const RAW_PARSE_PLPGSQL_EXPR: Type = 2;
-    pub const RAW_PARSE_PLPGSQL_ASSIGN1: Type = 3;
-    pub const RAW_PARSE_PLPGSQL_ASSIGN2: Type = 4;
-    pub const RAW_PARSE_PLPGSQL_ASSIGN3: Type = 5;
-}
-pub mod BackslashQuoteType {
-    pub type Type = ::core::ffi::c_uint;
-    pub const BACKSLASH_QUOTE_OFF: Type = 0;
-    pub const BACKSLASH_QUOTE_ON: Type = 1;
-    pub const BACKSLASH_QUOTE_SAFE_ENCODING: Type = 2;
-}
-pub mod PortalStrategy {
-    pub type Type = ::core::ffi::c_uint;
-    pub const PORTAL_ONE_SELECT: Type = 0;
-    pub const PORTAL_ONE_RETURNING: Type = 1;
-    pub const PORTAL_ONE_MOD_WITH: Type = 2;
-    pub const PORTAL_UTIL_SELECT: Type = 3;
-    pub const PORTAL_MULTI_QUERY: Type = 4;
-}
-pub mod PortalStatus {
-    pub type Type = ::core::ffi::c_uint;
-    pub const PORTAL_NEW: Type = 0;
-    pub const PORTAL_DEFINED: Type = 1;
-    pub const PORTAL_READY: Type = 2;
-    pub const PORTAL_ACTIVE: Type = 3;
-    pub const PORTAL_DONE: Type = 4;
-    pub const PORTAL_FAILED: Type = 5;
-}
-pub type Portal = *mut PortalData;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct PortalData {
-    pub name: *const ::core::ffi::c_char,
-    pub prepStmtName: *const ::core::ffi::c_char,
-    pub portalContext: MemoryContext,
-    pub resowner: ResourceOwner,
-    pub cleanup: ::core::option::Option<unsafe extern "C-unwind" fn(portal: Portal)>,
-    pub createSubid: SubTransactionId,
-    pub activeSubid: SubTransactionId,
-    pub createLevel: ::core::ffi::c_int,
-    pub sourceText: *const ::core::ffi::c_char,
-    pub commandTag: CommandTag::Type,
-    pub qc: QueryCompletion,
-    pub stmts: *mut List,
-    pub cplan: *mut CachedPlan,
-    pub portalParams: ParamListInfo,
-    pub queryEnv: *mut QueryEnvironment,
-    pub strategy: PortalStrategy::Type,
-    pub cursorOptions: ::core::ffi::c_int,
-    pub run_once: bool,
-    pub status: PortalStatus::Type,
-    pub portalPinned: bool,
-    pub autoHeld: bool,
-    pub queryDesc: *mut QueryDesc,
-    pub tupDesc: TupleDesc,
-    pub formats: *mut int16,
-    pub portalSnapshot: Snapshot,
-    pub holdStore: *mut Tuplestorestate,
-    pub holdContext: MemoryContext,
-    pub holdSnapshot: Snapshot,
-    pub atStart: bool,
-    pub atEnd: bool,
-    pub portalPos: uint64,
-    pub creation_time: TimestampTz,
-    pub visible: bool,
-}
-impl Default for PortalData {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct SPITupleTable {
-    pub tupdesc: TupleDesc,
-    pub vals: *mut HeapTuple,
-    pub numvals: uint64,
-    pub alloced: uint64,
-    pub tuptabcxt: MemoryContext,
-    pub next: slist_node,
-    pub subid: SubTransactionId,
-}
-impl Default for SPITupleTable {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct SPIPrepareOptions {
-    pub parserSetup: ParserSetupHook,
-    pub parserSetupArg: *mut ::core::ffi::c_void,
-    pub parseMode: RawParseMode::Type,
-    pub cursorOptions: ::core::ffi::c_int,
-}
-impl Default for SPIPrepareOptions {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct SPIExecuteOptions {
-    pub params: ParamListInfo,
-    pub read_only: bool,
-    pub allow_nonatomic: bool,
-    pub must_return_tuples: bool,
-    pub tcount: uint64,
-    pub dest: *mut DestReceiver,
-    pub owner: ResourceOwner,
-}
-impl Default for SPIExecuteOptions {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct SPIParseOpenOptions {
-    pub params: ParamListInfo,
-    pub cursorOptions: ::core::ffi::c_int,
-    pub read_only: bool,
-}
-impl Default for SPIParseOpenOptions {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct _SPI_plan {
-    _unused: [u8; 0],
-}
-pub type SPIPlanPtr = *mut _SPI_plan;
 pub type Relids = *mut Bitmapset;
 pub mod CostSelector {
     pub type Type = ::core::ffi::c_uint;
@@ -26511,6 +22937,3885 @@ impl Default for AggTransInfo {
         }
     }
 }
+pub type SampleScanGetSampleSize_function = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        root: *mut PlannerInfo,
+        baserel: *mut RelOptInfo,
+        paramexprs: *mut List,
+        pages: *mut BlockNumber,
+        tuples: *mut f64,
+    ),
+>;
+pub type InitSampleScan_function = ::core::option::Option<
+    unsafe extern "C-unwind" fn(node: *mut SampleScanState, eflags: ::core::ffi::c_int),
+>;
+pub type BeginSampleScan_function = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        node: *mut SampleScanState,
+        params: *mut Datum,
+        nparams: ::core::ffi::c_int,
+        seed: uint32,
+    ),
+>;
+pub type NextSampleBlock_function = ::core::option::Option<
+    unsafe extern "C-unwind" fn(node: *mut SampleScanState, nblocks: BlockNumber) -> BlockNumber,
+>;
+pub type NextSampleTuple_function = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        node: *mut SampleScanState,
+        blockno: BlockNumber,
+        maxoffset: OffsetNumber,
+    ) -> OffsetNumber,
+>;
+pub type EndSampleScan_function =
+    ::core::option::Option<unsafe extern "C-unwind" fn(node: *mut SampleScanState)>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct TsmRoutine {
+    pub type_: NodeTag,
+    pub parameterTypes: *mut List,
+    pub repeatable_across_queries: bool,
+    pub repeatable_across_scans: bool,
+    pub SampleScanGetSampleSize: SampleScanGetSampleSize_function,
+    pub InitSampleScan: InitSampleScan_function,
+    pub BeginSampleScan: BeginSampleScan_function,
+    pub NextSampleBlock: NextSampleBlock_function,
+    pub NextSampleTuple: NextSampleTuple_function,
+    pub EndSampleScan: EndSampleScan_function,
+}
+impl Default for TsmRoutine {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+pub struct CheckPoint {
+    pub redo: XLogRecPtr,
+    pub ThisTimeLineID: TimeLineID,
+    pub PrevTimeLineID: TimeLineID,
+    pub fullPageWrites: bool,
+    pub nextXid: FullTransactionId,
+    pub nextOid: Oid,
+    pub nextMulti: MultiXactId,
+    pub nextMultiOffset: MultiXactOffset,
+    pub oldestXid: TransactionId,
+    pub oldestXidDB: Oid,
+    pub oldestMulti: MultiXactId,
+    pub oldestMultiDB: Oid,
+    pub time: pg_time_t,
+    pub oldestCommitTsXid: TransactionId,
+    pub newestCommitTsXid: TransactionId,
+    pub oldestActiveXid: TransactionId,
+}
+impl Default for CheckPoint {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod DBState {
+    pub type Type = ::core::ffi::c_uint;
+    pub const DB_STARTUP: Type = 0;
+    pub const DB_SHUTDOWNED: Type = 1;
+    pub const DB_SHUTDOWNED_IN_RECOVERY: Type = 2;
+    pub const DB_SHUTDOWNING: Type = 3;
+    pub const DB_IN_CRASH_RECOVERY: Type = 4;
+    pub const DB_IN_ARCHIVE_RECOVERY: Type = 5;
+    pub const DB_IN_PRODUCTION: Type = 6;
+}
+#[repr(C)]
+pub struct ControlFileData {
+    pub system_identifier: uint64,
+    pub pg_control_version: uint32,
+    pub catalog_version_no: uint32,
+    pub state: DBState::Type,
+    pub time: pg_time_t,
+    pub checkPoint: XLogRecPtr,
+    pub checkPointCopy: CheckPoint,
+    pub unloggedLSN: XLogRecPtr,
+    pub minRecoveryPoint: XLogRecPtr,
+    pub minRecoveryPointTLI: TimeLineID,
+    pub backupStartPoint: XLogRecPtr,
+    pub backupEndPoint: XLogRecPtr,
+    pub backupEndRequired: bool,
+    pub wal_level: ::core::ffi::c_int,
+    pub wal_log_hints: bool,
+    pub MaxConnections: ::core::ffi::c_int,
+    pub max_worker_processes: ::core::ffi::c_int,
+    pub max_wal_senders: ::core::ffi::c_int,
+    pub max_prepared_xacts: ::core::ffi::c_int,
+    pub max_locks_per_xact: ::core::ffi::c_int,
+    pub track_commit_timestamp: bool,
+    pub maxAlign: uint32,
+    pub floatFormat: f64,
+    pub blcksz: uint32,
+    pub relseg_size: uint32,
+    pub xlog_blcksz: uint32,
+    pub xlog_seg_size: uint32,
+    pub nameDataLen: uint32,
+    pub indexMaxKeys: uint32,
+    pub toast_max_chunk_size: uint32,
+    pub loblksize: uint32,
+    pub float8ByVal: bool,
+    pub data_checksum_version: uint32,
+    pub mock_authentication_nonce: [::core::ffi::c_char; 32usize],
+    pub crc: pg_crc32c,
+}
+impl Default for ControlFileData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod RecoveryTargetType {
+    pub type Type = ::core::ffi::c_uint;
+    pub const RECOVERY_TARGET_UNSET: Type = 0;
+    pub const RECOVERY_TARGET_XID: Type = 1;
+    pub const RECOVERY_TARGET_TIME: Type = 2;
+    pub const RECOVERY_TARGET_NAME: Type = 3;
+    pub const RECOVERY_TARGET_LSN: Type = 4;
+    pub const RECOVERY_TARGET_IMMEDIATE: Type = 5;
+}
+pub mod RecoveryTargetTimeLineGoal {
+    pub type Type = ::core::ffi::c_uint;
+    pub const RECOVERY_TARGET_TIMELINE_CONTROLFILE: Type = 0;
+    pub const RECOVERY_TARGET_TIMELINE_LATEST: Type = 1;
+    pub const RECOVERY_TARGET_TIMELINE_NUMERIC: Type = 2;
+}
+pub mod RecoveryPauseState {
+    pub type Type = ::core::ffi::c_uint;
+    pub const RECOVERY_NOT_PAUSED: Type = 0;
+    pub const RECOVERY_PAUSE_REQUESTED: Type = 1;
+    pub const RECOVERY_PAUSED: Type = 2;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct EndOfWalRecoveryInfo {
+    pub lastRec: XLogRecPtr,
+    pub lastRecTLI: TimeLineID,
+    pub endOfLog: XLogRecPtr,
+    pub endOfLogTLI: TimeLineID,
+    pub lastPageBeginPtr: XLogRecPtr,
+    pub lastPage: *mut ::core::ffi::c_char,
+    pub abortedRecPtr: XLogRecPtr,
+    pub missingContrecPtr: XLogRecPtr,
+    pub recoveryStopReason: *mut ::core::ffi::c_char,
+    pub standby_signal_file_found: bool,
+    pub recovery_signal_file_found: bool,
+}
+impl Default for EndOfWalRecoveryInfo {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type ResourceOwner = *mut ResourceOwnerData;
+pub mod ResourceReleasePhase {
+    pub type Type = ::core::ffi::c_uint;
+    pub const RESOURCE_RELEASE_BEFORE_LOCKS: Type = 0;
+    pub const RESOURCE_RELEASE_LOCKS: Type = 1;
+    pub const RESOURCE_RELEASE_AFTER_LOCKS: Type = 2;
+}
+pub type ResourceReleaseCallback = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        phase: ResourceReleasePhase::Type,
+        isCommit: bool,
+        isTopLevel: bool,
+        arg: *mut ::core::ffi::c_void,
+    ),
+>;
+pub type Block = *mut ::core::ffi::c_void;
+pub mod BufferAccessStrategyType {
+    pub type Type = ::core::ffi::c_uint;
+    pub const BAS_NORMAL: Type = 0;
+    pub const BAS_BULKREAD: Type = 1;
+    pub const BAS_BULKWRITE: Type = 2;
+    pub const BAS_VACUUM: Type = 3;
+}
+pub mod ReadBufferMode {
+    pub type Type = ::core::ffi::c_uint;
+    pub const RBM_NORMAL: Type = 0;
+    pub const RBM_ZERO_AND_LOCK: Type = 1;
+    pub const RBM_ZERO_AND_CLEANUP_LOCK: Type = 2;
+    pub const RBM_ZERO_ON_ERROR: Type = 3;
+    pub const RBM_NORMAL_NO_LOG: Type = 4;
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct PrefetchBufferResult {
+    pub recent_buffer: Buffer,
+    pub initiated_io: bool,
+}
+pub mod ExtendBufferedFlags {
+    pub type Type = ::core::ffi::c_uint;
+    pub const EB_SKIP_EXTENSION_LOCK: Type = 1;
+    pub const EB_PERFORMING_RECOVERY: Type = 2;
+    pub const EB_CREATE_FORK_IF_NEEDED: Type = 4;
+    pub const EB_LOCK_FIRST: Type = 8;
+    pub const EB_CLEAR_SIZE_CACHE: Type = 16;
+    pub const EB_LOCK_TARGET: Type = 32;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct BufferManagerRelation {
+    pub rel: Relation,
+    pub smgr: *mut SMgrRelationData,
+    pub relpersistence: ::core::ffi::c_char,
+}
+impl Default for BufferManagerRelation {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod HotStandbyState {
+    pub type Type = ::core::ffi::c_uint;
+    pub const STANDBY_DISABLED: Type = 0;
+    pub const STANDBY_INITIALIZED: Type = 1;
+    pub const STANDBY_SNAPSHOT_PENDING: Type = 2;
+    pub const STANDBY_SNAPSHOT_READY: Type = 3;
+}
+pub mod XLogRedoAction {
+    pub type Type = ::core::ffi::c_uint;
+    pub const BLK_NEEDS_REDO: Type = 0;
+    pub const BLK_DONE: Type = 1;
+    pub const BLK_RESTORED: Type = 2;
+    pub const BLK_NOTFOUND: Type = 3;
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ReadLocalXLogPageNoWaitPrivate {
+    pub end_of_wal: bool,
+}
+#[repr(C)]
+#[derive(Debug)]
+pub struct FormData_pg_replication_origin {
+    pub roident: Oid,
+    pub roname: text,
+}
+impl Default for FormData_pg_replication_origin {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_replication_origin = *mut FormData_pg_replication_origin;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct xl_replorigin_set {
+    pub remote_lsn: XLogRecPtr,
+    pub node_id: RepOriginId,
+    pub force: bool,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct xl_replorigin_drop {
+    pub node_id: RepOriginId,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct xl_commit_ts_set {
+    pub timestamp: TimestampTz,
+    pub nodeid: RepOriginId,
+    pub mainxid: TransactionId,
+}
+impl Default for xl_commit_ts_set {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct xl_commit_ts_truncate {
+    pub pageno: ::core::ffi::c_int,
+    pub oldestXid: TransactionId,
+}
+impl Default for xl_commit_ts_truncate {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod DependencyType {
+    pub type Type = ::core::ffi::c_uint;
+    pub const DEPENDENCY_NORMAL: Type = 110;
+    pub const DEPENDENCY_AUTO: Type = 97;
+    pub const DEPENDENCY_INTERNAL: Type = 105;
+    pub const DEPENDENCY_PARTITION_PRI: Type = 80;
+    pub const DEPENDENCY_PARTITION_SEC: Type = 83;
+    pub const DEPENDENCY_EXTENSION: Type = 101;
+    pub const DEPENDENCY_AUTO_EXTENSION: Type = 120;
+}
+pub mod SharedDependencyType {
+    pub type Type = ::core::ffi::c_uint;
+    pub const SHARED_DEPENDENCY_OWNER: Type = 111;
+    pub const SHARED_DEPENDENCY_ACL: Type = 97;
+    pub const SHARED_DEPENDENCY_POLICY: Type = 114;
+    pub const SHARED_DEPENDENCY_TABLESPACE: Type = 116;
+    pub const SHARED_DEPENDENCY_INVALID: Type = 0;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ObjectAddresses {
+    _unused: [u8; 0],
+}
+pub mod ObjectClass {
+    pub type Type = ::core::ffi::c_uint;
+    pub const OCLASS_CLASS: Type = 0;
+    pub const OCLASS_PROC: Type = 1;
+    pub const OCLASS_TYPE: Type = 2;
+    pub const OCLASS_CAST: Type = 3;
+    pub const OCLASS_COLLATION: Type = 4;
+    pub const OCLASS_CONSTRAINT: Type = 5;
+    pub const OCLASS_CONVERSION: Type = 6;
+    pub const OCLASS_DEFAULT: Type = 7;
+    pub const OCLASS_LANGUAGE: Type = 8;
+    pub const OCLASS_LARGEOBJECT: Type = 9;
+    pub const OCLASS_OPERATOR: Type = 10;
+    pub const OCLASS_OPCLASS: Type = 11;
+    pub const OCLASS_OPFAMILY: Type = 12;
+    pub const OCLASS_AM: Type = 13;
+    pub const OCLASS_AMOP: Type = 14;
+    pub const OCLASS_AMPROC: Type = 15;
+    pub const OCLASS_REWRITE: Type = 16;
+    pub const OCLASS_TRIGGER: Type = 17;
+    pub const OCLASS_SCHEMA: Type = 18;
+    pub const OCLASS_STATISTIC_EXT: Type = 19;
+    pub const OCLASS_TSPARSER: Type = 20;
+    pub const OCLASS_TSDICT: Type = 21;
+    pub const OCLASS_TSTEMPLATE: Type = 22;
+    pub const OCLASS_TSCONFIG: Type = 23;
+    pub const OCLASS_ROLE: Type = 24;
+    pub const OCLASS_ROLE_MEMBERSHIP: Type = 25;
+    pub const OCLASS_DATABASE: Type = 26;
+    pub const OCLASS_TBLSPACE: Type = 27;
+    pub const OCLASS_FDW: Type = 28;
+    pub const OCLASS_FOREIGN_SERVER: Type = 29;
+    pub const OCLASS_USER_MAPPING: Type = 30;
+    pub const OCLASS_DEFACL: Type = 31;
+    pub const OCLASS_EXTENSION: Type = 32;
+    pub const OCLASS_EVENT_TRIGGER: Type = 33;
+    pub const OCLASS_PARAMETER_ACL: Type = 34;
+    pub const OCLASS_POLICY: Type = 35;
+    pub const OCLASS_PUBLICATION: Type = 36;
+    pub const OCLASS_PUBLICATION_NAMESPACE: Type = 37;
+    pub const OCLASS_PUBLICATION_REL: Type = 38;
+    pub const OCLASS_SUBSCRIPTION: Type = 39;
+    pub const OCLASS_TRANSFORM: Type = 40;
+}
+pub type CatalogIndexState = *mut ResultRelInfo;
+pub mod ParseExprKind {
+    pub type Type = ::core::ffi::c_uint;
+    pub const EXPR_KIND_NONE: Type = 0;
+    pub const EXPR_KIND_OTHER: Type = 1;
+    pub const EXPR_KIND_JOIN_ON: Type = 2;
+    pub const EXPR_KIND_JOIN_USING: Type = 3;
+    pub const EXPR_KIND_FROM_SUBSELECT: Type = 4;
+    pub const EXPR_KIND_FROM_FUNCTION: Type = 5;
+    pub const EXPR_KIND_WHERE: Type = 6;
+    pub const EXPR_KIND_HAVING: Type = 7;
+    pub const EXPR_KIND_FILTER: Type = 8;
+    pub const EXPR_KIND_WINDOW_PARTITION: Type = 9;
+    pub const EXPR_KIND_WINDOW_ORDER: Type = 10;
+    pub const EXPR_KIND_WINDOW_FRAME_RANGE: Type = 11;
+    pub const EXPR_KIND_WINDOW_FRAME_ROWS: Type = 12;
+    pub const EXPR_KIND_WINDOW_FRAME_GROUPS: Type = 13;
+    pub const EXPR_KIND_SELECT_TARGET: Type = 14;
+    pub const EXPR_KIND_INSERT_TARGET: Type = 15;
+    pub const EXPR_KIND_UPDATE_SOURCE: Type = 16;
+    pub const EXPR_KIND_UPDATE_TARGET: Type = 17;
+    pub const EXPR_KIND_MERGE_WHEN: Type = 18;
+    pub const EXPR_KIND_GROUP_BY: Type = 19;
+    pub const EXPR_KIND_ORDER_BY: Type = 20;
+    pub const EXPR_KIND_DISTINCT_ON: Type = 21;
+    pub const EXPR_KIND_LIMIT: Type = 22;
+    pub const EXPR_KIND_OFFSET: Type = 23;
+    pub const EXPR_KIND_RETURNING: Type = 24;
+    pub const EXPR_KIND_VALUES: Type = 25;
+    pub const EXPR_KIND_VALUES_SINGLE: Type = 26;
+    pub const EXPR_KIND_CHECK_CONSTRAINT: Type = 27;
+    pub const EXPR_KIND_DOMAIN_CHECK: Type = 28;
+    pub const EXPR_KIND_COLUMN_DEFAULT: Type = 29;
+    pub const EXPR_KIND_FUNCTION_DEFAULT: Type = 30;
+    pub const EXPR_KIND_INDEX_EXPRESSION: Type = 31;
+    pub const EXPR_KIND_INDEX_PREDICATE: Type = 32;
+    pub const EXPR_KIND_STATS_EXPRESSION: Type = 33;
+    pub const EXPR_KIND_ALTER_COL_TRANSFORM: Type = 34;
+    pub const EXPR_KIND_EXECUTE_PARAMETER: Type = 35;
+    pub const EXPR_KIND_TRIGGER_WHEN: Type = 36;
+    pub const EXPR_KIND_POLICY: Type = 37;
+    pub const EXPR_KIND_PARTITION_BOUND: Type = 38;
+    pub const EXPR_KIND_PARTITION_EXPRESSION: Type = 39;
+    pub const EXPR_KIND_CALL_ARGUMENT: Type = 40;
+    pub const EXPR_KIND_COPY_WHERE: Type = 41;
+    pub const EXPR_KIND_GENERATED_COLUMN: Type = 42;
+    pub const EXPR_KIND_CYCLE_MARK: Type = 43;
+}
+pub type PreParseColumnRefHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(pstate: *mut ParseState, cref: *mut ColumnRef) -> *mut Node,
+>;
+pub type PostParseColumnRefHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        pstate: *mut ParseState,
+        cref: *mut ColumnRef,
+        var: *mut Node,
+    ) -> *mut Node,
+>;
+pub type ParseParamRefHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(pstate: *mut ParseState, pref: *mut ParamRef) -> *mut Node,
+>;
+pub type CoerceParamHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        pstate: *mut ParseState,
+        param: *mut Param,
+        targetTypeId: Oid,
+        targetTypeMod: int32,
+        location: ::core::ffi::c_int,
+    ) -> *mut Node,
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ParseState {
+    pub parentParseState: *mut ParseState,
+    pub p_sourcetext: *const ::core::ffi::c_char,
+    pub p_rtable: *mut List,
+    pub p_rteperminfos: *mut List,
+    pub p_joinexprs: *mut List,
+    pub p_nullingrels: *mut List,
+    pub p_joinlist: *mut List,
+    pub p_namespace: *mut List,
+    pub p_lateral_active: bool,
+    pub p_ctenamespace: *mut List,
+    pub p_future_ctes: *mut List,
+    pub p_parent_cte: *mut CommonTableExpr,
+    pub p_target_relation: Relation,
+    pub p_target_nsitem: *mut ParseNamespaceItem,
+    pub p_is_insert: bool,
+    pub p_windowdefs: *mut List,
+    pub p_expr_kind: ParseExprKind::Type,
+    pub p_next_resno: ::core::ffi::c_int,
+    pub p_multiassign_exprs: *mut List,
+    pub p_locking_clause: *mut List,
+    pub p_locked_from_parent: bool,
+    pub p_resolve_unknowns: bool,
+    pub p_queryEnv: *mut QueryEnvironment,
+    pub p_hasAggs: bool,
+    pub p_hasWindowFuncs: bool,
+    pub p_hasTargetSRFs: bool,
+    pub p_hasSubLinks: bool,
+    pub p_hasModifyingCTE: bool,
+    pub p_last_srf: *mut Node,
+    pub p_pre_columnref_hook: PreParseColumnRefHook,
+    pub p_post_columnref_hook: PostParseColumnRefHook,
+    pub p_paramref_hook: ParseParamRefHook,
+    pub p_coerce_param_hook: CoerceParamHook,
+    pub p_ref_hook_state: *mut ::core::ffi::c_void,
+}
+impl Default for ParseState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ParseNamespaceItem {
+    pub p_names: *mut Alias,
+    pub p_rte: *mut RangeTblEntry,
+    pub p_rtindex: ::core::ffi::c_int,
+    pub p_perminfo: *mut RTEPermissionInfo,
+    pub p_nscolumns: *mut ParseNamespaceColumn,
+    pub p_rel_visible: bool,
+    pub p_cols_visible: bool,
+    pub p_lateral_only: bool,
+    pub p_lateral_ok: bool,
+}
+impl Default for ParseNamespaceItem {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ParseNamespaceColumn {
+    pub p_varno: Index,
+    pub p_varattno: AttrNumber,
+    pub p_vartype: Oid,
+    pub p_vartypmod: int32,
+    pub p_varcollid: Oid,
+    pub p_varnosyn: Index,
+    pub p_varattnosyn: AttrNumber,
+    pub p_dontexpand: bool,
+}
+impl Default for ParseNamespaceColumn {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ParseCallbackState {
+    pub pstate: *mut ParseState,
+    pub location: ::core::ffi::c_int,
+    pub errcallback: ErrorContextCallback,
+}
+impl Default for ParseCallbackState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct RawColumnDefault {
+    pub attnum: AttrNumber,
+    pub raw_default: *mut Node,
+    pub missingMode: bool,
+    pub generated: ::core::ffi::c_char,
+}
+impl Default for RawColumnDefault {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CookedConstraint {
+    pub contype: ConstrType::Type,
+    pub conoid: Oid,
+    pub name: *mut ::core::ffi::c_char,
+    pub attnum: AttrNumber,
+    pub expr: *mut Node,
+    pub skip_validation: bool,
+    pub is_local: bool,
+    pub inhcount: ::core::ffi::c_int,
+    pub is_no_inherit: bool,
+}
+impl Default for CookedConstraint {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod IndexStateFlagsAction {
+    pub type Type = ::core::ffi::c_uint;
+    pub const INDEX_CREATE_SET_READY: Type = 0;
+    pub const INDEX_CREATE_SET_VALID: Type = 1;
+    pub const INDEX_DROP_CLEAR_VALID: Type = 2;
+    pub const INDEX_DROP_SET_DEAD: Type = 3;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ReindexParams {
+    pub options: bits32,
+    pub tablespaceOid: Oid,
+}
+impl Default for ReindexParams {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ValidateIndexState {
+    pub tuplesort: *mut Tuplesortstate,
+    pub htups: f64,
+    pub itups: f64,
+    pub tups_inserted: f64,
+}
+impl Default for ValidateIndexState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug)]
+pub struct _FuncCandidateList {
+    pub next: *mut _FuncCandidateList,
+    pub pathpos: ::core::ffi::c_int,
+    pub oid: Oid,
+    pub nominalnargs: ::core::ffi::c_int,
+    pub nargs: ::core::ffi::c_int,
+    pub nvargs: ::core::ffi::c_int,
+    pub ndargs: ::core::ffi::c_int,
+    pub argnumbers: *mut ::core::ffi::c_int,
+    pub args: __IncompleteArrayField<Oid>,
+}
+impl Default for _FuncCandidateList {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type FuncCandidateList = *mut _FuncCandidateList;
+pub mod TempNamespaceStatus {
+    pub type Type = ::core::ffi::c_uint;
+    pub const TEMP_NAMESPACE_NOT_TEMP: Type = 0;
+    pub const TEMP_NAMESPACE_IDLE: Type = 1;
+    pub const TEMP_NAMESPACE_IN_USE: Type = 2;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct OverrideSearchPath {
+    pub schemas: *mut List,
+    pub addCatalog: bool,
+    pub addTemp: bool,
+    pub generation: uint64,
+}
+impl Default for OverrideSearchPath {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod RVROption {
+    pub type Type = ::core::ffi::c_uint;
+    pub const RVR_MISSING_OK: Type = 1;
+    pub const RVR_NOWAIT: Type = 2;
+    pub const RVR_SKIP_LOCKED: Type = 4;
+}
+pub type RangeVarGetRelidCallback = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        relation: *const RangeVar,
+        relId: Oid,
+        oldRelId: Oid,
+        callback_arg: *mut ::core::ffi::c_void,
+    ),
+>;
+pub mod ObjectAccessType {
+    pub type Type = ::core::ffi::c_uint;
+    pub const OAT_POST_CREATE: Type = 0;
+    pub const OAT_DROP: Type = 1;
+    pub const OAT_POST_ALTER: Type = 2;
+    pub const OAT_NAMESPACE_SEARCH: Type = 3;
+    pub const OAT_FUNCTION_EXECUTE: Type = 4;
+    pub const OAT_TRUNCATE: Type = 5;
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ObjectAccessPostCreate {
+    pub is_internal: bool,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ObjectAccessDrop {
+    pub dropflags: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ObjectAccessPostAlter {
+    pub auxiliary_id: Oid,
+    pub is_internal: bool,
+}
+impl Default for ObjectAccessPostAlter {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ObjectAccessNamespaceSearch {
+    pub ereport_on_violation: bool,
+    pub result: bool,
+}
+pub type object_access_hook_type = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        access: ObjectAccessType::Type,
+        classId: Oid,
+        objectId: Oid,
+        subId: ::core::ffi::c_int,
+        arg: *mut ::core::ffi::c_void,
+    ),
+>;
+pub type object_access_hook_type_str = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        access: ObjectAccessType::Type,
+        classId: Oid,
+        objectStr: *const ::core::ffi::c_char,
+        subId: ::core::ffi::c_int,
+        arg: *mut ::core::ffi::c_void,
+    ),
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_am {
+    pub oid: Oid,
+    pub amname: NameData,
+    pub amhandler: regproc,
+    pub amtype: ::core::ffi::c_char,
+}
+impl Default for FormData_pg_am {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_am = *mut FormData_pg_am;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_amop {
+    pub oid: Oid,
+    pub amopfamily: Oid,
+    pub amoplefttype: Oid,
+    pub amoprighttype: Oid,
+    pub amopstrategy: int16,
+    pub amoppurpose: ::core::ffi::c_char,
+    pub amopopr: Oid,
+    pub amopmethod: Oid,
+    pub amopsortfamily: Oid,
+}
+impl Default for FormData_pg_amop {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_amop = *mut FormData_pg_amop;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_amproc {
+    pub oid: Oid,
+    pub amprocfamily: Oid,
+    pub amproclefttype: Oid,
+    pub amprocrighttype: Oid,
+    pub amprocnum: int16,
+    pub amproc: regproc,
+}
+impl Default for FormData_pg_amproc {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_amproc = *mut FormData_pg_amproc;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_authid {
+    pub oid: Oid,
+    pub rolname: NameData,
+    pub rolsuper: bool,
+    pub rolinherit: bool,
+    pub rolcreaterole: bool,
+    pub rolcreatedb: bool,
+    pub rolcanlogin: bool,
+    pub rolreplication: bool,
+    pub rolbypassrls: bool,
+    pub rolconnlimit: int32,
+}
+impl Default for FormData_pg_authid {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_authid = *mut FormData_pg_authid;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_collation {
+    pub oid: Oid,
+    pub collname: NameData,
+    pub collnamespace: Oid,
+    pub collowner: Oid,
+    pub collprovider: ::core::ffi::c_char,
+    pub collisdeterministic: bool,
+    pub collencoding: int32,
+}
+impl Default for FormData_pg_collation {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_collation = *mut FormData_pg_collation;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_database {
+    pub oid: Oid,
+    pub datname: NameData,
+    pub datdba: Oid,
+    pub encoding: int32,
+    pub datlocprovider: ::core::ffi::c_char,
+    pub datistemplate: bool,
+    pub datallowconn: bool,
+    pub datconnlimit: int32,
+    pub datfrozenxid: TransactionId,
+    pub datminmxid: TransactionId,
+    pub dattablespace: Oid,
+}
+impl Default for FormData_pg_database {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_database = *mut FormData_pg_database;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_enum {
+    pub oid: Oid,
+    pub enumtypid: Oid,
+    pub enumsortorder: float4,
+    pub enumlabel: NameData,
+}
+impl Default for FormData_pg_enum {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_enum = *mut FormData_pg_enum;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_extension {
+    pub oid: Oid,
+    pub extname: NameData,
+    pub extowner: Oid,
+    pub extnamespace: Oid,
+    pub extrelocatable: bool,
+}
+impl Default for FormData_pg_extension {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_extension = *mut FormData_pg_extension;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_foreign_data_wrapper {
+    pub oid: Oid,
+    pub fdwname: NameData,
+    pub fdwowner: Oid,
+    pub fdwhandler: Oid,
+    pub fdwvalidator: Oid,
+}
+impl Default for FormData_pg_foreign_data_wrapper {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_foreign_data_wrapper = *mut FormData_pg_foreign_data_wrapper;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_foreign_server {
+    pub oid: Oid,
+    pub srvname: NameData,
+    pub srvowner: Oid,
+    pub srvfdw: Oid,
+}
+impl Default for FormData_pg_foreign_server {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_foreign_server = *mut FormData_pg_foreign_server;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_foreign_table {
+    pub ftrelid: Oid,
+    pub ftserver: Oid,
+}
+impl Default for FormData_pg_foreign_table {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_foreign_table = *mut FormData_pg_foreign_table;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_operator {
+    pub oid: Oid,
+    pub oprname: NameData,
+    pub oprnamespace: Oid,
+    pub oprowner: Oid,
+    pub oprkind: ::core::ffi::c_char,
+    pub oprcanmerge: bool,
+    pub oprcanhash: bool,
+    pub oprleft: Oid,
+    pub oprright: Oid,
+    pub oprresult: Oid,
+    pub oprcom: Oid,
+    pub oprnegate: Oid,
+    pub oprcode: regproc,
+    pub oprrest: regproc,
+    pub oprjoin: regproc,
+}
+impl Default for FormData_pg_operator {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_operator = *mut FormData_pg_operator;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_opclass {
+    pub oid: Oid,
+    pub opcmethod: Oid,
+    pub opcname: NameData,
+    pub opcnamespace: Oid,
+    pub opcowner: Oid,
+    pub opcfamily: Oid,
+    pub opcintype: Oid,
+    pub opcdefault: bool,
+    pub opckeytype: Oid,
+}
+impl Default for FormData_pg_opclass {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_opclass = *mut FormData_pg_opclass;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_opfamily {
+    pub oid: Oid,
+    pub opfmethod: Oid,
+    pub opfname: NameData,
+    pub opfnamespace: Oid,
+    pub opfowner: Oid,
+}
+impl Default for FormData_pg_opfamily {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_opfamily = *mut FormData_pg_opfamily;
+#[repr(C)]
+#[derive(Debug)]
+pub struct FormData_pg_proc {
+    pub oid: Oid,
+    pub proname: NameData,
+    pub pronamespace: Oid,
+    pub proowner: Oid,
+    pub prolang: Oid,
+    pub procost: float4,
+    pub prorows: float4,
+    pub provariadic: Oid,
+    pub prosupport: regproc,
+    pub prokind: ::core::ffi::c_char,
+    pub prosecdef: bool,
+    pub proleakproof: bool,
+    pub proisstrict: bool,
+    pub proretset: bool,
+    pub provolatile: ::core::ffi::c_char,
+    pub proparallel: ::core::ffi::c_char,
+    pub pronargs: int16,
+    pub pronargdefaults: int16,
+    pub prorettype: Oid,
+    pub proargtypes: oidvector,
+}
+impl Default for FormData_pg_proc {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_proc = *mut FormData_pg_proc;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AclItem {
+    pub ai_grantee: Oid,
+    pub ai_grantor: Oid,
+    pub ai_privs: AclMode,
+}
+impl Default for AclItem {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Acl = ArrayType;
+pub mod AclMaskHow {
+    pub type Type = ::core::ffi::c_uint;
+    pub const ACLMASK_ALL: Type = 0;
+    pub const ACLMASK_ANY: Type = 1;
+}
+pub mod AclResult {
+    pub type Type = ::core::ffi::c_uint;
+    pub const ACLCHECK_OK: Type = 0;
+    pub const ACLCHECK_NO_PRIV: Type = 1;
+    pub const ACLCHECK_NOT_OWNER: Type = 2;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_namespace {
+    pub oid: Oid,
+    pub nspname: NameData,
+    pub nspowner: Oid,
+}
+impl Default for FormData_pg_namespace {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_namespace = *mut FormData_pg_namespace;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_seclabel {
+    pub objoid: Oid,
+    pub classoid: Oid,
+    pub objsubid: int32,
+}
+impl Default for FormData_pg_seclabel {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug)]
+pub struct FormData_pg_statistic_ext {
+    pub oid: Oid,
+    pub stxrelid: Oid,
+    pub stxname: NameData,
+    pub stxnamespace: Oid,
+    pub stxowner: Oid,
+    pub stxstattarget: int32,
+    pub stxkeys: int2vector,
+}
+impl Default for FormData_pg_statistic_ext {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_statistic_ext = *mut FormData_pg_statistic_ext;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_tablespace {
+    pub oid: Oid,
+    pub spcname: NameData,
+    pub spcowner: Oid,
+}
+impl Default for FormData_pg_tablespace {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_tablespace = *mut FormData_pg_tablespace;
+#[repr(C)]
+#[derive(Debug)]
+pub struct FormData_pg_trigger {
+    pub oid: Oid,
+    pub tgrelid: Oid,
+    pub tgparentid: Oid,
+    pub tgname: NameData,
+    pub tgfoid: Oid,
+    pub tgtype: int16,
+    pub tgenabled: ::core::ffi::c_char,
+    pub tgisinternal: bool,
+    pub tgconstrrelid: Oid,
+    pub tgconstrindid: Oid,
+    pub tgconstraint: Oid,
+    pub tgdeferrable: bool,
+    pub tginitdeferred: bool,
+    pub tgnargs: int16,
+    pub tgattr: int2vector,
+}
+impl Default for FormData_pg_trigger {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_trigger = *mut FormData_pg_trigger;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_type {
+    pub oid: Oid,
+    pub typname: NameData,
+    pub typnamespace: Oid,
+    pub typowner: Oid,
+    pub typlen: int16,
+    pub typbyval: bool,
+    pub typtype: ::core::ffi::c_char,
+    pub typcategory: ::core::ffi::c_char,
+    pub typispreferred: bool,
+    pub typisdefined: bool,
+    pub typdelim: ::core::ffi::c_char,
+    pub typrelid: Oid,
+    pub typsubscript: regproc,
+    pub typelem: Oid,
+    pub typarray: Oid,
+    pub typinput: regproc,
+    pub typoutput: regproc,
+    pub typreceive: regproc,
+    pub typsend: regproc,
+    pub typmodin: regproc,
+    pub typmodout: regproc,
+    pub typanalyze: regproc,
+    pub typalign: ::core::ffi::c_char,
+    pub typstorage: ::core::ffi::c_char,
+    pub typnotnull: bool,
+    pub typbasetype: Oid,
+    pub typtypmod: int32,
+    pub typndims: int32,
+    pub typcollation: Oid,
+}
+impl Default for FormData_pg_type {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_type = *mut FormData_pg_type;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_user_mapping {
+    pub oid: Oid,
+    pub umuser: Oid,
+    pub umserver: Oid,
+}
+impl Default for FormData_pg_user_mapping {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_user_mapping = *mut FormData_pg_user_mapping;
+pub mod CopyHeaderChoice {
+    pub type Type = ::core::ffi::c_uint;
+    pub const COPY_HEADER_FALSE: Type = 0;
+    pub const COPY_HEADER_TRUE: Type = 1;
+    pub const COPY_HEADER_MATCH: Type = 2;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CopyFormatOptions {
+    pub file_encoding: ::core::ffi::c_int,
+    pub binary: bool,
+    pub freeze: bool,
+    pub csv_mode: bool,
+    pub header_line: CopyHeaderChoice::Type,
+    pub null_print: *mut ::core::ffi::c_char,
+    pub null_print_len: ::core::ffi::c_int,
+    pub null_print_client: *mut ::core::ffi::c_char,
+    pub default_print: *mut ::core::ffi::c_char,
+    pub default_print_len: ::core::ffi::c_int,
+    pub delim: *mut ::core::ffi::c_char,
+    pub quote: *mut ::core::ffi::c_char,
+    pub escape: *mut ::core::ffi::c_char,
+    pub force_quote: *mut List,
+    pub force_quote_all: bool,
+    pub force_quote_flags: *mut bool,
+    pub force_notnull: *mut List,
+    pub force_notnull_flags: *mut bool,
+    pub force_null: *mut List,
+    pub force_null_flags: *mut bool,
+    pub convert_selectively: bool,
+    pub convert_select: *mut List,
+}
+impl Default for CopyFormatOptions {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CopyFromStateData {
+    _unused: [u8; 0],
+}
+pub type CopyFromState = *mut CopyFromStateData;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CopyToStateData {
+    _unused: [u8; 0],
+}
+pub type CopyToState = *mut CopyToStateData;
+pub type copy_data_source_cb = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        outbuf: *mut ::core::ffi::c_void,
+        minread: ::core::ffi::c_int,
+        maxread: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int,
+>;
+pub type copy_data_dest_cb = ::core::option::Option<
+    unsafe extern "C-unwind" fn(data: *mut ::core::ffi::c_void, len: ::core::ffi::c_int),
+>;
+pub type EOM_get_flat_size_method =
+    ::core::option::Option<unsafe extern "C-unwind" fn(eohptr: *mut ExpandedObjectHeader) -> Size>;
+pub type EOM_flatten_into_method = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        eohptr: *mut ExpandedObjectHeader,
+        result: *mut ::core::ffi::c_void,
+        allocated_size: Size,
+    ),
+>;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ExpandedObjectMethods {
+    pub get_flat_size: EOM_get_flat_size_method,
+    pub flatten_into: EOM_flatten_into_method,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExpandedObjectHeader {
+    pub vl_len_: int32,
+    pub eoh_methods: *const ExpandedObjectMethods,
+    pub eoh_context: MemoryContext,
+    pub eoh_rw_ptr: [::core::ffi::c_char; 10usize],
+    pub eoh_ro_ptr: [::core::ffi::c_char; 10usize],
+}
+impl Default for ExpandedObjectHeader {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ArrayType {
+    pub vl_len_: int32,
+    pub ndim: ::core::ffi::c_int,
+    pub dataoffset: int32,
+    pub elemtype: Oid,
+}
+impl Default for ArrayType {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExpandedArrayHeader {
+    pub hdr: ExpandedObjectHeader,
+    pub ea_magic: ::core::ffi::c_int,
+    pub ndims: ::core::ffi::c_int,
+    pub dims: *mut ::core::ffi::c_int,
+    pub lbound: *mut ::core::ffi::c_int,
+    pub element_type: Oid,
+    pub typlen: int16,
+    pub typbyval: bool,
+    pub typalign: ::core::ffi::c_char,
+    pub dvalues: *mut Datum,
+    pub dnulls: *mut bool,
+    pub dvalueslen: ::core::ffi::c_int,
+    pub nelems: ::core::ffi::c_int,
+    pub flat_size: Size,
+    pub fvalue: *mut ArrayType,
+    pub fstartptr: *mut ::core::ffi::c_char,
+    pub fendptr: *mut ::core::ffi::c_char,
+}
+impl Default for ExpandedArrayHeader {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union AnyArrayType {
+    pub flt: ArrayType,
+    pub xpn: ExpandedArrayHeader,
+}
+impl Default for AnyArrayType {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ArrayBuildState {
+    pub mcontext: MemoryContext,
+    pub dvalues: *mut Datum,
+    pub dnulls: *mut bool,
+    pub alen: ::core::ffi::c_int,
+    pub nelems: ::core::ffi::c_int,
+    pub element_type: Oid,
+    pub typlen: int16,
+    pub typbyval: bool,
+    pub typalign: ::core::ffi::c_char,
+    pub private_cxt: bool,
+}
+impl Default for ArrayBuildState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ArrayBuildStateArr {
+    pub mcontext: MemoryContext,
+    pub data: *mut ::core::ffi::c_char,
+    pub nullbitmap: *mut bits8,
+    pub abytes: ::core::ffi::c_int,
+    pub nbytes: ::core::ffi::c_int,
+    pub aitems: ::core::ffi::c_int,
+    pub nitems: ::core::ffi::c_int,
+    pub ndims: ::core::ffi::c_int,
+    pub dims: [::core::ffi::c_int; 6usize],
+    pub lbs: [::core::ffi::c_int; 6usize],
+    pub array_type: Oid,
+    pub element_type: Oid,
+    pub private_cxt: bool,
+}
+impl Default for ArrayBuildStateArr {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ArrayBuildStateAny {
+    pub scalarstate: *mut ArrayBuildState,
+    pub arraystate: *mut ArrayBuildStateArr,
+}
+impl Default for ArrayBuildStateAny {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ArrayMetaState {
+    pub element_type: Oid,
+    pub typlen: int16,
+    pub typbyval: bool,
+    pub typalign: ::core::ffi::c_char,
+    pub typdelim: ::core::ffi::c_char,
+    pub typioparam: Oid,
+    pub typiofunc: Oid,
+    pub proc_: FmgrInfo,
+}
+impl Default for ArrayMetaState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ArrayMapState {
+    pub inp_extra: ArrayMetaState,
+    pub ret_extra: ArrayMetaState,
+}
+impl Default for ArrayMapState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ArrayIteratorData {
+    _unused: [u8; 0],
+}
+pub type ArrayIterator = *mut ArrayIteratorData;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_event_trigger {
+    pub oid: Oid,
+    pub evtname: NameData,
+    pub evtevent: NameData,
+    pub evtowner: Oid,
+    pub evtfoid: Oid,
+    pub evtenabled: ::core::ffi::c_char,
+}
+impl Default for FormData_pg_event_trigger {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_event_trigger = *mut FormData_pg_event_trigger;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct InternalGrant {
+    pub is_grant: bool,
+    pub objtype: ObjectType::Type,
+    pub objects: *mut List,
+    pub all_privs: bool,
+    pub privileges: AclMode,
+    pub col_privs: *mut List,
+    pub grantees: *mut List,
+    pub grant_option: bool,
+    pub behavior: DropBehavior::Type,
+}
+impl Default for InternalGrant {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod CollectedCommandType {
+    pub type Type = ::core::ffi::c_uint;
+    pub const SCT_Simple: Type = 0;
+    pub const SCT_AlterTable: Type = 1;
+    pub const SCT_Grant: Type = 2;
+    pub const SCT_AlterOpFamily: Type = 3;
+    pub const SCT_AlterDefaultPrivileges: Type = 4;
+    pub const SCT_CreateOpClass: Type = 5;
+    pub const SCT_AlterTSConfig: Type = 6;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CollectedATSubcmd {
+    pub address: ObjectAddress,
+    pub parsetree: *mut Node,
+}
+impl Default for CollectedATSubcmd {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct CollectedCommand {
+    pub type_: CollectedCommandType::Type,
+    pub in_extension: bool,
+    pub parsetree: *mut Node,
+    pub d: CollectedCommand__bindgen_ty_1,
+    pub parent: *mut CollectedCommand,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union CollectedCommand__bindgen_ty_1 {
+    pub simple: CollectedCommand__bindgen_ty_1__bindgen_ty_1,
+    pub alterTable: CollectedCommand__bindgen_ty_1__bindgen_ty_2,
+    pub grant: CollectedCommand__bindgen_ty_1__bindgen_ty_3,
+    pub opfam: CollectedCommand__bindgen_ty_1__bindgen_ty_4,
+    pub createopc: CollectedCommand__bindgen_ty_1__bindgen_ty_5,
+    pub atscfg: CollectedCommand__bindgen_ty_1__bindgen_ty_6,
+    pub defprivs: CollectedCommand__bindgen_ty_1__bindgen_ty_7,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_1 {
+    pub address: ObjectAddress,
+    pub secondaryObject: ObjectAddress,
+}
+impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_2 {
+    pub objectId: Oid,
+    pub classId: Oid,
+    pub subcmds: *mut List,
+}
+impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_2 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_3 {
+    pub istmt: *mut InternalGrant,
+}
+impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_3 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_4 {
+    pub address: ObjectAddress,
+    pub operators: *mut List,
+    pub procedures: *mut List,
+}
+impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_4 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_5 {
+    pub address: ObjectAddress,
+    pub operators: *mut List,
+    pub procedures: *mut List,
+}
+impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_5 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_6 {
+    pub address: ObjectAddress,
+    pub dictIds: *mut Oid,
+    pub ndicts: ::core::ffi::c_int,
+}
+impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_6 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CollectedCommand__bindgen_ty_1__bindgen_ty_7 {
+    pub objtype: ObjectType::Type,
+}
+impl Default for CollectedCommand__bindgen_ty_1__bindgen_ty_7 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for CollectedCommand__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for CollectedCommand {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct EventTriggerData {
+    pub type_: NodeTag,
+    pub event: *const ::core::ffi::c_char,
+    pub parsetree: *mut Node,
+    pub tag: CommandTag::Type,
+}
+impl Default for EventTriggerData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod ExplainFormat {
+    pub type Type = ::core::ffi::c_uint;
+    pub const EXPLAIN_FORMAT_TEXT: Type = 0;
+    pub const EXPLAIN_FORMAT_XML: Type = 1;
+    pub const EXPLAIN_FORMAT_JSON: Type = 2;
+    pub const EXPLAIN_FORMAT_YAML: Type = 3;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExplainWorkersState {
+    pub num_workers: ::core::ffi::c_int,
+    pub worker_inited: *mut bool,
+    pub worker_str: *mut StringInfoData,
+    pub worker_state_save: *mut ::core::ffi::c_int,
+    pub prev_str: StringInfo,
+}
+impl Default for ExplainWorkersState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExplainState {
+    pub str_: StringInfo,
+    pub verbose: bool,
+    pub analyze: bool,
+    pub costs: bool,
+    pub buffers: bool,
+    pub wal: bool,
+    pub timing: bool,
+    pub summary: bool,
+    pub settings: bool,
+    pub generic: bool,
+    pub format: ExplainFormat::Type,
+    pub indent: ::core::ffi::c_int,
+    pub grouping_stack: *mut List,
+    pub pstmt: *mut PlannedStmt,
+    pub rtable: *mut List,
+    pub rtable_names: *mut List,
+    pub deparse_cxt: *mut List,
+    pub printed_subplans: *mut Bitmapset,
+    pub hide_workers: bool,
+    pub workers_state: *mut ExplainWorkersState,
+}
+impl Default for ExplainState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type ExplainOneQuery_hook_type = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        query: *mut Query,
+        cursorOptions: ::core::ffi::c_int,
+        into: *mut IntoClause,
+        es: *mut ExplainState,
+        queryString: *const ::core::ffi::c_char,
+        params: ParamListInfo,
+        queryEnv: *mut QueryEnvironment,
+    ),
+>;
+pub type explain_get_index_name_hook_type =
+    ::core::option::Option<unsafe extern "C-unwind" fn(indexId: Oid) -> *const ::core::ffi::c_char>;
+pub mod PlanCacheMode {
+    pub type Type = ::core::ffi::c_uint;
+    pub const PLAN_CACHE_MODE_AUTO: Type = 0;
+    pub const PLAN_CACHE_MODE_FORCE_GENERIC_PLAN: Type = 1;
+    pub const PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN: Type = 2;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CachedPlanSource {
+    pub magic: ::core::ffi::c_int,
+    pub raw_parse_tree: *mut RawStmt,
+    pub query_string: *const ::core::ffi::c_char,
+    pub commandTag: CommandTag::Type,
+    pub param_types: *mut Oid,
+    pub num_params: ::core::ffi::c_int,
+    pub parserSetup: ParserSetupHook,
+    pub parserSetupArg: *mut ::core::ffi::c_void,
+    pub cursor_options: ::core::ffi::c_int,
+    pub fixed_result: bool,
+    pub resultDesc: TupleDesc,
+    pub context: MemoryContext,
+    pub query_list: *mut List,
+    pub relationOids: *mut List,
+    pub invalItems: *mut List,
+    pub search_path: *mut OverrideSearchPath,
+    pub query_context: MemoryContext,
+    pub rewriteRoleId: Oid,
+    pub rewriteRowSecurity: bool,
+    pub dependsOnRLS: bool,
+    pub gplan: *mut CachedPlan,
+    pub is_oneshot: bool,
+    pub is_complete: bool,
+    pub is_saved: bool,
+    pub is_valid: bool,
+    pub generation: ::core::ffi::c_int,
+    pub node: dlist_node,
+    pub generic_cost: f64,
+    pub total_custom_cost: f64,
+    pub num_custom_plans: int64,
+    pub num_generic_plans: int64,
+}
+impl Default for CachedPlanSource {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CachedPlan {
+    pub magic: ::core::ffi::c_int,
+    pub stmt_list: *mut List,
+    pub is_oneshot: bool,
+    pub is_saved: bool,
+    pub is_valid: bool,
+    pub planRoleId: Oid,
+    pub dependsOnRole: bool,
+    pub saved_xmin: TransactionId,
+    pub generation: ::core::ffi::c_int,
+    pub refcount: ::core::ffi::c_int,
+    pub context: MemoryContext,
+}
+impl Default for CachedPlan {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CachedExpression {
+    pub magic: ::core::ffi::c_int,
+    pub expr: *mut Node,
+    pub is_valid: bool,
+    pub relationOids: *mut List,
+    pub invalItems: *mut List,
+    pub context: MemoryContext,
+    pub node: dlist_node,
+}
+impl Default for CachedExpression {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PreparedStatement {
+    pub stmt_name: [::core::ffi::c_char; 64usize],
+    pub plansource: *mut CachedPlanSource,
+    pub from_sql: bool,
+    pub prepare_time: TimestampTz,
+}
+impl Default for PreparedStatement {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type SyscacheCallbackFunction = ::core::option::Option<
+    unsafe extern "C-unwind" fn(arg: Datum, cacheid: ::core::ffi::c_int, hashvalue: uint32),
+>;
+pub type RelcacheCallbackFunction =
+    ::core::option::Option<unsafe extern "C-unwind" fn(arg: Datum, relid: Oid)>;
+pub type check_object_relabel_type = ::core::option::Option<
+    unsafe extern "C-unwind" fn(object: *const ObjectAddress, seclabel: *const ::core::ffi::c_char),
+>;
+#[repr(C)]
+#[derive(Debug)]
+pub struct xl_tblspc_create_rec {
+    pub ts_id: Oid,
+    pub ts_path: __IncompleteArrayField<::core::ffi::c_char>,
+}
+impl Default for xl_tblspc_create_rec {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct xl_tblspc_drop_rec {
+    pub ts_id: Oid,
+}
+impl Default for xl_tblspc_drop_rec {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct TableSpaceOpts {
+    pub vl_len_: int32,
+    pub random_page_cost: float8,
+    pub seq_page_cost: float8,
+    pub effective_io_concurrency: ::core::ffi::c_int,
+    pub maintenance_io_concurrency: ::core::ffi::c_int,
+}
+pub type TriggerEvent = uint32;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct TriggerData {
+    pub type_: NodeTag,
+    pub tg_event: TriggerEvent,
+    pub tg_relation: Relation,
+    pub tg_trigtuple: HeapTuple,
+    pub tg_newtuple: HeapTuple,
+    pub tg_trigger: *mut Trigger,
+    pub tg_trigslot: *mut TupleTableSlot,
+    pub tg_newslot: *mut TupleTableSlot,
+    pub tg_oldtable: *mut Tuplestorestate,
+    pub tg_newtable: *mut Tuplestorestate,
+    pub tg_updatedcols: *const Bitmapset,
+}
+impl Default for TriggerData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AfterTriggersTableData {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct TransitionCaptureState {
+    pub tcs_delete_old_table: bool,
+    pub tcs_update_old_table: bool,
+    pub tcs_update_new_table: bool,
+    pub tcs_insert_new_table: bool,
+    pub tcs_original_insert_tuple: *mut TupleTableSlot,
+    pub tcs_insert_private: *mut AfterTriggersTableData,
+    pub tcs_update_private: *mut AfterTriggersTableData,
+    pub tcs_delete_private: *mut AfterTriggersTableData,
+}
+impl Default for TransitionCaptureState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod PasswordType {
+    pub type Type = ::core::ffi::c_uint;
+    pub const PASSWORD_TYPE_PLAINTEXT: Type = 0;
+    pub const PASSWORD_TYPE_MD5: Type = 1;
+    pub const PASSWORD_TYPE_SCRAM_SHA_256: Type = 2;
+}
+pub mod GucContext {
+    pub type Type = ::core::ffi::c_uint;
+    pub const PGC_INTERNAL: Type = 0;
+    pub const PGC_POSTMASTER: Type = 1;
+    pub const PGC_SIGHUP: Type = 2;
+    pub const PGC_SU_BACKEND: Type = 3;
+    pub const PGC_BACKEND: Type = 4;
+    pub const PGC_SUSET: Type = 5;
+    pub const PGC_USERSET: Type = 6;
+}
+pub mod GucSource {
+    pub type Type = ::core::ffi::c_uint;
+    pub const PGC_S_DEFAULT: Type = 0;
+    pub const PGC_S_DYNAMIC_DEFAULT: Type = 1;
+    pub const PGC_S_ENV_VAR: Type = 2;
+    pub const PGC_S_FILE: Type = 3;
+    pub const PGC_S_ARGV: Type = 4;
+    pub const PGC_S_GLOBAL: Type = 5;
+    pub const PGC_S_DATABASE: Type = 6;
+    pub const PGC_S_USER: Type = 7;
+    pub const PGC_S_DATABASE_USER: Type = 8;
+    pub const PGC_S_CLIENT: Type = 9;
+    pub const PGC_S_OVERRIDE: Type = 10;
+    pub const PGC_S_INTERACTIVE: Type = 11;
+    pub const PGC_S_TEST: Type = 12;
+    pub const PGC_S_SESSION: Type = 13;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ConfigVariable {
+    pub name: *mut ::core::ffi::c_char,
+    pub value: *mut ::core::ffi::c_char,
+    pub errmsg: *mut ::core::ffi::c_char,
+    pub filename: *mut ::core::ffi::c_char,
+    pub sourceline: ::core::ffi::c_int,
+    pub ignore: bool,
+    pub applied: bool,
+    pub next: *mut ConfigVariable,
+}
+impl Default for ConfigVariable {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct config_enum_entry {
+    pub name: *const ::core::ffi::c_char,
+    pub val: ::core::ffi::c_int,
+    pub hidden: bool,
+}
+impl Default for config_enum_entry {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type GucBoolCheckHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        newval: *mut bool,
+        extra: *mut *mut ::core::ffi::c_void,
+        source: GucSource::Type,
+    ) -> bool,
+>;
+pub type GucIntCheckHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        newval: *mut ::core::ffi::c_int,
+        extra: *mut *mut ::core::ffi::c_void,
+        source: GucSource::Type,
+    ) -> bool,
+>;
+pub type GucRealCheckHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        newval: *mut f64,
+        extra: *mut *mut ::core::ffi::c_void,
+        source: GucSource::Type,
+    ) -> bool,
+>;
+pub type GucStringCheckHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        newval: *mut *mut ::core::ffi::c_char,
+        extra: *mut *mut ::core::ffi::c_void,
+        source: GucSource::Type,
+    ) -> bool,
+>;
+pub type GucEnumCheckHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        newval: *mut ::core::ffi::c_int,
+        extra: *mut *mut ::core::ffi::c_void,
+        source: GucSource::Type,
+    ) -> bool,
+>;
+pub type GucBoolAssignHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(newval: bool, extra: *mut ::core::ffi::c_void),
+>;
+pub type GucIntAssignHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(newval: ::core::ffi::c_int, extra: *mut ::core::ffi::c_void),
+>;
+pub type GucRealAssignHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(newval: f64, extra: *mut ::core::ffi::c_void),
+>;
+pub type GucStringAssignHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        newval: *const ::core::ffi::c_char,
+        extra: *mut ::core::ffi::c_void,
+    ),
+>;
+pub type GucEnumAssignHook = ::core::option::Option<
+    unsafe extern "C-unwind" fn(newval: ::core::ffi::c_int, extra: *mut ::core::ffi::c_void),
+>;
+pub type GucShowHook =
+    ::core::option::Option<unsafe extern "C-unwind" fn() -> *const ::core::ffi::c_char>;
+pub mod GucAction {
+    pub type Type = ::core::ffi::c_uint;
+    pub const GUC_ACTION_SET: Type = 0;
+    pub const GUC_ACTION_LOCAL: Type = 1;
+    pub const GUC_ACTION_SAVE: Type = 2;
+}
+pub type check_password_hook_type = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        username: *const ::core::ffi::c_char,
+        shadow_pass: *const ::core::ffi::c_char,
+        password_type: PasswordType::Type,
+        validuntil_time: Datum,
+        validuntil_null: bool,
+    ),
+>;
+pub type bgworker_main_type = ::core::option::Option<unsafe extern "C-unwind" fn(main_arg: Datum)>;
+pub mod BgWorkerStartTime {
+    pub type Type = ::core::ffi::c_uint;
+    pub const BgWorkerStart_PostmasterStart: Type = 0;
+    pub const BgWorkerStart_ConsistentState: Type = 1;
+    pub const BgWorkerStart_RecoveryFinished: Type = 2;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct BackgroundWorker {
+    pub bgw_name: [::core::ffi::c_char; 96usize],
+    pub bgw_type: [::core::ffi::c_char; 96usize],
+    pub bgw_flags: ::core::ffi::c_int,
+    pub bgw_start_time: BgWorkerStartTime::Type,
+    pub bgw_restart_time: ::core::ffi::c_int,
+    pub bgw_library_name: [::core::ffi::c_char; 96usize],
+    pub bgw_function_name: [::core::ffi::c_char; 96usize],
+    pub bgw_main_arg: Datum,
+    pub bgw_extra: [::core::ffi::c_char; 128usize],
+    pub bgw_notify_pid: pid_t,
+}
+impl Default for BackgroundWorker {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod BgwHandleStatus {
+    pub type Type = ::core::ffi::c_uint;
+    pub const BGWH_STARTED: Type = 0;
+    pub const BGWH_NOT_YET_STARTED: Type = 1;
+    pub const BGWH_STOPPED: Type = 2;
+    pub const BGWH_POSTMASTER_DIED: Type = 3;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct BackgroundWorkerHandle {
+    _unused: [u8; 0],
+}
+pub type XidStatus = ::core::ffi::c_int;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct xl_clog_truncate {
+    pub pageno: ::core::ffi::c_int,
+    pub oldestXact: TransactionId,
+    pub oldestXactDb: Oid,
+}
+impl Default for xl_clog_truncate {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Latch {
+    pub is_set: sig_atomic_t,
+    pub maybe_sleeping: sig_atomic_t,
+    pub is_shared: bool,
+    pub owner_pid: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct WaitEvent {
+    pub pos: ::core::ffi::c_int,
+    pub events: uint32,
+    pub fd: pgsocket,
+    pub user_data: *mut ::core::ffi::c_void,
+}
+impl Default for WaitEvent {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PGSemaphoreData {
+    _unused: [u8; 0],
+}
+pub type PGSemaphore = *mut PGSemaphoreData;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct XidCacheStatus {
+    pub count: uint8,
+    pub overflowed: bool,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct XidCache {
+    pub xids: [TransactionId; 64usize],
+}
+impl Default for XidCache {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod ProcWaitStatus {
+    pub type Type = ::core::ffi::c_uint;
+    pub const PROC_WAIT_STATUS_OK: Type = 0;
+    pub const PROC_WAIT_STATUS_WAITING: Type = 1;
+    pub const PROC_WAIT_STATUS_ERROR: Type = 2;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PGPROC {
+    pub links: dlist_node,
+    pub procgloballist: *mut dlist_head,
+    pub sem: PGSemaphore,
+    pub waitStatus: ProcWaitStatus::Type,
+    pub procLatch: Latch,
+    pub xid: TransactionId,
+    pub xmin: TransactionId,
+    pub lxid: LocalTransactionId,
+    pub pid: ::core::ffi::c_int,
+    pub pgxactoff: ::core::ffi::c_int,
+    pub pgprocno: ::core::ffi::c_int,
+    pub backendId: BackendId,
+    pub databaseId: Oid,
+    pub roleId: Oid,
+    pub tempNamespaceId: Oid,
+    pub isBackgroundWorker: bool,
+    pub recoveryConflictPending: bool,
+    pub lwWaiting: uint8,
+    pub lwWaitMode: uint8,
+    pub lwWaitLink: proclist_node,
+    pub cvWaitLink: proclist_node,
+    pub waitLock: *mut LOCK,
+    pub waitProcLock: *mut PROCLOCK,
+    pub waitLockMode: LOCKMODE,
+    pub heldLocks: LOCKMASK,
+    pub waitStart: pg_atomic_uint64,
+    pub delayChkptFlags: ::core::ffi::c_int,
+    pub statusFlags: uint8,
+    pub waitLSN: XLogRecPtr,
+    pub syncRepState: ::core::ffi::c_int,
+    pub syncRepLinks: dlist_node,
+    pub myProcLocks: [dlist_head; 16usize],
+    pub subxidStatus: XidCacheStatus,
+    pub subxids: XidCache,
+    pub procArrayGroupMember: bool,
+    pub procArrayGroupNext: pg_atomic_uint32,
+    pub procArrayGroupMemberXid: TransactionId,
+    pub wait_event_info: uint32,
+    pub clogGroupMember: bool,
+    pub clogGroupNext: pg_atomic_uint32,
+    pub clogGroupMemberXid: TransactionId,
+    pub clogGroupMemberXidStatus: XidStatus,
+    pub clogGroupMemberPage: ::core::ffi::c_int,
+    pub clogGroupMemberLsn: XLogRecPtr,
+    pub fpInfoLock: LWLock,
+    pub fpLockBits: uint64,
+    pub fpRelId: [Oid; 16usize],
+    pub fpVXIDLock: bool,
+    pub fpLocalTransactionId: LocalTransactionId,
+    pub lockGroupLeader: *mut PGPROC,
+    pub lockGroupMembers: dlist_head,
+    pub lockGroupLink: dlist_node,
+}
+impl Default for PGPROC {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PROC_HDR {
+    pub allProcs: *mut PGPROC,
+    pub xids: *mut TransactionId,
+    pub subxidStates: *mut XidCacheStatus,
+    pub statusFlags: *mut uint8,
+    pub allProcCount: uint32,
+    pub freeProcs: dlist_head,
+    pub autovacFreeProcs: dlist_head,
+    pub bgworkerFreeProcs: dlist_head,
+    pub walsenderFreeProcs: dlist_head,
+    pub procArrayGroupFirst: pg_atomic_uint32,
+    pub clogGroupFirst: pg_atomic_uint32,
+    pub walwriterLatch: *mut Latch,
+    pub checkpointerLatch: *mut Latch,
+    pub spins_per_delay: ::core::ffi::c_int,
+    pub startupBufferPinWaitBufId: ::core::ffi::c_int,
+}
+impl Default for PROC_HDR {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct shm_mq {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct shm_mq_handle {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct shm_mq_iovec {
+    pub data: *const ::core::ffi::c_char,
+    pub len: Size,
+}
+impl Default for shm_mq_iovec {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod shm_mq_result {
+    pub type Type = ::core::ffi::c_uint;
+    pub const SHM_MQ_SUCCESS: Type = 0;
+    pub const SHM_MQ_WOULD_BLOCK: Type = 1;
+    pub const SHM_MQ_DETACHED: Type = 2;
+}
+pub type parallel_worker_main_type =
+    ::core::option::Option<unsafe extern "C-unwind" fn(seg: *mut dsm_segment, toc: *mut shm_toc)>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ParallelWorkerInfo {
+    pub bgwhandle: *mut BackgroundWorkerHandle,
+    pub error_mqh: *mut shm_mq_handle,
+    pub pid: int32,
+}
+impl Default for ParallelWorkerInfo {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ParallelContext {
+    pub node: dlist_node,
+    pub subid: SubTransactionId,
+    pub nworkers: ::core::ffi::c_int,
+    pub nworkers_to_launch: ::core::ffi::c_int,
+    pub nworkers_launched: ::core::ffi::c_int,
+    pub library_name: *mut ::core::ffi::c_char,
+    pub function_name: *mut ::core::ffi::c_char,
+    pub error_context_stack: *mut ErrorContextCallback,
+    pub estimator: shm_toc_estimator,
+    pub seg: *mut dsm_segment,
+    pub private_memory: *mut ::core::ffi::c_void,
+    pub toc: *mut shm_toc,
+    pub worker: *mut ParallelWorkerInfo,
+    pub nknown_attached_workers: ::core::ffi::c_int,
+    pub known_attached_workers: *mut bool,
+}
+impl Default for ParallelContext {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ParallelWorkerContext {
+    pub seg: *mut dsm_segment,
+    pub toc: *mut shm_toc,
+}
+impl Default for ParallelWorkerContext {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FormData_pg_statistic {
+    pub starelid: Oid,
+    pub staattnum: int16,
+    pub stainherit: bool,
+    pub stanullfrac: float4,
+    pub stawidth: int32,
+    pub stadistinct: float4,
+    pub stakind1: int16,
+    pub stakind2: int16,
+    pub stakind3: int16,
+    pub stakind4: int16,
+    pub stakind5: int16,
+    pub staop1: Oid,
+    pub staop2: Oid,
+    pub staop3: Oid,
+    pub staop4: Oid,
+    pub staop5: Oid,
+    pub stacoll1: Oid,
+    pub stacoll2: Oid,
+    pub stacoll3: Oid,
+    pub stacoll4: Oid,
+    pub stacoll5: Oid,
+}
+impl Default for FormData_pg_statistic {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type Form_pg_statistic = *mut FormData_pg_statistic;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ParallelVacuumState {
+    _unused: [u8; 0],
+}
+pub type VacAttrStatsP = *mut VacAttrStats;
+pub type AnalyzeAttrFetchFunc = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        stats: VacAttrStatsP,
+        rownum: ::core::ffi::c_int,
+        isNull: *mut bool,
+    ) -> Datum,
+>;
+pub type AnalyzeAttrComputeStatsFunc = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        stats: VacAttrStatsP,
+        fetchfunc: AnalyzeAttrFetchFunc,
+        samplerows: ::core::ffi::c_int,
+        totalrows: f64,
+    ),
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct VacAttrStats {
+    pub attr: Form_pg_attribute,
+    pub attrtypid: Oid,
+    pub attrtypmod: int32,
+    pub attrtype: Form_pg_type,
+    pub attrcollid: Oid,
+    pub anl_context: MemoryContext,
+    pub compute_stats: AnalyzeAttrComputeStatsFunc,
+    pub minrows: ::core::ffi::c_int,
+    pub extra_data: *mut ::core::ffi::c_void,
+    pub stats_valid: bool,
+    pub stanullfrac: float4,
+    pub stawidth: int32,
+    pub stadistinct: float4,
+    pub stakind: [int16; 5usize],
+    pub staop: [Oid; 5usize],
+    pub stacoll: [Oid; 5usize],
+    pub numnumbers: [::core::ffi::c_int; 5usize],
+    pub stanumbers: [*mut float4; 5usize],
+    pub numvalues: [::core::ffi::c_int; 5usize],
+    pub stavalues: [*mut Datum; 5usize],
+    pub statypid: [Oid; 5usize],
+    pub statyplen: [int16; 5usize],
+    pub statypbyval: [bool; 5usize],
+    pub statypalign: [::core::ffi::c_char; 5usize],
+    pub tupattnum: ::core::ffi::c_int,
+    pub rows: *mut HeapTuple,
+    pub tupDesc: TupleDesc,
+    pub exprvals: *mut Datum,
+    pub exprnulls: *mut bool,
+    pub rowstride: ::core::ffi::c_int,
+}
+impl Default for VacAttrStats {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod VacOptValue {
+    pub type Type = ::core::ffi::c_uint;
+    pub const VACOPTVALUE_UNSPECIFIED: Type = 0;
+    pub const VACOPTVALUE_AUTO: Type = 1;
+    pub const VACOPTVALUE_DISABLED: Type = 2;
+    pub const VACOPTVALUE_ENABLED: Type = 3;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct VacuumParams {
+    pub options: bits32,
+    pub freeze_min_age: ::core::ffi::c_int,
+    pub freeze_table_age: ::core::ffi::c_int,
+    pub multixact_freeze_min_age: ::core::ffi::c_int,
+    pub multixact_freeze_table_age: ::core::ffi::c_int,
+    pub is_wraparound: bool,
+    pub log_min_duration: ::core::ffi::c_int,
+    pub index_cleanup: VacOptValue::Type,
+    pub truncate: VacOptValue::Type,
+    pub nworkers: ::core::ffi::c_int,
+}
+impl Default for VacuumParams {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+pub struct VacuumCutoffs {
+    pub relfrozenxid: TransactionId,
+    pub relminmxid: MultiXactId,
+    pub OldestXmin: TransactionId,
+    pub OldestMxact: MultiXactId,
+    pub FreezeLimit: TransactionId,
+    pub MultiXactCutoff: MultiXactId,
+}
+impl Default for VacuumCutoffs {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct VacDeadItems {
+    pub max_items: ::core::ffi::c_int,
+    pub num_items: ::core::ffi::c_int,
+    pub items: __IncompleteArrayField<ItemPointerData>,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ConfigData {
+    pub name: *mut ::core::ffi::c_char,
+    pub setting: *mut ::core::ffi::c_char,
+}
+impl Default for ConfigData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AggStatePerTransData {
+    pub aggref: *mut Aggref,
+    pub aggshared: bool,
+    pub aggsortrequired: bool,
+    pub numInputs: ::core::ffi::c_int,
+    pub numTransInputs: ::core::ffi::c_int,
+    pub transfn_oid: Oid,
+    pub serialfn_oid: Oid,
+    pub deserialfn_oid: Oid,
+    pub aggtranstype: Oid,
+    pub transfn: FmgrInfo,
+    pub serialfn: FmgrInfo,
+    pub deserialfn: FmgrInfo,
+    pub aggCollation: Oid,
+    pub numSortCols: ::core::ffi::c_int,
+    pub numDistinctCols: ::core::ffi::c_int,
+    pub sortColIdx: *mut AttrNumber,
+    pub sortOperators: *mut Oid,
+    pub sortCollations: *mut Oid,
+    pub sortNullsFirst: *mut bool,
+    pub equalfnOne: FmgrInfo,
+    pub equalfnMulti: *mut ExprState,
+    pub initValue: Datum,
+    pub initValueIsNull: bool,
+    pub inputtypeLen: int16,
+    pub transtypeLen: int16,
+    pub inputtypeByVal: bool,
+    pub transtypeByVal: bool,
+    pub sortslot: *mut TupleTableSlot,
+    pub uniqslot: *mut TupleTableSlot,
+    pub sortdesc: TupleDesc,
+    pub lastdatum: Datum,
+    pub lastisnull: bool,
+    pub haslast: bool,
+    pub sortstates: *mut *mut Tuplesortstate,
+    pub transfn_fcinfo: FunctionCallInfo,
+    pub serialfn_fcinfo: FunctionCallInfo,
+    pub deserialfn_fcinfo: FunctionCallInfo,
+}
+impl Default for AggStatePerTransData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AggStatePerAggData {
+    pub aggref: *mut Aggref,
+    pub transno: ::core::ffi::c_int,
+    pub finalfn_oid: Oid,
+    pub finalfn: FmgrInfo,
+    pub numFinalArgs: ::core::ffi::c_int,
+    pub aggdirectargs: *mut List,
+    pub resulttypeLen: int16,
+    pub resulttypeByVal: bool,
+    pub shareable: bool,
+}
+impl Default for AggStatePerAggData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AggStatePerGroupData {
+    pub transValue: Datum,
+    pub transValueIsNull: bool,
+    pub noTransValue: bool,
+}
+impl Default for AggStatePerGroupData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AggStatePerPhaseData {
+    pub aggstrategy: AggStrategy::Type,
+    pub numsets: ::core::ffi::c_int,
+    pub gset_lengths: *mut ::core::ffi::c_int,
+    pub grouped_cols: *mut *mut Bitmapset,
+    pub eqfunctions: *mut *mut ExprState,
+    pub aggnode: *mut Agg,
+    pub sortnode: *mut Sort,
+    pub evaltrans: *mut ExprState,
+    pub evaltrans_cache: [[*mut ExprState; 2usize]; 2usize],
+}
+impl Default for AggStatePerPhaseData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AggStatePerHashData {
+    pub hashtable: TupleHashTable,
+    pub hashiter: TupleHashIterator,
+    pub hashslot: *mut TupleTableSlot,
+    pub hashfunctions: *mut FmgrInfo,
+    pub eqfuncoids: *mut Oid,
+    pub numCols: ::core::ffi::c_int,
+    pub numhashGrpCols: ::core::ffi::c_int,
+    pub largestGrpColIdx: ::core::ffi::c_int,
+    pub hashGrpColIdxInput: *mut AttrNumber,
+    pub hashGrpColIdxHash: *mut AttrNumber,
+    pub aggnode: *mut Agg,
+}
+impl Default for AggStatePerHashData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ScalarArrayOpExprHashTable {
+    _unused: [u8; 0],
+}
+pub type ExecEvalSubroutine = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        state: *mut ExprState,
+        op: *mut ExprEvalStep,
+        econtext: *mut ExprContext,
+    ),
+>;
+pub type ExecEvalBoolSubroutine = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        state: *mut ExprState,
+        op: *mut ExprEvalStep,
+        econtext: *mut ExprContext,
+    ) -> bool,
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalRowtypeCache {
+    pub cacheptr: *mut ::core::ffi::c_void,
+    pub tupdesc_id: uint64,
+}
+impl Default for ExprEvalRowtypeCache {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod ExprEvalOp {
+    pub type Type = ::core::ffi::c_uint;
+    pub const EEOP_DONE: Type = 0;
+    pub const EEOP_INNER_FETCHSOME: Type = 1;
+    pub const EEOP_OUTER_FETCHSOME: Type = 2;
+    pub const EEOP_SCAN_FETCHSOME: Type = 3;
+    pub const EEOP_INNER_VAR: Type = 4;
+    pub const EEOP_OUTER_VAR: Type = 5;
+    pub const EEOP_SCAN_VAR: Type = 6;
+    pub const EEOP_INNER_SYSVAR: Type = 7;
+    pub const EEOP_OUTER_SYSVAR: Type = 8;
+    pub const EEOP_SCAN_SYSVAR: Type = 9;
+    pub const EEOP_WHOLEROW: Type = 10;
+    pub const EEOP_ASSIGN_INNER_VAR: Type = 11;
+    pub const EEOP_ASSIGN_OUTER_VAR: Type = 12;
+    pub const EEOP_ASSIGN_SCAN_VAR: Type = 13;
+    pub const EEOP_ASSIGN_TMP: Type = 14;
+    pub const EEOP_ASSIGN_TMP_MAKE_RO: Type = 15;
+    pub const EEOP_CONST: Type = 16;
+    pub const EEOP_FUNCEXPR: Type = 17;
+    pub const EEOP_FUNCEXPR_STRICT: Type = 18;
+    pub const EEOP_FUNCEXPR_FUSAGE: Type = 19;
+    pub const EEOP_FUNCEXPR_STRICT_FUSAGE: Type = 20;
+    pub const EEOP_BOOL_AND_STEP_FIRST: Type = 21;
+    pub const EEOP_BOOL_AND_STEP: Type = 22;
+    pub const EEOP_BOOL_AND_STEP_LAST: Type = 23;
+    pub const EEOP_BOOL_OR_STEP_FIRST: Type = 24;
+    pub const EEOP_BOOL_OR_STEP: Type = 25;
+    pub const EEOP_BOOL_OR_STEP_LAST: Type = 26;
+    pub const EEOP_BOOL_NOT_STEP: Type = 27;
+    pub const EEOP_QUAL: Type = 28;
+    pub const EEOP_JUMP: Type = 29;
+    pub const EEOP_JUMP_IF_NULL: Type = 30;
+    pub const EEOP_JUMP_IF_NOT_NULL: Type = 31;
+    pub const EEOP_JUMP_IF_NOT_TRUE: Type = 32;
+    pub const EEOP_NULLTEST_ISNULL: Type = 33;
+    pub const EEOP_NULLTEST_ISNOTNULL: Type = 34;
+    pub const EEOP_NULLTEST_ROWISNULL: Type = 35;
+    pub const EEOP_NULLTEST_ROWISNOTNULL: Type = 36;
+    pub const EEOP_BOOLTEST_IS_TRUE: Type = 37;
+    pub const EEOP_BOOLTEST_IS_NOT_TRUE: Type = 38;
+    pub const EEOP_BOOLTEST_IS_FALSE: Type = 39;
+    pub const EEOP_BOOLTEST_IS_NOT_FALSE: Type = 40;
+    pub const EEOP_PARAM_EXEC: Type = 41;
+    pub const EEOP_PARAM_EXTERN: Type = 42;
+    pub const EEOP_PARAM_CALLBACK: Type = 43;
+    pub const EEOP_CASE_TESTVAL: Type = 44;
+    pub const EEOP_MAKE_READONLY: Type = 45;
+    pub const EEOP_IOCOERCE: Type = 46;
+    pub const EEOP_DISTINCT: Type = 47;
+    pub const EEOP_NOT_DISTINCT: Type = 48;
+    pub const EEOP_NULLIF: Type = 49;
+    pub const EEOP_SQLVALUEFUNCTION: Type = 50;
+    pub const EEOP_CURRENTOFEXPR: Type = 51;
+    pub const EEOP_NEXTVALUEEXPR: Type = 52;
+    pub const EEOP_ARRAYEXPR: Type = 53;
+    pub const EEOP_ARRAYCOERCE: Type = 54;
+    pub const EEOP_ROW: Type = 55;
+    pub const EEOP_ROWCOMPARE_STEP: Type = 56;
+    pub const EEOP_ROWCOMPARE_FINAL: Type = 57;
+    pub const EEOP_MINMAX: Type = 58;
+    pub const EEOP_FIELDSELECT: Type = 59;
+    pub const EEOP_FIELDSTORE_DEFORM: Type = 60;
+    pub const EEOP_FIELDSTORE_FORM: Type = 61;
+    pub const EEOP_SBSREF_SUBSCRIPTS: Type = 62;
+    pub const EEOP_SBSREF_OLD: Type = 63;
+    pub const EEOP_SBSREF_ASSIGN: Type = 64;
+    pub const EEOP_SBSREF_FETCH: Type = 65;
+    pub const EEOP_DOMAIN_TESTVAL: Type = 66;
+    pub const EEOP_DOMAIN_NOTNULL: Type = 67;
+    pub const EEOP_DOMAIN_CHECK: Type = 68;
+    pub const EEOP_CONVERT_ROWTYPE: Type = 69;
+    pub const EEOP_SCALARARRAYOP: Type = 70;
+    pub const EEOP_HASHED_SCALARARRAYOP: Type = 71;
+    pub const EEOP_XMLEXPR: Type = 72;
+    pub const EEOP_JSON_CONSTRUCTOR: Type = 73;
+    pub const EEOP_IS_JSON: Type = 74;
+    pub const EEOP_AGGREF: Type = 75;
+    pub const EEOP_GROUPING_FUNC: Type = 76;
+    pub const EEOP_WINDOW_FUNC: Type = 77;
+    pub const EEOP_SUBPLAN: Type = 78;
+    pub const EEOP_AGG_STRICT_DESERIALIZE: Type = 79;
+    pub const EEOP_AGG_DESERIALIZE: Type = 80;
+    pub const EEOP_AGG_STRICT_INPUT_CHECK_ARGS: Type = 81;
+    pub const EEOP_AGG_STRICT_INPUT_CHECK_NULLS: Type = 82;
+    pub const EEOP_AGG_PLAIN_PERGROUP_NULLCHECK: Type = 83;
+    pub const EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYVAL: Type = 84;
+    pub const EEOP_AGG_PLAIN_TRANS_STRICT_BYVAL: Type = 85;
+    pub const EEOP_AGG_PLAIN_TRANS_BYVAL: Type = 86;
+    pub const EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYREF: Type = 87;
+    pub const EEOP_AGG_PLAIN_TRANS_STRICT_BYREF: Type = 88;
+    pub const EEOP_AGG_PLAIN_TRANS_BYREF: Type = 89;
+    pub const EEOP_AGG_PRESORTED_DISTINCT_SINGLE: Type = 90;
+    pub const EEOP_AGG_PRESORTED_DISTINCT_MULTI: Type = 91;
+    pub const EEOP_AGG_ORDERED_TRANS_DATUM: Type = 92;
+    pub const EEOP_AGG_ORDERED_TRANS_TUPLE: Type = 93;
+    pub const EEOP_LAST: Type = 94;
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct ExprEvalStep {
+    pub opcode: isize,
+    pub resvalue: *mut Datum,
+    pub resnull: *mut bool,
+    pub d: ExprEvalStep__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union ExprEvalStep__bindgen_ty_1 {
+    pub fetch: ExprEvalStep__bindgen_ty_1__bindgen_ty_1,
+    pub var: ExprEvalStep__bindgen_ty_1__bindgen_ty_2,
+    pub wholerow: ExprEvalStep__bindgen_ty_1__bindgen_ty_3,
+    pub assign_var: ExprEvalStep__bindgen_ty_1__bindgen_ty_4,
+    pub assign_tmp: ExprEvalStep__bindgen_ty_1__bindgen_ty_5,
+    pub constval: ExprEvalStep__bindgen_ty_1__bindgen_ty_6,
+    pub func: ExprEvalStep__bindgen_ty_1__bindgen_ty_7,
+    pub boolexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_8,
+    pub qualexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_9,
+    pub jump: ExprEvalStep__bindgen_ty_1__bindgen_ty_10,
+    pub nulltest_row: ExprEvalStep__bindgen_ty_1__bindgen_ty_11,
+    pub param: ExprEvalStep__bindgen_ty_1__bindgen_ty_12,
+    pub cparam: ExprEvalStep__bindgen_ty_1__bindgen_ty_13,
+    pub casetest: ExprEvalStep__bindgen_ty_1__bindgen_ty_14,
+    pub make_readonly: ExprEvalStep__bindgen_ty_1__bindgen_ty_15,
+    pub iocoerce: ExprEvalStep__bindgen_ty_1__bindgen_ty_16,
+    pub sqlvaluefunction: ExprEvalStep__bindgen_ty_1__bindgen_ty_17,
+    pub nextvalueexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_18,
+    pub arrayexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_19,
+    pub arraycoerce: ExprEvalStep__bindgen_ty_1__bindgen_ty_20,
+    pub row: ExprEvalStep__bindgen_ty_1__bindgen_ty_21,
+    pub rowcompare_step: ExprEvalStep__bindgen_ty_1__bindgen_ty_22,
+    pub rowcompare_final: ExprEvalStep__bindgen_ty_1__bindgen_ty_23,
+    pub minmax: ExprEvalStep__bindgen_ty_1__bindgen_ty_24,
+    pub fieldselect: ExprEvalStep__bindgen_ty_1__bindgen_ty_25,
+    pub fieldstore: ExprEvalStep__bindgen_ty_1__bindgen_ty_26,
+    pub sbsref_subscript: ExprEvalStep__bindgen_ty_1__bindgen_ty_27,
+    pub sbsref: ExprEvalStep__bindgen_ty_1__bindgen_ty_28,
+    pub domaincheck: ExprEvalStep__bindgen_ty_1__bindgen_ty_29,
+    pub convert_rowtype: ExprEvalStep__bindgen_ty_1__bindgen_ty_30,
+    pub scalararrayop: ExprEvalStep__bindgen_ty_1__bindgen_ty_31,
+    pub hashedscalararrayop: ExprEvalStep__bindgen_ty_1__bindgen_ty_32,
+    pub xmlexpr: ExprEvalStep__bindgen_ty_1__bindgen_ty_33,
+    pub json_constructor: ExprEvalStep__bindgen_ty_1__bindgen_ty_34,
+    pub aggref: ExprEvalStep__bindgen_ty_1__bindgen_ty_35,
+    pub grouping_func: ExprEvalStep__bindgen_ty_1__bindgen_ty_36,
+    pub window_func: ExprEvalStep__bindgen_ty_1__bindgen_ty_37,
+    pub subplan: ExprEvalStep__bindgen_ty_1__bindgen_ty_38,
+    pub agg_deserialize: ExprEvalStep__bindgen_ty_1__bindgen_ty_39,
+    pub agg_strict_input_check: ExprEvalStep__bindgen_ty_1__bindgen_ty_40,
+    pub agg_plain_pergroup_nullcheck: ExprEvalStep__bindgen_ty_1__bindgen_ty_41,
+    pub agg_presorted_distinctcheck: ExprEvalStep__bindgen_ty_1__bindgen_ty_42,
+    pub agg_trans: ExprEvalStep__bindgen_ty_1__bindgen_ty_43,
+    pub is_json: ExprEvalStep__bindgen_ty_1__bindgen_ty_44,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_1 {
+    pub last_var: ::core::ffi::c_int,
+    pub fixed: bool,
+    pub known_desc: TupleDesc,
+    pub kind: *const TupleTableSlotOps,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_2 {
+    pub attnum: ::core::ffi::c_int,
+    pub vartype: Oid,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_2 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_3 {
+    pub var: *mut Var,
+    pub first: bool,
+    pub slow: bool,
+    pub tupdesc: TupleDesc,
+    pub junkFilter: *mut JunkFilter,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_3 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_4 {
+    pub resultnum: ::core::ffi::c_int,
+    pub attnum: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_5 {
+    pub resultnum: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_6 {
+    pub value: Datum,
+    pub isnull: bool,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_6 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_7 {
+    pub finfo: *mut FmgrInfo,
+    pub fcinfo_data: FunctionCallInfo,
+    pub fn_addr: PGFunction,
+    pub nargs: ::core::ffi::c_int,
+    pub make_ro: bool,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_7 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_8 {
+    pub anynull: *mut bool,
+    pub jumpdone: ::core::ffi::c_int,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_8 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_9 {
+    pub jumpdone: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_10 {
+    pub jumpdone: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_11 {
+    pub rowcache: ExprEvalRowtypeCache,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_11 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_12 {
+    pub paramid: ::core::ffi::c_int,
+    pub paramtype: Oid,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_12 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_13 {
+    pub paramfunc: ExecEvalSubroutine,
+    pub paramarg: *mut ::core::ffi::c_void,
+    pub paramid: ::core::ffi::c_int,
+    pub paramtype: Oid,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_13 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_14 {
+    pub value: *mut Datum,
+    pub isnull: *mut bool,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_14 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_15 {
+    pub value: *mut Datum,
+    pub isnull: *mut bool,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_15 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_16 {
+    pub finfo_out: *mut FmgrInfo,
+    pub fcinfo_data_out: FunctionCallInfo,
+    pub finfo_in: *mut FmgrInfo,
+    pub fcinfo_data_in: FunctionCallInfo,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_16 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_17 {
+    pub svf: *mut SQLValueFunction,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_17 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_18 {
+    pub seqid: Oid,
+    pub seqtypid: Oid,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_18 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_19 {
+    pub elemvalues: *mut Datum,
+    pub elemnulls: *mut bool,
+    pub nelems: ::core::ffi::c_int,
+    pub elemtype: Oid,
+    pub elemlength: int16,
+    pub elembyval: bool,
+    pub elemalign: ::core::ffi::c_char,
+    pub multidims: bool,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_19 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_20 {
+    pub elemexprstate: *mut ExprState,
+    pub resultelemtype: Oid,
+    pub amstate: *mut ArrayMapState,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_20 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_21 {
+    pub tupdesc: TupleDesc,
+    pub elemvalues: *mut Datum,
+    pub elemnulls: *mut bool,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_21 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_22 {
+    pub finfo: *mut FmgrInfo,
+    pub fcinfo_data: FunctionCallInfo,
+    pub fn_addr: PGFunction,
+    pub jumpnull: ::core::ffi::c_int,
+    pub jumpdone: ::core::ffi::c_int,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_22 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_23 {
+    pub rctype: RowCompareType::Type,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_23 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_24 {
+    pub values: *mut Datum,
+    pub nulls: *mut bool,
+    pub nelems: ::core::ffi::c_int,
+    pub op: MinMaxOp::Type,
+    pub finfo: *mut FmgrInfo,
+    pub fcinfo_data: FunctionCallInfo,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_24 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_25 {
+    pub fieldnum: AttrNumber,
+    pub resulttype: Oid,
+    pub rowcache: ExprEvalRowtypeCache,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_25 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_26 {
+    pub fstore: *mut FieldStore,
+    pub rowcache: *mut ExprEvalRowtypeCache,
+    pub values: *mut Datum,
+    pub nulls: *mut bool,
+    pub ncolumns: ::core::ffi::c_int,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_26 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_27 {
+    pub subscriptfunc: ExecEvalBoolSubroutine,
+    pub state: *mut SubscriptingRefState,
+    pub jumpdone: ::core::ffi::c_int,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_27 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_28 {
+    pub subscriptfunc: ExecEvalSubroutine,
+    pub state: *mut SubscriptingRefState,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_28 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_29 {
+    pub constraintname: *mut ::core::ffi::c_char,
+    pub checkvalue: *mut Datum,
+    pub checknull: *mut bool,
+    pub resulttype: Oid,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_29 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_30 {
+    pub inputtype: Oid,
+    pub outputtype: Oid,
+    pub incache: *mut ExprEvalRowtypeCache,
+    pub outcache: *mut ExprEvalRowtypeCache,
+    pub map: *mut TupleConversionMap,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_30 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_31 {
+    pub element_type: Oid,
+    pub useOr: bool,
+    pub typlen: int16,
+    pub typbyval: bool,
+    pub typalign: ::core::ffi::c_char,
+    pub finfo: *mut FmgrInfo,
+    pub fcinfo_data: FunctionCallInfo,
+    pub fn_addr: PGFunction,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_31 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_32 {
+    pub has_nulls: bool,
+    pub inclause: bool,
+    pub null_lhs_result: bool,
+    pub null_lhs_isnull: bool,
+    pub elements_tab: *mut ScalarArrayOpExprHashTable,
+    pub finfo: *mut FmgrInfo,
+    pub fcinfo_data: FunctionCallInfo,
+    pub saop: *mut ScalarArrayOpExpr,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_32 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_33 {
+    pub xexpr: *mut XmlExpr,
+    pub named_argvalue: *mut Datum,
+    pub named_argnull: *mut bool,
+    pub argvalue: *mut Datum,
+    pub argnull: *mut bool,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_33 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_34 {
+    pub jcstate: *mut JsonConstructorExprState,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_34 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_35 {
+    pub aggno: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_36 {
+    pub clauses: *mut List,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_36 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_37 {
+    pub wfstate: *mut WindowFuncExprState,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_37 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_38 {
+    pub sstate: *mut SubPlanState,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_38 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_39 {
+    pub fcinfo_data: FunctionCallInfo,
+    pub jumpnull: ::core::ffi::c_int,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_39 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_40 {
+    pub args: *mut NullableDatum,
+    pub nulls: *mut bool,
+    pub nargs: ::core::ffi::c_int,
+    pub jumpnull: ::core::ffi::c_int,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_40 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_41 {
+    pub setoff: ::core::ffi::c_int,
+    pub jumpnull: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_42 {
+    pub pertrans: AggStatePerTrans,
+    pub aggcontext: *mut ExprContext,
+    pub jumpdistinct: ::core::ffi::c_int,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_42 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_43 {
+    pub pertrans: AggStatePerTrans,
+    pub aggcontext: *mut ExprContext,
+    pub setno: ::core::ffi::c_int,
+    pub transno: ::core::ffi::c_int,
+    pub setoff: ::core::ffi::c_int,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_43 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ExprEvalStep__bindgen_ty_1__bindgen_ty_44 {
+    pub pred: *mut JsonIsPredicate,
+}
+impl Default for ExprEvalStep__bindgen_ty_1__bindgen_ty_44 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for ExprEvalStep__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for ExprEvalStep {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct SubscriptingRefState {
+    pub isassignment: bool,
+    pub workspace: *mut ::core::ffi::c_void,
+    pub numupper: ::core::ffi::c_int,
+    pub upperprovided: *mut bool,
+    pub upperindex: *mut Datum,
+    pub upperindexnull: *mut bool,
+    pub numlower: ::core::ffi::c_int,
+    pub lowerprovided: *mut bool,
+    pub lowerindex: *mut Datum,
+    pub lowerindexnull: *mut bool,
+    pub replacevalue: Datum,
+    pub replacenull: bool,
+    pub prevvalue: Datum,
+    pub prevnull: bool,
+}
+impl Default for SubscriptingRefState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct SubscriptExecSteps {
+    pub sbs_check_subscripts: ExecEvalBoolSubroutine,
+    pub sbs_fetch: ExecEvalSubroutine,
+    pub sbs_assign: ExecEvalSubroutine,
+    pub sbs_fetch_old: ExecEvalSubroutine,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct JsonConstructorExprState {
+    pub constructor: *mut JsonConstructorExpr,
+    pub arg_values: *mut Datum,
+    pub arg_nulls: *mut bool,
+    pub arg_types: *mut Oid,
+    pub arg_type_cache: *mut JsonConstructorExprState__bindgen_ty_1,
+    pub nargs: ::core::ffi::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct JsonConstructorExprState__bindgen_ty_1 {
+    pub category: ::core::ffi::c_int,
+    pub outfuncid: Oid,
+}
+impl Default for JsonConstructorExprState__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for JsonConstructorExprState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod RawParseMode {
+    pub type Type = ::core::ffi::c_uint;
+    pub const RAW_PARSE_DEFAULT: Type = 0;
+    pub const RAW_PARSE_TYPE_NAME: Type = 1;
+    pub const RAW_PARSE_PLPGSQL_EXPR: Type = 2;
+    pub const RAW_PARSE_PLPGSQL_ASSIGN1: Type = 3;
+    pub const RAW_PARSE_PLPGSQL_ASSIGN2: Type = 4;
+    pub const RAW_PARSE_PLPGSQL_ASSIGN3: Type = 5;
+}
+pub mod BackslashQuoteType {
+    pub type Type = ::core::ffi::c_uint;
+    pub const BACKSLASH_QUOTE_OFF: Type = 0;
+    pub const BACKSLASH_QUOTE_ON: Type = 1;
+    pub const BACKSLASH_QUOTE_SAFE_ENCODING: Type = 2;
+}
+pub mod PortalStrategy {
+    pub type Type = ::core::ffi::c_uint;
+    pub const PORTAL_ONE_SELECT: Type = 0;
+    pub const PORTAL_ONE_RETURNING: Type = 1;
+    pub const PORTAL_ONE_MOD_WITH: Type = 2;
+    pub const PORTAL_UTIL_SELECT: Type = 3;
+    pub const PORTAL_MULTI_QUERY: Type = 4;
+}
+pub mod PortalStatus {
+    pub type Type = ::core::ffi::c_uint;
+    pub const PORTAL_NEW: Type = 0;
+    pub const PORTAL_DEFINED: Type = 1;
+    pub const PORTAL_READY: Type = 2;
+    pub const PORTAL_ACTIVE: Type = 3;
+    pub const PORTAL_DONE: Type = 4;
+    pub const PORTAL_FAILED: Type = 5;
+}
+pub type Portal = *mut PortalData;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PortalData {
+    pub name: *const ::core::ffi::c_char,
+    pub prepStmtName: *const ::core::ffi::c_char,
+    pub portalContext: MemoryContext,
+    pub resowner: ResourceOwner,
+    pub cleanup: ::core::option::Option<unsafe extern "C-unwind" fn(portal: Portal)>,
+    pub createSubid: SubTransactionId,
+    pub activeSubid: SubTransactionId,
+    pub createLevel: ::core::ffi::c_int,
+    pub sourceText: *const ::core::ffi::c_char,
+    pub commandTag: CommandTag::Type,
+    pub qc: QueryCompletion,
+    pub stmts: *mut List,
+    pub cplan: *mut CachedPlan,
+    pub portalParams: ParamListInfo,
+    pub queryEnv: *mut QueryEnvironment,
+    pub strategy: PortalStrategy::Type,
+    pub cursorOptions: ::core::ffi::c_int,
+    pub run_once: bool,
+    pub status: PortalStatus::Type,
+    pub portalPinned: bool,
+    pub autoHeld: bool,
+    pub queryDesc: *mut QueryDesc,
+    pub tupDesc: TupleDesc,
+    pub formats: *mut int16,
+    pub portalSnapshot: Snapshot,
+    pub holdStore: *mut Tuplestorestate,
+    pub holdContext: MemoryContext,
+    pub holdSnapshot: Snapshot,
+    pub atStart: bool,
+    pub atEnd: bool,
+    pub portalPos: uint64,
+    pub creation_time: TimestampTz,
+    pub visible: bool,
+}
+impl Default for PortalData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct SPITupleTable {
+    pub tupdesc: TupleDesc,
+    pub vals: *mut HeapTuple,
+    pub numvals: uint64,
+    pub alloced: uint64,
+    pub tuptabcxt: MemoryContext,
+    pub next: slist_node,
+    pub subid: SubTransactionId,
+}
+impl Default for SPITupleTable {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct SPIPrepareOptions {
+    pub parserSetup: ParserSetupHook,
+    pub parserSetupArg: *mut ::core::ffi::c_void,
+    pub parseMode: RawParseMode::Type,
+    pub cursorOptions: ::core::ffi::c_int,
+}
+impl Default for SPIPrepareOptions {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct SPIExecuteOptions {
+    pub params: ParamListInfo,
+    pub read_only: bool,
+    pub allow_nonatomic: bool,
+    pub must_return_tuples: bool,
+    pub tcount: uint64,
+    pub dest: *mut DestReceiver,
+    pub owner: ResourceOwner,
+}
+impl Default for SPIExecuteOptions {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct SPIParseOpenOptions {
+    pub params: ParamListInfo,
+    pub cursorOptions: ::core::ffi::c_int,
+    pub read_only: bool,
+}
+impl Default for SPIParseOpenOptions {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _SPI_plan {
+    _unused: [u8; 0],
+}
+pub type SPIPlanPtr = *mut _SPI_plan;
 pub type GetForeignRelSize_function = ::core::option::Option<
     unsafe extern "C-unwind" fn(
         root: *mut PlannerInfo,
@@ -27728,6 +28033,93 @@ pub mod CoercionPathType {
     pub const COERCION_PATH_ARRAYCOERCE: Type = 3;
     pub const COERCION_PATH_COERCEVIAIO: Type = 4;
 }
+pub type ScanKeywordHashFunc = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        key: *const ::core::ffi::c_void,
+        keylen: usize,
+    ) -> ::core::ffi::c_int,
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ScanKeywordList {
+    pub kw_string: *const ::core::ffi::c_char,
+    pub kw_offsets: *const uint16,
+    pub hash: ScanKeywordHashFunc,
+    pub num_keywords: ::core::ffi::c_int,
+    pub max_kw_len: ::core::ffi::c_int,
+}
+impl Default for ScanKeywordList {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union core_YYSTYPE {
+    pub ival: ::core::ffi::c_int,
+    pub str_: *mut ::core::ffi::c_char,
+    pub keyword: *const ::core::ffi::c_char,
+}
+impl Default for core_YYSTYPE {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct core_yy_extra_type {
+    pub scanbuf: *mut ::core::ffi::c_char,
+    pub scanbuflen: Size,
+    pub keywordlist: *const ScanKeywordList,
+    pub keyword_tokens: *const uint16,
+    pub backslash_quote: ::core::ffi::c_int,
+    pub escape_string_warning: bool,
+    pub standard_conforming_strings: bool,
+    pub literalbuf: *mut ::core::ffi::c_char,
+    pub literallen: ::core::ffi::c_int,
+    pub literalalloc: ::core::ffi::c_int,
+    pub state_before_str_stop: ::core::ffi::c_int,
+    pub xcdepth: ::core::ffi::c_int,
+    pub dolqstart: *mut ::core::ffi::c_char,
+    pub save_yylloc: ::core::ffi::c_int,
+    pub utf16_first_part: int32,
+    pub warn_on_first_escape: bool,
+    pub saw_non_ascii: bool,
+}
+impl Default for core_yy_extra_type {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type core_yyscan_t = *mut ::core::ffi::c_void;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ScannerCallbackState {
+    pub yyscanner: core_yyscan_t,
+    pub location: ::core::ffi::c_int,
+    pub errcallback: ErrorContextCallback,
+}
+impl Default for ScannerCallbackState {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct PartitionBoundInfoData {
@@ -28004,7 +28396,7 @@ pub mod PLpgSQL_stmt_type {
     pub const PLPGSQL_STMT_COMMIT: Type = 25;
     pub const PLPGSQL_STMT_ROLLBACK: Type = 26;
 }
-pub mod _bindgen_ty_25 {
+pub mod _bindgen_ty_26 {
     pub type Type = ::core::ffi::c_uint;
     pub const PLPGSQL_RC_OK: Type = 0;
     pub const PLPGSQL_RC_EXIT: Type = 1;
@@ -29375,6 +29767,8 @@ pub struct ReorderBufferTXN {
     pub total_size: Size,
     pub concurrent_abort: bool,
     pub output_plugin_private: *mut ::core::ffi::c_void,
+    pub ninvalidations_distributed: uint32,
+    pub invalidations_distributed: *mut SharedInvalidationMessage,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -30321,6 +30715,111 @@ impl Default for LogicalDecodingContext {
     }
 }
 #[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct SyncRepStandbyData {
+    pub pid: pid_t,
+    pub write: XLogRecPtr,
+    pub flush: XLogRecPtr,
+    pub apply: XLogRecPtr,
+    pub sync_standby_priority: ::core::ffi::c_int,
+    pub walsnd_index: ::core::ffi::c_int,
+    pub is_me: bool,
+}
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct SyncRepConfigData {
+    pub config_size: ::core::ffi::c_int,
+    pub num_sync: ::core::ffi::c_int,
+    pub syncrep_method: uint8,
+    pub nmembers: ::core::ffi::c_int,
+    pub member_names: __IncompleteArrayField<::core::ffi::c_char>,
+}
+pub mod WalSndState {
+    pub type Type = ::core::ffi::c_uint;
+    pub const WALSNDSTATE_STARTUP: Type = 0;
+    pub const WALSNDSTATE_BACKUP: Type = 1;
+    pub const WALSNDSTATE_CATCHUP: Type = 2;
+    pub const WALSNDSTATE_STREAMING: Type = 3;
+    pub const WALSNDSTATE_STOPPING: Type = 4;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct WalSnd {
+    pub pid: pid_t,
+    pub state: WalSndState::Type,
+    pub sentPtr: XLogRecPtr,
+    pub needreload: bool,
+    pub write: XLogRecPtr,
+    pub flush: XLogRecPtr,
+    pub apply: XLogRecPtr,
+    pub writeLag: TimeOffset,
+    pub flushLag: TimeOffset,
+    pub applyLag: TimeOffset,
+    pub sync_standby_priority: ::core::ffi::c_int,
+    pub mutex: slock_t,
+    pub latch: *mut Latch,
+    pub replyTime: TimestampTz,
+    pub kind: ReplicationKind::Type,
+}
+impl Default for WalSnd {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug)]
+pub struct WalSndCtlData {
+    pub SyncRepQueue: [dlist_head; 3usize],
+    pub lsn: [XLogRecPtr; 3usize],
+    pub sync_standbys_status: bits8,
+    pub wal_flush_cv: ConditionVariable,
+    pub wal_replay_cv: ConditionVariable,
+    pub walsnds: __IncompleteArrayField<WalSnd>,
+}
+impl Default for WalSndCtlData {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type replace_rte_variables_callback = ::core::option::Option<
+    unsafe extern "C-unwind" fn(
+        var: *mut Var,
+        context: *mut replace_rte_variables_context,
+    ) -> *mut Node,
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct replace_rte_variables_context {
+    pub callback: replace_rte_variables_callback,
+    pub callback_arg: *mut ::core::ffi::c_void,
+    pub target_varno: ::core::ffi::c_int,
+    pub sublevels_up: ::core::ffi::c_int,
+    pub inserted_sublink: bool,
+}
+impl Default for replace_rte_variables_context {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod ReplaceVarsNoMatchOption {
+    pub type Type = ::core::ffi::c_uint;
+    pub const REPLACEVARS_REPORT_ERROR: Type = 0;
+    pub const REPLACEVARS_CHANGE_VARNO: Type = 1;
+    pub const REPLACEVARS_SUBSTITUTE_NULL: Type = 2;
+}
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct RowSecurityPolicy {
     pub policy_name: *mut ::core::ffi::c_char,
@@ -30358,6 +30857,99 @@ impl Default for RowSecurityDesc {
 pub type row_security_policy_hook_type = ::core::option::Option<
     unsafe extern "C-unwind" fn(cmdtype: CmdType::Type, relation: Relation) -> *mut List,
 >;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct MVNDistinctItem {
+    pub ndistinct: f64,
+    pub nattributes: ::core::ffi::c_int,
+    pub attributes: *mut AttrNumber,
+}
+impl Default for MVNDistinctItem {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug)]
+pub struct MVNDistinct {
+    pub magic: uint32,
+    pub type_: uint32,
+    pub nitems: uint32,
+    pub items: __IncompleteArrayField<MVNDistinctItem>,
+}
+impl Default for MVNDistinct {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct MVDependency {
+    pub degree: f64,
+    pub nattributes: AttrNumber,
+    pub attributes: __IncompleteArrayField<AttrNumber>,
+}
+#[repr(C)]
+#[derive(Debug)]
+pub struct MVDependencies {
+    pub magic: uint32,
+    pub type_: uint32,
+    pub ndeps: uint32,
+    pub deps: __IncompleteArrayField<*mut MVDependency>,
+}
+impl Default for MVDependencies {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct MCVItem {
+    pub frequency: f64,
+    pub base_frequency: f64,
+    pub isnull: *mut bool,
+    pub values: *mut Datum,
+}
+impl Default for MCVItem {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug)]
+pub struct MCVList {
+    pub magic: uint32,
+    pub type_: uint32,
+    pub nitems: uint32,
+    pub ndimensions: AttrNumber,
+    pub types: [Oid; 8usize],
+    pub items: __IncompleteArrayField<MCVItem>,
+}
+impl Default for MCVList {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct buftag {
@@ -31632,6 +32224,270 @@ pub struct CIRCLE {
     pub center: Point,
     pub radius: float8,
 }
+pub mod config_type {
+    pub type Type = ::core::ffi::c_uint;
+    pub const PGC_BOOL: Type = 0;
+    pub const PGC_INT: Type = 1;
+    pub const PGC_REAL: Type = 2;
+    pub const PGC_STRING: Type = 3;
+    pub const PGC_ENUM: Type = 4;
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union config_var_val {
+    pub boolval: bool,
+    pub intval: ::core::ffi::c_int,
+    pub realval: f64,
+    pub stringval: *mut ::core::ffi::c_char,
+    pub enumval: ::core::ffi::c_int,
+}
+impl Default for config_var_val {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct config_var_value {
+    pub val: config_var_val,
+    pub extra: *mut ::core::ffi::c_void,
+}
+impl Default for config_var_value {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub mod config_group {
+    pub type Type = ::core::ffi::c_uint;
+    pub const UNGROUPED: Type = 0;
+    pub const FILE_LOCATIONS: Type = 1;
+    pub const CONN_AUTH_SETTINGS: Type = 2;
+    pub const CONN_AUTH_TCP: Type = 3;
+    pub const CONN_AUTH_AUTH: Type = 4;
+    pub const CONN_AUTH_SSL: Type = 5;
+    pub const RESOURCES_MEM: Type = 6;
+    pub const RESOURCES_DISK: Type = 7;
+    pub const RESOURCES_KERNEL: Type = 8;
+    pub const RESOURCES_VACUUM_DELAY: Type = 9;
+    pub const RESOURCES_BGWRITER: Type = 10;
+    pub const RESOURCES_ASYNCHRONOUS: Type = 11;
+    pub const WAL_SETTINGS: Type = 12;
+    pub const WAL_CHECKPOINTS: Type = 13;
+    pub const WAL_ARCHIVING: Type = 14;
+    pub const WAL_RECOVERY: Type = 15;
+    pub const WAL_ARCHIVE_RECOVERY: Type = 16;
+    pub const WAL_RECOVERY_TARGET: Type = 17;
+    pub const REPLICATION_SENDING: Type = 18;
+    pub const REPLICATION_PRIMARY: Type = 19;
+    pub const REPLICATION_STANDBY: Type = 20;
+    pub const REPLICATION_SUBSCRIBERS: Type = 21;
+    pub const QUERY_TUNING_METHOD: Type = 22;
+    pub const QUERY_TUNING_COST: Type = 23;
+    pub const QUERY_TUNING_GEQO: Type = 24;
+    pub const QUERY_TUNING_OTHER: Type = 25;
+    pub const LOGGING_WHERE: Type = 26;
+    pub const LOGGING_WHEN: Type = 27;
+    pub const LOGGING_WHAT: Type = 28;
+    pub const PROCESS_TITLE: Type = 29;
+    pub const STATS_MONITORING: Type = 30;
+    pub const STATS_CUMULATIVE: Type = 31;
+    pub const AUTOVACUUM: Type = 32;
+    pub const CLIENT_CONN_STATEMENT: Type = 33;
+    pub const CLIENT_CONN_LOCALE: Type = 34;
+    pub const CLIENT_CONN_PRELOAD: Type = 35;
+    pub const CLIENT_CONN_OTHER: Type = 36;
+    pub const LOCK_MANAGEMENT: Type = 37;
+    pub const COMPAT_OPTIONS_PREVIOUS: Type = 38;
+    pub const COMPAT_OPTIONS_CLIENT: Type = 39;
+    pub const ERROR_HANDLING_OPTIONS: Type = 40;
+    pub const PRESET_OPTIONS: Type = 41;
+    pub const CUSTOM_OPTIONS: Type = 42;
+    pub const DEVELOPER_OPTIONS: Type = 43;
+}
+pub mod GucStackState {
+    pub type Type = ::core::ffi::c_uint;
+    pub const GUC_SAVE: Type = 0;
+    pub const GUC_SET: Type = 1;
+    pub const GUC_LOCAL: Type = 2;
+    pub const GUC_SET_LOCAL: Type = 3;
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct guc_stack {
+    pub prev: *mut guc_stack,
+    pub nest_level: ::core::ffi::c_int,
+    pub state: GucStackState::Type,
+    pub source: GucSource::Type,
+    pub scontext: GucContext::Type,
+    pub masked_scontext: GucContext::Type,
+    pub srole: Oid,
+    pub masked_srole: Oid,
+    pub prior: config_var_value,
+    pub masked: config_var_value,
+}
+impl Default for guc_stack {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type GucStack = guc_stack;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct config_generic {
+    pub name: *const ::core::ffi::c_char,
+    pub context: GucContext::Type,
+    pub group: config_group::Type,
+    pub short_desc: *const ::core::ffi::c_char,
+    pub long_desc: *const ::core::ffi::c_char,
+    pub flags: ::core::ffi::c_int,
+    pub vartype: config_type::Type,
+    pub status: ::core::ffi::c_int,
+    pub source: GucSource::Type,
+    pub reset_source: GucSource::Type,
+    pub scontext: GucContext::Type,
+    pub reset_scontext: GucContext::Type,
+    pub srole: Oid,
+    pub reset_srole: Oid,
+    pub stack: *mut GucStack,
+    pub extra: *mut ::core::ffi::c_void,
+    pub nondef_link: dlist_node,
+    pub stack_link: slist_node,
+    pub report_link: slist_node,
+    pub last_reported: *mut ::core::ffi::c_char,
+    pub sourcefile: *mut ::core::ffi::c_char,
+    pub sourceline: ::core::ffi::c_int,
+}
+impl Default for config_generic {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct config_bool {
+    pub gen_: config_generic,
+    pub variable: *mut bool,
+    pub boot_val: bool,
+    pub check_hook: GucBoolCheckHook,
+    pub assign_hook: GucBoolAssignHook,
+    pub show_hook: GucShowHook,
+    pub reset_val: bool,
+    pub reset_extra: *mut ::core::ffi::c_void,
+}
+impl Default for config_bool {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct config_int {
+    pub gen_: config_generic,
+    pub variable: *mut ::core::ffi::c_int,
+    pub boot_val: ::core::ffi::c_int,
+    pub min: ::core::ffi::c_int,
+    pub max: ::core::ffi::c_int,
+    pub check_hook: GucIntCheckHook,
+    pub assign_hook: GucIntAssignHook,
+    pub show_hook: GucShowHook,
+    pub reset_val: ::core::ffi::c_int,
+    pub reset_extra: *mut ::core::ffi::c_void,
+}
+impl Default for config_int {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct config_real {
+    pub gen_: config_generic,
+    pub variable: *mut f64,
+    pub boot_val: f64,
+    pub min: f64,
+    pub max: f64,
+    pub check_hook: GucRealCheckHook,
+    pub assign_hook: GucRealAssignHook,
+    pub show_hook: GucShowHook,
+    pub reset_val: f64,
+    pub reset_extra: *mut ::core::ffi::c_void,
+}
+impl Default for config_real {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct config_string {
+    pub gen_: config_generic,
+    pub variable: *mut *mut ::core::ffi::c_char,
+    pub boot_val: *const ::core::ffi::c_char,
+    pub check_hook: GucStringCheckHook,
+    pub assign_hook: GucStringAssignHook,
+    pub show_hook: GucShowHook,
+    pub reset_val: *mut ::core::ffi::c_char,
+    pub reset_extra: *mut ::core::ffi::c_void,
+}
+impl Default for config_string {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct config_enum {
+    pub gen_: config_generic,
+    pub variable: *mut ::core::ffi::c_int,
+    pub boot_val: ::core::ffi::c_int,
+    pub options: *const config_enum_entry,
+    pub check_hook: GucEnumCheckHook,
+    pub assign_hook: GucEnumAssignHook,
+    pub show_hook: GucShowHook,
+    pub reset_val: ::core::ffi::c_int,
+    pub reset_extra: *mut ::core::ffi::c_void,
+}
+impl Default for config_enum {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct NumericData {
@@ -32169,6 +33025,7 @@ pub mod SysCacheIdentifier {
     pub const TYPEOID: Type = 80;
     pub const USERMAPPINGOID: Type = 81;
     pub const USERMAPPINGUSERSERVER: Type = 82;
+    pub const EXTENSIONOID: Type = 83;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -32259,11 +33116,6 @@ pub struct binaryheap {
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
-pub struct TsmRoutine {
-    pub _address: u8,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
 pub struct TableFuncRoutine {
     pub _address: u8,
 }
@@ -32333,6 +33185,7 @@ unsafe extern "C-unwind" {
     pub fn cleanup_path(path: *mut ::core::ffi::c_char);
     pub fn path_contains_parent_reference(path: *const ::core::ffi::c_char) -> bool;
     pub fn path_is_relative_and_below_cwd(path: *const ::core::ffi::c_char) -> bool;
+    pub fn path_is_safe_for_extraction(path: *const ::core::ffi::c_char) -> bool;
     pub fn path_is_prefix_of_path(
         path1: *const ::core::ffi::c_char,
         path2: *const ::core::ffi::c_char,
@@ -32478,16 +33331,6 @@ unsafe extern "C-unwind" {
         uid: *mut uid_t,
         gid: *mut gid_t,
     ) -> ::core::ffi::c_int;
-    pub fn strlcat(
-        dst: *mut ::core::ffi::c_char,
-        src: *const ::core::ffi::c_char,
-        siz: usize,
-    ) -> usize;
-    pub fn strlcpy(
-        dst: *mut ::core::ffi::c_char,
-        src: *const ::core::ffi::c_char,
-        siz: usize,
-    ) -> usize;
     pub fn pg_get_user_name(
         user_id: uid_t,
         buffer: *mut ::core::ffi::c_char,
@@ -32498,6 +33341,11 @@ unsafe extern "C-unwind" {
         buffer: *mut ::core::ffi::c_char,
         buflen: usize,
     ) -> bool;
+    pub fn timingsafe_bcmp(
+        b1: *const ::core::ffi::c_void,
+        b2: *const ::core::ffi::c_void,
+        len: usize,
+    ) -> ::core::ffi::c_int;
     pub fn pg_qsort(
         base: *mut ::core::ffi::c_void,
         nel: usize,
@@ -32690,6 +33538,7 @@ unsafe extern "C-unwind" {
     pub fn write_csvlog(edata: *mut ErrorData);
     pub fn write_jsonlog(edata: *mut ErrorData);
     pub fn write_stderr(fmt: *const ::core::ffi::c_char, ...);
+    pub fn vwrite_stderr(fmt: *const ::core::ffi::c_char, ap: *mut __va_list_tag);
     pub fn write_stderr_signal_safe(fmt: *const ::core::ffi::c_char);
     pub static mut CurrentMemoryContext: MemoryContext;
     pub fn MemoryContextAlloc(context: MemoryContext, size: Size) -> *mut ::core::ffi::c_void;
@@ -32729,9 +33578,29 @@ unsafe extern "C-unwind" {
         size: Size,
     ) -> *mut ::core::ffi::c_void;
     pub fn pfree(pointer: *mut ::core::ffi::c_void);
+    pub fn add_size(s1: Size, s2: Size) -> Size;
+    pub fn mul_size(s1: Size, s2: Size) -> Size;
+    pub fn palloc_mul(s1: Size, s2: Size) -> *mut ::core::ffi::c_void;
+    pub fn palloc0_mul(s1: Size, s2: Size) -> *mut ::core::ffi::c_void;
+    pub fn palloc_mul_extended(
+        s1: Size,
+        s2: Size,
+        flags: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_void;
+    pub fn repalloc_mul(
+        p: *mut ::core::ffi::c_void,
+        s1: Size,
+        s2: Size,
+    ) -> *mut ::core::ffi::c_void;
+    pub fn repalloc_mul_extended(
+        p: *mut ::core::ffi::c_void,
+        s1: Size,
+        s2: Size,
+        flags: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_void;
     pub fn MemoryContextAllocHuge(context: MemoryContext, size: Size) -> *mut ::core::ffi::c_void;
     pub fn repalloc_huge(pointer: *mut ::core::ffi::c_void, size: Size)
-        -> *mut ::core::ffi::c_void;
+    -> *mut ::core::ffi::c_void;
     pub fn MemoryContextRegisterResetCallback(
         context: MemoryContext,
         cb: *mut MemoryContextCallback,
@@ -32750,7 +33619,81 @@ unsafe extern "C-unwind" {
         fmt: *const ::core::ffi::c_char,
         args: *mut __va_list_tag,
     ) -> usize;
+    #[link_name = "DatumGetBool__pgrx_cshim"]
+    pub fn DatumGetBool(X: Datum) -> bool;
+    #[link_name = "BoolGetDatum__pgrx_cshim"]
+    pub fn BoolGetDatum(X: bool) -> Datum;
+    #[link_name = "DatumGetChar__pgrx_cshim"]
+    pub fn DatumGetChar(X: Datum) -> ::core::ffi::c_char;
+    #[link_name = "CharGetDatum__pgrx_cshim"]
+    pub fn CharGetDatum(X: ::core::ffi::c_char) -> Datum;
+    #[link_name = "Int8GetDatum__pgrx_cshim"]
+    pub fn Int8GetDatum(X: int8) -> Datum;
+    #[link_name = "DatumGetUInt8__pgrx_cshim"]
+    pub fn DatumGetUInt8(X: Datum) -> uint8;
+    #[link_name = "UInt8GetDatum__pgrx_cshim"]
+    pub fn UInt8GetDatum(X: uint8) -> Datum;
+    #[link_name = "DatumGetInt16__pgrx_cshim"]
+    pub fn DatumGetInt16(X: Datum) -> int16;
+    #[link_name = "Int16GetDatum__pgrx_cshim"]
+    pub fn Int16GetDatum(X: int16) -> Datum;
+    #[link_name = "DatumGetUInt16__pgrx_cshim"]
+    pub fn DatumGetUInt16(X: Datum) -> uint16;
+    #[link_name = "UInt16GetDatum__pgrx_cshim"]
+    pub fn UInt16GetDatum(X: uint16) -> Datum;
+    #[link_name = "DatumGetInt32__pgrx_cshim"]
+    pub fn DatumGetInt32(X: Datum) -> int32;
+    #[link_name = "Int32GetDatum__pgrx_cshim"]
+    pub fn Int32GetDatum(X: int32) -> Datum;
+    #[link_name = "DatumGetUInt32__pgrx_cshim"]
+    pub fn DatumGetUInt32(X: Datum) -> uint32;
+    #[link_name = "UInt32GetDatum__pgrx_cshim"]
+    pub fn UInt32GetDatum(X: uint32) -> Datum;
+    #[link_name = "DatumGetObjectId__pgrx_cshim"]
+    pub fn DatumGetObjectId(X: Datum) -> Oid;
+    #[link_name = "ObjectIdGetDatum__pgrx_cshim"]
+    pub fn ObjectIdGetDatum(X: Oid) -> Datum;
+    #[link_name = "DatumGetTransactionId__pgrx_cshim"]
+    pub fn DatumGetTransactionId(X: Datum) -> TransactionId;
+    #[link_name = "TransactionIdGetDatum__pgrx_cshim"]
+    pub fn TransactionIdGetDatum(X: TransactionId) -> Datum;
+    #[link_name = "MultiXactIdGetDatum__pgrx_cshim"]
+    pub fn MultiXactIdGetDatum(X: MultiXactId) -> Datum;
+    #[link_name = "DatumGetCommandId__pgrx_cshim"]
+    pub fn DatumGetCommandId(X: Datum) -> CommandId;
+    #[link_name = "CommandIdGetDatum__pgrx_cshim"]
+    pub fn CommandIdGetDatum(X: CommandId) -> Datum;
+    #[link_name = "DatumGetPointer__pgrx_cshim"]
+    pub fn DatumGetPointer(X: Datum) -> Pointer;
+    #[link_name = "PointerGetDatum__pgrx_cshim"]
+    pub fn PointerGetDatum(X: *const ::core::ffi::c_void) -> Datum;
+    #[link_name = "DatumGetCString__pgrx_cshim"]
+    pub fn DatumGetCString(X: Datum) -> *mut ::core::ffi::c_char;
+    #[link_name = "CStringGetDatum__pgrx_cshim"]
+    pub fn CStringGetDatum(X: *const ::core::ffi::c_char) -> Datum;
+    #[link_name = "DatumGetName__pgrx_cshim"]
+    pub fn DatumGetName(X: Datum) -> Name;
+    #[link_name = "NameGetDatum__pgrx_cshim"]
+    pub fn NameGetDatum(X: *const NameData) -> Datum;
+    #[link_name = "DatumGetInt64__pgrx_cshim"]
+    pub fn DatumGetInt64(X: Datum) -> int64;
+    #[link_name = "Int64GetDatum__pgrx_cshim"]
+    pub fn Int64GetDatum(X: int64) -> Datum;
+    #[link_name = "DatumGetUInt64__pgrx_cshim"]
+    pub fn DatumGetUInt64(X: Datum) -> uint64;
+    #[link_name = "UInt64GetDatum__pgrx_cshim"]
+    pub fn UInt64GetDatum(X: uint64) -> Datum;
+    #[link_name = "DatumGetFloat4__pgrx_cshim"]
+    pub fn DatumGetFloat4(X: Datum) -> float4;
+    #[link_name = "Float4GetDatum__pgrx_cshim"]
+    pub fn Float4GetDatum(X: float4) -> Datum;
+    #[link_name = "DatumGetFloat8__pgrx_cshim"]
+    pub fn DatumGetFloat8(X: Datum) -> float8;
+    #[link_name = "Float8GetDatum__pgrx_cshim"]
+    pub fn Float8GetDatum(X: float8) -> Datum;
     pub static mut no_such_variable: ::core::ffi::c_int;
+    #[link_name = "castNodeImpl__pgrx_cshim"]
+    pub fn castNodeImpl(type_: NodeTag, ptr: *mut ::core::ffi::c_void) -> *mut Node;
     pub fn outNode(str_: *mut StringInfoData, obj: *const ::core::ffi::c_void);
     pub fn outToken(str_: *mut StringInfoData, s: *const ::core::ffi::c_char);
     pub fn outBitmapset(str_: *mut StringInfoData, bms: *const Bitmapset);
@@ -32771,6 +33714,39 @@ unsafe extern "C-unwind" {
     pub fn readAttrNumberCols(numCols: ::core::ffi::c_int) -> *mut int16;
     pub fn copyObjectImpl(from: *const ::core::ffi::c_void) -> *mut ::core::ffi::c_void;
     pub fn equal(a: *const ::core::ffi::c_void, b: *const ::core::ffi::c_void) -> bool;
+    #[link_name = "list_head__pgrx_cshim"]
+    pub fn list_head(l: *const List) -> *mut ListCell;
+    #[link_name = "list_tail__pgrx_cshim"]
+    pub fn list_tail(l: *const List) -> *mut ListCell;
+    #[link_name = "list_second_cell__pgrx_cshim"]
+    pub fn list_second_cell(l: *const List) -> *mut ListCell;
+    #[link_name = "list_length__pgrx_cshim"]
+    pub fn list_length(l: *const List) -> ::core::ffi::c_int;
+    #[link_name = "list_nth_cell__pgrx_cshim"]
+    pub fn list_nth_cell(list: *const List, n: ::core::ffi::c_int) -> *mut ListCell;
+    #[link_name = "list_last_cell__pgrx_cshim"]
+    pub fn list_last_cell(list: *const List) -> *mut ListCell;
+    #[link_name = "list_nth__pgrx_cshim"]
+    pub fn list_nth(list: *const List, n: ::core::ffi::c_int) -> *mut ::core::ffi::c_void;
+    #[link_name = "list_nth_int__pgrx_cshim"]
+    pub fn list_nth_int(list: *const List, n: ::core::ffi::c_int) -> ::core::ffi::c_int;
+    #[link_name = "list_nth_oid__pgrx_cshim"]
+    pub fn list_nth_oid(list: *const List, n: ::core::ffi::c_int) -> Oid;
+    #[link_name = "list_cell_number__pgrx_cshim"]
+    pub fn list_cell_number(l: *const List, c: *const ListCell) -> ::core::ffi::c_int;
+    #[link_name = "lnext__pgrx_cshim"]
+    pub fn lnext(l: *const List, c: *const ListCell) -> *mut ListCell;
+    #[link_name = "for_each_from_setup__pgrx_cshim"]
+    pub fn for_each_from_setup(lst: *const List, N: ::core::ffi::c_int) -> ForEachState;
+    #[link_name = "for_each_cell_setup__pgrx_cshim"]
+    pub fn for_each_cell_setup(lst: *const List, initcell: *const ListCell) -> ForEachState;
+    #[link_name = "for_both_cell_setup__pgrx_cshim"]
+    pub fn for_both_cell_setup(
+        list1: *const List,
+        initcell1: *const ListCell,
+        list2: *const List,
+        initcell2: *const ListCell,
+    ) -> ForBothCellState;
     pub fn list_make1_impl(t: NodeTag, datum1: ListCell) -> *mut List;
     pub fn list_make2_impl(t: NodeTag, datum1: ListCell, datum2: ListCell) -> *mut List;
     pub fn list_make3_impl(
@@ -32918,10 +33894,50 @@ unsafe extern "C-unwind" {
         outdesc: TupleDesc,
         msg: *const ::core::ffi::c_char,
     ) -> *mut AttrMap;
+    #[link_name = "BlockNumberIsValid__pgrx_cshim"]
+    pub fn BlockNumberIsValid(blockNumber: BlockNumber) -> bool;
+    #[link_name = "BlockIdSet__pgrx_cshim"]
+    pub fn BlockIdSet(blockId: *mut BlockIdData, blockNumber: BlockNumber);
+    #[link_name = "BlockIdEquals__pgrx_cshim"]
+    pub fn BlockIdEquals(blockId1: *const BlockIdData, blockId2: *const BlockIdData) -> bool;
+    #[link_name = "BlockIdGetBlockNumber__pgrx_cshim"]
+    pub fn BlockIdGetBlockNumber(blockId: *const BlockIdData) -> BlockNumber;
+    #[link_name = "ItemPointerIsValid__pgrx_cshim"]
+    pub fn ItemPointerIsValid(pointer: *const ItemPointerData) -> bool;
+    #[link_name = "ItemPointerGetBlockNumberNoCheck__pgrx_cshim"]
+    pub fn ItemPointerGetBlockNumberNoCheck(pointer: *const ItemPointerData) -> BlockNumber;
+    #[link_name = "ItemPointerGetBlockNumber__pgrx_cshim"]
+    pub fn ItemPointerGetBlockNumber(pointer: *const ItemPointerData) -> BlockNumber;
+    #[link_name = "ItemPointerGetOffsetNumberNoCheck__pgrx_cshim"]
+    pub fn ItemPointerGetOffsetNumberNoCheck(pointer: *const ItemPointerData) -> OffsetNumber;
+    #[link_name = "ItemPointerGetOffsetNumber__pgrx_cshim"]
+    pub fn ItemPointerGetOffsetNumber(pointer: *const ItemPointerData) -> OffsetNumber;
+    #[link_name = "ItemPointerSet__pgrx_cshim"]
+    pub fn ItemPointerSet(
+        pointer: *mut ItemPointerData,
+        blockNumber: BlockNumber,
+        offNum: OffsetNumber,
+    );
+    #[link_name = "ItemPointerSetBlockNumber__pgrx_cshim"]
+    pub fn ItemPointerSetBlockNumber(pointer: *mut ItemPointerData, blockNumber: BlockNumber);
+    #[link_name = "ItemPointerSetOffsetNumber__pgrx_cshim"]
+    pub fn ItemPointerSetOffsetNumber(pointer: *mut ItemPointerData, offsetNumber: OffsetNumber);
+    #[link_name = "ItemPointerCopy__pgrx_cshim"]
+    pub fn ItemPointerCopy(fromPointer: *const ItemPointerData, toPointer: *mut ItemPointerData);
+    #[link_name = "ItemPointerSetInvalid__pgrx_cshim"]
+    pub fn ItemPointerSetInvalid(pointer: *mut ItemPointerData);
+    #[link_name = "ItemPointerIndicatesMovedPartitions__pgrx_cshim"]
+    pub fn ItemPointerIndicatesMovedPartitions(pointer: *const ItemPointerData) -> bool;
+    #[link_name = "ItemPointerSetMovedPartitions__pgrx_cshim"]
+    pub fn ItemPointerSetMovedPartitions(pointer: *mut ItemPointerData);
     pub fn ItemPointerEquals(pointer1: ItemPointer, pointer2: ItemPointer) -> bool;
     pub fn ItemPointerCompare(arg1: ItemPointer, arg2: ItemPointer) -> int32;
     pub fn ItemPointerInc(pointer: ItemPointer);
     pub fn ItemPointerDec(pointer: ItemPointer);
+    #[link_name = "DatumGetItemPointer__pgrx_cshim"]
+    pub fn DatumGetItemPointer(X: Datum) -> ItemPointer;
+    #[link_name = "ItemPointerGetDatum__pgrx_cshim"]
+    pub fn ItemPointerGetDatum(X: *const ItemPointerData) -> Datum;
     pub fn HeapTupleHeaderGetCmin(tup: HeapTupleHeader) -> CommandId;
     pub fn HeapTupleHeaderGetCmax(tup: HeapTupleHeader) -> CommandId;
     pub fn HeapTupleHeaderAdjustCmax(
@@ -32930,6 +33946,15 @@ unsafe extern "C-unwind" {
         iscombo: *mut bool,
     );
     pub fn HeapTupleGetUpdateXid(tuple: HeapTupleHeader) -> TransactionId;
+    #[link_name = "FullTransactionIdFromEpochAndXid__pgrx_cshim"]
+    pub fn FullTransactionIdFromEpochAndXid(epoch: uint32, xid: TransactionId)
+    -> FullTransactionId;
+    #[link_name = "FullTransactionIdFromU64__pgrx_cshim"]
+    pub fn FullTransactionIdFromU64(value: uint64) -> FullTransactionId;
+    #[link_name = "FullTransactionIdRetreat__pgrx_cshim"]
+    pub fn FullTransactionIdRetreat(dest: *mut FullTransactionId);
+    #[link_name = "FullTransactionIdAdvance__pgrx_cshim"]
+    pub fn FullTransactionIdAdvance(dest: *mut FullTransactionId);
     pub fn TransactionStartedDuringRecovery() -> bool;
     pub static mut ShmemVariableCache: VariableCache;
     pub fn TransactionIdDidCommit(transactionId: TransactionId) -> bool;
@@ -32969,6 +33994,76 @@ unsafe extern "C-unwind" {
     pub fn GetNewObjectId() -> Oid;
     pub fn StopGeneratingPinnedObjectIds();
     pub fn AssertTransactionIdInAllowableRange(xid: TransactionId);
+    #[link_name = "ReadNextTransactionId__pgrx_cshim"]
+    pub fn ReadNextTransactionId() -> TransactionId;
+    #[link_name = "TransactionIdRetreatedBy__pgrx_cshim"]
+    pub fn TransactionIdRetreatedBy(xid: TransactionId, amount: uint32) -> TransactionId;
+    #[link_name = "TransactionIdOlder__pgrx_cshim"]
+    pub fn TransactionIdOlder(a: TransactionId, b: TransactionId) -> TransactionId;
+    #[link_name = "NormalTransactionIdOlder__pgrx_cshim"]
+    pub fn NormalTransactionIdOlder(a: TransactionId, b: TransactionId) -> TransactionId;
+    #[link_name = "FullTransactionIdNewer__pgrx_cshim"]
+    pub fn FullTransactionIdNewer(a: FullTransactionId, b: FullTransactionId) -> FullTransactionId;
+    #[link_name = "att_isnull__pgrx_cshim"]
+    pub fn att_isnull(ATT: ::core::ffi::c_int, BITS: *const bits8) -> bool;
+    #[link_name = "fetch_att__pgrx_cshim"]
+    pub fn fetch_att(
+        T: *const ::core::ffi::c_void,
+        attbyval: bool,
+        attlen: ::core::ffi::c_int,
+    ) -> Datum;
+    #[link_name = "store_att_byval__pgrx_cshim"]
+    pub fn store_att_byval(
+        T: *mut ::core::ffi::c_void,
+        newdatum: Datum,
+        attlen: ::core::ffi::c_int,
+    );
+    #[link_name = "PageXLogRecPtrGet__pgrx_cshim"]
+    pub fn PageXLogRecPtrGet(val: PageXLogRecPtr) -> XLogRecPtr;
+    #[link_name = "PageIsEmpty__pgrx_cshim"]
+    pub fn PageIsEmpty(page: Page) -> bool;
+    #[link_name = "PageIsNew__pgrx_cshim"]
+    pub fn PageIsNew(page: Page) -> bool;
+    #[link_name = "PageGetItemId__pgrx_cshim"]
+    pub fn PageGetItemId(page: Page, offsetNumber: OffsetNumber) -> ItemId;
+    #[link_name = "PageGetContents__pgrx_cshim"]
+    pub fn PageGetContents(page: Page) -> *mut ::core::ffi::c_char;
+    #[link_name = "PageGetPageSize__pgrx_cshim"]
+    pub fn PageGetPageSize(page: Page) -> Size;
+    #[link_name = "PageGetPageLayoutVersion__pgrx_cshim"]
+    pub fn PageGetPageLayoutVersion(page: Page) -> uint8;
+    #[link_name = "PageSetPageSizeAndVersion__pgrx_cshim"]
+    pub fn PageSetPageSizeAndVersion(page: Page, size: Size, version: uint8);
+    #[link_name = "PageGetSpecialSize__pgrx_cshim"]
+    pub fn PageGetSpecialSize(page: Page) -> uint16;
+    #[link_name = "PageGetSpecialPointer__pgrx_cshim"]
+    pub fn PageGetSpecialPointer(page: Page) -> *mut ::core::ffi::c_char;
+    #[link_name = "PageGetItem__pgrx_cshim"]
+    pub fn PageGetItem(page: Page, itemId: ItemId) -> Item;
+    #[link_name = "PageGetMaxOffsetNumber__pgrx_cshim"]
+    pub fn PageGetMaxOffsetNumber(page: Page) -> OffsetNumber;
+    #[link_name = "PageGetLSN__pgrx_cshim"]
+    pub fn PageGetLSN(page: Page) -> XLogRecPtr;
+    #[link_name = "PageSetLSN__pgrx_cshim"]
+    pub fn PageSetLSN(page: Page, lsn: XLogRecPtr);
+    #[link_name = "PageHasFreeLinePointers__pgrx_cshim"]
+    pub fn PageHasFreeLinePointers(page: Page) -> bool;
+    #[link_name = "PageSetHasFreeLinePointers__pgrx_cshim"]
+    pub fn PageSetHasFreeLinePointers(page: Page);
+    #[link_name = "PageClearHasFreeLinePointers__pgrx_cshim"]
+    pub fn PageClearHasFreeLinePointers(page: Page);
+    #[link_name = "PageIsFull__pgrx_cshim"]
+    pub fn PageIsFull(page: Page) -> bool;
+    #[link_name = "PageSetFull__pgrx_cshim"]
+    pub fn PageSetFull(page: Page);
+    #[link_name = "PageClearFull__pgrx_cshim"]
+    pub fn PageClearFull(page: Page);
+    #[link_name = "PageIsAllVisible__pgrx_cshim"]
+    pub fn PageIsAllVisible(page: Page) -> bool;
+    #[link_name = "PageSetAllVisible__pgrx_cshim"]
+    pub fn PageSetAllVisible(page: Page);
+    #[link_name = "PageClearAllVisible__pgrx_cshim"]
+    pub fn PageClearAllVisible(page: Page);
     pub fn PageInit(page: Page, pageSize: Size, specialSize: Size);
     pub fn PageIsVerifiedExtended(
         page: Page,
@@ -33018,7 +34113,7 @@ unsafe extern "C-unwind" {
         bit: *mut bits8,
     );
     pub fn heap_attisnull(tup: HeapTuple, attnum: ::core::ffi::c_int, tupleDesc: TupleDesc)
-        -> bool;
+    -> bool;
     pub fn nocachegetattr(
         tup: HeapTuple,
         attnum: ::core::ffi::c_int,
@@ -33076,6 +34171,13 @@ unsafe extern "C-unwind" {
     pub fn minimal_tuple_from_heap_tuple(htup: HeapTuple) -> MinimalTuple;
     pub fn heap_expand_tuple(sourceTuple: HeapTuple, tupleDesc: TupleDesc) -> HeapTuple;
     pub fn minimal_expand_tuple(sourceTuple: HeapTuple, tupleDesc: TupleDesc) -> MinimalTuple;
+    #[link_name = "fastgetattr__pgrx_cshim"]
+    pub fn fastgetattr(
+        tup: HeapTuple,
+        attnum: ::core::ffi::c_int,
+        tupleDesc: TupleDesc,
+        isnull: *mut bool,
+    ) -> Datum;
     pub static TTSOpsVirtual: TupleTableSlotOps;
     pub static TTSOpsHeapTuple: TupleTableSlotOps;
     pub static TTSOpsMinimalTuple: TupleTableSlotOps;
@@ -33141,6 +34243,37 @@ unsafe extern "C-unwind" {
         lastAttNum: ::core::ffi::c_int,
     );
     pub fn slot_getsomeattrs_int(slot: *mut TupleTableSlot, attnum: ::core::ffi::c_int);
+    #[link_name = "slot_getsomeattrs__pgrx_cshim"]
+    pub fn slot_getsomeattrs(slot: *mut TupleTableSlot, attnum: ::core::ffi::c_int);
+    #[link_name = "slot_getallattrs__pgrx_cshim"]
+    pub fn slot_getallattrs(slot: *mut TupleTableSlot);
+    #[link_name = "slot_attisnull__pgrx_cshim"]
+    pub fn slot_attisnull(slot: *mut TupleTableSlot, attnum: ::core::ffi::c_int) -> bool;
+    #[link_name = "slot_getattr__pgrx_cshim"]
+    pub fn slot_getattr(
+        slot: *mut TupleTableSlot,
+        attnum: ::core::ffi::c_int,
+        isnull: *mut bool,
+    ) -> Datum;
+    #[link_name = "slot_getsysattr__pgrx_cshim"]
+    pub fn slot_getsysattr(
+        slot: *mut TupleTableSlot,
+        attnum: ::core::ffi::c_int,
+        isnull: *mut bool,
+    ) -> Datum;
+    #[link_name = "ExecClearTuple__pgrx_cshim"]
+    pub fn ExecClearTuple(slot: *mut TupleTableSlot) -> *mut TupleTableSlot;
+    #[link_name = "ExecMaterializeSlot__pgrx_cshim"]
+    pub fn ExecMaterializeSlot(slot: *mut TupleTableSlot);
+    #[link_name = "ExecCopySlotHeapTuple__pgrx_cshim"]
+    pub fn ExecCopySlotHeapTuple(slot: *mut TupleTableSlot) -> HeapTuple;
+    #[link_name = "ExecCopySlotMinimalTuple__pgrx_cshim"]
+    pub fn ExecCopySlotMinimalTuple(slot: *mut TupleTableSlot) -> MinimalTuple;
+    #[link_name = "ExecCopySlot__pgrx_cshim"]
+    pub fn ExecCopySlot(
+        dstslot: *mut TupleTableSlot,
+        srcslot: *mut TupleTableSlot,
+    ) -> *mut TupleTableSlot;
     pub fn bms_copy(a: *const Bitmapset) -> *mut Bitmapset;
     pub fn bms_equal(a: *const Bitmapset, b: *const Bitmapset) -> bool;
     pub fn bms_compare(a: *const Bitmapset, b: *const Bitmapset) -> ::core::ffi::c_int;
@@ -33186,7 +34319,7 @@ unsafe extern "C-unwind" {
         msg: *const ::core::ffi::c_char,
     ) -> *mut TupleConversionMap;
     pub fn convert_tuples_by_name(indesc: TupleDesc, outdesc: TupleDesc)
-        -> *mut TupleConversionMap;
+    -> *mut TupleConversionMap;
     pub fn convert_tuples_by_name_attrmap(
         indesc: TupleDesc,
         outdesc: TupleDesc,
@@ -33200,6 +34333,8 @@ unsafe extern "C-unwind" {
     ) -> *mut TupleTableSlot;
     pub fn execute_attr_map_cols(attrMap: *mut AttrMap, in_cols: *mut Bitmapset) -> *mut Bitmapset;
     pub fn free_conversion_map(map: *mut TupleConversionMap);
+    #[link_name = "pg_clock_gettime_ns__pgrx_cshim"]
+    pub fn pg_clock_gettime_ns() -> instr_time;
     pub static mut pgBufferUsage: BufferUsage;
     pub static mut pgWalUsage: WalUsage;
     pub fn InstrAlloc(
@@ -33407,7 +34542,7 @@ unsafe extern "C-unwind" {
     pub fn OidFunctionCall0Coll(functionId: Oid, collation: Oid) -> Datum;
     pub fn OidFunctionCall1Coll(functionId: Oid, collation: Oid, arg1: Datum) -> Datum;
     pub fn OidFunctionCall2Coll(functionId: Oid, collation: Oid, arg1: Datum, arg2: Datum)
-        -> Datum;
+    -> Datum;
     pub fn OidFunctionCall3Coll(
         functionId: Oid,
         collation: Oid,
@@ -33570,6 +34705,120 @@ unsafe extern "C-unwind" {
     pub static mut needs_fmgr_hook: needs_fmgr_hook_type;
     pub static mut fmgr_hook: fmgr_hook_type;
     pub fn slist_delete(head: *mut slist_head, node: *const slist_node);
+    #[link_name = "dlist_init__pgrx_cshim"]
+    pub fn dlist_init(head: *mut dlist_head);
+    #[link_name = "dlist_node_init__pgrx_cshim"]
+    pub fn dlist_node_init(node: *mut dlist_node);
+    #[link_name = "dlist_is_empty__pgrx_cshim"]
+    pub fn dlist_is_empty(head: *const dlist_head) -> bool;
+    #[link_name = "dlist_push_head__pgrx_cshim"]
+    pub fn dlist_push_head(head: *mut dlist_head, node: *mut dlist_node);
+    #[link_name = "dlist_push_tail__pgrx_cshim"]
+    pub fn dlist_push_tail(head: *mut dlist_head, node: *mut dlist_node);
+    #[link_name = "dlist_insert_after__pgrx_cshim"]
+    pub fn dlist_insert_after(after: *mut dlist_node, node: *mut dlist_node);
+    #[link_name = "dlist_insert_before__pgrx_cshim"]
+    pub fn dlist_insert_before(before: *mut dlist_node, node: *mut dlist_node);
+    #[link_name = "dlist_delete__pgrx_cshim"]
+    pub fn dlist_delete(node: *mut dlist_node);
+    #[link_name = "dlist_delete_thoroughly__pgrx_cshim"]
+    pub fn dlist_delete_thoroughly(node: *mut dlist_node);
+    #[link_name = "dlist_delete_from__pgrx_cshim"]
+    pub fn dlist_delete_from(head: *mut dlist_head, node: *mut dlist_node);
+    #[link_name = "dlist_delete_from_thoroughly__pgrx_cshim"]
+    pub fn dlist_delete_from_thoroughly(head: *mut dlist_head, node: *mut dlist_node);
+    #[link_name = "dlist_pop_head_node__pgrx_cshim"]
+    pub fn dlist_pop_head_node(head: *mut dlist_head) -> *mut dlist_node;
+    #[link_name = "dlist_move_head__pgrx_cshim"]
+    pub fn dlist_move_head(head: *mut dlist_head, node: *mut dlist_node);
+    #[link_name = "dlist_move_tail__pgrx_cshim"]
+    pub fn dlist_move_tail(head: *mut dlist_head, node: *mut dlist_node);
+    #[link_name = "dlist_has_next__pgrx_cshim"]
+    pub fn dlist_has_next(head: *const dlist_head, node: *const dlist_node) -> bool;
+    #[link_name = "dlist_has_prev__pgrx_cshim"]
+    pub fn dlist_has_prev(head: *const dlist_head, node: *const dlist_node) -> bool;
+    #[link_name = "dlist_node_is_detached__pgrx_cshim"]
+    pub fn dlist_node_is_detached(node: *const dlist_node) -> bool;
+    #[link_name = "dlist_next_node__pgrx_cshim"]
+    pub fn dlist_next_node(head: *mut dlist_head, node: *mut dlist_node) -> *mut dlist_node;
+    #[link_name = "dlist_prev_node__pgrx_cshim"]
+    pub fn dlist_prev_node(head: *mut dlist_head, node: *mut dlist_node) -> *mut dlist_node;
+    #[link_name = "dlist_head_element_off__pgrx_cshim"]
+    pub fn dlist_head_element_off(head: *mut dlist_head, off: usize) -> *mut ::core::ffi::c_void;
+    #[link_name = "dlist_head_node__pgrx_cshim"]
+    pub fn dlist_head_node(head: *mut dlist_head) -> *mut dlist_node;
+    #[link_name = "dlist_tail_element_off__pgrx_cshim"]
+    pub fn dlist_tail_element_off(head: *mut dlist_head, off: usize) -> *mut ::core::ffi::c_void;
+    #[link_name = "dlist_tail_node__pgrx_cshim"]
+    pub fn dlist_tail_node(head: *mut dlist_head) -> *mut dlist_node;
+    #[link_name = "dclist_init__pgrx_cshim"]
+    pub fn dclist_init(head: *mut dclist_head);
+    #[link_name = "dclist_is_empty__pgrx_cshim"]
+    pub fn dclist_is_empty(head: *const dclist_head) -> bool;
+    #[link_name = "dclist_push_head__pgrx_cshim"]
+    pub fn dclist_push_head(head: *mut dclist_head, node: *mut dlist_node);
+    #[link_name = "dclist_push_tail__pgrx_cshim"]
+    pub fn dclist_push_tail(head: *mut dclist_head, node: *mut dlist_node);
+    #[link_name = "dclist_insert_after__pgrx_cshim"]
+    pub fn dclist_insert_after(
+        head: *mut dclist_head,
+        after: *mut dlist_node,
+        node: *mut dlist_node,
+    );
+    #[link_name = "dclist_insert_before__pgrx_cshim"]
+    pub fn dclist_insert_before(
+        head: *mut dclist_head,
+        before: *mut dlist_node,
+        node: *mut dlist_node,
+    );
+    #[link_name = "dclist_delete_from__pgrx_cshim"]
+    pub fn dclist_delete_from(head: *mut dclist_head, node: *mut dlist_node);
+    #[link_name = "dclist_delete_from_thoroughly__pgrx_cshim"]
+    pub fn dclist_delete_from_thoroughly(head: *mut dclist_head, node: *mut dlist_node);
+    #[link_name = "dclist_pop_head_node__pgrx_cshim"]
+    pub fn dclist_pop_head_node(head: *mut dclist_head) -> *mut dlist_node;
+    #[link_name = "dclist_move_head__pgrx_cshim"]
+    pub fn dclist_move_head(head: *mut dclist_head, node: *mut dlist_node);
+    #[link_name = "dclist_move_tail__pgrx_cshim"]
+    pub fn dclist_move_tail(head: *mut dclist_head, node: *mut dlist_node);
+    #[link_name = "dclist_has_next__pgrx_cshim"]
+    pub fn dclist_has_next(head: *const dclist_head, node: *const dlist_node) -> bool;
+    #[link_name = "dclist_has_prev__pgrx_cshim"]
+    pub fn dclist_has_prev(head: *const dclist_head, node: *const dlist_node) -> bool;
+    #[link_name = "dclist_next_node__pgrx_cshim"]
+    pub fn dclist_next_node(head: *mut dclist_head, node: *mut dlist_node) -> *mut dlist_node;
+    #[link_name = "dclist_prev_node__pgrx_cshim"]
+    pub fn dclist_prev_node(head: *mut dclist_head, node: *mut dlist_node) -> *mut dlist_node;
+    #[link_name = "dclist_head_element_off__pgrx_cshim"]
+    pub fn dclist_head_element_off(head: *mut dclist_head, off: usize) -> *mut ::core::ffi::c_void;
+    #[link_name = "dclist_head_node__pgrx_cshim"]
+    pub fn dclist_head_node(head: *mut dclist_head) -> *mut dlist_node;
+    #[link_name = "dclist_tail_element_off__pgrx_cshim"]
+    pub fn dclist_tail_element_off(head: *mut dclist_head, off: usize) -> *mut ::core::ffi::c_void;
+    #[link_name = "dclist_tail_node__pgrx_cshim"]
+    pub fn dclist_tail_node(head: *mut dclist_head) -> *mut dlist_node;
+    #[link_name = "dclist_count__pgrx_cshim"]
+    pub fn dclist_count(head: *const dclist_head) -> uint32;
+    #[link_name = "slist_init__pgrx_cshim"]
+    pub fn slist_init(head: *mut slist_head);
+    #[link_name = "slist_is_empty__pgrx_cshim"]
+    pub fn slist_is_empty(head: *const slist_head) -> bool;
+    #[link_name = "slist_push_head__pgrx_cshim"]
+    pub fn slist_push_head(head: *mut slist_head, node: *mut slist_node);
+    #[link_name = "slist_insert_after__pgrx_cshim"]
+    pub fn slist_insert_after(after: *mut slist_node, node: *mut slist_node);
+    #[link_name = "slist_pop_head_node__pgrx_cshim"]
+    pub fn slist_pop_head_node(head: *mut slist_head) -> *mut slist_node;
+    #[link_name = "slist_has_next__pgrx_cshim"]
+    pub fn slist_has_next(head: *const slist_head, node: *const slist_node) -> bool;
+    #[link_name = "slist_next_node__pgrx_cshim"]
+    pub fn slist_next_node(head: *mut slist_head, node: *mut slist_node) -> *mut slist_node;
+    #[link_name = "slist_head_element_off__pgrx_cshim"]
+    pub fn slist_head_element_off(head: *mut slist_head, off: usize) -> *mut ::core::ffi::c_void;
+    #[link_name = "slist_head_node__pgrx_cshim"]
+    pub fn slist_head_node(head: *mut slist_head) -> *mut slist_node;
+    #[link_name = "slist_delete_current__pgrx_cshim"]
+    pub fn slist_delete_current(iter: *mut slist_mutable_iter);
     pub fn pairingheap_allocate(
         compare: pairingheap_comparator,
         arg: *mut ::core::ffi::c_void,
@@ -33609,6 +34858,132 @@ unsafe extern "C-unwind" {
     pub fn makeBoolean(val: bool) -> *mut Boolean;
     pub fn makeString(str_: *mut ::core::ffi::c_char) -> *mut String;
     pub fn makeBitString(str_: *mut ::core::ffi::c_char) -> *mut BitString;
+    #[link_name = "pg_spin_delay_impl__pgrx_cshim"]
+    pub fn pg_spin_delay_impl();
+    #[link_name = "pg_atomic_test_set_flag_impl__pgrx_cshim"]
+    pub fn pg_atomic_test_set_flag_impl(ptr: *mut pg_atomic_flag) -> bool;
+    #[link_name = "pg_atomic_clear_flag_impl__pgrx_cshim"]
+    pub fn pg_atomic_clear_flag_impl(ptr: *mut pg_atomic_flag);
+    #[link_name = "pg_atomic_compare_exchange_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_compare_exchange_u32_impl(
+        ptr: *mut pg_atomic_uint32,
+        expected: *mut uint32,
+        newval: uint32,
+    ) -> bool;
+    #[link_name = "pg_atomic_fetch_add_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_fetch_add_u32_impl(ptr: *mut pg_atomic_uint32, add_: int32) -> uint32;
+    #[link_name = "pg_atomic_compare_exchange_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_compare_exchange_u64_impl(
+        ptr: *mut pg_atomic_uint64,
+        expected: *mut uint64,
+        newval: uint64,
+    ) -> bool;
+    #[link_name = "pg_atomic_fetch_add_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_fetch_add_u64_impl(ptr: *mut pg_atomic_uint64, add_: int64) -> uint64;
+    #[link_name = "pg_atomic_unlocked_test_flag_impl__pgrx_cshim"]
+    pub fn pg_atomic_unlocked_test_flag_impl(ptr: *mut pg_atomic_flag) -> bool;
+    #[link_name = "pg_atomic_init_flag_impl__pgrx_cshim"]
+    pub fn pg_atomic_init_flag_impl(ptr: *mut pg_atomic_flag);
+    #[link_name = "pg_atomic_fetch_sub_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_fetch_sub_u32_impl(ptr: *mut pg_atomic_uint32, sub_: int32) -> uint32;
+    #[link_name = "pg_atomic_fetch_and_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_fetch_and_u32_impl(ptr: *mut pg_atomic_uint32, and_: uint32) -> uint32;
+    #[link_name = "pg_atomic_fetch_or_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_fetch_or_u32_impl(ptr: *mut pg_atomic_uint32, or_: uint32) -> uint32;
+    #[link_name = "pg_atomic_fetch_sub_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_fetch_sub_u64_impl(ptr: *mut pg_atomic_uint64, sub_: int64) -> uint64;
+    #[link_name = "pg_atomic_fetch_and_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_fetch_and_u64_impl(ptr: *mut pg_atomic_uint64, and_: uint64) -> uint64;
+    #[link_name = "pg_atomic_fetch_or_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_fetch_or_u64_impl(ptr: *mut pg_atomic_uint64, or_: uint64) -> uint64;
+    #[link_name = "pg_atomic_read_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_read_u32_impl(ptr: *mut pg_atomic_uint32) -> uint32;
+    #[link_name = "pg_atomic_write_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_write_u32_impl(ptr: *mut pg_atomic_uint32, val: uint32);
+    #[link_name = "pg_atomic_unlocked_write_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_unlocked_write_u32_impl(ptr: *mut pg_atomic_uint32, val: uint32);
+    #[link_name = "pg_atomic_init_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_init_u32_impl(ptr: *mut pg_atomic_uint32, val_: uint32);
+    #[link_name = "pg_atomic_exchange_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_exchange_u32_impl(ptr: *mut pg_atomic_uint32, xchg_: uint32) -> uint32;
+    #[link_name = "pg_atomic_add_fetch_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_add_fetch_u32_impl(ptr: *mut pg_atomic_uint32, add_: int32) -> uint32;
+    #[link_name = "pg_atomic_sub_fetch_u32_impl__pgrx_cshim"]
+    pub fn pg_atomic_sub_fetch_u32_impl(ptr: *mut pg_atomic_uint32, sub_: int32) -> uint32;
+    #[link_name = "pg_atomic_exchange_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_exchange_u64_impl(ptr: *mut pg_atomic_uint64, xchg_: uint64) -> uint64;
+    #[link_name = "pg_atomic_write_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_write_u64_impl(ptr: *mut pg_atomic_uint64, val: uint64);
+    #[link_name = "pg_atomic_read_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_read_u64_impl(ptr: *mut pg_atomic_uint64) -> uint64;
+    #[link_name = "pg_atomic_init_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_init_u64_impl(ptr: *mut pg_atomic_uint64, val_: uint64);
+    #[link_name = "pg_atomic_add_fetch_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_add_fetch_u64_impl(ptr: *mut pg_atomic_uint64, add_: int64) -> uint64;
+    #[link_name = "pg_atomic_sub_fetch_u64_impl__pgrx_cshim"]
+    pub fn pg_atomic_sub_fetch_u64_impl(ptr: *mut pg_atomic_uint64, sub_: int64) -> uint64;
+    #[link_name = "pg_atomic_init_flag__pgrx_cshim"]
+    pub fn pg_atomic_init_flag(ptr: *mut pg_atomic_flag);
+    #[link_name = "pg_atomic_test_set_flag__pgrx_cshim"]
+    pub fn pg_atomic_test_set_flag(ptr: *mut pg_atomic_flag) -> bool;
+    #[link_name = "pg_atomic_unlocked_test_flag__pgrx_cshim"]
+    pub fn pg_atomic_unlocked_test_flag(ptr: *mut pg_atomic_flag) -> bool;
+    #[link_name = "pg_atomic_clear_flag__pgrx_cshim"]
+    pub fn pg_atomic_clear_flag(ptr: *mut pg_atomic_flag);
+    #[link_name = "pg_atomic_init_u32__pgrx_cshim"]
+    pub fn pg_atomic_init_u32(ptr: *mut pg_atomic_uint32, val: uint32);
+    #[link_name = "pg_atomic_read_u32__pgrx_cshim"]
+    pub fn pg_atomic_read_u32(ptr: *mut pg_atomic_uint32) -> uint32;
+    #[link_name = "pg_atomic_write_u32__pgrx_cshim"]
+    pub fn pg_atomic_write_u32(ptr: *mut pg_atomic_uint32, val: uint32);
+    #[link_name = "pg_atomic_unlocked_write_u32__pgrx_cshim"]
+    pub fn pg_atomic_unlocked_write_u32(ptr: *mut pg_atomic_uint32, val: uint32);
+    #[link_name = "pg_atomic_exchange_u32__pgrx_cshim"]
+    pub fn pg_atomic_exchange_u32(ptr: *mut pg_atomic_uint32, newval: uint32) -> uint32;
+    #[link_name = "pg_atomic_compare_exchange_u32__pgrx_cshim"]
+    pub fn pg_atomic_compare_exchange_u32(
+        ptr: *mut pg_atomic_uint32,
+        expected: *mut uint32,
+        newval: uint32,
+    ) -> bool;
+    #[link_name = "pg_atomic_fetch_add_u32__pgrx_cshim"]
+    pub fn pg_atomic_fetch_add_u32(ptr: *mut pg_atomic_uint32, add_: int32) -> uint32;
+    #[link_name = "pg_atomic_fetch_sub_u32__pgrx_cshim"]
+    pub fn pg_atomic_fetch_sub_u32(ptr: *mut pg_atomic_uint32, sub_: int32) -> uint32;
+    #[link_name = "pg_atomic_fetch_and_u32__pgrx_cshim"]
+    pub fn pg_atomic_fetch_and_u32(ptr: *mut pg_atomic_uint32, and_: uint32) -> uint32;
+    #[link_name = "pg_atomic_fetch_or_u32__pgrx_cshim"]
+    pub fn pg_atomic_fetch_or_u32(ptr: *mut pg_atomic_uint32, or_: uint32) -> uint32;
+    #[link_name = "pg_atomic_add_fetch_u32__pgrx_cshim"]
+    pub fn pg_atomic_add_fetch_u32(ptr: *mut pg_atomic_uint32, add_: int32) -> uint32;
+    #[link_name = "pg_atomic_sub_fetch_u32__pgrx_cshim"]
+    pub fn pg_atomic_sub_fetch_u32(ptr: *mut pg_atomic_uint32, sub_: int32) -> uint32;
+    #[link_name = "pg_atomic_init_u64__pgrx_cshim"]
+    pub fn pg_atomic_init_u64(ptr: *mut pg_atomic_uint64, val: uint64);
+    #[link_name = "pg_atomic_read_u64__pgrx_cshim"]
+    pub fn pg_atomic_read_u64(ptr: *mut pg_atomic_uint64) -> uint64;
+    #[link_name = "pg_atomic_write_u64__pgrx_cshim"]
+    pub fn pg_atomic_write_u64(ptr: *mut pg_atomic_uint64, val: uint64);
+    #[link_name = "pg_atomic_exchange_u64__pgrx_cshim"]
+    pub fn pg_atomic_exchange_u64(ptr: *mut pg_atomic_uint64, newval: uint64) -> uint64;
+    #[link_name = "pg_atomic_compare_exchange_u64__pgrx_cshim"]
+    pub fn pg_atomic_compare_exchange_u64(
+        ptr: *mut pg_atomic_uint64,
+        expected: *mut uint64,
+        newval: uint64,
+    ) -> bool;
+    #[link_name = "pg_atomic_fetch_add_u64__pgrx_cshim"]
+    pub fn pg_atomic_fetch_add_u64(ptr: *mut pg_atomic_uint64, add_: int64) -> uint64;
+    #[link_name = "pg_atomic_fetch_sub_u64__pgrx_cshim"]
+    pub fn pg_atomic_fetch_sub_u64(ptr: *mut pg_atomic_uint64, sub_: int64) -> uint64;
+    #[link_name = "pg_atomic_fetch_and_u64__pgrx_cshim"]
+    pub fn pg_atomic_fetch_and_u64(ptr: *mut pg_atomic_uint64, and_: uint64) -> uint64;
+    #[link_name = "pg_atomic_fetch_or_u64__pgrx_cshim"]
+    pub fn pg_atomic_fetch_or_u64(ptr: *mut pg_atomic_uint64, or_: uint64) -> uint64;
+    #[link_name = "pg_atomic_add_fetch_u64__pgrx_cshim"]
+    pub fn pg_atomic_add_fetch_u64(ptr: *mut pg_atomic_uint64, add_: int64) -> uint64;
+    #[link_name = "pg_atomic_sub_fetch_u64__pgrx_cshim"]
+    pub fn pg_atomic_sub_fetch_u64(ptr: *mut pg_atomic_uint64, sub_: int64) -> uint64;
     pub static mut dynamic_shared_memory_type: ::core::ffi::c_int;
     pub static mut min_dynamic_shared_memory: ::core::ffi::c_int;
     pub fn dsm_impl_op(
@@ -33701,8 +35076,12 @@ unsafe extern "C-unwind" {
     pub fn tbm_end_iterate(iterator: *mut TBMIterator);
     pub fn tbm_end_shared_iterate(iterator: *mut TBMSharedIterator);
     pub fn tbm_attach_shared_iterate(dsa: *mut dsa_area, dp: dsa_pointer)
-        -> *mut TBMSharedIterator;
+    -> *mut TBMSharedIterator;
     pub fn tbm_calculate_entries(maxbytes: f64) -> ::core::ffi::c_long;
+    #[link_name = "tas__pgrx_cshim"]
+    pub fn tas(lock: *mut slock_t) -> ::core::ffi::c_int;
+    #[link_name = "spin_delay__pgrx_cshim"]
+    pub fn spin_delay();
     pub static mut dummy_spinlock: slock_t;
     pub fn s_lock(
         lock: *mut slock_t,
@@ -33712,7 +35091,14 @@ unsafe extern "C-unwind" {
     ) -> ::core::ffi::c_int;
     pub fn set_spins_per_delay(shared_spins_per_delay: ::core::ffi::c_int);
     pub fn update_spins_per_delay(shared_spins_per_delay: ::core::ffi::c_int)
-        -> ::core::ffi::c_int;
+    -> ::core::ffi::c_int;
+    #[link_name = "init_spin_delay__pgrx_cshim"]
+    pub fn init_spin_delay(
+        status: *mut SpinDelayStatus,
+        file: *const ::core::ffi::c_char,
+        line: ::core::ffi::c_int,
+        func: *const ::core::ffi::c_char,
+    );
     pub fn perform_spin_delay(status: *mut SpinDelayStatus);
     pub fn finish_spin_delay(status: *mut SpinDelayStatus);
     pub fn SpinlockSemas() -> ::core::ffi::c_int;
@@ -33781,6 +35167,7 @@ unsafe extern "C-unwind" {
     pub static mut data_sync_retry: bool;
     pub static mut recovery_init_sync_method: ::core::ffi::c_int;
     pub static mut io_direct_flags: ::core::ffi::c_int;
+    pub static mut file_extend_method: ::core::ffi::c_int;
     pub static mut max_safe_fds: ::core::ffi::c_int;
     pub fn PathNameOpenFile(
         fileName: *const ::core::ffi::c_char,
@@ -33984,6 +35371,7 @@ unsafe extern "C-unwind" {
         accessor: *mut SharedTuplestoreAccessor,
         meta_data: *mut ::core::ffi::c_void,
     ) -> MinimalTuple;
+    pub fn AssertCouldGetRelation();
     pub fn RelationIdGetRelation(relationId: Oid) -> Relation;
     pub fn RelationClose(relation: Relation);
     pub fn RelationGetFKeyList(relation: Relation) -> *mut List;
@@ -34055,6 +35443,46 @@ unsafe extern "C-unwind" {
     pub fn RelationCacheInitFileRemove();
     pub static mut criticalRelcachesBuilt: bool;
     pub static mut criticalSharedRelcachesBuilt: bool;
+    #[link_name = "ApplySortComparator__pgrx_cshim"]
+    pub fn ApplySortComparator(
+        datum1: Datum,
+        isNull1: bool,
+        datum2: Datum,
+        isNull2: bool,
+        ssup: SortSupport,
+    ) -> ::core::ffi::c_int;
+    #[link_name = "ApplyUnsignedSortComparator__pgrx_cshim"]
+    pub fn ApplyUnsignedSortComparator(
+        datum1: Datum,
+        isNull1: bool,
+        datum2: Datum,
+        isNull2: bool,
+        ssup: SortSupport,
+    ) -> ::core::ffi::c_int;
+    #[link_name = "ApplySignedSortComparator__pgrx_cshim"]
+    pub fn ApplySignedSortComparator(
+        datum1: Datum,
+        isNull1: bool,
+        datum2: Datum,
+        isNull2: bool,
+        ssup: SortSupport,
+    ) -> ::core::ffi::c_int;
+    #[link_name = "ApplyInt32SortComparator__pgrx_cshim"]
+    pub fn ApplyInt32SortComparator(
+        datum1: Datum,
+        isNull1: bool,
+        datum2: Datum,
+        isNull2: bool,
+        ssup: SortSupport,
+    ) -> ::core::ffi::c_int;
+    #[link_name = "ApplySortAbbrevFullComparator__pgrx_cshim"]
+    pub fn ApplySortAbbrevFullComparator(
+        datum1: Datum,
+        isNull1: bool,
+        datum2: Datum,
+        isNull2: bool,
+        ssup: SortSupport,
+    ) -> ::core::ffi::c_int;
     pub fn ssup_datum_unsigned_cmp(x: Datum, y: Datum, ssup: SortSupport) -> ::core::ffi::c_int;
     pub fn ssup_datum_signed_cmp(x: Datum, y: Datum, ssup: SortSupport) -> ::core::ffi::c_int;
     pub fn ssup_datum_int32_cmp(x: Datum, y: Datum, ssup: SortSupport) -> ::core::ffi::c_int;
@@ -34098,6 +35526,15 @@ unsafe extern "C-unwind" {
         source: IndexTuple,
         leavenatts: ::core::ffi::c_int,
     ) -> IndexTuple;
+    #[link_name = "IndexInfoFindDataOffset__pgrx_cshim"]
+    pub fn IndexInfoFindDataOffset(t_info: ::core::ffi::c_ushort) -> Size;
+    #[link_name = "index_getattr__pgrx_cshim"]
+    pub fn index_getattr(
+        tup: IndexTuple,
+        attnum: ::core::ffi::c_int,
+        tupleDesc: TupleDesc,
+        isnull: *mut bool,
+    ) -> Datum;
     pub fn LogicalTapeSetCreate(
         preallocate: bool,
         fileset: *mut SharedFileSet,
@@ -34297,11 +35734,35 @@ unsafe extern "C-unwind" {
     pub static pg_leftmost_one_pos: [uint8; 256usize];
     pub static pg_rightmost_one_pos: [uint8; 256usize];
     pub static pg_number_of_ones: [uint8; 256usize];
+    #[link_name = "pg_leftmost_one_pos32__pgrx_cshim"]
+    pub fn pg_leftmost_one_pos32(word: uint32) -> ::core::ffi::c_int;
+    #[link_name = "pg_leftmost_one_pos64__pgrx_cshim"]
+    pub fn pg_leftmost_one_pos64(word: uint64) -> ::core::ffi::c_int;
+    #[link_name = "pg_rightmost_one_pos32__pgrx_cshim"]
+    pub fn pg_rightmost_one_pos32(word: uint32) -> ::core::ffi::c_int;
+    #[link_name = "pg_rightmost_one_pos64__pgrx_cshim"]
+    pub fn pg_rightmost_one_pos64(word: uint64) -> ::core::ffi::c_int;
+    #[link_name = "pg_nextpower2_32__pgrx_cshim"]
+    pub fn pg_nextpower2_32(num: uint32) -> uint32;
+    #[link_name = "pg_nextpower2_64__pgrx_cshim"]
+    pub fn pg_nextpower2_64(num: uint64) -> uint64;
+    #[link_name = "pg_prevpower2_32__pgrx_cshim"]
+    pub fn pg_prevpower2_32(num: uint32) -> uint32;
+    #[link_name = "pg_prevpower2_64__pgrx_cshim"]
+    pub fn pg_prevpower2_64(num: uint64) -> uint64;
+    #[link_name = "pg_ceil_log2_32__pgrx_cshim"]
+    pub fn pg_ceil_log2_32(num: uint32) -> uint32;
+    #[link_name = "pg_ceil_log2_64__pgrx_cshim"]
+    pub fn pg_ceil_log2_64(num: uint64) -> uint64;
     pub static mut pg_popcount32:
         ::core::option::Option<unsafe extern "C-unwind" fn(word: uint32) -> ::core::ffi::c_int>;
     pub static mut pg_popcount64:
         ::core::option::Option<unsafe extern "C-unwind" fn(word: uint64) -> ::core::ffi::c_int>;
     pub fn pg_popcount(buf: *const ::core::ffi::c_char, bytes: ::core::ffi::c_int) -> uint64;
+    #[link_name = "pg_rotate_right32__pgrx_cshim"]
+    pub fn pg_rotate_right32(word: uint32, n: ::core::ffi::c_int) -> uint32;
+    #[link_name = "pg_rotate_left32__pgrx_cshim"]
+    pub fn pg_rotate_left32(word: uint32, n: ::core::ffi::c_int) -> uint32;
     pub fn tuplehash_create(
         ctx: MemoryContext,
         nelements: uint32,
@@ -34340,6 +35801,14 @@ unsafe extern "C-unwind" {
         iter: *mut tuplehash_iterator,
     ) -> *mut TupleHashEntryData;
     pub fn tuplehash_stat(tb: *mut tuplehash_hash);
+    #[link_name = "SetQueryCompletion__pgrx_cshim"]
+    pub fn SetQueryCompletion(
+        qc: *mut QueryCompletion,
+        commandTag: CommandTag::Type,
+        nprocessed: uint64,
+    );
+    #[link_name = "CopyQueryCompletion__pgrx_cshim"]
+    pub fn CopyQueryCompletion(dst: *mut QueryCompletion, src: *const QueryCompletion);
     pub fn InitializeQueryCompletion(qc: *mut QueryCompletion);
     pub fn GetCommandTagName(commandTag: CommandTag::Type) -> *const ::core::ffi::c_char;
     pub fn GetCommandTagNameAndLen(
@@ -34525,6 +35994,12 @@ unsafe extern "C-unwind" {
         junkfilter: *mut JunkFilter,
         slot: *mut TupleTableSlot,
     ) -> *mut TupleTableSlot;
+    #[link_name = "ExecGetJunkAttribute__pgrx_cshim"]
+    pub fn ExecGetJunkAttribute(
+        slot: *mut TupleTableSlot,
+        attno: AttrNumber,
+        isNull: *mut bool,
+    ) -> Datum;
     pub fn ExecutorStart(queryDesc: *mut QueryDesc, eflags: ::core::ffi::c_int);
     pub fn standard_ExecutorStart(queryDesc: *mut QueryDesc, eflags: ::core::ffi::c_int);
     pub fn ExecutorRun(
@@ -34549,6 +36024,13 @@ unsafe extern "C-unwind" {
         rteperminfos: *mut List,
         ereport_on_violation: bool,
     ) -> bool;
+    pub fn ExecCheckOneRelPerms(perminfo: *mut RTEPermissionInfo) -> bool;
+    pub fn CheckValidResultRelNew(
+        resultRelInfo: *mut ResultRelInfo,
+        operation: CmdType::Type,
+        onConflictAction: OnConflictAction::Type,
+        mergeActions: *mut List,
+    );
     pub fn CheckValidResultRel(resultRelInfo: *mut ResultRelInfo, operation: CmdType::Type);
     pub fn InitResultRelInfo(
         resultRelInfo: *mut ResultRelInfo,
@@ -34594,7 +36076,7 @@ unsafe extern "C-unwind" {
     ) -> LockTupleMode::Type;
     pub fn ExecFindRowMark(estate: *mut EState, rti: Index, missing_ok: bool) -> *mut ExecRowMark;
     pub fn ExecBuildAuxRowMark(erm: *mut ExecRowMark, targetlist: *mut List)
-        -> *mut ExecAuxRowMark;
+    -> *mut ExecAuxRowMark;
     pub fn EvalPlanQual(
         epqstate: *mut EPQState,
         relation: Relation,
@@ -34633,6 +36115,8 @@ unsafe extern "C-unwind" {
     pub fn ExecEndNode(node: *mut PlanState);
     pub fn ExecShutdownNode(node: *mut PlanState);
     pub fn ExecSetTupleBound(tuples_needed: int64, child_node: *mut PlanState);
+    #[link_name = "ExecProcNode__pgrx_cshim"]
+    pub fn ExecProcNode(node: *mut PlanState) -> *mut TupleTableSlot;
     pub fn ExecInitExpr(node: *mut Expr, parent: *mut PlanState) -> *mut ExprState;
     pub fn ExecInitExprWithParams(node: *mut Expr, ext_params: ParamListInfo) -> *mut ExprState;
     pub fn ExecInitQual(qual: *mut List, parent: *mut PlanState) -> *mut ExprState;
@@ -34685,6 +36169,24 @@ unsafe extern "C-unwind" {
     pub fn ExecPrepareQual(qual: *mut List, estate: *mut EState) -> *mut ExprState;
     pub fn ExecPrepareCheck(qual: *mut List, estate: *mut EState) -> *mut ExprState;
     pub fn ExecPrepareExprList(nodes: *mut List, estate: *mut EState) -> *mut List;
+    #[link_name = "ExecEvalExpr__pgrx_cshim"]
+    pub fn ExecEvalExpr(
+        state: *mut ExprState,
+        econtext: *mut ExprContext,
+        isNull: *mut bool,
+    ) -> Datum;
+    #[link_name = "ExecEvalExprSwitchContext__pgrx_cshim"]
+    pub fn ExecEvalExprSwitchContext(
+        state: *mut ExprState,
+        econtext: *mut ExprContext,
+        isNull: *mut bool,
+    ) -> Datum;
+    #[link_name = "ExecProject__pgrx_cshim"]
+    pub fn ExecProject(projInfo: *mut ProjectionInfo) -> *mut TupleTableSlot;
+    #[link_name = "ExecQual__pgrx_cshim"]
+    pub fn ExecQual(state: *mut ExprState, econtext: *mut ExprContext) -> bool;
+    #[link_name = "ExecQualAndReset__pgrx_cshim"]
+    pub fn ExecQualAndReset(state: *mut ExprState, econtext: *mut ExprContext) -> bool;
     pub fn ExecCheck(state: *mut ExprState, econtext: *mut ExprContext) -> bool;
     pub fn ExecInitTableFunctionResult(
         expr: *mut Expr,
@@ -34786,6 +36288,8 @@ unsafe extern "C-unwind" {
     pub fn ExecInitRangeTable(estate: *mut EState, rangeTable: *mut List, permInfos: *mut List);
     pub fn ExecCloseRangeTableRelations(estate: *mut EState);
     pub fn ExecCloseResultRelations(estate: *mut EState);
+    #[link_name = "exec_rt_fetch__pgrx_cshim"]
+    pub fn exec_rt_fetch(rti: Index, estate: *mut EState) -> *mut RangeTblEntry;
     pub fn ExecGetRangeTableRelation(estate: *mut EState, rti: Index) -> Relation;
     pub fn ExecInitResultRelation(
         estate: *mut EState,
@@ -34974,6 +36478,8 @@ unsafe extern "C-unwind" {
         values: *mut *mut ::core::ffi::c_char,
     ) -> HeapTuple;
     pub fn HeapTupleHeaderGetDatum(tuple: HeapTupleHeader) -> Datum;
+    #[link_name = "HeapTupleGetDatum__pgrx_cshim"]
+    pub fn HeapTupleGetDatum(tuple: *const HeapTupleData) -> Datum;
     pub fn InitMaterializedSRF(fcinfo: FunctionCallInfo, flags: bits32);
     pub fn init_MultiFuncCall(fcinfo: FunctionCallInfo) -> *mut FuncCallContext;
     pub fn per_MultiFuncCall(fcinfo: FunctionCallInfo) -> *mut FuncCallContext;
@@ -35191,6 +36697,8 @@ unsafe extern "C-unwind" {
         val: *const int64,
     );
     pub fn pgstat_progress_end_command();
+    #[link_name = "is_unixsock_path__pgrx_cshim"]
+    pub fn is_unixsock_path(path: *const ::core::ffi::c_char) -> bool;
     pub static mut Db_user_namespace: bool;
     pub static mut MyBackendId: BackendId;
     pub static mut ParallelLeaderBackendId: BackendId;
@@ -35226,6 +36734,10 @@ unsafe extern "C-unwind" {
     ) -> *mut ::core::ffi::c_char;
     pub fn pgstat_get_wait_event(wait_event_info: uint32) -> *const ::core::ffi::c_char;
     pub fn pgstat_get_wait_event_type(wait_event_info: uint32) -> *const ::core::ffi::c_char;
+    #[link_name = "pgstat_report_wait_start__pgrx_cshim"]
+    pub fn pgstat_report_wait_start(wait_event_info: uint32);
+    #[link_name = "pgstat_report_wait_end__pgrx_cshim"]
+    pub fn pgstat_report_wait_end();
     pub fn pgstat_set_wait_event_storage(wait_event_info: *mut uint32);
     pub fn pgstat_reset_wait_event_storage();
     pub static mut my_wait_event_info: *mut uint32;
@@ -35623,6 +37135,7 @@ unsafe extern "C-unwind" {
     pub fn GetRecoveryState() -> RecoveryState::Type;
     pub fn XLogInsertAllowed() -> bool;
     pub fn GetXLogInsertRecPtr() -> XLogRecPtr;
+    pub fn GetXLogInsertEndRecPtr() -> XLogRecPtr;
     pub fn GetXLogWriteRecPtr() -> XLogRecPtr;
     pub fn GetSystemIdentifier() -> uint64;
     pub fn GetMockAuthenticationNonce() -> *mut ::core::ffi::c_char;
@@ -35655,6 +37168,7 @@ unsafe extern "C-unwind" {
     pub fn ReachedEndOfBackup(EndRecPtr: XLogRecPtr, tli: TimeLineID);
     pub fn SetInstallXLogFileSegmentActive();
     pub fn IsInstallXLogFileSegmentActive() -> bool;
+    pub fn ResetInstallXLogFileSegmentActive();
     pub fn XLogShutdownWalRcv();
     pub fn do_pg_backup_start(
         backupidstr: *const ::core::ffi::c_char,
@@ -35667,6 +37181,10 @@ unsafe extern "C-unwind" {
     pub fn do_pg_abort_backup(code: ::core::ffi::c_int, arg: Datum);
     pub fn register_persistent_abort_backup_handler();
     pub fn get_backup_status() -> SessionBackupState::Type;
+    #[link_name = "RmgrIdIsBuiltin__pgrx_cshim"]
+    pub fn RmgrIdIsBuiltin(rmid: ::core::ffi::c_int) -> bool;
+    #[link_name = "RmgrIdIsCustom__pgrx_cshim"]
+    pub fn RmgrIdIsCustom(rmid: ::core::ffi::c_int) -> bool;
     pub fn pg_comp_crc32c_sb8(
         crc: pg_crc32c,
         data: *const ::core::ffi::c_void,
@@ -35684,6 +37202,8 @@ unsafe extern "C-unwind" {
         data: *const ::core::ffi::c_void,
         len: usize,
     ) -> pg_crc32c;
+    #[link_name = "XLogReaderHasQueuedRecordOrError__pgrx_cshim"]
+    pub fn XLogReaderHasQueuedRecordOrError(state: *mut XLogReaderState) -> bool;
     pub fn XLogReaderAllocate(
         wal_segment_size: ::core::ffi::c_int,
         waldir: *const ::core::ffi::c_char,
@@ -35756,11 +37276,77 @@ unsafe extern "C-unwind" {
         blknum: *mut BlockNumber,
         prefetch_buffer: *mut Buffer,
     ) -> bool;
+    #[link_name = "XLogFileName__pgrx_cshim"]
+    pub fn XLogFileName(
+        fname: *mut ::core::ffi::c_char,
+        tli: TimeLineID,
+        logSegNo: XLogSegNo,
+        wal_segsz_bytes: ::core::ffi::c_int,
+    );
+    #[link_name = "XLogFileNameById__pgrx_cshim"]
+    pub fn XLogFileNameById(
+        fname: *mut ::core::ffi::c_char,
+        tli: TimeLineID,
+        log: uint32,
+        seg: uint32,
+    );
+    #[link_name = "IsXLogFileName__pgrx_cshim"]
+    pub fn IsXLogFileName(fname: *const ::core::ffi::c_char) -> bool;
+    #[link_name = "IsPartialXLogFileName__pgrx_cshim"]
+    pub fn IsPartialXLogFileName(fname: *const ::core::ffi::c_char) -> bool;
+    #[link_name = "XLogFromFileName__pgrx_cshim"]
+    pub fn XLogFromFileName(
+        fname: *const ::core::ffi::c_char,
+        tli: *mut TimeLineID,
+        logSegNo: *mut XLogSegNo,
+        wal_segsz_bytes: ::core::ffi::c_int,
+    );
+    #[link_name = "XLogFilePath__pgrx_cshim"]
+    pub fn XLogFilePath(
+        path: *mut ::core::ffi::c_char,
+        tli: TimeLineID,
+        logSegNo: XLogSegNo,
+        wal_segsz_bytes: ::core::ffi::c_int,
+    );
+    #[link_name = "TLHistoryFileName__pgrx_cshim"]
+    pub fn TLHistoryFileName(fname: *mut ::core::ffi::c_char, tli: TimeLineID);
+    #[link_name = "IsTLHistoryFileName__pgrx_cshim"]
+    pub fn IsTLHistoryFileName(fname: *const ::core::ffi::c_char) -> bool;
+    #[link_name = "TLHistoryFilePath__pgrx_cshim"]
+    pub fn TLHistoryFilePath(path: *mut ::core::ffi::c_char, tli: TimeLineID);
+    #[link_name = "StatusFilePath__pgrx_cshim"]
+    pub fn StatusFilePath(
+        path: *mut ::core::ffi::c_char,
+        xlog: *const ::core::ffi::c_char,
+        suffix: *const ::core::ffi::c_char,
+    );
+    #[link_name = "BackupHistoryFileName__pgrx_cshim"]
+    pub fn BackupHistoryFileName(
+        fname: *mut ::core::ffi::c_char,
+        tli: TimeLineID,
+        logSegNo: XLogSegNo,
+        startpoint: XLogRecPtr,
+        wal_segsz_bytes: ::core::ffi::c_int,
+    );
+    #[link_name = "IsBackupHistoryFileName__pgrx_cshim"]
+    pub fn IsBackupHistoryFileName(fname: *const ::core::ffi::c_char) -> bool;
+    #[link_name = "BackupHistoryFilePath__pgrx_cshim"]
+    pub fn BackupHistoryFilePath(
+        path: *mut ::core::ffi::c_char,
+        tli: TimeLineID,
+        logSegNo: XLogSegNo,
+        startpoint: XLogRecPtr,
+        wal_segsz_bytes: ::core::ffi::c_int,
+    );
     pub static mut RmgrTable: [RmgrData; 0usize];
     pub fn RmgrStartup();
     pub fn RmgrCleanup();
     pub fn RmgrNotFound(rmid: RmgrId);
     pub fn RegisterCustomRmgr(rmid: RmgrId, rmgr: *const RmgrData);
+    #[link_name = "RmgrIdExists__pgrx_cshim"]
+    pub fn RmgrIdExists(rmid: RmgrId) -> bool;
+    #[link_name = "GetRmgr__pgrx_cshim"]
+    pub fn GetRmgr(rmid: RmgrId) -> RmgrData;
     pub fn GetLastSegSwitchData(lastSwitchLSN: *mut XLogRecPtr) -> pg_time_t;
     pub fn RequestXLogSwitch(mark_unimportant: bool) -> XLogRecPtr;
     pub fn GetOldestRestartPoint(oldrecptr: *mut XLogRecPtr, oldtli: *mut TimeLineID);
@@ -36017,6 +37603,10 @@ unsafe extern "C-unwind" {
     pub fn smgrimmedsync(reln: SMgrRelation, forknum: ForkNumber::Type);
     pub fn AtEOXact_SMgr();
     pub fn ProcessBarrierSmgrRelease() -> bool;
+    #[link_name = "RelationGetSmgr__pgrx_cshim"]
+    pub fn RelationGetSmgr(rel: Relation) -> SMgrRelation;
+    #[link_name = "RelationCloseSmgr__pgrx_cshim"]
+    pub fn RelationCloseSmgr(relation: Relation);
     pub fn RelationIncrementReferenceCount(rel: Relation);
     pub fn RelationDecrementReferenceCount(rel: Relation);
     pub fn GenericXLogStart(relation: Relation) -> *mut GenericXLogState;
@@ -36031,10 +37621,18 @@ unsafe extern "C-unwind" {
     pub fn generic_identify(info: uint8) -> *const ::core::ffi::c_char;
     pub fn generic_desc(buf: StringInfo, record: *mut XLogReaderState);
     pub fn generic_mask(page: *mut ::core::ffi::c_char, blkno: BlockNumber);
+    #[link_name = "DatumGetGinTernaryValue__pgrx_cshim"]
+    pub fn DatumGetGinTernaryValue(X: Datum) -> GinTernaryValue;
+    #[link_name = "GinTernaryValueGetDatum__pgrx_cshim"]
+    pub fn GinTernaryValueGetDatum(X: GinTernaryValue) -> Datum;
     pub static mut GinFuzzySearchLimit: ::core::ffi::c_int;
     pub static mut gin_pending_list_limit: ::core::ffi::c_int;
     pub fn ginGetStats(index: Relation, stats: *mut GinStatsData);
     pub fn ginUpdateStats(index: Relation, stats: *const GinStatsData, is_build: bool);
+    #[link_name = "GistPageSetDeleted__pgrx_cshim"]
+    pub fn GistPageSetDeleted(page: Page, deletexid: FullTransactionId);
+    #[link_name = "GistPageGetDeleteXid__pgrx_cshim"]
+    pub fn GistPageGetDeleteXid(page: Page) -> FullTransactionId;
     pub fn relation_open(relationId: Oid, lockmode: LOCKMODE) -> Relation;
     pub fn try_relation_open(relationId: Oid, lockmode: LOCKMODE) -> Relation;
     pub fn relation_openrv(relation: *const RangeVar, lockmode: LOCKMODE) -> Relation;
@@ -36200,12 +37798,82 @@ unsafe extern "C-unwind" {
     pub static mut synchronize_seqscans: bool;
     pub fn table_slot_callbacks(relation: Relation) -> *const TupleTableSlotOps;
     pub fn table_slot_create(relation: Relation, reglist: *mut *mut List) -> *mut TupleTableSlot;
+    #[link_name = "table_beginscan__pgrx_cshim"]
+    pub fn table_beginscan(
+        rel: Relation,
+        snapshot: Snapshot,
+        nkeys: ::core::ffi::c_int,
+        key: *mut ScanKeyData,
+    ) -> TableScanDesc;
     pub fn table_beginscan_catalog(
         relation: Relation,
         nkeys: ::core::ffi::c_int,
         key: *mut ScanKeyData,
     ) -> TableScanDesc;
+    #[link_name = "table_beginscan_strat__pgrx_cshim"]
+    pub fn table_beginscan_strat(
+        rel: Relation,
+        snapshot: Snapshot,
+        nkeys: ::core::ffi::c_int,
+        key: *mut ScanKeyData,
+        allow_strat: bool,
+        allow_sync: bool,
+    ) -> TableScanDesc;
+    #[link_name = "table_beginscan_bm__pgrx_cshim"]
+    pub fn table_beginscan_bm(
+        rel: Relation,
+        snapshot: Snapshot,
+        nkeys: ::core::ffi::c_int,
+        key: *mut ScanKeyData,
+    ) -> TableScanDesc;
+    #[link_name = "table_beginscan_sampling__pgrx_cshim"]
+    pub fn table_beginscan_sampling(
+        rel: Relation,
+        snapshot: Snapshot,
+        nkeys: ::core::ffi::c_int,
+        key: *mut ScanKeyData,
+        allow_strat: bool,
+        allow_sync: bool,
+        allow_pagemode: bool,
+    ) -> TableScanDesc;
+    #[link_name = "table_beginscan_tid__pgrx_cshim"]
+    pub fn table_beginscan_tid(rel: Relation, snapshot: Snapshot) -> TableScanDesc;
+    #[link_name = "table_beginscan_analyze__pgrx_cshim"]
+    pub fn table_beginscan_analyze(rel: Relation) -> TableScanDesc;
+    #[link_name = "table_endscan__pgrx_cshim"]
+    pub fn table_endscan(scan: TableScanDesc);
+    #[link_name = "table_rescan__pgrx_cshim"]
+    pub fn table_rescan(scan: TableScanDesc, key: *mut ScanKeyData);
+    #[link_name = "table_rescan_set_params__pgrx_cshim"]
+    pub fn table_rescan_set_params(
+        scan: TableScanDesc,
+        key: *mut ScanKeyData,
+        allow_strat: bool,
+        allow_sync: bool,
+        allow_pagemode: bool,
+    );
     pub fn table_scan_update_snapshot(scan: TableScanDesc, snapshot: Snapshot);
+    #[link_name = "table_scan_getnextslot__pgrx_cshim"]
+    pub fn table_scan_getnextslot(
+        sscan: TableScanDesc,
+        direction: ScanDirection::Type,
+        slot: *mut TupleTableSlot,
+    ) -> bool;
+    #[link_name = "table_beginscan_tidrange__pgrx_cshim"]
+    pub fn table_beginscan_tidrange(
+        rel: Relation,
+        snapshot: Snapshot,
+        mintid: ItemPointer,
+        maxtid: ItemPointer,
+    ) -> TableScanDesc;
+    #[link_name = "table_rescan_tidrange__pgrx_cshim"]
+    pub fn table_rescan_tidrange(sscan: TableScanDesc, mintid: ItemPointer, maxtid: ItemPointer);
+    #[link_name = "table_scan_getnextslot_tidrange__pgrx_cshim"]
+    pub fn table_scan_getnextslot_tidrange(
+        sscan: TableScanDesc,
+        direction: ScanDirection::Type,
+        slot: *mut TupleTableSlot,
+    ) -> bool;
     pub fn table_parallelscan_estimate(rel: Relation, snapshot: Snapshot) -> Size;
     pub fn table_parallelscan_initialize(
         rel: Relation,
@@ -36216,13 +37884,242 @@ unsafe extern "C-unwind" {
         relation: Relation,
         pscan: ParallelTableScanDesc,
     ) -> TableScanDesc;
+    #[link_name = "table_parallelscan_reinitialize__pgrx_cshim"]
+    pub fn table_parallelscan_reinitialize(rel: Relation, pscan: ParallelTableScanDesc);
+    #[link_name = "table_index_fetch_begin__pgrx_cshim"]
+    pub fn table_index_fetch_begin(rel: Relation) -> *mut IndexFetchTableData;
+    #[link_name = "table_index_fetch_reset__pgrx_cshim"]
+    pub fn table_index_fetch_reset(scan: *mut IndexFetchTableData);
+    #[link_name = "table_index_fetch_end__pgrx_cshim"]
+    pub fn table_index_fetch_end(scan: *mut IndexFetchTableData);
+    #[link_name = "table_index_fetch_tuple__pgrx_cshim"]
+    pub fn table_index_fetch_tuple(
+        scan: *mut IndexFetchTableData,
+        tid: ItemPointer,
+        snapshot: Snapshot,
+        slot: *mut TupleTableSlot,
+        call_again: *mut bool,
+        all_dead: *mut bool,
+    ) -> bool;
     pub fn table_index_fetch_tuple_check(
         rel: Relation,
         tid: ItemPointer,
         snapshot: Snapshot,
         all_dead: *mut bool,
     ) -> bool;
+    #[link_name = "table_tuple_fetch_row_version__pgrx_cshim"]
+    pub fn table_tuple_fetch_row_version(
+        rel: Relation,
+        tid: ItemPointer,
+        snapshot: Snapshot,
+        slot: *mut TupleTableSlot,
+    ) -> bool;
+    #[link_name = "table_tuple_tid_valid__pgrx_cshim"]
+    pub fn table_tuple_tid_valid(scan: TableScanDesc, tid: ItemPointer) -> bool;
     pub fn table_tuple_get_latest_tid(scan: TableScanDesc, tid: ItemPointer);
+    #[link_name = "table_tuple_satisfies_snapshot__pgrx_cshim"]
+    pub fn table_tuple_satisfies_snapshot(
+        rel: Relation,
+        slot: *mut TupleTableSlot,
+        snapshot: Snapshot,
+    ) -> bool;
+    #[link_name = "table_index_delete_tuples__pgrx_cshim"]
+    pub fn table_index_delete_tuples(
+        rel: Relation,
+        delstate: *mut TM_IndexDeleteOp,
+    ) -> TransactionId;
+    #[link_name = "table_tuple_insert__pgrx_cshim"]
+    pub fn table_tuple_insert(
+        rel: Relation,
+        slot: *mut TupleTableSlot,
+        cid: CommandId,
+        options: ::core::ffi::c_int,
+        bistate: *mut BulkInsertStateData,
+    );
+    #[link_name = "table_tuple_insert_speculative__pgrx_cshim"]
+    pub fn table_tuple_insert_speculative(
+        rel: Relation,
+        slot: *mut TupleTableSlot,
+        cid: CommandId,
+        options: ::core::ffi::c_int,
+        bistate: *mut BulkInsertStateData,
+        specToken: uint32,
+    );
+    #[link_name = "table_tuple_complete_speculative__pgrx_cshim"]
+    pub fn table_tuple_complete_speculative(
+        rel: Relation,
+        slot: *mut TupleTableSlot,
+        specToken: uint32,
+        succeeded: bool,
+    );
+    #[link_name = "table_multi_insert__pgrx_cshim"]
+    pub fn table_multi_insert(
+        rel: Relation,
+        slots: *mut *mut TupleTableSlot,
+        nslots: ::core::ffi::c_int,
+        cid: CommandId,
+        options: ::core::ffi::c_int,
+        bistate: *mut BulkInsertStateData,
+    );
+    #[link_name = "table_tuple_delete__pgrx_cshim"]
+    pub fn table_tuple_delete(
+        rel: Relation,
+        tid: ItemPointer,
+        cid: CommandId,
+        snapshot: Snapshot,
+        crosscheck: Snapshot,
+        wait: bool,
+        tmfd: *mut TM_FailureData,
+        changingPart: bool,
+    ) -> TM_Result::Type;
+    #[link_name = "table_tuple_update__pgrx_cshim"]
+    pub fn table_tuple_update(
+        rel: Relation,
+        otid: ItemPointer,
+        slot: *mut TupleTableSlot,
+        cid: CommandId,
+        snapshot: Snapshot,
+        crosscheck: Snapshot,
+        wait: bool,
+        tmfd: *mut TM_FailureData,
+        lockmode: *mut LockTupleMode::Type,
+        update_indexes: *mut TU_UpdateIndexes::Type,
+    ) -> TM_Result::Type;
+    #[link_name = "table_tuple_lock__pgrx_cshim"]
+    pub fn table_tuple_lock(
+        rel: Relation,
+        tid: ItemPointer,
+        snapshot: Snapshot,
+        slot: *mut TupleTableSlot,
+        cid: CommandId,
+        mode: LockTupleMode::Type,
+        wait_policy: LockWaitPolicy::Type,
+        flags: uint8,
+        tmfd: *mut TM_FailureData,
+    ) -> TM_Result::Type;
+    #[link_name = "table_finish_bulk_insert__pgrx_cshim"]
+    pub fn table_finish_bulk_insert(rel: Relation, options: ::core::ffi::c_int);
+    #[link_name = "table_relation_set_new_filelocator__pgrx_cshim"]
+    pub fn table_relation_set_new_filelocator(
+        rel: Relation,
+        newrlocator: *const RelFileLocator,
+        persistence: ::core::ffi::c_char,
+        freezeXid: *mut TransactionId,
+        minmulti: *mut MultiXactId,
+    );
+    #[link_name = "table_relation_nontransactional_truncate__pgrx_cshim"]
+    pub fn table_relation_nontransactional_truncate(rel: Relation);
+    #[link_name = "table_relation_copy_data__pgrx_cshim"]
+    pub fn table_relation_copy_data(rel: Relation, newrlocator: *const RelFileLocator);
+    #[link_name = "table_relation_copy_for_cluster__pgrx_cshim"]
+    pub fn table_relation_copy_for_cluster(
+        OldTable: Relation,
+        NewTable: Relation,
+        OldIndex: Relation,
+        use_sort: bool,
+        OldestXmin: TransactionId,
+        xid_cutoff: *mut TransactionId,
+        multi_cutoff: *mut MultiXactId,
+        num_tuples: *mut f64,
+        tups_vacuumed: *mut f64,
+        tups_recently_dead: *mut f64,
+    );
+    #[link_name = "table_relation_vacuum__pgrx_cshim"]
+    pub fn table_relation_vacuum(
+        rel: Relation,
+        params: *mut VacuumParams,
+        bstrategy: BufferAccessStrategy,
+    );
+    #[link_name = "table_scan_analyze_next_block__pgrx_cshim"]
+    pub fn table_scan_analyze_next_block(
+        scan: TableScanDesc,
+        blockno: BlockNumber,
+        bstrategy: BufferAccessStrategy,
+    ) -> bool;
+    #[link_name = "table_scan_analyze_next_tuple__pgrx_cshim"]
+    pub fn table_scan_analyze_next_tuple(
+        scan: TableScanDesc,
+        OldestXmin: TransactionId,
+        liverows: *mut f64,
+        deadrows: *mut f64,
+        slot: *mut TupleTableSlot,
+    ) -> bool;
+    #[link_name = "table_index_build_scan__pgrx_cshim"]
+    pub fn table_index_build_scan(
+        table_rel: Relation,
+        index_rel: Relation,
+        index_info: *mut IndexInfo,
+        allow_sync: bool,
+        progress: bool,
+        callback: IndexBuildCallback,
+        callback_state: *mut ::core::ffi::c_void,
+        scan: TableScanDesc,
+    ) -> f64;
+    #[link_name = "table_index_build_range_scan__pgrx_cshim"]
+    pub fn table_index_build_range_scan(
+        table_rel: Relation,
+        index_rel: Relation,
+        index_info: *mut IndexInfo,
+        allow_sync: bool,
+        anyvisible: bool,
+        progress: bool,
+        start_blockno: BlockNumber,
+        numblocks: BlockNumber,
+        callback: IndexBuildCallback,
+        callback_state: *mut ::core::ffi::c_void,
+        scan: TableScanDesc,
+    ) -> f64;
+    #[link_name = "table_index_validate_scan__pgrx_cshim"]
+    pub fn table_index_validate_scan(
+        table_rel: Relation,
+        index_rel: Relation,
+        index_info: *mut IndexInfo,
+        snapshot: Snapshot,
+        state: *mut ValidateIndexState,
+    );
+    #[link_name = "table_relation_size__pgrx_cshim"]
+    pub fn table_relation_size(rel: Relation, forkNumber: ForkNumber::Type) -> uint64;
+    #[link_name = "table_relation_needs_toast_table__pgrx_cshim"]
+    pub fn table_relation_needs_toast_table(rel: Relation) -> bool;
+    #[link_name = "table_relation_toast_am__pgrx_cshim"]
+    pub fn table_relation_toast_am(rel: Relation) -> Oid;
+    #[link_name = "table_relation_fetch_toast_slice__pgrx_cshim"]
+    pub fn table_relation_fetch_toast_slice(
+        toastrel: Relation,
+        valueid: Oid,
+        attrsize: int32,
+        sliceoffset: int32,
+        slicelength: int32,
+        result: *mut varlena,
+    );
+    #[link_name = "table_relation_estimate_size__pgrx_cshim"]
+    pub fn table_relation_estimate_size(
+        rel: Relation,
+        attr_widths: *mut int32,
+        pages: *mut BlockNumber,
+        tuples: *mut f64,
+        allvisfrac: *mut f64,
+    );
+    #[link_name = "table_scan_bitmap_next_block__pgrx_cshim"]
+    pub fn table_scan_bitmap_next_block(scan: TableScanDesc, tbmres: *mut TBMIterateResult)
+    -> bool;
+    #[link_name = "table_scan_bitmap_next_tuple__pgrx_cshim"]
+    pub fn table_scan_bitmap_next_tuple(
+        scan: TableScanDesc,
+        tbmres: *mut TBMIterateResult,
+        slot: *mut TupleTableSlot,
+    ) -> bool;
+    #[link_name = "table_scan_sample_next_block__pgrx_cshim"]
+    pub fn table_scan_sample_next_block(
+        scan: TableScanDesc,
+        scanstate: *mut SampleScanState,
+    ) -> bool;
+    #[link_name = "table_scan_sample_next_tuple__pgrx_cshim"]
+    pub fn table_scan_sample_next_tuple(
+        scan: TableScanDesc,
+        scanstate: *mut SampleScanState,
+        slot: *mut TupleTableSlot,
+    ) -> bool;
     pub fn simple_table_tuple_insert(rel: Relation, slot: *mut TupleTableSlot);
     pub fn simple_table_tuple_delete(rel: Relation, tid: ItemPointer, snapshot: Snapshot);
     pub fn simple_table_tuple_update(
@@ -36234,7 +38131,7 @@ unsafe extern "C-unwind" {
     );
     pub fn table_block_parallelscan_estimate(rel: Relation) -> Size;
     pub fn table_block_parallelscan_initialize(rel: Relation, pscan: ParallelTableScanDesc)
-        -> Size;
+    -> Size;
     pub fn table_block_parallelscan_reinitialize(rel: Relation, pscan: ParallelTableScanDesc);
     pub fn table_block_parallelscan_nextpage(
         rel: Relation,
@@ -36277,8 +38174,6 @@ unsafe extern "C-unwind" {
         size: Size,
         foundPtr: *mut bool,
     ) -> *mut ::core::ffi::c_void;
-    pub fn add_size(s1: Size, s2: Size) -> Size;
-    pub fn mul_size(s1: Size, s2: Size) -> Size;
     pub fn RequestAddinShmemSpace(size: Size);
     pub fn shm_toc_create(
         magic: uint64,
@@ -36626,6 +38521,16 @@ unsafe extern "C-unwind" {
     pub fn LWLockRelease(lock: *mut LWLock);
     pub fn LWLockReleaseClearVar(lock: *mut LWLock, valptr: *mut uint64, val: uint64);
     pub fn LWLockReleaseAll();
+    pub fn ForEachLWLockHeldByMe(
+        callback: ::core::option::Option<
+            unsafe extern "C-unwind" fn(
+                arg1: *mut LWLock,
+                arg2: LWLockMode::Type,
+                arg3: *mut ::core::ffi::c_void,
+            ),
+        >,
+        context: *mut ::core::ffi::c_void,
+    );
     pub fn LWLockHeldByMe(lock: *mut LWLock) -> bool;
     pub fn LWLockAnyHeldByMe(lock: *mut LWLock, nlocks: ::core::ffi::c_int, stride: usize) -> bool;
     pub fn LWLockHeldByMeInMode(lock: *mut LWLock, mode: LWLockMode::Type) -> bool;
@@ -36651,6 +38556,18 @@ unsafe extern "C-unwind" {
         tranche_name: *const ::core::ffi::c_char,
     );
     pub fn LWLockInitialize(lock: *mut LWLock, tranche_id: ::core::ffi::c_int);
+    #[link_name = "DatumGetTimestamp__pgrx_cshim"]
+    pub fn DatumGetTimestamp(X: Datum) -> Timestamp;
+    #[link_name = "DatumGetTimestampTz__pgrx_cshim"]
+    pub fn DatumGetTimestampTz(X: Datum) -> TimestampTz;
+    #[link_name = "DatumGetIntervalP__pgrx_cshim"]
+    pub fn DatumGetIntervalP(X: Datum) -> *mut Interval;
+    #[link_name = "TimestampGetDatum__pgrx_cshim"]
+    pub fn TimestampGetDatum(X: Timestamp) -> Datum;
+    #[link_name = "TimestampTzGetDatum__pgrx_cshim"]
+    pub fn TimestampTzGetDatum(X: TimestampTz) -> Datum;
+    #[link_name = "IntervalPGetDatum__pgrx_cshim"]
+    pub fn IntervalPGetDatum(X: *const Interval) -> Datum;
     pub static mut PgStartTime: TimestampTz;
     pub static mut PgReloadTime: TimestampTz;
     pub fn anytimestamp_typmod_check(istz: bool, typmod: int32) -> int32;
@@ -36966,6 +38883,8 @@ unsafe extern "C-unwind" {
     pub fn attribute_reloptions(reloptions: Datum, validate: bool) -> *mut bytea;
     pub fn tablespace_reloptions(reloptions: Datum, validate: bool) -> *mut bytea;
     pub fn AlterTableGetRelOptionsLockLevel(defList: *mut List) -> LOCKMODE;
+    pub fn is_dummy_rel(rel: *mut RelOptInfo) -> bool;
+    pub fn GetTsmRoutine(tsmhandler: Oid) -> *mut TsmRoutine;
     pub fn visibilitymap_clear(
         rel: Relation,
         heapBlk: BlockNumber,
@@ -37083,6 +39002,8 @@ unsafe extern "C-unwind" {
     pub static mut SnapshotSelfData: SnapshotData;
     pub static mut SnapshotAnyData: SnapshotData;
     pub static mut CatalogSnapshotData: SnapshotData;
+    #[link_name = "OldSnapshotThresholdActive__pgrx_cshim"]
+    pub fn OldSnapshotThresholdActive() -> bool;
     pub fn GetTransactionSnapshot() -> Snapshot;
     pub fn GetLatestSnapshot() -> Snapshot;
     pub fn SnapshotSetCommandId(curcid: CommandId);
@@ -37219,6 +39140,7 @@ unsafe extern "C-unwind" {
     ) -> Buffer;
     pub fn InitBufferPoolAccess();
     pub fn AtEOXact_Buffers(isCommit: bool);
+    pub fn AssertBufferLocksPermitCatalogRead();
     pub fn PrintBufferLeakWarning(buffer: Buffer);
     pub fn CheckPointBuffers(flags: ::core::ffi::c_int);
     pub fn BufferGetBlockNumber(buffer: Buffer) -> BlockNumber;
@@ -37275,6 +39197,12 @@ unsafe extern "C-unwind" {
     ) -> BufferAccessStrategy;
     pub fn GetAccessStrategyBufferCount(strategy: BufferAccessStrategy) -> ::core::ffi::c_int;
     pub fn FreeAccessStrategy(strategy: BufferAccessStrategy);
+    #[link_name = "BufferIsValid__pgrx_cshim"]
+    pub fn BufferIsValid(bufnum: Buffer) -> bool;
+    #[link_name = "BufferGetPageSize__pgrx_cshim"]
+    pub fn BufferGetPageSize(buffer: Buffer) -> Size;
+    #[link_name = "TestForOldSnapshot__pgrx_cshim"]
+    pub fn TestForOldSnapshot(snapshot: Snapshot, relation: Relation, page: Page);
     pub static mut InRecovery: bool;
     pub static mut standbyState: HotStandbyState::Type;
     pub fn XLogHaveInvalidPages() -> bool;
@@ -37335,6 +39263,83 @@ unsafe extern "C-unwind" {
         currTLI: TimeLineID,
     );
     pub fn WALReadRaiseError(errinfo: *mut WALReadError);
+    pub fn SubTransSetParent(xid: TransactionId, parent: TransactionId);
+    pub fn SubTransGetParent(xid: TransactionId) -> TransactionId;
+    pub fn SubTransGetTopmostTransaction(xid: TransactionId) -> TransactionId;
+    pub fn SUBTRANSShmemSize() -> Size;
+    pub fn SUBTRANSShmemInit();
+    pub fn BootStrapSUBTRANS();
+    pub fn StartupSUBTRANS(oldestActiveXID: TransactionId);
+    pub fn CheckPointSUBTRANS();
+    pub fn ExtendSUBTRANS(newestXact: TransactionId);
+    pub fn TruncateSUBTRANS(oldestXact: TransactionId);
+    pub static mut replorigin_session_origin: RepOriginId;
+    pub static mut replorigin_session_origin_lsn: XLogRecPtr;
+    pub static mut replorigin_session_origin_timestamp: TimestampTz;
+    pub fn replorigin_by_name(roname: *const ::core::ffi::c_char, missing_ok: bool) -> RepOriginId;
+    pub fn replorigin_create(roname: *const ::core::ffi::c_char) -> RepOriginId;
+    pub fn replorigin_drop_by_name(
+        name: *const ::core::ffi::c_char,
+        missing_ok: bool,
+        nowait: bool,
+    );
+    pub fn replorigin_by_oid(
+        roident: RepOriginId,
+        missing_ok: bool,
+        roname: *mut *mut ::core::ffi::c_char,
+    ) -> bool;
+    pub fn replorigin_advance(
+        node: RepOriginId,
+        remote_commit: XLogRecPtr,
+        local_commit: XLogRecPtr,
+        go_backward: bool,
+        wal_log: bool,
+    );
+    pub fn replorigin_get_progress(node: RepOriginId, flush: bool) -> XLogRecPtr;
+    pub fn replorigin_session_advance(remote_commit: XLogRecPtr, local_commit: XLogRecPtr);
+    pub fn replorigin_session_setup(node: RepOriginId, acquired_by: ::core::ffi::c_int);
+    pub fn replorigin_session_reset();
+    pub fn replorigin_session_get_progress(flush: bool) -> XLogRecPtr;
+    pub fn CheckPointReplicationOrigin();
+    pub fn StartupReplicationOrigin();
+    pub fn replorigin_redo(record: *mut XLogReaderState);
+    pub fn replorigin_desc(buf: StringInfo, record: *mut XLogReaderState);
+    pub fn replorigin_identify(info: uint8) -> *const ::core::ffi::c_char;
+    pub fn ReplicationOriginShmemSize() -> Size;
+    pub fn ReplicationOriginShmemInit();
+    pub static mut track_commit_timestamp: bool;
+    pub fn TransactionTreeSetCommitTsData(
+        xid: TransactionId,
+        nsubxids: ::core::ffi::c_int,
+        subxids: *mut TransactionId,
+        timestamp: TimestampTz,
+        nodeid: RepOriginId,
+    );
+    pub fn TransactionIdGetCommitTsData(
+        xid: TransactionId,
+        ts: *mut TimestampTz,
+        nodeid: *mut RepOriginId,
+    ) -> bool;
+    pub fn GetLatestCommitTsData(ts: *mut TimestampTz, nodeid: *mut RepOriginId) -> TransactionId;
+    pub fn CommitTsShmemBuffers() -> Size;
+    pub fn CommitTsShmemSize() -> Size;
+    pub fn CommitTsShmemInit();
+    pub fn BootStrapCommitTs();
+    pub fn StartupCommitTs();
+    pub fn CommitTsParameterChange(newvalue: bool, oldvalue: bool);
+    pub fn CompleteCommitTsInitialization();
+    pub fn CheckPointCommitTs();
+    pub fn ExtendCommitTs(newestXact: TransactionId);
+    pub fn TruncateCommitTs(oldestXact: TransactionId);
+    pub fn SetCommitTsLimit(oldestXact: TransactionId, newestXact: TransactionId);
+    pub fn AdvanceOldestCommitTsXid(oldestXact: TransactionId);
+    pub fn committssyncfiletag(
+        ftag: *const FileTag,
+        path: *mut ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+    pub fn commit_ts_redo(record: *mut XLogReaderState);
+    pub fn commit_ts_desc(buf: StringInfo, record: *mut XLogReaderState);
+    pub fn commit_ts_identify(info: uint8) -> *const ::core::ffi::c_char;
     pub fn AcquireDeletionLock(object: *const ObjectAddress, flags: ::core::ffi::c_int);
     pub fn ReleaseDeletionLock(object: *const ObjectAddress);
     pub fn performDeletion(
@@ -37425,6 +39430,7 @@ unsafe extern "C-unwind" {
     ) -> ::core::ffi::c_long;
     pub fn getExtensionOfObject(classId: Oid, objectId: Oid) -> Oid;
     pub fn getAutoExtensionsOfObject(classId: Oid, objectId: Oid) -> *mut List;
+    pub fn getExtensionType(extensionOid: Oid, typname: *const ::core::ffi::c_char) -> Oid;
     pub fn sequenceIsOwned(
         seqId: Oid,
         deptype: ::core::ffi::c_char,
@@ -37466,6 +39472,166 @@ unsafe extern "C-unwind" {
     pub fn dropDatabaseDependencies(databaseId: Oid);
     pub fn shdepDropOwned(roleids: *mut List, behavior: DropBehavior::Type);
     pub fn shdepReassignOwned(roleids: *mut List, newrole: Oid);
+    pub fn CatalogOpenIndexes(heapRel: Relation) -> CatalogIndexState;
+    pub fn CatalogCloseIndexes(indstate: CatalogIndexState);
+    pub fn CatalogTupleInsert(heapRel: Relation, tup: HeapTuple);
+    pub fn CatalogTupleInsertWithInfo(
+        heapRel: Relation,
+        tup: HeapTuple,
+        indstate: CatalogIndexState,
+    );
+    pub fn CatalogTuplesMultiInsertWithInfo(
+        heapRel: Relation,
+        slot: *mut *mut TupleTableSlot,
+        ntuples: ::core::ffi::c_int,
+        indstate: CatalogIndexState,
+    );
+    pub fn CatalogTupleUpdate(heapRel: Relation, otid: ItemPointer, tup: HeapTuple);
+    pub fn CatalogTupleUpdateWithInfo(
+        heapRel: Relation,
+        otid: ItemPointer,
+        tup: HeapTuple,
+        indstate: CatalogIndexState,
+    );
+    pub fn CatalogTupleDelete(heapRel: Relation, tid: ItemPointer);
+    pub fn make_parsestate(parentParseState: *mut ParseState) -> *mut ParseState;
+    pub fn free_parsestate(pstate: *mut ParseState);
+    pub fn parser_errposition(
+        pstate: *mut ParseState,
+        location: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
+    pub fn setup_parser_errposition_callback(
+        pcbstate: *mut ParseCallbackState,
+        pstate: *mut ParseState,
+        location: ::core::ffi::c_int,
+    );
+    pub fn cancel_parser_errposition_callback(pcbstate: *mut ParseCallbackState);
+    pub fn transformContainerType(containerType: *mut Oid, containerTypmod: *mut int32);
+    pub fn transformContainerSubscripts(
+        pstate: *mut ParseState,
+        containerBase: *mut Node,
+        containerType: Oid,
+        containerTypMod: int32,
+        indirection: *mut List,
+        isAssignment: bool,
+    ) -> *mut SubscriptingRef;
+    pub fn make_const(pstate: *mut ParseState, aconst: *mut A_Const) -> *mut Const;
+    pub fn heap_create(
+        relname: *const ::core::ffi::c_char,
+        relnamespace: Oid,
+        reltablespace: Oid,
+        relid: Oid,
+        relfilenumber: RelFileNumber,
+        accessmtd: Oid,
+        tupDesc: TupleDesc,
+        relkind: ::core::ffi::c_char,
+        relpersistence: ::core::ffi::c_char,
+        shared_relation: bool,
+        mapped_relation: bool,
+        allow_system_table_mods: bool,
+        relfrozenxid: *mut TransactionId,
+        relminmxid: *mut MultiXactId,
+        create_storage: bool,
+    ) -> Relation;
+    pub fn heap_create_with_catalog(
+        relname: *const ::core::ffi::c_char,
+        relnamespace: Oid,
+        reltablespace: Oid,
+        relid: Oid,
+        reltypeid: Oid,
+        reloftypeid: Oid,
+        ownerid: Oid,
+        accessmtd: Oid,
+        tupdesc: TupleDesc,
+        cooked_constraints: *mut List,
+        relkind: ::core::ffi::c_char,
+        relpersistence: ::core::ffi::c_char,
+        shared_relation: bool,
+        mapped_relation: bool,
+        oncommit: OnCommitAction::Type,
+        reloptions: Datum,
+        use_user_acl: bool,
+        allow_system_table_mods: bool,
+        is_internal: bool,
+        relrewrite: Oid,
+        typaddress: *mut ObjectAddress,
+    ) -> Oid;
+    pub fn heap_drop_with_catalog(relid: Oid);
+    pub fn heap_truncate(relids: *mut List);
+    pub fn heap_truncate_one_rel(rel: Relation);
+    pub fn heap_truncate_check_FKs(relations: *mut List, tempTables: bool);
+    pub fn heap_truncate_find_FKs(relationIds: *mut List) -> *mut List;
+    pub fn InsertPgAttributeTuples(
+        pg_attribute_rel: Relation,
+        tupdesc: TupleDesc,
+        new_rel_oid: Oid,
+        attoptions: *mut Datum,
+        indstate: CatalogIndexState,
+    );
+    pub fn InsertPgClassTuple(
+        pg_class_desc: Relation,
+        new_rel_desc: Relation,
+        new_rel_oid: Oid,
+        relacl: Datum,
+        reloptions: Datum,
+    );
+    pub fn AddRelationNewConstraints(
+        rel: Relation,
+        newColDefaults: *mut List,
+        newConstraints: *mut List,
+        allow_merge: bool,
+        is_local: bool,
+        is_internal: bool,
+        queryString: *const ::core::ffi::c_char,
+    ) -> *mut List;
+    pub fn RelationClearMissing(rel: Relation);
+    pub fn StoreAttrMissingVal(rel: Relation, attnum: AttrNumber, missingval: Datum);
+    pub fn SetAttrMissing(
+        relid: Oid,
+        attname: *mut ::core::ffi::c_char,
+        value: *mut ::core::ffi::c_char,
+    );
+    pub fn cookDefault(
+        pstate: *mut ParseState,
+        raw_default: *mut Node,
+        atttypid: Oid,
+        atttypmod: int32,
+        attname: *const ::core::ffi::c_char,
+        attgenerated: ::core::ffi::c_char,
+    ) -> *mut Node;
+    pub fn DeleteRelationTuple(relid: Oid);
+    pub fn DeleteAttributeTuples(relid: Oid);
+    pub fn DeleteSystemAttributeTuples(relid: Oid);
+    pub fn RemoveAttributeById(relid: Oid, attnum: AttrNumber);
+    pub fn CopyStatistics(fromrelid: Oid, torelid: Oid);
+    pub fn RemoveStatistics(relid: Oid, attnum: AttrNumber);
+    pub fn SystemAttributeDefinition(attno: AttrNumber) -> *const FormData_pg_attribute;
+    pub fn SystemAttributeByName(
+        attname: *const ::core::ffi::c_char,
+    ) -> *const FormData_pg_attribute;
+    pub fn CheckAttributeNamesTypes(
+        tupdesc: TupleDesc,
+        relkind: ::core::ffi::c_char,
+        flags: ::core::ffi::c_int,
+    );
+    pub fn CheckAttributeType(
+        attname: *const ::core::ffi::c_char,
+        atttypid: Oid,
+        attcollation: Oid,
+        containing_rowtypes: *mut List,
+        flags: ::core::ffi::c_int,
+    );
+    pub fn StorePartitionKey(
+        rel: Relation,
+        strategy: ::core::ffi::c_char,
+        partnatts: int16,
+        partattrs: *mut AttrNumber,
+        partexprs: *mut List,
+        partopclass: *mut Oid,
+        partcollation: *mut Oid,
+    );
+    pub fn RemovePartitionKeyByRelId(relid: Oid);
+    pub fn StorePartitionBound(rel: Relation, parent: Relation, bound: *mut PartitionBoundSpec);
     pub fn index_check_primary_key(
         heapRel: Relation,
         indexInfo: *mut IndexInfo,
@@ -37565,28 +39731,10 @@ unsafe extern "C-unwind" {
     pub fn SerializeReindexState(maxsize: Size, start_address: *mut ::core::ffi::c_char);
     pub fn RestoreReindexState(reindexstate: *mut ::core::ffi::c_void);
     pub fn IndexSetParentIndex(partitionIdx: Relation, parentOid: Oid);
-    pub fn CatalogOpenIndexes(heapRel: Relation) -> CatalogIndexState;
-    pub fn CatalogCloseIndexes(indstate: CatalogIndexState);
-    pub fn CatalogTupleInsert(heapRel: Relation, tup: HeapTuple);
-    pub fn CatalogTupleInsertWithInfo(
-        heapRel: Relation,
-        tup: HeapTuple,
-        indstate: CatalogIndexState,
-    );
-    pub fn CatalogTuplesMultiInsertWithInfo(
-        heapRel: Relation,
-        slot: *mut *mut TupleTableSlot,
-        ntuples: ::core::ffi::c_int,
-        indstate: CatalogIndexState,
-    );
-    pub fn CatalogTupleUpdate(heapRel: Relation, otid: ItemPointer, tup: HeapTuple);
-    pub fn CatalogTupleUpdateWithInfo(
-        heapRel: Relation,
-        otid: ItemPointer,
-        tup: HeapTuple,
-        indstate: CatalogIndexState,
-    );
-    pub fn CatalogTupleDelete(heapRel: Relation, tid: ItemPointer);
+    #[link_name = "itemptr_encode__pgrx_cshim"]
+    pub fn itemptr_encode(itemptr: ItemPointer) -> int64;
+    #[link_name = "itemptr_decode__pgrx_cshim"]
+    pub fn itemptr_decode(itemptr: ItemPointer, encoded: int64);
     pub fn RangeVarGetRelidExtended(
         relation: *const RangeVar,
         lockmode: LOCKMODE,
@@ -37739,6 +39887,8 @@ unsafe extern "C-unwind" {
         ereport_on_violation: bool,
     ) -> bool;
     pub fn RunFunctionExecuteHookStr(objectName: *const ::core::ffi::c_char);
+    #[link_name = "collprovider_name__pgrx_cshim"]
+    pub fn collprovider_name(c: ::core::ffi::c_char) -> *const ::core::ffi::c_char;
     pub fn CollationCreate(
         collname: *const ::core::ffi::c_char,
         collnamespace: Oid,
@@ -37825,28 +39975,6 @@ unsafe extern "C-unwind" {
     ) -> ObjectAddress;
     pub fn function_parse_error_transpose(prosrc: *const ::core::ffi::c_char) -> bool;
     pub fn oid_array_to_list(datum: Datum) -> *mut List;
-    pub fn make_parsestate(parentParseState: *mut ParseState) -> *mut ParseState;
-    pub fn free_parsestate(pstate: *mut ParseState);
-    pub fn parser_errposition(
-        pstate: *mut ParseState,
-        location: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int;
-    pub fn setup_parser_errposition_callback(
-        pcbstate: *mut ParseCallbackState,
-        pstate: *mut ParseState,
-        location: ::core::ffi::c_int,
-    );
-    pub fn cancel_parser_errposition_callback(pcbstate: *mut ParseCallbackState);
-    pub fn transformContainerType(containerType: *mut Oid, containerTypmod: *mut int32);
-    pub fn transformContainerSubscripts(
-        pstate: *mut ParseState,
-        containerBase: *mut Node,
-        containerType: Oid,
-        containerTypMod: int32,
-        indirection: *mut List,
-        isAssignment: bool,
-    ) -> *mut SubscriptingRef;
-    pub fn make_const(pstate: *mut ParseState, aconst: *mut A_Const) -> *mut Const;
     pub fn acldefault(objtype: ObjectType::Type, ownerId: Oid) -> *mut Acl;
     pub fn get_user_default_acl(objtype: ObjectType::Type, ownerId: Oid, nsp_oid: Oid) -> *mut Acl;
     pub fn recordDependencyOnNewAcl(
@@ -38148,7 +40276,7 @@ unsafe extern "C-unwind" {
     pub fn AlterDatabaseRefreshColl(stmt: *mut AlterDatabaseRefreshCollStmt) -> ObjectAddress;
     pub fn AlterDatabaseSet(stmt: *mut AlterDatabaseSetStmt) -> Oid;
     pub fn AlterDatabaseOwner(dbname: *const ::core::ffi::c_char, newOwnerId: Oid)
-        -> ObjectAddress;
+    -> ObjectAddress;
     pub fn get_database_oid(dbname: *const ::core::ffi::c_char, missing_ok: bool) -> Oid;
     pub fn get_database_name(dbid: Oid) -> *mut ::core::ffi::c_char;
     pub fn have_createdb_privilege() -> bool;
@@ -38157,6 +40285,10 @@ unsafe extern "C-unwind" {
         collate: *const ::core::ffi::c_char,
         ctype: *const ::core::ffi::c_char,
     );
+    #[link_name = "EOHPGetRWDatum__pgrx_cshim"]
+    pub fn EOHPGetRWDatum(eohptr: *const ExpandedObjectHeader) -> Datum;
+    #[link_name = "EOHPGetRODatum__pgrx_cshim"]
+    pub fn EOHPGetRODatum(eohptr: *const ExpandedObjectHeader) -> Datum;
     pub fn DatumGetEOHP(d: Datum) -> *mut ExpandedObjectHeader;
     pub fn EOH_init_header(
         eohptr: *mut ExpandedObjectHeader,
@@ -38526,7 +40658,7 @@ unsafe extern "C-unwind" {
     pub fn DefineOperator(names: *mut List, parameters: *mut List) -> ObjectAddress;
     pub fn RemoveOperatorById(operOid: Oid);
     pub fn AlterOperator(stmt: *mut AlterOperatorStmt) -> ObjectAddress;
-    pub fn CreateStatistics(stmt: *mut CreateStatsStmt) -> ObjectAddress;
+    pub fn CreateStatistics(stmt: *mut CreateStatsStmt, check_rights: bool) -> ObjectAddress;
     pub fn AlterStatistics(stmt: *mut AlterStatsStmt) -> ObjectAddress;
     pub fn RemoveStatisticsById(statsOid: Oid);
     pub fn RemoveStatisticsDataById(statsOid: Oid, inh: bool);
@@ -38787,6 +40919,7 @@ unsafe extern "C-unwind" {
     pub fn get_extension_name(ext_oid: Oid) -> *mut ::core::ffi::c_char;
     pub fn get_extension_schema(ext_oid: Oid) -> Oid;
     pub fn extension_file_exists(extensionName: *const ::core::ffi::c_char) -> bool;
+    pub fn get_function_sibling_type(funcoid: Oid, typname: *const ::core::ffi::c_char) -> Oid;
     pub fn AlterExtensionNamespace(
         extensionName: *const ::core::ffi::c_char,
         newschema: *const ::core::ffi::c_char,
@@ -38882,6 +41015,60 @@ unsafe extern "C-unwind" {
     pub fn DropAllPreparedStatements();
     pub fn CreateProceduralLanguage(stmt: *mut CreatePLangStmt) -> ObjectAddress;
     pub fn get_language_oid(langname: *const ::core::ffi::c_char, missing_ok: bool) -> Oid;
+    pub static mut debug_discard_caches: ::core::ffi::c_int;
+    pub fn AcceptInvalidationMessages();
+    pub fn AtEOXact_Inval(isCommit: bool);
+    pub fn PreInplace_Inval();
+    pub fn AtInplace_Inval();
+    pub fn ForgetInplace_Inval();
+    pub fn AtEOSubXact_Inval(isCommit: bool);
+    pub fn PostPrepare_Inval();
+    pub fn CommandEndInvalidationMessages();
+    pub fn CacheInvalidateHeapTuple(relation: Relation, tuple: HeapTuple, newtuple: HeapTuple);
+    pub fn CacheInvalidateHeapTupleInplace(relation: Relation, key_equivalent_tuple: HeapTuple);
+    pub fn CacheInvalidateCatalog(catalogId: Oid);
+    pub fn CacheInvalidateRelcache(relation: Relation);
+    pub fn CacheInvalidateRelcacheAll();
+    pub fn CacheInvalidateRelcacheByTuple(classTuple: HeapTuple);
+    pub fn CacheInvalidateRelcacheByRelid(relid: Oid);
+    pub fn CacheInvalidateSmgr(rlocator: RelFileLocatorBackend);
+    pub fn CacheInvalidateRelmap(databaseId: Oid);
+    pub fn CacheRegisterSyscacheCallback(
+        cacheid: ::core::ffi::c_int,
+        func: SyscacheCallbackFunction,
+        arg: Datum,
+    );
+    pub fn CacheRegisterRelcacheCallback(func: RelcacheCallbackFunction, arg: Datum);
+    pub fn CallSyscacheCallbacks(cacheid: ::core::ffi::c_int, hashvalue: uint32);
+    pub fn InvalidateSystemCaches();
+    pub fn InvalidateSystemCachesExtended(debug_discard: bool);
+    pub fn LogLogicalInvalidations();
+    pub fn CreatePublication(
+        pstate: *mut ParseState,
+        stmt: *mut CreatePublicationStmt,
+    ) -> ObjectAddress;
+    pub fn AlterPublication(pstate: *mut ParseState, stmt: *mut AlterPublicationStmt);
+    pub fn RemovePublicationById(pubid: Oid);
+    pub fn RemovePublicationRelById(proid: Oid);
+    pub fn RemovePublicationSchemaById(psoid: Oid);
+    pub fn AlterPublicationOwner(
+        name: *const ::core::ffi::c_char,
+        newOwnerId: Oid,
+    ) -> ObjectAddress;
+    pub fn AlterPublicationOwner_oid(subid: Oid, newOwnerId: Oid);
+    pub fn InvalidatePublicationRels(relids: *mut List);
+    pub fn pub_rf_contains_invalid_column(
+        pubid: Oid,
+        relation: Relation,
+        ancestors: *mut List,
+        pubviaroot: bool,
+    ) -> bool;
+    pub fn pub_collist_contains_invalid_column(
+        pubid: Oid,
+        relation: Relation,
+        ancestors: *mut List,
+        pubviaroot: bool,
+    ) -> bool;
     pub fn GetSecurityLabel(
         object: *const ObjectAddress,
         provider: *const ::core::ffi::c_char,
@@ -40123,7 +42310,7 @@ unsafe extern "C-unwind" {
         Nulls: *const ::core::ffi::c_char,
     ) -> HeapTuple;
     pub fn SPI_fnumber(tupdesc: TupleDesc, fname: *const ::core::ffi::c_char)
-        -> ::core::ffi::c_int;
+    -> ::core::ffi::c_int;
     pub fn SPI_fname(tupdesc: TupleDesc, fnumber: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
     pub fn SPI_getvalue(
         tuple: HeapTuple,
@@ -40137,7 +42324,7 @@ unsafe extern "C-unwind" {
         isnull: *mut bool,
     ) -> Datum;
     pub fn SPI_gettype(tupdesc: TupleDesc, fnumber: ::core::ffi::c_int)
-        -> *mut ::core::ffi::c_char;
+    -> *mut ::core::ffi::c_char;
     pub fn SPI_gettypeid(tupdesc: TupleDesc, fnumber: ::core::ffi::c_int) -> Oid;
     pub fn SPI_getrelname(rel: Relation) -> *mut ::core::ffi::c_char;
     pub fn SPI_getnspname(rel: Relation) -> *mut ::core::ffi::c_char;
@@ -40200,7 +42387,6 @@ unsafe extern "C-unwind" {
     pub fn AtEOXact_SPI(isCommit: bool);
     pub fn AtEOSubXact_SPI(isCommit: bool, mySubid: SubTransactionId);
     pub fn SPI_inside_nonatomic_context() -> bool;
-    pub fn is_dummy_rel(rel: *mut RelOptInfo) -> bool;
     pub fn GetFdwRoutine(fdwhandler: Oid) -> *mut FdwRoutine;
     pub fn GetForeignServerIdByRelId(relid: Oid) -> Oid;
     pub fn GetFdwRoutineByServerId(serverid: Oid) -> *mut FdwRoutine;
@@ -40249,6 +42435,14 @@ unsafe extern "C-unwind" {
     pub static pg_enc2name_tbl: [pg_enc2name; 0usize];
     pub static pg_enc2gettext_tbl: [pg_enc2gettext; 0usize];
     pub static pg_wchar_table: [pg_wchar_tbl; 0usize];
+    #[link_name = "is_valid_unicode_codepoint__pgrx_cshim"]
+    pub fn is_valid_unicode_codepoint(c: pg_wchar) -> bool;
+    #[link_name = "is_utf16_surrogate_first__pgrx_cshim"]
+    pub fn is_utf16_surrogate_first(c: pg_wchar) -> bool;
+    #[link_name = "is_utf16_surrogate_second__pgrx_cshim"]
+    pub fn is_utf16_surrogate_second(c: pg_wchar) -> bool;
+    #[link_name = "surrogate_pair_to_codepoint__pgrx_cshim"]
+    pub fn surrogate_pair_to_codepoint(first: pg_wchar, second: pg_wchar) -> pg_wchar;
     pub fn pg_char_to_encoding(name: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     pub fn pg_encoding_to_char(encoding: ::core::ffi::c_int) -> *const ::core::ffi::c_char;
     pub fn pg_valid_server_encoding_id(encoding: ::core::ffi::c_int) -> ::core::ffi::c_int;
@@ -40256,6 +42450,11 @@ unsafe extern "C-unwind" {
     pub fn pg_encoding_mblen(
         encoding: ::core::ffi::c_int,
         mbstr: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+    pub fn pg_encoding_mblen_or_incomplete(
+        encoding: ::core::ffi::c_int,
+        mbstr: *const ::core::ffi::c_char,
+        remaining: usize,
     ) -> ::core::ffi::c_int;
     pub fn pg_encoding_mblen_bounded(
         encoding: ::core::ffi::c_int,
@@ -40286,7 +42485,7 @@ unsafe extern "C-unwind" {
     ) -> *mut ::core::ffi::c_uchar;
     pub fn utf8_to_unicode(c: *const ::core::ffi::c_uchar) -> pg_wchar;
     pub fn pg_utf8_islegal(source: *const ::core::ffi::c_uchar, length: ::core::ffi::c_int)
-        -> bool;
+    -> bool;
     pub fn pg_utf_mblen(s: *const ::core::ffi::c_uchar) -> ::core::ffi::c_int;
     pub fn pg_mule_mblen(s: *const ::core::ffi::c_uchar) -> ::core::ffi::c_int;
     pub fn pg_mb2wchar(from: *const ::core::ffi::c_char, to: *mut pg_wchar) -> ::core::ffi::c_int;
@@ -40328,6 +42527,16 @@ unsafe extern "C-unwind" {
         n: usize,
     ) -> ::core::ffi::c_int;
     pub fn pg_wchar_strlen(str_: *const pg_wchar) -> usize;
+    pub fn pg_mblen_cstr(mbstr: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
+    pub fn pg_mblen_range(
+        mbstr: *const ::core::ffi::c_char,
+        end: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+    pub fn pg_mblen_with_len(
+        mbstr: *const ::core::ffi::c_char,
+        limit: ::core::ffi::c_int,
+    ) -> ::core::ffi::c_int;
+    pub fn pg_mblen_unbounded(mbstr: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     pub fn pg_mblen(mbstr: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     pub fn pg_dsplen(mbstr: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
     pub fn pg_mbstrlen(mbstr: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
@@ -40404,7 +42613,7 @@ unsafe extern "C-unwind" {
         lc: *mut ::core::ffi::c_uchar,
     ) -> ::core::ffi::c_ushort;
     pub fn CNStoBIG5(cns: ::core::ffi::c_ushort, lc: ::core::ffi::c_uchar)
-        -> ::core::ffi::c_ushort;
+    -> ::core::ffi::c_ushort;
     pub fn UtfToLocal(
         utf: *const ::core::ffi::c_uchar,
         len: ::core::ffi::c_int,
@@ -40525,6 +42734,28 @@ unsafe extern "C-unwind" {
     pub fn pq_send_ascii_string(buf: StringInfo, str_: *const ::core::ffi::c_char);
     pub fn pq_sendfloat4(buf: StringInfo, f: float4);
     pub fn pq_sendfloat8(buf: StringInfo, f: float8);
+    #[link_name = "pq_writeint8__pgrx_cshim"]
+    pub fn pq_writeint8(buf: *mut StringInfoData, i: uint8);
+    #[link_name = "pq_writeint16__pgrx_cshim"]
+    pub fn pq_writeint16(buf: *mut StringInfoData, i: uint16);
+    #[link_name = "pq_writeint32__pgrx_cshim"]
+    pub fn pq_writeint32(buf: *mut StringInfoData, i: uint32);
+    #[link_name = "pq_writeint64__pgrx_cshim"]
+    pub fn pq_writeint64(buf: *mut StringInfoData, i: uint64);
+    #[link_name = "pq_writestring__pgrx_cshim"]
+    pub fn pq_writestring(buf: *mut StringInfoData, str_: *const ::core::ffi::c_char);
+    #[link_name = "pq_sendint8__pgrx_cshim"]
+    pub fn pq_sendint8(buf: StringInfo, i: uint8);
+    #[link_name = "pq_sendint16__pgrx_cshim"]
+    pub fn pq_sendint16(buf: StringInfo, i: uint16);
+    #[link_name = "pq_sendint32__pgrx_cshim"]
+    pub fn pq_sendint32(buf: StringInfo, i: uint32);
+    #[link_name = "pq_sendint64__pgrx_cshim"]
+    pub fn pq_sendint64(buf: StringInfo, i: uint64);
+    #[link_name = "pq_sendbyte__pgrx_cshim"]
+    pub fn pq_sendbyte(buf: StringInfo, byt: uint8);
+    #[link_name = "pq_sendint__pgrx_cshim"]
+    pub fn pq_sendint(buf: StringInfo, i: uint32, b: ::core::ffi::c_int);
     pub fn pq_begintypsend(buf: StringInfo);
     pub fn pq_endtypsend(buf: StringInfo) -> *mut bytea;
     pub fn pq_puttextmessage(msgtype: ::core::ffi::c_char, str_: *const ::core::ffi::c_char);
@@ -40741,6 +42972,22 @@ unsafe extern "C-unwind" {
     pub fn fix_opfuncids(node: *mut Node);
     pub fn set_opfuncid(opexpr: *mut OpExpr);
     pub fn set_sa_opfuncid(opexpr: *mut ScalarArrayOpExpr);
+    #[link_name = "is_funcclause__pgrx_cshim"]
+    pub fn is_funcclause(clause: *const ::core::ffi::c_void) -> bool;
+    #[link_name = "is_opclause__pgrx_cshim"]
+    pub fn is_opclause(clause: *const ::core::ffi::c_void) -> bool;
+    #[link_name = "get_leftop__pgrx_cshim"]
+    pub fn get_leftop(clause: *const ::core::ffi::c_void) -> *mut Node;
+    #[link_name = "get_rightop__pgrx_cshim"]
+    pub fn get_rightop(clause: *const ::core::ffi::c_void) -> *mut Node;
+    #[link_name = "is_andclause__pgrx_cshim"]
+    pub fn is_andclause(clause: *const ::core::ffi::c_void) -> bool;
+    #[link_name = "is_orclause__pgrx_cshim"]
+    pub fn is_orclause(clause: *const ::core::ffi::c_void) -> bool;
+    #[link_name = "is_notclause__pgrx_cshim"]
+    pub fn is_notclause(clause: *const ::core::ffi::c_void) -> bool;
+    #[link_name = "get_notclausearg__pgrx_cshim"]
+    pub fn get_notclausearg(notclause: *const ::core::ffi::c_void) -> *mut Expr;
     pub fn check_functions_in_node(
         node: *mut Node,
         checker: check_function_callback,
@@ -41342,7 +43589,7 @@ unsafe extern "C-unwind" {
     pub fn contain_var_clause(node: *mut Node) -> bool;
     pub fn contain_vars_of_level(node: *mut Node, levelsup: ::core::ffi::c_int) -> bool;
     pub fn locate_var_of_level(node: *mut Node, levelsup: ::core::ffi::c_int)
-        -> ::core::ffi::c_int;
+    -> ::core::ffi::c_int;
     pub fn pull_var_clause(node: *mut Node, flags: ::core::ffi::c_int) -> *mut List;
     pub fn flatten_join_alias_vars(
         root: *mut PlannerInfo,
@@ -41572,7 +43819,7 @@ unsafe extern "C-unwind" {
         inner_paramrels: Relids,
     ) -> Relids;
     pub fn calc_non_nestloop_required_outer(outer_path: *mut Path, inner_path: *mut Path)
-        -> Relids;
+    -> Relids;
     pub fn create_nestloop_path(
         root: *mut PlannerInfo,
         joinrel: *mut RelOptInfo,
@@ -41827,7 +44074,7 @@ unsafe extern "C-unwind" {
         required_outer: Relids,
     ) -> *mut ParamPathInfo;
     pub fn find_param_path_info(rel: *mut RelOptInfo, required_outer: Relids)
-        -> *mut ParamPathInfo;
+    -> *mut ParamPathInfo;
     pub fn get_param_path_clause_serials(path: *mut Path) -> *mut Bitmapset;
     pub fn build_child_join_rel(
         root: *mut PlannerInfo,
@@ -42181,6 +44428,7 @@ unsafe extern "C-unwind" {
     );
     pub fn get_function_rows(root: *mut PlannerInfo, funcid: Oid, node: *mut Node) -> f64;
     pub fn has_row_triggers(root: *mut PlannerInfo, rti: Index, event: CmdType::Type) -> bool;
+    pub fn has_transition_tables(root: *mut PlannerInfo, rti: Index, event: CmdType::Type) -> bool;
     pub fn has_stored_generated_columns(root: *mut PlannerInfo, rti: Index) -> bool;
     pub fn get_dependent_generated_columns(
         root: *mut PlannerInfo,
@@ -42341,7 +44589,7 @@ unsafe extern "C-unwind" {
         otherquals: *mut *mut List,
     );
     pub fn has_pseudoconstant_clauses(root: *mut PlannerInfo, restrictinfo_list: *mut List)
-        -> bool;
+    -> bool;
     pub fn join_clause_is_movable_to(rinfo: *mut RestrictInfo, baserel: *mut RelOptInfo) -> bool;
     pub fn join_clause_is_movable_into(
         rinfo: *mut RestrictInfo,
@@ -42436,14 +44684,14 @@ unsafe extern "C-unwind" {
         pushedDown: bool,
     );
     pub fn BuildOnConflictExcludedTargetlist(targetrel: Relation, exclRelIndex: Index)
-        -> *mut List;
+    -> *mut List;
     pub fn makeSortGroupClauseForSetOp(rescoltype: Oid, require_hash: bool)
-        -> *mut SortGroupClause;
+    -> *mut SortGroupClause;
     pub fn assign_query_collations(pstate: *mut ParseState, query: *mut Query);
     pub fn assign_list_collations(pstate: *mut ParseState, exprs: *mut List);
     pub fn assign_expr_collations(pstate: *mut ParseState, expr: *mut Node);
     pub fn select_common_collation(pstate: *mut ParseState, exprs: *mut List, none_ok: bool)
-        -> Oid;
+    -> Oid;
     pub static mut Transform_null_equals: bool;
     pub fn transformExpr(
         pstate: *mut ParseState,
@@ -42953,6 +45201,42 @@ unsafe extern "C-unwind" {
     pub fn get_rte_attribute_is_dropped(rte: *mut RangeTblEntry, attnum: AttrNumber) -> bool;
     pub fn get_tle_by_resno(tlist: *mut List, resno: AttrNumber) -> *mut TargetEntry;
     pub fn get_parse_rowmark(qry: *mut Query, rtindex: Index) -> *mut RowMarkClause;
+    pub fn ScanKeywordLookup(
+        str_: *const ::core::ffi::c_char,
+        keywords: *const ScanKeywordList,
+    ) -> ::core::ffi::c_int;
+    #[link_name = "GetScanKeyword__pgrx_cshim"]
+    pub fn GetScanKeyword(
+        n: ::core::ffi::c_int,
+        keywords: *const ScanKeywordList,
+    ) -> *const ::core::ffi::c_char;
+    pub static ScanKeywords: ScanKeywordList;
+    pub static ScanKeywordCategories: [uint8; 0usize];
+    pub static ScanKeywordBareLabel: [bool; 0usize];
+    pub static ScanKeywordTokens: [uint16; 0usize];
+    pub fn scanner_init(
+        str_: *const ::core::ffi::c_char,
+        yyext: *mut core_yy_extra_type,
+        keywordlist: *const ScanKeywordList,
+        keyword_tokens: *const uint16,
+    ) -> core_yyscan_t;
+    pub fn scanner_finish(yyscanner: core_yyscan_t);
+    pub fn core_yylex(
+        yylval_param: *mut core_YYSTYPE,
+        yylloc_param: *mut ::core::ffi::c_int,
+        yyscanner: core_yyscan_t,
+    ) -> ::core::ffi::c_int;
+    pub fn scanner_errposition(
+        location: ::core::ffi::c_int,
+        yyscanner: core_yyscan_t,
+    ) -> ::core::ffi::c_int;
+    pub fn setup_scanner_errposition_callback(
+        scbstate: *mut ScannerCallbackState,
+        yyscanner: core_yyscan_t,
+        location: ::core::ffi::c_int,
+    );
+    pub fn cancel_scanner_errposition_callback(scbstate: *mut ScannerCallbackState);
+    pub fn scanner_yyerror(message: *const ::core::ffi::c_char, yyscanner: core_yyscan_t) -> !;
     pub fn downcase_truncate_identifier(
         ident: *const ::core::ffi::c_char,
         len: ::core::ffi::c_int,
@@ -43048,7 +45332,7 @@ unsafe extern "C-unwind" {
     ) -> ::core::ffi::c_int;
     pub fn RelationGetPartitionDesc(rel: Relation, omit_detached: bool) -> PartitionDesc;
     pub fn CreatePartitionDirectory(mcxt: MemoryContext, omit_detached: bool)
-        -> PartitionDirectory;
+    -> PartitionDirectory;
     pub fn PartitionDirectoryLookup(arg1: PartitionDirectory, arg2: Relation) -> PartitionDesc;
     pub fn DestroyPartitionDirectory(pdir: PartitionDirectory);
     pub fn get_default_oid_from_partdesc(partdesc: PartitionDesc) -> Oid;
@@ -43063,6 +45347,10 @@ unsafe extern "C-unwind" {
         context: *mut PartitionPruneContext,
         pruning_steps: *mut List,
     ) -> *mut Bitmapset;
+    #[link_name = "ExpandedRecordGetDatum__pgrx_cshim"]
+    pub fn ExpandedRecordGetDatum(erh: *const ExpandedRecordHeader) -> Datum;
+    #[link_name = "ExpandedRecordGetRODatum__pgrx_cshim"]
+    pub fn ExpandedRecordGetRODatum(erh: *const ExpandedRecordHeader) -> Datum;
     pub fn make_expanded_record_from_typeid(
         type_id: Oid,
         typmod: int32,
@@ -43114,6 +45402,14 @@ unsafe extern "C-unwind" {
         isnulls: *const bool,
         expand_external: bool,
     );
+    #[link_name = "expanded_record_get_tupdesc__pgrx_cshim"]
+    pub fn expanded_record_get_tupdesc(erh: *mut ExpandedRecordHeader) -> TupleDesc;
+    #[link_name = "expanded_record_get_field__pgrx_cshim"]
+    pub fn expanded_record_get_field(
+        erh: *mut ExpandedRecordHeader,
+        fnumber: ::core::ffi::c_int,
+        isnull: *mut bool,
+    ) -> Datum;
     pub fn lookup_type_cache(type_id: Oid, flags: ::core::ffi::c_int) -> *mut TypeCacheEntry;
     pub fn InitDomainConstraintRef(
         type_id: Oid,
@@ -43272,7 +45568,7 @@ unsafe extern "C-unwind" {
     pub fn plpgsql_ns_find_nearest_loop(ns_cur: *mut PLpgSQL_nsitem) -> *mut PLpgSQL_nsitem;
     pub fn plpgsql_stmt_typename(stmt: *mut PLpgSQL_stmt) -> *const ::core::ffi::c_char;
     pub fn plpgsql_getdiag_kindname(kind: PLpgSQL_getdiag_kind::Type)
-        -> *const ::core::ffi::c_char;
+    -> *const ::core::ffi::c_char;
     pub fn plpgsql_free_function_memory(func: *mut PLpgSQL_function);
     pub fn plpgsql_dumptree(func: *mut PLpgSQL_function);
     pub fn plpgsql_base_yylex() -> ::core::ffi::c_int;
@@ -43299,6 +45595,12 @@ unsafe extern "C-unwind" {
     pub fn plpgsql_scanner_init(str_: *const ::core::ffi::c_char);
     pub fn plpgsql_scanner_finish();
     pub fn plpgsql_yyparse() -> ::core::ffi::c_int;
+    pub static mut ConfigReloadPending: sig_atomic_t;
+    pub static mut ShutdownRequestPending: sig_atomic_t;
+    pub fn HandleMainLoopInterrupts();
+    pub fn SignalHandlerForConfigReload(postgres_signal_arg: ::core::ffi::c_int);
+    pub fn SignalHandlerForCrashExit(postgres_signal_arg: ::core::ffi::c_int);
+    pub fn SignalHandlerForShutdownRequest(postgres_signal_arg: ::core::ffi::c_int);
     pub static mut EnableSSL: bool;
     pub static mut SuperuserReservedConnections: ::core::ffi::c_int;
     pub static mut ReservedConnections: ::core::ffi::c_int;
@@ -43453,6 +45755,13 @@ unsafe extern "C-unwind" {
         nmsgs: Size,
         msgs: *mut SharedInvalidationMessage,
     );
+    pub fn ReorderBufferAddDistributedInvalidations(
+        rb: *mut ReorderBuffer,
+        xid: TransactionId,
+        lsn: XLogRecPtr,
+        nmsgs: Size,
+        msgs: *mut SharedInvalidationMessage,
+    );
     pub fn ReorderBufferImmediateInvalidation(
         rb: *mut ReorderBuffer,
         ninvalidations: uint32,
@@ -43485,6 +45794,11 @@ unsafe extern "C-unwind" {
     pub fn ReorderBufferGetOldestXmin(rb: *mut ReorderBuffer) -> TransactionId;
     pub fn ReorderBufferGetCatalogChangesXacts(rb: *mut ReorderBuffer) -> *mut TransactionId;
     pub fn ReorderBufferSetRestartPoint(rb: *mut ReorderBuffer, ptr: XLogRecPtr);
+    pub fn ReorderBufferGetInvalidations(
+        rb: *mut ReorderBuffer,
+        xid: TransactionId,
+        msgs: *mut *mut SharedInvalidationMessage,
+    ) -> uint32;
     pub fn StartupReorderBuffer();
     pub fn _PG_output_plugin_init(cb: *mut OutputPluginCallbacks);
     pub fn OutputPluginPrepareWrite(ctx: *mut LogicalDecodingContext, last_write: bool);
@@ -43618,7 +45932,7 @@ unsafe extern "C-unwind" {
     pub fn logicalrep_read_typ(in_: StringInfo, ltyp: *mut LogicalRepTyp);
     pub fn logicalrep_write_stream_start(out: StringInfo, xid: TransactionId, first_segment: bool);
     pub fn logicalrep_read_stream_start(in_: StringInfo, first_segment: *mut bool)
-        -> TransactionId;
+    -> TransactionId;
     pub fn logicalrep_write_stream_stop(out: StringInfo);
     pub fn logicalrep_write_stream_commit(
         out: StringInfo,
@@ -43662,11 +45976,15 @@ unsafe extern "C-unwind" {
     pub fn WalSndWaitStopping();
     pub fn HandleWalSndInitStopping();
     pub fn WalSndRqstFileReload();
+    #[link_name = "WalSndWakeupProcessRequests__pgrx_cshim"]
+    pub fn WalSndWakeupProcessRequests(physical: bool, logical: bool);
     pub static mut wal_receiver_status_interval: ::core::ffi::c_int;
     pub static mut wal_receiver_timeout: ::core::ffi::c_int;
     pub static mut hot_standby_feedback: bool;
     pub static mut WalRcv: *mut WalRcvData;
     pub static mut WalReceiverFunctions: *mut WalReceiverFunctionsType;
+    #[link_name = "walrcv_clear_result__pgrx_cshim"]
+    pub fn walrcv_clear_result(walres: *mut WalRcvExecResult);
     pub fn WalReceiverMain() -> !;
     pub fn ProcessWalRcvInterrupts();
     pub fn WalRcvForceReply();
@@ -43711,6 +46029,12 @@ unsafe extern "C-unwind" {
     pub fn ReplicationSlotValidateName(
         name: *const ::core::ffi::c_char,
         elevel: ::core::ffi::c_int,
+    ) -> bool;
+    pub fn ReplicationSlotValidateNameInternal(
+        name: *const ::core::ffi::c_char,
+        err_code: *mut ::core::ffi::c_int,
+        err_msg: *mut *mut ::core::ffi::c_char,
+        err_hint: *mut *mut ::core::ffi::c_char,
     ) -> bool;
     pub fn ReplicationSlotReserveWal();
     pub fn ReplicationSlotsComputeRequiredXmin(already_locked: bool);
@@ -43795,6 +46119,33 @@ unsafe extern "C-unwind" {
     pub fn HandleParallelApplyMessages();
     pub fn LogicalRepWorkersWakeupAtCommit(subid: Oid);
     pub fn AtEOXact_LogicalRepWorkers(isCommit: bool);
+    pub static mut SyncRepConfig: *mut SyncRepConfigData;
+    pub static mut syncrep_parse_result: *mut SyncRepConfigData;
+    pub static mut syncrep_parse_error_msg: *mut ::core::ffi::c_char;
+    pub static mut SyncRepStandbyNames: *mut ::core::ffi::c_char;
+    pub fn SyncRepWaitForLSN(lsn: XLogRecPtr, commit: bool);
+    pub fn SyncRepCleanupAtProcExit();
+    pub fn SyncRepInitConfig();
+    pub fn SyncRepReleaseWaiters();
+    pub fn SyncRepGetCandidateStandbys(
+        standbys: *mut *mut SyncRepStandbyData,
+    ) -> ::core::ffi::c_int;
+    pub fn SyncRepUpdateSyncStandbysDefined();
+    pub fn syncrep_yyparse() -> ::core::ffi::c_int;
+    pub fn syncrep_yylex() -> ::core::ffi::c_int;
+    pub fn syncrep_yyerror(str_: *const ::core::ffi::c_char);
+    pub fn syncrep_scanner_init(str_: *const ::core::ffi::c_char);
+    pub fn syncrep_scanner_finish();
+    pub static mut MyWalSnd: *mut WalSnd;
+    pub static mut WalSndCtl: *mut WalSndCtlData;
+    pub fn WalSndSetState(state: WalSndState::Type);
+    pub fn replication_yyparse() -> ::core::ffi::c_int;
+    pub fn replication_yylex() -> ::core::ffi::c_int;
+    pub fn replication_yyerror(message: *const ::core::ffi::c_char) -> !;
+    pub fn replication_scanner_init(str_: *const ::core::ffi::c_char);
+    pub fn replication_scanner_finish();
+    pub fn replication_scanner_is_replication_command() -> bool;
+    pub static mut replication_parse_result: *mut Node;
     pub fn QueryRewrite(parsetree: *mut Query) -> *mut List;
     pub fn AcquireRewriteLocks(parsetree: *mut Query, forExecute: bool, forUpdatePushedDown: bool);
     pub fn build_column_default(rel: Relation, attrno: ::core::ffi::c_int) -> *mut Node;
@@ -43809,6 +46160,90 @@ unsafe extern "C-unwind" {
         include_triggers: bool,
         include_cols: *mut Bitmapset,
     ) -> ::core::ffi::c_int;
+    pub fn CombineRangeTables(
+        dst_rtable: *mut *mut List,
+        dst_perminfos: *mut *mut List,
+        src_rtable: *mut List,
+        src_perminfos: *mut List,
+    );
+    pub fn OffsetVarNodes(
+        node: *mut Node,
+        offset: ::core::ffi::c_int,
+        sublevels_up: ::core::ffi::c_int,
+    );
+    pub fn ChangeVarNodes(
+        node: *mut Node,
+        rt_index: ::core::ffi::c_int,
+        new_index: ::core::ffi::c_int,
+        sublevels_up: ::core::ffi::c_int,
+    );
+    pub fn IncrementVarSublevelsUp(
+        node: *mut Node,
+        delta_sublevels_up: ::core::ffi::c_int,
+        min_sublevels_up: ::core::ffi::c_int,
+    );
+    pub fn IncrementVarSublevelsUp_rtable(
+        rtable: *mut List,
+        delta_sublevels_up: ::core::ffi::c_int,
+        min_sublevels_up: ::core::ffi::c_int,
+    );
+    pub fn rangeTableEntry_used(
+        node: *mut Node,
+        rt_index: ::core::ffi::c_int,
+        sublevels_up: ::core::ffi::c_int,
+    ) -> bool;
+    pub fn getInsertSelectQuery(
+        parsetree: *mut Query,
+        subquery_ptr: *mut *mut *mut Query,
+    ) -> *mut Query;
+    pub fn AddQual(parsetree: *mut Query, qual: *mut Node);
+    pub fn AddInvertedQual(parsetree: *mut Query, qual: *mut Node);
+    pub fn contain_aggs_of_level(node: *mut Node, levelsup: ::core::ffi::c_int) -> bool;
+    pub fn locate_agg_of_level(node: *mut Node, levelsup: ::core::ffi::c_int)
+    -> ::core::ffi::c_int;
+    pub fn contain_windowfuncs(node: *mut Node) -> bool;
+    pub fn locate_windowfunc(node: *mut Node) -> ::core::ffi::c_int;
+    pub fn checkExprHasSubLink(node: *mut Node) -> bool;
+    pub fn add_nulling_relids(
+        node: *mut Node,
+        target_relids: *const Bitmapset,
+        added_relids: *const Bitmapset,
+    ) -> *mut Node;
+    pub fn remove_nulling_relids(
+        node: *mut Node,
+        removable_relids: *const Bitmapset,
+        except_relids: *const Bitmapset,
+    ) -> *mut Node;
+    pub fn replace_rte_variables(
+        node: *mut Node,
+        target_varno: ::core::ffi::c_int,
+        sublevels_up: ::core::ffi::c_int,
+        callback: replace_rte_variables_callback,
+        callback_arg: *mut ::core::ffi::c_void,
+        outer_hasSubLinks: *mut bool,
+    ) -> *mut Node;
+    pub fn replace_rte_variables_mutator(
+        node: *mut Node,
+        context: *mut replace_rte_variables_context,
+    ) -> *mut Node;
+    pub fn map_variable_attnos(
+        node: *mut Node,
+        target_varno: ::core::ffi::c_int,
+        sublevels_up: ::core::ffi::c_int,
+        attno_map: *const AttrMap,
+        to_rowtype: Oid,
+        found_whole_row: *mut bool,
+    ) -> *mut Node;
+    pub fn ReplaceVarsFromTargetList(
+        node: *mut Node,
+        target_varno: ::core::ffi::c_int,
+        sublevels_up: ::core::ffi::c_int,
+        target_rte: *mut RangeTblEntry,
+        targetlist: *mut List,
+        nomatch_option: ReplaceVarsNoMatchOption::Type,
+        nomatch_varno: ::core::ffi::c_int,
+        outer_hasSubLinks: *mut bool,
+    ) -> *mut Node;
     pub static mut row_security_policy_hook_permissive: row_security_policy_hook_type;
     pub static mut row_security_policy_hook_restrictive: row_security_policy_hook_type;
     pub fn get_row_security_policies(
@@ -43820,11 +46255,104 @@ unsafe extern "C-unwind" {
         hasRowSecurity: *mut bool,
         hasSubLinks: *mut bool,
     );
+    pub fn statext_ndistinct_load(mvoid: Oid, inh: bool) -> *mut MVNDistinct;
+    pub fn statext_dependencies_load(mvoid: Oid, inh: bool) -> *mut MVDependencies;
+    pub fn statext_mcv_load(mvoid: Oid, inh: bool) -> *mut MCVList;
+    pub fn BuildRelationExtStatistics(
+        onerel: Relation,
+        inh: bool,
+        totalrows: f64,
+        numrows: ::core::ffi::c_int,
+        rows: *mut HeapTuple,
+        natts: ::core::ffi::c_int,
+        vacattrstats: *mut *mut VacAttrStats,
+    );
+    pub fn ComputeExtStatisticsRows(
+        onerel: Relation,
+        natts: ::core::ffi::c_int,
+        vacattrstats: *mut *mut VacAttrStats,
+    ) -> ::core::ffi::c_int;
+    pub fn statext_is_kind_built(htup: HeapTuple, type_: ::core::ffi::c_char) -> bool;
+    pub fn dependencies_clauselist_selectivity(
+        root: *mut PlannerInfo,
+        clauses: *mut List,
+        varRelid: ::core::ffi::c_int,
+        jointype: JoinType::Type,
+        sjinfo: *mut SpecialJoinInfo,
+        rel: *mut RelOptInfo,
+        estimatedclauses: *mut *mut Bitmapset,
+    ) -> Selectivity;
+    pub fn statext_clauselist_selectivity(
+        root: *mut PlannerInfo,
+        clauses: *mut List,
+        varRelid: ::core::ffi::c_int,
+        jointype: JoinType::Type,
+        sjinfo: *mut SpecialJoinInfo,
+        rel: *mut RelOptInfo,
+        estimatedclauses: *mut *mut Bitmapset,
+        is_or: bool,
+    ) -> Selectivity;
+    pub fn has_stats_of_kind(stats: *mut List, requiredkind: ::core::ffi::c_char) -> bool;
+    pub fn choose_best_statistics(
+        stats: *mut List,
+        requiredkind: ::core::ffi::c_char,
+        inh: bool,
+        clause_attnums: *mut *mut Bitmapset,
+        clause_exprs: *mut *mut List,
+        nclauses: ::core::ffi::c_int,
+    ) -> *mut StatisticExtInfo;
+    pub fn statext_expressions_load(stxoid: Oid, inh: bool, idx: ::core::ffi::c_int) -> HeapTuple;
+    #[link_name = "BufTagGetRelNumber__pgrx_cshim"]
+    pub fn BufTagGetRelNumber(tag: *const BufferTag) -> RelFileNumber;
+    #[link_name = "BufTagGetForkNum__pgrx_cshim"]
+    pub fn BufTagGetForkNum(tag: *const BufferTag) -> ForkNumber::Type;
+    #[link_name = "BufTagSetRelForkDetails__pgrx_cshim"]
+    pub fn BufTagSetRelForkDetails(
+        tag: *mut BufferTag,
+        relnumber: RelFileNumber,
+        forknum: ForkNumber::Type,
+    );
+    #[link_name = "BufTagGetRelFileLocator__pgrx_cshim"]
+    pub fn BufTagGetRelFileLocator(tag: *const BufferTag) -> RelFileLocator;
+    #[link_name = "ClearBufferTag__pgrx_cshim"]
+    pub fn ClearBufferTag(tag: *mut BufferTag);
+    #[link_name = "InitBufferTag__pgrx_cshim"]
+    pub fn InitBufferTag(
+        tag: *mut BufferTag,
+        rlocator: *const RelFileLocator,
+        forkNum: ForkNumber::Type,
+        blockNum: BlockNumber,
+    );
+    #[link_name = "BufferTagsEqual__pgrx_cshim"]
+    pub fn BufferTagsEqual(tag1: *const BufferTag, tag2: *const BufferTag) -> bool;
+    #[link_name = "BufTagMatchesRelFileLocator__pgrx_cshim"]
+    pub fn BufTagMatchesRelFileLocator(
+        tag: *const BufferTag,
+        rlocator: *const RelFileLocator,
+    ) -> bool;
+    #[link_name = "BufTableHashPartition__pgrx_cshim"]
+    pub fn BufTableHashPartition(hashcode: uint32) -> uint32;
+    #[link_name = "BufMappingPartitionLock__pgrx_cshim"]
+    pub fn BufMappingPartitionLock(hashcode: uint32) -> *mut LWLock;
+    #[link_name = "BufMappingPartitionLockByIndex__pgrx_cshim"]
+    pub fn BufMappingPartitionLockByIndex(index: uint32) -> *mut LWLock;
     pub static mut BufferDescriptors: *mut BufferDescPadded;
     pub static mut BufferIOCVArray: *mut ConditionVariableMinimallyPadded;
     pub static mut BackendWritebackContext: WritebackContext;
     pub static mut LocalBufferDescriptors: *mut BufferDesc;
+    #[link_name = "GetBufferDescriptor__pgrx_cshim"]
+    pub fn GetBufferDescriptor(id: uint32) -> *mut BufferDesc;
+    #[link_name = "GetLocalBufferDescriptor__pgrx_cshim"]
+    pub fn GetLocalBufferDescriptor(id: uint32) -> *mut BufferDesc;
+    #[link_name = "BufferDescriptorGetBuffer__pgrx_cshim"]
+    pub fn BufferDescriptorGetBuffer(bdesc: *const BufferDesc) -> Buffer;
+    #[link_name = "BufferDescriptorGetIOCV__pgrx_cshim"]
+    pub fn BufferDescriptorGetIOCV(bdesc: *const BufferDesc) -> *mut ConditionVariable;
+    #[link_name = "BufferDescriptorGetContentLock__pgrx_cshim"]
+    pub fn BufferDescriptorGetContentLock(bdesc: *const BufferDesc) -> *mut LWLock;
     pub fn LockBufHdr(desc: *mut BufferDesc) -> uint32;
+    #[link_name = "UnlockBufHdr__pgrx_cshim"]
+    pub fn UnlockBufHdr(desc: *mut BufferDesc, buf_state: uint32);
     pub static mut CkptBufferIds: *mut CkptSortItem;
     pub fn WritebackContextInit(
         context: *mut WritebackContext,
@@ -44355,6 +46883,8 @@ unsafe extern "C-unwind" {
     pub fn UtilityTupleDescriptor(parsetree: *mut Node) -> TupleDesc;
     pub fn UtilityContainsQuery(parsetree: *mut Node) -> *mut Query;
     pub fn CreateCommandTag(parsetree: *mut Node) -> CommandTag::Type;
+    #[link_name = "CreateCommandName__pgrx_cshim"]
+    pub fn CreateCommandName(parsetree: *mut Node) -> *const ::core::ffi::c_char;
     pub fn GetCommandLogLevel(parsetree: *mut Node) -> LogStmtLevel::Type;
     pub fn CommandIsReadOnly(pstmt: *mut PlannedStmt) -> bool;
     pub static mut TSCurrentConfig: *mut ::core::ffi::c_char;
@@ -44366,7 +46896,19 @@ unsafe extern "C-unwind" {
         a: *const ::core::ffi::c_void,
         b: *const ::core::ffi::c_void,
     ) -> ::core::ffi::c_int;
+    #[link_name = "DatumGetTSVector__pgrx_cshim"]
+    pub fn DatumGetTSVector(X: Datum) -> TSVector;
+    #[link_name = "DatumGetTSVectorCopy__pgrx_cshim"]
+    pub fn DatumGetTSVectorCopy(X: Datum) -> TSVector;
+    #[link_name = "TSVectorGetDatum__pgrx_cshim"]
+    pub fn TSVectorGetDatum(X: *const TSVectorData) -> Datum;
     pub static tsearch_op_priority: [::core::ffi::c_int; 4usize];
+    #[link_name = "DatumGetTSQuery__pgrx_cshim"]
+    pub fn DatumGetTSQuery(X: Datum) -> TSQuery;
+    #[link_name = "DatumGetTSQueryCopy__pgrx_cshim"]
+    pub fn DatumGetTSQueryCopy(X: Datum) -> TSQuery;
+    #[link_name = "TSQueryGetDatum__pgrx_cshim"]
+    pub fn TSQueryGetDatum(X: *const TSQueryData) -> Datum;
     pub fn get_tsearch_config_filename(
         basename: *const ::core::ffi::c_char,
         extension: *const ::core::ffi::c_char,
@@ -44455,6 +46997,10 @@ unsafe extern "C-unwind" {
     ) -> int32;
     pub fn clean_NOT(ptr: *mut QueryItem, len: *mut int32) -> *mut QueryItem;
     pub fn cleanup_tsquery_stopwords(in_: TSQuery, noisy: bool) -> TSQuery;
+    #[link_name = "TSQuerySignGetDatum__pgrx_cshim"]
+    pub fn TSQuerySignGetDatum(X: TSQuerySign) -> Datum;
+    #[link_name = "DatumGetTSQuerySign__pgrx_cshim"]
+    pub fn DatumGetTSQuerySign(X: Datum) -> TSQuerySign;
     pub fn QT2QTN(in_: *mut QueryItem, operand: *mut ::core::ffi::c_char) -> *mut QTNode;
     pub fn QTN2QT(in_: *mut QTNode) -> TSQuery;
     pub fn QTNFree(in_: *mut QTNode);
@@ -47385,6 +49931,7 @@ unsafe extern "C-unwind" {
     ) -> *mut ::core::ffi::c_char;
     pub fn pg_ultostr(str_: *mut ::core::ffi::c_char, value: uint32) -> *mut ::core::ffi::c_char;
     pub fn buildoidvector(oids: *const Oid, n: ::core::ffi::c_int) -> *mut oidvector;
+    pub fn check_valid_oidvector(oidArray: *const oidvector);
     pub fn oidparse(node: *mut Node) -> Oid;
     pub fn oid_cmp(
         p1: *const ::core::ffi::c_void,
@@ -47457,6 +50004,18 @@ unsafe extern "C-unwind" {
     pub fn format_type_with_typemod(type_oid: Oid, typemod: int32) -> *mut ::core::ffi::c_char;
     pub fn type_maximum_size(type_oid: Oid, typemod: int32) -> int32;
     pub fn quote_literal_cstr(rawstr: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
+    #[link_name = "DatumGetDateADT__pgrx_cshim"]
+    pub fn DatumGetDateADT(X: Datum) -> DateADT;
+    #[link_name = "DatumGetTimeADT__pgrx_cshim"]
+    pub fn DatumGetTimeADT(X: Datum) -> TimeADT;
+    #[link_name = "DatumGetTimeTzADTP__pgrx_cshim"]
+    pub fn DatumGetTimeTzADTP(X: Datum) -> *mut TimeTzADT;
+    #[link_name = "DateADTGetDatum__pgrx_cshim"]
+    pub fn DateADTGetDatum(X: DateADT) -> Datum;
+    #[link_name = "TimeADTGetDatum__pgrx_cshim"]
+    pub fn TimeADTGetDatum(X: TimeADT) -> Datum;
+    #[link_name = "TimeTzADTPGetDatum__pgrx_cshim"]
+    pub fn TimeTzADTPGetDatum(X: *const TimeTzADT) -> Datum;
     pub fn anytime_typmod_check(istz: bool, typmod: int32) -> int32;
     pub fn date2timestamp_no_overflow(dateVal: DateADT) -> f64;
     pub fn date2timestamp_opt_overflow(
@@ -47674,7 +50233,142 @@ unsafe extern "C-unwind" {
     pub fn float8out_internal(num: float8) -> *mut ::core::ffi::c_char;
     pub fn float4_cmp_internal(a: float4, b: float4) -> ::core::ffi::c_int;
     pub fn float8_cmp_internal(a: float8, b: float8) -> ::core::ffi::c_int;
+    #[link_name = "get_float4_infinity__pgrx_cshim"]
+    pub fn get_float4_infinity() -> float4;
+    #[link_name = "get_float8_infinity__pgrx_cshim"]
+    pub fn get_float8_infinity() -> float8;
+    #[link_name = "get_float4_nan__pgrx_cshim"]
+    pub fn get_float4_nan() -> float4;
+    #[link_name = "get_float8_nan__pgrx_cshim"]
+    pub fn get_float8_nan() -> float8;
+    #[link_name = "float4_pl__pgrx_cshim"]
+    pub fn float4_pl(val1: float4, val2: float4) -> float4;
+    #[link_name = "float8_pl__pgrx_cshim"]
+    pub fn float8_pl(val1: float8, val2: float8) -> float8;
+    #[link_name = "float4_mi__pgrx_cshim"]
+    pub fn float4_mi(val1: float4, val2: float4) -> float4;
+    #[link_name = "float8_mi__pgrx_cshim"]
+    pub fn float8_mi(val1: float8, val2: float8) -> float8;
+    #[link_name = "float4_mul__pgrx_cshim"]
+    pub fn float4_mul(val1: float4, val2: float4) -> float4;
+    #[link_name = "float8_mul__pgrx_cshim"]
+    pub fn float8_mul(val1: float8, val2: float8) -> float8;
+    #[link_name = "float4_div__pgrx_cshim"]
+    pub fn float4_div(val1: float4, val2: float4) -> float4;
+    #[link_name = "float8_div__pgrx_cshim"]
+    pub fn float8_div(val1: float8, val2: float8) -> float8;
+    #[link_name = "float4_eq__pgrx_cshim"]
+    pub fn float4_eq(val1: float4, val2: float4) -> bool;
+    #[link_name = "float8_eq__pgrx_cshim"]
+    pub fn float8_eq(val1: float8, val2: float8) -> bool;
+    #[link_name = "float4_ne__pgrx_cshim"]
+    pub fn float4_ne(val1: float4, val2: float4) -> bool;
+    #[link_name = "float8_ne__pgrx_cshim"]
+    pub fn float8_ne(val1: float8, val2: float8) -> bool;
+    #[link_name = "float4_lt__pgrx_cshim"]
+    pub fn float4_lt(val1: float4, val2: float4) -> bool;
+    #[link_name = "float8_lt__pgrx_cshim"]
+    pub fn float8_lt(val1: float8, val2: float8) -> bool;
+    #[link_name = "float4_le__pgrx_cshim"]
+    pub fn float4_le(val1: float4, val2: float4) -> bool;
+    #[link_name = "float8_le__pgrx_cshim"]
+    pub fn float8_le(val1: float8, val2: float8) -> bool;
+    #[link_name = "float4_gt__pgrx_cshim"]
+    pub fn float4_gt(val1: float4, val2: float4) -> bool;
+    #[link_name = "float8_gt__pgrx_cshim"]
+    pub fn float8_gt(val1: float8, val2: float8) -> bool;
+    #[link_name = "float4_ge__pgrx_cshim"]
+    pub fn float4_ge(val1: float4, val2: float4) -> bool;
+    #[link_name = "float8_ge__pgrx_cshim"]
+    pub fn float8_ge(val1: float8, val2: float8) -> bool;
+    #[link_name = "float4_min__pgrx_cshim"]
+    pub fn float4_min(val1: float4, val2: float4) -> float4;
+    #[link_name = "float8_min__pgrx_cshim"]
+    pub fn float8_min(val1: float8, val2: float8) -> float8;
+    #[link_name = "float4_max__pgrx_cshim"]
+    pub fn float4_max(val1: float4, val2: float4) -> float4;
+    #[link_name = "float8_max__pgrx_cshim"]
+    pub fn float8_max(val1: float8, val2: float8) -> float8;
+    #[link_name = "FPeq__pgrx_cshim"]
+    pub fn FPeq(A: f64, B: f64) -> bool;
+    #[link_name = "FPne__pgrx_cshim"]
+    pub fn FPne(A: f64, B: f64) -> bool;
+    #[link_name = "FPlt__pgrx_cshim"]
+    pub fn FPlt(A: f64, B: f64) -> bool;
+    #[link_name = "FPle__pgrx_cshim"]
+    pub fn FPle(A: f64, B: f64) -> bool;
+    #[link_name = "FPgt__pgrx_cshim"]
+    pub fn FPgt(A: f64, B: f64) -> bool;
+    #[link_name = "FPge__pgrx_cshim"]
+    pub fn FPge(A: f64, B: f64) -> bool;
+    #[link_name = "DatumGetPointP__pgrx_cshim"]
+    pub fn DatumGetPointP(X: Datum) -> *mut Point;
+    #[link_name = "PointPGetDatum__pgrx_cshim"]
+    pub fn PointPGetDatum(X: *const Point) -> Datum;
+    #[link_name = "DatumGetLsegP__pgrx_cshim"]
+    pub fn DatumGetLsegP(X: Datum) -> *mut LSEG;
+    #[link_name = "LsegPGetDatum__pgrx_cshim"]
+    pub fn LsegPGetDatum(X: *const LSEG) -> Datum;
+    #[link_name = "DatumGetPathP__pgrx_cshim"]
+    pub fn DatumGetPathP(X: Datum) -> *mut PATH;
+    #[link_name = "DatumGetPathPCopy__pgrx_cshim"]
+    pub fn DatumGetPathPCopy(X: Datum) -> *mut PATH;
+    #[link_name = "PathPGetDatum__pgrx_cshim"]
+    pub fn PathPGetDatum(X: *const PATH) -> Datum;
+    #[link_name = "DatumGetLineP__pgrx_cshim"]
+    pub fn DatumGetLineP(X: Datum) -> *mut LINE;
+    #[link_name = "LinePGetDatum__pgrx_cshim"]
+    pub fn LinePGetDatum(X: *const LINE) -> Datum;
+    #[link_name = "DatumGetBoxP__pgrx_cshim"]
+    pub fn DatumGetBoxP(X: Datum) -> *mut BOX;
+    #[link_name = "BoxPGetDatum__pgrx_cshim"]
+    pub fn BoxPGetDatum(X: *const BOX) -> Datum;
+    #[link_name = "DatumGetPolygonP__pgrx_cshim"]
+    pub fn DatumGetPolygonP(X: Datum) -> *mut POLYGON;
+    #[link_name = "DatumGetPolygonPCopy__pgrx_cshim"]
+    pub fn DatumGetPolygonPCopy(X: Datum) -> *mut POLYGON;
+    #[link_name = "PolygonPGetDatum__pgrx_cshim"]
+    pub fn PolygonPGetDatum(X: *const POLYGON) -> Datum;
+    #[link_name = "DatumGetCircleP__pgrx_cshim"]
+    pub fn DatumGetCircleP(X: Datum) -> *mut CIRCLE;
+    #[link_name = "CirclePGetDatum__pgrx_cshim"]
+    pub fn CirclePGetDatum(X: *const CIRCLE) -> Datum;
     pub fn pg_hypot(x: float8, y: float8) -> float8;
+    pub static config_group_names: [*const ::core::ffi::c_char; 0usize];
+    pub static config_type_names: [*const ::core::ffi::c_char; 0usize];
+    pub static GucContext_Names: [*const ::core::ffi::c_char; 0usize];
+    pub static GucSource_Names: [*const ::core::ffi::c_char; 0usize];
+    pub static mut ConfigureNamesBool: [config_bool; 0usize];
+    pub static mut ConfigureNamesInt: [config_int; 0usize];
+    pub static mut ConfigureNamesReal: [config_real; 0usize];
+    pub static mut ConfigureNamesString: [config_string; 0usize];
+    pub static mut ConfigureNamesEnum: [config_enum; 0usize];
+    pub fn find_option(
+        name: *const ::core::ffi::c_char,
+        create_placeholders: bool,
+        skip_errors: bool,
+        elevel: ::core::ffi::c_int,
+    ) -> *mut config_generic;
+    pub fn get_explain_guc_options(num: *mut ::core::ffi::c_int) -> *mut *mut config_generic;
+    pub fn ShowGUCOption(record: *mut config_generic, use_units: bool) -> *mut ::core::ffi::c_char;
+    pub fn ConfigOptionIsVisible(conf: *mut config_generic) -> bool;
+    pub fn get_guc_variables(num_vars: *mut ::core::ffi::c_int) -> *mut *mut config_generic;
+    pub fn build_guc_variables();
+    pub fn config_enum_lookup_by_value(
+        record: *mut config_enum,
+        val: ::core::ffi::c_int,
+    ) -> *const ::core::ffi::c_char;
+    pub fn config_enum_lookup_by_name(
+        record: *mut config_enum,
+        value: *const ::core::ffi::c_char,
+        retval: *mut ::core::ffi::c_int,
+    ) -> bool;
+    pub fn config_enum_get_options(
+        record: *mut config_enum,
+        prefix: *const ::core::ffi::c_char,
+        suffix: *const ::core::ffi::c_char,
+        separator: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
     pub fn escape_json(buf: StringInfo, str_: *const ::core::ffi::c_char);
     pub fn JsonEncodeDateTime(
         buf: *mut ::core::ffi::c_char,
@@ -47699,6 +50393,12 @@ unsafe extern "C-unwind" {
         absent_on_null: bool,
     ) -> Datum;
     pub fn json_validate(json: *mut text, check_unique_keys: bool, throw_error: bool) -> bool;
+    #[link_name = "DatumGetNumeric__pgrx_cshim"]
+    pub fn DatumGetNumeric(X: Datum) -> Numeric;
+    #[link_name = "DatumGetNumericCopy__pgrx_cshim"]
+    pub fn DatumGetNumericCopy(X: Datum) -> Numeric;
+    #[link_name = "NumericGetDatum__pgrx_cshim"]
+    pub fn NumericGetDatum(X: Numeric) -> Datum;
     pub fn numeric_is_nan(num: Numeric) -> bool;
     pub fn numeric_is_inf(num: Numeric) -> bool;
     pub fn numeric_maximum_size(typmod: int32) -> int32;
@@ -47712,6 +50412,12 @@ unsafe extern "C-unwind" {
     pub fn numeric_div_opt_error(num1: Numeric, num2: Numeric, have_error: *mut bool) -> Numeric;
     pub fn numeric_mod_opt_error(num1: Numeric, num2: Numeric, have_error: *mut bool) -> Numeric;
     pub fn numeric_int4_opt_error(num: Numeric, have_error: *mut bool) -> int32;
+    #[link_name = "DatumGetJsonbP__pgrx_cshim"]
+    pub fn DatumGetJsonbP(d: Datum) -> *mut Jsonb;
+    #[link_name = "DatumGetJsonbPCopy__pgrx_cshim"]
+    pub fn DatumGetJsonbPCopy(d: Datum) -> *mut Jsonb;
+    #[link_name = "JsonbPGetDatum__pgrx_cshim"]
+    pub fn JsonbPGetDatum(p: *const Jsonb) -> Datum;
     pub fn getJsonbOffset(jc: *const JsonbContainer, index: ::core::ffi::c_int) -> uint32;
     pub fn getJsonbLength(jc: *const JsonbContainer, index: ::core::ffi::c_int) -> uint32;
     pub fn compareJsonbContainers(
@@ -47825,7 +50531,7 @@ unsafe extern "C-unwind" {
     pub fn get_ordering_op_for_equality_op(opno: Oid, use_lhs_type: bool) -> Oid;
     pub fn get_mergejoin_opfamilies(opno: Oid) -> *mut List;
     pub fn get_compatible_hash_operators(opno: Oid, lhs_opno: *mut Oid, rhs_opno: *mut Oid)
-        -> bool;
+    -> bool;
     pub fn get_op_hash_functions(
         opno: Oid,
         lhs_procno: *mut RegProcedure,
@@ -47834,6 +50540,7 @@ unsafe extern "C-unwind" {
     pub fn get_op_btree_interpretation(opno: Oid) -> *mut List;
     pub fn equality_ops_are_compatible(opno1: Oid, opno2: Oid) -> bool;
     pub fn comparison_ops_are_compatible(opno1: Oid, opno2: Oid) -> bool;
+    pub fn collations_agree_on_equality(coll1: Oid, coll2: Oid) -> bool;
     pub fn get_opfamily_proc(opfamily: Oid, lefttype: Oid, righttype: Oid, procnum: int16) -> Oid;
     pub fn get_attname(
         relid: Oid,
@@ -47977,8 +50684,20 @@ unsafe extern "C-unwind" {
     pub fn get_publication_name(pubid: Oid, missing_ok: bool) -> *mut ::core::ffi::c_char;
     pub fn get_subscription_oid(subname: *const ::core::ffi::c_char, missing_ok: bool) -> Oid;
     pub fn get_subscription_name(subid: Oid, missing_ok: bool) -> *mut ::core::ffi::c_char;
+    pub static mut update_process_title: bool;
+    pub fn save_ps_display_args(
+        argc: ::core::ffi::c_int,
+        argv: *mut *mut ::core::ffi::c_char,
+    ) -> *mut *mut ::core::ffi::c_char;
+    pub fn init_ps_display(fixed_part: *const ::core::ffi::c_char);
+    pub fn set_ps_display_suffix(suffix: *const ::core::ffi::c_char);
+    pub fn set_ps_display_remove_suffix();
+    pub fn set_ps_display_with_len(activity: *const ::core::ffi::c_char, len: usize);
+    #[link_name = "set_ps_display__pgrx_cshim"]
+    pub fn set_ps_display(activity: *const ::core::ffi::c_char);
+    pub fn get_ps_display(displen: *mut ::core::ffi::c_int) -> *const ::core::ffi::c_char;
     pub fn format_procedure_extended(procedure_oid: Oid, flags: bits16)
-        -> *mut ::core::ffi::c_char;
+    -> *mut ::core::ffi::c_char;
     pub fn format_operator_extended(operator_oid: Oid, flags: bits16) -> *mut ::core::ffi::c_char;
     pub fn stringToQualifiedNameList(
         string: *const ::core::ffi::c_char,
@@ -48052,8 +50771,14 @@ unsafe extern "C-unwind" {
         tuple: HeapTuple,
         newtuple: HeapTuple,
         function: ::core::option::Option<
-            unsafe extern "C-unwind" fn(arg1: ::core::ffi::c_int, arg2: uint32, arg3: Oid),
+            unsafe extern "C-unwind" fn(
+                arg1: ::core::ffi::c_int,
+                arg2: uint32,
+                arg3: Oid,
+                arg4: *mut ::core::ffi::c_void,
+            ),
         >,
+        context: *mut ::core::ffi::c_void,
     );
     pub fn PrintCatCacheLeakWarning(tuple: HeapTuple);
     pub fn PrintCatCacheListLeakWarning(list: *mut CatCList);
@@ -48171,6 +50896,11 @@ unsafe extern "C-unwind" {
         varRelid: ::core::ffi::c_int,
         vardata: *mut VariableStatData,
     );
+    pub fn all_rows_selectable(
+        root: *mut PlannerInfo,
+        varno: Index,
+        varattnos: *mut Bitmapset,
+    ) -> bool;
     pub fn statistic_proc_security_check(vardata: *mut VariableStatData, func_oid: Oid) -> bool;
     pub fn get_restriction_variable(
         root: *mut PlannerInfo,
@@ -48422,6 +51152,12 @@ unsafe extern "C-unwind" {
     pub fn RelationInvalidatesSnapshotsOnly(relid: Oid) -> bool;
     pub fn RelationHasSysCache(relid: Oid) -> bool;
     pub fn RelationSupportsSysCache(relid: Oid) -> bool;
+    #[link_name = "DatumGetRangeTypeP__pgrx_cshim"]
+    pub fn DatumGetRangeTypeP(X: Datum) -> *mut RangeType;
+    #[link_name = "DatumGetRangeTypePCopy__pgrx_cshim"]
+    pub fn DatumGetRangeTypePCopy(X: Datum) -> *mut RangeType;
+    #[link_name = "RangeTypePGetDatum__pgrx_cshim"]
+    pub fn RangeTypePGetDatum(X: *const RangeType) -> Datum;
     pub fn range_contains_elem_internal(
         typcache: *mut TypeCacheEntry,
         r: *const RangeType,
@@ -48607,4983 +51343,6 @@ unsafe extern "C-unwind" {
     pub fn updateClosestMatch(state: *mut ClosestMatchState, candidate: *const ::core::ffi::c_char);
     pub fn getClosestMatch(state: *mut ClosestMatchState) -> *const ::core::ffi::c_char;
 }
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_OP")]
-pub const A_Expr_Kind_AEXPR_OP: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_OP_ANY")]
-pub const A_Expr_Kind_AEXPR_OP_ANY: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_OP_ALL")]
-pub const A_Expr_Kind_AEXPR_OP_ALL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_DISTINCT")]
-pub const A_Expr_Kind_AEXPR_DISTINCT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_NOT_DISTINCT")]
-pub const A_Expr_Kind_AEXPR_NOT_DISTINCT: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_NULLIF")]
-pub const A_Expr_Kind_AEXPR_NULLIF: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_IN")]
-pub const A_Expr_Kind_AEXPR_IN: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_LIKE")]
-pub const A_Expr_Kind_AEXPR_LIKE: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_ILIKE")]
-pub const A_Expr_Kind_AEXPR_ILIKE: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_SIMILAR")]
-pub const A_Expr_Kind_AEXPR_SIMILAR: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_BETWEEN")]
-pub const A_Expr_Kind_AEXPR_BETWEEN: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_NOT_BETWEEN")]
-pub const A_Expr_Kind_AEXPR_NOT_BETWEEN: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_BETWEEN_SYM")]
-pub const A_Expr_Kind_AEXPR_BETWEEN_SYM: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::A_Expr_Kind::AEXPR_NOT_BETWEEN_SYM")]
-pub const A_Expr_Kind_AEXPR_NOT_BETWEEN_SYM: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AclMaskHow::ACLMASK_ALL")]
-pub const AclMaskHow_ACLMASK_ALL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AclMaskHow::ACLMASK_ANY")]
-pub const AclMaskHow_ACLMASK_ANY: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AclResult::ACLCHECK_OK")]
-pub const AclResult_ACLCHECK_OK: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AclResult::ACLCHECK_NO_PRIV")]
-pub const AclResult_ACLCHECK_NO_PRIV: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AclResult::ACLCHECK_NOT_OWNER")]
-pub const AclResult_ACLCHECK_NOT_OWNER: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AggSplit::AGGSPLIT_SIMPLE")]
-pub const AggSplit_AGGSPLIT_SIMPLE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AggSplit::AGGSPLIT_INITIAL_SERIAL")]
-pub const AggSplit_AGGSPLIT_INITIAL_SERIAL: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AggSplit::AGGSPLIT_FINAL_DESERIAL")]
-pub const AggSplit_AGGSPLIT_FINAL_DESERIAL: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AggStrategy::AGG_PLAIN")]
-pub const AggStrategy_AGG_PLAIN: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AggStrategy::AGG_SORTED")]
-pub const AggStrategy_AGG_SORTED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AggStrategy::AGG_HASHED")]
-pub const AggStrategy_AGG_HASHED: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AggStrategy::AGG_MIXED")]
-pub const AggStrategy_AGG_MIXED: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterPublicationAction::AP_AddObjects")]
-pub const AlterPublicationAction_AP_AddObjects: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterPublicationAction::AP_DropObjects")]
-pub const AlterPublicationAction_AP_DropObjects: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterPublicationAction::AP_SetObjects")]
-pub const AlterPublicationAction_AP_SetObjects: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterSubscriptionType::ALTER_SUBSCRIPTION_OPTIONS"
-)]
-pub const AlterSubscriptionType_ALTER_SUBSCRIPTION_OPTIONS: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterSubscriptionType::ALTER_SUBSCRIPTION_CONNECTION"
-)]
-pub const AlterSubscriptionType_ALTER_SUBSCRIPTION_CONNECTION: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterSubscriptionType::ALTER_SUBSCRIPTION_SET_PUBLICATION"
-)]
-pub const AlterSubscriptionType_ALTER_SUBSCRIPTION_SET_PUBLICATION: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterSubscriptionType::ALTER_SUBSCRIPTION_ADD_PUBLICATION"
-)]
-pub const AlterSubscriptionType_ALTER_SUBSCRIPTION_ADD_PUBLICATION: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterSubscriptionType::ALTER_SUBSCRIPTION_DROP_PUBLICATION"
-)]
-pub const AlterSubscriptionType_ALTER_SUBSCRIPTION_DROP_PUBLICATION: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterSubscriptionType::ALTER_SUBSCRIPTION_REFRESH"
-)]
-pub const AlterSubscriptionType_ALTER_SUBSCRIPTION_REFRESH: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterSubscriptionType::ALTER_SUBSCRIPTION_ENABLED"
-)]
-pub const AlterSubscriptionType_ALTER_SUBSCRIPTION_ENABLED: u32 = 6;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterSubscriptionType::ALTER_SUBSCRIPTION_SKIP"
-)]
-pub const AlterSubscriptionType_ALTER_SUBSCRIPTION_SKIP: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterTSConfigType::ALTER_TSCONFIG_ADD_MAPPING"
-)]
-pub const AlterTSConfigType_ALTER_TSCONFIG_ADD_MAPPING: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterTSConfigType::ALTER_TSCONFIG_ALTER_MAPPING_FOR_TOKEN"
-)]
-pub const AlterTSConfigType_ALTER_TSCONFIG_ALTER_MAPPING_FOR_TOKEN: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterTSConfigType::ALTER_TSCONFIG_REPLACE_DICT"
-)]
-pub const AlterTSConfigType_ALTER_TSCONFIG_REPLACE_DICT: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterTSConfigType::ALTER_TSCONFIG_REPLACE_DICT_FOR_TOKEN"
-)]
-pub const AlterTSConfigType_ALTER_TSCONFIG_REPLACE_DICT_FOR_TOKEN: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterTSConfigType::ALTER_TSCONFIG_DROP_MAPPING"
-)]
-pub const AlterTSConfigType_ALTER_TSCONFIG_DROP_MAPPING: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AddColumn")]
-pub const AlterTableType_AT_AddColumn: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AddColumnToView")]
-pub const AlterTableType_AT_AddColumnToView: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ColumnDefault")]
-pub const AlterTableType_AT_ColumnDefault: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_CookedColumnDefault")]
-pub const AlterTableType_AT_CookedColumnDefault: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropNotNull")]
-pub const AlterTableType_AT_DropNotNull: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetNotNull")]
-pub const AlterTableType_AT_SetNotNull: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropExpression")]
-pub const AlterTableType_AT_DropExpression: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_CheckNotNull")]
-pub const AlterTableType_AT_CheckNotNull: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetStatistics")]
-pub const AlterTableType_AT_SetStatistics: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetOptions")]
-pub const AlterTableType_AT_SetOptions: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ResetOptions")]
-pub const AlterTableType_AT_ResetOptions: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetStorage")]
-pub const AlterTableType_AT_SetStorage: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetCompression")]
-pub const AlterTableType_AT_SetCompression: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropColumn")]
-pub const AlterTableType_AT_DropColumn: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AddIndex")]
-pub const AlterTableType_AT_AddIndex: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ReAddIndex")]
-pub const AlterTableType_AT_ReAddIndex: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AddConstraint")]
-pub const AlterTableType_AT_AddConstraint: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ReAddConstraint")]
-pub const AlterTableType_AT_ReAddConstraint: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ReAddDomainConstraint")]
-pub const AlterTableType_AT_ReAddDomainConstraint: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AlterConstraint")]
-pub const AlterTableType_AT_AlterConstraint: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ValidateConstraint")]
-pub const AlterTableType_AT_ValidateConstraint: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AddIndexConstraint")]
-pub const AlterTableType_AT_AddIndexConstraint: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropConstraint")]
-pub const AlterTableType_AT_DropConstraint: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ReAddComment")]
-pub const AlterTableType_AT_ReAddComment: u32 = 23;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AlterColumnType")]
-pub const AlterTableType_AT_AlterColumnType: u32 = 24;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterTableType::AT_AlterColumnGenericOptions"
-)]
-pub const AlterTableType_AT_AlterColumnGenericOptions: u32 = 25;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ChangeOwner")]
-pub const AlterTableType_AT_ChangeOwner: u32 = 26;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ClusterOn")]
-pub const AlterTableType_AT_ClusterOn: u32 = 27;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropCluster")]
-pub const AlterTableType_AT_DropCluster: u32 = 28;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetLogged")]
-pub const AlterTableType_AT_SetLogged: u32 = 29;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetUnLogged")]
-pub const AlterTableType_AT_SetUnLogged: u32 = 30;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropOids")]
-pub const AlterTableType_AT_DropOids: u32 = 31;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetAccessMethod")]
-pub const AlterTableType_AT_SetAccessMethod: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetTableSpace")]
-pub const AlterTableType_AT_SetTableSpace: u32 = 33;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetRelOptions")]
-pub const AlterTableType_AT_SetRelOptions: u32 = 34;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ResetRelOptions")]
-pub const AlterTableType_AT_ResetRelOptions: u32 = 35;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ReplaceRelOptions")]
-pub const AlterTableType_AT_ReplaceRelOptions: u32 = 36;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableTrig")]
-pub const AlterTableType_AT_EnableTrig: u32 = 37;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableAlwaysTrig")]
-pub const AlterTableType_AT_EnableAlwaysTrig: u32 = 38;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableReplicaTrig")]
-pub const AlterTableType_AT_EnableReplicaTrig: u32 = 39;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DisableTrig")]
-pub const AlterTableType_AT_DisableTrig: u32 = 40;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableTrigAll")]
-pub const AlterTableType_AT_EnableTrigAll: u32 = 41;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DisableTrigAll")]
-pub const AlterTableType_AT_DisableTrigAll: u32 = 42;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableTrigUser")]
-pub const AlterTableType_AT_EnableTrigUser: u32 = 43;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DisableTrigUser")]
-pub const AlterTableType_AT_DisableTrigUser: u32 = 44;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableRule")]
-pub const AlterTableType_AT_EnableRule: u32 = 45;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableAlwaysRule")]
-pub const AlterTableType_AT_EnableAlwaysRule: u32 = 46;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableReplicaRule")]
-pub const AlterTableType_AT_EnableReplicaRule: u32 = 47;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DisableRule")]
-pub const AlterTableType_AT_DisableRule: u32 = 48;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AddInherit")]
-pub const AlterTableType_AT_AddInherit: u32 = 49;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropInherit")]
-pub const AlterTableType_AT_DropInherit: u32 = 50;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AddOf")]
-pub const AlterTableType_AT_AddOf: u32 = 51;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropOf")]
-pub const AlterTableType_AT_DropOf: u32 = 52;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ReplicaIdentity")]
-pub const AlterTableType_AT_ReplicaIdentity: u32 = 53;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_EnableRowSecurity")]
-pub const AlterTableType_AT_EnableRowSecurity: u32 = 54;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DisableRowSecurity")]
-pub const AlterTableType_AT_DisableRowSecurity: u32 = 55;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ForceRowSecurity")]
-pub const AlterTableType_AT_ForceRowSecurity: u32 = 56;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_NoForceRowSecurity")]
-pub const AlterTableType_AT_NoForceRowSecurity: u32 = 57;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_GenericOptions")]
-pub const AlterTableType_AT_GenericOptions: u32 = 58;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AttachPartition")]
-pub const AlterTableType_AT_AttachPartition: u32 = 59;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DetachPartition")]
-pub const AlterTableType_AT_DetachPartition: u32 = 60;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::AlterTableType::AT_DetachPartitionFinalize"
-)]
-pub const AlterTableType_AT_DetachPartitionFinalize: u32 = 61;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_AddIdentity")]
-pub const AlterTableType_AT_AddIdentity: u32 = 62;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_SetIdentity")]
-pub const AlterTableType_AT_SetIdentity: u32 = 63;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_DropIdentity")]
-pub const AlterTableType_AT_DropIdentity: u32 = 64;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AlterTableType::AT_ReAddStatistics")]
-pub const AlterTableType_AT_ReAddStatistics: u32 = 65;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ArchiveMode::ARCHIVE_MODE_OFF")]
-pub const ArchiveMode_ARCHIVE_MODE_OFF: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ArchiveMode::ARCHIVE_MODE_ON")]
-pub const ArchiveMode_ARCHIVE_MODE_ON: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ArchiveMode::ARCHIVE_MODE_ALWAYS")]
-pub const ArchiveMode_ARCHIVE_MODE_ALWAYS: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AuxProcType::NotAnAuxProcess")]
-pub const AuxProcType_NotAnAuxProcess: i32 = -1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AuxProcType::StartupProcess")]
-pub const AuxProcType_StartupProcess: i32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AuxProcType::BgWriterProcess")]
-pub const AuxProcType_BgWriterProcess: i32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AuxProcType::ArchiverProcess")]
-pub const AuxProcType_ArchiverProcess: i32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AuxProcType::CheckpointerProcess")]
-pub const AuxProcType_CheckpointerProcess: i32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AuxProcType::WalWriterProcess")]
-pub const AuxProcType_WalWriterProcess: i32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AuxProcType::WalReceiverProcess")]
-pub const AuxProcType_WalReceiverProcess: i32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::AuxProcType::NUM_AUXPROCTYPES")]
-pub const AuxProcType_NUM_AUXPROCTYPES: i32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BMS_Comparison::BMS_EQUAL")]
-pub const BMS_Comparison_BMS_EQUAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BMS_Comparison::BMS_SUBSET1")]
-pub const BMS_Comparison_BMS_SUBSET1: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BMS_Comparison::BMS_SUBSET2")]
-pub const BMS_Comparison_BMS_SUBSET2: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BMS_Comparison::BMS_DIFFERENT")]
-pub const BMS_Comparison_BMS_DIFFERENT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BMS_Membership::BMS_EMPTY_SET")]
-pub const BMS_Membership_BMS_EMPTY_SET: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BMS_Membership::BMS_SINGLETON")]
-pub const BMS_Membership_BMS_SINGLETON: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BMS_Membership::BMS_MULTIPLE")]
-pub const BMS_Membership_BMS_MULTIPLE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendState::STATE_UNDEFINED")]
-pub const BackendState_STATE_UNDEFINED: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendState::STATE_IDLE")]
-pub const BackendState_STATE_IDLE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendState::STATE_RUNNING")]
-pub const BackendState_STATE_RUNNING: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendState::STATE_IDLEINTRANSACTION")]
-pub const BackendState_STATE_IDLEINTRANSACTION: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendState::STATE_FASTPATH")]
-pub const BackendState_STATE_FASTPATH: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BackendState::STATE_IDLEINTRANSACTION_ABORTED"
-)]
-pub const BackendState_STATE_IDLEINTRANSACTION_ABORTED: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendState::STATE_DISABLED")]
-pub const BackendState_STATE_DISABLED: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_INVALID")]
-pub const BackendType_B_INVALID: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_ARCHIVER")]
-pub const BackendType_B_ARCHIVER: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_AUTOVAC_LAUNCHER")]
-pub const BackendType_B_AUTOVAC_LAUNCHER: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_AUTOVAC_WORKER")]
-pub const BackendType_B_AUTOVAC_WORKER: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_BACKEND")]
-pub const BackendType_B_BACKEND: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_BG_WORKER")]
-pub const BackendType_B_BG_WORKER: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_BG_WRITER")]
-pub const BackendType_B_BG_WRITER: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_CHECKPOINTER")]
-pub const BackendType_B_CHECKPOINTER: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_LOGGER")]
-pub const BackendType_B_LOGGER: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_STANDALONE_BACKEND")]
-pub const BackendType_B_STANDALONE_BACKEND: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_STARTUP")]
-pub const BackendType_B_STARTUP: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_WAL_RECEIVER")]
-pub const BackendType_B_WAL_RECEIVER: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_WAL_SENDER")]
-pub const BackendType_B_WAL_SENDER: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackendType::B_WAL_WRITER")]
-pub const BackendType_B_WAL_WRITER: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackslashQuoteType::BACKSLASH_QUOTE_OFF")]
-pub const BackslashQuoteType_BACKSLASH_QUOTE_OFF: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BackslashQuoteType::BACKSLASH_QUOTE_ON")]
-pub const BackslashQuoteType_BACKSLASH_QUOTE_ON: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BackslashQuoteType::BACKSLASH_QUOTE_SAFE_ENCODING"
-)]
-pub const BackslashQuoteType_BACKSLASH_QUOTE_SAFE_ENCODING: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BgWorkerStartTime::BgWorkerStart_PostmasterStart"
-)]
-pub const BgWorkerStartTime_BgWorkerStart_PostmasterStart: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BgWorkerStartTime::BgWorkerStart_ConsistentState"
-)]
-pub const BgWorkerStartTime_BgWorkerStart_ConsistentState: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BgWorkerStartTime::BgWorkerStart_RecoveryFinished"
-)]
-pub const BgWorkerStartTime_BgWorkerStart_RecoveryFinished: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BgwHandleStatus::BGWH_STARTED")]
-pub const BgwHandleStatus_BGWH_STARTED: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BgwHandleStatus::BGWH_NOT_YET_STARTED")]
-pub const BgwHandleStatus_BGWH_NOT_YET_STARTED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BgwHandleStatus::BGWH_STOPPED")]
-pub const BgwHandleStatus_BGWH_STOPPED: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BgwHandleStatus::BGWH_POSTMASTER_DIED")]
-pub const BgwHandleStatus_BGWH_POSTMASTER_DIED: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolExprType::AND_EXPR")]
-pub const BoolExprType_AND_EXPR: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolExprType::OR_EXPR")]
-pub const BoolExprType_OR_EXPR: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolExprType::NOT_EXPR")]
-pub const BoolExprType_NOT_EXPR: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolTestType::IS_TRUE")]
-pub const BoolTestType_IS_TRUE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolTestType::IS_NOT_TRUE")]
-pub const BoolTestType_IS_NOT_TRUE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolTestType::IS_FALSE")]
-pub const BoolTestType_IS_FALSE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolTestType::IS_NOT_FALSE")]
-pub const BoolTestType_IS_NOT_FALSE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolTestType::IS_UNKNOWN")]
-pub const BoolTestType_IS_UNKNOWN: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BoolTestType::IS_NOT_UNKNOWN")]
-pub const BoolTestType_IS_NOT_UNKNOWN: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BufferAccessStrategyType::BAS_NORMAL")]
-pub const BufferAccessStrategyType_BAS_NORMAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BufferAccessStrategyType::BAS_BULKREAD")]
-pub const BufferAccessStrategyType_BAS_BULKREAD: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BufferAccessStrategyType::BAS_BULKWRITE")]
-pub const BufferAccessStrategyType_BAS_BULKWRITE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BufferAccessStrategyType::BAS_VACUUM")]
-pub const BufferAccessStrategyType_BAS_VACUUM: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_XACT_BUFFER")]
-pub const BuiltinTrancheIds_LWTRANCHE_XACT_BUFFER: u32 = 48;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_COMMITTS_BUFFER"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_COMMITTS_BUFFER: u32 = 49;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_SUBTRANS_BUFFER"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_SUBTRANS_BUFFER: u32 = 50;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_MULTIXACTOFFSET_BUFFER"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_MULTIXACTOFFSET_BUFFER: u32 = 51;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_MULTIXACTMEMBER_BUFFER"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_MULTIXACTMEMBER_BUFFER: u32 = 52;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_NOTIFY_BUFFER"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_NOTIFY_BUFFER: u32 = 53;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_SERIAL_BUFFER"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_SERIAL_BUFFER: u32 = 54;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_WAL_INSERT")]
-pub const BuiltinTrancheIds_LWTRANCHE_WAL_INSERT: u32 = 55;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_BUFFER_CONTENT"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_BUFFER_CONTENT: u32 = 56;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_REPLICATION_ORIGIN_STATE"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_REPLICATION_ORIGIN_STATE: u32 = 57;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_REPLICATION_SLOT_IO"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_REPLICATION_SLOT_IO: u32 = 58;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_LOCK_FASTPATH"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_LOCK_FASTPATH: u32 = 59;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_BUFFER_MAPPING"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_BUFFER_MAPPING: u32 = 60;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_LOCK_MANAGER")]
-pub const BuiltinTrancheIds_LWTRANCHE_LOCK_MANAGER: u32 = 61;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PREDICATE_LOCK_MANAGER"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_PREDICATE_LOCK_MANAGER: u32 = 62;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PARALLEL_HASH_JOIN"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_PARALLEL_HASH_JOIN: u32 = 63;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PARALLEL_QUERY_DSA"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_PARALLEL_QUERY_DSA: u32 = 64;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PER_SESSION_DSA"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_PER_SESSION_DSA: u32 = 65;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PER_SESSION_RECORD_TYPE"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_PER_SESSION_RECORD_TYPE: u32 = 66;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PER_SESSION_RECORD_TYPMOD"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_PER_SESSION_RECORD_TYPMOD: u32 = 67;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_SHARED_TUPLESTORE"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_SHARED_TUPLESTORE: u32 = 68;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_SHARED_TIDBITMAP"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_SHARED_TIDBITMAP: u32 = 69;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PARALLEL_APPEND"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_PARALLEL_APPEND: u32 = 70;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PER_XACT_PREDICATE_LIST"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_PER_XACT_PREDICATE_LIST: u32 = 71;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PGSTATS_DSA")]
-pub const BuiltinTrancheIds_LWTRANCHE_PGSTATS_DSA: u32 = 72;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PGSTATS_HASH")]
-pub const BuiltinTrancheIds_LWTRANCHE_PGSTATS_HASH: u32 = 73;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_PGSTATS_DATA")]
-pub const BuiltinTrancheIds_LWTRANCHE_PGSTATS_DATA: u32 = 74;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_LAUNCHER_DSA")]
-pub const BuiltinTrancheIds_LWTRANCHE_LAUNCHER_DSA: u32 = 75;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_LAUNCHER_HASH"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_LAUNCHER_HASH: u32 = 76;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::BuiltinTrancheIds::LWTRANCHE_FIRST_USER_DEFINED"
-)]
-pub const BuiltinTrancheIds_LWTRANCHE_FIRST_USER_DEFINED: u32 = 77;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CRSSnapshotAction::CRS_EXPORT_SNAPSHOT")]
-pub const CRSSnapshotAction_CRS_EXPORT_SNAPSHOT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CRSSnapshotAction::CRS_NOEXPORT_SNAPSHOT")]
-pub const CRSSnapshotAction_CRS_NOEXPORT_SNAPSHOT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CRSSnapshotAction::CRS_USE_SNAPSHOT")]
-pub const CRSSnapshotAction_CRS_USE_SNAPSHOT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CTEMaterialize::CTEMaterializeDefault")]
-pub const CTEMaterialize_CTEMaterializeDefault: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CTEMaterialize::CTEMaterializeAlways")]
-pub const CTEMaterialize_CTEMaterializeAlways: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CTEMaterialize::CTEMaterializeNever")]
-pub const CTEMaterialize_CTEMaterializeNever: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CheckEnableRlsResult::RLS_NONE")]
-pub const CheckEnableRlsResult_RLS_NONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CheckEnableRlsResult::RLS_NONE_ENV")]
-pub const CheckEnableRlsResult_RLS_NONE_ENV: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CheckEnableRlsResult::RLS_ENABLED")]
-pub const CheckEnableRlsResult_RLS_ENABLED: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CmdType::CMD_UNKNOWN")]
-pub const CmdType_CMD_UNKNOWN: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CmdType::CMD_SELECT")]
-pub const CmdType_CMD_SELECT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CmdType::CMD_UPDATE")]
-pub const CmdType_CMD_UPDATE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CmdType::CMD_INSERT")]
-pub const CmdType_CMD_INSERT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CmdType::CMD_DELETE")]
-pub const CmdType_CMD_DELETE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CmdType::CMD_MERGE")]
-pub const CmdType_CMD_MERGE: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CmdType::CMD_UTILITY")]
-pub const CmdType_CMD_UTILITY: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CmdType::CMD_NOTHING")]
-pub const CmdType_CMD_NOTHING: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionContext::COERCION_IMPLICIT")]
-pub const CoercionContext_COERCION_IMPLICIT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionContext::COERCION_ASSIGNMENT")]
-pub const CoercionContext_COERCION_ASSIGNMENT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionContext::COERCION_PLPGSQL")]
-pub const CoercionContext_COERCION_PLPGSQL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionContext::COERCION_EXPLICIT")]
-pub const CoercionContext_COERCION_EXPLICIT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionForm::COERCE_EXPLICIT_CALL")]
-pub const CoercionForm_COERCE_EXPLICIT_CALL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionForm::COERCE_EXPLICIT_CAST")]
-pub const CoercionForm_COERCE_EXPLICIT_CAST: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionForm::COERCE_IMPLICIT_CAST")]
-pub const CoercionForm_COERCE_IMPLICIT_CAST: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionForm::COERCE_SQL_SYNTAX")]
-pub const CoercionForm_COERCE_SQL_SYNTAX: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionPathType::COERCION_PATH_NONE")]
-pub const CoercionPathType_COERCION_PATH_NONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CoercionPathType::COERCION_PATH_FUNC")]
-pub const CoercionPathType_COERCION_PATH_FUNC: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CoercionPathType::COERCION_PATH_RELABELTYPE"
-)]
-pub const CoercionPathType_COERCION_PATH_RELABELTYPE: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CoercionPathType::COERCION_PATH_ARRAYCOERCE"
-)]
-pub const CoercionPathType_COERCION_PATH_ARRAYCOERCE: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CoercionPathType::COERCION_PATH_COERCEVIAIO"
-)]
-pub const CoercionPathType_COERCION_PATH_COERCEVIAIO: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CollectedCommandType::SCT_Simple")]
-pub const CollectedCommandType_SCT_Simple: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CollectedCommandType::SCT_AlterTable")]
-pub const CollectedCommandType_SCT_AlterTable: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CollectedCommandType::SCT_Grant")]
-pub const CollectedCommandType_SCT_Grant: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CollectedCommandType::SCT_AlterOpFamily")]
-pub const CollectedCommandType_SCT_AlterOpFamily: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CollectedCommandType::SCT_AlterDefaultPrivileges"
-)]
-pub const CollectedCommandType_SCT_AlterDefaultPrivileges: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CollectedCommandType::SCT_CreateOpClass")]
-pub const CollectedCommandType_SCT_CreateOpClass: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CollectedCommandType::SCT_AlterTSConfig")]
-pub const CollectedCommandType_SCT_AlterTSConfig: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestNone")]
-pub const CommandDest_DestNone: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestDebug")]
-pub const CommandDest_DestDebug: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestRemote")]
-pub const CommandDest_DestRemote: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestRemoteExecute")]
-pub const CommandDest_DestRemoteExecute: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestRemoteSimple")]
-pub const CommandDest_DestRemoteSimple: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestSPI")]
-pub const CommandDest_DestSPI: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestTuplestore")]
-pub const CommandDest_DestTuplestore: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestIntoRel")]
-pub const CommandDest_DestIntoRel: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestCopyOut")]
-pub const CommandDest_DestCopyOut: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestSQLFunction")]
-pub const CommandDest_DestSQLFunction: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestTransientRel")]
-pub const CommandDest_DestTransientRel: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandDest::DestTupleQueue")]
-pub const CommandDest_DestTupleQueue: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_UNKNOWN")]
-pub const CommandTag_CMDTAG_UNKNOWN: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_ACCESS_METHOD")]
-pub const CommandTag_CMDTAG_ALTER_ACCESS_METHOD: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_AGGREGATE")]
-pub const CommandTag_CMDTAG_ALTER_AGGREGATE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_CAST")]
-pub const CommandTag_CMDTAG_ALTER_CAST: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_COLLATION")]
-pub const CommandTag_CMDTAG_ALTER_COLLATION: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_CONSTRAINT")]
-pub const CommandTag_CMDTAG_ALTER_CONSTRAINT: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_CONVERSION")]
-pub const CommandTag_CMDTAG_ALTER_CONVERSION: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_DATABASE")]
-pub const CommandTag_CMDTAG_ALTER_DATABASE: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_ALTER_DEFAULT_PRIVILEGES"
-)]
-pub const CommandTag_CMDTAG_ALTER_DEFAULT_PRIVILEGES: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_DOMAIN")]
-pub const CommandTag_CMDTAG_ALTER_DOMAIN: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_EVENT_TRIGGER")]
-pub const CommandTag_CMDTAG_ALTER_EVENT_TRIGGER: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_EXTENSION")]
-pub const CommandTag_CMDTAG_ALTER_EXTENSION: u32 = 11;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_ALTER_FOREIGN_DATA_WRAPPER"
-)]
-pub const CommandTag_CMDTAG_ALTER_FOREIGN_DATA_WRAPPER: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_FOREIGN_TABLE")]
-pub const CommandTag_CMDTAG_ALTER_FOREIGN_TABLE: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_FUNCTION")]
-pub const CommandTag_CMDTAG_ALTER_FUNCTION: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_INDEX")]
-pub const CommandTag_CMDTAG_ALTER_INDEX: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_LANGUAGE")]
-pub const CommandTag_CMDTAG_ALTER_LANGUAGE: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_LARGE_OBJECT")]
-pub const CommandTag_CMDTAG_ALTER_LARGE_OBJECT: u32 = 17;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_ALTER_MATERIALIZED_VIEW"
-)]
-pub const CommandTag_CMDTAG_ALTER_MATERIALIZED_VIEW: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_OPERATOR")]
-pub const CommandTag_CMDTAG_ALTER_OPERATOR: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_OPERATOR_CLASS")]
-pub const CommandTag_CMDTAG_ALTER_OPERATOR_CLASS: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_OPERATOR_FAMILY")]
-pub const CommandTag_CMDTAG_ALTER_OPERATOR_FAMILY: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_POLICY")]
-pub const CommandTag_CMDTAG_ALTER_POLICY: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_PROCEDURE")]
-pub const CommandTag_CMDTAG_ALTER_PROCEDURE: u32 = 23;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_PUBLICATION")]
-pub const CommandTag_CMDTAG_ALTER_PUBLICATION: u32 = 24;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_ROLE")]
-pub const CommandTag_CMDTAG_ALTER_ROLE: u32 = 25;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_ROUTINE")]
-pub const CommandTag_CMDTAG_ALTER_ROUTINE: u32 = 26;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_RULE")]
-pub const CommandTag_CMDTAG_ALTER_RULE: u32 = 27;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_SCHEMA")]
-pub const CommandTag_CMDTAG_ALTER_SCHEMA: u32 = 28;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_SEQUENCE")]
-pub const CommandTag_CMDTAG_ALTER_SEQUENCE: u32 = 29;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_SERVER")]
-pub const CommandTag_CMDTAG_ALTER_SERVER: u32 = 30;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_STATISTICS")]
-pub const CommandTag_CMDTAG_ALTER_STATISTICS: u32 = 31;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_SUBSCRIPTION")]
-pub const CommandTag_CMDTAG_ALTER_SUBSCRIPTION: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_SYSTEM")]
-pub const CommandTag_CMDTAG_ALTER_SYSTEM: u32 = 33;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TABLE")]
-pub const CommandTag_CMDTAG_ALTER_TABLE: u32 = 34;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TABLESPACE")]
-pub const CommandTag_CMDTAG_ALTER_TABLESPACE: u32 = 35;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TEXT_SEARCH_CONFIGURATION"
-)]
-pub const CommandTag_CMDTAG_ALTER_TEXT_SEARCH_CONFIGURATION: u32 = 36;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TEXT_SEARCH_DICTIONARY"
-)]
-pub const CommandTag_CMDTAG_ALTER_TEXT_SEARCH_DICTIONARY: u32 = 37;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TEXT_SEARCH_PARSER"
-)]
-pub const CommandTag_CMDTAG_ALTER_TEXT_SEARCH_PARSER: u32 = 38;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TEXT_SEARCH_TEMPLATE"
-)]
-pub const CommandTag_CMDTAG_ALTER_TEXT_SEARCH_TEMPLATE: u32 = 39;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TRANSFORM")]
-pub const CommandTag_CMDTAG_ALTER_TRANSFORM: u32 = 40;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TRIGGER")]
-pub const CommandTag_CMDTAG_ALTER_TRIGGER: u32 = 41;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_TYPE")]
-pub const CommandTag_CMDTAG_ALTER_TYPE: u32 = 42;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_USER_MAPPING")]
-pub const CommandTag_CMDTAG_ALTER_USER_MAPPING: u32 = 43;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ALTER_VIEW")]
-pub const CommandTag_CMDTAG_ALTER_VIEW: u32 = 44;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ANALYZE")]
-pub const CommandTag_CMDTAG_ANALYZE: u32 = 45;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_BEGIN")]
-pub const CommandTag_CMDTAG_BEGIN: u32 = 46;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CALL")]
-pub const CommandTag_CMDTAG_CALL: u32 = 47;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CHECKPOINT")]
-pub const CommandTag_CMDTAG_CHECKPOINT: u32 = 48;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CLOSE")]
-pub const CommandTag_CMDTAG_CLOSE: u32 = 49;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CLOSE_CURSOR")]
-pub const CommandTag_CMDTAG_CLOSE_CURSOR: u32 = 50;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CLOSE_CURSOR_ALL")]
-pub const CommandTag_CMDTAG_CLOSE_CURSOR_ALL: u32 = 51;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CLUSTER")]
-pub const CommandTag_CMDTAG_CLUSTER: u32 = 52;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_COMMENT")]
-pub const CommandTag_CMDTAG_COMMENT: u32 = 53;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_COMMIT")]
-pub const CommandTag_CMDTAG_COMMIT: u32 = 54;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_COMMIT_PREPARED")]
-pub const CommandTag_CMDTAG_COMMIT_PREPARED: u32 = 55;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_COPY")]
-pub const CommandTag_CMDTAG_COPY: u32 = 56;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_COPY_FROM")]
-pub const CommandTag_CMDTAG_COPY_FROM: u32 = 57;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_ACCESS_METHOD")]
-pub const CommandTag_CMDTAG_CREATE_ACCESS_METHOD: u32 = 58;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_AGGREGATE")]
-pub const CommandTag_CMDTAG_CREATE_AGGREGATE: u32 = 59;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_CAST")]
-pub const CommandTag_CMDTAG_CREATE_CAST: u32 = 60;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_COLLATION")]
-pub const CommandTag_CMDTAG_CREATE_COLLATION: u32 = 61;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_CONSTRAINT")]
-pub const CommandTag_CMDTAG_CREATE_CONSTRAINT: u32 = 62;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_CONVERSION")]
-pub const CommandTag_CMDTAG_CREATE_CONVERSION: u32 = 63;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_DATABASE")]
-pub const CommandTag_CMDTAG_CREATE_DATABASE: u32 = 64;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_DOMAIN")]
-pub const CommandTag_CMDTAG_CREATE_DOMAIN: u32 = 65;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_EVENT_TRIGGER")]
-pub const CommandTag_CMDTAG_CREATE_EVENT_TRIGGER: u32 = 66;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_EXTENSION")]
-pub const CommandTag_CMDTAG_CREATE_EXTENSION: u32 = 67;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_CREATE_FOREIGN_DATA_WRAPPER"
-)]
-pub const CommandTag_CMDTAG_CREATE_FOREIGN_DATA_WRAPPER: u32 = 68;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_FOREIGN_TABLE")]
-pub const CommandTag_CMDTAG_CREATE_FOREIGN_TABLE: u32 = 69;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_FUNCTION")]
-pub const CommandTag_CMDTAG_CREATE_FUNCTION: u32 = 70;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_INDEX")]
-pub const CommandTag_CMDTAG_CREATE_INDEX: u32 = 71;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_LANGUAGE")]
-pub const CommandTag_CMDTAG_CREATE_LANGUAGE: u32 = 72;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_CREATE_MATERIALIZED_VIEW"
-)]
-pub const CommandTag_CMDTAG_CREATE_MATERIALIZED_VIEW: u32 = 73;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_OPERATOR")]
-pub const CommandTag_CMDTAG_CREATE_OPERATOR: u32 = 74;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_OPERATOR_CLASS")]
-pub const CommandTag_CMDTAG_CREATE_OPERATOR_CLASS: u32 = 75;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_OPERATOR_FAMILY")]
-pub const CommandTag_CMDTAG_CREATE_OPERATOR_FAMILY: u32 = 76;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_POLICY")]
-pub const CommandTag_CMDTAG_CREATE_POLICY: u32 = 77;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_PROCEDURE")]
-pub const CommandTag_CMDTAG_CREATE_PROCEDURE: u32 = 78;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_PUBLICATION")]
-pub const CommandTag_CMDTAG_CREATE_PUBLICATION: u32 = 79;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_ROLE")]
-pub const CommandTag_CMDTAG_CREATE_ROLE: u32 = 80;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_ROUTINE")]
-pub const CommandTag_CMDTAG_CREATE_ROUTINE: u32 = 81;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_RULE")]
-pub const CommandTag_CMDTAG_CREATE_RULE: u32 = 82;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_SCHEMA")]
-pub const CommandTag_CMDTAG_CREATE_SCHEMA: u32 = 83;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_SEQUENCE")]
-pub const CommandTag_CMDTAG_CREATE_SEQUENCE: u32 = 84;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_SERVER")]
-pub const CommandTag_CMDTAG_CREATE_SERVER: u32 = 85;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_STATISTICS")]
-pub const CommandTag_CMDTAG_CREATE_STATISTICS: u32 = 86;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_SUBSCRIPTION")]
-pub const CommandTag_CMDTAG_CREATE_SUBSCRIPTION: u32 = 87;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TABLE")]
-pub const CommandTag_CMDTAG_CREATE_TABLE: u32 = 88;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TABLE_AS")]
-pub const CommandTag_CMDTAG_CREATE_TABLE_AS: u32 = 89;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TABLESPACE")]
-pub const CommandTag_CMDTAG_CREATE_TABLESPACE: u32 = 90;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TEXT_SEARCH_CONFIGURATION"
-)]
-pub const CommandTag_CMDTAG_CREATE_TEXT_SEARCH_CONFIGURATION: u32 = 91;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TEXT_SEARCH_DICTIONARY"
-)]
-pub const CommandTag_CMDTAG_CREATE_TEXT_SEARCH_DICTIONARY: u32 = 92;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TEXT_SEARCH_PARSER"
-)]
-pub const CommandTag_CMDTAG_CREATE_TEXT_SEARCH_PARSER: u32 = 93;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TEXT_SEARCH_TEMPLATE"
-)]
-pub const CommandTag_CMDTAG_CREATE_TEXT_SEARCH_TEMPLATE: u32 = 94;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TRANSFORM")]
-pub const CommandTag_CMDTAG_CREATE_TRANSFORM: u32 = 95;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TRIGGER")]
-pub const CommandTag_CMDTAG_CREATE_TRIGGER: u32 = 96;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_TYPE")]
-pub const CommandTag_CMDTAG_CREATE_TYPE: u32 = 97;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_USER_MAPPING")]
-pub const CommandTag_CMDTAG_CREATE_USER_MAPPING: u32 = 98;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_CREATE_VIEW")]
-pub const CommandTag_CMDTAG_CREATE_VIEW: u32 = 99;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DEALLOCATE")]
-pub const CommandTag_CMDTAG_DEALLOCATE: u32 = 100;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DEALLOCATE_ALL")]
-pub const CommandTag_CMDTAG_DEALLOCATE_ALL: u32 = 101;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DECLARE_CURSOR")]
-pub const CommandTag_CMDTAG_DECLARE_CURSOR: u32 = 102;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DELETE")]
-pub const CommandTag_CMDTAG_DELETE: u32 = 103;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DISCARD")]
-pub const CommandTag_CMDTAG_DISCARD: u32 = 104;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DISCARD_ALL")]
-pub const CommandTag_CMDTAG_DISCARD_ALL: u32 = 105;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DISCARD_PLANS")]
-pub const CommandTag_CMDTAG_DISCARD_PLANS: u32 = 106;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DISCARD_SEQUENCES")]
-pub const CommandTag_CMDTAG_DISCARD_SEQUENCES: u32 = 107;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DISCARD_TEMP")]
-pub const CommandTag_CMDTAG_DISCARD_TEMP: u32 = 108;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DO")]
-pub const CommandTag_CMDTAG_DO: u32 = 109;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_ACCESS_METHOD")]
-pub const CommandTag_CMDTAG_DROP_ACCESS_METHOD: u32 = 110;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_AGGREGATE")]
-pub const CommandTag_CMDTAG_DROP_AGGREGATE: u32 = 111;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_CAST")]
-pub const CommandTag_CMDTAG_DROP_CAST: u32 = 112;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_COLLATION")]
-pub const CommandTag_CMDTAG_DROP_COLLATION: u32 = 113;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_CONSTRAINT")]
-pub const CommandTag_CMDTAG_DROP_CONSTRAINT: u32 = 114;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_CONVERSION")]
-pub const CommandTag_CMDTAG_DROP_CONVERSION: u32 = 115;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_DATABASE")]
-pub const CommandTag_CMDTAG_DROP_DATABASE: u32 = 116;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_DOMAIN")]
-pub const CommandTag_CMDTAG_DROP_DOMAIN: u32 = 117;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_EVENT_TRIGGER")]
-pub const CommandTag_CMDTAG_DROP_EVENT_TRIGGER: u32 = 118;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_EXTENSION")]
-pub const CommandTag_CMDTAG_DROP_EXTENSION: u32 = 119;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_DROP_FOREIGN_DATA_WRAPPER"
-)]
-pub const CommandTag_CMDTAG_DROP_FOREIGN_DATA_WRAPPER: u32 = 120;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_FOREIGN_TABLE")]
-pub const CommandTag_CMDTAG_DROP_FOREIGN_TABLE: u32 = 121;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_FUNCTION")]
-pub const CommandTag_CMDTAG_DROP_FUNCTION: u32 = 122;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_INDEX")]
-pub const CommandTag_CMDTAG_DROP_INDEX: u32 = 123;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_LANGUAGE")]
-pub const CommandTag_CMDTAG_DROP_LANGUAGE: u32 = 124;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_MATERIALIZED_VIEW")]
-pub const CommandTag_CMDTAG_DROP_MATERIALIZED_VIEW: u32 = 125;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_OPERATOR")]
-pub const CommandTag_CMDTAG_DROP_OPERATOR: u32 = 126;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_OPERATOR_CLASS")]
-pub const CommandTag_CMDTAG_DROP_OPERATOR_CLASS: u32 = 127;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_OPERATOR_FAMILY")]
-pub const CommandTag_CMDTAG_DROP_OPERATOR_FAMILY: u32 = 128;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_OWNED")]
-pub const CommandTag_CMDTAG_DROP_OWNED: u32 = 129;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_POLICY")]
-pub const CommandTag_CMDTAG_DROP_POLICY: u32 = 130;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_PROCEDURE")]
-pub const CommandTag_CMDTAG_DROP_PROCEDURE: u32 = 131;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_PUBLICATION")]
-pub const CommandTag_CMDTAG_DROP_PUBLICATION: u32 = 132;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_ROLE")]
-pub const CommandTag_CMDTAG_DROP_ROLE: u32 = 133;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_ROUTINE")]
-pub const CommandTag_CMDTAG_DROP_ROUTINE: u32 = 134;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_RULE")]
-pub const CommandTag_CMDTAG_DROP_RULE: u32 = 135;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_SCHEMA")]
-pub const CommandTag_CMDTAG_DROP_SCHEMA: u32 = 136;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_SEQUENCE")]
-pub const CommandTag_CMDTAG_DROP_SEQUENCE: u32 = 137;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_SERVER")]
-pub const CommandTag_CMDTAG_DROP_SERVER: u32 = 138;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_STATISTICS")]
-pub const CommandTag_CMDTAG_DROP_STATISTICS: u32 = 139;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_SUBSCRIPTION")]
-pub const CommandTag_CMDTAG_DROP_SUBSCRIPTION: u32 = 140;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_TABLE")]
-pub const CommandTag_CMDTAG_DROP_TABLE: u32 = 141;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_TABLESPACE")]
-pub const CommandTag_CMDTAG_DROP_TABLESPACE: u32 = 142;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_DROP_TEXT_SEARCH_CONFIGURATION"
-)]
-pub const CommandTag_CMDTAG_DROP_TEXT_SEARCH_CONFIGURATION: u32 = 143;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_DROP_TEXT_SEARCH_DICTIONARY"
-)]
-pub const CommandTag_CMDTAG_DROP_TEXT_SEARCH_DICTIONARY: u32 = 144;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_DROP_TEXT_SEARCH_PARSER"
-)]
-pub const CommandTag_CMDTAG_DROP_TEXT_SEARCH_PARSER: u32 = 145;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_DROP_TEXT_SEARCH_TEMPLATE"
-)]
-pub const CommandTag_CMDTAG_DROP_TEXT_SEARCH_TEMPLATE: u32 = 146;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_TRANSFORM")]
-pub const CommandTag_CMDTAG_DROP_TRANSFORM: u32 = 147;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_TRIGGER")]
-pub const CommandTag_CMDTAG_DROP_TRIGGER: u32 = 148;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_TYPE")]
-pub const CommandTag_CMDTAG_DROP_TYPE: u32 = 149;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_USER_MAPPING")]
-pub const CommandTag_CMDTAG_DROP_USER_MAPPING: u32 = 150;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_DROP_VIEW")]
-pub const CommandTag_CMDTAG_DROP_VIEW: u32 = 151;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_EXECUTE")]
-pub const CommandTag_CMDTAG_EXECUTE: u32 = 152;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_EXPLAIN")]
-pub const CommandTag_CMDTAG_EXPLAIN: u32 = 153;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_FETCH")]
-pub const CommandTag_CMDTAG_FETCH: u32 = 154;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_GRANT")]
-pub const CommandTag_CMDTAG_GRANT: u32 = 155;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_GRANT_ROLE")]
-pub const CommandTag_CMDTAG_GRANT_ROLE: u32 = 156;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_IMPORT_FOREIGN_SCHEMA")]
-pub const CommandTag_CMDTAG_IMPORT_FOREIGN_SCHEMA: u32 = 157;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_INSERT")]
-pub const CommandTag_CMDTAG_INSERT: u32 = 158;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_LISTEN")]
-pub const CommandTag_CMDTAG_LISTEN: u32 = 159;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_LOAD")]
-pub const CommandTag_CMDTAG_LOAD: u32 = 160;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_LOCK_TABLE")]
-pub const CommandTag_CMDTAG_LOCK_TABLE: u32 = 161;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_MERGE")]
-pub const CommandTag_CMDTAG_MERGE: u32 = 162;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_MOVE")]
-pub const CommandTag_CMDTAG_MOVE: u32 = 163;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_NOTIFY")]
-pub const CommandTag_CMDTAG_NOTIFY: u32 = 164;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_PREPARE")]
-pub const CommandTag_CMDTAG_PREPARE: u32 = 165;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_PREPARE_TRANSACTION")]
-pub const CommandTag_CMDTAG_PREPARE_TRANSACTION: u32 = 166;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_REASSIGN_OWNED")]
-pub const CommandTag_CMDTAG_REASSIGN_OWNED: u32 = 167;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_REFRESH_MATERIALIZED_VIEW"
-)]
-pub const CommandTag_CMDTAG_REFRESH_MATERIALIZED_VIEW: u32 = 168;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_REINDEX")]
-pub const CommandTag_CMDTAG_REINDEX: u32 = 169;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_RELEASE")]
-pub const CommandTag_CMDTAG_RELEASE: u32 = 170;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_RESET")]
-pub const CommandTag_CMDTAG_RESET: u32 = 171;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_REVOKE")]
-pub const CommandTag_CMDTAG_REVOKE: u32 = 172;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_REVOKE_ROLE")]
-pub const CommandTag_CMDTAG_REVOKE_ROLE: u32 = 173;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ROLLBACK")]
-pub const CommandTag_CMDTAG_ROLLBACK: u32 = 174;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_ROLLBACK_PREPARED")]
-pub const CommandTag_CMDTAG_ROLLBACK_PREPARED: u32 = 175;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SAVEPOINT")]
-pub const CommandTag_CMDTAG_SAVEPOINT: u32 = 176;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SECURITY_LABEL")]
-pub const CommandTag_CMDTAG_SECURITY_LABEL: u32 = 177;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SELECT")]
-pub const CommandTag_CMDTAG_SELECT: u32 = 178;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SELECT_FOR_KEY_SHARE")]
-pub const CommandTag_CMDTAG_SELECT_FOR_KEY_SHARE: u32 = 179;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::CommandTag::CMDTAG_SELECT_FOR_NO_KEY_UPDATE"
-)]
-pub const CommandTag_CMDTAG_SELECT_FOR_NO_KEY_UPDATE: u32 = 180;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SELECT_FOR_SHARE")]
-pub const CommandTag_CMDTAG_SELECT_FOR_SHARE: u32 = 181;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SELECT_FOR_UPDATE")]
-pub const CommandTag_CMDTAG_SELECT_FOR_UPDATE: u32 = 182;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SELECT_INTO")]
-pub const CommandTag_CMDTAG_SELECT_INTO: u32 = 183;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SET")]
-pub const CommandTag_CMDTAG_SET: u32 = 184;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SET_CONSTRAINTS")]
-pub const CommandTag_CMDTAG_SET_CONSTRAINTS: u32 = 185;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_SHOW")]
-pub const CommandTag_CMDTAG_SHOW: u32 = 186;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_START_TRANSACTION")]
-pub const CommandTag_CMDTAG_START_TRANSACTION: u32 = 187;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_TRUNCATE_TABLE")]
-pub const CommandTag_CMDTAG_TRUNCATE_TABLE: u32 = 188;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_UNLISTEN")]
-pub const CommandTag_CMDTAG_UNLISTEN: u32 = 189;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_UPDATE")]
-pub const CommandTag_CMDTAG_UPDATE: u32 = 190;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::CMDTAG_VACUUM")]
-pub const CommandTag_CMDTAG_VACUUM: u32 = 191;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CommandTag::COMMAND_TAG_NEXTTAG")]
-pub const CommandTag_COMMAND_TAG_NEXTTAG: u32 = 192;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ComputeQueryIdType::COMPUTE_QUERY_ID_OFF")]
-pub const ComputeQueryIdType_COMPUTE_QUERY_ID_OFF: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ComputeQueryIdType::COMPUTE_QUERY_ID_ON")]
-pub const ComputeQueryIdType_COMPUTE_QUERY_ID_ON: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ComputeQueryIdType::COMPUTE_QUERY_ID_AUTO")]
-pub const ComputeQueryIdType_COMPUTE_QUERY_ID_AUTO: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ComputeQueryIdType::COMPUTE_QUERY_ID_REGRESS"
-)]
-pub const ComputeQueryIdType_COMPUTE_QUERY_ID_REGRESS: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_NULL")]
-pub const ConstrType_CONSTR_NULL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_NOTNULL")]
-pub const ConstrType_CONSTR_NOTNULL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_DEFAULT")]
-pub const ConstrType_CONSTR_DEFAULT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_IDENTITY")]
-pub const ConstrType_CONSTR_IDENTITY: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_GENERATED")]
-pub const ConstrType_CONSTR_GENERATED: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_CHECK")]
-pub const ConstrType_CONSTR_CHECK: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_PRIMARY")]
-pub const ConstrType_CONSTR_PRIMARY: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_UNIQUE")]
-pub const ConstrType_CONSTR_UNIQUE: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_EXCLUSION")]
-pub const ConstrType_CONSTR_EXCLUSION: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_FOREIGN")]
-pub const ConstrType_CONSTR_FOREIGN: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_ATTR_DEFERRABLE")]
-pub const ConstrType_CONSTR_ATTR_DEFERRABLE: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_ATTR_NOT_DEFERRABLE")]
-pub const ConstrType_CONSTR_ATTR_NOT_DEFERRABLE: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_ATTR_DEFERRED")]
-pub const ConstrType_CONSTR_ATTR_DEFERRED: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ConstrType::CONSTR_ATTR_IMMEDIATE")]
-pub const ConstrType_CONSTR_ATTR_IMMEDIATE: u32 = 13;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ConstraintExclusionType::CONSTRAINT_EXCLUSION_OFF"
-)]
-pub const ConstraintExclusionType_CONSTRAINT_EXCLUSION_OFF: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ConstraintExclusionType::CONSTRAINT_EXCLUSION_ON"
-)]
-pub const ConstraintExclusionType_CONSTRAINT_EXCLUSION_ON: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ConstraintExclusionType::CONSTRAINT_EXCLUSION_PARTITION"
-)]
-pub const ConstraintExclusionType_CONSTRAINT_EXCLUSION_PARTITION: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CopyHeaderChoice::COPY_HEADER_FALSE")]
-pub const CopyHeaderChoice_COPY_HEADER_FALSE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CopyHeaderChoice::COPY_HEADER_TRUE")]
-pub const CopyHeaderChoice_COPY_HEADER_TRUE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CopyHeaderChoice::COPY_HEADER_MATCH")]
-pub const CopyHeaderChoice_COPY_HEADER_MATCH: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CostSelector::STARTUP_COST")]
-pub const CostSelector_STARTUP_COST: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::CostSelector::TOTAL_COST")]
-pub const CostSelector_TOTAL_COST: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DBState::DB_STARTUP")]
-pub const DBState_DB_STARTUP: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DBState::DB_SHUTDOWNED")]
-pub const DBState_DB_SHUTDOWNED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DBState::DB_SHUTDOWNED_IN_RECOVERY")]
-pub const DBState_DB_SHUTDOWNED_IN_RECOVERY: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DBState::DB_SHUTDOWNING")]
-pub const DBState_DB_SHUTDOWNING: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DBState::DB_IN_CRASH_RECOVERY")]
-pub const DBState_DB_IN_CRASH_RECOVERY: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DBState::DB_IN_ARCHIVE_RECOVERY")]
-pub const DBState_DB_IN_ARCHIVE_RECOVERY: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DBState::DB_IN_PRODUCTION")]
-pub const DBState_DB_IN_PRODUCTION: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DeadLockState::DS_NOT_YET_CHECKED")]
-pub const DeadLockState_DS_NOT_YET_CHECKED: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DeadLockState::DS_NO_DEADLOCK")]
-pub const DeadLockState_DS_NO_DEADLOCK: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DeadLockState::DS_SOFT_DEADLOCK")]
-pub const DeadLockState_DS_SOFT_DEADLOCK: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DeadLockState::DS_HARD_DEADLOCK")]
-pub const DeadLockState_DS_HARD_DEADLOCK: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DeadLockState::DS_BLOCKED_BY_AUTOVACUUM")]
-pub const DeadLockState_DS_BLOCKED_BY_AUTOVACUUM: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::DebugLogicalRepStreamingMode::DEBUG_LOGICAL_REP_STREAMING_BUFFERED"
-)]
-pub const DebugLogicalRepStreamingMode_DEBUG_LOGICAL_REP_STREAMING_BUFFERED: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::DebugLogicalRepStreamingMode::DEBUG_LOGICAL_REP_STREAMING_IMMEDIATE"
-)]
-pub const DebugLogicalRepStreamingMode_DEBUG_LOGICAL_REP_STREAMING_IMMEDIATE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DebugParallelMode::DEBUG_PARALLEL_OFF")]
-pub const DebugParallelMode_DEBUG_PARALLEL_OFF: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DebugParallelMode::DEBUG_PARALLEL_ON")]
-pub const DebugParallelMode_DEBUG_PARALLEL_ON: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DebugParallelMode::DEBUG_PARALLEL_REGRESS")]
-pub const DebugParallelMode_DEBUG_PARALLEL_REGRESS: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DefElemAction::DEFELEM_UNSPEC")]
-pub const DefElemAction_DEFELEM_UNSPEC: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DefElemAction::DEFELEM_SET")]
-pub const DefElemAction_DEFELEM_SET: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DefElemAction::DEFELEM_ADD")]
-pub const DefElemAction_DEFELEM_ADD: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DefElemAction::DEFELEM_DROP")]
-pub const DefElemAction_DEFELEM_DROP: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DependencyType::DEPENDENCY_NORMAL")]
-pub const DependencyType_DEPENDENCY_NORMAL: u32 = 110;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DependencyType::DEPENDENCY_AUTO")]
-pub const DependencyType_DEPENDENCY_AUTO: u32 = 97;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DependencyType::DEPENDENCY_INTERNAL")]
-pub const DependencyType_DEPENDENCY_INTERNAL: u32 = 105;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DependencyType::DEPENDENCY_PARTITION_PRI")]
-pub const DependencyType_DEPENDENCY_PARTITION_PRI: u32 = 80;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DependencyType::DEPENDENCY_PARTITION_SEC")]
-pub const DependencyType_DEPENDENCY_PARTITION_SEC: u32 = 83;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DependencyType::DEPENDENCY_EXTENSION")]
-pub const DependencyType_DEPENDENCY_EXTENSION: u32 = 101;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DependencyType::DEPENDENCY_AUTO_EXTENSION")]
-pub const DependencyType_DEPENDENCY_AUTO_EXTENSION: u32 = 120;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DiscardMode::DISCARD_ALL")]
-pub const DiscardMode_DISCARD_ALL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DiscardMode::DISCARD_PLANS")]
-pub const DiscardMode_DISCARD_PLANS: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DiscardMode::DISCARD_SEQUENCES")]
-pub const DiscardMode_DISCARD_SEQUENCES: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DiscardMode::DISCARD_TEMP")]
-pub const DiscardMode_DISCARD_TEMP: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::DomainConstraintType::DOM_CONSTRAINT_NOTNULL"
-)]
-pub const DomainConstraintType_DOM_CONSTRAINT_NOTNULL: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::DomainConstraintType::DOM_CONSTRAINT_CHECK"
-)]
-pub const DomainConstraintType_DOM_CONSTRAINT_CHECK: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DropBehavior::DROP_RESTRICT")]
-pub const DropBehavior_DROP_RESTRICT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::DropBehavior::DROP_CASCADE")]
-pub const DropBehavior_DROP_CASCADE: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::EphemeralNameRelationType::ENR_NAMED_TUPLESTORE"
-)]
-pub const EphemeralNameRelationType_ENR_NAMED_TUPLESTORE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExplainFormat::EXPLAIN_FORMAT_TEXT")]
-pub const ExplainFormat_EXPLAIN_FORMAT_TEXT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExplainFormat::EXPLAIN_FORMAT_XML")]
-pub const ExplainFormat_EXPLAIN_FORMAT_XML: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExplainFormat::EXPLAIN_FORMAT_JSON")]
-pub const ExplainFormat_EXPLAIN_FORMAT_JSON: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExplainFormat::EXPLAIN_FORMAT_YAML")]
-pub const ExplainFormat_EXPLAIN_FORMAT_YAML: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprDoneCond::ExprSingleResult")]
-pub const ExprDoneCond_ExprSingleResult: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprDoneCond::ExprMultipleResult")]
-pub const ExprDoneCond_ExprMultipleResult: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprDoneCond::ExprEndResult")]
-pub const ExprDoneCond_ExprEndResult: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_DONE")]
-pub const ExprEvalOp_EEOP_DONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_INNER_FETCHSOME")]
-pub const ExprEvalOp_EEOP_INNER_FETCHSOME: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_OUTER_FETCHSOME")]
-pub const ExprEvalOp_EEOP_OUTER_FETCHSOME: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SCAN_FETCHSOME")]
-pub const ExprEvalOp_EEOP_SCAN_FETCHSOME: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_INNER_VAR")]
-pub const ExprEvalOp_EEOP_INNER_VAR: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_OUTER_VAR")]
-pub const ExprEvalOp_EEOP_OUTER_VAR: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SCAN_VAR")]
-pub const ExprEvalOp_EEOP_SCAN_VAR: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_INNER_SYSVAR")]
-pub const ExprEvalOp_EEOP_INNER_SYSVAR: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_OUTER_SYSVAR")]
-pub const ExprEvalOp_EEOP_OUTER_SYSVAR: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SCAN_SYSVAR")]
-pub const ExprEvalOp_EEOP_SCAN_SYSVAR: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_WHOLEROW")]
-pub const ExprEvalOp_EEOP_WHOLEROW: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ASSIGN_INNER_VAR")]
-pub const ExprEvalOp_EEOP_ASSIGN_INNER_VAR: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ASSIGN_OUTER_VAR")]
-pub const ExprEvalOp_EEOP_ASSIGN_OUTER_VAR: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ASSIGN_SCAN_VAR")]
-pub const ExprEvalOp_EEOP_ASSIGN_SCAN_VAR: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ASSIGN_TMP")]
-pub const ExprEvalOp_EEOP_ASSIGN_TMP: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ASSIGN_TMP_MAKE_RO")]
-pub const ExprEvalOp_EEOP_ASSIGN_TMP_MAKE_RO: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_CONST")]
-pub const ExprEvalOp_EEOP_CONST: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_FUNCEXPR")]
-pub const ExprEvalOp_EEOP_FUNCEXPR: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_FUNCEXPR_STRICT")]
-pub const ExprEvalOp_EEOP_FUNCEXPR_STRICT: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_FUNCEXPR_FUSAGE")]
-pub const ExprEvalOp_EEOP_FUNCEXPR_FUSAGE: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_FUNCEXPR_STRICT_FUSAGE")]
-pub const ExprEvalOp_EEOP_FUNCEXPR_STRICT_FUSAGE: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOL_AND_STEP_FIRST")]
-pub const ExprEvalOp_EEOP_BOOL_AND_STEP_FIRST: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOL_AND_STEP")]
-pub const ExprEvalOp_EEOP_BOOL_AND_STEP: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOL_AND_STEP_LAST")]
-pub const ExprEvalOp_EEOP_BOOL_AND_STEP_LAST: u32 = 23;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOL_OR_STEP_FIRST")]
-pub const ExprEvalOp_EEOP_BOOL_OR_STEP_FIRST: u32 = 24;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOL_OR_STEP")]
-pub const ExprEvalOp_EEOP_BOOL_OR_STEP: u32 = 25;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOL_OR_STEP_LAST")]
-pub const ExprEvalOp_EEOP_BOOL_OR_STEP_LAST: u32 = 26;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOL_NOT_STEP")]
-pub const ExprEvalOp_EEOP_BOOL_NOT_STEP: u32 = 27;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_QUAL")]
-pub const ExprEvalOp_EEOP_QUAL: u32 = 28;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_JUMP")]
-pub const ExprEvalOp_EEOP_JUMP: u32 = 29;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_JUMP_IF_NULL")]
-pub const ExprEvalOp_EEOP_JUMP_IF_NULL: u32 = 30;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_JUMP_IF_NOT_NULL")]
-pub const ExprEvalOp_EEOP_JUMP_IF_NOT_NULL: u32 = 31;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_JUMP_IF_NOT_TRUE")]
-pub const ExprEvalOp_EEOP_JUMP_IF_NOT_TRUE: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_NULLTEST_ISNULL")]
-pub const ExprEvalOp_EEOP_NULLTEST_ISNULL: u32 = 33;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_NULLTEST_ISNOTNULL")]
-pub const ExprEvalOp_EEOP_NULLTEST_ISNOTNULL: u32 = 34;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_NULLTEST_ROWISNULL")]
-pub const ExprEvalOp_EEOP_NULLTEST_ROWISNULL: u32 = 35;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_NULLTEST_ROWISNOTNULL")]
-pub const ExprEvalOp_EEOP_NULLTEST_ROWISNOTNULL: u32 = 36;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOLTEST_IS_TRUE")]
-pub const ExprEvalOp_EEOP_BOOLTEST_IS_TRUE: u32 = 37;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOLTEST_IS_NOT_TRUE")]
-pub const ExprEvalOp_EEOP_BOOLTEST_IS_NOT_TRUE: u32 = 38;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOLTEST_IS_FALSE")]
-pub const ExprEvalOp_EEOP_BOOLTEST_IS_FALSE: u32 = 39;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_BOOLTEST_IS_NOT_FALSE")]
-pub const ExprEvalOp_EEOP_BOOLTEST_IS_NOT_FALSE: u32 = 40;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_PARAM_EXEC")]
-pub const ExprEvalOp_EEOP_PARAM_EXEC: u32 = 41;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_PARAM_EXTERN")]
-pub const ExprEvalOp_EEOP_PARAM_EXTERN: u32 = 42;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_PARAM_CALLBACK")]
-pub const ExprEvalOp_EEOP_PARAM_CALLBACK: u32 = 43;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_CASE_TESTVAL")]
-pub const ExprEvalOp_EEOP_CASE_TESTVAL: u32 = 44;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_MAKE_READONLY")]
-pub const ExprEvalOp_EEOP_MAKE_READONLY: u32 = 45;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_IOCOERCE")]
-pub const ExprEvalOp_EEOP_IOCOERCE: u32 = 46;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_DISTINCT")]
-pub const ExprEvalOp_EEOP_DISTINCT: u32 = 47;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_NOT_DISTINCT")]
-pub const ExprEvalOp_EEOP_NOT_DISTINCT: u32 = 48;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_NULLIF")]
-pub const ExprEvalOp_EEOP_NULLIF: u32 = 49;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SQLVALUEFUNCTION")]
-pub const ExprEvalOp_EEOP_SQLVALUEFUNCTION: u32 = 50;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_CURRENTOFEXPR")]
-pub const ExprEvalOp_EEOP_CURRENTOFEXPR: u32 = 51;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_NEXTVALUEEXPR")]
-pub const ExprEvalOp_EEOP_NEXTVALUEEXPR: u32 = 52;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ARRAYEXPR")]
-pub const ExprEvalOp_EEOP_ARRAYEXPR: u32 = 53;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ARRAYCOERCE")]
-pub const ExprEvalOp_EEOP_ARRAYCOERCE: u32 = 54;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ROW")]
-pub const ExprEvalOp_EEOP_ROW: u32 = 55;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ROWCOMPARE_STEP")]
-pub const ExprEvalOp_EEOP_ROWCOMPARE_STEP: u32 = 56;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_ROWCOMPARE_FINAL")]
-pub const ExprEvalOp_EEOP_ROWCOMPARE_FINAL: u32 = 57;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_MINMAX")]
-pub const ExprEvalOp_EEOP_MINMAX: u32 = 58;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_FIELDSELECT")]
-pub const ExprEvalOp_EEOP_FIELDSELECT: u32 = 59;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_FIELDSTORE_DEFORM")]
-pub const ExprEvalOp_EEOP_FIELDSTORE_DEFORM: u32 = 60;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_FIELDSTORE_FORM")]
-pub const ExprEvalOp_EEOP_FIELDSTORE_FORM: u32 = 61;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SBSREF_SUBSCRIPTS")]
-pub const ExprEvalOp_EEOP_SBSREF_SUBSCRIPTS: u32 = 62;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SBSREF_OLD")]
-pub const ExprEvalOp_EEOP_SBSREF_OLD: u32 = 63;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SBSREF_ASSIGN")]
-pub const ExprEvalOp_EEOP_SBSREF_ASSIGN: u32 = 64;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SBSREF_FETCH")]
-pub const ExprEvalOp_EEOP_SBSREF_FETCH: u32 = 65;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_DOMAIN_TESTVAL")]
-pub const ExprEvalOp_EEOP_DOMAIN_TESTVAL: u32 = 66;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_DOMAIN_NOTNULL")]
-pub const ExprEvalOp_EEOP_DOMAIN_NOTNULL: u32 = 67;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_DOMAIN_CHECK")]
-pub const ExprEvalOp_EEOP_DOMAIN_CHECK: u32 = 68;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_CONVERT_ROWTYPE")]
-pub const ExprEvalOp_EEOP_CONVERT_ROWTYPE: u32 = 69;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SCALARARRAYOP")]
-pub const ExprEvalOp_EEOP_SCALARARRAYOP: u32 = 70;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_HASHED_SCALARARRAYOP")]
-pub const ExprEvalOp_EEOP_HASHED_SCALARARRAYOP: u32 = 71;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_XMLEXPR")]
-pub const ExprEvalOp_EEOP_XMLEXPR: u32 = 72;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_JSON_CONSTRUCTOR")]
-pub const ExprEvalOp_EEOP_JSON_CONSTRUCTOR: u32 = 73;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_IS_JSON")]
-pub const ExprEvalOp_EEOP_IS_JSON: u32 = 74;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_AGGREF")]
-pub const ExprEvalOp_EEOP_AGGREF: u32 = 75;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_GROUPING_FUNC")]
-pub const ExprEvalOp_EEOP_GROUPING_FUNC: u32 = 76;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_WINDOW_FUNC")]
-pub const ExprEvalOp_EEOP_WINDOW_FUNC: u32 = 77;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_SUBPLAN")]
-pub const ExprEvalOp_EEOP_SUBPLAN: u32 = 78;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_AGG_STRICT_DESERIALIZE")]
-pub const ExprEvalOp_EEOP_AGG_STRICT_DESERIALIZE: u32 = 79;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_AGG_DESERIALIZE")]
-pub const ExprEvalOp_EEOP_AGG_DESERIALIZE: u32 = 80;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_STRICT_INPUT_CHECK_ARGS"
-)]
-pub const ExprEvalOp_EEOP_AGG_STRICT_INPUT_CHECK_ARGS: u32 = 81;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_STRICT_INPUT_CHECK_NULLS"
-)]
-pub const ExprEvalOp_EEOP_AGG_STRICT_INPUT_CHECK_NULLS: u32 = 82;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PLAIN_PERGROUP_NULLCHECK"
-)]
-pub const ExprEvalOp_EEOP_AGG_PLAIN_PERGROUP_NULLCHECK: u32 = 83;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYVAL"
-)]
-pub const ExprEvalOp_EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYVAL: u32 = 84;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PLAIN_TRANS_STRICT_BYVAL"
-)]
-pub const ExprEvalOp_EEOP_AGG_PLAIN_TRANS_STRICT_BYVAL: u32 = 85;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PLAIN_TRANS_BYVAL")]
-pub const ExprEvalOp_EEOP_AGG_PLAIN_TRANS_BYVAL: u32 = 86;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYREF"
-)]
-pub const ExprEvalOp_EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYREF: u32 = 87;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PLAIN_TRANS_STRICT_BYREF"
-)]
-pub const ExprEvalOp_EEOP_AGG_PLAIN_TRANS_STRICT_BYREF: u32 = 88;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PLAIN_TRANS_BYREF")]
-pub const ExprEvalOp_EEOP_AGG_PLAIN_TRANS_BYREF: u32 = 89;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PRESORTED_DISTINCT_SINGLE"
-)]
-pub const ExprEvalOp_EEOP_AGG_PRESORTED_DISTINCT_SINGLE: u32 = 90;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExprEvalOp::EEOP_AGG_PRESORTED_DISTINCT_MULTI"
-)]
-pub const ExprEvalOp_EEOP_AGG_PRESORTED_DISTINCT_MULTI: u32 = 91;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_AGG_ORDERED_TRANS_DATUM")]
-pub const ExprEvalOp_EEOP_AGG_ORDERED_TRANS_DATUM: u32 = 92;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_AGG_ORDERED_TRANS_TUPLE")]
-pub const ExprEvalOp_EEOP_AGG_ORDERED_TRANS_TUPLE: u32 = 93;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExprEvalOp::EEOP_LAST")]
-pub const ExprEvalOp_EEOP_LAST: u32 = 94;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExtendBufferedFlags::EB_SKIP_EXTENSION_LOCK"
-)]
-pub const ExtendBufferedFlags_EB_SKIP_EXTENSION_LOCK: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExtendBufferedFlags::EB_PERFORMING_RECOVERY"
-)]
-pub const ExtendBufferedFlags_EB_PERFORMING_RECOVERY: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ExtendBufferedFlags::EB_CREATE_FORK_IF_NEEDED"
-)]
-pub const ExtendBufferedFlags_EB_CREATE_FORK_IF_NEEDED: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExtendBufferedFlags::EB_LOCK_FIRST")]
-pub const ExtendBufferedFlags_EB_LOCK_FIRST: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExtendBufferedFlags::EB_CLEAR_SIZE_CACHE")]
-pub const ExtendBufferedFlags_EB_CLEAR_SIZE_CACHE: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ExtendBufferedFlags::EB_LOCK_TARGET")]
-pub const ExtendBufferedFlags_EB_LOCK_TARGET: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FetchDirection::FETCH_FORWARD")]
-pub const FetchDirection_FETCH_FORWARD: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FetchDirection::FETCH_BACKWARD")]
-pub const FetchDirection_FETCH_BACKWARD: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FetchDirection::FETCH_ABSOLUTE")]
-pub const FetchDirection_FETCH_ABSOLUTE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FetchDirection::FETCH_RELATIVE")]
-pub const FetchDirection_FETCH_RELATIVE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FmgrHookEventType::FHET_START")]
-pub const FmgrHookEventType_FHET_START: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FmgrHookEventType::FHET_END")]
-pub const FmgrHookEventType_FHET_END: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FmgrHookEventType::FHET_ABORT")]
-pub const FmgrHookEventType_FHET_ABORT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ForkNumber::InvalidForkNumber")]
-pub const ForkNumber_InvalidForkNumber: i32 = -1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ForkNumber::MAIN_FORKNUM")]
-pub const ForkNumber_MAIN_FORKNUM: i32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ForkNumber::FSM_FORKNUM")]
-pub const ForkNumber_FSM_FORKNUM: i32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ForkNumber::VISIBILITYMAP_FORKNUM")]
-pub const ForkNumber_VISIBILITYMAP_FORKNUM: i32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ForkNumber::INIT_FORKNUM")]
-pub const ForkNumber_INIT_FORKNUM: i32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FuncDetailCode::FUNCDETAIL_NOTFOUND")]
-pub const FuncDetailCode_FUNCDETAIL_NOTFOUND: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FuncDetailCode::FUNCDETAIL_MULTIPLE")]
-pub const FuncDetailCode_FUNCDETAIL_MULTIPLE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FuncDetailCode::FUNCDETAIL_NORMAL")]
-pub const FuncDetailCode_FUNCDETAIL_NORMAL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FuncDetailCode::FUNCDETAIL_PROCEDURE")]
-pub const FuncDetailCode_FUNCDETAIL_PROCEDURE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FuncDetailCode::FUNCDETAIL_AGGREGATE")]
-pub const FuncDetailCode_FUNCDETAIL_AGGREGATE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FuncDetailCode::FUNCDETAIL_WINDOWFUNC")]
-pub const FuncDetailCode_FUNCDETAIL_WINDOWFUNC: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FuncDetailCode::FUNCDETAIL_COERCION")]
-pub const FuncDetailCode_FUNCDETAIL_COERCION: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FunctionParameterMode::FUNC_PARAM_IN")]
-pub const FunctionParameterMode_FUNC_PARAM_IN: u32 = 105;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FunctionParameterMode::FUNC_PARAM_OUT")]
-pub const FunctionParameterMode_FUNC_PARAM_OUT: u32 = 111;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FunctionParameterMode::FUNC_PARAM_INOUT")]
-pub const FunctionParameterMode_FUNC_PARAM_INOUT: u32 = 98;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::FunctionParameterMode::FUNC_PARAM_VARIADIC"
-)]
-pub const FunctionParameterMode_FUNC_PARAM_VARIADIC: u32 = 118;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FunctionParameterMode::FUNC_PARAM_TABLE")]
-pub const FunctionParameterMode_FUNC_PARAM_TABLE: u32 = 116;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::FunctionParameterMode::FUNC_PARAM_DEFAULT")]
-pub const FunctionParameterMode_FUNC_PARAM_DEFAULT: u32 = 100;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GrantTargetType::ACL_TARGET_OBJECT")]
-pub const GrantTargetType_ACL_TARGET_OBJECT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GrantTargetType::ACL_TARGET_ALL_IN_SCHEMA")]
-pub const GrantTargetType_ACL_TARGET_ALL_IN_SCHEMA: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GrantTargetType::ACL_TARGET_DEFAULTS")]
-pub const GrantTargetType_ACL_TARGET_DEFAULTS: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GroupingSetKind::GROUPING_SET_EMPTY")]
-pub const GroupingSetKind_GROUPING_SET_EMPTY: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GroupingSetKind::GROUPING_SET_SIMPLE")]
-pub const GroupingSetKind_GROUPING_SET_SIMPLE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GroupingSetKind::GROUPING_SET_ROLLUP")]
-pub const GroupingSetKind_GROUPING_SET_ROLLUP: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GroupingSetKind::GROUPING_SET_CUBE")]
-pub const GroupingSetKind_GROUPING_SET_CUBE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GroupingSetKind::GROUPING_SET_SETS")]
-pub const GroupingSetKind_GROUPING_SET_SETS: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucAction::GUC_ACTION_SET")]
-pub const GucAction_GUC_ACTION_SET: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucAction::GUC_ACTION_LOCAL")]
-pub const GucAction_GUC_ACTION_LOCAL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucAction::GUC_ACTION_SAVE")]
-pub const GucAction_GUC_ACTION_SAVE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucContext::PGC_INTERNAL")]
-pub const GucContext_PGC_INTERNAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucContext::PGC_POSTMASTER")]
-pub const GucContext_PGC_POSTMASTER: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucContext::PGC_SIGHUP")]
-pub const GucContext_PGC_SIGHUP: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucContext::PGC_SU_BACKEND")]
-pub const GucContext_PGC_SU_BACKEND: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucContext::PGC_BACKEND")]
-pub const GucContext_PGC_BACKEND: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucContext::PGC_SUSET")]
-pub const GucContext_PGC_SUSET: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucContext::PGC_USERSET")]
-pub const GucContext_PGC_USERSET: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_DEFAULT")]
-pub const GucSource_PGC_S_DEFAULT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_DYNAMIC_DEFAULT")]
-pub const GucSource_PGC_S_DYNAMIC_DEFAULT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_ENV_VAR")]
-pub const GucSource_PGC_S_ENV_VAR: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_FILE")]
-pub const GucSource_PGC_S_FILE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_ARGV")]
-pub const GucSource_PGC_S_ARGV: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_GLOBAL")]
-pub const GucSource_PGC_S_GLOBAL: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_DATABASE")]
-pub const GucSource_PGC_S_DATABASE: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_USER")]
-pub const GucSource_PGC_S_USER: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_DATABASE_USER")]
-pub const GucSource_PGC_S_DATABASE_USER: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_CLIENT")]
-pub const GucSource_PGC_S_CLIENT: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_OVERRIDE")]
-pub const GucSource_PGC_S_OVERRIDE: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_INTERACTIVE")]
-pub const GucSource_PGC_S_INTERACTIVE: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_TEST")]
-pub const GucSource_PGC_S_TEST: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::GucSource::PGC_S_SESSION")]
-pub const GucSource_PGC_S_SESSION: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HASHACTION::HASH_FIND")]
-pub const HASHACTION_HASH_FIND: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HASHACTION::HASH_ENTER")]
-pub const HASHACTION_HASH_ENTER: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HASHACTION::HASH_REMOVE")]
-pub const HASHACTION_HASH_REMOVE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HASHACTION::HASH_ENTER_NULL")]
-pub const HASHACTION_HASH_ENTER_NULL: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HTSV_Result::HEAPTUPLE_DEAD")]
-pub const HTSV_Result_HEAPTUPLE_DEAD: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HTSV_Result::HEAPTUPLE_LIVE")]
-pub const HTSV_Result_HEAPTUPLE_LIVE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HTSV_Result::HEAPTUPLE_RECENTLY_DEAD")]
-pub const HTSV_Result_HEAPTUPLE_RECENTLY_DEAD: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HTSV_Result::HEAPTUPLE_INSERT_IN_PROGRESS")]
-pub const HTSV_Result_HEAPTUPLE_INSERT_IN_PROGRESS: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HTSV_Result::HEAPTUPLE_DELETE_IN_PROGRESS")]
-pub const HTSV_Result_HEAPTUPLE_DELETE_IN_PROGRESS: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HotStandbyState::STANDBY_DISABLED")]
-pub const HotStandbyState_STANDBY_DISABLED: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HotStandbyState::STANDBY_INITIALIZED")]
-pub const HotStandbyState_STANDBY_INITIALIZED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HotStandbyState::STANDBY_SNAPSHOT_PENDING")]
-pub const HotStandbyState_STANDBY_SNAPSHOT_PENDING: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::HotStandbyState::STANDBY_SNAPSHOT_READY")]
-pub const HotStandbyState_STANDBY_SNAPSHOT_READY: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOContext::IOCONTEXT_BULKREAD")]
-pub const IOContext_IOCONTEXT_BULKREAD: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOContext::IOCONTEXT_BULKWRITE")]
-pub const IOContext_IOCONTEXT_BULKWRITE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOContext::IOCONTEXT_NORMAL")]
-pub const IOContext_IOCONTEXT_NORMAL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOContext::IOCONTEXT_VACUUM")]
-pub const IOContext_IOCONTEXT_VACUUM: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOFuncSelector::IOFunc_input")]
-pub const IOFuncSelector_IOFunc_input: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOFuncSelector::IOFunc_output")]
-pub const IOFuncSelector_IOFunc_output: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOFuncSelector::IOFunc_receive")]
-pub const IOFuncSelector_IOFunc_receive: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOFuncSelector::IOFunc_send")]
-pub const IOFuncSelector_IOFunc_send: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOObject::IOOBJECT_RELATION")]
-pub const IOObject_IOOBJECT_RELATION: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOObject::IOOBJECT_TEMP_RELATION")]
-pub const IOObject_IOOBJECT_TEMP_RELATION: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOOp::IOOP_EVICT")]
-pub const IOOp_IOOP_EVICT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOOp::IOOP_EXTEND")]
-pub const IOOp_IOOP_EXTEND: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOOp::IOOP_FSYNC")]
-pub const IOOp_IOOP_FSYNC: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOOp::IOOP_HIT")]
-pub const IOOp_IOOP_HIT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOOp::IOOP_READ")]
-pub const IOOp_IOOP_READ: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOOp::IOOP_REUSE")]
-pub const IOOp_IOOP_REUSE: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOOp::IOOP_WRITE")]
-pub const IOOp_IOOP_WRITE: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IOOp::IOOP_WRITEBACK")]
-pub const IOOp_IOOP_WRITEBACK: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IdentifierLookup::IDENTIFIER_LOOKUP_NORMAL"
-)]
-pub const IdentifierLookup_IDENTIFIER_LOOKUP_NORMAL: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IdentifierLookup::IDENTIFIER_LOOKUP_DECLARE"
-)]
-pub const IdentifierLookup_IDENTIFIER_LOOKUP_DECLARE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IdentifierLookup::IDENTIFIER_LOOKUP_EXPR")]
-pub const IdentifierLookup_IDENTIFIER_LOOKUP_EXPR: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ImportForeignSchemaType::FDW_IMPORT_SCHEMA_ALL"
-)]
-pub const ImportForeignSchemaType_FDW_IMPORT_SCHEMA_ALL: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ImportForeignSchemaType::FDW_IMPORT_SCHEMA_LIMIT_TO"
-)]
-pub const ImportForeignSchemaType_FDW_IMPORT_SCHEMA_LIMIT_TO: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ImportForeignSchemaType::FDW_IMPORT_SCHEMA_EXCEPT"
-)]
-pub const ImportForeignSchemaType_FDW_IMPORT_SCHEMA_EXCEPT: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IncrementalSortExecutionStatus::INCSORT_LOADFULLSORT"
-)]
-pub const IncrementalSortExecutionStatus_INCSORT_LOADFULLSORT: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IncrementalSortExecutionStatus::INCSORT_LOADPREFIXSORT"
-)]
-pub const IncrementalSortExecutionStatus_INCSORT_LOADPREFIXSORT: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IncrementalSortExecutionStatus::INCSORT_READFULLSORT"
-)]
-pub const IncrementalSortExecutionStatus_INCSORT_READFULLSORT: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IncrementalSortExecutionStatus::INCSORT_READPREFIXSORT"
-)]
-pub const IncrementalSortExecutionStatus_INCSORT_READPREFIXSORT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_UNKNOWN")]
-pub const IndexAMProperty_AMPROP_UNKNOWN: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_ASC")]
-pub const IndexAMProperty_AMPROP_ASC: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_DESC")]
-pub const IndexAMProperty_AMPROP_DESC: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_NULLS_FIRST")]
-pub const IndexAMProperty_AMPROP_NULLS_FIRST: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_NULLS_LAST")]
-pub const IndexAMProperty_AMPROP_NULLS_LAST: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_ORDERABLE")]
-pub const IndexAMProperty_AMPROP_ORDERABLE: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexAMProperty::AMPROP_DISTANCE_ORDERABLE"
-)]
-pub const IndexAMProperty_AMPROP_DISTANCE_ORDERABLE: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_RETURNABLE")]
-pub const IndexAMProperty_AMPROP_RETURNABLE: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_SEARCH_ARRAY")]
-pub const IndexAMProperty_AMPROP_SEARCH_ARRAY: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_SEARCH_NULLS")]
-pub const IndexAMProperty_AMPROP_SEARCH_NULLS: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_CLUSTERABLE")]
-pub const IndexAMProperty_AMPROP_CLUSTERABLE: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_INDEX_SCAN")]
-pub const IndexAMProperty_AMPROP_INDEX_SCAN: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_BITMAP_SCAN")]
-pub const IndexAMProperty_AMPROP_BITMAP_SCAN: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_BACKWARD_SCAN")]
-pub const IndexAMProperty_AMPROP_BACKWARD_SCAN: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_CAN_ORDER")]
-pub const IndexAMProperty_AMPROP_CAN_ORDER: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_CAN_UNIQUE")]
-pub const IndexAMProperty_AMPROP_CAN_UNIQUE: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_CAN_MULTI_COL")]
-pub const IndexAMProperty_AMPROP_CAN_MULTI_COL: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_CAN_EXCLUDE")]
-pub const IndexAMProperty_AMPROP_CAN_EXCLUDE: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexAMProperty::AMPROP_CAN_INCLUDE")]
-pub const IndexAMProperty_AMPROP_CAN_INCLUDE: u32 = 18;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexAttrBitmapKind::INDEX_ATTR_BITMAP_KEY"
-)]
-pub const IndexAttrBitmapKind_INDEX_ATTR_BITMAP_KEY: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexAttrBitmapKind::INDEX_ATTR_BITMAP_PRIMARY_KEY"
-)]
-pub const IndexAttrBitmapKind_INDEX_ATTR_BITMAP_PRIMARY_KEY: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexAttrBitmapKind::INDEX_ATTR_BITMAP_IDENTITY_KEY"
-)]
-pub const IndexAttrBitmapKind_INDEX_ATTR_BITMAP_IDENTITY_KEY: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexAttrBitmapKind::INDEX_ATTR_BITMAP_HOT_BLOCKING"
-)]
-pub const IndexAttrBitmapKind_INDEX_ATTR_BITMAP_HOT_BLOCKING: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexAttrBitmapKind::INDEX_ATTR_BITMAP_SUMMARIZED"
-)]
-pub const IndexAttrBitmapKind_INDEX_ATTR_BITMAP_SUMMARIZED: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexStateFlagsAction::INDEX_CREATE_SET_READY"
-)]
-pub const IndexStateFlagsAction_INDEX_CREATE_SET_READY: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexStateFlagsAction::INDEX_CREATE_SET_VALID"
-)]
-pub const IndexStateFlagsAction_INDEX_CREATE_SET_VALID: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexStateFlagsAction::INDEX_DROP_CLEAR_VALID"
-)]
-pub const IndexStateFlagsAction_INDEX_DROP_CLEAR_VALID: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::IndexStateFlagsAction::INDEX_DROP_SET_DEAD"
-)]
-pub const IndexStateFlagsAction_INDEX_DROP_SET_DEAD: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexUniqueCheck::UNIQUE_CHECK_NO")]
-pub const IndexUniqueCheck_UNIQUE_CHECK_NO: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexUniqueCheck::UNIQUE_CHECK_YES")]
-pub const IndexUniqueCheck_UNIQUE_CHECK_YES: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexUniqueCheck::UNIQUE_CHECK_PARTIAL")]
-pub const IndexUniqueCheck_UNIQUE_CHECK_PARTIAL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::IndexUniqueCheck::UNIQUE_CHECK_EXISTING")]
-pub const IndexUniqueCheck_UNIQUE_CHECK_EXISTING: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::InstrumentOption::INSTRUMENT_TIMER")]
-pub const InstrumentOption_INSTRUMENT_TIMER: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::InstrumentOption::INSTRUMENT_BUFFERS")]
-pub const InstrumentOption_INSTRUMENT_BUFFERS: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::InstrumentOption::INSTRUMENT_ROWS")]
-pub const InstrumentOption_INSTRUMENT_ROWS: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::InstrumentOption::INSTRUMENT_WAL")]
-pub const InstrumentOption_INSTRUMENT_WAL: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::InstrumentOption::INSTRUMENT_ALL")]
-pub const InstrumentOption_INSTRUMENT_ALL: u32 = 2147483647;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_INNER")]
-pub const JoinType_JOIN_INNER: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_LEFT")]
-pub const JoinType_JOIN_LEFT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_FULL")]
-pub const JoinType_JOIN_FULL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_RIGHT")]
-pub const JoinType_JOIN_RIGHT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_SEMI")]
-pub const JoinType_JOIN_SEMI: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_ANTI")]
-pub const JoinType_JOIN_ANTI: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_RIGHT_ANTI")]
-pub const JoinType_JOIN_RIGHT_ANTI: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_UNIQUE_OUTER")]
-pub const JoinType_JOIN_UNIQUE_OUTER: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JoinType::JOIN_UNIQUE_INNER")]
-pub const JoinType_JOIN_UNIQUE_INNER: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonConstructorType::JSCTOR_JSON_OBJECT")]
-pub const JsonConstructorType_JSCTOR_JSON_OBJECT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonConstructorType::JSCTOR_JSON_ARRAY")]
-pub const JsonConstructorType_JSCTOR_JSON_ARRAY: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::JsonConstructorType::JSCTOR_JSON_OBJECTAGG"
-)]
-pub const JsonConstructorType_JSCTOR_JSON_OBJECTAGG: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonConstructorType::JSCTOR_JSON_ARRAYAGG")]
-pub const JsonConstructorType_JSCTOR_JSON_ARRAYAGG: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonEncoding::JS_ENC_DEFAULT")]
-pub const JsonEncoding_JS_ENC_DEFAULT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonEncoding::JS_ENC_UTF8")]
-pub const JsonEncoding_JS_ENC_UTF8: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonEncoding::JS_ENC_UTF16")]
-pub const JsonEncoding_JS_ENC_UTF16: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonEncoding::JS_ENC_UTF32")]
-pub const JsonEncoding_JS_ENC_UTF32: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonFormatType::JS_FORMAT_DEFAULT")]
-pub const JsonFormatType_JS_FORMAT_DEFAULT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonFormatType::JS_FORMAT_JSON")]
-pub const JsonFormatType_JS_FORMAT_JSON: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonFormatType::JS_FORMAT_JSONB")]
-pub const JsonFormatType_JS_FORMAT_JSONB: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonValueType::JS_TYPE_ANY")]
-pub const JsonValueType_JS_TYPE_ANY: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonValueType::JS_TYPE_OBJECT")]
-pub const JsonValueType_JS_TYPE_OBJECT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonValueType::JS_TYPE_ARRAY")]
-pub const JsonValueType_JS_TYPE_ARRAY: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonValueType::JS_TYPE_SCALAR")]
-pub const JsonValueType_JS_TYPE_SCALAR: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIterState::JBI_ARRAY_START")]
-pub const JsonbIterState_JBI_ARRAY_START: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIterState::JBI_ARRAY_ELEM")]
-pub const JsonbIterState_JBI_ARRAY_ELEM: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIterState::JBI_OBJECT_START")]
-pub const JsonbIterState_JBI_OBJECT_START: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIterState::JBI_OBJECT_KEY")]
-pub const JsonbIterState_JBI_OBJECT_KEY: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIterState::JBI_OBJECT_VALUE")]
-pub const JsonbIterState_JBI_OBJECT_VALUE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIteratorToken::WJB_DONE")]
-pub const JsonbIteratorToken_WJB_DONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIteratorToken::WJB_KEY")]
-pub const JsonbIteratorToken_WJB_KEY: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIteratorToken::WJB_VALUE")]
-pub const JsonbIteratorToken_WJB_VALUE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIteratorToken::WJB_ELEM")]
-pub const JsonbIteratorToken_WJB_ELEM: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY")]
-pub const JsonbIteratorToken_WJB_BEGIN_ARRAY: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIteratorToken::WJB_END_ARRAY")]
-pub const JsonbIteratorToken_WJB_END_ARRAY: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT")]
-pub const JsonbIteratorToken_WJB_BEGIN_OBJECT: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::JsonbIteratorToken::WJB_END_OBJECT")]
-pub const JsonbIteratorToken_WJB_END_OBJECT: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LWLockMode::LW_EXCLUSIVE")]
-pub const LWLockMode_LW_EXCLUSIVE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LWLockMode::LW_SHARED")]
-pub const LWLockMode_LW_SHARED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LWLockMode::LW_WAIT_UNTIL_FREE")]
-pub const LWLockMode_LW_WAIT_UNTIL_FREE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LWLockWaitState::LW_WS_NOT_WAITING")]
-pub const LWLockWaitState_LW_WS_NOT_WAITING: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LWLockWaitState::LW_WS_WAITING")]
-pub const LWLockWaitState_LW_WS_WAITING: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LWLockWaitState::LW_WS_PENDING_WAKEUP")]
-pub const LWLockWaitState_LW_WS_PENDING_WAKEUP: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitOption::LIMIT_OPTION_COUNT")]
-pub const LimitOption_LIMIT_OPTION_COUNT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitOption::LIMIT_OPTION_WITH_TIES")]
-pub const LimitOption_LIMIT_OPTION_WITH_TIES: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitOption::LIMIT_OPTION_DEFAULT")]
-pub const LimitOption_LIMIT_OPTION_DEFAULT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitStateCond::LIMIT_INITIAL")]
-pub const LimitStateCond_LIMIT_INITIAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitStateCond::LIMIT_RESCAN")]
-pub const LimitStateCond_LIMIT_RESCAN: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitStateCond::LIMIT_EMPTY")]
-pub const LimitStateCond_LIMIT_EMPTY: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitStateCond::LIMIT_INWINDOW")]
-pub const LimitStateCond_LIMIT_INWINDOW: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitStateCond::LIMIT_WINDOWEND_TIES")]
-pub const LimitStateCond_LIMIT_WINDOWEND_TIES: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitStateCond::LIMIT_SUBPLANEOF")]
-pub const LimitStateCond_LIMIT_SUBPLANEOF: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitStateCond::LIMIT_WINDOWEND")]
-pub const LimitStateCond_LIMIT_WINDOWEND: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LimitStateCond::LIMIT_WINDOWSTART")]
-pub const LimitStateCond_LIMIT_WINDOWSTART: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockAcquireResult::LOCKACQUIRE_NOT_AVAIL")]
-pub const LockAcquireResult_LOCKACQUIRE_NOT_AVAIL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockAcquireResult::LOCKACQUIRE_OK")]
-pub const LockAcquireResult_LOCKACQUIRE_OK: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LockAcquireResult::LOCKACQUIRE_ALREADY_HELD"
-)]
-pub const LockAcquireResult_LOCKACQUIRE_ALREADY_HELD: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LockAcquireResult::LOCKACQUIRE_ALREADY_CLEAR"
-)]
-pub const LockAcquireResult_LOCKACQUIRE_ALREADY_CLEAR: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockClauseStrength::LCS_NONE")]
-pub const LockClauseStrength_LCS_NONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockClauseStrength::LCS_FORKEYSHARE")]
-pub const LockClauseStrength_LCS_FORKEYSHARE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockClauseStrength::LCS_FORSHARE")]
-pub const LockClauseStrength_LCS_FORSHARE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockClauseStrength::LCS_FORNOKEYUPDATE")]
-pub const LockClauseStrength_LCS_FORNOKEYUPDATE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockClauseStrength::LCS_FORUPDATE")]
-pub const LockClauseStrength_LCS_FORUPDATE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_RELATION")]
-pub const LockTagType_LOCKTAG_RELATION: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_RELATION_EXTEND")]
-pub const LockTagType_LOCKTAG_RELATION_EXTEND: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_DATABASE_FROZEN_IDS")]
-pub const LockTagType_LOCKTAG_DATABASE_FROZEN_IDS: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_PAGE")]
-pub const LockTagType_LOCKTAG_PAGE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_TUPLE")]
-pub const LockTagType_LOCKTAG_TUPLE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_TRANSACTION")]
-pub const LockTagType_LOCKTAG_TRANSACTION: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_VIRTUALTRANSACTION")]
-pub const LockTagType_LOCKTAG_VIRTUALTRANSACTION: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_SPECULATIVE_TOKEN")]
-pub const LockTagType_LOCKTAG_SPECULATIVE_TOKEN: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_OBJECT")]
-pub const LockTagType_LOCKTAG_OBJECT: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_USERLOCK")]
-pub const LockTagType_LOCKTAG_USERLOCK: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_ADVISORY")]
-pub const LockTagType_LOCKTAG_ADVISORY: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTagType::LOCKTAG_APPLY_TRANSACTION")]
-pub const LockTagType_LOCKTAG_APPLY_TRANSACTION: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTupleMode::LockTupleKeyShare")]
-pub const LockTupleMode_LockTupleKeyShare: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTupleMode::LockTupleShare")]
-pub const LockTupleMode_LockTupleShare: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTupleMode::LockTupleNoKeyExclusive")]
-pub const LockTupleMode_LockTupleNoKeyExclusive: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockTupleMode::LockTupleExclusive")]
-pub const LockTupleMode_LockTupleExclusive: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockWaitPolicy::LockWaitBlock")]
-pub const LockWaitPolicy_LockWaitBlock: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockWaitPolicy::LockWaitSkip")]
-pub const LockWaitPolicy_LockWaitSkip: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LockWaitPolicy::LockWaitError")]
-pub const LockWaitPolicy_LockWaitError: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogStmtLevel::LOGSTMT_NONE")]
-pub const LogStmtLevel_LOGSTMT_NONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogStmtLevel::LOGSTMT_DDL")]
-pub const LogStmtLevel_LOGSTMT_DDL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogStmtLevel::LOGSTMT_MOD")]
-pub const LogStmtLevel_LOGSTMT_MOD: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogStmtLevel::LOGSTMT_ALL")]
-pub const LogStmtLevel_LOGSTMT_ALL: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_BEGIN")]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_BEGIN: u32 = 66;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_COMMIT")]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_COMMIT: u32 = 67;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_ORIGIN")]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_ORIGIN: u32 = 79;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_INSERT")]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_INSERT: u32 = 73;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_UPDATE")]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_UPDATE: u32 = 85;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_DELETE")]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_DELETE: u32 = 68;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_TRUNCATE"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_TRUNCATE: u32 = 84;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_RELATION"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_RELATION: u32 = 82;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_TYPE")]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_TYPE: u32 = 89;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_MESSAGE"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_MESSAGE: u32 = 77;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_BEGIN_PREPARE"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_BEGIN_PREPARE: u32 = 98;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_PREPARE"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_PREPARE: u32 = 80;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_COMMIT_PREPARED"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_COMMIT_PREPARED: u32 = 75;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_ROLLBACK_PREPARED"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_ROLLBACK_PREPARED: u32 = 114;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_STREAM_START"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_STREAM_START: u32 = 83;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_STREAM_STOP"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_STREAM_STOP: u32 = 69;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_STREAM_COMMIT"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_STREAM_COMMIT: u32 = 99;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_STREAM_ABORT"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_STREAM_ABORT: u32 = 65;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::LogicalRepMsgType::LOGICAL_REP_MSG_STREAM_PREPARE"
-)]
-pub const LogicalRepMsgType_LOGICAL_REP_MSG_STREAM_PREPARE: u32 = 112;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::MinMaxOp::IS_GREATEST")]
-pub const MinMaxOp_IS_GREATEST: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::MinMaxOp::IS_LEAST")]
-pub const MinMaxOp_IS_LEAST: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::MonotonicFunction::MONOTONICFUNC_NONE")]
-pub const MonotonicFunction_MONOTONICFUNC_NONE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::MonotonicFunction::MONOTONICFUNC_INCREASING"
-)]
-pub const MonotonicFunction_MONOTONICFUNC_INCREASING: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::MonotonicFunction::MONOTONICFUNC_DECREASING"
-)]
-pub const MonotonicFunction_MONOTONICFUNC_DECREASING: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::MonotonicFunction::MONOTONICFUNC_BOTH")]
-pub const MonotonicFunction_MONOTONICFUNC_BOTH: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::MultiXactStatus::MultiXactStatusForKeyShare"
-)]
-pub const MultiXactStatus_MultiXactStatusForKeyShare: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::MultiXactStatus::MultiXactStatusForShare")]
-pub const MultiXactStatus_MultiXactStatusForShare: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::MultiXactStatus::MultiXactStatusForNoKeyUpdate"
-)]
-pub const MultiXactStatus_MultiXactStatusForNoKeyUpdate: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::MultiXactStatus::MultiXactStatusForUpdate")]
-pub const MultiXactStatus_MultiXactStatusForUpdate: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::MultiXactStatus::MultiXactStatusNoKeyUpdate"
-)]
-pub const MultiXactStatus_MultiXactStatusNoKeyUpdate: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::MultiXactStatus::MultiXactStatusUpdate")]
-pub const MultiXactStatus_MultiXactStatusUpdate: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::NullTestType::IS_NULL")]
-pub const NullTestType_IS_NULL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::NullTestType::IS_NOT_NULL")]
-pub const NullTestType_IS_NOT_NULL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectAccessType::OAT_POST_CREATE")]
-pub const ObjectAccessType_OAT_POST_CREATE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectAccessType::OAT_DROP")]
-pub const ObjectAccessType_OAT_DROP: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectAccessType::OAT_POST_ALTER")]
-pub const ObjectAccessType_OAT_POST_ALTER: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectAccessType::OAT_NAMESPACE_SEARCH")]
-pub const ObjectAccessType_OAT_NAMESPACE_SEARCH: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectAccessType::OAT_FUNCTION_EXECUTE")]
-pub const ObjectAccessType_OAT_FUNCTION_EXECUTE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectAccessType::OAT_TRUNCATE")]
-pub const ObjectAccessType_OAT_TRUNCATE: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_CLASS")]
-pub const ObjectClass_OCLASS_CLASS: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_PROC")]
-pub const ObjectClass_OCLASS_PROC: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_TYPE")]
-pub const ObjectClass_OCLASS_TYPE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_CAST")]
-pub const ObjectClass_OCLASS_CAST: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_COLLATION")]
-pub const ObjectClass_OCLASS_COLLATION: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_CONSTRAINT")]
-pub const ObjectClass_OCLASS_CONSTRAINT: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_CONVERSION")]
-pub const ObjectClass_OCLASS_CONVERSION: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_DEFAULT")]
-pub const ObjectClass_OCLASS_DEFAULT: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_LANGUAGE")]
-pub const ObjectClass_OCLASS_LANGUAGE: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_LARGEOBJECT")]
-pub const ObjectClass_OCLASS_LARGEOBJECT: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_OPERATOR")]
-pub const ObjectClass_OCLASS_OPERATOR: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_OPCLASS")]
-pub const ObjectClass_OCLASS_OPCLASS: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_OPFAMILY")]
-pub const ObjectClass_OCLASS_OPFAMILY: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_AM")]
-pub const ObjectClass_OCLASS_AM: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_AMOP")]
-pub const ObjectClass_OCLASS_AMOP: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_AMPROC")]
-pub const ObjectClass_OCLASS_AMPROC: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_REWRITE")]
-pub const ObjectClass_OCLASS_REWRITE: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_TRIGGER")]
-pub const ObjectClass_OCLASS_TRIGGER: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_SCHEMA")]
-pub const ObjectClass_OCLASS_SCHEMA: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_STATISTIC_EXT")]
-pub const ObjectClass_OCLASS_STATISTIC_EXT: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_TSPARSER")]
-pub const ObjectClass_OCLASS_TSPARSER: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_TSDICT")]
-pub const ObjectClass_OCLASS_TSDICT: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_TSTEMPLATE")]
-pub const ObjectClass_OCLASS_TSTEMPLATE: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_TSCONFIG")]
-pub const ObjectClass_OCLASS_TSCONFIG: u32 = 23;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_ROLE")]
-pub const ObjectClass_OCLASS_ROLE: u32 = 24;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_ROLE_MEMBERSHIP")]
-pub const ObjectClass_OCLASS_ROLE_MEMBERSHIP: u32 = 25;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_DATABASE")]
-pub const ObjectClass_OCLASS_DATABASE: u32 = 26;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_TBLSPACE")]
-pub const ObjectClass_OCLASS_TBLSPACE: u32 = 27;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_FDW")]
-pub const ObjectClass_OCLASS_FDW: u32 = 28;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_FOREIGN_SERVER")]
-pub const ObjectClass_OCLASS_FOREIGN_SERVER: u32 = 29;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_USER_MAPPING")]
-pub const ObjectClass_OCLASS_USER_MAPPING: u32 = 30;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_DEFACL")]
-pub const ObjectClass_OCLASS_DEFACL: u32 = 31;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_EXTENSION")]
-pub const ObjectClass_OCLASS_EXTENSION: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_EVENT_TRIGGER")]
-pub const ObjectClass_OCLASS_EVENT_TRIGGER: u32 = 33;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_PARAMETER_ACL")]
-pub const ObjectClass_OCLASS_PARAMETER_ACL: u32 = 34;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_POLICY")]
-pub const ObjectClass_OCLASS_POLICY: u32 = 35;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_PUBLICATION")]
-pub const ObjectClass_OCLASS_PUBLICATION: u32 = 36;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_PUBLICATION_NAMESPACE")]
-pub const ObjectClass_OCLASS_PUBLICATION_NAMESPACE: u32 = 37;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_PUBLICATION_REL")]
-pub const ObjectClass_OCLASS_PUBLICATION_REL: u32 = 38;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_SUBSCRIPTION")]
-pub const ObjectClass_OCLASS_SUBSCRIPTION: u32 = 39;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectClass::OCLASS_TRANSFORM")]
-pub const ObjectClass_OCLASS_TRANSFORM: u32 = 40;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_ACCESS_METHOD")]
-pub const ObjectType_OBJECT_ACCESS_METHOD: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_AGGREGATE")]
-pub const ObjectType_OBJECT_AGGREGATE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_AMOP")]
-pub const ObjectType_OBJECT_AMOP: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_AMPROC")]
-pub const ObjectType_OBJECT_AMPROC: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_ATTRIBUTE")]
-pub const ObjectType_OBJECT_ATTRIBUTE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_CAST")]
-pub const ObjectType_OBJECT_CAST: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_COLUMN")]
-pub const ObjectType_OBJECT_COLUMN: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_COLLATION")]
-pub const ObjectType_OBJECT_COLLATION: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_CONVERSION")]
-pub const ObjectType_OBJECT_CONVERSION: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_DATABASE")]
-pub const ObjectType_OBJECT_DATABASE: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_DEFAULT")]
-pub const ObjectType_OBJECT_DEFAULT: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_DEFACL")]
-pub const ObjectType_OBJECT_DEFACL: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_DOMAIN")]
-pub const ObjectType_OBJECT_DOMAIN: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_DOMCONSTRAINT")]
-pub const ObjectType_OBJECT_DOMCONSTRAINT: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_EVENT_TRIGGER")]
-pub const ObjectType_OBJECT_EVENT_TRIGGER: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_EXTENSION")]
-pub const ObjectType_OBJECT_EXTENSION: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_FDW")]
-pub const ObjectType_OBJECT_FDW: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_FOREIGN_SERVER")]
-pub const ObjectType_OBJECT_FOREIGN_SERVER: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_FOREIGN_TABLE")]
-pub const ObjectType_OBJECT_FOREIGN_TABLE: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_FUNCTION")]
-pub const ObjectType_OBJECT_FUNCTION: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_INDEX")]
-pub const ObjectType_OBJECT_INDEX: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_LANGUAGE")]
-pub const ObjectType_OBJECT_LANGUAGE: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_LARGEOBJECT")]
-pub const ObjectType_OBJECT_LARGEOBJECT: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_MATVIEW")]
-pub const ObjectType_OBJECT_MATVIEW: u32 = 23;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_OPCLASS")]
-pub const ObjectType_OBJECT_OPCLASS: u32 = 24;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_OPERATOR")]
-pub const ObjectType_OBJECT_OPERATOR: u32 = 25;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_OPFAMILY")]
-pub const ObjectType_OBJECT_OPFAMILY: u32 = 26;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_PARAMETER_ACL")]
-pub const ObjectType_OBJECT_PARAMETER_ACL: u32 = 27;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_POLICY")]
-pub const ObjectType_OBJECT_POLICY: u32 = 28;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_PROCEDURE")]
-pub const ObjectType_OBJECT_PROCEDURE: u32 = 29;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_PUBLICATION")]
-pub const ObjectType_OBJECT_PUBLICATION: u32 = 30;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_PUBLICATION_NAMESPACE")]
-pub const ObjectType_OBJECT_PUBLICATION_NAMESPACE: u32 = 31;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_PUBLICATION_REL")]
-pub const ObjectType_OBJECT_PUBLICATION_REL: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_ROLE")]
-pub const ObjectType_OBJECT_ROLE: u32 = 33;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_ROUTINE")]
-pub const ObjectType_OBJECT_ROUTINE: u32 = 34;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_RULE")]
-pub const ObjectType_OBJECT_RULE: u32 = 35;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_SCHEMA")]
-pub const ObjectType_OBJECT_SCHEMA: u32 = 36;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_SEQUENCE")]
-pub const ObjectType_OBJECT_SEQUENCE: u32 = 37;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_SUBSCRIPTION")]
-pub const ObjectType_OBJECT_SUBSCRIPTION: u32 = 38;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_STATISTIC_EXT")]
-pub const ObjectType_OBJECT_STATISTIC_EXT: u32 = 39;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TABCONSTRAINT")]
-pub const ObjectType_OBJECT_TABCONSTRAINT: u32 = 40;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TABLE")]
-pub const ObjectType_OBJECT_TABLE: u32 = 41;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TABLESPACE")]
-pub const ObjectType_OBJECT_TABLESPACE: u32 = 42;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TRANSFORM")]
-pub const ObjectType_OBJECT_TRANSFORM: u32 = 43;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TRIGGER")]
-pub const ObjectType_OBJECT_TRIGGER: u32 = 44;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TSCONFIGURATION")]
-pub const ObjectType_OBJECT_TSCONFIGURATION: u32 = 45;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TSDICTIONARY")]
-pub const ObjectType_OBJECT_TSDICTIONARY: u32 = 46;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TSPARSER")]
-pub const ObjectType_OBJECT_TSPARSER: u32 = 47;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TSTEMPLATE")]
-pub const ObjectType_OBJECT_TSTEMPLATE: u32 = 48;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_TYPE")]
-pub const ObjectType_OBJECT_TYPE: u32 = 49;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_USER_MAPPING")]
-pub const ObjectType_OBJECT_USER_MAPPING: u32 = 50;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ObjectType::OBJECT_VIEW")]
-pub const ObjectType_OBJECT_VIEW: u32 = 51;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OnCommitAction::ONCOMMIT_NOOP")]
-pub const OnCommitAction_ONCOMMIT_NOOP: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OnCommitAction::ONCOMMIT_PRESERVE_ROWS")]
-pub const OnCommitAction_ONCOMMIT_PRESERVE_ROWS: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OnCommitAction::ONCOMMIT_DELETE_ROWS")]
-pub const OnCommitAction_ONCOMMIT_DELETE_ROWS: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OnCommitAction::ONCOMMIT_DROP")]
-pub const OnCommitAction_ONCOMMIT_DROP: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OnConflictAction::ONCONFLICT_NONE")]
-pub const OnConflictAction_ONCONFLICT_NONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OnConflictAction::ONCONFLICT_NOTHING")]
-pub const OnConflictAction_ONCONFLICT_NOTHING: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OnConflictAction::ONCONFLICT_UPDATE")]
-pub const OnConflictAction_ONCONFLICT_UPDATE: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::OutputPluginOutputType::OUTPUT_PLUGIN_BINARY_OUTPUT"
-)]
-pub const OutputPluginOutputType_OUTPUT_PLUGIN_BINARY_OUTPUT: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::OutputPluginOutputType::OUTPUT_PLUGIN_TEXTUAL_OUTPUT"
-)]
-pub const OutputPluginOutputType_OUTPUT_PLUGIN_TEXTUAL_OUTPUT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OverridingKind::OVERRIDING_NOT_SET")]
-pub const OverridingKind_OVERRIDING_NOT_SET: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OverridingKind::OVERRIDING_USER_VALUE")]
-pub const OverridingKind_OVERRIDING_USER_VALUE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::OverridingKind::OVERRIDING_SYSTEM_VALUE")]
-pub const OverridingKind_OVERRIDING_SYSTEM_VALUE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PGErrorVerbosity::PGERROR_TERSE")]
-pub const PGErrorVerbosity_PGERROR_TERSE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PGErrorVerbosity::PGERROR_DEFAULT")]
-pub const PGErrorVerbosity_PGERROR_DEFAULT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PGErrorVerbosity::PGERROR_VERBOSE")]
-pub const PGErrorVerbosity_PGERROR_VERBOSE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_datum_type::PLPGSQL_DTYPE_VAR")]
-pub const PLpgSQL_datum_type_PLPGSQL_DTYPE_VAR: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_datum_type::PLPGSQL_DTYPE_ROW")]
-pub const PLpgSQL_datum_type_PLPGSQL_DTYPE_ROW: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_datum_type::PLPGSQL_DTYPE_REC")]
-pub const PLpgSQL_datum_type_PLPGSQL_DTYPE_REC: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_datum_type::PLPGSQL_DTYPE_RECFIELD"
-)]
-pub const PLpgSQL_datum_type_PLPGSQL_DTYPE_RECFIELD: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_datum_type::PLPGSQL_DTYPE_PROMISE")]
-pub const PLpgSQL_datum_type_PLPGSQL_DTYPE_PROMISE: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_ROW_COUNT"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_ROW_COUNT: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_CONTEXT"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_CONTEXT: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_ERROR_CONTEXT"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_ERROR_CONTEXT: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_ERROR_DETAIL"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_ERROR_DETAIL: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_ERROR_HINT"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_ERROR_HINT: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_RETURNED_SQLSTATE"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_RETURNED_SQLSTATE: u32 = 6;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_COLUMN_NAME"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_COLUMN_NAME: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_CONSTRAINT_NAME"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_CONSTRAINT_NAME: u32 = 8;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_DATATYPE_NAME"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_DATATYPE_NAME: u32 = 9;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_MESSAGE_TEXT"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_MESSAGE_TEXT: u32 = 10;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_TABLE_NAME"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_TABLE_NAME: u32 = 11;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_getdiag_kind::PLPGSQL_GETDIAG_SCHEMA_NAME"
-)]
-pub const PLpgSQL_getdiag_kind_PLPGSQL_GETDIAG_SCHEMA_NAME: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_label_type::PLPGSQL_LABEL_BLOCK")]
-pub const PLpgSQL_label_type_PLPGSQL_LABEL_BLOCK: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_label_type::PLPGSQL_LABEL_LOOP")]
-pub const PLpgSQL_label_type_PLPGSQL_LABEL_LOOP: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_label_type::PLPGSQL_LABEL_OTHER")]
-pub const PLpgSQL_label_type_PLPGSQL_LABEL_OTHER: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_nsitem_type::PLPGSQL_NSTYPE_LABEL")]
-pub const PLpgSQL_nsitem_type_PLPGSQL_NSTYPE_LABEL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_nsitem_type::PLPGSQL_NSTYPE_VAR")]
-pub const PLpgSQL_nsitem_type_PLPGSQL_NSTYPE_VAR: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_nsitem_type::PLPGSQL_NSTYPE_REC")]
-pub const PLpgSQL_nsitem_type_PLPGSQL_NSTYPE_REC: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_NONE"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_NONE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_NAME"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_NAME: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_WHEN"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_WHEN: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_LEVEL"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_LEVEL: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_OP"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_OP: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_RELID"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_RELID: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_TABLE_NAME"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_TABLE_NAME: u32 = 6;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_TABLE_SCHEMA"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_TABLE_SCHEMA: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_NARGS"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_NARGS: u32 = 8;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_ARGV"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_ARGV: u32 = 9;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_EVENT"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_EVENT: u32 = 10;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_promise_type::PLPGSQL_PROMISE_TG_TAG"
-)]
-pub const PLpgSQL_promise_type_PLPGSQL_PROMISE_TG_TAG: u32 = 11;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_ERRCODE"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_ERRCODE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_MESSAGE"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_MESSAGE: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_DETAIL"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_DETAIL: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_HINT"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_HINT: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_COLUMN"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_COLUMN: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_CONSTRAINT"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_CONSTRAINT: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_DATATYPE"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_DATATYPE: u32 = 6;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_TABLE"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_TABLE: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_raise_option_type::PLPGSQL_RAISEOPTION_SCHEMA"
-)]
-pub const PLpgSQL_raise_option_type_PLPGSQL_RAISEOPTION_SCHEMA: u32 = 8;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_resolve_option::PLPGSQL_RESOLVE_ERROR"
-)]
-pub const PLpgSQL_resolve_option_PLPGSQL_RESOLVE_ERROR: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_resolve_option::PLPGSQL_RESOLVE_VARIABLE"
-)]
-pub const PLpgSQL_resolve_option_PLPGSQL_RESOLVE_VARIABLE: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_resolve_option::PLPGSQL_RESOLVE_COLUMN"
-)]
-pub const PLpgSQL_resolve_option_PLPGSQL_RESOLVE_COLUMN: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_BLOCK")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_BLOCK: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_ASSIGN")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_ASSIGN: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_IF")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_IF: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_CASE")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_CASE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_LOOP")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_LOOP: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_WHILE")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_WHILE: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_FORI")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_FORI: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_FORS")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_FORS: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_FORC")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_FORC: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_FOREACH_A")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_FOREACH_A: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_EXIT")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_EXIT: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_RETURN")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_RETURN: u32 = 11;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_RETURN_NEXT"
-)]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_RETURN_NEXT: u32 = 12;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_RETURN_QUERY"
-)]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_RETURN_QUERY: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_RAISE")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_RAISE: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_ASSERT")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_ASSERT: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_EXECSQL")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_EXECSQL: u32 = 16;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_DYNEXECUTE"
-)]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_DYNEXECUTE: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_DYNFORS")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_DYNFORS: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_GETDIAG")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_GETDIAG: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_OPEN")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_OPEN: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_FETCH")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_FETCH: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_CLOSE")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_CLOSE: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_PERFORM")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_PERFORM: u32 = 23;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_CALL")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_CALL: u32 = 24;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_COMMIT")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_COMMIT: u32 = 25;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_stmt_type::PLPGSQL_STMT_ROLLBACK")]
-pub const PLpgSQL_stmt_type_PLPGSQL_STMT_ROLLBACK: u32 = 26;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_trigtype::PLPGSQL_DML_TRIGGER")]
-pub const PLpgSQL_trigtype_PLPGSQL_DML_TRIGGER: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_trigtype::PLPGSQL_EVENT_TRIGGER")]
-pub const PLpgSQL_trigtype_PLPGSQL_EVENT_TRIGGER: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_trigtype::PLPGSQL_NOT_TRIGGER")]
-pub const PLpgSQL_trigtype_PLPGSQL_NOT_TRIGGER: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_type_type::PLPGSQL_TTYPE_SCALAR")]
-pub const PLpgSQL_type_type_PLPGSQL_TTYPE_SCALAR: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_type_type::PLPGSQL_TTYPE_REC")]
-pub const PLpgSQL_type_type_PLPGSQL_TTYPE_REC: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PLpgSQL_type_type::PLPGSQL_TTYPE_PSEUDO")]
-pub const PLpgSQL_type_type_PLPGSQL_TTYPE_PSEUDO: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParamKind::PARAM_EXTERN")]
-pub const ParamKind_PARAM_EXTERN: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParamKind::PARAM_EXEC")]
-pub const ParamKind_PARAM_EXEC: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParamKind::PARAM_SUBLINK")]
-pub const ParamKind_PARAM_SUBLINK: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParamKind::PARAM_MULTIEXPR")]
-pub const ParamKind_PARAM_MULTIEXPR: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_NONE")]
-pub const ParseExprKind_EXPR_KIND_NONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_OTHER")]
-pub const ParseExprKind_EXPR_KIND_OTHER: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_JOIN_ON")]
-pub const ParseExprKind_EXPR_KIND_JOIN_ON: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_JOIN_USING")]
-pub const ParseExprKind_EXPR_KIND_JOIN_USING: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_FROM_SUBSELECT")]
-pub const ParseExprKind_EXPR_KIND_FROM_SUBSELECT: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_FROM_FUNCTION")]
-pub const ParseExprKind_EXPR_KIND_FROM_FUNCTION: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_WHERE")]
-pub const ParseExprKind_EXPR_KIND_WHERE: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_HAVING")]
-pub const ParseExprKind_EXPR_KIND_HAVING: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_FILTER")]
-pub const ParseExprKind_EXPR_KIND_FILTER: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_WINDOW_PARTITION")]
-pub const ParseExprKind_EXPR_KIND_WINDOW_PARTITION: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_WINDOW_ORDER")]
-pub const ParseExprKind_EXPR_KIND_WINDOW_ORDER: u32 = 10;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ParseExprKind::EXPR_KIND_WINDOW_FRAME_RANGE"
-)]
-pub const ParseExprKind_EXPR_KIND_WINDOW_FRAME_RANGE: u32 = 11;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ParseExprKind::EXPR_KIND_WINDOW_FRAME_ROWS"
-)]
-pub const ParseExprKind_EXPR_KIND_WINDOW_FRAME_ROWS: u32 = 12;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ParseExprKind::EXPR_KIND_WINDOW_FRAME_GROUPS"
-)]
-pub const ParseExprKind_EXPR_KIND_WINDOW_FRAME_GROUPS: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_SELECT_TARGET")]
-pub const ParseExprKind_EXPR_KIND_SELECT_TARGET: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_INSERT_TARGET")]
-pub const ParseExprKind_EXPR_KIND_INSERT_TARGET: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_UPDATE_SOURCE")]
-pub const ParseExprKind_EXPR_KIND_UPDATE_SOURCE: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_UPDATE_TARGET")]
-pub const ParseExprKind_EXPR_KIND_UPDATE_TARGET: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_MERGE_WHEN")]
-pub const ParseExprKind_EXPR_KIND_MERGE_WHEN: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_GROUP_BY")]
-pub const ParseExprKind_EXPR_KIND_GROUP_BY: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_ORDER_BY")]
-pub const ParseExprKind_EXPR_KIND_ORDER_BY: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_DISTINCT_ON")]
-pub const ParseExprKind_EXPR_KIND_DISTINCT_ON: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_LIMIT")]
-pub const ParseExprKind_EXPR_KIND_LIMIT: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_OFFSET")]
-pub const ParseExprKind_EXPR_KIND_OFFSET: u32 = 23;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_RETURNING")]
-pub const ParseExprKind_EXPR_KIND_RETURNING: u32 = 24;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_VALUES")]
-pub const ParseExprKind_EXPR_KIND_VALUES: u32 = 25;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_VALUES_SINGLE")]
-pub const ParseExprKind_EXPR_KIND_VALUES_SINGLE: u32 = 26;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_CHECK_CONSTRAINT")]
-pub const ParseExprKind_EXPR_KIND_CHECK_CONSTRAINT: u32 = 27;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_DOMAIN_CHECK")]
-pub const ParseExprKind_EXPR_KIND_DOMAIN_CHECK: u32 = 28;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_COLUMN_DEFAULT")]
-pub const ParseExprKind_EXPR_KIND_COLUMN_DEFAULT: u32 = 29;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_FUNCTION_DEFAULT")]
-pub const ParseExprKind_EXPR_KIND_FUNCTION_DEFAULT: u32 = 30;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_INDEX_EXPRESSION")]
-pub const ParseExprKind_EXPR_KIND_INDEX_EXPRESSION: u32 = 31;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_INDEX_PREDICATE")]
-pub const ParseExprKind_EXPR_KIND_INDEX_PREDICATE: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_STATS_EXPRESSION")]
-pub const ParseExprKind_EXPR_KIND_STATS_EXPRESSION: u32 = 33;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ParseExprKind::EXPR_KIND_ALTER_COL_TRANSFORM"
-)]
-pub const ParseExprKind_EXPR_KIND_ALTER_COL_TRANSFORM: u32 = 34;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ParseExprKind::EXPR_KIND_EXECUTE_PARAMETER"
-)]
-pub const ParseExprKind_EXPR_KIND_EXECUTE_PARAMETER: u32 = 35;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_TRIGGER_WHEN")]
-pub const ParseExprKind_EXPR_KIND_TRIGGER_WHEN: u32 = 36;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_POLICY")]
-pub const ParseExprKind_EXPR_KIND_POLICY: u32 = 37;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_PARTITION_BOUND")]
-pub const ParseExprKind_EXPR_KIND_PARTITION_BOUND: u32 = 38;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ParseExprKind::EXPR_KIND_PARTITION_EXPRESSION"
-)]
-pub const ParseExprKind_EXPR_KIND_PARTITION_EXPRESSION: u32 = 39;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_CALL_ARGUMENT")]
-pub const ParseExprKind_EXPR_KIND_CALL_ARGUMENT: u32 = 40;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_COPY_WHERE")]
-pub const ParseExprKind_EXPR_KIND_COPY_WHERE: u32 = 41;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_GENERATED_COLUMN")]
-pub const ParseExprKind_EXPR_KIND_GENERATED_COLUMN: u32 = 42;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ParseExprKind::EXPR_KIND_CYCLE_MARK")]
-pub const ParseExprKind_EXPR_KIND_CYCLE_MARK: u32 = 43;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionPruneCombineOp::PARTPRUNE_COMBINE_UNION"
-)]
-pub const PartitionPruneCombineOp_PARTPRUNE_COMBINE_UNION: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionPruneCombineOp::PARTPRUNE_COMBINE_INTERSECT"
-)]
-pub const PartitionPruneCombineOp_PARTPRUNE_COMBINE_INTERSECT: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionRangeDatumKind::PARTITION_RANGE_DATUM_MINVALUE"
-)]
-pub const PartitionRangeDatumKind_PARTITION_RANGE_DATUM_MINVALUE: i32 = -1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionRangeDatumKind::PARTITION_RANGE_DATUM_VALUE"
-)]
-pub const PartitionRangeDatumKind_PARTITION_RANGE_DATUM_VALUE: i32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionRangeDatumKind::PARTITION_RANGE_DATUM_MAXVALUE"
-)]
-pub const PartitionRangeDatumKind_PARTITION_RANGE_DATUM_MAXVALUE: i32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionStrategy::PARTITION_STRATEGY_LIST"
-)]
-pub const PartitionStrategy_PARTITION_STRATEGY_LIST: u32 = 108;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionStrategy::PARTITION_STRATEGY_RANGE"
-)]
-pub const PartitionStrategy_PARTITION_STRATEGY_RANGE: u32 = 114;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionStrategy::PARTITION_STRATEGY_HASH"
-)]
-pub const PartitionStrategy_PARTITION_STRATEGY_HASH: u32 = 104;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionwiseAggregateType::PARTITIONWISE_AGGREGATE_NONE"
-)]
-pub const PartitionwiseAggregateType_PARTITIONWISE_AGGREGATE_NONE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionwiseAggregateType::PARTITIONWISE_AGGREGATE_FULL"
-)]
-pub const PartitionwiseAggregateType_PARTITIONWISE_AGGREGATE_FULL: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PartitionwiseAggregateType::PARTITIONWISE_AGGREGATE_PARTIAL"
-)]
-pub const PartitionwiseAggregateType_PARTITIONWISE_AGGREGATE_PARTIAL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PasswordType::PASSWORD_TYPE_PLAINTEXT")]
-pub const PasswordType_PASSWORD_TYPE_PLAINTEXT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PasswordType::PASSWORD_TYPE_MD5")]
-pub const PasswordType_PASSWORD_TYPE_MD5: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PasswordType::PASSWORD_TYPE_SCRAM_SHA_256")]
-pub const PasswordType_PASSWORD_TYPE_SCRAM_SHA_256: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PathKeysComparison::PATHKEYS_EQUAL")]
-pub const PathKeysComparison_PATHKEYS_EQUAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PathKeysComparison::PATHKEYS_BETTER1")]
-pub const PathKeysComparison_PATHKEYS_BETTER1: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PathKeysComparison::PATHKEYS_BETTER2")]
-pub const PathKeysComparison_PATHKEYS_BETTER2: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PathKeysComparison::PATHKEYS_DIFFERENT")]
-pub const PathKeysComparison_PATHKEYS_DIFFERENT: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PgStat_FetchConsistency::PGSTAT_FETCH_CONSISTENCY_NONE"
-)]
-pub const PgStat_FetchConsistency_PGSTAT_FETCH_CONSISTENCY_NONE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PgStat_FetchConsistency::PGSTAT_FETCH_CONSISTENCY_CACHE"
-)]
-pub const PgStat_FetchConsistency_PGSTAT_FETCH_CONSISTENCY_CACHE: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PgStat_FetchConsistency::PGSTAT_FETCH_CONSISTENCY_SNAPSHOT"
-)]
-pub const PgStat_FetchConsistency_PGSTAT_FETCH_CONSISTENCY_SNAPSHOT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_INVALID")]
-pub const PgStat_Kind_PGSTAT_KIND_INVALID: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_DATABASE")]
-pub const PgStat_Kind_PGSTAT_KIND_DATABASE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_RELATION")]
-pub const PgStat_Kind_PGSTAT_KIND_RELATION: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_FUNCTION")]
-pub const PgStat_Kind_PGSTAT_KIND_FUNCTION: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_REPLSLOT")]
-pub const PgStat_Kind_PGSTAT_KIND_REPLSLOT: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_SUBSCRIPTION")]
-pub const PgStat_Kind_PGSTAT_KIND_SUBSCRIPTION: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_ARCHIVER")]
-pub const PgStat_Kind_PGSTAT_KIND_ARCHIVER: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_BGWRITER")]
-pub const PgStat_Kind_PGSTAT_KIND_BGWRITER: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_CHECKPOINTER")]
-pub const PgStat_Kind_PGSTAT_KIND_CHECKPOINTER: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_IO")]
-pub const PgStat_Kind_PGSTAT_KIND_IO: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_SLRU")]
-pub const PgStat_Kind_PGSTAT_KIND_SLRU: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PgStat_Kind::PGSTAT_KIND_WAL")]
-pub const PgStat_Kind_PGSTAT_KIND_WAL: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PlanCacheMode::PLAN_CACHE_MODE_AUTO")]
-pub const PlanCacheMode_PLAN_CACHE_MODE_AUTO: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PlanCacheMode::PLAN_CACHE_MODE_FORCE_GENERIC_PLAN"
-)]
-pub const PlanCacheMode_PLAN_CACHE_MODE_FORCE_GENERIC_PLAN: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PlanCacheMode::PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN"
-)]
-pub const PlanCacheMode_PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStatus::PORTAL_NEW")]
-pub const PortalStatus_PORTAL_NEW: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStatus::PORTAL_DEFINED")]
-pub const PortalStatus_PORTAL_DEFINED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStatus::PORTAL_READY")]
-pub const PortalStatus_PORTAL_READY: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStatus::PORTAL_ACTIVE")]
-pub const PortalStatus_PORTAL_ACTIVE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStatus::PORTAL_DONE")]
-pub const PortalStatus_PORTAL_DONE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStatus::PORTAL_FAILED")]
-pub const PortalStatus_PORTAL_FAILED: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStrategy::PORTAL_ONE_SELECT")]
-pub const PortalStrategy_PORTAL_ONE_SELECT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStrategy::PORTAL_ONE_RETURNING")]
-pub const PortalStrategy_PORTAL_ONE_RETURNING: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStrategy::PORTAL_ONE_MOD_WITH")]
-pub const PortalStrategy_PORTAL_ONE_MOD_WITH: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStrategy::PORTAL_UTIL_SELECT")]
-pub const PortalStrategy_PORTAL_UTIL_SELECT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PortalStrategy::PORTAL_MULTI_QUERY")]
-pub const PortalStrategy_PORTAL_MULTI_QUERY: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalBarrierType::PROCSIGNAL_BARRIER_SMGRRELEASE"
-)]
-pub const ProcSignalBarrierType_PROCSIGNAL_BARRIER_SMGRRELEASE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_CATCHUP_INTERRUPT"
-)]
-pub const ProcSignalReason_PROCSIG_CATCHUP_INTERRUPT: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_NOTIFY_INTERRUPT"
-)]
-pub const ProcSignalReason_PROCSIG_NOTIFY_INTERRUPT: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_PARALLEL_MESSAGE"
-)]
-pub const ProcSignalReason_PROCSIG_PARALLEL_MESSAGE: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_WALSND_INIT_STOPPING"
-)]
-pub const ProcSignalReason_PROCSIG_WALSND_INIT_STOPPING: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ProcSignalReason::PROCSIG_BARRIER")]
-pub const ProcSignalReason_PROCSIG_BARRIER: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_LOG_MEMORY_CONTEXT"
-)]
-pub const ProcSignalReason_PROCSIG_LOG_MEMORY_CONTEXT: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_PARALLEL_APPLY_MESSAGE"
-)]
-pub const ProcSignalReason_PROCSIG_PARALLEL_APPLY_MESSAGE: u32 = 6;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_RECOVERY_CONFLICT_DATABASE"
-)]
-pub const ProcSignalReason_PROCSIG_RECOVERY_CONFLICT_DATABASE: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_RECOVERY_CONFLICT_TABLESPACE"
-)]
-pub const ProcSignalReason_PROCSIG_RECOVERY_CONFLICT_TABLESPACE: u32 = 8;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_RECOVERY_CONFLICT_LOCK"
-)]
-pub const ProcSignalReason_PROCSIG_RECOVERY_CONFLICT_LOCK: u32 = 9;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_RECOVERY_CONFLICT_SNAPSHOT"
-)]
-pub const ProcSignalReason_PROCSIG_RECOVERY_CONFLICT_SNAPSHOT: u32 = 10;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_RECOVERY_CONFLICT_LOGICALSLOT"
-)]
-pub const ProcSignalReason_PROCSIG_RECOVERY_CONFLICT_LOGICALSLOT: u32 = 11;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_RECOVERY_CONFLICT_BUFFERPIN"
-)]
-pub const ProcSignalReason_PROCSIG_RECOVERY_CONFLICT_BUFFERPIN: u32 = 12;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcSignalReason::PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK"
-)]
-pub const ProcSignalReason_PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ProcSignalReason::NUM_PROCSIGNALS")]
-pub const ProcSignalReason_NUM_PROCSIGNALS: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ProcWaitStatus::PROC_WAIT_STATUS_OK")]
-pub const ProcWaitStatus_PROC_WAIT_STATUS_OK: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ProcWaitStatus::PROC_WAIT_STATUS_WAITING")]
-pub const ProcWaitStatus_PROC_WAIT_STATUS_WAITING: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ProcWaitStatus::PROC_WAIT_STATUS_ERROR")]
-pub const ProcWaitStatus_PROC_WAIT_STATUS_ERROR: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcessUtilityContext::PROCESS_UTILITY_TOPLEVEL"
-)]
-pub const ProcessUtilityContext_PROCESS_UTILITY_TOPLEVEL: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcessUtilityContext::PROCESS_UTILITY_QUERY"
-)]
-pub const ProcessUtilityContext_PROCESS_UTILITY_QUERY: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcessUtilityContext::PROCESS_UTILITY_QUERY_NONATOMIC"
-)]
-pub const ProcessUtilityContext_PROCESS_UTILITY_QUERY_NONATOMIC: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProcessUtilityContext::PROCESS_UTILITY_SUBCOMMAND"
-)]
-pub const ProcessUtilityContext_PROCESS_UTILITY_SUBCOMMAND: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ProcessingMode::BootstrapProcessing")]
-pub const ProcessingMode_BootstrapProcessing: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ProcessingMode::InitProcessing")]
-pub const ProcessingMode_InitProcessing: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ProcessingMode::NormalProcessing")]
-pub const ProcessingMode_NormalProcessing: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProgressCommandType::PROGRESS_COMMAND_INVALID"
-)]
-pub const ProgressCommandType_PROGRESS_COMMAND_INVALID: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProgressCommandType::PROGRESS_COMMAND_VACUUM"
-)]
-pub const ProgressCommandType_PROGRESS_COMMAND_VACUUM: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProgressCommandType::PROGRESS_COMMAND_ANALYZE"
-)]
-pub const ProgressCommandType_PROGRESS_COMMAND_ANALYZE: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProgressCommandType::PROGRESS_COMMAND_CLUSTER"
-)]
-pub const ProgressCommandType_PROGRESS_COMMAND_CLUSTER: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProgressCommandType::PROGRESS_COMMAND_CREATE_INDEX"
-)]
-pub const ProgressCommandType_PROGRESS_COMMAND_CREATE_INDEX: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProgressCommandType::PROGRESS_COMMAND_BASEBACKUP"
-)]
-pub const ProgressCommandType_PROGRESS_COMMAND_BASEBACKUP: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ProgressCommandType::PROGRESS_COMMAND_COPY"
-)]
-pub const ProgressCommandType_PROGRESS_COMMAND_COPY: u32 = 6;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PublicationObjSpecType::PUBLICATIONOBJ_TABLE"
-)]
-pub const PublicationObjSpecType_PUBLICATIONOBJ_TABLE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PublicationObjSpecType::PUBLICATIONOBJ_TABLES_IN_SCHEMA"
-)]
-pub const PublicationObjSpecType_PUBLICATIONOBJ_TABLES_IN_SCHEMA: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PublicationObjSpecType::PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA"
-)]
-pub const PublicationObjSpecType_PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::PublicationObjSpecType::PUBLICATIONOBJ_CONTINUATION"
-)]
-pub const PublicationObjSpecType_PUBLICATIONOBJ_CONTINUATION: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PublicationPartOpt::PUBLICATION_PART_ROOT")]
-pub const PublicationPartOpt_PUBLICATION_PART_ROOT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PublicationPartOpt::PUBLICATION_PART_LEAF")]
-pub const PublicationPartOpt_PUBLICATION_PART_LEAF: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::PublicationPartOpt::PUBLICATION_PART_ALL")]
-pub const PublicationPartOpt_PUBLICATION_PART_ALL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::QuerySource::QSRC_ORIGINAL")]
-pub const QuerySource_QSRC_ORIGINAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::QuerySource::QSRC_PARSER")]
-pub const QuerySource_QSRC_PARSER: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::QuerySource::QSRC_INSTEAD_RULE")]
-pub const QuerySource_QSRC_INSTEAD_RULE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::QuerySource::QSRC_QUAL_INSTEAD_RULE")]
-pub const QuerySource_QSRC_QUAL_INSTEAD_RULE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::QuerySource::QSRC_NON_INSTEAD_RULE")]
-pub const QuerySource_QSRC_NON_INSTEAD_RULE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_RELATION")]
-pub const RTEKind_RTE_RELATION: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_SUBQUERY")]
-pub const RTEKind_RTE_SUBQUERY: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_JOIN")]
-pub const RTEKind_RTE_JOIN: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_FUNCTION")]
-pub const RTEKind_RTE_FUNCTION: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_TABLEFUNC")]
-pub const RTEKind_RTE_TABLEFUNC: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_VALUES")]
-pub const RTEKind_RTE_VALUES: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_CTE")]
-pub const RTEKind_RTE_CTE: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_NAMEDTUPLESTORE")]
-pub const RTEKind_RTE_NAMEDTUPLESTORE: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RTEKind::RTE_RESULT")]
-pub const RTEKind_RTE_RESULT: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RVROption::RVR_MISSING_OK")]
-pub const RVROption_RVR_MISSING_OK: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RVROption::RVR_NOWAIT")]
-pub const RVROption_RVR_NOWAIT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RVROption::RVR_SKIP_LOCKED")]
-pub const RVROption_RVR_SKIP_LOCKED: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RawParseMode::RAW_PARSE_DEFAULT")]
-pub const RawParseMode_RAW_PARSE_DEFAULT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RawParseMode::RAW_PARSE_TYPE_NAME")]
-pub const RawParseMode_RAW_PARSE_TYPE_NAME: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RawParseMode::RAW_PARSE_PLPGSQL_EXPR")]
-pub const RawParseMode_RAW_PARSE_PLPGSQL_EXPR: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RawParseMode::RAW_PARSE_PLPGSQL_ASSIGN1")]
-pub const RawParseMode_RAW_PARSE_PLPGSQL_ASSIGN1: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RawParseMode::RAW_PARSE_PLPGSQL_ASSIGN2")]
-pub const RawParseMode_RAW_PARSE_PLPGSQL_ASSIGN2: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RawParseMode::RAW_PARSE_PLPGSQL_ASSIGN3")]
-pub const RawParseMode_RAW_PARSE_PLPGSQL_ASSIGN3: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReadBufferMode::RBM_NORMAL")]
-pub const ReadBufferMode_RBM_NORMAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReadBufferMode::RBM_ZERO_AND_LOCK")]
-pub const ReadBufferMode_RBM_ZERO_AND_LOCK: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReadBufferMode::RBM_ZERO_AND_CLEANUP_LOCK")]
-pub const ReadBufferMode_RBM_ZERO_AND_CLEANUP_LOCK: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReadBufferMode::RBM_ZERO_ON_ERROR")]
-pub const ReadBufferMode_RBM_ZERO_ON_ERROR: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReadBufferMode::RBM_NORMAL_NO_LOG")]
-pub const ReadBufferMode_RBM_NORMAL_NO_LOG: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryInitSyncMethod::RECOVERY_INIT_SYNC_METHOD_FSYNC"
-)]
-pub const RecoveryInitSyncMethod_RECOVERY_INIT_SYNC_METHOD_FSYNC: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryInitSyncMethod::RECOVERY_INIT_SYNC_METHOD_SYNCFS"
-)]
-pub const RecoveryInitSyncMethod_RECOVERY_INIT_SYNC_METHOD_SYNCFS: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryPauseState::RECOVERY_NOT_PAUSED")]
-pub const RecoveryPauseState_RECOVERY_NOT_PAUSED: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryPauseState::RECOVERY_PAUSE_REQUESTED"
-)]
-pub const RecoveryPauseState_RECOVERY_PAUSE_REQUESTED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryPauseState::RECOVERY_PAUSED")]
-pub const RecoveryPauseState_RECOVERY_PAUSED: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryState::RECOVERY_STATE_CRASH")]
-pub const RecoveryState_RECOVERY_STATE_CRASH: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryState::RECOVERY_STATE_ARCHIVE")]
-pub const RecoveryState_RECOVERY_STATE_ARCHIVE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryState::RECOVERY_STATE_DONE")]
-pub const RecoveryState_RECOVERY_STATE_DONE: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryTargetAction::RECOVERY_TARGET_ACTION_PAUSE"
-)]
-pub const RecoveryTargetAction_RECOVERY_TARGET_ACTION_PAUSE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryTargetAction::RECOVERY_TARGET_ACTION_PROMOTE"
-)]
-pub const RecoveryTargetAction_RECOVERY_TARGET_ACTION_PROMOTE: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryTargetAction::RECOVERY_TARGET_ACTION_SHUTDOWN"
-)]
-pub const RecoveryTargetAction_RECOVERY_TARGET_ACTION_SHUTDOWN: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryTargetTimeLineGoal::RECOVERY_TARGET_TIMELINE_CONTROLFILE"
-)]
-pub const RecoveryTargetTimeLineGoal_RECOVERY_TARGET_TIMELINE_CONTROLFILE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryTargetTimeLineGoal::RECOVERY_TARGET_TIMELINE_LATEST"
-)]
-pub const RecoveryTargetTimeLineGoal_RECOVERY_TARGET_TIMELINE_LATEST: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryTargetTimeLineGoal::RECOVERY_TARGET_TIMELINE_NUMERIC"
-)]
-pub const RecoveryTargetTimeLineGoal_RECOVERY_TARGET_TIMELINE_NUMERIC: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryTargetType::RECOVERY_TARGET_UNSET")]
-pub const RecoveryTargetType_RECOVERY_TARGET_UNSET: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryTargetType::RECOVERY_TARGET_XID")]
-pub const RecoveryTargetType_RECOVERY_TARGET_XID: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryTargetType::RECOVERY_TARGET_TIME")]
-pub const RecoveryTargetType_RECOVERY_TARGET_TIME: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryTargetType::RECOVERY_TARGET_NAME")]
-pub const RecoveryTargetType_RECOVERY_TARGET_NAME: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RecoveryTargetType::RECOVERY_TARGET_LSN")]
-pub const RecoveryTargetType_RECOVERY_TARGET_LSN: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::RecoveryTargetType::RECOVERY_TARGET_IMMEDIATE"
-)]
-pub const RecoveryTargetType_RECOVERY_TARGET_IMMEDIATE: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReindexObjectType::REINDEX_OBJECT_INDEX")]
-pub const ReindexObjectType_REINDEX_OBJECT_INDEX: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReindexObjectType::REINDEX_OBJECT_TABLE")]
-pub const ReindexObjectType_REINDEX_OBJECT_TABLE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReindexObjectType::REINDEX_OBJECT_SCHEMA")]
-pub const ReindexObjectType_REINDEX_OBJECT_SCHEMA: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReindexObjectType::REINDEX_OBJECT_SYSTEM")]
-pub const ReindexObjectType_REINDEX_OBJECT_SYSTEM: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReindexObjectType::REINDEX_OBJECT_DATABASE"
-)]
-pub const ReindexObjectType_REINDEX_OBJECT_DATABASE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RelOptKind::RELOPT_BASEREL")]
-pub const RelOptKind_RELOPT_BASEREL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RelOptKind::RELOPT_JOINREL")]
-pub const RelOptKind_RELOPT_JOINREL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RelOptKind::RELOPT_OTHER_MEMBER_REL")]
-pub const RelOptKind_RELOPT_OTHER_MEMBER_REL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RelOptKind::RELOPT_OTHER_JOINREL")]
-pub const RelOptKind_RELOPT_OTHER_JOINREL: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RelOptKind::RELOPT_UPPER_REL")]
-pub const RelOptKind_RELOPT_UPPER_REL: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RelOptKind::RELOPT_OTHER_UPPER_REL")]
-pub const RelOptKind_RELOPT_OTHER_UPPER_REL: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_INSERT"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_INSERT: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_UPDATE"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_UPDATE: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_DELETE"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_DELETE: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_MESSAGE"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_MESSAGE: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_INVALIDATION"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_INVALIDATION: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_INTERNAL_SNAPSHOT"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_INTERNAL_SNAPSHOT: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID: u32 = 6;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_INTERNAL_SPEC_INSERT"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_INTERNAL_SPEC_INSERT: u32 = 8;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_INTERNAL_SPEC_CONFIRM"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_INTERNAL_SPEC_CONFIRM: u32 = 9;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT: u32 = 10;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReorderBufferChangeType::REORDER_BUFFER_CHANGE_TRUNCATE"
-)]
-pub const ReorderBufferChangeType_REORDER_BUFFER_CHANGE_TRUNCATE: u32 = 11;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReplicationKind::REPLICATION_KIND_PHYSICAL"
-)]
-pub const ReplicationKind_REPLICATION_KIND_PHYSICAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReplicationKind::REPLICATION_KIND_LOGICAL")]
-pub const ReplicationKind_REPLICATION_KIND_LOGICAL: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReplicationSlotInvalidationCause::RS_INVAL_NONE"
-)]
-pub const ReplicationSlotInvalidationCause_RS_INVAL_NONE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReplicationSlotInvalidationCause::RS_INVAL_WAL_REMOVED"
-)]
-pub const ReplicationSlotInvalidationCause_RS_INVAL_WAL_REMOVED: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReplicationSlotInvalidationCause::RS_INVAL_HORIZON"
-)]
-pub const ReplicationSlotInvalidationCause_RS_INVAL_HORIZON: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ReplicationSlotInvalidationCause::RS_INVAL_WAL_LEVEL"
-)]
-pub const ReplicationSlotInvalidationCause_RS_INVAL_WAL_LEVEL: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReplicationSlotPersistency::RS_PERSISTENT")]
-pub const ReplicationSlotPersistency_RS_PERSISTENT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReplicationSlotPersistency::RS_EPHEMERAL")]
-pub const ReplicationSlotPersistency_RS_EPHEMERAL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ReplicationSlotPersistency::RS_TEMPORARY")]
-pub const ReplicationSlotPersistency_RS_TEMPORARY: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ResourceReleasePhase::RESOURCE_RELEASE_BEFORE_LOCKS"
-)]
-pub const ResourceReleasePhase_RESOURCE_RELEASE_BEFORE_LOCKS: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ResourceReleasePhase::RESOURCE_RELEASE_LOCKS"
-)]
-pub const ResourceReleasePhase_RESOURCE_RELEASE_LOCKS: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ResourceReleasePhase::RESOURCE_RELEASE_AFTER_LOCKS"
-)]
-pub const ResourceReleasePhase_RESOURCE_RELEASE_AFTER_LOCKS: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_XLOG_ID")]
-pub const RmgrIds_RM_XLOG_ID: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_XACT_ID")]
-pub const RmgrIds_RM_XACT_ID: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_SMGR_ID")]
-pub const RmgrIds_RM_SMGR_ID: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_CLOG_ID")]
-pub const RmgrIds_RM_CLOG_ID: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_DBASE_ID")]
-pub const RmgrIds_RM_DBASE_ID: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_TBLSPC_ID")]
-pub const RmgrIds_RM_TBLSPC_ID: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_MULTIXACT_ID")]
-pub const RmgrIds_RM_MULTIXACT_ID: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_RELMAP_ID")]
-pub const RmgrIds_RM_RELMAP_ID: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_STANDBY_ID")]
-pub const RmgrIds_RM_STANDBY_ID: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_HEAP2_ID")]
-pub const RmgrIds_RM_HEAP2_ID: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_HEAP_ID")]
-pub const RmgrIds_RM_HEAP_ID: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_BTREE_ID")]
-pub const RmgrIds_RM_BTREE_ID: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_HASH_ID")]
-pub const RmgrIds_RM_HASH_ID: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_GIN_ID")]
-pub const RmgrIds_RM_GIN_ID: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_GIST_ID")]
-pub const RmgrIds_RM_GIST_ID: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_SEQ_ID")]
-pub const RmgrIds_RM_SEQ_ID: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_SPGIST_ID")]
-pub const RmgrIds_RM_SPGIST_ID: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_BRIN_ID")]
-pub const RmgrIds_RM_BRIN_ID: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_COMMIT_TS_ID")]
-pub const RmgrIds_RM_COMMIT_TS_ID: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_REPLORIGIN_ID")]
-pub const RmgrIds_RM_REPLORIGIN_ID: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_GENERIC_ID")]
-pub const RmgrIds_RM_GENERIC_ID: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_LOGICALMSG_ID")]
-pub const RmgrIds_RM_LOGICALMSG_ID: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RmgrIds::RM_NEXT_ID")]
-pub const RmgrIds_RM_NEXT_ID: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RoleSpecType::ROLESPEC_CSTRING")]
-pub const RoleSpecType_ROLESPEC_CSTRING: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RoleSpecType::ROLESPEC_CURRENT_ROLE")]
-pub const RoleSpecType_ROLESPEC_CURRENT_ROLE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RoleSpecType::ROLESPEC_CURRENT_USER")]
-pub const RoleSpecType_ROLESPEC_CURRENT_USER: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RoleSpecType::ROLESPEC_SESSION_USER")]
-pub const RoleSpecType_ROLESPEC_SESSION_USER: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RoleSpecType::ROLESPEC_PUBLIC")]
-pub const RoleSpecType_ROLESPEC_PUBLIC: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RoleStmtType::ROLESTMT_ROLE")]
-pub const RoleStmtType_ROLESTMT_ROLE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RoleStmtType::ROLESTMT_USER")]
-pub const RoleStmtType_ROLESTMT_USER: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RoleStmtType::ROLESTMT_GROUP")]
-pub const RoleStmtType_ROLESTMT_GROUP: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowCompareType::ROWCOMPARE_LT")]
-pub const RowCompareType_ROWCOMPARE_LT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowCompareType::ROWCOMPARE_LE")]
-pub const RowCompareType_ROWCOMPARE_LE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowCompareType::ROWCOMPARE_EQ")]
-pub const RowCompareType_ROWCOMPARE_EQ: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowCompareType::ROWCOMPARE_GE")]
-pub const RowCompareType_ROWCOMPARE_GE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowCompareType::ROWCOMPARE_GT")]
-pub const RowCompareType_ROWCOMPARE_GT: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowCompareType::ROWCOMPARE_NE")]
-pub const RowCompareType_ROWCOMPARE_NE: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowMarkType::ROW_MARK_EXCLUSIVE")]
-pub const RowMarkType_ROW_MARK_EXCLUSIVE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowMarkType::ROW_MARK_NOKEYEXCLUSIVE")]
-pub const RowMarkType_ROW_MARK_NOKEYEXCLUSIVE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowMarkType::ROW_MARK_SHARE")]
-pub const RowMarkType_ROW_MARK_SHARE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowMarkType::ROW_MARK_KEYSHARE")]
-pub const RowMarkType_ROW_MARK_KEYSHARE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowMarkType::ROW_MARK_REFERENCE")]
-pub const RowMarkType_ROW_MARK_REFERENCE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::RowMarkType::ROW_MARK_COPY")]
-pub const RowMarkType_ROW_MARK_COPY: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_DATE")]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_DATE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_TIME")]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_TIME: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_TIME_N")]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_TIME_N: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_TIMESTAMP"
-)]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_TIMESTAMP: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_TIMESTAMP_N"
-)]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_TIMESTAMP_N: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_LOCALTIME")]
-pub const SQLValueFunctionOp_SVFOP_LOCALTIME: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_LOCALTIME_N")]
-pub const SQLValueFunctionOp_SVFOP_LOCALTIME_N: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_LOCALTIMESTAMP")]
-pub const SQLValueFunctionOp_SVFOP_LOCALTIMESTAMP: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SQLValueFunctionOp::SVFOP_LOCALTIMESTAMP_N"
-)]
-pub const SQLValueFunctionOp_SVFOP_LOCALTIMESTAMP_N: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_ROLE")]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_ROLE: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_USER")]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_USER: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_USER")]
-pub const SQLValueFunctionOp_SVFOP_USER: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_SESSION_USER")]
-pub const SQLValueFunctionOp_SVFOP_SESSION_USER: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_CATALOG")]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_CATALOG: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SQLValueFunctionOp::SVFOP_CURRENT_SCHEMA")]
-pub const SQLValueFunctionOp_SVFOP_CURRENT_SCHEMA: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanDirection::BackwardScanDirection")]
-pub const ScanDirection_BackwardScanDirection: i32 = -1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanDirection::NoMovementScanDirection")]
-pub const ScanDirection_NoMovementScanDirection: i32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanDirection::ForwardScanDirection")]
-pub const ScanDirection_ForwardScanDirection: i32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_TYPE_SEQSCAN")]
-pub const ScanOptions_SO_TYPE_SEQSCAN: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_TYPE_BITMAPSCAN")]
-pub const ScanOptions_SO_TYPE_BITMAPSCAN: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_TYPE_SAMPLESCAN")]
-pub const ScanOptions_SO_TYPE_SAMPLESCAN: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_TYPE_TIDSCAN")]
-pub const ScanOptions_SO_TYPE_TIDSCAN: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_TYPE_TIDRANGESCAN")]
-pub const ScanOptions_SO_TYPE_TIDRANGESCAN: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_TYPE_ANALYZE")]
-pub const ScanOptions_SO_TYPE_ANALYZE: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_ALLOW_STRAT")]
-pub const ScanOptions_SO_ALLOW_STRAT: u32 = 64;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_ALLOW_SYNC")]
-pub const ScanOptions_SO_ALLOW_SYNC: u32 = 128;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_ALLOW_PAGEMODE")]
-pub const ScanOptions_SO_ALLOW_PAGEMODE: u32 = 256;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ScanOptions::SO_TEMP_SNAPSHOT")]
-pub const ScanOptions_SO_TEMP_SNAPSHOT: u32 = 512;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SessionBackupState::SESSION_BACKUP_NONE")]
-pub const SessionBackupState_SESSION_BACKUP_NONE: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SessionBackupState::SESSION_BACKUP_RUNNING"
-)]
-pub const SessionBackupState_SESSION_BACKUP_RUNNING: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SessionEndType::DISCONNECT_NOT_YET")]
-pub const SessionEndType_DISCONNECT_NOT_YET: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SessionEndType::DISCONNECT_NORMAL")]
-pub const SessionEndType_DISCONNECT_NORMAL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SessionEndType::DISCONNECT_CLIENT_EOF")]
-pub const SessionEndType_DISCONNECT_CLIENT_EOF: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SessionEndType::DISCONNECT_FATAL")]
-pub const SessionEndType_DISCONNECT_FATAL: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SessionEndType::DISCONNECT_KILLED")]
-pub const SessionEndType_DISCONNECT_KILLED: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetFunctionReturnMode::SFRM_ValuePerCall")]
-pub const SetFunctionReturnMode_SFRM_ValuePerCall: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetFunctionReturnMode::SFRM_Materialize")]
-pub const SetFunctionReturnMode_SFRM_Materialize: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SetFunctionReturnMode::SFRM_Materialize_Random"
-)]
-pub const SetFunctionReturnMode_SFRM_Materialize_Random: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SetFunctionReturnMode::SFRM_Materialize_Preferred"
-)]
-pub const SetFunctionReturnMode_SFRM_Materialize_Preferred: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOpCmd::SETOPCMD_INTERSECT")]
-pub const SetOpCmd_SETOPCMD_INTERSECT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOpCmd::SETOPCMD_INTERSECT_ALL")]
-pub const SetOpCmd_SETOPCMD_INTERSECT_ALL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOpCmd::SETOPCMD_EXCEPT")]
-pub const SetOpCmd_SETOPCMD_EXCEPT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOpCmd::SETOPCMD_EXCEPT_ALL")]
-pub const SetOpCmd_SETOPCMD_EXCEPT_ALL: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOpStrategy::SETOP_SORTED")]
-pub const SetOpStrategy_SETOP_SORTED: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOpStrategy::SETOP_HASHED")]
-pub const SetOpStrategy_SETOP_HASHED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOperation::SETOP_NONE")]
-pub const SetOperation_SETOP_NONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOperation::SETOP_UNION")]
-pub const SetOperation_SETOP_UNION: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOperation::SETOP_INTERSECT")]
-pub const SetOperation_SETOP_INTERSECT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetOperation::SETOP_EXCEPT")]
-pub const SetOperation_SETOP_EXCEPT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetQuantifier::SET_QUANTIFIER_DEFAULT")]
-pub const SetQuantifier_SET_QUANTIFIER_DEFAULT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetQuantifier::SET_QUANTIFIER_ALL")]
-pub const SetQuantifier_SET_QUANTIFIER_ALL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SetQuantifier::SET_QUANTIFIER_DISTINCT")]
-pub const SetQuantifier_SET_QUANTIFIER_DISTINCT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SharedBitmapState::BM_INITIAL")]
-pub const SharedBitmapState_BM_INITIAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SharedBitmapState::BM_INPROGRESS")]
-pub const SharedBitmapState_BM_INPROGRESS: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SharedBitmapState::BM_FINISHED")]
-pub const SharedBitmapState_BM_FINISHED: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SharedDependencyType::SHARED_DEPENDENCY_OWNER"
-)]
-pub const SharedDependencyType_SHARED_DEPENDENCY_OWNER: u32 = 111;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SharedDependencyType::SHARED_DEPENDENCY_ACL"
-)]
-pub const SharedDependencyType_SHARED_DEPENDENCY_ACL: u32 = 97;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SharedDependencyType::SHARED_DEPENDENCY_POLICY"
-)]
-pub const SharedDependencyType_SHARED_DEPENDENCY_POLICY: u32 = 114;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SharedDependencyType::SHARED_DEPENDENCY_TABLESPACE"
-)]
-pub const SharedDependencyType_SHARED_DEPENDENCY_TABLESPACE: u32 = 116;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SharedDependencyType::SHARED_DEPENDENCY_INVALID"
-)]
-pub const SharedDependencyType_SHARED_DEPENDENCY_INVALID: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SnapshotType::SNAPSHOT_MVCC")]
-pub const SnapshotType_SNAPSHOT_MVCC: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SnapshotType::SNAPSHOT_SELF")]
-pub const SnapshotType_SNAPSHOT_SELF: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SnapshotType::SNAPSHOT_ANY")]
-pub const SnapshotType_SNAPSHOT_ANY: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SnapshotType::SNAPSHOT_TOAST")]
-pub const SnapshotType_SNAPSHOT_TOAST: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SnapshotType::SNAPSHOT_DIRTY")]
-pub const SnapshotType_SNAPSHOT_DIRTY: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SnapshotType::SNAPSHOT_HISTORIC_MVCC")]
-pub const SnapshotType_SNAPSHOT_HISTORIC_MVCC: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SnapshotType::SNAPSHOT_NON_VACUUMABLE")]
-pub const SnapshotType_SNAPSHOT_NON_VACUUMABLE: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SortByDir::SORTBY_DEFAULT")]
-pub const SortByDir_SORTBY_DEFAULT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SortByDir::SORTBY_ASC")]
-pub const SortByDir_SORTBY_ASC: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SortByDir::SORTBY_DESC")]
-pub const SortByDir_SORTBY_DESC: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SortByDir::SORTBY_USING")]
-pub const SortByDir_SORTBY_USING: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SortByNulls::SORTBY_NULLS_DEFAULT")]
-pub const SortByNulls_SORTBY_NULLS_DEFAULT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SortByNulls::SORTBY_NULLS_FIRST")]
-pub const SortByNulls_SORTBY_NULLS_FIRST: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SortByNulls::SORTBY_NULLS_LAST")]
-pub const SortByNulls_SORTBY_NULLS_LAST: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::StdRdOptIndexCleanup::STDRD_OPTION_VACUUM_INDEX_CLEANUP_AUTO"
-)]
-pub const StdRdOptIndexCleanup_STDRD_OPTION_VACUUM_INDEX_CLEANUP_AUTO: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::StdRdOptIndexCleanup::STDRD_OPTION_VACUUM_INDEX_CLEANUP_OFF"
-)]
-pub const StdRdOptIndexCleanup_STDRD_OPTION_VACUUM_INDEX_CLEANUP_OFF: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::StdRdOptIndexCleanup::STDRD_OPTION_VACUUM_INDEX_CLEANUP_ON"
-)]
-pub const StdRdOptIndexCleanup_STDRD_OPTION_VACUUM_INDEX_CLEANUP_ON: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubLinkType::EXISTS_SUBLINK")]
-pub const SubLinkType_EXISTS_SUBLINK: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubLinkType::ALL_SUBLINK")]
-pub const SubLinkType_ALL_SUBLINK: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubLinkType::ANY_SUBLINK")]
-pub const SubLinkType_ANY_SUBLINK: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubLinkType::ROWCOMPARE_SUBLINK")]
-pub const SubLinkType_ROWCOMPARE_SUBLINK: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubLinkType::EXPR_SUBLINK")]
-pub const SubLinkType_EXPR_SUBLINK: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubLinkType::MULTIEXPR_SUBLINK")]
-pub const SubLinkType_MULTIEXPR_SUBLINK: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubLinkType::ARRAY_SUBLINK")]
-pub const SubLinkType_ARRAY_SUBLINK: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubLinkType::CTE_SUBLINK")]
-pub const SubLinkType_CTE_SUBLINK: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubXactEvent::SUBXACT_EVENT_START_SUB")]
-pub const SubXactEvent_SUBXACT_EVENT_START_SUB: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubXactEvent::SUBXACT_EVENT_COMMIT_SUB")]
-pub const SubXactEvent_SUBXACT_EVENT_COMMIT_SUB: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubXactEvent::SUBXACT_EVENT_ABORT_SUB")]
-pub const SubXactEvent_SUBXACT_EVENT_ABORT_SUB: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SubXactEvent::SUBXACT_EVENT_PRE_COMMIT_SUB"
-)]
-pub const SubXactEvent_SUBXACT_EVENT_PRE_COMMIT_SUB: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubqueryScanStatus::SUBQUERY_SCAN_UNKNOWN")]
-pub const SubqueryScanStatus_SUBQUERY_SCAN_UNKNOWN: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SubqueryScanStatus::SUBQUERY_SCAN_TRIVIAL")]
-pub const SubqueryScanStatus_SUBQUERY_SCAN_TRIVIAL: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SubqueryScanStatus::SUBQUERY_SCAN_NONTRIVIAL"
-)]
-pub const SubqueryScanStatus_SUBQUERY_SCAN_NONTRIVIAL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SyncCommitLevel::SYNCHRONOUS_COMMIT_OFF")]
-pub const SyncCommitLevel_SYNCHRONOUS_COMMIT_OFF: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SyncCommitLevel::SYNCHRONOUS_COMMIT_LOCAL_FLUSH"
-)]
-pub const SyncCommitLevel_SYNCHRONOUS_COMMIT_LOCAL_FLUSH: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SyncCommitLevel::SYNCHRONOUS_COMMIT_REMOTE_WRITE"
-)]
-pub const SyncCommitLevel_SYNCHRONOUS_COMMIT_REMOTE_WRITE: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SyncCommitLevel::SYNCHRONOUS_COMMIT_REMOTE_FLUSH"
-)]
-pub const SyncCommitLevel_SYNCHRONOUS_COMMIT_REMOTE_FLUSH: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SyncCommitLevel::SYNCHRONOUS_COMMIT_REMOTE_APPLY"
-)]
-pub const SyncCommitLevel_SYNCHRONOUS_COMMIT_REMOTE_APPLY: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SyncRequestHandler::SYNC_HANDLER_MD")]
-pub const SyncRequestHandler_SYNC_HANDLER_MD: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SyncRequestHandler::SYNC_HANDLER_CLOG")]
-pub const SyncRequestHandler_SYNC_HANDLER_CLOG: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SyncRequestHandler::SYNC_HANDLER_COMMIT_TS"
-)]
-pub const SyncRequestHandler_SYNC_HANDLER_COMMIT_TS: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SyncRequestHandler::SYNC_HANDLER_MULTIXACT_OFFSET"
-)]
-pub const SyncRequestHandler_SYNC_HANDLER_MULTIXACT_OFFSET: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SyncRequestHandler::SYNC_HANDLER_MULTIXACT_MEMBER"
-)]
-pub const SyncRequestHandler_SYNC_HANDLER_MULTIXACT_MEMBER: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SyncRequestHandler::SYNC_HANDLER_NONE")]
-pub const SyncRequestHandler_SYNC_HANDLER_NONE: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SyncRequestType::SYNC_REQUEST")]
-pub const SyncRequestType_SYNC_REQUEST: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SyncRequestType::SYNC_UNLINK_REQUEST")]
-pub const SyncRequestType_SYNC_UNLINK_REQUEST: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SyncRequestType::SYNC_FORGET_REQUEST")]
-pub const SyncRequestType_SYNC_FORGET_REQUEST: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SyncRequestType::SYNC_FILTER_REQUEST")]
-pub const SyncRequestType_SYNC_FILTER_REQUEST: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::AMNAME")]
-pub const SysCacheIdentifier_AMNAME: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::AMOPOPID")]
-pub const SysCacheIdentifier_AMOPOPID: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::AMOPSTRATEGY")]
-pub const SysCacheIdentifier_AMOPSTRATEGY: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::AMPROCNUM")]
-pub const SysCacheIdentifier_AMPROCNUM: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::ATTNAME")]
-pub const SysCacheIdentifier_ATTNAME: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::ATTNUM")]
-pub const SysCacheIdentifier_ATTNUM: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::AUTHMEMMEMROLE")]
-pub const SysCacheIdentifier_AUTHMEMMEMROLE: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::AUTHMEMROLEMEM")]
-pub const SysCacheIdentifier_AUTHMEMROLEMEM: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::AUTHNAME")]
-pub const SysCacheIdentifier_AUTHNAME: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::CASTSOURCETARGET")]
-pub const SysCacheIdentifier_CASTSOURCETARGET: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::CLAAMNAMENSP")]
-pub const SysCacheIdentifier_CLAAMNAMENSP: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::COLLNAMEENCNSP")]
-pub const SysCacheIdentifier_COLLNAMEENCNSP: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::CONDEFAULT")]
-pub const SysCacheIdentifier_CONDEFAULT: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::CONNAMENSP")]
-pub const SysCacheIdentifier_CONNAMENSP: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::DEFACLROLENSPOBJ")]
-pub const SysCacheIdentifier_DEFACLROLENSPOBJ: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::EVENTTRIGGERNAME")]
-pub const SysCacheIdentifier_EVENTTRIGGERNAME: u32 = 25;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SysCacheIdentifier::FOREIGNDATAWRAPPERNAME"
-)]
-pub const SysCacheIdentifier_FOREIGNDATAWRAPPERNAME: u32 = 27;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::FOREIGNSERVERNAME")]
-pub const SysCacheIdentifier_FOREIGNSERVERNAME: u32 = 29;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::FOREIGNTABLEREL")]
-pub const SysCacheIdentifier_FOREIGNTABLEREL: u32 = 31;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::INDEXRELID")]
-pub const SysCacheIdentifier_INDEXRELID: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::LANGNAME")]
-pub const SysCacheIdentifier_LANGNAME: u32 = 33;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::NAMESPACENAME")]
-pub const SysCacheIdentifier_NAMESPACENAME: u32 = 35;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::OPERNAMENSP")]
-pub const SysCacheIdentifier_OPERNAMENSP: u32 = 37;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::OPFAMILYAMNAMENSP")]
-pub const SysCacheIdentifier_OPFAMILYAMNAMENSP: u32 = 39;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::PARAMETERACLNAME")]
-pub const SysCacheIdentifier_PARAMETERACLNAME: u32 = 41;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::PARTRELID")]
-pub const SysCacheIdentifier_PARTRELID: u32 = 43;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::PROCNAMEARGSNSP")]
-pub const SysCacheIdentifier_PROCNAMEARGSNSP: u32 = 44;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::PUBLICATIONNAME")]
-pub const SysCacheIdentifier_PUBLICATIONNAME: u32 = 46;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::PUBLICATIONNAMESPACE")]
-pub const SysCacheIdentifier_PUBLICATIONNAMESPACE: u32 = 47;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::SysCacheIdentifier::PUBLICATIONNAMESPACEMAP"
-)]
-pub const SysCacheIdentifier_PUBLICATIONNAMESPACEMAP: u32 = 48;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::PUBLICATIONREL")]
-pub const SysCacheIdentifier_PUBLICATIONREL: u32 = 50;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::PUBLICATIONRELMAP")]
-pub const SysCacheIdentifier_PUBLICATIONRELMAP: u32 = 51;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::RANGEMULTIRANGE")]
-pub const SysCacheIdentifier_RANGEMULTIRANGE: u32 = 52;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::RANGETYPE")]
-pub const SysCacheIdentifier_RANGETYPE: u32 = 53;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::RELNAMENSP")]
-pub const SysCacheIdentifier_RELNAMENSP: u32 = 54;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::REPLORIGIDENT")]
-pub const SysCacheIdentifier_REPLORIGIDENT: u32 = 56;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::REPLORIGNAME")]
-pub const SysCacheIdentifier_REPLORIGNAME: u32 = 57;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::RULERELNAME")]
-pub const SysCacheIdentifier_RULERELNAME: u32 = 58;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::SEQRELID")]
-pub const SysCacheIdentifier_SEQRELID: u32 = 59;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::STATEXTNAMENSP")]
-pub const SysCacheIdentifier_STATEXTNAMENSP: u32 = 61;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::STATRELATTINH")]
-pub const SysCacheIdentifier_STATRELATTINH: u32 = 63;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::SUBSCRIPTIONNAME")]
-pub const SysCacheIdentifier_SUBSCRIPTIONNAME: u32 = 64;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::SUBSCRIPTIONRELMAP")]
-pub const SysCacheIdentifier_SUBSCRIPTIONRELMAP: u32 = 66;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::TRFTYPELANG")]
-pub const SysCacheIdentifier_TRFTYPELANG: u32 = 69;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::TSCONFIGMAP")]
-pub const SysCacheIdentifier_TSCONFIGMAP: u32 = 70;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::TSCONFIGNAMENSP")]
-pub const SysCacheIdentifier_TSCONFIGNAMENSP: u32 = 71;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::TSDICTNAMENSP")]
-pub const SysCacheIdentifier_TSDICTNAMENSP: u32 = 73;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::TSPARSERNAMENSP")]
-pub const SysCacheIdentifier_TSPARSERNAMENSP: u32 = 75;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::TSTEMPLATENAMENSP")]
-pub const SysCacheIdentifier_TSTEMPLATENAMENSP: u32 = 77;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::TYPENAMENSP")]
-pub const SysCacheIdentifier_TYPENAMENSP: u32 = 79;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::SysCacheIdentifier::USERMAPPINGUSERSERVER")]
-pub const SysCacheIdentifier_USERMAPPINGUSERSERVER: u32 = 82;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TM_Result::TM_Ok")]
-pub const TM_Result_TM_Ok: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TM_Result::TM_Invisible")]
-pub const TM_Result_TM_Invisible: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TM_Result::TM_SelfModified")]
-pub const TM_Result_TM_SelfModified: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TM_Result::TM_Updated")]
-pub const TM_Result_TM_Updated: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TM_Result::TM_Deleted")]
-pub const TM_Result_TM_Deleted: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TM_Result::TM_BeingModified")]
-pub const TM_Result_TM_BeingModified: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TM_Result::TM_WouldBlock")]
-pub const TM_Result_TM_WouldBlock: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TSTernaryValue::TS_NO")]
-pub const TSTernaryValue_TS_NO: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TSTernaryValue::TS_YES")]
-pub const TSTernaryValue_TS_YES: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TSTernaryValue::TS_MAYBE")]
-pub const TSTernaryValue_TS_MAYBE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TU_UpdateIndexes::TU_None")]
-pub const TU_UpdateIndexes_TU_None: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TU_UpdateIndexes::TU_All")]
-pub const TU_UpdateIndexes_TU_All: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TU_UpdateIndexes::TU_Summarizing")]
-pub const TU_UpdateIndexes_TU_Summarizing: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_COMMENTS"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_COMMENTS: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_COMPRESSION"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_COMPRESSION: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_CONSTRAINTS"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_CONSTRAINTS: u32 = 4;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_DEFAULTS"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_DEFAULTS: u32 = 8;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_GENERATED"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_GENERATED: u32 = 16;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_IDENTITY"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_IDENTITY: u32 = 32;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_INDEXES"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_INDEXES: u32 = 64;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_STATISTICS"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_STATISTICS: u32 = 128;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_STORAGE"
-)]
-pub const TableLikeOption_CREATE_TABLE_LIKE_STORAGE: u32 = 256;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TableLikeOption::CREATE_TABLE_LIKE_ALL")]
-pub const TableLikeOption_CREATE_TABLE_LIKE_ALL: u32 = 2147483647;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TempNamespaceStatus::TEMP_NAMESPACE_NOT_TEMP"
-)]
-pub const TempNamespaceStatus_TEMP_NAMESPACE_NOT_TEMP: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TempNamespaceStatus::TEMP_NAMESPACE_IDLE")]
-pub const TempNamespaceStatus_TEMP_NAMESPACE_IDLE: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TempNamespaceStatus::TEMP_NAMESPACE_IN_USE"
-)]
-pub const TempNamespaceStatus_TEMP_NAMESPACE_IN_USE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TrackFunctionsLevel::TRACK_FUNC_OFF")]
-pub const TrackFunctionsLevel_TRACK_FUNC_OFF: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TrackFunctionsLevel::TRACK_FUNC_PL")]
-pub const TrackFunctionsLevel_TRACK_FUNC_PL: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TrackFunctionsLevel::TRACK_FUNC_ALL")]
-pub const TrackFunctionsLevel_TRACK_FUNC_ALL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_BEGIN")]
-pub const TransactionStmtKind_TRANS_STMT_BEGIN: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_START")]
-pub const TransactionStmtKind_TRANS_STMT_START: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_COMMIT")]
-pub const TransactionStmtKind_TRANS_STMT_COMMIT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_ROLLBACK")]
-pub const TransactionStmtKind_TRANS_STMT_ROLLBACK: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_SAVEPOINT")]
-pub const TransactionStmtKind_TRANS_STMT_SAVEPOINT: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_RELEASE")]
-pub const TransactionStmtKind_TRANS_STMT_RELEASE: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_ROLLBACK_TO"
-)]
-pub const TransactionStmtKind_TRANS_STMT_ROLLBACK_TO: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_PREPARE")]
-pub const TransactionStmtKind_TRANS_STMT_PREPARE: u32 = 7;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_COMMIT_PREPARED"
-)]
-pub const TransactionStmtKind_TRANS_STMT_COMMIT_PREPARED: u32 = 8;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TransactionStmtKind::TRANS_STMT_ROLLBACK_PREPARED"
-)]
-pub const TransactionStmtKind_TRANS_STMT_ROLLBACK_PREPARED: u32 = 9;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TuplesortMethod::SORT_TYPE_STILL_IN_PROGRESS"
-)]
-pub const TuplesortMethod_SORT_TYPE_STILL_IN_PROGRESS: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TuplesortMethod::SORT_TYPE_TOP_N_HEAPSORT")]
-pub const TuplesortMethod_SORT_TYPE_TOP_N_HEAPSORT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TuplesortMethod::SORT_TYPE_QUICKSORT")]
-pub const TuplesortMethod_SORT_TYPE_QUICKSORT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TuplesortMethod::SORT_TYPE_EXTERNAL_SORT")]
-pub const TuplesortMethod_SORT_TYPE_EXTERNAL_SORT: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TuplesortMethod::SORT_TYPE_EXTERNAL_MERGE")]
-pub const TuplesortMethod_SORT_TYPE_EXTERNAL_MERGE: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TuplesortSpaceType::SORT_SPACE_TYPE_DISK")]
-pub const TuplesortSpaceType_SORT_SPACE_TYPE_DISK: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::TuplesortSpaceType::SORT_SPACE_TYPE_MEMORY"
-)]
-pub const TuplesortSpaceType_SORT_SPACE_TYPE_MEMORY: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TypeFuncClass::TYPEFUNC_SCALAR")]
-pub const TypeFuncClass_TYPEFUNC_SCALAR: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TypeFuncClass::TYPEFUNC_COMPOSITE")]
-pub const TypeFuncClass_TYPEFUNC_COMPOSITE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TypeFuncClass::TYPEFUNC_COMPOSITE_DOMAIN")]
-pub const TypeFuncClass_TYPEFUNC_COMPOSITE_DOMAIN: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TypeFuncClass::TYPEFUNC_RECORD")]
-pub const TypeFuncClass_TYPEFUNC_RECORD: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::TypeFuncClass::TYPEFUNC_OTHER")]
-pub const TypeFuncClass_TYPEFUNC_OTHER: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UniquePathMethod::UNIQUE_PATH_NOOP")]
-pub const UniquePathMethod_UNIQUE_PATH_NOOP: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UniquePathMethod::UNIQUE_PATH_HASH")]
-pub const UniquePathMethod_UNIQUE_PATH_HASH: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UniquePathMethod::UNIQUE_PATH_SORT")]
-pub const UniquePathMethod_UNIQUE_PATH_SORT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UpperRelationKind::UPPERREL_SETOP")]
-pub const UpperRelationKind_UPPERREL_SETOP: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::UpperRelationKind::UPPERREL_PARTIAL_GROUP_AGG"
-)]
-pub const UpperRelationKind_UPPERREL_PARTIAL_GROUP_AGG: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UpperRelationKind::UPPERREL_GROUP_AGG")]
-pub const UpperRelationKind_UPPERREL_GROUP_AGG: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UpperRelationKind::UPPERREL_WINDOW")]
-pub const UpperRelationKind_UPPERREL_WINDOW: u32 = 3;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::UpperRelationKind::UPPERREL_PARTIAL_DISTINCT"
-)]
-pub const UpperRelationKind_UPPERREL_PARTIAL_DISTINCT: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UpperRelationKind::UPPERREL_DISTINCT")]
-pub const UpperRelationKind_UPPERREL_DISTINCT: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UpperRelationKind::UPPERREL_ORDERED")]
-pub const UpperRelationKind_UPPERREL_ORDERED: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::UpperRelationKind::UPPERREL_FINAL")]
-pub const UpperRelationKind_UPPERREL_FINAL: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VacOptValue::VACOPTVALUE_UNSPECIFIED")]
-pub const VacOptValue_VACOPTVALUE_UNSPECIFIED: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VacOptValue::VACOPTVALUE_AUTO")]
-pub const VacOptValue_VACOPTVALUE_AUTO: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VacOptValue::VACOPTVALUE_DISABLED")]
-pub const VacOptValue_VACOPTVALUE_DISABLED: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VacOptValue::VACOPTVALUE_ENABLED")]
-pub const VacOptValue_VACOPTVALUE_ENABLED: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VariableSetKind::VAR_SET_VALUE")]
-pub const VariableSetKind_VAR_SET_VALUE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VariableSetKind::VAR_SET_DEFAULT")]
-pub const VariableSetKind_VAR_SET_DEFAULT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VariableSetKind::VAR_SET_CURRENT")]
-pub const VariableSetKind_VAR_SET_CURRENT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VariableSetKind::VAR_SET_MULTI")]
-pub const VariableSetKind_VAR_SET_MULTI: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VariableSetKind::VAR_RESET")]
-pub const VariableSetKind_VAR_RESET: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::VariableSetKind::VAR_RESET_ALL")]
-pub const VariableSetKind_VAR_RESET_ALL: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ViewCheckOption::NO_CHECK_OPTION")]
-pub const ViewCheckOption_NO_CHECK_OPTION: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ViewCheckOption::LOCAL_CHECK_OPTION")]
-pub const ViewCheckOption_LOCAL_CHECK_OPTION: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::ViewCheckOption::CASCADED_CHECK_OPTION")]
-pub const ViewCheckOption_CASCADED_CHECK_OPTION: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ViewOptCheckOption::VIEW_OPTION_CHECK_OPTION_NOT_SET"
-)]
-pub const ViewOptCheckOption_VIEW_OPTION_CHECK_OPTION_NOT_SET: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ViewOptCheckOption::VIEW_OPTION_CHECK_OPTION_LOCAL"
-)]
-pub const ViewOptCheckOption_VIEW_OPTION_CHECK_OPTION_LOCAL: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::ViewOptCheckOption::VIEW_OPTION_CHECK_OPTION_CASCADED"
-)]
-pub const ViewOptCheckOption_VIEW_OPTION_CHECK_OPTION_CASCADED: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::VolatileFunctionStatus::VOLATILITY_UNKNOWN"
-)]
-pub const VolatileFunctionStatus_VOLATILITY_UNKNOWN: u32 = 0;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::VolatileFunctionStatus::VOLATILITY_VOLATILE"
-)]
-pub const VolatileFunctionStatus_VOLATILITY_VOLATILE: u32 = 1;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::VolatileFunctionStatus::VOLATILITY_NOVOLATILE"
-)]
-pub const VolatileFunctionStatus_VOLATILITY_NOVOLATILE: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WALAvailability::WALAVAIL_INVALID_LSN")]
-pub const WALAvailability_WALAVAIL_INVALID_LSN: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WALAvailability::WALAVAIL_RESERVED")]
-pub const WALAvailability_WALAVAIL_RESERVED: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WALAvailability::WALAVAIL_EXTENDED")]
-pub const WALAvailability_WALAVAIL_EXTENDED: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WALAvailability::WALAVAIL_UNRESERVED")]
-pub const WALAvailability_WALAVAIL_UNRESERVED: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WALAvailability::WALAVAIL_REMOVED")]
-pub const WALAvailability_WALAVAIL_REMOVED: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WCOKind::WCO_VIEW_CHECK")]
-pub const WCOKind_WCO_VIEW_CHECK: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WCOKind::WCO_RLS_INSERT_CHECK")]
-pub const WCOKind_WCO_RLS_INSERT_CHECK: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WCOKind::WCO_RLS_UPDATE_CHECK")]
-pub const WCOKind_WCO_RLS_UPDATE_CHECK: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WCOKind::WCO_RLS_CONFLICT_CHECK")]
-pub const WCOKind_WCO_RLS_CONFLICT_CHECK: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WCOKind::WCO_RLS_MERGE_UPDATE_CHECK")]
-pub const WCOKind_WCO_RLS_MERGE_UPDATE_CHECK: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WCOKind::WCO_RLS_MERGE_DELETE_CHECK")]
-pub const WCOKind_WCO_RLS_MERGE_DELETE_CHECK: u32 = 5;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_ARCHIVER_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_ARCHIVER_MAIN: u32 = 83886080;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_AUTOVACUUM_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_AUTOVACUUM_MAIN: u32 = 83886081;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_BGWRITER_HIBERNATE"
-)]
-pub const WaitEventActivity_WAIT_EVENT_BGWRITER_HIBERNATE: u32 = 83886082;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_BGWRITER_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_BGWRITER_MAIN: u32 = 83886083;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_CHECKPOINTER_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_CHECKPOINTER_MAIN: u32 = 83886084;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_LOGICAL_APPLY_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_LOGICAL_APPLY_MAIN: u32 = 83886085;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_LOGICAL_LAUNCHER_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_LOGICAL_LAUNCHER_MAIN: u32 = 83886086;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_LOGICAL_PARALLEL_APPLY_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_LOGICAL_PARALLEL_APPLY_MAIN: u32 = 83886087;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_RECOVERY_WAL_STREAM"
-)]
-pub const WaitEventActivity_WAIT_EVENT_RECOVERY_WAL_STREAM: u32 = 83886088;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_SYSLOGGER_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_SYSLOGGER_MAIN: u32 = 83886089;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_WAL_RECEIVER_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_WAL_RECEIVER_MAIN: u32 = 83886090;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_WAL_SENDER_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_WAL_SENDER_MAIN: u32 = 83886091;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventActivity::WAIT_EVENT_WAL_WRITER_MAIN"
-)]
-pub const WaitEventActivity_WAIT_EVENT_WAL_WRITER_MAIN: u32 = 83886092;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventClient::WAIT_EVENT_CLIENT_READ")]
-pub const WaitEventClient_WAIT_EVENT_CLIENT_READ: u32 = 100663296;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventClient::WAIT_EVENT_CLIENT_WRITE")]
-pub const WaitEventClient_WAIT_EVENT_CLIENT_WRITE: u32 = 100663297;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventClient::WAIT_EVENT_GSS_OPEN_SERVER"
-)]
-pub const WaitEventClient_WAIT_EVENT_GSS_OPEN_SERVER: u32 = 100663298;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventClient::WAIT_EVENT_LIBPQWALRECEIVER_CONNECT"
-)]
-pub const WaitEventClient_WAIT_EVENT_LIBPQWALRECEIVER_CONNECT: u32 = 100663299;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventClient::WAIT_EVENT_LIBPQWALRECEIVER_RECEIVE"
-)]
-pub const WaitEventClient_WAIT_EVENT_LIBPQWALRECEIVER_RECEIVE: u32 = 100663300;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventClient::WAIT_EVENT_SSL_OPEN_SERVER"
-)]
-pub const WaitEventClient_WAIT_EVENT_SSL_OPEN_SERVER: u32 = 100663301;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventClient::WAIT_EVENT_WAL_SENDER_WAIT_WAL"
-)]
-pub const WaitEventClient_WAIT_EVENT_WAL_SENDER_WAIT_WAL: u32 = 100663302;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventClient::WAIT_EVENT_WAL_SENDER_WRITE_DATA"
-)]
-pub const WaitEventClient_WAIT_EVENT_WAL_SENDER_WRITE_DATA: u32 = 100663303;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_BASEBACKUP_READ")]
-pub const WaitEventIO_WAIT_EVENT_BASEBACKUP_READ: u32 = 167772160;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_BASEBACKUP_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_BASEBACKUP_SYNC: u32 = 167772161;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_BASEBACKUP_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_BASEBACKUP_WRITE: u32 = 167772162;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_BUFFILE_READ")]
-pub const WaitEventIO_WAIT_EVENT_BUFFILE_READ: u32 = 167772163;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_BUFFILE_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_BUFFILE_WRITE: u32 = 167772164;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_BUFFILE_TRUNCATE")]
-pub const WaitEventIO_WAIT_EVENT_BUFFILE_TRUNCATE: u32 = 167772165;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_CONTROL_FILE_READ")]
-pub const WaitEventIO_WAIT_EVENT_CONTROL_FILE_READ: u32 = 167772166;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_CONTROL_FILE_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_CONTROL_FILE_SYNC: u32 = 167772167;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_CONTROL_FILE_SYNC_UPDATE"
-)]
-pub const WaitEventIO_WAIT_EVENT_CONTROL_FILE_SYNC_UPDATE: u32 = 167772168;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_CONTROL_FILE_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_CONTROL_FILE_WRITE: u32 = 167772169;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_CONTROL_FILE_WRITE_UPDATE"
-)]
-pub const WaitEventIO_WAIT_EVENT_CONTROL_FILE_WRITE_UPDATE: u32 = 167772170;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_COPY_FILE_READ")]
-pub const WaitEventIO_WAIT_EVENT_COPY_FILE_READ: u32 = 167772171;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_COPY_FILE_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_COPY_FILE_WRITE: u32 = 167772172;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DATA_FILE_EXTEND")]
-pub const WaitEventIO_WAIT_EVENT_DATA_FILE_EXTEND: u32 = 167772173;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DATA_FILE_FLUSH")]
-pub const WaitEventIO_WAIT_EVENT_DATA_FILE_FLUSH: u32 = 167772174;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DATA_FILE_IMMEDIATE_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_DATA_FILE_IMMEDIATE_SYNC: u32 = 167772175;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DATA_FILE_PREFETCH"
-)]
-pub const WaitEventIO_WAIT_EVENT_DATA_FILE_PREFETCH: u32 = 167772176;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DATA_FILE_READ")]
-pub const WaitEventIO_WAIT_EVENT_DATA_FILE_READ: u32 = 167772177;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DATA_FILE_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_DATA_FILE_SYNC: u32 = 167772178;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DATA_FILE_TRUNCATE"
-)]
-pub const WaitEventIO_WAIT_EVENT_DATA_FILE_TRUNCATE: u32 = 167772179;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DATA_FILE_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_DATA_FILE_WRITE: u32 = 167772180;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DSM_ALLOCATE")]
-pub const WaitEventIO_WAIT_EVENT_DSM_ALLOCATE: u32 = 167772181;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_DSM_FILL_ZERO_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_DSM_FILL_ZERO_WRITE: u32 = 167772182;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOCK_FILE_ADDTODATADIR_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOCK_FILE_ADDTODATADIR_READ: u32 = 167772183;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOCK_FILE_ADDTODATADIR_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOCK_FILE_ADDTODATADIR_SYNC: u32 = 167772184;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOCK_FILE_ADDTODATADIR_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOCK_FILE_ADDTODATADIR_WRITE: u32 = 167772185;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOCK_FILE_CREATE_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOCK_FILE_CREATE_READ: u32 = 167772186;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOCK_FILE_CREATE_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOCK_FILE_CREATE_SYNC: u32 = 167772187;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOCK_FILE_CREATE_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOCK_FILE_CREATE_WRITE: u32 = 167772188;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOCK_FILE_RECHECKDATADIR_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOCK_FILE_RECHECKDATADIR_READ: u32 = 167772189;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOGICAL_REWRITE_CHECKPOINT_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOGICAL_REWRITE_CHECKPOINT_SYNC: u32 = 167772190;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOGICAL_REWRITE_MAPPING_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOGICAL_REWRITE_MAPPING_SYNC: u32 = 167772191;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOGICAL_REWRITE_MAPPING_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOGICAL_REWRITE_MAPPING_WRITE: u32 = 167772192;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOGICAL_REWRITE_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOGICAL_REWRITE_SYNC: u32 = 167772193;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOGICAL_REWRITE_TRUNCATE"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOGICAL_REWRITE_TRUNCATE: u32 = 167772194;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_LOGICAL_REWRITE_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_LOGICAL_REWRITE_WRITE: u32 = 167772195;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_RELATION_MAP_READ")]
-pub const WaitEventIO_WAIT_EVENT_RELATION_MAP_READ: u32 = 167772196;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_RELATION_MAP_REPLACE"
-)]
-pub const WaitEventIO_WAIT_EVENT_RELATION_MAP_REPLACE: u32 = 167772197;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_RELATION_MAP_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_RELATION_MAP_WRITE: u32 = 167772198;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_REORDER_BUFFER_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_REORDER_BUFFER_READ: u32 = 167772199;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_REORDER_BUFFER_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_REORDER_BUFFER_WRITE: u32 = 167772200;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_REORDER_LOGICAL_MAPPING_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_REORDER_LOGICAL_MAPPING_READ: u32 = 167772201;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_REPLICATION_SLOT_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_REPLICATION_SLOT_READ: u32 = 167772202;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_REPLICATION_SLOT_RESTORE_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_REPLICATION_SLOT_RESTORE_SYNC: u32 = 167772203;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_REPLICATION_SLOT_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_REPLICATION_SLOT_SYNC: u32 = 167772204;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_REPLICATION_SLOT_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_REPLICATION_SLOT_WRITE: u32 = 167772205;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_SLRU_FLUSH_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_SLRU_FLUSH_SYNC: u32 = 167772206;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_SLRU_READ")]
-pub const WaitEventIO_WAIT_EVENT_SLRU_READ: u32 = 167772207;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_SLRU_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_SLRU_SYNC: u32 = 167772208;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_SLRU_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_SLRU_WRITE: u32 = 167772209;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_SNAPBUILD_READ")]
-pub const WaitEventIO_WAIT_EVENT_SNAPBUILD_READ: u32 = 167772210;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_SNAPBUILD_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_SNAPBUILD_SYNC: u32 = 167772211;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_SNAPBUILD_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_SNAPBUILD_WRITE: u32 = 167772212;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_TIMELINE_HISTORY_FILE_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_TIMELINE_HISTORY_FILE_SYNC: u32 = 167772213;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_TIMELINE_HISTORY_FILE_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_TIMELINE_HISTORY_FILE_WRITE: u32 = 167772214;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_TIMELINE_HISTORY_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_TIMELINE_HISTORY_READ: u32 = 167772215;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_TIMELINE_HISTORY_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_TIMELINE_HISTORY_SYNC: u32 = 167772216;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_TIMELINE_HISTORY_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_TIMELINE_HISTORY_WRITE: u32 = 167772217;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_TWOPHASE_FILE_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_TWOPHASE_FILE_READ: u32 = 167772218;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_TWOPHASE_FILE_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_TWOPHASE_FILE_SYNC: u32 = 167772219;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_TWOPHASE_FILE_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_TWOPHASE_FILE_WRITE: u32 = 167772220;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_VERSION_FILE_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_VERSION_FILE_WRITE: u32 = 167772221;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WALSENDER_TIMELINE_HISTORY_READ"
-)]
-pub const WaitEventIO_WAIT_EVENT_WALSENDER_TIMELINE_HISTORY_READ: u32 = 167772222;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_BOOTSTRAP_SYNC"
-)]
-pub const WaitEventIO_WAIT_EVENT_WAL_BOOTSTRAP_SYNC: u32 = 167772223;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_BOOTSTRAP_WRITE"
-)]
-pub const WaitEventIO_WAIT_EVENT_WAL_BOOTSTRAP_WRITE: u32 = 167772224;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_COPY_READ")]
-pub const WaitEventIO_WAIT_EVENT_WAL_COPY_READ: u32 = 167772225;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_COPY_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_WAL_COPY_SYNC: u32 = 167772226;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_COPY_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_WAL_COPY_WRITE: u32 = 167772227;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_INIT_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_WAL_INIT_SYNC: u32 = 167772228;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_INIT_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_WAL_INIT_WRITE: u32 = 167772229;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_READ")]
-pub const WaitEventIO_WAIT_EVENT_WAL_READ: u32 = 167772230;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_WAL_SYNC: u32 = 167772231;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_SYNC_METHOD_ASSIGN"
-)]
-pub const WaitEventIO_WAIT_EVENT_WAL_SYNC_METHOD_ASSIGN: u32 = 167772232;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_WAL_WRITE")]
-pub const WaitEventIO_WAIT_EVENT_WAL_WRITE: u32 = 167772233;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIO::WAIT_EVENT_VERSION_FILE_SYNC")]
-pub const WaitEventIO_WAIT_EVENT_VERSION_FILE_SYNC: u32 = 167772234;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_APPEND_READY")]
-pub const WaitEventIPC_WAIT_EVENT_APPEND_READY: u32 = 134217728;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_ARCHIVE_CLEANUP_COMMAND"
-)]
-pub const WaitEventIPC_WAIT_EVENT_ARCHIVE_CLEANUP_COMMAND: u32 = 134217729;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_ARCHIVE_COMMAND")]
-pub const WaitEventIPC_WAIT_EVENT_ARCHIVE_COMMAND: u32 = 134217730;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_BACKEND_TERMINATION"
-)]
-pub const WaitEventIPC_WAIT_EVENT_BACKEND_TERMINATION: u32 = 134217731;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_BACKUP_WAIT_WAL_ARCHIVE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_BACKUP_WAIT_WAL_ARCHIVE: u32 = 134217732;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_BGWORKER_SHUTDOWN"
-)]
-pub const WaitEventIPC_WAIT_EVENT_BGWORKER_SHUTDOWN: u32 = 134217733;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_BGWORKER_STARTUP")]
-pub const WaitEventIPC_WAIT_EVENT_BGWORKER_STARTUP: u32 = 134217734;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_BTREE_PAGE")]
-pub const WaitEventIPC_WAIT_EVENT_BTREE_PAGE: u32 = 134217735;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_BUFFER_IO")]
-pub const WaitEventIPC_WAIT_EVENT_BUFFER_IO: u32 = 134217736;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_CHECKPOINT_DONE")]
-pub const WaitEventIPC_WAIT_EVENT_CHECKPOINT_DONE: u32 = 134217737;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_CHECKPOINT_START")]
-pub const WaitEventIPC_WAIT_EVENT_CHECKPOINT_START: u32 = 134217738;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_EXECUTE_GATHER")]
-pub const WaitEventIPC_WAIT_EVENT_EXECUTE_GATHER: u32 = 134217739;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_BATCH_ALLOCATE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_BATCH_ALLOCATE: u32 = 134217740;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_BATCH_ELECT")]
-pub const WaitEventIPC_WAIT_EVENT_HASH_BATCH_ELECT: u32 = 134217741;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_BATCH_LOAD")]
-pub const WaitEventIPC_WAIT_EVENT_HASH_BATCH_LOAD: u32 = 134217742;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_BUILD_ALLOCATE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_BUILD_ALLOCATE: u32 = 134217743;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_BUILD_ELECT")]
-pub const WaitEventIPC_WAIT_EVENT_HASH_BUILD_ELECT: u32 = 134217744;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_BUILD_HASH_INNER"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_BUILD_HASH_INNER: u32 = 134217745;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_BUILD_HASH_OUTER"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_BUILD_HASH_OUTER: u32 = 134217746;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_GROW_BATCHES_DECIDE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_GROW_BATCHES_DECIDE: u32 = 134217747;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_GROW_BATCHES_ELECT"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_GROW_BATCHES_ELECT: u32 = 134217748;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_GROW_BATCHES_FINISH"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_GROW_BATCHES_FINISH: u32 = 134217749;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_GROW_BATCHES_REALLOCATE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_GROW_BATCHES_REALLOCATE: u32 = 134217750;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_GROW_BATCHES_REPARTITION"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_GROW_BATCHES_REPARTITION: u32 = 134217751;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_GROW_BUCKETS_ELECT"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_GROW_BUCKETS_ELECT: u32 = 134217752;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_GROW_BUCKETS_REALLOCATE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_GROW_BUCKETS_REALLOCATE: u32 = 134217753;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_HASH_GROW_BUCKETS_REINSERT"
-)]
-pub const WaitEventIPC_WAIT_EVENT_HASH_GROW_BUCKETS_REINSERT: u32 = 134217754;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_LOGICAL_APPLY_SEND_DATA"
-)]
-pub const WaitEventIPC_WAIT_EVENT_LOGICAL_APPLY_SEND_DATA: u32 = 134217755;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_LOGICAL_PARALLEL_APPLY_STATE_CHANGE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_LOGICAL_PARALLEL_APPLY_STATE_CHANGE: u32 = 134217756;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_LOGICAL_SYNC_DATA"
-)]
-pub const WaitEventIPC_WAIT_EVENT_LOGICAL_SYNC_DATA: u32 = 134217757;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_LOGICAL_SYNC_STATE_CHANGE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_LOGICAL_SYNC_STATE_CHANGE: u32 = 134217758;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_MQ_INTERNAL")]
-pub const WaitEventIPC_WAIT_EVENT_MQ_INTERNAL: u32 = 134217759;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_MQ_PUT_MESSAGE")]
-pub const WaitEventIPC_WAIT_EVENT_MQ_PUT_MESSAGE: u32 = 134217760;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_MQ_RECEIVE")]
-pub const WaitEventIPC_WAIT_EVENT_MQ_RECEIVE: u32 = 134217761;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_MQ_SEND")]
-pub const WaitEventIPC_WAIT_EVENT_MQ_SEND: u32 = 134217762;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_PARALLEL_BITMAP_SCAN"
-)]
-pub const WaitEventIPC_WAIT_EVENT_PARALLEL_BITMAP_SCAN: u32 = 134217763;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN"
-)]
-pub const WaitEventIPC_WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN: u32 = 134217764;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_PARALLEL_FINISH")]
-pub const WaitEventIPC_WAIT_EVENT_PARALLEL_FINISH: u32 = 134217765;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_PROCARRAY_GROUP_UPDATE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_PROCARRAY_GROUP_UPDATE: u32 = 134217766;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_PROC_SIGNAL_BARRIER"
-)]
-pub const WaitEventIPC_WAIT_EVENT_PROC_SIGNAL_BARRIER: u32 = 134217767;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_PROMOTE")]
-pub const WaitEventIPC_WAIT_EVENT_PROMOTE: u32 = 134217768;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_RECOVERY_CONFLICT_SNAPSHOT"
-)]
-pub const WaitEventIPC_WAIT_EVENT_RECOVERY_CONFLICT_SNAPSHOT: u32 = 134217769;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_RECOVERY_CONFLICT_TABLESPACE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_RECOVERY_CONFLICT_TABLESPACE: u32 = 134217770;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_RECOVERY_END_COMMAND"
-)]
-pub const WaitEventIPC_WAIT_EVENT_RECOVERY_END_COMMAND: u32 = 134217771;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_RECOVERY_PAUSE")]
-pub const WaitEventIPC_WAIT_EVENT_RECOVERY_PAUSE: u32 = 134217772;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_REPLICATION_ORIGIN_DROP"
-)]
-pub const WaitEventIPC_WAIT_EVENT_REPLICATION_ORIGIN_DROP: u32 = 134217773;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_REPLICATION_SLOT_DROP"
-)]
-pub const WaitEventIPC_WAIT_EVENT_REPLICATION_SLOT_DROP: u32 = 134217774;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_RESTORE_COMMAND")]
-pub const WaitEventIPC_WAIT_EVENT_RESTORE_COMMAND: u32 = 134217775;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_SAFE_SNAPSHOT")]
-pub const WaitEventIPC_WAIT_EVENT_SAFE_SNAPSHOT: u32 = 134217776;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_SYNC_REP")]
-pub const WaitEventIPC_WAIT_EVENT_SYNC_REP: u32 = 134217777;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_WAL_RECEIVER_EXIT"
-)]
-pub const WaitEventIPC_WAIT_EVENT_WAL_RECEIVER_EXIT: u32 = 134217778;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_WAL_RECEIVER_WAIT_START"
-)]
-pub const WaitEventIPC_WAIT_EVENT_WAL_RECEIVER_WAIT_START: u32 = 134217779;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventIPC::WAIT_EVENT_XACT_GROUP_UPDATE"
-)]
-pub const WaitEventIPC_WAIT_EVENT_XACT_GROUP_UPDATE: u32 = 134217780;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_BASE_BACKUP_THROTTLE"
-)]
-pub const WaitEventTimeout_WAIT_EVENT_BASE_BACKUP_THROTTLE: u32 = 150994944;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_CHECKPOINT_WRITE_DELAY"
-)]
-pub const WaitEventTimeout_WAIT_EVENT_CHECKPOINT_WRITE_DELAY: u32 = 150994945;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_PG_SLEEP")]
-pub const WaitEventTimeout_WAIT_EVENT_PG_SLEEP: u32 = 150994946;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_RECOVERY_APPLY_DELAY"
-)]
-pub const WaitEventTimeout_WAIT_EVENT_RECOVERY_APPLY_DELAY: u32 = 150994947;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_RECOVERY_RETRIEVE_RETRY_INTERVAL"
-)]
-pub const WaitEventTimeout_WAIT_EVENT_RECOVERY_RETRIEVE_RETRY_INTERVAL: u32 = 150994948;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_REGISTER_SYNC_REQUEST"
-)]
-pub const WaitEventTimeout_WAIT_EVENT_REGISTER_SYNC_REQUEST: u32 = 150994949;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_SPIN_DELAY")]
-pub const WaitEventTimeout_WAIT_EVENT_SPIN_DELAY: u32 = 150994950;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_VACUUM_DELAY")]
-pub const WaitEventTimeout_WAIT_EVENT_VACUUM_DELAY: u32 = 150994951;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WaitEventTimeout::WAIT_EVENT_VACUUM_TRUNCATE"
-)]
-pub const WaitEventTimeout_WAIT_EVENT_VACUUM_TRUNCATE: u32 = 150994952;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalCompression::WAL_COMPRESSION_NONE")]
-pub const WalCompression_WAL_COMPRESSION_NONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalCompression::WAL_COMPRESSION_PGLZ")]
-pub const WalCompression_WAL_COMPRESSION_PGLZ: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalCompression::WAL_COMPRESSION_LZ4")]
-pub const WalCompression_WAL_COMPRESSION_LZ4: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalCompression::WAL_COMPRESSION_ZSTD")]
-pub const WalCompression_WAL_COMPRESSION_ZSTD: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalLevel::WAL_LEVEL_MINIMAL")]
-pub const WalLevel_WAL_LEVEL_MINIMAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalLevel::WAL_LEVEL_REPLICA")]
-pub const WalLevel_WAL_LEVEL_REPLICA: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalLevel::WAL_LEVEL_LOGICAL")]
-pub const WalLevel_WAL_LEVEL_LOGICAL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvExecStatus::WALRCV_ERROR")]
-pub const WalRcvExecStatus_WALRCV_ERROR: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvExecStatus::WALRCV_OK_COMMAND")]
-pub const WalRcvExecStatus_WALRCV_OK_COMMAND: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvExecStatus::WALRCV_OK_TUPLES")]
-pub const WalRcvExecStatus_WALRCV_OK_TUPLES: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvExecStatus::WALRCV_OK_COPY_IN")]
-pub const WalRcvExecStatus_WALRCV_OK_COPY_IN: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvExecStatus::WALRCV_OK_COPY_OUT")]
-pub const WalRcvExecStatus_WALRCV_OK_COPY_OUT: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvExecStatus::WALRCV_OK_COPY_BOTH")]
-pub const WalRcvExecStatus_WALRCV_OK_COPY_BOTH: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvState::WALRCV_STOPPED")]
-pub const WalRcvState_WALRCV_STOPPED: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvState::WALRCV_STARTING")]
-pub const WalRcvState_WALRCV_STARTING: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvState::WALRCV_STREAMING")]
-pub const WalRcvState_WALRCV_STREAMING: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvState::WALRCV_WAITING")]
-pub const WalRcvState_WALRCV_WAITING: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvState::WALRCV_RESTARTING")]
-pub const WalRcvState_WALRCV_RESTARTING: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WalRcvState::WALRCV_STOPPING")]
-pub const WalRcvState_WALRCV_STOPPING: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WindowAggStatus::WINDOWAGG_DONE")]
-pub const WindowAggStatus_WINDOWAGG_DONE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WindowAggStatus::WINDOWAGG_RUN")]
-pub const WindowAggStatus_WINDOWAGG_RUN: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::WindowAggStatus::WINDOWAGG_PASSTHROUGH")]
-pub const WindowAggStatus_WINDOWAGG_PASSTHROUGH: u32 = 2;
-#[deprecated(
-    since = "0.12.0",
-    note = "you want pg_sys::WindowAggStatus::WINDOWAGG_PASSTHROUGH_STRICT"
-)]
-pub const WindowAggStatus_WINDOWAGG_PASSTHROUGH_STRICT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_None")]
-pub const XLTW_Oper_XLTW_None: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_Update")]
-pub const XLTW_Oper_XLTW_Update: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_Delete")]
-pub const XLTW_Oper_XLTW_Delete: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_Lock")]
-pub const XLTW_Oper_XLTW_Lock: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_LockUpdated")]
-pub const XLTW_Oper_XLTW_LockUpdated: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_InsertIndex")]
-pub const XLTW_Oper_XLTW_InsertIndex: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_InsertIndexUnique")]
-pub const XLTW_Oper_XLTW_InsertIndexUnique: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_FetchUpdated")]
-pub const XLTW_Oper_XLTW_FetchUpdated: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLTW_Oper::XLTW_RecheckExclusionConstr")]
-pub const XLTW_Oper_XLTW_RecheckExclusionConstr: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLogPageReadResult::XLREAD_SUCCESS")]
-pub const XLogPageReadResult_XLREAD_SUCCESS: i32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLogPageReadResult::XLREAD_FAIL")]
-pub const XLogPageReadResult_XLREAD_FAIL: i32 = -1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLogPageReadResult::XLREAD_WOULDBLOCK")]
-pub const XLogPageReadResult_XLREAD_WOULDBLOCK: i32 = -2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLogRedoAction::BLK_NEEDS_REDO")]
-pub const XLogRedoAction_BLK_NEEDS_REDO: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLogRedoAction::BLK_DONE")]
-pub const XLogRedoAction_BLK_DONE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLogRedoAction::BLK_RESTORED")]
-pub const XLogRedoAction_BLK_RESTORED: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XLogRedoAction::BLK_NOTFOUND")]
-pub const XLogRedoAction_BLK_NOTFOUND: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XactEvent::XACT_EVENT_COMMIT")]
-pub const XactEvent_XACT_EVENT_COMMIT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XactEvent::XACT_EVENT_PARALLEL_COMMIT")]
-pub const XactEvent_XACT_EVENT_PARALLEL_COMMIT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XactEvent::XACT_EVENT_ABORT")]
-pub const XactEvent_XACT_EVENT_ABORT: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XactEvent::XACT_EVENT_PARALLEL_ABORT")]
-pub const XactEvent_XACT_EVENT_PARALLEL_ABORT: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XactEvent::XACT_EVENT_PREPARE")]
-pub const XactEvent_XACT_EVENT_PREPARE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XactEvent::XACT_EVENT_PRE_COMMIT")]
-pub const XactEvent_XACT_EVENT_PRE_COMMIT: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XactEvent::XACT_EVENT_PARALLEL_PRE_COMMIT")]
-pub const XactEvent_XACT_EVENT_PARALLEL_PRE_COMMIT: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XactEvent::XACT_EVENT_PRE_PREPARE")]
-pub const XactEvent_XACT_EVENT_PRE_PREPARE: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlExprOp::IS_XMLCONCAT")]
-pub const XmlExprOp_IS_XMLCONCAT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlExprOp::IS_XMLELEMENT")]
-pub const XmlExprOp_IS_XMLELEMENT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlExprOp::IS_XMLFOREST")]
-pub const XmlExprOp_IS_XMLFOREST: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlExprOp::IS_XMLPARSE")]
-pub const XmlExprOp_IS_XMLPARSE: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlExprOp::IS_XMLPI")]
-pub const XmlExprOp_IS_XMLPI: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlExprOp::IS_XMLROOT")]
-pub const XmlExprOp_IS_XMLROOT: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlExprOp::IS_XMLSERIALIZE")]
-pub const XmlExprOp_IS_XMLSERIALIZE: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlExprOp::IS_DOCUMENT")]
-pub const XmlExprOp_IS_DOCUMENT: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlOptionType::XMLOPTION_DOCUMENT")]
-pub const XmlOptionType_XMLOPTION_DOCUMENT: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::XmlOptionType::XMLOPTION_CONTENT")]
-pub const XmlOptionType_XMLOPTION_CONTENT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__pid_type::F_OWNER_TID")]
-pub const __pid_type_F_OWNER_TID: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__pid_type::F_OWNER_PID")]
-pub const __pid_type_F_OWNER_PID: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__pid_type::F_OWNER_PGRP")]
-pub const __pid_type_F_OWNER_PGRP: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__pid_type::F_OWNER_GID")]
-pub const __pid_type_F_OWNER_GID: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_STREAM")]
-pub const __socket_type_SOCK_STREAM: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_DGRAM")]
-pub const __socket_type_SOCK_DGRAM: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_RAW")]
-pub const __socket_type_SOCK_RAW: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_RDM")]
-pub const __socket_type_SOCK_RDM: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_SEQPACKET")]
-pub const __socket_type_SOCK_SEQPACKET: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_DCCP")]
-pub const __socket_type_SOCK_DCCP: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_PACKET")]
-pub const __socket_type_SOCK_PACKET: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_CLOEXEC")]
-pub const __socket_type_SOCK_CLOEXEC: u32 = 524288;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::__socket_type::SOCK_NONBLOCK")]
-pub const __socket_type_SOCK_NONBLOCK: u32 = 2048;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::dsm_op::DSM_OP_CREATE")]
-pub const dsm_op_DSM_OP_CREATE: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::dsm_op::DSM_OP_ATTACH")]
-pub const dsm_op_DSM_OP_ATTACH: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::dsm_op::DSM_OP_DETACH")]
-pub const dsm_op_DSM_OP_DETACH: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::dsm_op::DSM_OP_DESTROY")]
-pub const dsm_op_DSM_OP_DESTROY: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::jbvType::jbvNull")]
-pub const jbvType_jbvNull: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::jbvType::jbvString")]
-pub const jbvType_jbvString: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::jbvType::jbvNumeric")]
-pub const jbvType_jbvNumeric: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::jbvType::jbvBool")]
-pub const jbvType_jbvBool: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::jbvType::jbvArray")]
-pub const jbvType_jbvArray: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::jbvType::jbvObject")]
-pub const jbvType_jbvObject: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::jbvType::jbvBinary")]
-pub const jbvType_jbvBinary: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::jbvType::jbvDatetime")]
-pub const jbvType_jbvDatetime: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_SQL_ASCII")]
-pub const pg_enc_PG_SQL_ASCII: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_EUC_JP")]
-pub const pg_enc_PG_EUC_JP: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_EUC_CN")]
-pub const pg_enc_PG_EUC_CN: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_EUC_KR")]
-pub const pg_enc_PG_EUC_KR: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_EUC_TW")]
-pub const pg_enc_PG_EUC_TW: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_EUC_JIS_2004")]
-pub const pg_enc_PG_EUC_JIS_2004: u32 = 5;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_UTF8")]
-pub const pg_enc_PG_UTF8: u32 = 6;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_MULE_INTERNAL")]
-pub const pg_enc_PG_MULE_INTERNAL: u32 = 7;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN1")]
-pub const pg_enc_PG_LATIN1: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN2")]
-pub const pg_enc_PG_LATIN2: u32 = 9;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN3")]
-pub const pg_enc_PG_LATIN3: u32 = 10;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN4")]
-pub const pg_enc_PG_LATIN4: u32 = 11;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN5")]
-pub const pg_enc_PG_LATIN5: u32 = 12;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN6")]
-pub const pg_enc_PG_LATIN6: u32 = 13;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN7")]
-pub const pg_enc_PG_LATIN7: u32 = 14;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN8")]
-pub const pg_enc_PG_LATIN8: u32 = 15;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN9")]
-pub const pg_enc_PG_LATIN9: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_LATIN10")]
-pub const pg_enc_PG_LATIN10: u32 = 17;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1256")]
-pub const pg_enc_PG_WIN1256: u32 = 18;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1258")]
-pub const pg_enc_PG_WIN1258: u32 = 19;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN866")]
-pub const pg_enc_PG_WIN866: u32 = 20;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN874")]
-pub const pg_enc_PG_WIN874: u32 = 21;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_KOI8R")]
-pub const pg_enc_PG_KOI8R: u32 = 22;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1251")]
-pub const pg_enc_PG_WIN1251: u32 = 23;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1252")]
-pub const pg_enc_PG_WIN1252: u32 = 24;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_ISO_8859_5")]
-pub const pg_enc_PG_ISO_8859_5: u32 = 25;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_ISO_8859_6")]
-pub const pg_enc_PG_ISO_8859_6: u32 = 26;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_ISO_8859_7")]
-pub const pg_enc_PG_ISO_8859_7: u32 = 27;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_ISO_8859_8")]
-pub const pg_enc_PG_ISO_8859_8: u32 = 28;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1250")]
-pub const pg_enc_PG_WIN1250: u32 = 29;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1253")]
-pub const pg_enc_PG_WIN1253: u32 = 30;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1254")]
-pub const pg_enc_PG_WIN1254: u32 = 31;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1255")]
-pub const pg_enc_PG_WIN1255: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_WIN1257")]
-pub const pg_enc_PG_WIN1257: u32 = 33;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_KOI8U")]
-pub const pg_enc_PG_KOI8U: u32 = 34;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_SJIS")]
-pub const pg_enc_PG_SJIS: u32 = 35;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_BIG5")]
-pub const pg_enc_PG_BIG5: u32 = 36;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_GBK")]
-pub const pg_enc_PG_GBK: u32 = 37;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_UHC")]
-pub const pg_enc_PG_UHC: u32 = 38;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_GB18030")]
-pub const pg_enc_PG_GB18030: u32 = 39;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_JOHAB")]
-pub const pg_enc_PG_JOHAB: u32 = 40;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::PG_SHIFT_JIS_2004")]
-pub const pg_enc_PG_SHIFT_JIS_2004: u32 = 41;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::pg_enc::_PG_LAST_ENCODING_")]
-pub const pg_enc__PG_LAST_ENCODING_: u32 = 42;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_LOCAL")]
-pub const relopt_kind_RELOPT_KIND_LOCAL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_HEAP")]
-pub const relopt_kind_RELOPT_KIND_HEAP: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_TOAST")]
-pub const relopt_kind_RELOPT_KIND_TOAST: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_BTREE")]
-pub const relopt_kind_RELOPT_KIND_BTREE: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_HASH")]
-pub const relopt_kind_RELOPT_KIND_HASH: u32 = 8;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_GIN")]
-pub const relopt_kind_RELOPT_KIND_GIN: u32 = 16;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_GIST")]
-pub const relopt_kind_RELOPT_KIND_GIST: u32 = 32;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_ATTRIBUTE")]
-pub const relopt_kind_RELOPT_KIND_ATTRIBUTE: u32 = 64;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_TABLESPACE")]
-pub const relopt_kind_RELOPT_KIND_TABLESPACE: u32 = 128;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_SPGIST")]
-pub const relopt_kind_RELOPT_KIND_SPGIST: u32 = 256;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_VIEW")]
-pub const relopt_kind_RELOPT_KIND_VIEW: u32 = 512;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_BRIN")]
-pub const relopt_kind_RELOPT_KIND_BRIN: u32 = 1024;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_PARTITIONED")]
-pub const relopt_kind_RELOPT_KIND_PARTITIONED: u32 = 2048;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_LAST_DEFAULT")]
-pub const relopt_kind_RELOPT_KIND_LAST_DEFAULT: u32 = 2048;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_kind::RELOPT_KIND_MAX")]
-pub const relopt_kind_RELOPT_KIND_MAX: u32 = 1073741824;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_type::RELOPT_TYPE_BOOL")]
-pub const relopt_type_RELOPT_TYPE_BOOL: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_type::RELOPT_TYPE_INT")]
-pub const relopt_type_RELOPT_TYPE_INT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_type::RELOPT_TYPE_REAL")]
-pub const relopt_type_RELOPT_TYPE_REAL: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_type::RELOPT_TYPE_ENUM")]
-pub const relopt_type_RELOPT_TYPE_ENUM: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::relopt_type::RELOPT_TYPE_STRING")]
-pub const relopt_type_RELOPT_TYPE_STRING: u32 = 4;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::shm_mq_result::SHM_MQ_SUCCESS")]
-pub const shm_mq_result_SHM_MQ_SUCCESS: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::shm_mq_result::SHM_MQ_WOULD_BLOCK")]
-pub const shm_mq_result_SHM_MQ_WOULD_BLOCK: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::shm_mq_result::SHM_MQ_DETACHED")]
-pub const shm_mq_result_SHM_MQ_DETACHED: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::subxids_array_status::SUBXIDS_IN_ARRAY")]
-pub const subxids_array_status_SUBXIDS_IN_ARRAY: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::subxids_array_status::SUBXIDS_MISSING")]
-pub const subxids_array_status_SUBXIDS_MISSING: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::subxids_array_status::SUBXIDS_IN_SUBTRANS")]
-pub const subxids_array_status_SUBXIDS_IN_SUBTRANS: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::tuplehash_status::tuplehash_SH_EMPTY")]
-pub const tuplehash_status_tuplehash_SH_EMPTY: u32 = 0;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::tuplehash_status::tuplehash_SH_IN_USE")]
-pub const tuplehash_status_tuplehash_SH_IN_USE: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::vartag_external::VARTAG_INDIRECT")]
-pub const vartag_external_VARTAG_INDIRECT: u32 = 1;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::vartag_external::VARTAG_EXPANDED_RO")]
-pub const vartag_external_VARTAG_EXPANDED_RO: u32 = 2;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::vartag_external::VARTAG_EXPANDED_RW")]
-pub const vartag_external_VARTAG_EXPANDED_RW: u32 = 3;
-#[deprecated(since = "0.12.0", note = "you want pg_sys::vartag_external::VARTAG_ONDISK")]
-pub const vartag_external_VARTAG_ONDISK: u32 = 18;
 impl pg_sys::seal::Sealed for A_ArrayExpr {}
 impl pg_sys::PgNode for A_ArrayExpr {}
 impl ::core::fmt::Display for A_ArrayExpr {
@@ -56555,6 +54314,13 @@ impl ::core::fmt::Display for TriggerTransition {
 impl pg_sys::seal::Sealed for TruncateStmt {}
 impl pg_sys::PgNode for TruncateStmt {}
 impl ::core::fmt::Display for TruncateStmt {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        self.display_node().fmt(f)
+    }
+}
+impl pg_sys::seal::Sealed for TsmRoutine {}
+impl pg_sys::PgNode for TsmRoutine {}
+impl ::core::fmt::Display for TsmRoutine {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
         self.display_node().fmt(f)
     }

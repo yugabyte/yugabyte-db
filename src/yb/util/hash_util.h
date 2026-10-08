@@ -100,10 +100,9 @@ class HashUtil {
     return MurmurHash2_64(input.data(), input.length(), seed);
   }
 
-  /// 64-bit avalanche step: the fmix64 finalizer from Murmur3, also used by SplitMix64. It is a
-  /// bijection, and flipping one input bit flips about half the output bits, which is what makes a
-  /// small integer usable as a seed or salt: xoring an id in directly would disturb only the bottom
-  /// few bits.
+  /// 64-bit avalanche step: the fmix64 finalizer from Murmur3. It is a bijection, and flipping one
+  /// input bit flips about half the output bits, which is what makes a small integer usable as a
+  /// seed or salt: xoring an id in directly would disturb only the bottom few bits.
   static constexpr uint64_t MixHash64(uint64_t x) {
     x ^= x >> MURMUR3_FMIX_R;
     x *= MURMUR3_FMIX_C1;

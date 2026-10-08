@@ -1,0 +1,8 @@
+# Same cluster configuration as yb_wait_queues_skip_prefix_locks_off_schedule
+# (wait queues on, skip_prefix_locks=false). These two conflict matrices are kept
+# in their own schedule because together they take ~9 minutes under tsan, which
+# does not fit in the same test method as the rest of that schedule: the JUnit
+# method timeout is capped at 30 minutes (TestUtils.DEFAULT_MAX_TEST_TIMEOUT_SEC)
+# regardless of the build-type multiplier.
+test: yb.orig.row-lock-conflict-matrix-prefix-locks-on
+test: yb.orig.partial-pk-conflict-prefix-locks-on

@@ -257,8 +257,9 @@ public class SwamperHelperTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getId());
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider =
-        Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid().toString();
+    TestUtils.existingProviderInitializer(ui)
+        .setProviderUUID(
+            Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid());
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
     u =
         Universe.saveDetails(
@@ -312,8 +313,11 @@ public class SwamperHelperTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getId());
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider =
-        Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid().toString();
+
+    TestUtils.existingProviderInitializer(ui)
+        .setProviderUUID(
+            Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid());
+
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
     File targetFile = new File(SWAMPER_TMP_PATH + "yugabyte." + u.getUniverseUUID() + ".json");

@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.eq;
@@ -33,6 +34,7 @@ import com.yugabyte.yw.nodeagent.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.Error;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
+import com.yugabyte.yw.nodeagent.HealthCheckInput;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentImplBase;
 import com.yugabyte.yw.nodeagent.NodeConfig;
 import com.yugabyte.yw.nodeagent.PingRequest;
@@ -246,6 +248,8 @@ public class NodeAgentClientTest extends FakeDBApplication {
         .thenReturn(Duration.ofSeconds(30));
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout)))
         .thenReturn(Duration.ofSeconds(10));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentTokenLifetime)))
+        .thenReturn(Duration.ofMinutes(60));
 
     // Generate a unique in-process server name.
     String serverName = InProcessServerBuilder.generateName();
@@ -511,6 +515,25 @@ public class NodeAgentClientTest extends FakeDBApplication {
             nodeAgent, PreflightCheckInput.newBuilder().build(), null /* user */);
     assertNotNull(output);
     assertEquals(NodeAgentClient.MAX_TRANSIENT_FAILURES + 1, describeAttempts.get());
+  }
+
+  @Test
+  public void testRunAsyncTaskTimesOut() {
+    Duration timeout = Duration.ofMillis(500);
+    asyncTaskData.setDescribeBehavior(
+        (request, responseObserver) ->
+            responseObserver.onError(
+                Status.DEADLINE_EXCEEDED.withDescription("poll deadline").asRuntimeException()));
+
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                nodeAgentClient.runOrGetHealthCheck(
+                    nodeAgent, HealthCheckInput.newBuilder().build(), null /* user */, timeout));
+
+    assertTrue(ex.getMessage().contains("did not complete within " + timeout));
+    assertTrue(ex.getCause() instanceof StatusRuntimeException);
   }
 
   @Test

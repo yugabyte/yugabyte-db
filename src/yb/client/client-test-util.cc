@@ -61,6 +61,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -206,7 +207,7 @@ Result<string> GetNamespaceIdByNamespaceName(YBClient* client,
       return ns.id.id();
     }
   }
-  return STATUS_SUBSTITUTE(NotFound, "The namespace $0 does not exist", namespace_name);
+  return STATUS_FORMAT(NotFound, "The namespace $0 does not exist", namespace_name);
 }
 
 Result<string> GetTableIdByTableName(client::YBClient* client,
@@ -218,7 +219,7 @@ Result<string> GetTableIdByTableName(client::YBClient* client,
       return t.table_id();
     }
   }
-  return STATUS_SUBSTITUTE(NotFound, "The table $0 does not exist in namespace $1",
+  return STATUS_FORMAT(NotFound, "The table $0 does not exist in namespace $1",
       table_name, namespace_name);
 }
 

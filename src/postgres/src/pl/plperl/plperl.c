@@ -282,6 +282,7 @@ static void array_to_datum_internal(AV *av, ArrayBuildState **astatep,
 									int *ndims, int *dims, int cur_depth,
 									Oid elemtypid, int32 typmod,
 									FmgrInfo *finfo, Oid typioparam);
+static int	av_count_limit(AV *av);
 static Datum plperl_hash_to_datum(SV *src, TupleDesc td);
 
 static void plperl_init_shared_libs(pTHX);
@@ -1086,8 +1087,8 @@ plperl_build_tuple_result(HV *perlhash, TupleDesc td)
 	HE		   *he;
 	HeapTuple	tup;
 
-	values = palloc0(sizeof(Datum) * td->natts);
-	nulls = palloc(sizeof(bool) * td->natts);
+	values = palloc0_array(Datum, td->natts);
+	nulls = palloc_array(bool, td->natts);
 	memset(nulls, true, sizeof(bool) * td->natts);
 
 	hv_iterinit(perlhash);
@@ -1171,6 +1172,10 @@ get_perl_array_ref(SV *sv)
  * if we didn't do it like that, we'd need some other convention for knowing
  * whether we'd already found any scalars (and thus the number of dimensions
  * is frozen).
+ *
+ * Caller is required to have set dims[cur_depth - 1] to the length of the
+ * input array, i.e., av_count_limit(av).  We make this requirement so as to
+ * avoid reading av_count() twice, which is hazardous for tied arrays.
  */
 static void
 array_to_datum_internal(AV *av, ArrayBuildState **astatep,
@@ -1180,7 +1185,7 @@ array_to_datum_internal(AV *av, ArrayBuildState **astatep,
 {
 	dTHX;
 	int			i;
-	int			len = av_len(av) + 1;
+	int			len = dims[cur_depth - 1];
 
 	for (i = 0; i < len; i++)
 	{
@@ -1210,11 +1215,11 @@ array_to_datum_internal(AV *av, ArrayBuildState **astatep,
 							 errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)",
 									cur_depth + 1, MAXDIM)));
 				/* OK, add a dimension */
-				dims[*ndims] = av_len(nav) + 1;
+				dims[*ndims] = av_count_limit(nav);
 				(*ndims)++;
 			}
 			else if (cur_depth >= *ndims ||
-					 av_len(nav) + 1 != dims[cur_depth])
+					 av_count_limit(nav) != dims[cur_depth])
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						 errmsg("multidimensional arrays must have array expressions with matching dimensions")));
@@ -1257,6 +1262,25 @@ array_to_datum_internal(AV *av, ArrayBuildState **astatep,
 }
 
 /*
+ * av_count returns Size_t, so at least in theory it could overrun INT_MAX.
+ * As long as we have to check, let's throw error for anything above
+ * MaxArraySize, which will surely fail later.
+ */
+static int
+av_count_limit(AV *av)
+{
+	dTHX;
+	Size_t		cnt = av_count(av);
+
+	if (cnt > MaxArraySize)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("array size exceeds the maximum allowed (%zu)",
+						MaxArraySize)));
+	return (int) cnt;
+}
+
+/*
  * convert perl array ref to a datum
  */
 static Datum
@@ -1283,7 +1307,7 @@ plperl_array_to_datum(SV *src, Oid typid, int32 typmod)
 	_sv_to_datum_finfo(elemtypid, &finfo, &typioparam);
 
 	memset(dims, 0, sizeof(dims));
-	dims[0] = av_len(nav) + 1;
+	dims[0] = av_count_limit(nav);
 
 	array_to_datum_internal(nav, &astate,
 							&ndims, dims, 1,
@@ -1506,7 +1530,7 @@ plperl_ref_from_pg_array(Datum arg, Oid typid)
 	 * Currently we make no effort to cache any of the stuff we look up here,
 	 * which is bad.
 	 */
-	info = palloc0(sizeof(plperl_array_info));
+	info = palloc0_object(plperl_array_info);
 
 	/* get element type information, including output conversion function */
 	get_type_io_data(elementtype, IOFunc_output,
@@ -1542,7 +1566,7 @@ plperl_ref_from_pg_array(Datum arg, Oid typid)
 						  &nitems);
 
 		/* Get total number of elements in each dimension */
-		info->nelems = palloc(sizeof(int) * info->ndims);
+		info->nelems = palloc_array(int, info->ndims);
 		info->nelems[0] = nitems;
 		for (i = 1; i < info->ndims; i++)
 			info->nelems[i] = info->nelems[i - 1] / dims[i - 1];
@@ -1792,9 +1816,9 @@ plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 	tupdesc = tdata->tg_relation->rd_att;
 	natts = tupdesc->natts;
 
-	modvalues = (Datum *) palloc0(natts * sizeof(Datum));
-	modnulls = (bool *) palloc0(natts * sizeof(bool));
-	modrepls = (bool *) palloc0(natts * sizeof(bool));
+	modvalues = palloc0_array(Datum, natts);
+	modnulls = palloc0_array(bool, natts);
+	modrepls = palloc0_array(bool, natts);
 
 	hv_iterinit(hvNew);
 	while ((he = hv_iternext(hvNew)))
@@ -2474,14 +2498,15 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		if (sav)
 		{
 			dTHX;
-			int			i = 0;
-			SV		  **svp = 0;
 			AV		   *rav = (AV *) SvRV(sav);
+			Size_t		alen = av_count(rav);
 
-			while ((svp = av_fetch(rav, i, FALSE)) != NULL)
+			for (Size_t i = 0; i < alen; i++)
 			{
-				plperl_return_next_internal(*svp);
-				i++;
+				SV		  **svp = av_fetch(rav, i, FALSE);
+
+				if (svp)
+					plperl_return_next_internal(*svp);
 			}
 		}
 		else if (SvOK(perlret))
@@ -2806,7 +2831,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger, bool is_event_trigger)
 		 * struct prodesc and subsidiary data must all live in proc_cxt.
 		 ************************************************************/
 		oldcontext = MemoryContextSwitchTo(proc_cxt);
-		prodesc = (plperl_proc_desc *) palloc0(sizeof(plperl_proc_desc));
+		prodesc = palloc0_object(plperl_proc_desc);
 		prodesc->proname = pstrdup(NameStr(procStruct->proname));
 		MemoryContextSetIdentifier(proc_cxt, prodesc->proname);
 		prodesc->fn_cxt = proc_cxt;
@@ -2814,9 +2839,9 @@ compile_plperl_function(Oid fn_oid, bool is_trigger, bool is_event_trigger)
 		prodesc->fn_xmin = HeapTupleHeaderGetRawXmin(procTup->t_data);
 		prodesc->fn_tid = procTup->t_self;
 		prodesc->nargs = procStruct->pronargs;
-		prodesc->arg_out_func = (FmgrInfo *) palloc0(prodesc->nargs * sizeof(FmgrInfo));
-		prodesc->arg_is_rowtype = (bool *) palloc0(prodesc->nargs * sizeof(bool));
-		prodesc->arg_arraytype = (Oid *) palloc0(prodesc->nargs * sizeof(Oid));
+		prodesc->arg_out_func = palloc0_array(FmgrInfo, prodesc->nargs);
+		prodesc->arg_is_rowtype = palloc0_array(bool, prodesc->nargs);
+		prodesc->arg_arraytype = palloc0_array(Oid, prodesc->nargs);
 		prodesc->yb_catalog_version = YBGetActiveCatalogCacheVersion();
 		MemoryContextSwitchTo(oldcontext);
 
@@ -3605,13 +3630,13 @@ plperl_spi_prepare(char *query, int argc, SV **argv)
 										 "PL/Perl spi_prepare query",
 										 ALLOCSET_SMALL_SIZES);
 		MemoryContextSwitchTo(plan_cxt);
-		qdesc = (plperl_query_desc *) palloc0(sizeof(plperl_query_desc));
+		qdesc = palloc0_object(plperl_query_desc);
 		snprintf(qdesc->qname, sizeof(qdesc->qname), "%p", qdesc);
 		qdesc->plan_cxt = plan_cxt;
 		qdesc->nargs = argc;
-		qdesc->argtypes = (Oid *) palloc(argc * sizeof(Oid));
-		qdesc->arginfuncs = (FmgrInfo *) palloc(argc * sizeof(FmgrInfo));
-		qdesc->argtypioparams = (Oid *) palloc(argc * sizeof(Oid));
+		qdesc->argtypes = palloc_array(Oid, argc);
+		qdesc->arginfuncs = palloc_array(FmgrInfo, argc);
+		qdesc->argtypioparams = palloc_array(Oid, argc);
 		MemoryContextSwitchTo(oldcontext);
 
 		/************************************************************
@@ -3782,8 +3807,8 @@ plperl_spi_exec_prepared(char *query, HV *attr, int argc, SV **argv)
 		 ************************************************************/
 		if (argc > 0)
 		{
-			nulls = (char *) palloc(argc);
-			argvalues = (Datum *) palloc(argc * sizeof(Datum));
+			nulls = palloc_array(char, argc);
+			argvalues = palloc_array(Datum, argc);
 		}
 		else
 		{
@@ -3895,8 +3920,8 @@ plperl_spi_query_prepared(char *query, int argc, SV **argv)
 		 ************************************************************/
 		if (argc > 0)
 		{
-			nulls = (char *) palloc(argc);
-			argvalues = (Datum *) palloc(argc * sizeof(Datum));
+			nulls = palloc_array(char, argc);
+			argvalues = palloc_array(Datum, argc);
 		}
 		else
 		{

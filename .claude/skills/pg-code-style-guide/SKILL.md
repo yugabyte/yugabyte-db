@@ -120,6 +120,8 @@ by a marker comment and separated from PG code by a blank line.
 - Function parameters: cluster YB parameters at the end of the upstream
   parameter list and yb-prefix them; do not insert into the middle if
   avoidable.
+- Local variables: declare YB locals at the end of the function's
+  declaration list, separated from the upstream ones by a blank line.
 
 Interleaving is otherwise allowed only when an ordering constraint forces
 it -- a sorted list (e.g. `kwlist.h` keywords) or semantically ordered

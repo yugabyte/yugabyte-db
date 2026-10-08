@@ -56,6 +56,7 @@ import java.net.ServerSocket;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFileAttributeView;
@@ -180,12 +181,15 @@ public class LocalNodeManager {
           processMap.forEach(
               (serverType, process) -> {
                 try {
+                  String baseDir = nodeFSByNameMap.get(name);
                   if (serverType == UniverseTaskBase.ServerType.TSERVER) {
-                    String baseDir = nodeFSByNameMap.get(name);
                     killPostMasterProcess(baseDir);
                   }
                   log.debug("Destroying {}", process.pid());
                   killProcess(process.pid(), false);
+                  if (serverType == UniverseTaskBase.ServerType.TSERVER) {
+                    killLeftoverPostgresProcesses(baseDir);
+                  }
                 } catch (Exception e) {
                   log.error("Failed to destroy process " + process, e);
                 }
@@ -293,6 +297,9 @@ public class LocalNodeManager {
       if (process != null) {
         log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
         killProcess(process.pid(), true);
+        if (serverType == UniverseTaskBase.ServerType.TSERVER) {
+          killLeftoverPostgresProcesses(nodeFSByNameMap.get(nodeName));
+        }
       }
     }
   }
@@ -848,6 +855,59 @@ public class LocalNodeManager {
           "Node " + nodeInfo.ip + " is still in the dns list " + dnsSet);
     }
     killProcess(process.pid(), true);
+    if (serverType == UniverseTaskBase.ServerType.TSERVER) {
+      killLeftoverPostgresProcesses(getNodeFSRoot(userIntent, nodeInfo));
+    }
+  }
+
+  // A postgres process can outlive its tserver: the process tree of the tserver is collected before
+  // it is stopped, so a backend forked in the meantime is missed, and once the postmaster is gone
+  // its children are reparented and cannot be found from it anymore. Such a leftover keeps the
+  // shared memory of its postmaster attached. When its data directory is deleted and the postgres
+  // data directory of a later node gets the same inode, the postgres of that node refuses to start
+  // ("pre-existing shared memory block ... is still in use"). Every postgres process runs in its
+  // data directory (pg_data, or pg_data_11 etc. depending on the DB version, under the data
+  // directory of the node), so kill whatever still does. Only works where /proc is available.
+  private void killLeftoverPostgresProcesses(String nodeFSRoot) {
+    if (nodeFSRoot == null || !Files.isDirectory(Paths.get("/proc"))) {
+      return;
+    }
+    Path nodeDataDir = Paths.get(nodeFSRoot).toAbsolutePath().normalize();
+    for (int attempt = 0; attempt < 5; attempt++) {
+      List<ProcessHandle> leftovers =
+          ProcessHandle.allProcesses()
+              .filter(p -> isRunningInPgDataDir(p, nodeDataDir))
+              .collect(Collectors.toList());
+      if (leftovers.isEmpty()) {
+        return;
+      }
+      for (ProcessHandle leftover : leftovers) {
+        log.info("Killing leftover postgres process {} of {}", leftover.pid(), nodeDataDir);
+        leftover.destroyForcibly();
+      }
+      for (ProcessHandle leftover : leftovers) {
+        leftover.onExit().completeOnTimeout(null, 5, TimeUnit.SECONDS).join();
+      }
+    }
+    log.warn("Postgres processes of {} are still running", nodeDataDir);
+  }
+
+  // Whether the working directory of the process is a postgres data directory (pg_data*) of the
+  // node, or below one.
+  private static boolean isRunningInPgDataDir(ProcessHandle process, Path nodeDataDir) {
+    try {
+      String cwd =
+          Files.readSymbolicLink(Paths.get("/proc", String.valueOf(process.pid()), "cwd"))
+              .toString();
+      // The link of a process whose working directory has been deleted ends with " (deleted)".
+      Path cwdPath = Paths.get(StringUtils.removeEnd(cwd, " (deleted)"));
+      return cwdPath.startsWith(nodeDataDir)
+          && cwdPath.getNameCount() > nodeDataDir.getNameCount()
+          && cwdPath.getName(nodeDataDir.getNameCount()).toString().startsWith("pg_data");
+    } catch (IOException | SecurityException | UnsupportedOperationException e) {
+      // The process is gone or belongs to another user.
+      return false;
+    }
   }
 
   private static List<String> readProcessIdsFromFile(String filePath) {

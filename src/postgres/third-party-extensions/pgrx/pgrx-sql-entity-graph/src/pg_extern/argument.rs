@@ -17,8 +17,8 @@
 */
 use crate::UsedType;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{quote, ToTokens, TokenStreamExt};
-use syn::{spanned::Spanned, FnArg, Pat};
+use quote::{ToTokens, TokenStreamExt, quote};
+use syn::{FnArg, Pat, spanned::Spanned};
 
 /// A parsed `#[pg_extern]` argument.
 ///
@@ -58,7 +58,7 @@ impl PgExternArgument {
 
         let used_ty = UsedType::new(*value.ty)?;
 
-        Ok(PgExternArgument { fn_arg, pat: identifier, used_ty })
+        Ok(Self { fn_arg, pat: identifier, used_ty })
     }
 
     pub fn entity_tokens(&self) -> TokenStream2 {
@@ -72,6 +72,21 @@ impl PgExternArgument {
             }
         };
         quoted
+    }
+
+    pub fn section_len_tokens(&self) -> TokenStream2 {
+        let pat = &self.pat;
+        let used_ty_len = self.used_ty.section_len_tokens();
+        quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#pat))
+                + (#used_ty_len)
+        }
+    }
+
+    pub fn section_writer_tokens(&self, writer: TokenStream2) -> TokenStream2 {
+        let pat = &self.pat;
+        let writer = quote! { #writer.str(stringify!(#pat)) };
+        self.used_ty.section_writer_tokens(writer)
     }
 }
 

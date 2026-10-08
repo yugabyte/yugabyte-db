@@ -20,9 +20,11 @@ import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapp
 import {
   getClusterByType,
   useEditUniverseContext,
-  useIsUniverseReady,
+  useIsUniverseEditActionDisabled,
   withUniverseResource
 } from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
 interface InstanceCardProps {
   title: string;
   arch?: string;
@@ -51,7 +53,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.hardware' });
   const { universeData } = useEditUniverseContext();
   const universeUUID = universeData?.info?.universe_uuid;
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
@@ -70,15 +72,17 @@ export const InstanceCard: FC<InstanceCardProps> = ({
           )}
           isControl
         >
-          <YBButton
-            dataTestId="edit-placement-edit-button"
-            variant="ghost"
-            startIcon={<EditIcon />}
-            onClick={() => onEditClicked && onEditClicked()}
-            disabled={!isUniverseReady}
-          >
-            {t('edit', { keyPrefix: 'common' })}
-          </YBButton>
+          <K8OperatorEditBlockedTooltip>
+            <YBButton
+              dataTestId="edit-placement-edit-button"
+              variant="ghost"
+              startIcon={<EditIcon />}
+              onClick={() => onEditClicked && onEditClicked()}
+              disabled={isEditActionDisabled}
+            >
+              {t('edit', { keyPrefix: 'common' })}
+            </YBButton>
+          </K8OperatorEditBlockedTooltip>
         </RbacValidator>
       </StyledHeader>
       {arch && (

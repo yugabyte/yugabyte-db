@@ -69,7 +69,9 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/docdb_util.h"
+#include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
+#include "yb/docdb/properties_collector/sst_stats_metrics.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -151,6 +153,11 @@ DEPRECATE_FLAG(int32, tablet_rocksdb_ops_quiet_down_timeout_ms, "04_2023");
 DEFINE_UNKNOWN_int32(intents_flush_max_delay_ms, 2000,
     "Max time to wait for regular db to flush during flush of intents. "
     "After this time flush of regular db will be forced.");
+
+DEFINE_RUNTIME_int32(vector_index_num_raft_ops_to_force_flush, 10000,
+    "When the oldest unflushed Raft operation of a vector index is more than this many operations "
+    "behind the log tail, the index is flushed. Bounds both the WAL a vector index retains and the "
+    "entries tablet bootstrap replays into it. Entries inserted by backfill do not count.");
 
 DEFINE_UNKNOWN_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
     "When writes to intents RocksDB are stopped and the number of Raft operations after "
@@ -284,7 +291,7 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
 DEFINE_RUNTIME_bool(tablet_split_use_middle_user_key, true,
     "Consider only user keys while determining middle key for tablet split");
 
-DEFINE_RUNTIME_bool(use_cross_split_key_detection_algorithm, false,
+DEFINE_RUNTIME_bool(use_cross_split_key_detection_algorithm, true,
     "If true, detect split keys so each child tablet holds roughly the same amount of SST data. "
     "If false, 2-way splits use an approximate middle key, and N-way splits evenly divide hash "
     "space (hash-partitioned tables only).");
@@ -361,6 +368,16 @@ DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
+TAG_FLAG(vector_index_include_into_post_split_compaction, hidden);
+
+DEFINE_RUNTIME_bool(vector_index_require_parent_data_compacted_before_split, true,
+    "Whether to require co-hosted vector indexes to complete post-split compaction before allowing "
+    "further tablet splits. When set to false, the vector index post-split compaction state is "
+    "ignored, so tablets may be split (and load balancer moves re-enabled) without waiting for "
+    "potentially long-running vector index post-split compactions to finish. The vector index "
+    "post-split compaction itself is not affected by this flag and is still scheduled based on "
+    "the value of vector_index_include_into_post_split_compaction flag (true by default).");
+TAG_FLAG(vector_index_require_parent_data_compacted_before_split, advanced);
 
 DEFINE_RUNTIME_uint64(cdc_min_sec_to_retain_intent, 8 * 3600,
     "Minimum number of seconds for which intent SST files of tablets under CDCSDK replication are "
@@ -402,7 +419,6 @@ namespace yb::tablet {
 
 bool TEST_fail_on_seq_scan_with_vector_indexes = false;
 
-using strings::Substitute;
 
 using client::YBSession;
 using client::YBTablePtr;
@@ -614,6 +630,10 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       : RocksDbListener(tablet, log_prefix) {}
 
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+    if (const auto sst_stats = tablet_.sst_stats()) {
+      sst_stats->OnCompactionCompleted(ci);
+    }
+
     auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
     if (ci.is_full_compaction) {
       if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
@@ -638,6 +658,9 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
+    if (const auto sst_stats = tablet_.sst_stats()) {
+      sst_stats->OnFlushCompleted(flush_job_info);
+    }
     auto status = tablet_.MayModifyIntentsDbFlushedOpId();
     // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
     LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
@@ -1084,9 +1107,12 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
+  // rocksdb_shutdown_requested_ covers teardowns that skip Tablet::StartShutdown (e.g. snapshot
+  // restore), so their synchronous shutdown flush does not wait out the timeout.
   auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
   if (initial &&
-      (shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
+      (shutdown_requested_.load(std::memory_order_acquire) ||
+       rocksdb_shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
        std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout)) {
     for (size_t idx = 0; idx != state->flush_ability.size(); ++idx) {
       if (state->NeedFlush(idx, memtable_index)) {
@@ -1262,13 +1288,27 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
           VERIFY_RESULT(GetConfiguredKeyValueEncodingFormat(table_type_));
     }
     table_options.use_delta_encoding = UseDeltaEncoding(table_type_);
-    docdb::InitRocksDBOptionsTableFactory(
-        &regular_rocksdb_options, tablet_options_, std::move(table_options));
+    regular_rocksdb_options.table_factory = docdb::CreateRocksDBTableFactory(
+        tablet_options_, docdb::StorageDbType::kRegular, regular_rocksdb_options.info_log.get(),
+        std::move(table_options));
   }
 
   if (FLAGS_docdb_enable_sst_stats_collector) {
     regular_rocksdb_options.table_properties_collector_factories.push_back(
         docdb::MakeSstStatsCollectorFactory());
+    // Before DB::Open, so that the listener installed below always sees it. A reopen of a live
+    // tablet (truncate, snapshot restore) replaces the previous aggregator, which stays alive for
+    // as long as any reader still holds it.
+    auto sst_stats = std::make_shared<docdb::SstStatsAggregator>();
+    sst_stats_metrics_.reset();
+    if (tablet_metrics_entity_) {
+      sst_stats_metrics_ =
+          std::make_unique<docdb::SstStatsMetrics>(tablet_metrics_entity_, sst_stats);
+    }
+    {
+      std::lock_guard lock(sst_stats_mutex_);
+      sst_stats_ = std::move(sst_stats);
+    }
   }
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
@@ -1339,8 +1379,13 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
       LOG_IF_WITH_PREFIX(DFATAL, regular_rocksdb_options.db_paths.front().path != db_dir)
           << "tier_paths[0] (" << regular_rocksdb_options.db_paths.front().path
           << ") does not match home rocksdb_dir (" << db_dir << ")";
+
+      // Point flushes and compaction output at the persisted target disk. OpenTablet validated or
+      // repaired target_tier_path_id (ResolveTargetTierPathId) before this runs.
+      regular_rocksdb_options.target_path_id = metadata()->target_tier_path_id();
       LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
-                            << " tiered db_paths: " << desc;
+                            << " tiered db_paths (target_path_id="
+                            << regular_rocksdb_options.target_path_id << "): " << desc;
     }
   }
 
@@ -1378,8 +1423,9 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
   {
     rocksdb::BlockBasedTableOptions table_options;
     table_options.use_delta_encoding = UseDeltaEncoding(table_type_);
-    docdb::InitRocksDBOptionsTableFactory(
-        &intents_rocksdb_options, tablet_options_, std::move(table_options));
+    intents_rocksdb_options.table_factory = docdb::CreateRocksDBTableFactory(
+        tablet_options_, docdb::StorageDbType::kIntents, intents_rocksdb_options.info_log.get(),
+        std::move(table_options));
   }
 
   intents_rocksdb_options.compaction_context_factory = {};
@@ -1451,6 +1497,7 @@ void Tablet::RegularDbFilesChanged() {
 void Tablet::SetCleanupPool(
     ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
   snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+  vector_indexes_->SetScheduler(scheduler);
 
   if (!transaction_participant_) {
     return;
@@ -1791,6 +1838,11 @@ void Tablet::CompleteShutdown() {
       << "CompleteShutdown called without a preceding StartShutdown";
 
   snapshots_->CompleteShutdown();
+
+  // Final, unlike the vector index shutdown below, which a truncate or a restore also runs before
+  // re-opening the storages.
+  vector_indexes_->StopBackfillRetry();
+
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
@@ -1869,6 +1921,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
 
   op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
 
+  // Blocking operations stay unavailable until that pause is released, so a test can park a task
+  // that acquires one, e.g. a vector index backfill, until here to make it fail with TryAgain.
+  TEST_SYNC_POINT("Tablet::StartShutdownStorages:BlockingPaused");
+
   // Triggering vector indexes shutting down before RocksDB to let vector indexes release
   // ScopedRWOperation instances if any.
   vector_indexes_->StartShutdown();
@@ -1923,6 +1979,15 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
       db_uniq_ptr->reset();
     }
   }
+  // Freeze the gauges before making the old regular DB's aggregate unavailable.
+  sst_stats_metrics_.reset();
+  {
+    std::lock_guard lock(sst_stats_mutex_);
+    // The file numbers tracked by this instance belong to the regular DB just destroyed. Existing
+    // readers keep it alive through their shared_ptr; new readers see no aggregate until
+    // OpenRegularDB installs one for the replacement DB.
+    sst_stats_.reset();
+  }
 
   key_bounds_ = docdb::KeyBounds();
   // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
@@ -1936,7 +2001,7 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
 
 Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   rocksdb::Options rocksdb_options;
-  InitRocksDBOptions(&rocksdb_options, LogPrefix());
+  InitRocksDBOptionsWithoutTableFactory(&rocksdb_options, LogPrefix());
 
   // Tiered storage: hand DestroyDB the regular DB's tier disks so its cleanup removes SST files
   // spread across all tiers.
@@ -2243,7 +2308,8 @@ void Tablet::WriteToRocksDB(
         << ": " << rocksdb_write_status;
   }
 
-  if (FLAGS_TEST_docdb_log_write_batches) {
+  // The flag may be flipped concurrently, so check whether the formatter was created.
+  if (formatter) {
     std::ostringstream oss;
     oss << "Wrote " << formatter->Count()
       << " key/value pairs to " << storage_db_type
@@ -3380,8 +3446,8 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
     // Flush the updated schema metadata to disk.
     return metadata_->Flush();
   }
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid ChangeMetadataOperation: $0",
-                           operation->ToString());
+  return STATUS_FORMAT(InvalidArgument, "Invalid ChangeMetadataOperation: $0",
+                       operation->ToString());
 }
 
 namespace {
@@ -3421,21 +3487,26 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
     LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
                  << libpq_error_msg;
+    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
+    // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
+    // the PostgreSQL error code it failed with.
+    const auto keep_pg_error_code = [&pg_error_code](Status status) {
+      return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
+    };
     // The 2 spaces after ERROR: is necessary to match the error message.
     constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
     if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
-      return STATUS(TryAgain, libpq_error_msg);
+      return STATUS(TryAgain, libpq_error_msg, result.status().ErrorCodesSlice(), size_t(0));
     }
     // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
     // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
     // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
     // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
-    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
     if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
-      return STATUS(IllegalState, Format(
-          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy));
+      return keep_pg_error_code(STATUS(IllegalState, Format(
+          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy)));
     }
-    return STATUS(IllegalState, libpq_error_msg);
+    return keep_pg_error_code(STATUS(IllegalState, libpq_error_msg));
   }
   const auto [returned_spec, num_rows_backfilled_in_index, num_rows_scanned] = *result;
   PgsqlBackfillSpecPB spec;
@@ -3957,7 +4028,7 @@ Status Tablet::FlushWithRetries(
   return (
       failed_indexes->empty()
           ? Status::OK()
-          : STATUS_SUBSTITUTE(
+          : STATUS_FORMAT(
                 IllegalState, "Index op failed for $0 requests after $1 retries with errors: $2",
                 pending_ops.size(), num_retries, AsString(error_msg_cnts)));
 }
@@ -4224,7 +4295,7 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(
     BlockingRocksDbShutdownStart blocking_rocksdb_shutdown_start, const Stop stop) {
   VTRACE(1, LogPrefix());
   LOG_SLOW_EXECUTION(WARNING, 1000,
-                     Substitute("$0Waiting for pending ops to complete", LogPrefix())) {
+                     Format("$0Waiting for pending ops to complete", LogPrefix())) {
     return ScopedRWOperationPause(
         blocking_rocksdb_shutdown_start ? &pending_op_counter_blocking_rocksdb_shutdown_start_
                                         : &pending_op_counter_not_blocking_rocksdb_shutdown_start_,
@@ -4281,7 +4352,8 @@ Status Tablet::ModifyFlushedFrontier(
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, LogPrefix(), tablet_id(), /* statistics = */ nullptr, tablet_options_,
-        rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata_->data_root_dir()));
+        docdb::StorageDbType::kRegular, rocksdb::BlockBasedTableOptions(),
+        hash_for_data_root_dir(metadata_->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     LOG_WITH_PREFIX(INFO) << "Opening the test RocksDB at " << checkpoint_dir_for_test
         << ", expecting to see flushed frontier of " << frontier.ToString();
@@ -4349,6 +4421,11 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   RETURN_NOT_OK(ModifyFlushedFrontier(
       frontier, rocksdb::FrontierModificationMode::kUpdate,
       FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
+  // The vector indexes were replaced together with the regular DB. Without this stamp the new
+  // ones start from an empty frontier, and bootstrap replays the truncated writes back into them.
+  // Stamped here rather than in ModifyFlushedFrontier: every snapshot op goes through that one, and
+  // each stamp adds a chunk to the index manifest.
+  RETURN_NOT_OK(vector_indexes_->ModifyFlushedFrontier(frontier));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -4399,6 +4476,79 @@ Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const 
   result.intents = docdb::MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data);
   vector_indexes_->FillMaxPersistentOpIds(result.vector_indexes, invalid_if_no_new_data);
   return result;
+}
+
+Result<int64_t> Tablet::EarliestNeededLogIndex(
+    const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
+  FlushIntentsDbIfNecessary(latest_log_entry_op_id);
+  auto max_persistent_op_id = VERIFY_RESULT(MaxPersistentOpId(true /* invalid_if_no_new_data */));
+  int64_t min_index = std::numeric_limits<int64_t>::max();
+  auto add_storage = [&min_index, &add_factor](const char* name, const OpId& op_id) {
+    if (!op_id.valid()) {
+      return;
+    }
+    min_index = std::min(min_index, op_id.index);
+    add_factor(name, op_id.index, std::string());
+  };
+  add_storage("max persistent regular op ID idx", max_persistent_op_id.regular);
+  add_storage("max persistent intents op ID idx", max_persistent_op_id.intents);
+  return std::min(
+      min_index,
+      VERIFY_RESULT(EarliestNeededLogIndexForVectorIndexes(latest_log_entry_op_id, add_factor)));
+}
+
+Result<int64_t> Tablet::EarliestNeededLogIndexForVectorIndexes(
+    const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
+  int64_t min_index = std::numeric_limits<int64_t>::max();
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  auto vector_indexes = vector_indexes_->List();
+  if (!vector_indexes) {
+    return min_index;
+  }
+
+  // Vector indexes are reduced to one factor, naming each index and its OpId, so that a tablet
+  // with several of them does not emit a row per index with no way to tell them apart.
+  std::string details;
+  for (const auto& vector_index : *vector_indexes) {
+    auto flush_ability = vector_index->GetFlushAbility();
+    if (flush_ability == rocksdb::FlushAbility::kNoNewData) {
+      continue;
+    }
+    // Bound by the oldest operation the index holds in memory rather than by its flushed OpId: a
+    // backfill chunk is stamped with the OpId of the index creation while its entries come from
+    // the regular DB, so a backfilled index lags the log tail without needing the WAL. Backfill
+    // entries carry no OpId, so an empty smallest in-memory OpId means all unflushed entries are
+    // from backfill.
+    auto frontier = vector_index->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
+    if (!frontier) {
+      continue;
+    }
+    auto op_id = down_cast<const docdb::ConsensusFrontier&>(*frontier).op_id();
+    if (op_id.empty()) {
+      continue;
+    }
+    min_index = std::min(min_index, op_id.index);
+    if (!details.empty()) {
+      details += ", ";
+    }
+    details += Format("$0: $1", vector_index->table_id(), op_id.index);
+
+    auto index_delta = latest_log_entry_op_id.index - op_id.index;
+    if (index_delta > FLAGS_vector_index_num_raft_ops_to_force_flush &&
+        flush_ability == rocksdb::FlushAbility::kHasNewData) {
+      LOG_WITH_PREFIX(INFO)
+          << "Force flushing vector index " << vector_index->table_id() << ", it holds operations "
+          << index_delta << " behind the log tail, while only "
+          << FLAGS_vector_index_num_raft_ops_to_force_flush << " is allowed";
+      WARN_NOT_OK(vector_index->Flush(), "Flush vector index failed");
+    }
+  }
+  if (min_index != std::numeric_limits<int64_t>::max()) {
+    add_factor("min unflushed vector index op ID idx", min_index, Format(" ($0)", details));
+  }
+  return min_index;
 }
 
 void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) {
@@ -4620,8 +4770,31 @@ Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   return StillHasOrphanedPostSplitDataAbortable();
 }
 
+bool Tablet::NeedPostSplitCompaction() {
+  if (!key_bounds().IsInitialized()) {
+    return false;
+  }
+
+  if (!metadata()->rocksdb_parent_data_compacted()) {
+    return true;
+  }
+
+  return vector_indexes().PostSplitCompactionRequired();
+}
+
 bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
-  return key_bounds().IsInitialized() && !metadata()->parent_data_compacted();
+  if (!NeedPostSplitCompaction()) {
+    return false;
+  }
+
+  if (FLAGS_vector_index_require_parent_data_compacted_before_split) {
+    // There's leftover parent data (RocksDB or vector index), and the flag requires waiting for
+    // both, so there's nothing else to check.
+    return true;
+  }
+
+  VLOG_WITH_PREFIX(1) << "Vector index parent data compaction is not required before split";
+  return !metadata()->rocksdb_parent_data_compacted();
 }
 
 bool Tablet::MayHaveOrphanedPostSplitData() {
@@ -4634,6 +4807,8 @@ bool Tablet::MayHaveOrphanedPostSplitData() {
 }
 
 bool Tablet::ShouldDisableLbMove() {
+  // Same policy as StillHasOrphanedPostSplitData: vector-index leftover is ignored when
+  // vector_index_require_parent_data_compacted_before_split is false.
   auto still_has_parent_data_result = StillHasOrphanedPostSplitData();
   if (still_has_parent_data_result.ok()) {
     return still_has_parent_data_result.get();
@@ -4682,7 +4857,11 @@ Status Tablet::ForceRocksDBCompact(
   options.skip_corrupt_data_blocks_unsafe = skip_corrupt_data_blocks_unsafe;
   if (compaction_reason != rocksdb::CompactionReason::kPostSplitCompaction) {
     options.exclusive_manual_compaction = FLAGS_tablet_exclusive_full_compaction;
-    return ForceRocksDBCompact(options, options);
+    // Ensure the compaction output goes to the correct tier.
+    // Only apply to regular DB, as the intents DB has a single db_paths entry.
+    auto regular_options = options;
+    regular_options.target_path_id = metadata()->target_tier_path_id();
+    return ForceRocksDBCompact(regular_options, options);
   }
 
   // Specific handling for post split compaction.
@@ -4692,14 +4871,14 @@ Status Tablet::ForceRocksDBCompact(
   auto regular_options = options;
   if (regular_db_) {
     // Our expectations at this point:
-    // 1) If parent_data_compacted then we don't want to compact again.
+    // 1) If rocksdb_parent_data_compacted then we don't want to compact again.
     // 2) If file_number_upper_bound is not set, then we don't setup limited compaction.
-    // 3) If file_number_upper_bound is 0 and !parent_data_compacted then is looks like a bug,
-    //    but we still want to compact to have parent_data_compacted.
-    // (1) and (3) are possible due to async nature of triggereing ForceRocksDBCompact()
+    // 3) If file_number_upper_bound is 0 and !rocksdb_parent_data_compacted then it looks like a
+    //    bug, but we still want to compact to have rocksdb_parent_data_compacted.
+    // (1) and (3) are possible due to async nature of triggering ForceRocksDBCompact()
     // via TriggerPostSplitCompactionIfNeeded().
-    const auto parent_data_compacted = metadata()->parent_data_compacted();
-    if (parent_data_compacted) {
+    const auto rocksdb_parent_data_compacted = metadata()->rocksdb_parent_data_compacted();
+    if (rocksdb_parent_data_compacted) {
       LOG_WITH_PREFIX(WARNING) << "Ignoring post split compaction as "
                                << "parent data have already been compacted.";
       return Status::OK();
@@ -4717,6 +4896,7 @@ Status Tablet::ForceRocksDBCompact(
       regular_options.file_number_upper_bound = *file_number_upper_bound;
       regular_options.input_size_limit_per_job = input_size_threshold;
     }
+    regular_options.target_path_id = metadata()->target_tier_path_id();
   }
 
   return ForceRocksDBCompact(regular_options, options);
@@ -4739,6 +4919,312 @@ Status Tablet::ForceRocksDBCompact(
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get(), intents_options));
   }
   return Status::OK();
+}
+
+// Tiered storage: bookkeeping for one migration pass, from StartTierMigrationPass to
+// FinishTierMigrationPass. Refcounted via shared_ptr, each scheduled file's callback holds a ref,
+// so `op` (which keeps regular_db_ alive) outlives every callback that might still fire,
+// including the ones RocksDB's own shutdown aborts.
+struct TierMigrationPass {
+  ScopedRWOperation op;
+  std::string target_dir;
+  uint32_t target_path_id = 0;
+
+  std::atomic<size_t> pending{0};
+  std::atomic<uint32_t> moved{0};
+  std::atomic<uint32_t> deferred{0};
+  std::atomic<uint32_t> obsoleted{0};
+  std::atomic<uint32_t> hard_failed{0};
+
+  std::mutex error_mutex;
+  Status first_hard_error;
+};
+
+Result<std::string> Tablet::LookupTierDir(uint32_t path_id) const {
+  for (const auto& tier_path : metadata()->tier_paths()) {
+    if (tier_path.path_id == path_id) {
+      return tier_path.path;
+    }
+  }
+  return STATUS_FORMAT(
+      InvalidArgument, "Tablet $0 has no directory pinned for path_id $1", tablet_id(), path_id);
+}
+
+std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& target_dir) const {
+  std::vector<uint64_t> candidates;
+  if (!regular_db_) {
+    return candidates;
+  }
+  for (const auto& file : regular_db_->GetLiveFilesMetaData()) {
+    if (file.db_path != target_dir) {
+      candidates.push_back(file.name_id);
+    }
+  }
+  return candidates;
+}
+
+Status Tablet::ClaimTierMigrationPass() {
+  std::lock_guard lock(tier_migration_mutex_);
+  auto& status = tier_migration_status_;
+  if (status.pass_in_flight) {
+    return STATUS(ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
+  }
+  status.pass_in_flight = true;
+  status.state = TierMigrationStatus::State::kInProgress;
+  status.files_total = 0;
+  status.files_moved = 0;
+  status.files_deferred = 0;
+  status.files_failed = 0;
+  status.obsoleted = 0;
+  return Status::OK();
+}
+
+Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  if (!regular_db_) {
+    return STATUS(IllegalState, "Tablet has no regular RocksDB open");
+  }
+  RETURN_NOT_OK(LookupTierDir(target_path_id));
+
+  {
+    std::lock_guard lock(tier_target_mutex_);
+    if (metadata()->target_storage_tier() != target_tier ||
+        metadata()->target_tier_path_id() != target_path_id) {
+      RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
+    }
+    RETURN_NOT_OK_PREPEND(
+        regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
+        "Failed to set target_path_id on regular DB");
+  }
+
+  // Intent (re)asserted: convergence is unproven again, and earlier failures no longer count.
+  std::lock_guard lock(tier_migration_mutex_);
+  tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
+  tier_migration_status_.consecutive_failed_passes = 0;
+  tier_migration_status_.last_error = Status::OK();
+  return Status::OK();
+}
+
+Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  if (!regular_db_) {
+    return STATUS(IllegalState, "Tablet has no regular RocksDB open");
+  }
+  if (metadata()->target_storage_tier().empty()) {
+    return STATUS(IllegalState, "Tablet has no target storage tier");
+  }
+  const auto target_path_id = metadata()->target_tier_path_id();
+  const auto target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
+
+  RETURN_NOT_OK(ClaimTierMigrationPass());
+
+  auto candidates = CollectTierMigrationCandidates(target_dir);
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    auto& status = tier_migration_status_;
+    status.files_total = narrow_cast<uint32_t>(candidates.size());
+    if (candidates.empty()) {
+      status.pass_in_flight = false;
+      status.consecutive_failed_passes = 0;
+      status.last_error = Status::OK();
+      return status;
+    }
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Tier migration pass (path_id=" << target_path_id << "): scheduling "
+                        << candidates.size() << " SST move(s) to " << target_dir;
+
+  auto pass = std::make_shared<TierMigrationPass>();
+  pass->op = std::move(scoped_operation);
+  pass->target_dir = target_dir;
+  pass->target_path_id = target_path_id;
+  ScheduleTierMigrationFiles(std::move(pass), std::move(candidates));
+
+  std::lock_guard lock(tier_migration_mutex_);
+  return tier_migration_status_;
+}
+
+Result<TierMigrationStatus> Tablet::AlterTabletTier(
+    const std::string& target_tier, uint32_t target_path_id) {
+  RETURN_NOT_OK(SetTierMigrationTarget(target_tier, target_path_id));
+  auto status = StartTierMigrationPass();
+  if (status.ok() || !status.status().IsServiceUnavailable()) {
+    return status;
+  }
+  // A pass is already in flight. It keeps moving toward the target it started with; the next
+  // pass picks up the intent just persisted. Report its progress rather than failing.
+  std::lock_guard lock(tier_migration_mutex_);
+  return tier_migration_status_;
+}
+
+void Tablet::ScheduleTierMigrationFiles(
+    std::shared_ptr<TierMigrationPass> pass, std::vector<uint64_t> candidates) {
+  // Lets a test race a candidate away after it was collected but before it is scheduled, to
+  // exercise the NotFound path in OnTierMigrationFileDone.
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::ScheduleTierMigrationFiles");
+
+  pass->pending.store(candidates.size(), std::memory_order_relaxed);
+
+  for (const auto file_number : candidates) {
+    VLOG_WITH_PREFIX(2) << "TieredStorage Tablet::StartTierMigrationPass: scheduling move file="
+                        << file_number << " to='" << pass->target_dir << "' (target_path_id="
+                        << pass->target_path_id << ")";
+
+    // The callback can fire inline, on this thread, if the pool rejects the task, so `pass` must
+    // already carry everything it needs, and this thread must hold no lock the callback takes.
+    auto callback = [this, pass](const Status& status) {
+      OnTierMigrationFileDone(pass, status);
+    };
+    auto status = regular_db_->ScheduleDBPathMove(
+        file_number, pass->target_path_id, callback);
+    if (!status.ok()) {
+      // ScheduleDBPathMove never invoked the callback in this case, so report the outcome here.
+      OnTierMigrationFileDone(pass, status);
+    }
+  }
+}
+
+void Tablet::OnTierMigrationFileDone(
+    const std::shared_ptr<TierMigrationPass>& pass, const Status& status) {
+  if (status.ok() || status.IsAlreadyPresent()) {
+    // AlreadyPresent: the file reached the target by another route before the move ran, e.g. a
+    // compaction whose output already targeted target_path_id replaced it.
+    pass->moved.fetch_add(1, std::memory_order_relaxed);
+  } else if (status.IsAborted()) {
+    // Busy with a compaction. Not a failure: the next pass retries it, unless that compaction's
+    // own output has landed it on the target by then.
+    pass->deferred.fetch_add(1, std::memory_order_relaxed);
+  } else if (status.IsNotFound()) {
+    // Gone between the scan and the move, e.g. a compaction rewrote it away. It no longer
+    // needs moving either way.
+    pass->obsoleted.fetch_add(1, std::memory_order_relaxed);
+  } else {
+    pass->hard_failed.fetch_add(1, std::memory_order_relaxed);
+    std::lock_guard lock(pass->error_mutex);
+    if (pass->first_hard_error.ok()) {
+      pass->first_hard_error = status;
+    }
+  }
+
+  if (pass->pending.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+    return;  // Not the last callback.
+  }
+
+  FinishTierMigrationPass(pass);
+}
+
+void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& pass) {
+  const uint32_t moved = pass->moved.load(std::memory_order_relaxed);
+  const uint32_t deferred = pass->deferred.load(std::memory_order_relaxed);
+  const uint32_t obsoleted = pass->obsoleted.load(std::memory_order_relaxed);
+  const uint32_t hard_failed = pass->hard_failed.load(std::memory_order_relaxed);
+  Status hard_error;
+  {
+    std::lock_guard lock(pass->error_mutex);
+    hard_error = pass->first_hard_error;
+  }
+
+  // Even a pass with nothing left behind proves nothing by itself: a flush or compaction that was
+  // already running when the target switched can have landed a file on the old disk since the
+  // scan, and the target may have changed while this pass ran. Deciding that the tablet has
+  // converged (kDone) is the background reconciler's job, from a fresh scan of its own.
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    auto& status = tier_migration_status_;
+    status.pass_in_flight = false;
+    status.files_moved = moved;
+    status.files_deferred = deferred;
+    status.files_failed = hard_failed;
+    status.obsoleted = obsoleted;
+    if (hard_failed == 0) {
+      status.consecutive_failed_passes = 0;
+      status.last_error = Status::OK();
+    } else {
+      status.last_error = hard_error;
+      status.consecutive_failed_passes = moved > 0 ? 0 : status.consecutive_failed_passes + 1;
+    }
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Tier migration pass (path_id=" << pass->target_path_id
+                        << ") done: moved=" << moved << " deferred=" << deferred
+                        << " obsoleted=" << obsoleted << " hard_failed=" << hard_failed
+                        << (hard_error.ok() ? "" : Format(", first error: $0", hard_error));
+}
+
+Result<TabletTierInfo> Tablet::GetTierInfo() const {
+  // Keeps regular_db_ alive for the GetLiveFilesMetaData scan below: a concurrent tablet
+  // shutdown/delete waits for this to be released before destroying the DB.
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  TabletTierInfo info;
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    info.migration = tier_migration_status_;
+  }
+  info.wal_dir = metadata()->wal_dir();
+  info.target_tier = metadata()->target_storage_tier();
+  info.target_tier_path_id = metadata()->target_tier_path_id();
+
+  info.tier_paths.reserve(metadata()->tier_paths().size());
+  for (const auto& tp : metadata()->tier_paths()) {
+    TierPathStats stats;
+    stats.path_id = tp.path_id;
+    stats.tier = tp.tier;
+    stats.path = tp.path;
+    stats.is_home = (tp.path_id == 0);
+    info.tier_paths.push_back(stats);
+  }
+
+  // Home tier (path_id 0) is where the first flush will land absent any migration, so an empty
+  // tablet (no live SSTs yet, e.g. still bootstrapping or just created and never flushed) is
+  // trivially "on" its home tier rather than "none". Overwritten below once there is at
+  // least one live SST to derive current_tier from directly.
+  for (const auto& stats : info.tier_paths) {
+    if (stats.is_home) {
+      info.current_tier = stats.tier;
+      break;
+    }
+  }
+
+  if (!regular_db_) {
+    return info;
+  }
+
+  std::unordered_set<std::string> tiers_seen;
+  for (const auto& file : regular_db_->GetLiveFilesMetaData()) {
+    TierPathStats* matched_stats = nullptr;
+    for (auto& stats : info.tier_paths) {
+      if (stats.path == file.db_path) {
+        matched_stats = &stats;
+        break;
+      }
+    }
+
+    if (matched_stats) {
+      ++matched_stats->sst_count;
+      matched_stats->total_bytes += file.total_size;
+      tiers_seen.insert(matched_stats->tier);
+    } else {
+      ++info.unmatched_sst_count;
+      // Should never happen: every live SST's db_path is one of db_paths, which OpenRocksDB
+      // populated directly from tier_paths. A mismatch here means tier_paths on this replica no
+      // longer matches what RocksDB was actually opened with.
+      LOG_WITH_PREFIX(DFATAL) << "Live SST file=" << file.name_id << " db_path='" << file.db_path
+                              << "' matches no tier_paths entry";
+    }
+  }
+
+  if (tiers_seen.size() == 1) {
+    info.current_tier = *tiers_seen.begin();
+  } else if (tiers_seen.size() > 1) {
+    // Straddling more than one tier (e.g. mid-migration): neither the home-tier default set
+    // above nor a single derived tier is accurate, so leave it unset rather than pick one.
+    info.current_tier.clear();
+  }
+  return info;
 }
 
 std::string Tablet::TEST_DocDBDumpStr(
@@ -4847,6 +5333,40 @@ uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
   return GetRegularDbStat([this] {
     return regular_db_->GetCurrentVersionNumSSTFiles();
   }, 0);
+}
+
+std::shared_ptr<docdb::SstStatsAggregator> Tablet::sst_stats() const {
+  std::lock_guard lock(sst_stats_mutex_);
+  return sst_stats_;
+}
+
+Status Tablet::ResyncSstStats() {
+  // Held for the whole resync: a truncate or a snapshot restore may install a new aggregator while
+  // this one is still installing its result.
+  const auto sst_stats = this->sst_stats();
+  if (!sst_stats) {
+    return Status::OK();
+  }
+
+  // Held across both snapshot phases and an optional retry so a truncate or snapshot restore
+  // cannot replace regular_db_ between the live-file and properties reads. This flavor does not
+  // prevent RocksDB shutdown from starting; that shutdown can make either callback fail.
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  SCHECK(regular_db_, IllegalState, "No regular DB to read SST statistics from");
+  return sst_stats->Resync({
+      .live_files = [this](std::vector<rocksdb::LiveFileMetaData>* live_files) {
+        regular_db_->GetLiveFilesMetaData(live_files);
+        return Status::OK();
+      },
+      .properties = [this](rocksdb::TablePropertiesCollection* properties) {
+        // Keep files whose properties cannot be read absent from the map. Resync compares this
+        // with the live-file list and counts each absence as uncovered instead of letting one bad
+        // properties block prevent this tablet from ever completing its first resync.
+        return regular_db_->GetPropertiesOfAllTables(
+            properties, rocksdb::TablePropertiesErrorHandling::kSkip);
+      },
+  });
 }
 
 std::pair<int, int> Tablet::GetNumMemtables() const {
@@ -5031,7 +5551,7 @@ Result<IsolationLevel> Tablet::DoGetIsolationLevel(const PB& transaction) {
   return VERIFY_RESULT(transaction_participant_->PrepareMetadata(transaction)).isolation;
 }
 
-Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
+Result<RaftGroupMetadataPtr> Tablet::CreateSplitChildTablet(
     const TabletId& tablet_id, const dockv::Partition& partition,
     const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
     const HybridTime& split_op_hybrid_time) {
@@ -5040,9 +5560,19 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSubtabletCreation));
+  // SplitOperation rejects new WRITE_OPs once the split is pending, but ApplyIntents of
+  // already-replicated commits is not fenced and can still vector-Insert on this parent.
+  // The first flush puts finished applies in the RocksDB snapshot. WaitForFlush then drains
+  // vector tasks those applies already allocated; leftover vectors sit in a new mutable chunk.
+  RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSplitChildTabletCreation));
+  // Seal that leftover chunk so CreateCheckpoint can hard-link it. Applies that have not
+  // finished yet are still in intents; children will apply them. Vector-only: RocksDB was
+  // already flushed.
+  RETURN_NOT_OK(Flush(
+      FlushMode::kSync, FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
+      rocksdb::FlushReason::kSplitChildTabletCreation));
 
-  auto metadata = VERIFY_RESULT(metadata_->CreateSubtabletMetadata(
+  auto metadata = VERIFY_RESULT(metadata_->CreateSplitChildMetadata(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));
 
   RETURN_NOT_OK(snapshots_->CreateCheckpoint(
@@ -5068,8 +5598,9 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, db_info.db_type),
-        tablet_id, /* statistics = */ nullptr, tablet_options_, rocksdb::BlockBasedTableOptions(),
-        hash_for_data_root_dir(metadata->data_root_dir()));
+        tablet_id, /* statistics = */ nullptr, tablet_options_,
+        db_info.db_type,
+        rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     // Disable background compactions, we only need to update flushed frontier.
     rocksdb_options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleNone;
@@ -5147,10 +5678,19 @@ void Tablet::InitRocksDBBaseOptions(rocksdb::Options* options) {
       hash_for_data_root_dir(metadata_->data_root_dir()));
 }
 
-void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix) {
+void Tablet::InitRocksDBOptionsWithoutTableFactory(
+    rocksdb::Options* options, const std::string& log_prefix) {
+  docdb::InitRocksDBOptionsWithoutTableFactory(
+      options, log_prefix, tablet_id(), /* statistics = */ nullptr, tablet_options_,
+      hash_for_data_root_dir(metadata_->data_root_dir()));
+}
+
+void Tablet::InitRocksDBOptions(
+    rocksdb::Options* options, const std::string& log_prefix, docdb::StorageDbType db_type) {
   docdb::InitRocksDBOptions(
       options, log_prefix, tablet_id(), /* statistics = */ nullptr, tablet_options_,
-      rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata_->data_root_dir()));
+      db_type, rocksdb::BlockBasedTableOptions(),
+      hash_for_data_root_dir(metadata_->data_root_dir()));
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {
@@ -5331,16 +5871,20 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   }
   const Slice upper_bound_key = key_bounds_.upper;
 
-  const uint64_t total_data_size = VERIFY_RESULT(regular_db_->TotalDataSize());
+  // Pinned for the whole loop: a target computed on one version's Cross scale can land outside the
+  // search window when measured against another.
+  const auto pinned_version = regular_db_->PinCurrentVersion();
+
+  const uint64_t total_data_size = VERIFY_RESULT(pinned_version->TotalDataSize());
   SCHECK_GT(total_data_size, 0U, IllegalState, "No SST data available for size-based split");
 
   SplitKeysData split_keys;
   split_keys.encoded_keys.reserve(num_keys);
   split_keys.partition_keys.reserve(num_keys);
 
-  const uint64_t lower_cross = VERIFY_RESULT(regular_db_->Cross(lower_bound_key));
+  const uint64_t lower_cross = VERIFY_RESULT(pinned_version->Cross(lower_bound_key));
   const uint64_t upper_cross = upper_bound_key.empty()
-    ? total_data_size : VERIFY_RESULT(regular_db_->Cross(upper_bound_key));
+    ? total_data_size : VERIFY_RESULT(pinned_version->Cross(upper_bound_key));
 
   DCHECK_GE(upper_cross, lower_cross);
   auto chunk_size = (upper_cross - lower_cross) / split_factor;
@@ -5348,8 +5892,7 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   std::string last_key_buf = lower_bound_key.ToBuffer();
   for (int i = 0; i < num_keys; ++i) {
     auto target_size = lower_cross + chunk_size * (i + 1);
-    auto split_data_key =
-        regular_db_->FindTargetKey(last_key_buf, upper_bound_key, target_size);
+    auto split_data_key = pinned_version->FindTargetKey(last_key_buf, upper_bound_key, target_size);
     if (PREDICT_FALSE(!split_data_key.ok())) {
       // The Cross search found nothing to measure. For a 2-way split the approximate middle key is
       // a fine answer, so fall back rather than fail; call GetEncodedMiddleSplitKey directly, since
@@ -5417,19 +5960,21 @@ void Tablet::TriggerPostSplitCompactionIfNeeded() {
     LOG(INFO) << "Skipping post split compaction due to FLAGS_TEST_skip_post_split_compaction";
     return;
   }
-  if (!StillHasOrphanedPostSplitDataAbortable()) {
+  if (!NeedPostSplitCompaction()) {
     return;
   }
-  auto status = TriggerManualCompactionIfNeeded(rocksdb::CompactionReason::kPostSplitCompaction);
-  if (status.ok()) {
-    ts_post_split_compaction_added_->Increment();
-  } else if (!status.IsServiceUnavailable()) {
+
+  auto status = TriggerManualCompactionIfNeeded(
+      rocksdb::CompactionReason::kPostSplitCompaction, IncludeVectorIndexes::kTrue);
+  if (!status.ok() && !status.IsServiceUnavailable()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for post-split tablet: "
                              << status.ToString();
   }
 }
 
-Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compaction_reason) {
+Status Tablet::TriggerManualCompactionIfNeeded(
+    rocksdb::CompactionReason compaction_reason,
+    IncludeVectorIndexes include_vector_indexes) {
   DCHECK_NE(compaction_reason, rocksdb::CompactionReason::kUnknown);
   if (!full_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Full compaction thread pool unavailable.");
@@ -5446,24 +5991,40 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
         full_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  bool compact_vector_index = compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction;
-  if (compact_vector_index && !FLAGS_vector_index_include_into_post_split_compaction) {
-    LOG_WITH_PREFIX(INFO) << "Vector index post-split compaction disabled by the gflag";
-    compact_vector_index = false;
+  // Compaction status may change between here and the actual compaction task execution. This is
+  // safe because each component (RocksDB and vector indexes) has its own compaction-time guard.
+  bool compact_rocksdb = true;
+  bool compact_vector_index = include_vector_indexes;
+  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
+    compact_rocksdb = !metadata()->rocksdb_parent_data_compacted();
+    compact_vector_index =
+        compact_vector_index && vector_indexes().PostSplitCompactionRequired();
+  }
+
+  if (!compact_rocksdb && !compact_vector_index) {
+    LOG_WITH_PREFIX(INFO) <<
+        "Skipping post-split compaction: RocksDB and vector indexes "
+        "are already post-split compacted";
+    return Status::OK();
   }
 
   tablet::ManualCompactionOptions options {
       .compaction_reason = compaction_reason,
       .compaction_completion_callback = {},
       .vector_index_ids = compact_vector_index ? std::make_shared<TableIds>() : nullptr,
-      .vector_index_only = VectorIndexOnly::kFalse,
+      .vector_index_only = VectorIndexOnly(!compact_rocksdb),
       .skip_corrupt_data_blocks_unsafe = rocksdb::SkipCorruptDataBlocksUnsafe::kFalse,
   };
 
   auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
-  return full_compaction_task_pool_token_->SubmitFunc([this, token, options] {
+  RETURN_NOT_OK(full_compaction_task_pool_token_->SubmitFunc([this, token, options] {
     WARN_NOT_OK(TriggerManualCompactionSync(options), "Trigger manual compaction failed");
-  });
+  }));
+
+  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
+    ts_post_split_compaction_added_->Increment();
+  }
+  return Status::OK();
 }
 
 Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options) {
@@ -5484,13 +6045,20 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions&
   });
 }
 
-Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
+Status Tablet::TriggerVectorIndexCompactionSync(const ManualCompactionOptions& options) {
+  if (!options.vector_index_ids) {
+    // No vector indexes to compact.
+    return Status::OK();
+  }
+
+  const auto& vector_index_ids = *options.vector_index_ids;
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
   auto vector_index_list = vector_indexes().Collect(vector_index_ids);
-  vector_index_list.Compact();
-  auto status = vector_index_list.WaitForCompaction();
+  vector_index_list.Compact(options.compaction_reason);
+  Status status = vector_index_list.WaitForCompaction();
   WARN_WITH_PREFIX_NOT_OK(
       status, Format("$0: Failed vector index compaction", log_prefix_suffix_));
+
   return status;
 }
 
@@ -5507,9 +6075,11 @@ Status Tablet::TriggerManualCompactionSyncUnsafe(const ManualCompactionOptions& 
         options.compaction_reason, options.skip_corrupt_data_blocks_unsafe);
   }
 
-  if (options.vector_index_ids) {
-    auto s = TriggerVectorIndexCompactionSync(*options.vector_index_ids);
-    status = status.ok() ? s : status.CloneAndAppend(s.ToString());
+  // Vector index compaction may depend on RocksDB compaction: its merge filter decides what
+  // to drop by looking up reverse mappings in RegularDB. If RocksDB compaction failed, obsolete
+  // mappings are still there. No need to trigger vector index compaction if status is not OK.
+  if (status.ok()) {
+    status = TriggerVectorIndexCompactionSync(options);
   }
 
   if (options.compaction_completion_callback) {
@@ -5553,24 +6123,24 @@ Status Tablet::VerifyDataIntegrity() {
 
   // Verify regular db.
   if (regular_db_) {
-    const auto& db_dir = metadata()->rocksdb_dir();
-    RETURN_NOT_OK(OpenDbAndCheckIntegrity(db_dir));
+    RETURN_NOT_OK(
+        OpenDbAndCheckIntegrity(metadata()->rocksdb_dir(), docdb::StorageDbType::kRegular));
   }
 
   // Verify intents db.
   if (intents_db_) {
-    const auto& db_dir = metadata()->intents_rocksdb_dir();
-    RETURN_NOT_OK(OpenDbAndCheckIntegrity(db_dir));
+    RETURN_NOT_OK(
+        OpenDbAndCheckIntegrity(metadata()->intents_rocksdb_dir(), docdb::StorageDbType::kIntents));
   }
 
   return Status::OK();
 }
 
-Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
+Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir, docdb::StorageDbType db_type) {
   // Similar to ldb's CheckConsistency, we open db as read-only with paranoid checks on.
   // If any corruption is detected then the open will fail with a Corruption status.
   rocksdb::Options db_opts;
-  InitRocksDBOptions(&db_opts, LogPrefix());
+  InitRocksDBOptions(&db_opts, LogPrefix(), db_type);
   db_opts.paranoid_checks = true;
 
   std::unique_ptr<rocksdb::DB> db;

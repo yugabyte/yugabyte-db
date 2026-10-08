@@ -18,28 +18,28 @@
 use crate::{PgrxSql, SqlGraphEntity, SqlGraphIdentifier, ToSql, ToSqlConfigEntity};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PgTriggerEntity {
-    pub function_name: &'static str,
-    pub to_sql_config: ToSqlConfigEntity,
-    pub file: &'static str,
+pub struct PgTriggerEntity<'a> {
+    pub function_name: &'a str,
+    pub to_sql_config: ToSqlConfigEntity<'a>,
+    pub file: &'a str,
     pub line: u32,
-    pub module_path: &'static str,
-    pub full_path: &'static str,
+    pub module_path: &'a str,
+    pub full_path: &'a str,
 }
 
-impl PgTriggerEntity {
+impl PgTriggerEntity<'_> {
     fn wrapper_function_name(&self) -> String {
         self.function_name.to_string() + "_wrapper"
     }
 }
 
-impl From<PgTriggerEntity> for SqlGraphEntity {
-    fn from(val: PgTriggerEntity) -> Self {
+impl<'a> From<PgTriggerEntity<'a>> for SqlGraphEntity<'a> {
+    fn from(val: PgTriggerEntity<'a>) -> Self {
         SqlGraphEntity::Trigger(val)
     }
 }
 
-impl ToSql for PgTriggerEntity {
+impl ToSql for PgTriggerEntity<'_> {
     fn to_sql(&self, context: &PgrxSql) -> eyre::Result<String> {
         let self_index = context.triggers[self];
         let schema = context.schema_prefix_for(&self_index);
@@ -59,7 +59,7 @@ impl ToSql for PgTriggerEntity {
     }
 }
 
-impl SqlGraphIdentifier for PgTriggerEntity {
+impl SqlGraphIdentifier for PgTriggerEntity<'_> {
     fn dot_identifier(&self) -> String {
         format!("trigger fn {}", self.full_path)
     }
@@ -67,7 +67,7 @@ impl SqlGraphIdentifier for PgTriggerEntity {
         self.full_path.to_string()
     }
 
-    fn file(&self) -> Option<&'static str> {
+    fn file(&self) -> Option<&str> {
         Some(self.file)
     }
 

@@ -101,7 +101,7 @@ Status Acceptor::Listen(const Endpoint& endpoint, Endpoint* bound_endpoint) {
   {
     std::lock_guard lock(mutex_);
     if (closing_) {
-      return STATUS_SUBSTITUTE(ServiceUnavailable, "Acceptor closing");
+      return STATUS_FORMAT(ServiceUnavailable, "Acceptor closing");
     }
     was_empty = sockets_to_add_.empty();
     sockets_to_add_.push_back(std::move(socket));

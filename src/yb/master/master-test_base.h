@@ -48,8 +48,6 @@
 
 #include "yb/common/common_types.pb.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
 
@@ -116,7 +114,6 @@ using yb::rpc::RpcController;
 namespace yb {
 namespace master {
 
-using strings::Substitute;
 
 class MiniMaster;
 class MasterClusterClient;

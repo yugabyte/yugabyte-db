@@ -16,7 +16,13 @@
 #include <optional>
 #include <string>
 
+#include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/gutil/strings/escaping.h"
+
+#include "yb/util/format.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tools {
@@ -59,6 +65,21 @@ inline bool PartitionRangeOverlaps(
   const bool above_range_start =
       tablet_end.empty() || range_start.empty() || range_start.compare(tablet_end) < 0;
   return below_range_end && above_range_start;
+}
+
+// Decodes a hex-encoded partition key, rejecting malformed input rather than silently truncating
+// it: strings::a2b_hex drops a trailing odd nibble and turns non-hex bytes into garbage, which
+// would quietly hash the wrong range instead of reporting a bad argument.
+inline Result<std::string> DecodeHexPartitionKey(const std::string& arg) {
+  SCHECK(
+      arg.size() % 2 == 0, InvalidArgument,
+      Format("hex key '$0' must have an even number of digits", arg));
+  for (const char c : arg) {
+    SCHECK(
+        ascii_isxdigit(static_cast<unsigned char>(c)), InvalidArgument,
+        Format("hex key '$0' contains a non-hex character", arg));
+  }
+  return strings::a2b_hex(arg);
 }
 
 }  // namespace tools

@@ -86,6 +86,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
@@ -181,9 +182,7 @@ public class Util {
 
   public static final int POSTGRES_PASSWORD_LENGTH = 20;
 
-  /**
-   * Safe-set of characters for generated Postgres passwords.
-   */
+  /** Safe-set of characters for generated Postgres passwords. */
   public static final String POSTGRES_PASSWORD_ALLOWED_CHARS =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@^*0123456789";
 
@@ -278,6 +277,11 @@ public class Util {
   @VisibleForTesting
   public static void resetYbaShutdownStarted() {
     YBA_SHUTDOWN_STARTED = false;
+  }
+
+  @VisibleForTesting
+  public static void setYbaShutdownStarted(boolean started) {
+    YBA_SHUTDOWN_STARTED = started;
   }
 
   /**
@@ -1048,6 +1052,10 @@ public class Util {
     }
   }
 
+  public static boolean checkAnyProviderMatches(Cluster cluster, Predicate<CloudType> predicate) {
+    return cluster.userIntent.getAllCloudTypes().stream().anyMatch(predicate);
+  }
+
   public static boolean checkAnyProviderMatches(
       UniverseDefinitionTaskParams params, Predicate<Provider> predicate) {
     return params.clusters.stream()
@@ -1348,6 +1356,24 @@ public class Util {
     }
   }
 
+  public static boolean isLocal(Cluster cluster) {
+    return isLocal(cluster.userIntent);
+  }
+
+  public static boolean isLocal(UserIntent userIntent) {
+    // Local should be the only cloud type.
+    return userIntent.getAllCloudTypes().contains(CloudType.local);
+  }
+
+  public static boolean isKubernetesBased(Cluster cluster) {
+    return isKubernetesBased(cluster.userIntent);
+  }
+
+  public static boolean isKubernetesBased(UserIntent userIntent) {
+    // Kubernetes should be the only cloud type.
+    return userIntent.getAllCloudTypes().contains(CloudType.kubernetes);
+  }
+
   public static boolean isKubernetesBasedUniverse(Universe universe) {
     return isKubernetesBasedUniverse(universe.getUniverseDetails());
   }
@@ -1355,12 +1381,10 @@ public class Util {
   public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
     boolean isKubernetesUniverse = false;
     if (params.getPrimaryCluster() != null) {
-      isKubernetesUniverse =
-          params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+      isKubernetesUniverse = isKubernetesBased(params.getPrimaryCluster());
     }
     for (Cluster cluster : params.getReadOnlyClusters()) {
-      isKubernetesUniverse =
-          isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
+      isKubernetesUniverse = isKubernetesUniverse || isKubernetesBased(cluster);
     }
     return isKubernetesUniverse;
   }
@@ -1652,7 +1676,7 @@ public class Util {
       // creation itself.
       // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
       try {
-        String mountPoints = cluster.userIntent.getDeviceInfoForNode(node).mountPoints;
+        String mountPoints = cluster.userIntent.evaluateDeviceInfoForNode(node).mountPoints;
         dataDirPath = mountPoints.split(",")[0];
       } catch (Exception e) {
         log.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
@@ -1904,7 +1928,7 @@ public class Util {
 
   public static String getPostgresCompatiblePassword() {
     return RandomStringUtils.secureStrong()
-            .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
+        .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
   }
 
   public static void writeRestoreTaskInfo(CustomerTask customerTask, TaskInfo taskInfo) {
@@ -1920,6 +1944,14 @@ public class Util {
     } catch (IOException e) {
       log.warn("Could not write restore task info, will not show up in task info.");
     }
+  }
+
+  // True on the first start after a YBA restore, until CustomerTaskManager.handleRestoreTask
+  // deletes the files.
+  public static boolean restoreTaskInfoExists() {
+    return Files.exists(Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE))
+        && Files.exists(
+            Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE));
   }
 
   // Helper method to throw unchecked exception.
@@ -2086,7 +2118,7 @@ public class Util {
       SetMultimap<Object, UUID> mmap =
           valuesTracker.computeIfAbsent(property, (x) -> HashMultimap.create());
       mmap.put(value, p.getUuid());
-      if (mmap.keys().size() > 1) {
+      if (mmap.keySet().size() > 1) {
         List<String> list =
             mmap.entries().stream()
                 .map(e -> e.getValue().toString() + " has " + e.getKey())
@@ -2142,5 +2174,64 @@ public class Util {
       }
     }
     return pathToUUID;
+  }
+
+  /**
+   * Creates a provider initializer for userIntent which should already have some reference to some
+   * provider (for multicloud case that could be different provider)
+   *
+   * @param userIntent
+   * @param providerUUID
+   * @return
+   */
+  public static ProviderInitializer providerInitializerForExistingIntent(
+      UserIntent userIntent, UUID providerUUID) {
+    if (userIntent.isMulticloudSupport()) {
+      return new SpecificationProviderInitializer(userIntent, providerUUID);
+    } else {
+      if (userIntent.provider == null
+          || !Objects.equals(userIntent.provider, providerUUID.toString())) {
+        throw new IllegalStateException(
+            "UserIntent already has a provider different from "
+                + "provided one: "
+                + userIntent.provider
+                + " vs "
+                + providerUUID);
+      }
+      return new IntentProviderInitializer(userIntent, providerUUID);
+    }
+  }
+
+  /**
+   * Creates a provider initializer for an empty userIntent.
+   *
+   * @param providerUUID
+   * @param userIntent
+   * @param confGetter
+   * @return
+   */
+  public static ProviderInitializer newProviderInitializer(
+      UserIntent userIntent, UUID providerUUID, CloudType cloudType, RuntimeConfGetter confGetter) {
+    if (userIntent.provider != null
+        || CollectionUtils.isNotEmpty(userIntent.providerSpecifications)) {
+      throw new IllegalStateException("Expected userIntent to have no provider references");
+    }
+    if (isMulticloudEnabled(confGetter, cloudType)) {
+      return new SpecificationProviderInitializer(userIntent, providerUUID)
+          .setProviderType(cloudType);
+    }
+    return new IntentProviderInitializer(userIntent, providerUUID).setProviderType(cloudType);
+  }
+
+  public static boolean isMulticloudEnabled(RuntimeConfGetter confGetter, CloudType cloudType) {
+    // Later will be added a config to guard this.
+    return false;
+  }
+
+  public static NodeDetails findByName(Collection<NodeDetails> nodes, String nodeName) {
+    if (nodeName == null || nodes == null) {
+      return null;
+    }
+    return nodes.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
   }
 }

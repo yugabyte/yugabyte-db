@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/yb_table_test_base.h"
 
@@ -27,6 +26,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/socket.h"
@@ -49,7 +49,6 @@ using namespace yb::ql; // NOLINT
 using std::string;
 using std::shared_ptr;
 using std::unique_ptr;
-using strings::Substitute;
 using yb::integration_tests::YBTableTestBase;
 
 class TestCQLService : public YBTableTestBase {
@@ -90,7 +89,7 @@ void TestCQLService::SetUp() {
 
   CQLServerOptions opts;
   cql_server_port_ = GetFreePort(&cql_port_lock_);
-  opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", cql_server_port_);
+  opts.rpc_opts.rpc_bind_addresses = Format("0.0.0.0:$0", cql_server_port_);
   // No need to save the webserver port, as we don't plan on using it. Just use a unique free port.
   opts.webserver_opts.port = GetFreePort(&cql_webserver_lock_);
   string fs_root = GetTestPath("CQLServerTest-fsroot");
@@ -147,9 +146,9 @@ Status TestCQLService::SendRequestAndGetResponse(
 
   if (expected_resp_length != resp_bytes_read_) {
     return STATUS(IOError,
-                  Substitute("Received $1 bytes instead of $2",
-                             resp_bytes_read_,
-                             expected_resp_length));
+                  Format("Received $0 bytes instead of $1",
+                         resp_bytes_read_,
+                         expected_resp_length));
   }
 
   // Try to read 1 more byte - the read must fail (no more data in the socket).
@@ -601,17 +600,17 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
   cql_service->AllocateStatement("dummyqueryid", "dummyquery", &ql_env, StmtType::kPrepared);
   cql_service->UpdateStmtCounters("dummyqueryid", 1, StmtType::kPrepared);
 
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", yb::ToString(addr)), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements", yb::ToString(addr)), &buf));
   string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
   ASSERT_STR_CONTAINS(result, std::stoull(b2a_hex("dummyqueryid").substr(0, 16), 0, 16));
 
   // reset the counters and verify
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
-                                              yb::ToString(addr)), &buf));
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
-                                              yb::ToString(addr)), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements-reset",
+                                 yb::ToString(addr)), &buf));
+  ASSERT_OK(curl.FetchURL(Format("http://$0/statements",
+                                 yb::ToString(addr)), &buf));
 
   JsonDocument doc;
   auto json_post_reset = ASSERT_RESULT(doc.Parse(buf.ToString()));

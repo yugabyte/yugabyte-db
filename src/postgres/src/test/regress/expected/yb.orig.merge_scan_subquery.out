@@ -19,6 +19,10 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
+-- Small response pages make the execution metrics of the plan variants
+-- distinct without growing the tables: at the default page size their rows
+-- come back in one read request either way.
+SET yb_fetch_row_limit = 16;
 -- What is under test is deparsing of the plan, not its execution, so drop
 -- ANALYZE and DIST: merge sorting of the streams makes the storage counters
 -- vary run to run, and the :P2 iteration still runs each query.

@@ -18,6 +18,8 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 
+#include "yb/master/master_heartbeat.pb.h"
+
 #include "yb/rocksdb/db.h"
 
 #include "yb/rpc/messenger.h"
@@ -123,7 +125,8 @@ class SnapshotPreflushServiceTest : public BackupServiceTest {
   void InitializeRetention(const tablet::TabletPtr& tablet) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = false;
     ASSERT_OK(tablet->metadata()->set_namespace_id("test-namespace"));
-    ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse({}));
+    ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
+        master::TSHeartbeatResponsePB(), MonoTime()));
   }
 
   HybridTime HistoryCutoff(const tablet::TabletPtr& tablet) {

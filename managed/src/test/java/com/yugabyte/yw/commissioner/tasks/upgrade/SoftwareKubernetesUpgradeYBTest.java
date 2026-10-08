@@ -416,4 +416,116 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         "Forward upgrade must still helm-upgrade to the target software version",
         helmVersions.contains(YB_SOFTWARE_VERSION_NEW));
   }
+
+  @Test
+  public void testYsqlMajorUpgradeRetryAllMastersPendingRollsMastersBeforeCreateUser()
+      throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    // Abort after last master: all masters already on PG15, catalog still PENDING. Retry must
+    // roll masters back before CREATE USER so DDLs are allowed (password was lost on abort).
+    setupUniverseK8sSingleAZWithYSQL(true, true);
+    setCheckNodesAreSafeToTakeDown(mockClient);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.waitAttemptsForMajorCatalogUpgrade.getKey(), "0");
+
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(any(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(any()))
+        .thenReturn(YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+    when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L,
+                null,
+                null,
+                YsqlMajorCatalogUpgradeState
+                    .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+    when(mockClient.isYsqlMajorCatalogUpgradeDone())
+        .thenReturn(new IsYsqlMajorCatalogUpgradeDoneResponse(0L, null, null, true));
+    when(mockClient.startYsqlMajorCatalogUpgrade())
+        .thenReturn(new StartYsqlMajorCatalogUpgradeResponse(0L, null, null));
+    when(mockYsqlQueryExecutor.runUserDbCommands(anyString(), anyString(), any()))
+        .thenReturn(Json.newObject());
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
+            any(), any(), any(), anyBoolean(), anyBoolean()))
+        .thenReturn(Json.newObject());
+    when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn("/tmp");
+    when(mockKubernetesManager.executeCommandInPodContainer(
+            any(), nullable(String.class), nullable(String.class), anyString(), anyList()))
+        .thenAnswer(
+            invocation -> {
+              @SuppressWarnings("unchecked")
+              List<String> cmd = invocation.getArgument(4);
+              if (cmd != null && cmd.equals(Arrays.asList("uname", "-m"))) {
+                return "x86_64";
+              }
+              return "";
+            });
+
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    int createUserIdx = -1;
+    for (int i = 0; i < subTasks.size(); i++) {
+      if (subTasks.get(i).getTaskType() == TaskType.ManageCatalogUpgradeSuperUser) {
+        createUserIdx = i;
+        break;
+      }
+    }
+    assertTrue(
+        "ManageCatalogUpgradeSuperUser should run for YSQL major upgrade with superuser",
+        createUserIdx >= 0);
+
+    boolean waitForPodBeforeCreateUser = false;
+    for (int i = 0; i < createUserIdx; i++) {
+      if (subTasks.get(i).getTaskType() == TaskType.KubernetesWaitForPod) {
+        waitForPodBeforeCreateUser = true;
+        break;
+      }
+    }
+    assertTrue(
+        "Rolling master revert (KubernetesWaitForPod) must run before"
+            + " ManageCatalogUpgradeSuperUser",
+        waitForPodBeforeCreateUser);
+
+    verify(mockKubernetesManager, atLeastOnce())
+        .helmUpgrade(
+            expectedUniverseUUID.capture(),
+            expectedYbSoftwareVersion.capture(),
+            expectedConfig.capture(),
+            expectedNodePrefix.capture(),
+            expectedNamespace.capture(),
+            expectedOverrideFile.capture(),
+            isNull());
+    List<String> helmVersions = expectedYbSoftwareVersion.getAllValues();
+    assertTrue(
+        "Retry recovery must helm-upgrade masters with the previous software version",
+        helmVersions.contains(YB_SOFTWARE_VERSION_OLD));
+    assertTrue(
+        "Forward upgrade must still helm-upgrade to the target software version",
+        helmVersions.contains(YB_SOFTWARE_VERSION_NEW));
+  }
 }

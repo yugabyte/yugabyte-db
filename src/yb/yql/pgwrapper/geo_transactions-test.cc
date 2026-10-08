@@ -15,12 +15,15 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/util/format.h"
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/tsan_util.h"
@@ -29,16 +32,12 @@ using std::string;
 
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_bool(use_tablespace_based_transaction_placement);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(TEST_fatal_on_transaction_status_request_failure);
 DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -97,8 +96,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 
       WaitForLoadBalanceCompletion();
       if (wait_for_version) {
-        WaitForStatusTabletsVersion(current_version + 1);
-        ++current_version;
+        current_version = WaitForStatusTabletsVersionForCreate(current_version);
       }
     }
   }
@@ -332,7 +330,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
           ]
         }')
     )#"));
-    WaitForStatusTabletsVersion(current_version + num_tablespaces);
+    WaitForStatusTabletsVersionForCreate(current_version, num_tablespaces);
     return Status::OK();
   }
 
@@ -342,12 +340,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
  protected:
   void SetUp() override {
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     GeoTransactionsTest::SetUp();
   }
 };
@@ -681,10 +674,10 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
   // Check data.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  int64_t count = EXPECT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  int64_t count = EXPECT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0$1_1", kTablePrefix, kLocalRegion)));
   ASSERT_EQ(3, count);
-  count = EXPECT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  count = EXPECT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0$1_2", kTablePrefix, kLocalRegion)));
   ASSERT_EQ(1, count);
 }
@@ -734,7 +727,7 @@ TEST_F(GeoTransactionsTest, TestTransactionTableDeletionRemoteAbort) {
 
     auto current_version = GetCurrentVersion();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
-    WaitForStatusTabletsVersion(current_version + 1);
+    WaitForStatusTabletsVersionForCreate(current_version);
   }
 }
 
@@ -750,7 +743,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
 
   std::string placement_blocks1;
   for (size_t i = 1; i <= NumRegions(); ++i) {
-    placement_blocks1 += strings::Substitute(
+    placement_blocks1 += Format(
         R"#($0{
               "cloud": "cloud0",
               "region": "region$1",
@@ -761,7 +754,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
         i > 1 ? "," : "", i);
   }
 
-  std::string tablespace1_sql = strings::Substitute(
+  std::string tablespace1_sql = Format(
       R"#(
           CREATE TABLESPACE tablespace1 WITH (replica_placement='{
             "num_replicas": $0,
@@ -771,7 +764,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
 
   std::string placement_blocks2;
   for (size_t i = 1; i <= NumRegions(); ++i) {
-    placement_blocks2 += strings::Substitute(
+    placement_blocks2 += Format(
         R"#($0{
               "cloud": "cloud0",
               "region": "region$1",
@@ -782,7 +775,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
         i > 1 ? "," : "", i, i == NumRegions() ? 1 : (i + 1));
   }
 
-  std::string tablespace2_sql = strings::Substitute(
+  std::string tablespace2_sql = Format(
       R"#(
           CREATE TABLESPACE tablespace2 WITH (replica_placement='{
             "num_replicas": $0,
@@ -798,7 +791,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
   auto tablet_uuid_set = ListTabletIdsForTable(cluster_.get(), table_id);
   auto table_uuids = std::vector<TabletId>(tablet_uuid_set.begin(), tablet_uuid_set.end());
 
-  WaitForStatusTabletsVersion(++current_version);
+  current_version = WaitForStatusTabletsVersionForCreate(current_version);
   WaitForLoadBalanceCompletion();
 
   auto status_tablet_ids = ASSERT_RESULT(GetStatusTablets(1, ExpectedLocality::kLocal));
@@ -807,7 +800,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
 
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE tablespace2", table_name));
 
-  WaitForStatusTabletsVersion(++current_version);
+  current_version = WaitForStatusTabletsVersionForCreate(current_version);
   WaitForLoadBalanceCompletion();
 
   status_tablet_ids = ASSERT_RESULT(GetStatusTablets(2, ExpectedLocality::kLocal));
@@ -1061,10 +1054,7 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
 
   void SetUp() override {
     // These tests are failing when table-level locks are enabled due to #28317.
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     GeoTransactionsTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;
@@ -1128,14 +1118,14 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
         CREATE TABLE $1(value int REFERENCES $2(value))
         TABLESPACE $0
     )#", kTablespace1, kTableNameFK, kTableName));
-    WaitForStatusTabletsVersion(version + 1);
+    version = WaitForStatusTabletsVersionForCreate(version);
 
     // Dummy table to create transaction tables.
     ASSERT_OK(conn.ExecuteFormat(R"#(
         CREATE TABLE __$0_dummy_table(value int)
         TABLESPACE $0
     )#", kTablespace2));
-    WaitForStatusTabletsVersion(version + 2);
+    version = WaitForStatusTabletsVersionForCreate(version);
     WaitForLoadBalanceCompletion();
   }
 };
@@ -1497,7 +1487,7 @@ class GeoTransactionsMultiTabletTest : public GeoTransactionsTest {
           SPLIT INTO 3 TABLETS
       )#", kTablespace, kTableNamePrefix, i));
     }
-    WaitForStatusTabletsVersion(version + 1);
+    WaitForStatusTabletsVersionForCreate(version);
   }
 };
 
@@ -1560,10 +1550,10 @@ TEST_F(GeoTransactionsMultiTabletTest, TestTransactionTableDeletionParticipantRe
   // Check data.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0", kTableName1)));
   ASSERT_EQ(1, count);
-  count = ASSERT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0", kTableName2)));
   ASSERT_EQ(101, count);
 }

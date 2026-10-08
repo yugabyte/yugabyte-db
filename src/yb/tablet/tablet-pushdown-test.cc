@@ -54,6 +54,7 @@
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -88,7 +89,7 @@ class TabletPushdownTest : public YBTabletTest {
     for (int i = 0; i < nrows_; i++) {
       QLAddInt32HashValue(&req, i);
       QLAddInt32ColumnValue(&req, kFirstColumnId + 1, i * 10);
-      QLAddStringColumnValue(&req, kFirstColumnId + 2, StringPrintf("%08d", i));
+      QLAddStringColumnValue(&req, kFirstColumnId + 2, ZeroPadded(i, 8));
       ASSERT_OK_FAST(writer.Write(&req));
     }
   }

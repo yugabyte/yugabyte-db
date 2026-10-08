@@ -24,6 +24,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -49,10 +50,6 @@ using namespace std::literals;
 DECLARE_string(time_source);
 DECLARE_int32(replication_factor);
 DECLARE_bool(yb_enable_read_committed_isolation);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_uint64(ysql_lease_refresher_interval_ms);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 
@@ -97,9 +94,7 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
     // Support DDL concurrency with object locks.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgMiniTestBase::SetUp();
     SpawnSupervisors();
   }
@@ -618,11 +613,7 @@ class PgReadAfterCommitVisibilityDdlTest
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = transactional_ddl;
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = transactional_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = transactional_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = transactional_ddl;
+    ToggleDDLMode(/* use_legacy = */ !transactional_ddl);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_serializable_isolation_for_ddl_txn) =
         GetParam().serializable;
     PgMiniTestBase::SetUp();

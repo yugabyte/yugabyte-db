@@ -75,8 +75,10 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('
 /*+ Parallel(pcustomer 2 hard) */
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('(125)139-5346', '(128)142-5349', '(142)156-5363', '(129)143-5350');
 
--- GHI #33501: maximize number of parallel ranges
-set yb_parallel_range_size to 1024;
+-- GHI #33501: multiple parallel ranges. The range size must stay large enough
+-- that the run-to-run jitter of the table's storage footprint (pc_acctbalance
+-- is random) cannot change the resulting number of ranges.
+set yb_parallel_range_size to '4MB';
 /*+ Parallel(pcustomer 2 hard) */
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
 SELECT * FROM pcustomer;

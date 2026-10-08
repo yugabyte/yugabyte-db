@@ -99,7 +99,7 @@ public class ProviderSpecificationTest extends FakeDBApplication {
     assertEquals("accessKey", userIntent.getAccessKeyCodeForProvider(provider.getUuid()));
     assertEquals(10, userIntent.getCGroupSize(nodeDetails).intValue());
     assertEquals("tserverType", userIntent.getInstanceTypeForNode(nodeDetails));
-    assertEquals(deviceInfo, userIntent.getDeviceInfoForNode(nodeDetails));
+    assertEquals(deviceInfo, userIntent.evaluateDeviceInfoForNode(nodeDetails));
     assertEquals(proxyConfig, userIntent.getProxyConfig(nodeDetails.azUuid));
   }
 

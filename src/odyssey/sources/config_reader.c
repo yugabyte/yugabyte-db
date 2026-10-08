@@ -149,7 +149,7 @@ typedef enum {
 
 	/* YB */
 	OD_YB_USE_AUTH_BACKEND,
-	OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL,
+	OD_YB_CERT_AUTH,
 	OD_YB_ENABLE_MULTI_ROUTE_POOL,
 	OD_YB_YSQL_MAX_CONNECTIONS,
 	OD_YB_OPTIMIZED_SESSION_PARAMETERS,
@@ -160,9 +160,16 @@ typedef enum {
 	OD_YB_ALTER_GUC_STALE_BACKEND_TTL_MS,
 	OD_YB_TCMALLOC_GC_INTERVAL,
 	OD_YB_MAX_PREPARED_STATEMENTS,
-	OD_YB_ENABLE_PARSE_QUEUE_TRACKING,
 	OD_YB_WAIT_FOR_RFQ_ON_SYNC,
 	OD_YB_BACKEND_DRAIN_TIMEOUT_MS,
+	OD_YB_LTLS_MAX_PROTOCOL_VERSION,
+	OD_YB_LTLS_PREFER_SERVER_CIPHERS,
+	OD_YB_LTLS_ECDH_CURVE,
+	OD_YB_LTLS_DH_PARAMS_FILE,
+	OD_YB_LTLS_CRL_FILE,
+	OD_YB_LTLS_CRL_DIR,
+	OD_YB_LTLS_CIPHER_LIST,
+	OD_YB_LTLS_PASSPHRASE_COMMAND,
 } od_lexeme_t;
 
 static od_keyword_t od_config_keywords[] = {
@@ -336,8 +343,7 @@ static od_keyword_t od_config_keywords[] = {
 
 	/* YB */
 	od_keyword("yb_use_auth_backend", OD_YB_USE_AUTH_BACKEND),
-	od_keyword("yb_optimized_extended_query_protocol",
-		   OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL),
+	od_keyword("yb_cert_auth", OD_YB_CERT_AUTH),
 	od_keyword("yb_enable_multi_route_pool", OD_YB_ENABLE_MULTI_ROUTE_POOL),
 	od_keyword("yb_ysql_max_connections", OD_YB_YSQL_MAX_CONNECTIONS),
 	od_keyword("yb_optimized_session_parameters",
@@ -352,12 +358,20 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("yb_max_prepared_statements",
 		   OD_YB_MAX_PREPARED_STATEMENTS),
 	od_keyword("yb_tcmalloc_gc_interval", OD_YB_TCMALLOC_GC_INTERVAL),
-	od_keyword("yb_enable_parse_queue_tracking",
-		   OD_YB_ENABLE_PARSE_QUEUE_TRACKING),
 	od_keyword("yb_wait_for_rfq_on_sync",
 		   OD_YB_WAIT_FOR_RFQ_ON_SYNC),
 	od_keyword("yb_backend_drain_timeout_ms",
 		   OD_YB_BACKEND_DRAIN_TIMEOUT_MS),
+	/* TLS */
+	od_keyword("yb_tls_max_protocol_version", OD_YB_LTLS_MAX_PROTOCOL_VERSION),
+	od_keyword("yb_tls_prefer_server_ciphers",
+		   OD_YB_LTLS_PREFER_SERVER_CIPHERS),
+	od_keyword("yb_tls_ecdh_curve", OD_YB_LTLS_ECDH_CURVE),
+	od_keyword("yb_tls_dh_params_file", OD_YB_LTLS_DH_PARAMS_FILE),
+	od_keyword("yb_tls_crl_file", OD_YB_LTLS_CRL_FILE),
+	od_keyword("yb_tls_crl_dir", OD_YB_LTLS_CRL_DIR),
+	od_keyword("yb_tls_cipher_list", OD_YB_LTLS_CIPHER_LIST),
+	od_keyword("yb_tls_passphrase_command", OD_YB_LTLS_PASSPHRASE_COMMAND),
 
 	{ 0, 0, 0 },
 };
@@ -801,6 +815,58 @@ static int od_config_reader_listen(od_config_reader_t *reader)
 		case OD_LCOMPRESSION:
 			if (!od_config_reader_yes_no(reader,
 						     &listen->compression))
+				return NOT_OK_RESPONSE;
+			continue;
+			/* YB */
+		/* yb_tls_max_protocol_version */
+		case OD_YB_LTLS_MAX_PROTOCOL_VERSION:
+			if (!od_config_reader_string(
+				    reader,
+				    &listen->tls_opts->yb_tls_max_protocol_version))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_prefer_server_ciphers */
+		case OD_YB_LTLS_PREFER_SERVER_CIPHERS:
+			if (!od_config_reader_yes_no(
+				    reader,
+				    &listen->tls_opts->yb_tls_prefer_server_ciphers))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_ecdh_curve */
+		case OD_YB_LTLS_ECDH_CURVE:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_ecdh_curve))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_dh_params_file */
+		case OD_YB_LTLS_DH_PARAMS_FILE:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_dh_params_file))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_crl_file */
+		case OD_YB_LTLS_CRL_FILE:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_crl_file))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_crl_dir */
+		case OD_YB_LTLS_CRL_DIR:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_crl_dir))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_cipher_list */
+		case OD_YB_LTLS_CIPHER_LIST:
+			if (!od_config_reader_string(
+				    reader, &listen->tls_opts->yb_tls_cipher_list))
+				return NOT_OK_RESPONSE;
+			continue;
+		/* yb_tls_passphrase_command */
+		case OD_YB_LTLS_PASSPHRASE_COMMAND:
+			if (!od_config_reader_string(
+				    reader,
+				    &listen->tls_opts->yb_tls_passphrase_command))
 				return NOT_OK_RESPONSE;
 			continue;
 		default:
@@ -2536,11 +2602,10 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			continue;
-		/* yb_optimized_extended_query_protocol */
-		case OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL:
-			if (!od_config_reader_yes_no(
-				    reader,
-				    &config->yb_optimized_extended_query_protocol)) {
+		/* yb_cert_auth */
+		case OD_YB_CERT_AUTH:
+			if (!od_config_reader_yes_no(reader,
+						     &config->yb_cert_auth)) {
 				goto error;
 			}
 			continue;
@@ -2613,15 +2678,6 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			if (val < 0)
 				goto error;
 			config->yb_tcmalloc_gc_interval = val;
-			continue;
-		}
-		/* yb_enable_parse_queue_tracking */
-		case OD_YB_ENABLE_PARSE_QUEUE_TRACKING: {
-			int val;
-			if (!od_config_reader_yes_no(reader, &val)) {
-				goto error;
-			}
-			config->yb_enable_parse_queue_tracking = val;
 			continue;
 		}
 		/* yb_wait_for_rfq_on_sync */

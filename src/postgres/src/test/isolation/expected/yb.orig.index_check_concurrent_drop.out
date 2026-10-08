@@ -1,0 +1,26 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin s1_drop_column s2_index_check s1_commit
+step s1_begin: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_drop_column: ALTER TABLE t DROP COLUMN v;
+step s2_index_check: SELECT check_t_v_idx(); <waiting ...>
+step s1_commit: COMMIT;
+step s2_index_check: <... completed>
+check_t_v_idx                                   
+------------------------------------------------
+42704: index with OID N was concurrently dropped
+(1 row)
+
+
+starting permutation: s1_begin s1_drop_column s2_index_check s1_rollback
+step s1_begin: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_drop_column: ALTER TABLE t DROP COLUMN v;
+step s2_index_check: SELECT check_t_v_idx(); <waiting ...>
+step s1_rollback: ROLLBACK;
+s2: NOTICE:  yb_index_check() is prone to 'Restart read required' errors when executed from within a transaction block.
+step s2_index_check: <... completed>
+check_t_v_idx
+-------------
+checked      
+(1 row)
+

@@ -36,4 +36,6 @@ extern void yb_handle_fatalforlogicalconnection_pkt(od_client_t*, od_server_t*);
 
 extern bool yb_is_control_pool(od_route_t *);
 
+extern char *yb_encode_client_cert(od_client_t *, int *arg_len);
+
 #endif /* YB_AUTH_PASSTHROUGH_H */

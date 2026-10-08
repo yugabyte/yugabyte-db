@@ -40,7 +40,6 @@
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/gutil/port.h"
-#include "yb/gutil/strings/substitute.h"
 
 namespace yb {
 namespace consensus {
@@ -151,7 +150,7 @@ std::string OpIdToString(const OpIdPB& op_id) {
   if (!op_id.IsInitialized()) {
     return "<uninitialized op>";
   }
-  return strings::Substitute("$0.$1", op_id.term(), op_id.index());
+  return Format("$0.$1", op_id.term(), op_id.index());
 }
 
 std::string OpsRangeString(const LWConsensusRequestPB& req) {

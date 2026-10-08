@@ -15,7 +15,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Fully manual provisioning is deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned this way continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -260,7 +260,7 @@ sudo mkdir -p /new_tmp; sudo chown yugabyte:yugabyte -R /new_tmp
 
 In addition, after you create the [on-premises provider](../../../configure-yugabyte-platform/on-premises-provider/), set the [provider runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.filepaths.remoteTmpDirectory` to `/new_tmp`.
 
-Finally, when creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../manage-deployments/edit-config-flags/) `tmp_dir` to the custom `/new_tmp` directory.
+Finally, when creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../scale-deployments/edit-config-flags/) `tmp_dir` to the custom `/new_tmp` directory.
 
 ## Install Prometheus Node Exporter
 

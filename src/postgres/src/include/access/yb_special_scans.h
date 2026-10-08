@@ -68,11 +68,14 @@ typedef struct YbSampleData
 	int			targrows;		/* # of rows to collect */
 	double		liverows;		/* # live rows seen */
 	double		deadrows;		/* # dead rows seen */
+
+	/* Per-attnum width caps, or NULL to skip nothing. */
+	int		   *width_caps;
 } YbSampleData;
 
 typedef struct YbSampleData *YbSample;
 
-extern YbSample ybBeginSample(Relation rel, int targrows);
+extern YbSample ybBeginSample(Relation rel, int targrows, int *width_caps);
 extern bool ybSampleNextBlock(YbSample ybSample);
 extern int	ybFetchSample(YbSample ybSample, HeapTuple *rows);
 

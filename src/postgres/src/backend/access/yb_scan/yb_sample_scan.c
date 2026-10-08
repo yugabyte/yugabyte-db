@@ -23,9 +23,12 @@
  */
 #include "postgres.h"
 
+#include "access/detoast.h"
+#include "access/heaptoast.h"
 #include "access/htup_details.h"
 #include "access/yb_special_scans.h"
 #include "access/yb_target.h"
+#include "commands/yb_analyze.h"
 #include "pg_yb_utils.h"
 #include "utils/datum.h"
 #include "utils/memutils.h"
@@ -36,8 +39,57 @@
 /*
  * ANALYZE support: take random sample of a YB table data
  */
+
+/* Make a stand-in (see commands/yb_analyze.h) for a value of rawsize bytes. */
+static Datum
+ybMakeSizeOnlyDatum(Size rawsize, MemoryContext cxt)
+{
+	varatt_external toast_pointer;
+	struct varlena *result;
+
+	toast_pointer.va_rawsize = rawsize;
+	toast_pointer.va_extinfo = rawsize - VARHDRSZ;	/* stored uncompressed */
+	toast_pointer.va_valueid = InvalidOid;
+	toast_pointer.va_toastrelid = InvalidOid;
+
+	result = (struct varlena *) MemoryContextAlloc(cxt, TOAST_POINTER_SIZE);
+	SET_VARTAG_EXTERNAL(result, VARTAG_ONDISK);
+	memcpy(VARDATA_EXTERNAL(result), &toast_pointer, sizeof(toast_pointer));
+	return PointerGetDatum(result);
+}
+
+/*
+ * Stand in for the values of a fetched row that the statistics will not read.
+ */
+static void
+ybAnalyzeReplaceWideValues(YbSample ybSample, TupleDesc tupdesc,
+						   Datum *values, bool *nulls, MemoryContext cxt)
+{
+	for (int i = 0; i < tupdesc->natts; i++)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+		int			cap = ybSample->width_caps[i];
+		struct varlena *value = (struct varlena *) DatumGetPointer(values[i]);
+		Size		rawsize;
+
+		/* Only a varlena value has a header we can stand in for. */
+		if (att->attisdropped || att->attlen != -1 ||
+			nulls[i] || cap == YB_ANALYZE_WIDTH_SKIP_NONE)
+			continue;
+		/* Nothing to gain: heap_form_tuple stores this in fewer bytes. */
+		if (VARATT_CAN_MAKE_SHORT(value))
+			continue;
+		rawsize = toast_raw_datum_size(values[i]);
+		if (rawsize <= cap)
+			continue;			/* PG reads it */
+
+		/* this is where we skip the data: PG gets only its size */
+		values[i] = ybMakeSizeOnlyDatum(rawsize, cxt);
+	}
+}
+
 YbSample
-ybBeginSample(Relation rel, int targrows)
+ybBeginSample(Relation rel, int targrows, int *width_caps)
 {
 	ReservoirStateData rstate;
 	TupleDesc	tupdesc = RelationGetDescr(rel);
@@ -64,6 +116,8 @@ ybBeginSample(Relation rel, int targrows)
 	ybSample->exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
 	ybSample->exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
 	ybSample->exec_params.rowmark = YBC_NO_ROW_MARK;
+
+	ybSample->width_caps = width_caps;
 
 	return ybSample;
 }
@@ -142,6 +196,15 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 
 		if (has_data)
 		{
+			/*
+			 * Only stand values in for a row PostgreSQL would have toasted
+			 */
+			if (ybSample->width_caps != NULL &&
+				heap_compute_data_size(tupdesc, values, nulls) >
+				TOAST_TUPLE_THRESHOLD)
+				ybAnalyzeReplaceWideValues(ybSample, tupdesc, values, nulls,
+										   perrowcxt);
+
 			rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
 
 			if (syscols.ybctid != NULL)

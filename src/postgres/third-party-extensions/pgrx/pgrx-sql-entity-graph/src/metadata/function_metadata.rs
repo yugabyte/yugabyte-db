@@ -33,22 +33,27 @@ assert_eq!(
 );
 ```
  */
+#[diagnostic::on_unimplemented(
+    message = "cannot generate SQL schema for this function",
+    label = "some types in {Self} cannot be translated to SQL"
+)]
 pub trait FunctionMetadata<A> {
     fn path() -> &'static str {
         core::any::type_name::<Self>()
     }
-    fn entity() -> FunctionMetadataEntity;
+    fn entity() -> FunctionMetadataEntity<'static>;
 }
 
 macro_rules! impl_fn {
     ($($A:ident),* $(,)?) => {
+        #[diagnostic::do_not_recommend]
         impl<$($A,)* R, F> FunctionMetadata<($($A,)*)> for F
         where
             $($A: SqlTranslatable,)*
             R: SqlTranslatable,
             F: FnMut($($A,)*) -> R,
         {
-            fn entity() -> FunctionMetadataEntity {
+            fn entity() -> FunctionMetadataEntity<'static> {
                 FunctionMetadataEntity {
                     arguments: vec![$(<$A>::entity()),*],
                     retval: R::entity(),
@@ -56,12 +61,14 @@ macro_rules! impl_fn {
                 }
             }
         }
+
+        #[diagnostic::do_not_recommend]
         impl<$($A,)* R> FunctionMetadata<($($A,)*)> for unsafe fn($($A,)*) -> R
         where
             $($A: SqlTranslatable,)*
             R: SqlTranslatable,
         {
-            fn entity() -> FunctionMetadataEntity {
+            fn entity() -> FunctionMetadataEntity<'static> {
                 FunctionMetadataEntity {
                     arguments: vec![$(<$A>::entity()),*],
                     retval: R::entity(),

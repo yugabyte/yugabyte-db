@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { useDispatch } from 'react-redux';
-
-import { Link as MUILink, Typography } from '@material-ui/core';
+import { Link as MUILink, Typography, makeStyles } from '@material-ui/core';
+import { OperationBannerVariant, YBOperationBanner } from '@yugabyte-ui-library/core';
 
 import { showTaskInDrawer } from '@app/actions/tasks';
 import { YBButton } from '@app/redesign/components';
@@ -16,7 +16,8 @@ import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
 
 import { Task, TaskState } from '../../dtos';
 import { getIsDbUpgradePrecheckTask } from '../../TaskUtils';
-import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';
+import { OperationBannerProgressContent } from './OperationBannerProgressContent';
+import { OperationBannerLoadingIcon, OperationBannerWaveIcon } from './operationBannerIcons';
 
 interface DbUpgradePrecheckTaskBannerProps {
   task: Task;
@@ -24,6 +25,16 @@ interface DbUpgradePrecheckTaskBannerProps {
   onDismiss: () => void;
 }
 const BANNER_TEST_ID = 'db-upgrade-precheck-task-banner';
+
+// Temporary until @yugabyte-ui-library/core ships a white pending-action variant.
+const usePendingActionWhiteStyles = makeStyles((theme) => ({
+  pendingActionWhite: {
+    '&&': {
+      background: theme.palette.common.white,
+      border: `1px solid ${theme.palette.grey[200]}`
+    }
+  }
+}));
 
 export const DbUpgradePrecheckTaskBanner = ({
   task,
@@ -33,6 +44,7 @@ export const DbUpgradePrecheckTaskBanner = ({
   const [isDbUpgradeModalOpen, setIsDbUpgradeModalOpen] = useState(false);
   const dispatch = useDispatch();
   const formatDatetime = useFormatDatetime();
+  const pendingActionWhiteClasses = usePendingActionWhiteStyles();
   const { t } = useTranslation('translation', {
     keyPrefix: 'universeActions.dbUpgrade.clusterBanner'
   });
@@ -77,12 +89,19 @@ export const DbUpgradePrecheckTaskBanner = ({
   switch (task.status) {
     case TaskState.RUNNING:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.IN_PROGRESS}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Info}
+          dense
+          minHeight={46}
+          showDivider={false}
+          iconCircle={false}
+          icon={<OperationBannerLoadingIcon />}
           title={t('precheckInProgress.title')}
-          progressPercent={task.percentComplete ?? 0}
-          actions={openPrecheckTaskDetailsButton}
-          description={
+          content={
+            <OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />
+          }
+          action={openPrecheckTaskDetailsButton}
+          message={
             <Trans
               t={t}
               i18nKey="precheckInProgress.description"
@@ -103,8 +122,14 @@ export const DbUpgradePrecheckTaskBanner = ({
       break;
     case TaskState.SUCCESS:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.PENDING_ACTION_WHITE}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Info}
+          dense
+          minHeight={46}
+          showDivider={false}
+          iconCircle={false}
+          icon={<OperationBannerWaveIcon />}
+          className={pendingActionWhiteClasses.pendingActionWhite}
           title={
             <Trans
               t={t}
@@ -115,12 +140,12 @@ export const DbUpgradePrecheckTaskBanner = ({
               }}
             />
           }
-          description={
+          message={
             isYsqlMajorUpgrade
               ? t('precheckPassed.descriptionPg15')
               : t('precheckPassed.description')
           }
-          actions={
+          action={
             <YBButton
               variant="secondary"
               size="medium"
@@ -130,22 +155,27 @@ export const DbUpgradePrecheckTaskBanner = ({
               {t('actions.upgradeDatabase')}
             </YBButton>
           }
-          onDismiss={onDismiss}
+          dismissable
+          onClose={onDismiss}
         />
       );
       break;
     case TaskState.FAILURE:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.ALERT}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Warning}
+          dense
+          minHeight={46}
+          showDivider={false}
           title={t('precheckIssuesFound.title')}
-          actions={openPrecheckTaskDetailsButton}
-          description={
+          action={openPrecheckTaskDetailsButton}
+          message={
             isYsqlMajorUpgrade
               ? t('precheckIssuesFound.descriptionPg15')
               : t('precheckIssuesFound.description')
           }
-          onDismiss={onDismiss}
+          dismissable
+          onClose={onDismiss}
         />
       );
       break;

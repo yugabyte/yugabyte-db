@@ -120,7 +120,7 @@ For more information, see [Follower reads examples](../../going-beyond-sql/follo
 
 ### Preferred region
 
-If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the tablet leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
+If application reads and writes originate primarily from a single region, you can designate a preferred region, which pins tablet leaders to that region. Clients then send reads and writes there. Non-preferred regions still host tablet follower replicas; this does not change replica placement.
 
 For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction.
 

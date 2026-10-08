@@ -79,7 +79,6 @@
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.pb.h"

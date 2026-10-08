@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -578,7 +579,7 @@ public class GFlagsUtil {
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
     ybcFlags.putAll(customYbcGflags);
-    if (userIntent.providerType == CloudType.local) {
+    if (Util.isLocal(cluster)) {
       // In case of local provider, we want ybc to use /tmp directory
       // inside the respective node folder.
       ybcFlags.put(TMP_DIRECTORY, ybHomeDir + "/tmp");
@@ -1182,18 +1183,42 @@ public class GFlagsUtil {
   }
 
   /**
-   * Make sure FIPS related GFlags are not overridden + check provider type - as only K8S is
-   * currently supported.
+   * Provider types a FIPS enabled universe can run on.
+   *
+   * <p>On Kubernetes the database runs from a container image that carries the validated module, so
+   * there is no host to prepare. On the rest, the node's OS is put into FIPS mode by the
+   * ConfigureFips provisioning module, which fails provisioning rather than leaving a node that
+   * only looks FIPS enabled - so the guarantee is that the node was verified in FIPS mode, not that
+   * it came from a particular provider. The types left out (docker, local, other) have no node
+   * provisioning to hook into.
+   */
+  private static final Set<CloudType> FIPS_SUPPORTED_PROVIDERS =
+      ImmutableSet.of(
+          CloudType.kubernetes,
+          CloudType.aws,
+          CloudType.gcp,
+          CloudType.azu,
+          CloudType.oci,
+          CloudType.onprem);
+
+  /**
+   * Make sure FIPS related GFlags are not overridden, and that the provider is one whose nodes can
+   * be put into FIPS mode.
    *
    * @param fipsEnabled
    */
   public static void validateFipsCompliancy(
       UniverseDefinitionTaskParams.UserIntent userIntent, boolean fipsEnabled) {
     if (fipsEnabled) {
-      if (userIntent.providerType != CloudType.kubernetes) {
+      Set<CloudType> nonSupported =
+          userIntent.getAllCloudTypes().stream()
+              .filter(ct -> !FIPS_SUPPORTED_PROVIDERS.contains(ct))
+              .collect(Collectors.toSet());
+      if (!nonSupported.isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
-            "Currently only Kubernetes provider is supported for FIPS compliant universe");
+            String.format(
+                "FIPS compliant universes are not supported on provider(s): %s", nonSupported));
       }
       // This is for new universes only, so don't consider old form of GFLags
       if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {
@@ -1216,6 +1241,46 @@ public class GFlagsUtil {
             throw new PlatformServiceException(
                 BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
           }
+        }
+      }
+      validateFipsCompliancyOfHelmOverrides(
+          userIntent.universeOverrides, userIntent.azOverrides, fipsEnabled);
+    }
+  }
+
+  /**
+   * Kubernetes helm overrides carry gflags too (gflags.master and gflags.tserver in the values) and
+   * are merged over the gflags YBA generates, so they could turn the FIPS gflag off where the
+   * gflags API refuses to.
+   */
+  public static void validateFipsCompliancyOfHelmOverrides(
+      String universeOverrides, Map<String, String> azOverrides, boolean fipsEnabled) {
+    if (!fipsEnabled) {
+      return;
+    }
+    List<String> overrides = new ArrayList<>();
+    overrides.add(universeOverrides);
+    if (azOverrides != null) {
+      overrides.addAll(azOverrides.values());
+    }
+    for (String overridesYaml : overrides) {
+      Map<String, String> flatOverrides;
+      try {
+        flatOverrides = HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
+      } catch (Exception e) {
+        // Overrides that cannot be read cannot be checked, so they are not accepted either.
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
+      }
+      for (String server : List.of("master", "tserver")) {
+        String value = flatOverrides.get("gflags." + server + "." + OPENSSL_REQUIRE_FIPS);
+        if (value != null && !value.equals("true")) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes"
+                      + " overrides cannot set %s %s to %s",
+                  server, OPENSSL_REQUIRE_FIPS, value));
         }
       }
     }

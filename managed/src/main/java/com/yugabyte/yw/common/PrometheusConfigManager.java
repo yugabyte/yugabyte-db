@@ -10,7 +10,7 @@
 
 package com.yugabyte.yw.common;
 
-import static org.flywaydb.play.FileUtils.readFileToString;
+import static com.yugabyte.yw.common.utils.FileUtils.readFileToString;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;

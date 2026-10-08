@@ -53,12 +53,13 @@ constexpr uint32_t kTabletDataHashSchemeVersion = 1;
 // which stops contributions cancelling across rows and keeps whole rows commutative.
 //
 // The salt costs cross-cluster comparability: two clusters' hashes mean the same thing only if
-// their column ids agree, so a caller comparing hashes across clusters compares the schemas first.
-// Scheme version 0 hashed no column ids; version 1 adds them.
+// their column ids agree. SchemaFingerprint (src/yb/tools/xcluster_verify.h) includes every column
+// id, so a pair whose ids disagree is caught by comparing fingerprints rather than left to the
+// hashes to expose. Scheme version 0 hashed no column ids; version 1 adds them.
 class RowHashAccumulator {
  public:
   // Adds one non-NULL column value. A NULL is not added: in DocDB a NULL is the absence of a value,
-  // and a column absent from the schema is a schema difference, which comparing schemas catches.
+  // and a column absent from the schema is a schema difference, which SchemaFingerprint catches.
   void AddValue(ColumnId column_id, const QLValuePB& value);
 
   // What this row contributes to the table's xor_hash.
@@ -86,9 +87,11 @@ class RowHashAccumulator {
 // range addresses that table's slice of the shared tablet.
 //
 // max_rows > 0 stops after that many rows. next_key (when non-null) receives the exclusive
-// continuation key of the first unhashed row, or empty if the range was fully hashed. max_rows
-// requires a concrete target_table_id: a colocation parent covers several tables with independent
-// key spaces, so one continuation key could not say where to resume.
+// continuation key of the first unhashed row, which is that row's tuple id (its DocKey without the
+// table prefix), or empty if the range was fully hashed. For a hash-partitioned table this is an
+// encoded row key rather than a 2-byte partition key, so a later scan can resume partway through a
+// hash band. max_rows requires a concrete target_table_id: a colocation parent covers several
+// tables with independent key spaces, so one continuation key could not say where to resume.
 Status DumpTabletData(
     Tablet& tablet, std::shared_future<client::YBClient*> client_future, WritableFile* file,
     uint64_t read_ht, std::optional<MonoDelta> max_read_time_wait, CoarseTimePoint deadline,

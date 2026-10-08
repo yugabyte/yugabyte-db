@@ -3,6 +3,8 @@ package ybactlstate
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +31,8 @@ const stateServices = 12
 const asRootState = 13
 const nodeExporterConfig = 14
 const perfAdvisorConfig = 15
+const fipsConfig = 16
+const fipsState = 17
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -355,6 +359,35 @@ func migratePerfAdvisorConfig(state *State) error {
 	return nil
 }
 
+// migrateFipsConfig adds the fips block to yba-ctl.yml. Existing files are never regenerated, so
+// without this an upgraded install has no fips key to set - the templates still render because
+// viper supplies the default, but an operator cannot turn FIPS on without hand-editing the yml.
+func migrateFipsConfig(state *State) error {
+	const key = "fips.enabled"
+
+	// The global viper cannot answer this: viper.IsSet consults registered defaults, so it is true
+	// for any key with a SetDefault whether or not the user's file has it. A fresh viper reading
+	// only that file is the discriminator. The six older migrations above get away with the global
+	// one because none of their keys has a default registered.
+	userCfg := viper.New()
+	userCfg.SetConfigFile(common.InputFile())
+	if err := userCfg.ReadInConfig(); err != nil {
+		return fmt.Errorf("error reading %s: %w", common.InputFile(), err)
+	}
+	if userCfg.IsSet(key) {
+		return nil
+	}
+
+	// Overlaying the reference config mutates the global viper, so it happens only on the path
+	// that needs the default, and InitViper below puts it back.
+	viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+	if err := common.SetYamlValue(common.InputFile(), key, viper.Get(key)); err != nil {
+		return fmt.Errorf("error migrating %s: %w", key, err)
+	}
+	common.InitViper()
+	return nil
+}
+
 // migrateInitialized migrates the initialized flag - all previous installs
 // have been initialized so set to true
 func migrateInitialized(state *State) error {
@@ -399,6 +432,23 @@ func migrateNodeExporterConfig(state *State) error {
 	return nil
 }
 
+// migrateFipsState records the FIPS mode an existing install is running in. It is read from the
+// installed platform unit, which only carries the approved-only flag in FIPS mode, rather than from
+// yba-ctl.yml, which may already hold the change the state is meant to refuse.
+func migrateFipsState(state *State) error {
+	unit, err := os.ReadFile(filepath.Join(common.SystemdDir, "yb-platform.service"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			state.Config.FipsEnabled = viper.GetBool("fips.enabled")
+			return nil
+		}
+		return fmt.Errorf("reading the platform service to determine FIPS mode: %w", err)
+	}
+	state.Config.FipsEnabled = strings.Contains(string(unit),
+		"-Dorg.bouncycastle.fips.approved_only=true")
+	return nil
+}
+
 var migrations = map[int]migration{
 	defaultMigratorValue: {run: defaultMigrate},
 	promConfigMV:         {run: migratePrometheus},
@@ -415,6 +465,8 @@ var migrations = map[int]migration{
 	asRootState:          {run: migrateAsRootState, stateField: []string{"config", "as_root"}},
 	nodeExporterConfig:   {run: migrateNodeExporterConfig},
 	perfAdvisorConfig:    {run: migratePerfAdvisorConfig},
+	fipsConfig:           {run: migrateFipsConfig},
+	fipsState:            {run: migrateFipsState, stateField: []string{"config", "fips_enabled"}},
 }
 
 func getSchemaVersion() int {

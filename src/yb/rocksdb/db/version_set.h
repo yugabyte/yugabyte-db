@@ -500,11 +500,15 @@ class Version {
                             const std::string* fname = nullptr) const;
 
   // REQUIRES: lock is held
-  // On success, *props will be populated with all SSTables' table properties.
-  // The keys of `props` are the sst file name, the values of `props` are the
-  // tables' propertis, represented as shared_ptr.
-  Status GetPropertiesOfAllTables(TablePropertiesCollection* props);
-  Status GetPropertiesOfAllTables(TablePropertiesCollection* props, int level);
+  // On success, *props contains each readable SSTable's table properties. kFail returns the first
+  // read error; kSkip omits unreadable files. The keys are SST file names and the values are table
+  // properties represented as shared_ptr.
+  Status GetPropertiesOfAllTables(
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail);
+  Status GetPropertiesOfAllTables(
+      TablePropertiesCollection* props, int level,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail);
   Status GetPropertiesOfTablesInRange(const Range* range, std::size_t n,
                                       TablePropertiesCollection* props) const;
 
@@ -522,7 +526,7 @@ class Version {
 
   // Returns the sum of SeekOffsetOf(key) for all SST files: an estimate of how much SST data
   // sorts below `key`. Non-decreasing, but distinct keys can share a value.
-  // Takes an *internal* key, unlike DB::Cross().
+  // Takes an *internal* key, unlike PinnedVersion::Cross().
   Result<uint64_t> Cross(const Slice& key);
 
   // Returns the sum of ApproximateOffsetOfDataEnd() for all SST files, or 0 if there are none.

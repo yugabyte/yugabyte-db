@@ -43,6 +43,7 @@
 #include "executor/ybModifyTable.h"
 #include "fmgr.h"
 #include "funcapi.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "pg_yb_utils.h"
@@ -294,8 +295,16 @@ yb_index_check(PG_FUNCTION_ARGS)
 	 */
 	char		relkind = get_rel_relkind(indexoid);
 
+	/*
+	 * A '\0' relkind means there is no such relation; any other non-index
+	 * relkind means the OID names something that is not an index. The argument
+	 * is a bare OID, so both are ordinary caller error rather than a symptom of
+	 * concurrent DDL -- say a caller reading OIDs out of pg_class.
+	 */
 	if (relkind != RELKIND_INDEX && relkind != RELKIND_PARTITIONED_INDEX)
-		elog(ERROR, "Object is not an index");
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("index with OID %u does not exist", indexoid)));
 
 	List	   *leaf_indexes = lock_index_check_relations(indexoid);
 
@@ -385,9 +394,8 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode, YbIndexInconsistencyLogSt
 	/* lock_index_check_relations() already holds AccessShareLock on indexrel/baserel. */
 	Relation	indexrel = relation_open(indexoid, NoLock);
 
-	if (indexrel->rd_rel->relkind != RELKIND_INDEX)
-		elog(ERROR, "Object is not an index");
-
+	/* lock_index_check_relations() returns scannable leaves only. */
+	Assert(indexrel->rd_rel->relkind == RELKIND_INDEX);
 	Assert(indexrel->rd_index);
 
 	if (indexrel->rd_rel->relam != LSM_AM_OID)
@@ -428,7 +436,10 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode, YbIndexInconsistencyLogSt
  *
  * 1. DDL on the table/index: AccessShareLock blocks most DDL, including DROP,
  *    TRUNCATE, non-concurrent DETACH PARTITION and most ALTER TABLEs.
- *    DML is left unblocked.
+ *    DML is left unblocked. It does not block DDL that commits before the
+ *    lock is granted: indexoid reaches us already resolved (a regclass
+ *    argument resolves at parse time), so every OID here must be rechecked
+ *    once its lock is held.
  *
  * 2. ATTACH PARTITION: AccessShareLock is insufficient here, as ATTACH
  *    PARTITION takes ShareUpdateExclusiveLock. Instead the partition list
@@ -458,6 +469,29 @@ lock_index_check_relations(Oid indexoid)
 
 	/* find_all_inheritors() locks the descendants, but not indexoid itself. */
 	LockRelationOid(indexoid, AccessShareLock);
+
+	/*
+	 * Recheck indexoid existence after acquiring the lock.
+	 *
+	 * If a concurrent DROP committed while we were waiting for the lock, proceeding
+	 * with catalog lookups below will trigger internal errors ("cache lookup failed"
+	 * in find_all_inheritors() or "could not open relation" in relation_open()).
+	 *
+	 * This must stay immediately after LockRelationOid(). Moving this below any
+	 * catalog lookup reopens race conditions.
+	 *
+	 * Because the caller already verified relkind before blocking, a missing OID
+	 * here specifically indicates a concurrent DROP, so it gets a different
+	 * message from the relkind check above. Both raise ERRCODE_UNDEFINED_OBJECT,
+	 * making the message the only discriminator -- the stress-test workloads that
+	 * run DDL alongside this check allowlist expected errors by message substring,
+	 * not by SQLSTATE.
+	 */
+	if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(indexoid)))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("index with OID %u was concurrently dropped", indexoid)));
+
 	all_indexes = find_all_inheritors(indexoid, AccessShareLock, NULL);
 
 	foreach(lc, all_indexes)
@@ -1298,6 +1332,21 @@ get_expected_index_rowcount(Relation baserel, Relation indexrel)
 		appendStringInfo(&querybuf, " WHERE %s", indpred_clause);
 	}
 
+	/*
+	 * This ensures that the query observes every base relation row irrespective
+	 * of row-level security, matching the scan path. Run the count as the base
+	 * relation's owner with SECURITY_NOFORCE_RLS so that row-level security is
+	 * bypassed, matching the scan path. This mirrors how referential-integrity
+	 * checks run (see ri_triggers.c).
+	 */
+	Oid			save_userid;
+	int			save_sec_context;
+
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(baserel->rd_rel->relowner,
+						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE |
+						   SECURITY_NOFORCE_RLS);
+
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 
@@ -1316,6 +1365,9 @@ get_expected_index_rowcount(Relation baserel, Relation indexrel)
 
 	if (SPI_finish() != SPI_OK_FINISH)
 		elog(ERROR, "SPI_finish failed");
+
+	/* Restore the caller's user id and security context. */
+	SetUserIdAndSecContext(save_userid, save_sec_context);
 
 	pfree(querybuf.data);
 	return expected_rowcount;
@@ -1611,7 +1663,7 @@ make_bnl_plan(Plan *lefttree, Plan *righttree, Var *join_clause_lhs,
 	join_plan->nl.join.inner_unique = true;
 	join_plan->nl.join.joinqual = list_make1(join_clause);
 	join_plan->nl.nestParams = list_make1(nlp);
-	join_plan->first_batch_factor = 1.0;
+	join_plan->first_batch_size = 0;
 	join_plan->num_hashClauseInfos = 1;
 	join_plan->hashClauseInfos = palloc0(sizeof(YbBNLHashClauseInfo));
 	join_plan->hashClauseInfos->hashOp = ByteaEqualOperator;

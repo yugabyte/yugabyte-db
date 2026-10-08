@@ -220,21 +220,22 @@ class TestFrontiers : public storage::UserFrontiersBase<TestFrontier> {
   }
 };
 
-class VectorLSMTest
-    : public hnsw::VectorIndexTestBase,
-      public testing::WithParamInterface<ParamType> {
+class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
  protected:
   // Usearch creates an index with min capacity of 64 vectors.
   constexpr static size_t kDefaultChunkSize = 64;
 
-  VectorLSMTest()
+  explicit VectorLSMTestBase(ParamType backend_param)
       : thread_pool_(rpc::ThreadPoolOptions {
           .name = "Insert Thread Pool",
           .max_workers = 10,
         }),
-        priority_thread_pool_(/* max_running_tasks = */ 2) {
+        priority_thread_pool_(/* max_running_tasks = */ 2),
+        backend_param_(backend_param) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   }
+
+  ParamType backend_param() const { return backend_param_; }
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
@@ -280,7 +281,7 @@ class VectorLSMTest
   Result<std::vector<std::string>> GetFiles(FloatVectorLSM& lsm);
 
   vector_index::StoreVectorPayload store_vector_payload() const {
-    return StorePayload(GetParam());
+    return StorePayload(backend_param());
   }
 
   void TestFlushRetirement(bool fail);
@@ -302,7 +303,7 @@ class VectorLSMTest
 
   struct ChunkedCompactionHelper {
    private:
-    VectorLSMTest& test;
+    VectorLSMTestBase& test;
 
    public:
     std::string storage_dir;
@@ -311,7 +312,7 @@ class VectorLSMTest
     size_t total_vectors = 0;
     size_t expected_output_chunks = 0;
 
-    explicit ChunkedCompactionHelper(VectorLSMTest& test);
+    explicit ChunkedCompactionHelper(VectorLSMTestBase& test);
 
     Status Run(size_t num_dimensions, size_t num_input_chunks, size_t mem_store_limit_mb);
 
@@ -345,6 +346,7 @@ class VectorLSMTest
 
   rpc::ThreadPool thread_pool_;
   PriorityThreadPool priority_thread_pool_;
+  ParamType backend_param_;
   SimpleVectorLSMKeyValueStorage key_value_storage_;
   InsertEntries inserted_entries_;
   simple_spinlock merge_filter_mutex_;
@@ -352,6 +354,22 @@ class VectorLSMTest
 
   MetricEntityPtr vector_index_metric_entity_ =
       METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test_table");
+};
+
+class VectorLSMTest : public VectorLSMTestBase,
+                      public testing::WithParamInterface<ParamType> {
+ public:
+  VectorLSMTest() : VectorLSMTestBase(GetParam()) {}
+};
+
+// Backend-independent VectorLSM tests (insert registry, flush barrier) pin usearch.
+class VectorLSMUsearchTest : public VectorLSMTestBase {
+ public:
+  VectorLSMUsearchTest()
+      : VectorLSMTestBase({
+            ANNMethodKind::kUsearch, /* use_yb_hnsw = */ false,
+            vector_index::StoreVectorPayload::kFalse,
+        }) {}
 };
 
 Result<vector_index::VectorIndexTraitsPtr<std::vector<float>, float>> GetVectorIndexTraits(
@@ -427,7 +445,7 @@ auto GenerateVectorIds(size_t num) {
   return result;
 }
 
-Status VectorLSMTest::InsertCube(
+Status VectorLSMTestBase::InsertCube(
     FloatVectorLSM& lsm, size_t dimensions, size_t block_size,
     size_t min_entry_idx) {
   inserted_entries_ = CubeInsertEntries(dimensions, store_vector_payload());
@@ -456,7 +474,7 @@ Status VectorLSMTest::InsertCube(
   return Status::OK();
 }
 
-Status VectorLSMTest::InsertRandom(
+Status VectorLSMTestBase::InsertRandom(
     FloatVectorLSM& lsm, size_t dimensions, size_t num_entries, size_t batch_size) {
   inserted_entries_ = RandomEntries(dimensions, num_entries, store_vector_payload());
   size_t num_inserts = 0;
@@ -477,26 +495,27 @@ Status VectorLSMTest::InsertRandom(
   return Status::OK();
 }
 
-Status VectorLSMTest::InsertRandomAndFlush(
+Status VectorLSMTestBase::InsertRandomAndFlush(
     FloatVectorLSM& lsm, size_t dimensions, size_t num_entries, size_t batch_size) {
   RETURN_NOT_OK(InsertRandom(lsm, dimensions, num_entries, batch_size));
   RETURN_NOT_OK(WaitForBackgroundInsertsDone(lsm));
   return lsm.Flush(/* wait = */ true);
 }
 
-Status VectorLSMTest::WaitForBackgroundInsertsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
+Status VectorLSMTestBase::WaitForBackgroundInsertsDone(
+    const FloatVectorLSM& lsm, MonoDelta timeout) {
   return LoggedWaitFor(
       [&lsm] { return !lsm.TEST_HasBackgroundInserts(); }, timeout * kTimeMultiplier,
       "Background inserts done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
 }
 
-Status VectorLSMTest::WaitForCompactionsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
+Status VectorLSMTestBase::WaitForCompactionsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
   return LoggedWaitFor(
       [&lsm] { return !lsm.TEST_HasCompactions(); }, timeout * kTimeMultiplier,
       "Compactions done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
 }
 
-Status VectorLSMTest::OpenVectorLSM(
+Status VectorLSMTestBase::OpenVectorLSM(
     FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk,
     vector_index::DistanceKind distance_kind, const MemTrackerPtr& mem_tracker,
     const std::string& storage_dir) {
@@ -517,7 +536,7 @@ Status VectorLSMTest::OpenVectorLSM(
     .log_prefix = "Test: ",
     .storage_dir = dir,
     .vector_index_traits = VERIFY_RESULT(GetVectorIndexTraits(
-        GetParam(), hnsw_options, block_cache_, mem_tracker)),
+        backend_param(), hnsw_options, block_cache_, mem_tracker)),
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
@@ -536,10 +555,10 @@ Status VectorLSMTest::OpenVectorLSM(
   return status;
 }
 
-VectorLSMTest::ChunkedCompactionHelper::ChunkedCompactionHelper(VectorLSMTest& test)
+VectorLSMTestBase::ChunkedCompactionHelper::ChunkedCompactionHelper(VectorLSMTestBase& test)
     : test(test) {}
 
-auto VectorLSMTest::ChunkedCompactionHelper::ScopedCompactionFlags(
+auto VectorLSMTestBase::ChunkedCompactionHelper::ScopedCompactionFlags(
     bool enable_compactions, size_t mem_store_limit_mb, uint32_t block_cache_percentage) {
   const bool old_enable_compactions = FLAGS_vector_index_enable_compactions;
   const uint64_t old_chunk_max_mem_store_size_mb =
@@ -563,14 +582,14 @@ auto VectorLSMTest::ChunkedCompactionHelper::ScopedCompactionFlags(
   });
 }
 
-Status VectorLSMTest::ChunkedCompactionHelper::Run(
+Status VectorLSMTestBase::ChunkedCompactionHelper::Run(
     size_t num_dimensions, size_t num_input_chunks, size_t mem_store_limit_mb) {
   auto flags_scope = ChunkedCompactionHelper::ScopedCompactionFlags(
       /* enable_compactions = */ false, mem_store_limit_mb, /* block_cache_percentage = */ 0);
   return RunInternal(num_dimensions, num_input_chunks, mem_store_limit_mb * 1_MB);
 }
 
-Status VectorLSMTest::ChunkedCompactionHelper::RunWithBlockCachePercentage(
+Status VectorLSMTestBase::ChunkedCompactionHelper::RunWithBlockCachePercentage(
     size_t num_dimensions, size_t num_input_chunks, uint32_t block_cache_percentage) {
   auto flags_scope = ChunkedCompactionHelper::ScopedCompactionFlags(
       /* enable_compactions = */ false, /* mem_store_limit_mb = */ 0, block_cache_percentage);
@@ -580,7 +599,7 @@ Status VectorLSMTest::ChunkedCompactionHelper::RunWithBlockCachePercentage(
   return RunInternal(num_dimensions, num_input_chunks, mem_store_limit_bytes);
 }
 
-Status VectorLSMTest::ChunkedCompactionHelper::RunInternal(
+Status VectorLSMTestBase::ChunkedCompactionHelper::RunInternal(
     size_t num_dimensions, size_t num_input_chunks, size_t mem_store_limit_bytes) {
   FloatVectorLSM lsm;
   RETURN_NOT_OK(test.OpenVectorLSM(lsm, num_dimensions, kDefaultChunkSize));
@@ -611,13 +630,13 @@ Status VectorLSMTest::ChunkedCompactionHelper::RunInternal(
   return Status::OK();
 }
 
-Status VectorLSMTest::InitVectorLSM(
+Status VectorLSMTestBase::InitVectorLSM(
     FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk) {
   RETURN_NOT_OK(OpenVectorLSM(lsm, dimensions, vectors_per_chunk));
   return InsertCube(lsm, dimensions, vectors_per_chunk);
 }
 
-void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
+void VectorLSMTestBase::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
   // Use power-of-2 query vectors to guarantee unique distances for all distance kinds
   // (L2, inner product, cosine). Uniform queries like (0,...,0) are degenerate for cosine,
   // and linear queries like (1,2,3,...) produce ties for cosine (e.g., subsets {0,5} and {1,4}
@@ -632,7 +651,7 @@ void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
   CheckQueryVector(lsm, query2, dimensions + 1);
 }
 
-void VectorLSMTest::CheckQueryVector(
+void VectorLSMTestBase::CheckQueryVector(
     FloatVectorLSM& lsm, const FloatVectorLSM::Vector& query_vector, size_t max_num_results) {
   bool stop = false;
 
@@ -673,16 +692,16 @@ void VectorLSMTest::CheckQueryVector(
   }
 }
 
-Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
+Result<std::vector<std::string>> VectorLSMTestBase::GetFiles(FloatVectorLSM& lsm) {
   auto files = VERIFY_RESULT(vector_index::ListVectorLSMFiles(lsm.TEST_GetEnv(), lsm.StorageDir()));
   // Payload files are expected only when the LSM stores payloads, and only for backends based
   // on IndexWrapperWithExternalPayload: yb_hnsw stores payloads in the chunk file itself.
-  SCHECK(!files.has_payload_files || (store_vector_payload() && !UseYbHnsw(GetParam())),
+  SCHECK(!files.has_payload_files || (store_vector_payload() && !UseYbHnsw(backend_param())),
          IllegalState, "Unexpected payload file");
   return std::move(files.manifest_and_chunk_files);
 }
 
-MergeFilterPtr VectorLSMTest::GetMergeFilter() {
+MergeFilterPtr VectorLSMTestBase::GetMergeFilter() {
   if (!merge_filter_) {
     SetMergeFilter(storage::FilterDecision::kKeep);
   }
@@ -693,12 +712,12 @@ MergeFilterPtr VectorLSMTest::GetMergeFilter() {
   return std::make_unique<FilterProxy<decltype(filter)>>(std::move(filter));
 }
 
-void VectorLSMTest::SetMergeFilter(MergeFilterPtr&& filter) {
+void VectorLSMTestBase::SetMergeFilter(MergeFilterPtr&& filter) {
   std::lock_guard lock(merge_filter_mutex_);
   merge_filter_ = std::move(filter);
 }
 
-void VectorLSMTest::TestFlushRetirement(bool fail) {
+void VectorLSMTestBase::TestFlushRetirement(bool fail) {
   Status status;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
@@ -755,7 +774,7 @@ TEST_P(VectorLSMTest, FlushErrorWaitsForRetirement) {
   TestFlushRetirement(true);
 }
 
-void VectorLSMTest::TestOutOfOrderFlush(bool fail) {
+void VectorLSMTestBase::TestOutOfOrderFlush(bool fail) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   FloatVectorLSM lsm;
@@ -941,7 +960,7 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
 }
 
-void VectorLSMTest::TestMultipleChunksSimpleCompaction(
+void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
     vector_index::DistanceKind distance_kind) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
@@ -1185,6 +1204,81 @@ TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
   lsm.CompleteShutdown();
 }
 
+// CreateSplitChildTablet flushes vector indexes with Flush(wait=false) then WaitForFlush().
+// An Insert that starts after DoFlush clears mutable_chunk_ must still be visible to that wait,
+// otherwise the split "sync" flush is not an insert barrier and a later CompleteShutdown can
+// block on the leftover tasks (#32400).
+TEST_F(VectorLSMUsearchTest, SplitFlushIsInsertBarrier) {
+  constexpr size_t kDimensions = 8;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, /* vectors_per_chunk = */ 1024));
+  // Seed a mutable chunk so Flush() takes the DoFlush path. Drain it first so Run:Begin below
+  // only parks the insert injected after DoFlush.
+  ASSERT_OK(InsertRandom(lsm, kDimensions, /* num_entries = */ 1));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  CountDownLatch in_insert{1};
+  CountDownLatch release_insert{1};
+  ThreadHolder threads;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSMInsertTask::Run:Begin",
+      [&in_insert, &release_insert](void*) {
+        in_insert.CountDown();
+        release_insert.Wait();
+      });
+  // Same sequence as Tablet::Flush(kSync) / CreateSplitChildTablet: Flush(wait=false) then
+  // WaitForFlush(). Inject the racing insert after DoFlush clears mutable_chunk_, and do not
+  // let Flush return until that insert is parked - otherwise WaitForFlush can win the race
+  // before Insert() has registered.
+  sync_point->SetCallBack(
+      "VectorLSM::Flush:AfterDoFlush",
+      [&lsm, &threads, &in_insert, store_payload = store_vector_payload()](void*) {
+        threads.AddThreadFunctor([&lsm, store_payload] {
+          auto entries = RandomEntries(kDimensions, /* num_entries = */ 1, store_payload);
+          TestFrontiers frontiers(entries);
+          CHECK_OK(lsm.Insert(entries, { .frontiers = &frontiers }));
+        });
+        CHECK(in_insert.WaitFor(30s * kTimeMultiplier))
+            << "Post-DoFlush insert did not reach Run()";
+      });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &release_insert] {
+    release_insert.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(lsm.TEST_HasBackgroundInserts());
+
+  CountDownLatch wait_flush_done{1};
+  Status wait_status = STATUS(IllegalState, "WaitForFlush did not run");
+  threads.AddThreadFunctor([&lsm, &wait_status, &wait_flush_done] {
+    wait_status = lsm.WaitForFlush();
+    wait_flush_done.CountDown();
+  });
+
+  ASSERT_FALSE(wait_flush_done.WaitFor(1s * kTimeMultiplier))
+      << "WaitForFlush returned while a post-DoFlush insert is still running; "
+         "CreateSplitChildTablet Flush(kSync) is not an insert barrier";
+  ASSERT_TRUE(lsm.TEST_HasBackgroundInserts());
+
+  release_insert.CountDown();
+  ASSERT_TRUE(wait_flush_done.WaitFor(30s * kTimeMultiplier))
+      << "WaitForFlush did not return after the post-DoFlush insert was released";
+  ASSERT_OK(wait_status);
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  // CreateSplitChildTablet issues a second vector Flush so the leftover chunk reaches the
+  // manifest before CreateCheckpoint.
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_GE(lsm.NumSavedImmutableChunks(), 2);
+}
+
 // Reproduces a race in VectorLSMInsertRegistryBase::ExecuteTasks: tasks used to be enqueued
 // before being moved from the caller's stack-local list to active_tasks_, so a task completing
 // within that window unlinked itself from the local list from a worker thread. The sync point
@@ -1227,7 +1321,7 @@ TEST_P(VectorLSMTest, InsertTaskRegistrationRace) {
   ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
 }
 
-void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
+void VectorLSMTestBase::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumLargeChunks = 2;
   constexpr size_t kNumSmallChunks = 6;
@@ -1515,7 +1609,8 @@ TEST_P(VectorLSMTest, ConcurrentCompactionsDisableBlockCachePercentage) {
 // Absolute MB limit wins over the percentage-of-cache limit when both are set.
 TEST_P(VectorLSMTest, MemStoreSizeMbOverridesBlockCachePercentage) {
   constexpr size_t kDimensions = 16;
-  constexpr size_t kNumInputChunks = 4;
+  // Two chunks suffice for multiple output chunks; more exceed the test timeout under TSAN.
+  constexpr size_t kNumInputChunks = 2;
   constexpr size_t kMemStoreLimitMb = 1;
   // 100% of the 8MB test cache would allow ~8x more vectors per chunk than the 1MB absolute limit.
   constexpr uint32_t kBlockCachePercentage = 100;
@@ -1654,7 +1749,7 @@ TEST_P(VectorLSMTest, DefaultCompactionMergesMultipleChunks) {
   ASSERT_EQ(kNumInputChunks - 1, manifest_chunks[0].order_no());
 }
 
-void VectorLSMTest::TestBootstrap(bool flush) {
+void VectorLSMTestBase::TestBootstrap(bool flush) {
   constexpr size_t kChunkSize  = kDefaultChunkSize;
   const     size_t kDimensions = GetNumDimensionsByEntries(kChunkSize * 4);
 
@@ -1781,7 +1876,7 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   ASSERT_LE(on_disk_size, kBytesLimit);
 }
 
-TEST_F(VectorLSMTest, MergeChunkResults) {
+TEST_F(VectorLSMUsearchTest, MergeChunkResults) {
   const auto kIds = GenerateVectorIds(7);
 
   using ChunkResults = std::vector<vector_index::VectorWithDistance<float>>;

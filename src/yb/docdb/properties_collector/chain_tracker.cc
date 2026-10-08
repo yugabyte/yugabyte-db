@@ -33,6 +33,16 @@ size_t AgeBands::BandIndex(int64_t age_micros) {
   return band;
 }
 
+AgeBandCounts AgeBandsAfter(const AgeBandCounts& counts, int64_t elapsed_micros) {
+  elapsed_micros = std::max<int64_t>(elapsed_micros, 0);
+  AgeBandCounts result{};
+  for (size_t band = 0; band != counts.size(); ++band) {
+    const int64_t youngest = band == 0 ? 0 : AgeBands::kEdgesMicros[band - 1];
+    result[AgeBands::BandIndex(youngest + elapsed_micros)] += counts[band];
+  }
+  return result;
+}
+
 ChainTracker::ChainTracker(int64_t anchor_micros, bool track_coprefix_subtotals)
     : track_coprefix_subtotals_(track_coprefix_subtotals) {
   stats_.anchor_micros = anchor_micros;

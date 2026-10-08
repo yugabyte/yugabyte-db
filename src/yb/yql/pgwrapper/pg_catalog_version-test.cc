@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
@@ -35,9 +37,7 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_string(vmodule);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 METRIC_DECLARE_counter(handler_latency_yb_tserver_PgClientService_OpenTable);
 METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_GetTableSchema);
 
@@ -72,12 +72,19 @@ class PgCatalogVersionTest : public LibPqTestBase {
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
 
+  // These report the mode the running cluster is in. Several tests below restart it in the legacy
+  // mode (invalidation messages off, for instance, which the DDL mode requires), so reading this
+  // process's own gflags would report the build default instead of what the cluster is running.
+  bool IsClusterFlagEnabled(const std::string& flag) const {
+    return CHECK_RESULT(cluster_->GetFlag(cluster_->tablet_server(0), flag)) == "true";
+  }
+
   bool IsObjectLockingEnabled() const {
-    return ANNOTATE_UNPROTECTED_READ(FLAGS_enable_object_locking_for_table_locks);
+    return IsClusterFlagEnabled("enable_object_locking_for_table_locks");
   }
 
   bool IsTransactionalDdlEnabled() const {
-    return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
+    return IsClusterFlagEnabled("ysql_yb_ddl_transaction_block_enabled");
   }
 
   void CheckDroppedDatabaseError(const Status& status, Oid db_oid) {
@@ -125,7 +132,8 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   void RestartClusterWithInvalMessageMode(
       bool mode,
-      const std::vector<string>& extra_tserver_flags = {}) {
+      const std::vector<string>& extra_tserver_flags = {},
+      const std::vector<string>& extra_master_flags = {}) {
     const auto mode_str = mode ? "true" : "false";
     LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=" << mode_str;
     cluster_->Shutdown();
@@ -133,13 +141,14 @@ class PgCatalogVersionTest : public LibPqTestBase {
       auto* flags = cluster_->master(i)->mutable_flags();
       flags->push_back(Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
       flags->push_back("--log_ysql_catalog_versions=true");
-      // Object locking (and therefore concurrent DDL) requires invalidation messages, enforced by
-      // the cross-flag validators in common_flags.cc. So whenever invalidation messages are off,
-      // object locking and concurrent DDL must be off too, otherwise the daemons FATAL at startup.
+      // The new DDL mode requires invalidation messages, enforced by the cross-flag validators in
+      // common_flags.cc, so it must be off whenever invalidation messages are off, otherwise the
+      // daemons FATAL at startup.
       if (!mode) {
-        flags->push_back("--enable_object_locking_for_table_locks=false");
-        flags->push_back("--ysql_enable_concurrent_ddl=false");
-        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+        ToggleDDLMode(*flags, /* use_legacy = */ true);
+      }
+      for (const auto& flag : extra_master_flags) {
+        flags->push_back(flag);
       }
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -147,9 +156,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
       flags->push_back(Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
       flags->push_back("--log_ysql_catalog_versions=true");
       if (!mode) {
-        flags->push_back("--enable_object_locking_for_table_locks=false");
-        flags->push_back("--ysql_enable_concurrent_ddl=false");
-        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+        ToggleDDLMode(*flags, /* use_legacy = */ true);
       }
       for (const auto& flag : extra_tserver_flags) {
         flags->push_back(flag);
@@ -158,8 +165,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_OK(cluster_->Restart());
   }
   void RestartClusterWithInvalMessageEnabled(
-      const std::vector<string>& extra_tserver_flags = {}) {
-    RestartClusterWithInvalMessageMode(true /* mode */, extra_tserver_flags);
+      const std::vector<string>& extra_tserver_flags = {},
+      const std::vector<string>& extra_master_flags = {}) {
+    RestartClusterWithInvalMessageMode(true /* mode */, extra_tserver_flags, extra_master_flags);
   }
   void RestartClusterWithInvalMessageDisabled(
       const std::vector<string>& extra_tserver_flags = {}) {
@@ -1810,6 +1818,36 @@ TEST_F(PgCatalogVersionTest, CreateOrReplaceView) {
   ASSERT_EQ(result, expected_result2);
 }
 
+// A security_invoker view built by the relcache preload must check its base
+// tables as the invoking user, not the view owner.
+TEST_F(PgCatalogVersionTest, SecurityInvokerViewAfterRelCachePreload) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Execute("CREATE ROLE reader LOGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE secret_t (id int PRIMARY KEY, s text)"));
+  ASSERT_OK(conn.Execute("INSERT INTO secret_t VALUES (1, 'secret')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE VIEW v_inv WITH (security_invoker = true) AS SELECT * FROM secret_t"));
+  ASSERT_OK(conn.Execute("GRANT SELECT ON v_inv TO reader"));
+
+  const auto check_denied = [](PGConn& reader_conn) {
+    ASSERT_NOK_STR_CONTAINS(
+        reader_conn.Fetch("SELECT * FROM v_inv"), "permission denied for table secret_t");
+  };
+
+  auto reader_conn = ASSERT_RESULT(ConnectToDBAsUser(kYugabyteDatabase, "reader"));
+  ASSERT_NO_FATALS(check_denied(reader_conn));
+
+  // A breaking catalog version bump makes the reader's backend do a full
+  // catalog cache refresh, which rebuilds v_inv through the preload path.
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn));
+  WaitForCatalogVersionToPropagate();
+  ASSERT_NO_FATALS(check_denied(reader_conn));
+
+  RestartClusterWithDBCatalogVersionMode({"--ysql_catalog_preload_additional_tables=true"});
+  reader_conn = ASSERT_RESULT(ConnectToDBAsUser(kYugabyteDatabase, "reader"));
+  ASSERT_NO_FATALS(check_denied(reader_conn));
+}
+
 // This test does sanity check that invalidation messages are portable
 // across nodes and they are stable.
 TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
@@ -1994,8 +2032,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageQueueOverflowTest) {
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageExceedPgMaxNumMessagesTest) {
-  RestartClusterWithInvalMessageEnabled(
-      {"--ysql_yb_ddl_transaction_block_enabled=true"});
+  std::vector<std::string> extra_tserver_flags;
+  std::vector<std::string> extra_master_flags;
+  ToggleDDLMode(extra_tserver_flags, /* use_legacy = */ false);
+  ToggleDDLMode(extra_master_flags, /* use_legacy = */ false);
+  RestartClusterWithInvalMessageEnabled(extra_tserver_flags, extra_master_flags);
   auto conn_same_node = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(0)));
   auto conn_other_node = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(1)));
   ASSERT_OK(conn_same_node.Execute("SET log_min_messages = DEBUG1"));
@@ -2151,7 +2192,9 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
 }
 
 TEST_F(PgCatalogVersionTest, AnalyzeInsideDdlEventTrigger) {
-  RestartClusterWithInvalMessageEnabled();
+  // Under TSAN the script can outlast the default 10s expiration, purging early versions.
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_yb_invalidation_message_expiration_secs=36000" });
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
   const string query =
@@ -3305,22 +3348,22 @@ TEST_P(PgCatalogVersionConnManagerTest,
   master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  // #30148: in CM Auth Passthrough mode (default) the first auth prefetches at
-  // the global (template1) shared catalog version but rebuilds the relcache at
-  // the per-DB master version; the differing versions cost one extra master RPC.
   // #32063: the regular-backend auth prefetch is served from the response cache
   // when its version-keyed slot is warm. conn3 connects right after 200 version
-  // bumps, so the regular slot's warmth is timing-dependent -> 5 (hit) or 6 (miss).
-  // The same warmth timing applies in CM mode, where the #30148 extra RPC adds a
-  // constant +1 -> 6 (hit) or 7 (miss). The default global views (#30591) add one
-  // more relcache-rebuild read in CM mode -> up to 8.
+  // bumps, so the slot's warmth is timing-dependent -> 4 (hit) or 5 (miss).
+  // #30148: in CM Auth Passthrough mode (default) the first auth prefetches at
+  // the global (template1) shared catalog version but rebuilds the relcache at
+  // the per-DB master version; the differing versions cost one extra master RPC
+  // -> 5 (hit) or 6 (miss).
+  // Both modes include one read for the default global views (#30591), and catalog
+  // prefetch batching (#34114) reduces the relcache-rebuild reads.
   auto rebuild_delta = master_read_count_after - master_read_count_before;
   if (enable_ysql_conn_mgr) {
-    ASSERT_GE(rebuild_delta, 7);
-    ASSERT_LE(rebuild_delta, 8);
+    ASSERT_GE(rebuild_delta, 5);
+    ASSERT_LE(rebuild_delta, 6);
   } else {
-    ASSERT_GE(rebuild_delta, 6);
-    ASSERT_LE(rebuild_delta, 7);
+    ASSERT_GE(rebuild_delta, 4);
+    ASSERT_LE(rebuild_delta, 5);
   }
 }
 
@@ -3540,19 +3583,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
 TEST_P(PgCatalogVersionConnManagerOnlyTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerDdlVersionGapWait)) {
   cluster_->Shutdown();
-  // Concurrent DDL requires object locking, so whenever object locking is off, concurrent DDL
-  // must be off too, otherwise the daemons FATAL at startup.
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-    auto* flags = cluster_->master(i)->mutable_flags();
-    flags->push_back("--enable_object_locking_for_table_locks=false");
-    flags->push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(*cluster_->master(i)->mutable_flags(), /* use_legacy = */ true);
   }
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    auto* flags = cluster_->tablet_server(i)->mutable_flags();
-    flags->push_back("--enable_object_locking_for_table_locks=false");
-    flags->push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(*cluster_->tablet_server(i)->mutable_flags(), /* use_legacy = */ true);
   }
   ASSERT_OK(cluster_->Restart());
 
@@ -3952,6 +3987,236 @@ TEST_F(PgCatalogVersionTest, RelcacheInitFileRevalidationRace) {
   ASSERT_GT(revalidated, 0);
 }
 
+// Exercises the interaction between the two master paths that publish catalog versions: the
+// heartbeat cache (refreshed by a background task) and the ReleaseObjectLocksGlobal broadcast on
+// DDL commit, which reads pg_yb_catalog_version directly and bypasses that cache. Object locking
+// must be on, since without it there is no broadcast.
+class PgCatalogVersionFrozenCacheTest : public PgCatalogVersionTest {
+ protected:
+  // The fatal threshold, in seconds before scaling. Exact rather than random because the fixture
+  // zeroes ysql_stale_catalog_version_random_extra_seconds, so the test does not have to wait out
+  // the default [30, 180] s window.
+  //
+  // Must stay comfortably above one heartbeat interval: with the fix in place a heartbeat already
+  // in flight when a DDL commits can still deliver the pre-commit version, opening a transient
+  // stale episode that the next heartbeat closes. That benign race has been observed lasting
+  // ~1.1 s in a healthy cluster, so a 1 s threshold would make this test crash the very tserver
+  // it is asserting stays alive. Scaled by kTimeMultiplier so sanitizer builds, where everything
+  // runs ~3x slower, keep proportional headroom.
+  static constexpr int kThresholdSecs = 5;
+
+  // When false, there is no DDL-commit broadcast, so the heartbeat is the only way a new catalog
+  // version reaches a tserver that did not run the DDL.
+  virtual bool UseObjectLocking() const { return true; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
+    options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+
+    // Object locking requires DDL transaction blocks and invalidation messages (cross-flag
+    // validators in common_flags.cc). Invalidation messages matter without object locking too:
+    // only with them does the committing backend call SetTserverCatalogMessageList, which is
+    // what puts its own tserver ahead of the frozen cache.
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      ToggleDDLMode(*flags, /* use_legacy = */ !UseObjectLocking());
+      flags->push_back("--ysql_yb_enable_invalidation_messages=true");
+    }
+
+    // Make the staleness check fire fast and deterministically, so the test does not have to wait
+    // out the production window to observe a pre-fix crash.
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_stale_catalog_version_min_seconds=$0", kThresholdSecs * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(
+        "--ysql_stale_catalog_version_random_extra_seconds=0");
+  }
+};
+
+// Regression test for the tserver FATAL "Ignoring ysql db catalog version update: new version too
+// old". While the master's catalog versions cache is stale, the DDL-commit
+// ReleaseObjectLocksGlobal broadcast still reads pg_yb_catalog_version directly and pushes every
+// tserver forward. If that broadcast does not also feed the cache, heartbeats keep reporting the
+// stale version, and the tserver reads its own (correct, master-supplied) version as divergence
+// and crashes.
+//
+// Restarting clears the tserver's map but not the master's cache, so the next DDL commit's
+// broadcast re-establishes the same divergence. Whether it crashes a second time then depends on a
+// quiet DDL gap exceeding a fresh random threshold.
+//
+// Before the fix this crashes a tserver a second or two after the first DDL below. After it, the
+// broadcast installs its snapshot into the cache, so the heartbeat never regresses.
+TEST_F(
+    PgCatalogVersionFrozenCacheTest, BroadcastKeepsFrozenCacheFromCrashingTserver) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+
+  // Let the cache populate at least once, so the freeze below leaves it populated-but-stale
+  // rather than empty. An empty cache makes the heartbeat send no catalog versions at all, which
+  // would not reproduce the divergence.
+  auto cache_ready = cluster_->GetMasterLogWaiter("RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cache_ready.WaitFor(60s * kTimeMultiplier));
+
+  // Freeze the cache against *every* refresh path. TEST_simulate_catalog_version_refresh_failure
+  // is not sufficient here: it only stops the periodic task, while ysql_ddl_handler refreshes the
+  // cache on demand at each DDL commit, so the cache would never actually fall behind the table.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_pg_catalog_versions_cache_refresh", "true"));
+
+  const auto versions_before = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+
+  // Advance the catalog version several times. Each DDL commit broadcasts the new version to all
+  // tservers, moving them past whatever the frozen cache holds.
+  constexpr int kNumDdls = 5;
+  for (int i = 0; i != kNumDdls; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN c$0 INT", i));
+  }
+
+  // The test's own precondition check: if pg_yb_catalog_version did not actually advance, nothing
+  // could have pushed a tserver past the frozen cache and the scenario under test was never
+  // reached. Failing here rather than passing vacuously is the point.
+  const auto versions_after = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  ASSERT_TRUE(versions_before.contains(db_oid) && versions_after.contains(db_oid))
+      << "pg_yb_catalog_version has no row for db " << db_oid;
+  ASSERT_GT(versions_after.at(db_oid).current_version,
+            versions_before.at(db_oid).current_version)
+      << "Catalog version did not advance across " << kNumDdls << " DDLs, so this test is not "
+      << "exercising the bug";
+
+  // No further DDL runs from here, so nothing resets the staleness window. Wait out several
+  // multiples of the (already scaled) threshold, so a tserver that is going to abort has ample
+  // opportunity to do so before the assertions below.
+  SleepFor(1s * (kThresholdSecs + 10) * kTimeMultiplier);
+
+  // The pre-fix failure mode is a tserver process aborting on tablet_server.cc's staleness check.
+  cluster_->AssertNoCrashes();
+
+  // And the cluster must still be usable: a fresh connection performs catalog reads, and DDL
+  // still works, which would not hold if a tserver had been lost.
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn2.Execute("ALTER TABLE t ADD COLUMN c_final INT"));
+  ASSERT_OK(conn2.Fetch("SELECT * FROM t LIMIT 1"));
+}
+
+// Freezes the master's cache like the test above, but object locking is off, so there is no
+// DDL-commit broadcast. Only the tserver that ran the DDL gets the new catalog version, and every
+// heartbeat afterwards reports the frozen lower one. The staleness check must not abort on that:
+// pg_yb_catalog_version does hold the newer version, the master has simply not re-read it.
+class PgCatalogVersionFrozenCacheNoBroadcastTest : public PgCatalogVersionFrozenCacheTest {
+ protected:
+  bool UseObjectLocking() const override { return false; }
+};
+
+TEST_F(
+    PgCatalogVersionFrozenCacheNoBroadcastTest, FrozenCacheDoesNotCrashTserverAfterLocalInstall) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+
+  // The cache has to be populated before it is frozen. An empty one makes the heartbeat send no
+  // catalog versions at all, so the tserver never sees a version lower than its own and no stale
+  // episode ever starts.
+  auto cache_ready = cluster_->GetMasterLogWaiter("RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cache_ready.WaitFor(60s * kTimeMultiplier));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_pg_catalog_versions_cache_refresh", "true"));
+
+  // Unless a heartbeat reports a version below the one this tserver installed, the staleness
+  // path is never entered and the rest of the test passes without exercising anything.
+  LogWaiter stale_warning(
+      cluster_->tablet_server(0), "catalog version update: new version too old");
+
+  const auto versions_before = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+
+  constexpr int kNumDdls = 5;
+  for (int i = 0; i != kNumDdls; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN c$0 INT", i));
+  }
+
+  // Precondition: without a real advance in pg_yb_catalog_version nothing puts this tserver ahead
+  // of the frozen cache, and the test would pass vacuously.
+  const auto versions_after = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  ASSERT_TRUE(versions_before.contains(db_oid) && versions_after.contains(db_oid))
+      << "pg_yb_catalog_version has no row for db " << db_oid;
+  ASSERT_GT(versions_after.at(db_oid).current_version,
+            versions_before.at(db_oid).current_version)
+      << "Catalog version did not advance across " << kNumDdls << " DDLs, so this test is not "
+      << "exercising the bug";
+
+  // No more DDL from here, so nothing closes the staleness window: the tserver keeps receiving the
+  // frozen version for several multiples of the threshold.
+  SleepFor(1s * (kThresholdSecs + 10) * kTimeMultiplier);
+
+  ASSERT_TRUE(stale_warning.IsEventOccurred())
+      << "tserver never received a stale catalog version, so the check under test never ran";
+  cluster_->AssertNoCrashes();
+
+  // The tserver's version matches pg_yb_catalog_version exactly. That is what makes this
+  // episode a stale master cache rather than a tserver that is ahead of pg_yb_catalog_version
+  // itself. Index 0 is pg_ts, where the DDLs ran.
+  ASSERT_EQ(ASSERT_RESULT(GetShmDBCatalogVersion(0, db_oid)),
+            versions_after.at(db_oid).current_version);
+
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn2.Execute("ALTER TABLE t ADD COLUMN c_final INT"));
+  ASSERT_OK(conn2.Fetch("SELECT * FROM t LIMIT 1"));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_pg_catalog_versions_cache_refresh", "false"));
+  WaitForCatalogVersionToPropagate();
+  cluster_->AssertNoCrashes();
+}
+
+// The counterpart to the two tests above: they check that the staleness check tolerates a master
+// that has stopped reading pg_yb_catalog_version, and this one checks that it still aborts when
+// the master is reading normally and pg_yb_catalog_version really is behind. That case is
+// #34074, where a PITR restore of one database drops an already-committed DDL transaction
+// belonging to another, and the FATAL is the only signal that the write was lost.
+class PgCatalogVersionStaleFatalTest : public PgCatalogVersionTest {
+ protected:
+  // Exact rather than random: the fixture zeroes the random extra seconds so the test does not
+  // wait out the default [30, 180] s window.
+  static constexpr int kThresholdSecs = 5;
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_stale_catalog_version_min_seconds=$0", kThresholdSecs * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(
+        "--ysql_stale_catalog_version_random_extra_seconds=0");
+  }
+};
+
+TEST_F(PgCatalogVersionStaleFatalTest, TableBehindTserverCrashesTserver) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN c1 INT"));
+  WaitForCatalogVersionToPropagate();
+
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+
+  // Move pg_yb_catalog_version below what the tservers hold.
+  // yb_non_ddl_txn_for_sys_tables_allowed keeps the write itself from incrementing the version,
+  // so the master keeps reading normally: its reported read time advances while its versions
+  // stay behind. That is divergence, and it is what separates this case from a master that
+  // stopped reading.
+  ASSERT_OK(conn.ExecuteFormat(R"#(
+BEGIN;
+SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
+UPDATE pg_catalog.pg_yb_catalog_version SET current_version = current_version - 1
+    WHERE db_oid = $0;
+COMMIT;
+  )#", db_oid));
+
+  ASSERT_OK(cluster_->WaitForTSToCrash(
+      cluster_->tablet_server(0), (kThresholdSecs + 60) * 1s * kTimeMultiplier));
+}
+
 class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -3963,14 +4228,8 @@ class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
     // CatalogVersionChecker (GetYsqlDBCatalogVersion). With object locking enabled,
     // CatalogVersionChecker short-circuits and never reads the catalog version, so the
     // cache is not exercised. Disable object locking to avoid this.
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent (and allow-list the
-    // preview flag so its non-default value is permitted).
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
   }
 };
 
@@ -4093,11 +4352,7 @@ class PgCatalogVersionMasterFailoverTest : public PgCatalogVersionTest {
       // With object locking, releasing the DDL's exclusive lock pushes catalog versions and
       // invalidation messages from the master to every tserver, bypassing the heartbeat. This
       // test needs the heartbeat to be the only path that carries them to the observer node.
-      flags->push_back("--enable_object_locking_for_table_locks=false");
-      // Concurrent DDL requires object locking, so keep the two flags consistent (and allow-list
-      // the preview flag so its non-default value is permitted).
-      flags->push_back("--ysql_enable_concurrent_ddl=false");
-      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      ToggleDDLMode(*flags, /* use_legacy = */ true);
     }
   }
 };

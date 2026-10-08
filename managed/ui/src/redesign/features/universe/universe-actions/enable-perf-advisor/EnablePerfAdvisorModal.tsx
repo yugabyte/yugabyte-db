@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import { YBModal, YBRadioGroup, YBSelect } from '../../../../components';
+import { AlertVariant, YBAlert, YBModal, YBRadioGroup, YBSelect } from '../../../../components';
 import { PaRegistrationMode, PerfAdvisorAPI, QUERY_KEY } from '../../../PerfAdvisor/api';
 import { useListPerfAdvisorEndpoints } from '../../../../../v2/api/perf-advisor-endpoint/perf-advisor-endpoint';
 import { Universe } from '../../universe-form/utils/dto';
@@ -163,14 +163,37 @@ export const EnablePerfAdvisorModal = ({
       : [])
   ];
 
-  const bodyContent = enableAdvancedObservabilityOnly ? (
-    <Box component="span" display="block">
-      <Trans
-        i18nKey="universeActions.paUniverseStatus.enableAdvancedObservabilitySubText"
-        values={{ universeName: universeData.name }}
-        components={{ strong: <strong /> }}
+  const showLicenseNotice =
+    enableAdvancedObservabilityOnly ||
+    (!isUniverseRegisteredToPA && mode === PaRegistrationMode.ADVANCED);
+
+  const licenseNotice = (
+    <Box mt={2}>
+      <YBAlert
+        open
+        variant={AlertVariant.Warning}
+        dataTestId="EnablePerfAdvisorModal-LicenseNotice"
+        text={
+          <Trans
+            i18nKey="universeActions.paUniverseStatus.advancedObservabilityLicenseNotice"
+            components={{ strong: <strong /> }}
+          />
+        }
       />
     </Box>
+  );
+
+  const bodyContent = enableAdvancedObservabilityOnly ? (
+    <>
+      <Box component="span" display="block">
+        <Trans
+          i18nKey="universeActions.paUniverseStatus.enableAdvancedObservabilitySubText"
+          values={{ universeName: universeData.name }}
+          components={{ strong: <strong /> }}
+        />
+      </Box>
+      {licenseNotice}
+    </>
   ) : disableAdvancedObservabilityOnly ? (
     <Box component="span" display="block">
       <Trans
@@ -200,6 +223,7 @@ export const EnablePerfAdvisorModal = ({
           />
         </Box>
       )}
+      {showLicenseNotice && licenseNotice}
       {!isUniverseRegisteredToPA && mode === PaRegistrationMode.ONLINE && (
         <Box mt={2} display="flex" flexDirection="column" gridGap={8}>
           <Typography variant="body2">
@@ -247,6 +271,9 @@ export const EnablePerfAdvisorModal = ({
       <Box
         display="flex"
         width="100%"
+        // Capped whatever the mode: the dialog is fit-content, so a cap that came and went with
+        // the notice resized it whenever the mode changed.
+        maxWidth={600}
         flexDirection="column"
         pt={2}
         pb={2}

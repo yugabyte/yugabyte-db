@@ -38,6 +38,11 @@ class TserverXClusterContextIf {
   virtual XClusterNamespaceInfoPB_XClusterRole GetXClusterRole(
       NamespaceIdView namespace_id) const = 0;
 
+  // Highest OID cache invalidation count received from master; bumped to invalidate every
+  // TServer's OID caches.  Fails if this TServer does not currently hold a xCluster-guarded
+  // information lease.
+  virtual Result<uint32_t> GetOidCacheInvalidationsCount() const = 0;
+
   virtual bool IsReadOnlyMode(NamespaceIdView namespace_id) const = 0;
   virtual bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const = 0;
 

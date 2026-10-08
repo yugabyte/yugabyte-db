@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_value.h"
 #include "yb/gutil/integral_types.h"
 
@@ -71,7 +72,6 @@ DECLARE_bool(TEST_sort_auto_analyze_target_table_ids);
 DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
 DECLARE_int64(TEST_delay_after_table_analyze_ms);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_user_ddls_preempt_auto_analyze);
 DECLARE_uint64(TEST_ysql_auto_analyze_max_history_entries);
 DECLARE_int32(ysql_auto_analyze_max_retry_backoff);
@@ -1626,6 +1626,18 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_LT(start_time, history_event["timestamp"].GetInt64());
   // cooldown value is stored in microseconds and its flag value is in unit of miliseconds.
   ASSERT_EQ(1000 * cooldown_value, history_event["cooldown"].GetInt64());
+
+  // Auto-analyze on this node should publish last_autoanalyze, not last_analyze.
+  auto [has_last_analyze, has_last_autoanalyze, analyze_count, autoanalyze_count] =
+      ASSERT_RESULT((conn.FetchRow<bool, bool, PGUint64, PGUint64>(
+          Format("SELECT last_analyze IS NOT NULL, last_autoanalyze IS NOT NULL, "
+                 "analyze_count, autoanalyze_count "
+                 "FROM pg_stat_user_tables WHERE schemaname = '$0' AND relname = '$1'",
+                 schema_name, table_name))));
+  ASSERT_FALSE(has_last_analyze);
+  ASSERT_TRUE(has_last_autoanalyze);
+  ASSERT_EQ(0, analyze_count);
+  ASSERT_GE(autoanalyze_count, 1);
 }
 
 // yb_stat_auto_analyze must keep reporting pg_class.oid after a rewrite, when
@@ -1831,17 +1843,8 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back("--ysql_yb_user_ddls_preempt_auto_analyze=true");
     // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
     // prevents this so we're disabling it to keep the test's original intent.
-    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-
-    // The test is specifically written for cases when txn ddl is disabled.
-    // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
@@ -2043,20 +2046,7 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
     ts2->Shutdown(SafeShutdown::kFalse);
 }
 
-class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
- protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
-  }
-};
-
-TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeTxnDDLMode) {
-  testConcurrentDDLAnalyze();
-}
-
-TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeMultiTable) {
+TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLAnalyzeMultiTable) {
   auto* ts1 = cluster_->tserver_daemons()[0];
   auto* ts2 = cluster_->tserver_daemons()[1];
 

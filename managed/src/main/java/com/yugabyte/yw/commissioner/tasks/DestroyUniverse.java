@@ -197,6 +197,9 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
+      // After node teardown. A force delete removes the universe even if a delete fails.
+      createDeleteManagedLoadBalancerTasks(lb -> true, params().isForceDelete /* ignoreErrors */);
+
       // Create tasks to remove the universe entry from the Universe table.
       createRemoveUniverseEntryTask().setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 

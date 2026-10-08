@@ -20,6 +20,7 @@
 
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_format.h"
@@ -464,7 +465,7 @@ void MetricEntity::NeverRetire(const scoped_refptr<Metric>& metric) {
 }
 
 std::string MetricEntity::LogPrefix() const {
-    return strings::Substitute("$0 Metric entity [$1]: ", prototype_->name(), id_);
+    return Format("$0 Metric entity [$1]: ", prototype_->name(), id_);
 }
 
 void MetricEntity::SetAttributes(const AttributeMap& attrs) {

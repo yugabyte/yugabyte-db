@@ -20,6 +20,7 @@ export PROJECT_DIR="$project_dir"
 export GOPATH=$project_dir/third-party
 export GOBIN=$GOPATH/bin
 export PATH=$GOBIN:$PATH
+export GO_LDFLAGS="-w"
 mkdir -p "$GOBIN"
 
 readonly build_output_dir="${project_dir}/build"
@@ -155,13 +156,23 @@ prepare() {
     generate_golang_grpc_files
 }
 
+# The FIPS 140-3 validated build of the Go Cryptographic Module: v1.0.0 is CMVP certificate
+# #5247. Building with it links that module and defaults the binary to GODEBUG=fips140=on, which
+# "go version -m <binary>" records. Overridable so a build can be pointed at a newer module once
+# one is certified, but the default is the certified one - not the newest.
+GOFIPS140_VERSION="${GOFIPS140_VERSION:-v1.0.0}"
+GO_LDFLAGS_ARGS=()
+if [[ -n "$GO_LDFLAGS" ]]; then
+    GO_LDFLAGS_ARGS=(-ldflags "$GO_LDFLAGS")
+fi
+
 build_ynp_go() {
     local exec_name=$(get_ynp_executable_name "$os" "$arch")
     local executable="$build_output_dir/$exec_name"
     pushd "$project_dir"
     echo "Building ${exec_name}"
-    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
-    go build -o "$executable" "$project_dir"/ynp/cmd/main.go
+    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 GOFIPS140="$GOFIPS140_VERSION" \
+    go build "${GO_LDFLAGS_ARGS[@]}" -o "$executable" "$project_dir"/ynp/cmd/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
         exit 1
@@ -177,8 +188,8 @@ build_for_platform() {
     local executable="$build_output_dir/$exec_name"
     pushd "$project_dir"
     echo "Building ${exec_name}"
-    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
-    go build -o "$executable" "$project_dir"/cmd/cli/main.go
+    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 GOFIPS140="$GOFIPS140_VERSION" \
+    go build "${GO_LDFLAGS_ARGS[@]}" -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
         exit 1

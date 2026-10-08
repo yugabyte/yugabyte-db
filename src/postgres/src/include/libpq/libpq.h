@@ -127,6 +127,12 @@ extern PGDLLIMPORT bool SSLPreferServerCiphers;
 extern PGDLLIMPORT int ssl_min_protocol_version;
 extern PGDLLIMPORT int ssl_max_protocol_version;
 
+/*
+ * YB: Conn Mgr mirrors these values (and the TLSv1/TLSv1.1/... name strings)
+ * in src/odyssey/third_party/machinarium/sources/yb_pg_tls_link_support.h.  If a
+ * security or protocol update changes this enum or the GUC name table in
+ * guc.c (ssl_protocol_versions_info), update that Conn Mgr copy too.
+ */
 enum ssl_protocol_versions
 {
 	PG_TLS_ANY = 0,

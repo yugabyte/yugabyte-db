@@ -14,6 +14,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
@@ -26,6 +28,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+DECLARE_bool(openssl_require_fips);
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
@@ -145,11 +148,10 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
     "milliseconds for an available server. Disconnect client on timeout reach. "
     "If the value is set to zero, the client waits for the server connection indefinitely");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
-    "Enable optimized extended query protocol in Ysql Connection Manager. "
-    "If set to false, extended query protocol handling is fully correct but unoptimized.");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_optimized_extended_query_protocol, "10_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_prep_stmt_close, "07_2026");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_parse_queue_tracking, "09_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_dealloc_reconciliation, "07_2026");
 
@@ -190,13 +192,6 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
     "logs after every ysql_conn_mgr_dump_heap_snapshot_interval number of seconds.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
-    "Enables tracking of in-flight Parse operations in the YSQL Connection Manager. "
-    "This is used so that prepared-statement state tracked on the Connection Manager can be "
-    "reconciled with the backend when errors disrupt the expected packet sequence. When "
-    "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
-    "the backend, which may surface as errors such as 'prepared statement does not exist'.");
-
 DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
     "When enabled, the YSQL Connection Manager stops reading further client packets after "
     "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
@@ -227,6 +222,23 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
     "Maximum number of pending TCP connections queued by the kernel on "
     "Connection Manager's listening socket (the backlog argument to listen(2)). "
     "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, full_tls_handshake, true,
+    "When true, Ysql Connection Manager builds its server SSL_CTX via PostgreSQL's "
+    "be_tls_init() so the client-facing TLS handshake honours the full set of "
+    "PostgreSQL SSL GUCs (ssl_ciphers, ssl_min_protocol_version, ssl_ecdh_curve, "
+    "ssl_crl_file, ssl_dh_params_file, etc.). When false, the connection manager "
+    "falls back to the original machinarium-managed SSL_CTX that only honours the "
+    "cert/key/CA files derived from certs_for_client_dir.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, cert_auth, true,
+    "When true, Ysql Connection Manager forwards the leaf certificate presented by the client "
+    "to the backend in the startup packet, so that hba rules that depend on it (cert, "
+    "clientcert=verify-ca, clientcert=verify-full) are evaluated against the real client's "
+    "identity instead of the connection manager's. When false, no certificate is forwarded and "
+    "such rules see a client that presented none. Requires ysql_conn_mgr_full_tls_handshake, "
+    "which is what makes the connection manager verify the client certificate the same way "
+    "PostgreSQL would.");
 
 namespace {
 
@@ -265,6 +277,9 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 } // namespace
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
+
+DEFINE_validator(ysql_conn_mgr_cert_auth,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_full_tls_handshake));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -367,6 +382,17 @@ Status YsqlConnMgrWrapper::Start() {
   }
 
   proc_->SetEnv(YSQL_CONN_MGR_WARMUP_DB, FLAGS_ysql_conn_mgr_warmup_db);
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_FULL_TLS_HANDSHAKE",
+      FLAGS_ysql_conn_mgr_full_tls_handshake ? "true" : "false");
+
+  rpc::SetOpenSSLEnv(&*proc_);
+
+  // Conn mgr cannot tell from OPENSSL_CONF alone that FIPS was required, since that variable can
+  // also be inherited from this process's environment, so pass the intent separately. It refuses
+  // to start if the provider did not come up.
+  proc_->SetEnv(YSQL_CONN_MGR_REQUIRE_FIPS, FLAGS_openssl_require_fips ? "true" : "false");
 
 #ifdef THREAD_SANITIZER
   // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.

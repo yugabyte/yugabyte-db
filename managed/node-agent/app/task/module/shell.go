@@ -45,6 +45,20 @@ type CommandInfo struct {
 	StdErr util.Buffer
 }
 
+// SetupOutputForwarding sets up output forwarding to the logOut buffer.
+func (cmdInfo *CommandInfo) SetupOutputForwarding(ctx context.Context, logOut util.Buffer) {
+	if logOut != nil {
+		// Preference is given to the first buffer for all methods.
+		// Do not pollute the StdOut and StdErr buffers with the logOut buffer
+		// because the command output is used to take subsequent actions.
+		if util.FileLogger().IsDebugEnabled(ctx) {
+			// Forward the command output only if debug logging is enabled.
+			cmdInfo.StdOut = util.NewMultiBuffer(cmdInfo.StdOut, logOut)
+		}
+		cmdInfo.StdErr = util.NewMultiBuffer(cmdInfo.StdErr, logOut)
+	}
+}
+
 // RedactCommandArgs redacts the command arguments and returns them.
 func (cmdInfo *CommandInfo) RedactCommandArgs() []string {
 	redacted := []string{}
@@ -164,6 +178,7 @@ func RunSteps(
 			StdOut: util.NewBuffer(MaxBufferCapacity),
 			StdErr: util.NewBuffer(MaxBufferCapacity),
 		}
+		cmdInfos[i].SetupOutputForwarding(ctx, logOut)
 	}
 	return createCmds(
 		ctx,
@@ -200,6 +215,7 @@ func RunShellCmd(
 		StdOut: util.NewBuffer(MaxBufferCapacity),
 		StdErr: util.NewBuffer(MaxBufferCapacity),
 	}
+	cmdInfo.SetupOutputForwarding(ctx, logOut)
 	if logOut != nil {
 		logOut.WriteLine("Running shell command for %s", desc)
 	}

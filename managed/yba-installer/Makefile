@@ -7,6 +7,13 @@ BUILD_ID ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.build_id')
 
 # go compile options
 GOOS ?= linux
+
+# The FIPS 140-3 validated build of the Go Cryptographic Module: v1.0.0 is CMVP certificate
+# #5247. Building with it links that module and defaults the binary to GODEBUG=fips140=on, which
+# "go version -m <binary>" records. Overridable so a build can be pointed at a newer module once
+# one is certified, but the default is the certified one - not the newest.
+GOFIPS140 ?= v1.0.0
+
 GOARCH ?= amd64
 
 # Build Tags
@@ -32,7 +39,7 @@ CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 # get the perf advisor version to bundle
-PERF_ADVISOR_VERSION ?= 1.4.0-b12
+PERF_ADVISOR_VERSION ?= 1.7.0-b2
 PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
 PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/$(PERF_ADVISOR_VERSION)/$(PA_BINARY_NAME)
 PA_BINARY_SHA_URL := $(PA_BINARY_URL).sha
@@ -47,11 +54,12 @@ PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 PROMETHEUS_VERSION ?= 3.13.1
 
 # Node Exporter Version
-NODE_EXPORTER_VERSION ?= 1.10.2
+NODE_EXPORTER_VERSION ?= 1.12.1-fips
 
-# https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
+# https://github.com/yugabyte/yba-pg-build
 POSTGRES_VERSION ?= 14.23
-PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
+# Built against a bundled OpenSSL 3 with the validated FIPS provider, instead of the system 1.1.1.
+PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}-openssl3.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 
 # https://adoptium.net/temurin/releases/
@@ -186,7 +194,7 @@ ${PREREQS_DIR}/${YSQL_DUMP_CLIENT_BUNDLE}:
 
 yba-ctl: config test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
-	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
+	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOFIPS140=${GOFIPS140} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.Version=${VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PostgresVersion=${POSTGRES_VERSION}' \
@@ -205,7 +213,7 @@ ${PACKAGE_NAME}: prereqs yba-ctl
 licensectl: test ${BIN_DIR}/${LICENSE_GEN}
 ${BIN_DIR}/${LICENSE_GEN}:
 	cd licensectl && \
-	  CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o ../$@
+	  CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOFIPS140=${GOFIPS140} go build -a -o ../$@
 
 .PHONY: clean clean-bin clean-prereqs clean-package
 clean: clean-bin clean-prereqs clean-package

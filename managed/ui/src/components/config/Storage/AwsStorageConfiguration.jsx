@@ -4,7 +4,6 @@ import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import './StorageConfiguration.scss';
 
@@ -36,41 +35,35 @@ class AwsStorageConfiguration extends Component {
    *
    * @param {object} data Respective row deatils.
    * @param {string} configName Input field name.
-   * @param {boolean} iamRoleEnabled IAM enabled state.
+   * @param {boolean} credentialsDisabled True when a role-based option supplies the credentials.
    * @returns true
    */
-  disableInputFields = (isEdited, configName, iamRoleEnabled = false, inUse) => {
+  disableInputFields = (isEdited, configName, credentialsDisabled = false, inUse) => {
     if (isEdited && (configName === 'S3_BACKUP_LOCATION' || configName === 'AWS_HOST_BASE')) {
       return true;
     }
 
     if (
-      iamRoleEnabled &&
+      credentialsDisabled &&
       (configName === 'AWS_ACCESS_KEY_ID' || configName === 'AWS_SECRET_ACCESS_KEY')
     ) {
       return true;
     }
   };
 
-  componentDidMount = () => {
-    const { customerConfigs } = this.props;
-    const s3Config = customerConfigs?.data.find((config) => config.name === 'S3');
-    const config = s3Config ? s3Config.data : {};
-    if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === 'true') {
-      this.setState({ iamRoleEnabled: true });
-    }
-  };
-
   render() {
     const {
+      showFederatedIam,
       isEdited,
-      iamInstanceToggle,
       iamRoleEnabled,
+      federatedIamEnabled,
       enablePathStyleAccess,
       enableChunkedEncoding,
       enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
+    // Either kind of role-based access means no access keys are entered or stored.
+    const credentialsDisabled = iamRoleEnabled || federatedIamEnabled;
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -102,18 +95,38 @@ class AwsStorageConfiguration extends Component {
               <Field
                 name="IAM_INSTANCE_PROFILE"
                 component={YBToggle}
-                onToggle={iamInstanceToggle}
                 isReadOnly={this.disableInputFields(isEdited, 'IAM_INSTANCE_PROFILE')}
                 subLabel="Whether to use instance's IAM role for S3 backup."
               />
             </Col>
           </Row>
+          {showFederatedIam && (
+          <Row className="config-provider-row">
+            <Col lg={2}>
+              <div className="form-item-custom-label">Federated IAM</div>
+            </Col>
+            <Col lg={9}>
+              <Field
+                name="FEDERATED_IAM"
+                component={YBToggle}
+                isReadOnly={this.disableInputFields(isEdited, 'FEDERATED_IAM')}
+                subLabel="Whether to use cross-cloud federated IAM for S3 backup."
+              />
+            </Col>
+            <Col lg={1} className="config-zone-tooltip">
+              <YBInfoTip
+                title="Federated IAM"
+                content="For GCP database nodes backing up to S3. Each node exchanges its GCP identity for temporary AWS credentials, so no access keys are stored."
+              />
+            </Col>
+          </Row>
+          )}
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Access Key</div>
             </Col>
             <Col lg={9}>
-              {iamRoleEnabled ? (
+              {credentialsDisabled ? (
                 <Field
                   name="AWS_ACCESS_KEY_ID"
                   placeHolder="AWS Access Key"
@@ -121,7 +134,7 @@ class AwsStorageConfiguration extends Component {
                   isReadOnly={this.disableInputFields(
                     isEdited,
                     'AWS_ACCESS_KEY_ID',
-                    iamRoleEnabled
+                    credentialsDisabled
                   )}
                 />
               ) : (
@@ -133,7 +146,7 @@ class AwsStorageConfiguration extends Component {
                   isReadOnly={this.disableInputFields(
                     isEdited,
                     'AWS_ACCESS_KEY_ID',
-                    iamRoleEnabled
+                    credentialsDisabled
                   )}
                 />
               )}
@@ -144,7 +157,7 @@ class AwsStorageConfiguration extends Component {
               <div className="form-item-custom-label">Access Secret</div>
             </Col>
             <Col lg={9}>
-              {iamRoleEnabled ? (
+              {credentialsDisabled ? (
                 <Field
                   name="AWS_SECRET_ACCESS_KEY"
                   placeHolder="AWS Access Secret"
@@ -152,7 +165,7 @@ class AwsStorageConfiguration extends Component {
                   isReadOnly={this.disableInputFields(
                     isEdited,
                     'AWS_SECRET_ACCESS_KEY',
-                    iamRoleEnabled
+                    credentialsDisabled
                   )}
                 />
               ) : (
@@ -164,7 +177,7 @@ class AwsStorageConfiguration extends Component {
                   isReadOnly={this.disableInputFields(
                     isEdited,
                     'AWS_SECRET_ACCESS_KEY',
-                    iamRoleEnabled
+                    credentialsDisabled
                   )}
                 />
               )}

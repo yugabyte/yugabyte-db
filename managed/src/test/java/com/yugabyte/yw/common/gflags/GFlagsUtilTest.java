@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
@@ -805,7 +806,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
         "Xv|k)=4#|Z{n1Q@rp",
         "cost$1\\2",
         "weird\"pwd\"",
-        "密码🔐",
+        "\u5bc6\u7801\ud83d\udd10",
         "a,b,cd",
         "line1\nline2",
       };
@@ -936,5 +937,124 @@ public class GFlagsUtilTest extends FakeDBApplication {
       return password.replace("\n", "\\n");
     }
     return password.substring(0, 20).replace("\n", "\\n") + "...";
+  }
+
+  @Test
+  public void testValidateFipsCompliancyAllowsProvidersWithNodeProvisioning() {
+    // Kubernetes runs the database from a container image carrying the validated module; the
+    // others have their node OS put into FIPS mode during provisioning.
+    for (Common.CloudType providerType :
+        List.of(
+            Common.CloudType.kubernetes,
+            Common.CloudType.aws,
+            Common.CloudType.gcp,
+            Common.CloudType.azu,
+            Common.CloudType.oci,
+            Common.CloudType.onprem)) {
+      UserIntent userIntent = new UserIntent();
+      userIntent.providerType = providerType;
+      GFlagsUtil.validateFipsCompliancy(userIntent, true);
+    }
+  }
+
+  @Test
+  public void testValidateFipsCompliancyRejectsProvidersWithoutNodeProvisioning() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.local;
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+    assertEquals(
+        "FIPS compliant universes are not supported on provider(s): [local]",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyIgnoresProviderWhenFipsIsOff() {
+    // The provider restriction only applies to a FIPS enabled universe.
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.local;
+
+    GFlagsUtil.validateFipsCompliancy(userIntent, false);
+  }
+
+  @Test
+  public void testValidateFipsCompliancyRejectsDisablingTheFipsGFlag() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.aws;
+    userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"),
+            Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+    assertEquals(
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyRejectsHelmOverridesDisablingTheFipsGFlag() {
+    // Helm overrides are merged over the generated gflags, so they are checked like specificGFlags.
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.kubernetes;
+    userIntent.universeOverrides = "gflags:\n  master:\n    openssl_require_fips: \"false\"\n";
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+    assertEquals(
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
+            + " set master openssl_require_fips to false",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesChecksAzOverridesAndYamlBooleans() {
+    // A YAML boolean is as much a way to turn the flag off as the quoted string is.
+    Map<String, String> azOverrides =
+        Map.of("az-1", "gflags:\n  tserver:\n    openssl_require_fips: false\n");
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancyOfHelmOverrides("", azOverrides, true));
+    assertEquals(
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
+            + " set tserver openssl_require_fips to false",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesRejectsUnparseableYaml() {
+    // Overrides the check cannot read are not accepted, since the flag could be hidden in them.
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancyOfHelmOverrides("not: [valid", null, true));
+    assertTrue(
+        exception.getLocalizedMessage(),
+        exception.getLocalizedMessage().startsWith("Kubernetes overrides are not valid YAML: "));
+    // Only a FIPS universe is checked.
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides("not: [valid", null, false);
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesAllowsOtherOverrides() {
+    String universeOverrides =
+        "gflags:\n  master:\n    openssl_require_fips: \"true\"\n"
+            + "  tserver:\n    ysql_enable_auth: \"true\"\n"
+            + "tserver:\n  podLabels:\n    env: test\n";
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(universeOverrides, null, true);
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(null, null, true);
+    // Nothing is checked on a non-FIPS YBA.
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
+        "gflags:\n  master:\n    openssl_require_fips: \"false\"\n", null, false);
   }
 }

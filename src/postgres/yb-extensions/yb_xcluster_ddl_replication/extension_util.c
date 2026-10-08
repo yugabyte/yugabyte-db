@@ -21,11 +21,15 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_extension_d.h"
 #include "catalog/pg_type.h"
 #include "executor/spi.h"
 #include "extension_util.h"
+#include "nodes/parsenodes.h"
+#include "parser/parse_relation.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -264,6 +268,19 @@ IsTemporaryRule(Oid rule_oid)
 	return IsTemporaryHelper("rule", rule_oid, "pg_rewrite", "ev_class");
 }
 
+bool
+CreateTableAsUsesTempRelation(CollectedCommand *cmd)
+{
+	if (cmd == NULL || cmd->type != SCT_Simple ||
+		!IsA(cmd->parsetree, CreateTableAsStmt))
+		return false;
+
+	Node	   *query = castNode(CreateTableAsStmt, cmd->parsetree)->query;
+
+	return query != NULL && IsA(query, Query) &&
+		isQueryUsingTempRelation((Query *) query);
+}
+
 Oid
 GetColocationIdForTableRewrite(Relation *rel)
 {
@@ -339,4 +356,50 @@ IsExtensionDdl(CommandTag command_tag)
 	}
 
 	return false;
+}
+
+bool
+ShouldReplicateAnalyzedRelation(Oid relid)
+{
+	HeapTuple	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+
+	if (!HeapTupleIsValid(tuple))
+		return false;
+
+	Form_pg_class relform = (Form_pg_class) GETSTRUCT(tuple);
+	Oid			relnamespace = relform->relnamespace;
+	bool		is_temp = (relform->relpersistence == RELPERSISTENCE_TEMP);
+	char		relkind = relform->relkind;
+
+	ReleaseSysCache(tuple);
+
+	/* Temporary relations are session local and are never replicated. */
+	if (is_temp)
+		return false;
+
+	if (relkind != RELKIND_RELATION && relkind != RELKIND_MATVIEW &&
+		relkind != RELKIND_PARTITIONED_TABLE)
+		return false;
+
+	char	   *nspname = get_namespace_name(relnamespace);
+
+	if (!nspname)
+		return false;
+
+	/*
+	 * System catalogs and information_schema are maintained
+	 * independently by each universe.
+	 */
+	if (IsCatalogRelationOid(relid) ||
+		strcmp(nspname, "information_schema") == 0)
+		return false;
+
+	/*
+	 * The extension's own tables are replicated as ordinary data; there is no
+	 * point in refreshing statistics for them on the target.
+	 */
+	if (strcmp(nspname, EXTENSION_NAME) == 0)
+		return false;
+
+	return true;
 }

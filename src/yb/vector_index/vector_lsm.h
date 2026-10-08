@@ -163,6 +163,11 @@ class VectorLSM {
   Result<size_t> TotalEntries() const;
 
   Status Flush(bool wait);
+  // Waits for insert tasks already allocated when the wait started (including those that raced
+  // onto a new chunk after DoFlush), then drains the flush queue. A waited insert can RollChunk
+  // and re-fill the queue. Leftover in-memory entries are not flushed here; CreateSplitChildTablet
+  // issues a second vector Flush before CreateCheckpoint. Inserts that allocate after the epoch
+  // advances are not waited, so continuous ingest cannot stall this.
   Status WaitForFlush();
 
   // Vector LSM starts with background compactions disabled, they must be enabled explicitly
@@ -182,6 +187,14 @@ class VectorLSM {
 
   // Returns the total size in bytes of the immutable chunk files currently on disk.
   uint64_t OnDiskSize() const EXCLUDES(mutex_);
+
+  // Returns the minimum serial_no among manifested chunks that have actual data (file != null).
+  // Returns std::nullopt if there are no data chunks.
+  std::optional<uint64_t> MinSerialNo() const EXCLUDES(mutex_);
+
+  // Returns the serial_no that was assigned to the most recently created chunk.
+  // New chunks will get serial_no > this value.
+  uint64_t LastSerialNo() const EXCLUDES(mutex_);
 
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
@@ -238,6 +251,7 @@ class VectorLSM {
   Status RollChunk(
       size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
+  void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
   bool FlushesRetiredUnlocked() const REQUIRES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
@@ -278,7 +292,6 @@ class VectorLSM {
       VectorIndex& index, uint64_t serial_no, const VectorLSMChunkFileSizes& sizes);
 
   uint64_t NextSerialNo() EXCLUDES(mutex_);
-  uint64_t LastSerialNo() const EXCLUDES(mutex_);
 
   void DoDeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
   void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);

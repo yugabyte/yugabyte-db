@@ -15,6 +15,8 @@
 #include <unordered_set>
 #include <gmock/gmock.h>
 
+#include "yb/common/ddl_mode-test-util.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -250,12 +252,11 @@ class PgBuiltinGlobalViewsTest : public LibPqTestBase {
     AppendCsvFlagValue(tserver_flags, kYsqlPgConfCsv, "yb_pg_stat_plans_track=top");
     AppendCsvFlagValue(tserver_flags, kYsqlPgConfCsv, "track_functions='all'");
     tserver_flags.push_back("--ysql_yb_ash_sampling_interval_ms=50");
-    tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
 
-    // CDC decoding transiently misses schema packing; silence the debug DCHECK
-    // (no-op in release), as other CDC consumption tests do.
-    tserver_flags.push_back("--TEST_dcheck_for_missing_schema_packing=false");
-    options->extra_master_flags.push_back("--TEST_dcheck_for_missing_schema_packing=false");
+    // TestAdHocCreation runs DDL inside a transaction block and expects it to be part of that
+    // transaction, so it needs the new DDL mode in every build type.
+    ToggleDDLMode(tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
   }
 
  protected:
@@ -711,6 +712,24 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 1, 0));
   }
 
+  // Not-equal on the partition-key column prunes the matching tserver away.
+  // uuid's <> has equality as its negator (which is in the partition opfamily),
+  // so LIST pruning drops exactly ts0 and keeps the other two.
+  {
+    const auto sql = Format(base_query, Format("server_uuid != '$0' AND", tserver0_uuid));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
+              (std::set<std::string>{tserver1_uuid, tserver2_uuid}));
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 1, 1));
+  }
+
+  // NOT IN is "<> ALL", pruned the same way: only ts2 survives.
+  {
+    const auto sql = Format(base_query,
+        Format("server_uuid NOT IN ('$0', '$1') AND", tserver0_uuid, tserver1_uuid));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)), std::set<std::string>{tserver2_uuid});
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 0, 1));
+  }
+
   // No-match UUID -> no tservers visited. With every per-tserver child pruned
   // away, the planner collapses the Append into a dummy Result with
   // "One-Time Filter: false", so no Foreign Scan (and no remote RPC) survives.
@@ -725,14 +744,15 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 0, 0));
   }
 
-  // OR on the same column is intentionally not pruned by this pass - it should
-  // still produce all per-tserver children (and not crash). baserestrictinfo
-  // is an implicit-AND list, so a top-level OR appears as one BoolExpr(OR_EXPR)
-  // entry that our IsA(OpExpr)/IsA(ScalarArrayOpExpr) checks deliberately skip.
+  // OR on the partition-key column IS pruned by the core planner: it lowers the
+  // boolean tree into partition-pruning combine steps, so "IN (a) OR = b"
+  // narrows the plan to exactly {a, b}. (The name is kept for the reused checks
+  // below.)
   const auto two_tservers_query_with_or_clause = Format(base_query,
       Format("(server_uuid IN ('$0') OR server_uuid = '$1') AND",
              tserver0_uuid, tserver1_uuid));
-  ASSERT_EQ(ASSERT_RESULT(plan_visits(two_tservers_query_with_or_clause)), all_uuids);
+  ASSERT_EQ(ASSERT_RESULT(plan_visits(two_tservers_query_with_or_clause)),
+            (std::set<std::string>{tserver0_uuid, tserver1_uuid}));
 
   // AND of two recognized clauses intersects -> only the overlap is visited and
   // gets an RPC.
@@ -745,16 +765,16 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 0, 0));
   }
 
-  // a OR (b AND c) with each of a/b/c on server_uuid: top-level is an OR
-  // BoolExpr, so we don't prune anything.
+  // a OR (b AND c) with each of a/b/c on server_uuid: the core pruner evaluates
+  // the whole tree, so this narrows to {a} UNION ({b} INTERSECT {b,c}) = {a, b}.
   ASSERT_EQ(ASSERT_RESULT(plan_visits(Format(base_query,
       Format("(server_uuid = '$0' OR (server_uuid = '$1' AND "
              "server_uuid IN ('$1', '$2'))) AND",
              tserver0_uuid, tserver1_uuid, tserver2_uuid)))),
-      all_uuids);
+      (std::set<std::string>{tserver0_uuid, tserver1_uuid}));
 
-  // (a OR b) AND c with three distinct UUIDs, no overlap because of
-  // the GUC constraint_exclusion = 'partition'
+  // (a OR b) AND c with three distinct UUIDs: core pruning computes
+  // ({a} UNION {b}) INTERSECT {c} = {}, so the parent rel becomes a dummy.
   {
     const auto sql = Format(base_query,
         Format("(server_uuid = '$0' OR server_uuid = '$1') AND "
@@ -768,10 +788,8 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 0, 0));
   }
 
-  // (a OR b) AND a: c overlaps with the OR branch, so the qual is
-  // satisfiable on exactly one tserver. Our pass prunes to {a} via the bare
-  // AND-conjunct; the OR clause remains as a residual filter that's
-  // trivially satisfied.
+  // (a OR b) AND a: ({a} UNION {b}) INTERSECT {a} = {a}, so the core pruner
+  // narrows the plan to exactly {a}.
   {
     const auto sql = Format(base_query,
         Format("(server_uuid = '$0' OR server_uuid = '$1') AND "
@@ -795,17 +813,16 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
     ASSERT_EQ(rows.size(), 0);
   }
 
-  // server_uuid IN (NULL, NULL, NULL): the parser rewrites IN-list to
-  // OR-of-equalities, every disjunct is `uuid_eq(var, NULL)` which folds to
-  // NULL, the whole OR folds to NULL, the rel becomes dummy. Same observable
-  // behavior as `= NULL`, but exercises the all-NULL IN-list path that
-  // could otherwise surface a NULL Const inside our SAOP branch.
+  // server_uuid IN (NULL, NULL, NULL): unlike `= NULL`, the array Const is not
+  // itself NULL (it just contains NULLs), so it stays a ScalarArrayOpExpr
+  // rather than folding to a constant-false qual. The core pruner skips NULL
+  // IN-list elements, leaving no element to prune with, so it keeps all
+  // partitions. Every tserver is scanned and the remote "= ANY('{NULL,...}')"
+  // filter matches nothing, yielding 0 rows.
   {
     const auto sql = Format(base_query, "server_uuid IN (NULL, NULL, NULL) AND");
-    auto plan = ASSERT_RESULT(plan_text(sql));
-    ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
-        << "expected dummy Result in plan, got:\n" << plan;
-    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 0, 0));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)), all_uuids);
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 1, 1));
     auto rows = ASSERT_RESULT((conn_->FetchRows<Uuid>(sql)));
     ASSERT_EQ(rows.size(), 0);
   }
@@ -821,6 +838,21 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 1, 0));
   }
 
+  // enable_partition_pruning = off: pruning is delegated to the core planner,
+  // which respects the GUC. With it off, an equality filter that would normally
+  // prune to one tserver no longer prunes, so every tserver gets a child and an
+  // RPC. The residual server_uuid filter still runs remotely, so only ts0
+  // returns rows.
+  {
+    ASSERT_OK(conn_->Execute("SET enable_partition_pruning = off"));
+    const auto sql = Format(base_query, Format("server_uuid IN ('$0') AND", tserver0_uuid));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)), all_uuids);
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 1, 1));
+    auto rows = ASSERT_RESULT((conn_->FetchRows<Uuid>(sql)));
+    ASSERT_EQ(rows.size(), 1);
+    ASSERT_OK(conn_->Execute("RESET enable_partition_pruning"));
+  }
+
   // UNION ALL over disjoint tserver UUID sets: each branch prunes
   // independently, the two branches together visit all three tservers
   // exactly once, and rows from each tserver appear in only one branch.
@@ -834,11 +866,9 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   ASSERT_EQ(ASSERT_RESULT(plan_visits(union_query)), all_uuids);
   ASSERT_THAT(rpcs_per_tserver(union_query), ::testing::ElementsAre(1, 1, 1));
 
-  // Execution sanity check: filter returns rows only from the tservers in the OR
-  // filter (ts0 and ts1). Each tserver has one pgss row for the INSERT query, so
-  // expect exactly 2 rows total. Also confirms that the OR path actually
-  // round-trips to all three tservers (since the OR is opaque to our pass) -
-  // ts2 is queried, just returns zero rows.
+  // Execution sanity check: the OR filter returns rows only from ts0 and ts1.
+  // Each tserver has one pgss row for the INSERT query, so expect exactly 2
+  // rows. Core pruning removes ts2 entirely, so it receives no RPC.
   auto rows = ASSERT_RESULT((conn_->FetchRows<Uuid>(two_tservers_query_with_or_clause)));
   ASSERT_EQ(rows.size(), 2);
   std::vector<Uuid> expected_uuids = {
@@ -848,7 +878,7 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   std::sort(expected_uuids.begin(), expected_uuids.end());
   ASSERT_EQ(rows, expected_uuids);
   ASSERT_THAT(rpcs_per_tserver(two_tservers_query_with_or_clause),
-              ::testing::ElementsAre(1, 1, 1));
+              ::testing::ElementsAre(1, 1, 0));
 }
 
 // The remote query on each tserver must run as the dedicated non-superuser
@@ -1019,6 +1049,48 @@ TEST_F(PgBuiltinGlobalViewsTest, TestSimpleGvs) {
 
   ASSERT_OK(conn_->Execute("CREATE INDEX tbl_idx ON tbl (k)"));
   ASSERT_OK(VerifyTserverUuidsInView("pg_stat_user_indexes"));
+}
+
+// last_autoanalyze is local to the postgres that ran ANALYZE. Confirm
+// gv$pg_stat_user_tables surfaces another tserver's timestamp so operators
+// do not have to find the node that ran it.
+TEST_F(PgBuiltinGlobalViewsTest, TestGvPgStatUserTablesLastAutoanalyze) {
+  ASSERT_GE(GetNumTabletServers(), 2);
+  constexpr auto kTable = "gv_pgstat_analyze_tbl";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTable));
+
+  auto conn_ts1 = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(1)));
+  const auto ts1_uuid = ASSERT_RESULT(conn_ts1.FetchRow<Uuid>(
+      "SELECT yb_get_local_tserver_uuid()"));
+  ASSERT_OK(conn_ts1.Execute("SET yb_use_internal_auto_analyze_service_conn = true"));
+
+  const auto fetch_ts1_stats = [&]() {
+    return conn_->FetchRow<std::optional<MonoDelta>, std::optional<MonoDelta>, PGUint64>(Format(
+        "SELECT last_analyze, last_autoanalyze, autoanalyze_count "
+        "FROM gv$$pg_stat_user_tables WHERE relname = '$0' AND server_uuid = '$1'",
+        kTable, ts1_uuid.ToString()));
+  };
+
+  ASSERT_OK(conn_ts1.ExecuteFormat("ANALYZE $0", kTable));
+
+  auto local_last_autoanalyze = ASSERT_RESULT((conn_->FetchRow<std::optional<MonoDelta>>(Format(
+      "SELECT last_autoanalyze FROM pg_stat_user_tables WHERE relname = '$0'",
+      kTable))));
+  ASSERT_FALSE(local_last_autoanalyze.has_value());
+
+  auto [last_analyze1, last_autoanalyze1, count1] = ASSERT_RESULT(fetch_ts1_stats());
+  ASSERT_FALSE(last_analyze1.has_value());
+  ASSERT_TRUE(last_autoanalyze1.has_value());
+  ASSERT_EQ(count1, 1);
+
+  SleepFor(100ms);
+  ASSERT_OK(conn_ts1.ExecuteFormat("ANALYZE $0", kTable));
+
+  auto [last_analyze2, last_autoanalyze2, count2] = ASSERT_RESULT(fetch_ts1_stats());
+  ASSERT_FALSE(last_analyze2.has_value());
+  ASSERT_TRUE(last_autoanalyze2.has_value());
+  ASSERT_GT(*last_autoanalyze2, *last_autoanalyze1);
+  ASSERT_EQ(count2, 2);
 }
 
 TEST_F(PgBuiltinGlobalViewsTest, TestGvYbTerminatedQueries) {

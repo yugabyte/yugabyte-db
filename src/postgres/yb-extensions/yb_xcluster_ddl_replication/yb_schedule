@@ -15,3 +15,5 @@ test: create_colocated_table
 test: table_rewrite
 
 test: nested_ddls
+
+test: analyze

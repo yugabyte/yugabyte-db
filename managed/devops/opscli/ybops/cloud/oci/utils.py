@@ -45,10 +45,13 @@ from oci.core.models import (
     EgressSecurityRule,
     TcpOptions,
     PortRange,
+    UpdateBootVolumeDetails,
     UpdateInstanceDetails,
-    UpdateInstanceShapeConfigDetails
+    UpdateInstanceShapeConfigDetails,
+    UpdateInstanceSourceViaImageDetails
 )
 from oci.dns.models import RecordDetails, UpdateDomainRecordsDetails
+from oci.work_requests import WorkRequestClient
 
 # Sticky launch fields copied from an Instance Configuration when seeding a
 # plain LaunchInstance. YBA-owned fields (shape, image, subnet, metadata, ...)
@@ -142,6 +145,8 @@ YUGABYTE_SG_PREFIX = "yugabyte-sl-{}"
 
 DEFAULT_BOOT_VOLUME_SIZE_GB = 50
 MIN_BOOT_VOLUME_SIZE_GB = 50
+BOOT_VOLUME_REPLACEMENT_TIMEOUT_SECONDS = 600
+OCI_WORK_REQUEST_TERMINAL_STATES = ("SUCCEEDED", "FAILED", "CANCELED")
 
 AARCH64_ARCHITECTURES = ("aarch64", "arm64")
 
@@ -754,17 +759,26 @@ class OciCloudAdmin:
             logging.error(
                 "Instance creation failed partially for {}, cleaning up instance {} "
                 "and {} volume(s)".format(instance_name, instance.id, len(created_volume_ids)))
-            for vol_id in created_volume_ids:
-                try:
-                    self.blockstorage_client.delete_volume(vol_id)
-                except Exception as vol_err:
-                    logging.warning(
-                        "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
             try:
-                self.compute_client.terminate_instance(instance.id)
+                # Detaches and deletes the attached data volumes before terminating.
+                # OCI rejects deleting a volume that is still attached, and instance
+                # termination only detaches data volumes, it does not delete them.
+                self.terminate_instance(instance.id)
             except Exception as term_err:
                 logging.warning(
                     "Failed to cleanup instance {}: {}".format(instance.id, term_err))
+            # Catches volumes that were created but never attached, and any the
+            # termination path could not delete.
+            for vol_id in created_volume_ids:
+                try:
+                    self.delete_volume(vol_id)
+                except oci.exceptions.ServiceError as vol_err:
+                    if vol_err.status != 404:
+                        logging.warning(
+                            "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
+                except Exception as vol_err:
+                    logging.warning(
+                        "Failed to cleanup volume {}: {}".format(vol_id, vol_err))
             raise
 
     def _wait_for_instance_network(self, instance_id, instance_name, region, timeout=120):
@@ -989,6 +1003,110 @@ class OciCloudAdmin:
             OCI_INSTANCE_STOPPED,
             ready_check=lambda instance: instance.shape == new_shape)
 
+    def replace_boot_volume(self, instance_id, image_id, force=False):
+        """Replaces the boot volume of an instance with one OCI generates from image_id.
+
+        The current boot volume is kept, carrying the node's universe-uuid and node-uuid tags, so
+        it can still be recovered if the node fails later in the upgrade, and
+        delete_detached_boot_volumes can find it afterwards.
+        Unless force is set, a boot volume already created from image_id is left as is, so a
+        repeated call changes nothing.
+        The instance ends in the state it was in before the call.
+        """
+        instance = self.get_instance(instance_id)
+        work_request_client = self._build_client(WorkRequestClient)
+        # A replacement started by an earlier call may outlive that call's wait. Finish waiting for
+        # it so the checks below see its result.
+        for pending in self._list_all(
+                work_request_client.list_work_requests, instance.compartment_id,
+                resource_id=instance_id):
+            if pending.status not in OCI_WORK_REQUEST_TERMINAL_STATES:
+                logging.info("[app] Waiting for {} work request {} on instance {}".format(
+                    pending.operation_type, pending.id, instance_id))
+                self._wait_for_work_request(work_request_client, pending.id)
+
+        attachments = self._list_all(
+            self.compute_client.list_boot_volume_attachments,
+            instance.availability_domain, instance.compartment_id, instance_id=instance_id)
+        attached = [a for a in attachments if a.lifecycle_state == "ATTACHED"]
+        if not attached:
+            # OCI does not guarantee its rollback of a failed replacement succeeds.
+            raise YBOpsRuntimeError(
+                "Instance {} has no attached boot volume, possibly left by a failed "
+                "replacement. Reattach its boot volume before retrying.".format(instance_id))
+        boot_volume = self.blockstorage_client.get_boot_volume(attached[0].boot_volume_id).data
+        if not force and boot_volume.image_id == image_id:
+            logging.info("[app] Boot volume {} of instance {} is already from image {}".format(
+                boot_volume.id, instance_id, image_id))
+            return
+
+        tags = dict(boot_volume.freeform_tags or {})
+        instance_tags = instance.freeform_tags or {}
+        for key in ("universe-uuid", "node-uuid"):
+            if key in instance_tags:
+                tags[key] = instance_tags[key]
+        # Boot volumes YBA launches already carry these, and OCI rejects an update that changes
+        # nothing.
+        if tags != (boot_volume.freeform_tags or {}):
+            self.blockstorage_client.update_boot_volume(
+                boot_volume.id, UpdateBootVolumeDetails(freeform_tags=tags))
+
+        # Without these OCI sizes the new volume to the image default and drops the
+        # customer-managed key. OCI rejects explicit sizes below MIN_BOOT_VOLUME_SIZE_GB, so boot
+        # volumes left at an image's default of about 47 GB grow to it.
+        details = UpdateInstanceDetails(
+            source_details=UpdateInstanceSourceViaImageDetails(
+                image_id=image_id,
+                boot_volume_size_in_gbs=max(boot_volume.size_in_gbs, MIN_BOOT_VOLUME_SIZE_GB),
+                kms_key_id=boot_volume.kms_key_id,
+                is_preserve_boot_volume_enabled=True))
+        logging.info("[app] Replacing boot volume {} of instance {} with image {}".format(
+            boot_volume.id, instance_id, image_id))
+        response = self.compute_client.update_instance(instance_id, details)
+        work_request_id = response.headers.get("opc-work-request-id")
+        if not work_request_id:
+            raise YBOpsRuntimeError(
+                "OCI returned no work request for the boot volume replacement of "
+                "instance {}".format(instance_id))
+
+        work_request = self._wait_for_work_request(work_request_client, work_request_id)
+        if work_request.status != "SUCCEEDED":
+            errors = self._list_all(
+                work_request_client.list_work_request_errors, work_request_id)
+            raise YBOpsRuntimeError(
+                "Boot volume replacement of instance {} ended {}: {}".format(
+                    instance_id, work_request.status, "; ".join(e.message for e in errors)))
+
+    def delete_detached_boot_volumes(self, availability_domain, tags, volume_ids=None):
+        """Deletes detached boot volumes that match tags, such as those replace_boot_volume kept.
+
+        OCI allows only 10 freeform tags per resource, and YBA nodes can use all of them, so kept
+        boot volumes carry no marker of their own.
+        """
+        if not tags:
+            raise YBOpsRuntimeError("Tags are required to select boot volumes to delete")
+        availability_domain = self.resolve_availability_domain(availability_domain)
+        deleted = []
+        boot_volumes = self._list_all(
+            self.blockstorage_client.list_boot_volumes,
+            availability_domain=availability_domain, compartment_id=self.compartment_id)
+        for boot_volume in boot_volumes:
+            volume_tags = boot_volume.freeform_tags or {}
+            if (boot_volume.lifecycle_state != "AVAILABLE"
+                    or any(volume_tags.get(k) != v for k, v in tags.items())
+                    or (volume_ids and boot_volume.id not in volume_ids)):
+                continue
+            attachments = self._list_all(
+                self.compute_client.list_boot_volume_attachments,
+                availability_domain, self.compartment_id, boot_volume_id=boot_volume.id)
+            if any(a.lifecycle_state in ("ATTACHING", "ATTACHED") for a in attachments):
+                continue
+            logging.info("[app] Deleting detached boot volume {} ({})".format(
+                boot_volume.display_name, boot_volume.id))
+            self.blockstorage_client.delete_boot_volume(boot_volume.id)
+            deleted.append(boot_volume.id)
+        return deleted
+
     def create_volume(self, availability_domain, size_in_gbs, display_name=None,
                       volume_type=OCI_VOLUME_TYPE_BALANCED, vpus_per_gb=None, tags=None):
         if vpus_per_gb is None:
@@ -1134,6 +1252,17 @@ class OciCloudAdmin:
         raise YBOpsRuntimeError(
             "Timeout waiting for instance {} to reach state {}".format(
                 instance_id, target_state))
+
+    def _wait_for_work_request(self, work_request_client, work_request_id,
+                               timeout=BOOT_VOLUME_REPLACEMENT_TIMEOUT_SECONDS):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            work_request = work_request_client.get_work_request(work_request_id).data
+            if work_request.status in OCI_WORK_REQUEST_TERMINAL_STATES:
+                return work_request
+            time.sleep(10)
+        raise YBOpsRuntimeError(
+            "Timeout waiting for work request {} to finish".format(work_request_id))
 
     def _wait_for_volume_state(self, volume_id, target_state, timeout=300):
         start_time = time.time()

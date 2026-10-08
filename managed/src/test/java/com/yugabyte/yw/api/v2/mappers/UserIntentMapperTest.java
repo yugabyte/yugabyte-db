@@ -11,17 +11,20 @@ import static org.junit.Assert.assertTrue;
 import api.v2.mappers.UserIntentMapper;
 import api.v2.models.AvailabilityZoneNodeSpec;
 import api.v2.models.ClusterEditSpec;
+import api.v2.models.ClusterGFlags;
 import api.v2.models.ClusterNodeSpec;
 import api.v2.models.ClusterPerProcessNodeSpec;
+import api.v2.models.ClusterResizeNodeSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -42,8 +45,9 @@ public class UserIntentMapperTest {
   public void testPerProcessOverridesMapToMasterAndTserverNodeSpec() {
     UserIntent userIntent = new UserIntent();
     userIntent.dedicatedNodes = true;
-    userIntent.instanceType = "c5.xlarge";
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.getProviderInitializerForTests(userIntent, UUID.randomUUID())
+        .setInstanceType("c5.xlarge")
+        .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
 
     PerProcessDetails masterDetails = new PerProcessDetails();
     masterDetails.setInstanceType("c5.4xlarge");
@@ -79,10 +83,12 @@ public class UserIntentMapperTest {
   public void testLegacyMasterFieldsMapToMasterNodeSpec() {
     UserIntent userIntent = new UserIntent();
     userIntent.dedicatedNodes = true;
-    userIntent.instanceType = "c5.xlarge";
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.masterInstanceType = "m5.2xlarge";
-    userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 75);
+
+    TestUtils.getProviderInitializerForTests(userIntent, UUID.randomUUID())
+        .setInstanceType("c5.xlarge")
+        .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100))
+        .setMasterInstanceType("m5.2xlarge")
+        .setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 75));
 
     ClusterNodeSpec clusterNodeSpec =
         UserIntentMapper.INSTANCE.userIntentToClusterNodeSpec(userIntent);
@@ -98,8 +104,11 @@ public class UserIntentMapperTest {
   public void testLegacyMasterFieldsOverridePerProcessMasterSpec() {
     UserIntent userIntent = new UserIntent();
     userIntent.dedicatedNodes = true;
-    userIntent.instanceType = "c5.xlarge";
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.getProviderInitializerForTests(userIntent, UUID.randomUUID())
+        .setInstanceType("c5.xlarge")
+        .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100))
+        .setMasterInstanceType("m5.2xlarge")
+        .setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 75));
 
     PerProcessDetails masterDetails = new PerProcessDetails();
     masterDetails.setInstanceType("c5.4xlarge");
@@ -111,10 +120,6 @@ public class UserIntentMapperTest {
     UserIntentOverrides overrides = new UserIntentOverrides();
     overrides.setPerProcess(perProcess);
     userIntent.setUserIntentOverrides(overrides);
-
-    userIntent.masterInstanceType = "m5.2xlarge";
-    DeviceInfo masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 75);
-    userIntent.masterDeviceInfo = masterDeviceInfo;
 
     ClusterNodeSpec clusterNodeSpec =
         UserIntentMapper.INSTANCE.userIntentToClusterNodeSpec(userIntent);
@@ -169,17 +174,44 @@ public class UserIntentMapperTest {
   @Test
   public void testGflagsOnlyResizeDoesNotRequireNodeSpec() {
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceType = "c5.xlarge";
+    UUID providerUUID = UUID.randomUUID();
+    TestUtils.getProviderInitializerForTests(userIntent, providerUUID).setInstanceType("c5.xlarge");
 
+    Map<String, String> masterFlags = Map.of("master-flag", "some");
+    Map<String, String> tserverFlags = Map.of("tserver-flag", "other");
     UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
     resizeCluster.setUuid(UUID.randomUUID());
+    resizeCluster.gflags(new ClusterGFlags().tserver(tserverFlags).master(masterFlags));
     // gflags-only: no node_spec / provider_nodes_specs
 
     UserIntent mapped =
         UserIntentMapper.INSTANCE.toV1UserIntentFromUniverseResizeNodesCluster(
             resizeCluster, userIntent);
 
-    assertEquals("c5.xlarge", mapped.instanceType);
+    assertEquals("c5.xlarge", mapped.getBaseInstanceType(providerUUID));
+    assertEquals(
+        tserverFlags, mapped.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER));
+    assertEquals(
+        masterFlags, mapped.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER));
+  }
+
+  @Test
+  public void testNoGflagsResizeDoesNotEraseFlags() {
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(Map.of("tserver-flag", "foo"), Map.of("master-flag", "bar"));
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "c5.xlarge";
+    userIntent.specificGFlags = specificGFlags;
+
+    UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
+    resizeCluster.setUuid(UUID.randomUUID());
+    resizeCluster.setNodeSpec(new ClusterResizeNodeSpec().instanceType("c6.large"));
+    UserIntent mapped =
+        UserIntentMapper.INSTANCE.toV1UserIntentFromUniverseResizeNodesCluster(
+            resizeCluster, userIntent);
+
+    assertEquals("c6.large", mapped.instanceType);
+    assertEquals(specificGFlags, mapped.specificGFlags);
   }
 
   @Test

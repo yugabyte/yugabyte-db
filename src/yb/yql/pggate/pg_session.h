@@ -84,6 +84,10 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   void ResetCatalogReadPoint();
   [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
+  void SetHistoricalReadContext(
+      const ReadHybridTime& read_time, std::string transaction_id);
+  void ResetHistoricalReadContext();
+
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
   //------------------------------------------------------------------------------------------------
@@ -186,7 +190,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   Status SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options);
 
-  void SetupDeferReadPointOptionForSeparateDdlTxn(tserver::PgPerformOptionsPB* options) const;
+  void SetupPerformOptionsForSeparateDdlTxn(tserver::PgPerformOptionsPB* options) const;
 
   void SetTransactionHasWrites();
   Result<bool> CurrentTransactionUsesFastPath() const;
@@ -282,6 +286,12 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   ReadHybridTime catalog_read_time_;
 
+  struct HistoricalReadContext {
+    ReadHybridTime read_time;
+    std::string transaction_id;
+  };
+  std::optional<HistoricalReadContext> historical_read_context_;
+
   // Execution status.
   Status status_;
   std::string errmsg_;
@@ -316,7 +326,7 @@ Status SetupPerformOptionsForDdlIfNeeded(PgSession& session, PB& req) {
   if (req.use_regular_transaction_block()) {
     return session.SetupPerformOptionsForDdl(req.mutable_options());
   }
-  session.SetupDeferReadPointOptionForSeparateDdlTxn(req.mutable_options());
+  session.SetupPerformOptionsForSeparateDdlTxn(req.mutable_options());
   return Status::OK();
 }
 

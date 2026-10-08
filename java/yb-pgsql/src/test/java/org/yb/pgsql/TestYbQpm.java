@@ -12,6 +12,11 @@
 //
 package org.yb.pgsql;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -663,6 +668,75 @@ public class TestYbQpm extends BasePgSQLTest {
     assertTrue(explainString.equals(qpmString));
   }
 
+  /**
+   * testYbQpmAutoExplain
+   *  GH 30380 : Test for crash caused by QPM when auto-analyze is enabled.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testYbQpmAutoExplain() throws Exception {
+
+    // Set the flags that reproduce the bug.
+    Map<String, String> flagMap = super.getTServerFlags();
+    appendToYsqlPgConf(flagMap, "shared_preload_libraries=auto_explain");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_min_duration=0");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_analyze=true");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_dist=true");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_track=all");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_plan_format=json");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+    Statement stmt = connection.createStatement();
+
+    stmt.execute("DROP TABLE IF EXISTS t1");
+    stmt.execute("DROP TABLE IF EXISTS t2");
+    stmt.execute("CREATE TABLE t1(a1 INT, b1 INT, c1 INT)");
+    stmt.execute("CREATE TABLE t2(a2 INT, b2 INT, c2 INT)");
+
+    // Simple repro query that has a shared subplan.
+    String query = "/*+ HashJoin(t1 t2) */ SELECT COUNT(*) " +
+                   "FROM t1, t2 WHERE a1=a2 AND b1 = ( select MIN(b1) FROM t1 t1a WHERE c1=c2)";
+    long queryId = getExplainQueryId(stmt, query);
+    stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
+    stmt.execute(query);
+
+    String qpmQuery = String.format("SELECT plan FROM yb_pg_stat_plans WHERE queryid=%d",
+                                    queryId);
+
+    try (ResultSet rs = stmt.executeQuery(qpmQuery)) {
+      assertTrue(rs.next());
+      String planText = rs.getString("plan");
+      LOG.info("Plan text : " + planText);
+
+      ObjectMapper mapper = new ObjectMapper();
+      JsonNode root = mapper.readTree(planText);
+
+      // Plan contains SubPlan 1.
+      List<JsonNode> subplanNames = root.findValues("Subplan Name");
+      boolean hasSubPlan1 = subplanNames.stream()
+          .anyMatch(n -> "SubPlan 1".equals(n.asText()));
+      assertTrue(hasSubPlan1);
+
+      // SubPlan 1 is referenced in the Hash Join condition.
+      List<JsonNode> hashConds = root.findValues("Hash Cond");
+      boolean subPlanInHashCond = hashConds.stream()
+          .anyMatch(n -> n.asText().contains("SubPlan 1"));
+      assertTrue(subPlanInHashCond);
+
+      // Aggregate parent relationship is "SubPlan".
+      boolean hasAggregateSubPlan = false;
+      for (JsonNode node : root.findParents("Node Type")) {
+        if ("Aggregate".equals(node.path("Node Type").asText()) &&
+            "SubPlan".equals(node.path("Parent Relationship").asText())) {
+          hasAggregateSubPlan = true;
+          break;
+        }
+      }
+      assertTrue(hasAggregateSubPlan);
+    }
+  }
+
   public static char randomLetterOrDigit(Random rand) {
     String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     return chars.charAt(rand.nextInt(chars.length()));
@@ -1192,6 +1266,57 @@ public class TestYbQpm extends BasePgSQLTest {
     }
   }
 
+  /**
+   * Reading a truncated QPM dump file fails, deletes the file, loads none of its entries, and
+   * leaves no file open, so later commits in the backend do not warn about unclosed files.
+   */
+  @Test
+  public void testYbQpmReadTruncatedDumpFile() throws Exception {
+    final String skip = " /* __YB_STAT_PLANS_SKIP */";
+    try (Statement stmt = connection.createStatement()) {
+      Path dumpFile;
+      try (ResultSet rs = stmt.executeQuery("SHOW data_directory")) {
+        assertTrue(rs.next());
+        dumpFile = Paths.get(rs.getString(1), "pg_stat", "qpm.stat");
+      }
+
+      stmt.execute("CREATE TABLE qpm_truncated (a INT)");
+      stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)" + skip);
+      stmt.execute("INSERT INTO qpm_truncated VALUES (1)");
+      stmt.execute("SELECT a FROM qpm_truncated WHERE a = 1");
+      stmt.execute("SELECT count(*) FROM qpm_truncated");
+      try (ResultSet rs = stmt.executeQuery("SELECT yb_pg_stat_plans_write_file()" + skip)) {
+        assertTrue(rs.next());
+        assertEquals(0, rs.getInt(1));
+      }
+
+      // The dump is a 12-byte header, whose last field is the entry count, followed by
+      // fixed-size entries. Cut it in the middle of the second entry.
+      byte[] dump = Files.readAllBytes(dumpFile);
+      int numEntries = ByteBuffer.wrap(dump, 8, 4).order(ByteOrder.nativeOrder()).getInt();
+      assertGreaterThanOrEqualTo(numEntries, 2);
+      int entrySize = (dump.length - 12) / numEntries;
+      Files.write(dumpFile, Arrays.copyOf(dump, 12 + entrySize + entrySize / 2));
+
+      stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)" + skip);
+      try (ResultSet rs = stmt.executeQuery("SELECT yb_pg_stat_plans_read_file()" + skip)) {
+        assertTrue(rs.next());
+        assertEquals(-1, rs.getInt(1));
+      }
+      assertNull(stmt.getWarnings());
+      assertFalse(Files.exists(dumpFile));
+      assertEquals(0L, getSingleRow(stmt, countStar).getLong(0).longValue());
+      try (ResultSet rs = stmt.executeQuery("SELECT yb_pg_stat_plans_read_file()" + skip)) {
+        assertTrue(rs.next());
+        assertEquals(-1, rs.getInt(1));
+      }
+
+      stmt.execute("SELECT a FROM qpm_truncated WHERE a = 1");
+      assertNull(stmt.getWarnings());
+      assertEquals(1L, getSingleRow(stmt, countStar).getLong(0).longValue());
+    }
+  }
+
   public void writeReadQpmDumpFile(Statement stmt, boolean log) throws Exception {
 
     if (log)
@@ -1250,14 +1375,7 @@ public class TestYbQpm extends BasePgSQLTest {
         else
             LOG.info("Executing " + queryInfo.queryText);
 
-      boolean hitException = false;
-      try {
-          stmt.execute(queryInfo.queryText);
-      } catch (Exception e) {
-          LOG.info("Hit exception : " + e.getMessage());
-      }
-
-      assertFalse(hitException);
+      stmt.execute(queryInfo.queryText);
     }
   }
 

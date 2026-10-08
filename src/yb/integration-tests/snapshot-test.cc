@@ -66,6 +66,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
@@ -1437,7 +1438,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_table_num_tablets += 1;
         break;
       default:
-        ASSERT_OK(STATUS_SUBSTITUTE(
+        ASSERT_OK(STATUS_FORMAT(
             IllegalState, "Unexpected snapshot entry type $0", entry.type()));
     }
   }

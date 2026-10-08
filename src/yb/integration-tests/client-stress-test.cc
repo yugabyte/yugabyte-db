@@ -44,7 +44,6 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
@@ -70,7 +69,6 @@ DECLARE_int32(memory_limit_soft_percentage);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(leader_memory_pressure_rejections);
 
-using strings::Substitute;
 using std::vector;
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
@@ -266,7 +264,7 @@ class ClientStressTest_LowMemory : public ClientStressTest {
     ExternalMiniClusterOptions opts;
 
     opts.extra_tserver_flags = {
-        Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes),
+        Format("--memory_limit_hard_bytes=$0", kMemLimitBytes),
         "--memory_limit_soft_percentage=0"s};
     // Turn off tablet guardrail otherwise we fail due to insufficient memory for tablets:
     opts.extra_master_flags = {"--tablet_replicas_per_gib_limit=0"s};

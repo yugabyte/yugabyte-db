@@ -86,11 +86,12 @@ class DocVectorValue final : public PackableValue {
 
   static Slice SanitizeValue(Slice encoded);
 
+  // Returns the value entry type byte that prefixes a V1 vector value of the given format.
+  static char ValueTypePrefix(VectorValueFormat format);
+
   std::string ToString() const override;
 
  private:
-  static char ValueTypePrefix(VectorValueFormat format);
-
   template <class Buffer>
   void AppendEncodedVectorValue(Buffer* buffer) const;
 
@@ -131,5 +132,15 @@ Result<std::string> DocVectorMetaValueToString(Slice value);
 
 // Encodes vector reverse entry value in V1 format (table_key_prefix + ybctid + column_id).
 KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId column_id);
+
+// Encodes the payload attached to a vector in the vector index chunks:
+// format version, ybctid size (varint), ybctid.
+// The version allows adding more data after the ybctid in future, e.g. columns for covering
+// indexes, while the size keeps the ybctid extractable from any version of the payload.
+ValueBuffer DocVectorIndexPayload(Slice ybctid);
+
+// Extracts ybctid from the payload attached to a vector, see DocVectorIndexPayload.
+// The payload could contain more data after the ybctid.
+Result<Slice> DocVectorIndexPayloadYbctid(Slice payload);
 
 } // namespace yb::dockv

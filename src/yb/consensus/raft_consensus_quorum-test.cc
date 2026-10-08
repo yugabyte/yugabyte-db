@@ -50,7 +50,6 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -58,11 +57,13 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/drive_io_stats.h"
+#include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -92,8 +93,6 @@ namespace yb::consensus {
 using log::Log;
 using log::LogOptions;
 using log::LogReader;
-using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 const char* kTestTable = "TestTable";
 const char* kTestTablet = "TestTablet";
@@ -132,9 +131,9 @@ class RaftConsensusQuorumTest : public YBTest {
     // Build the fsmanagers and logs
     for (int i = 0; i < config_.peers_size(); i++) {
       shared_ptr<MemTracker> parent_mem_tracker =
-          MemTracker::CreateTracker(Substitute("peer-$0", i));
+          MemTracker::CreateTracker(Format("peer-$0", i));
       parent_mem_trackers_.push_back(parent_mem_tracker);
-      string test_path = GetTestPath(Substitute("peer-$0-root", i));
+      string test_path = GetTestPath(Format("peer-$0-root", i));
       FsManagerOpts opts;
       opts.parent_mem_tracker = parent_mem_tracker;
       opts.wal_paths = { test_path };
@@ -172,7 +171,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
       auto operation_factory = new TestOperationFactory();
 
-      string peer_uuid = Substitute("peer-$0", i);
+      string peer_uuid = Format("peer-$0", i);
 
       fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
       std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
@@ -300,7 +299,7 @@ class RaftConsensusQuorumTest : public YBTest {
     (**round).BindToTerm(peer->LeaderTerm());
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
-                          Substitute("Unable to replicate to peer $0", peer_idx));
+                          Format("Unable to replicate to peer $0", peer_idx));
     return Status::OK();
   }
 
@@ -368,8 +367,8 @@ class RaftConsensusQuorumTest : public YBTest {
     // Gather the replica and leader operations for printing
     log::LogEntries replica_ops = GatherLogEntries(peer_idx, logs_[peer_idx]);
     log::LogEntries leader_ops = GatherLogEntries(leader_idx, logs_[leader_idx]);
-    SCOPED_TRACE(PrintOnError(replica_ops, Substitute("local peer ($0)", peer->peer_uuid())));
-    SCOPED_TRACE(PrintOnError(leader_ops, Substitute("leader (peer-$0)", leader_idx)));
+    SCOPED_TRACE(PrintOnError(replica_ops, Format("local peer ($0)", peer->peer_uuid())));
+    SCOPED_TRACE(PrintOnError(leader_ops, Format("leader (peer-$0)", leader_idx)));
     FAIL() << "Replica did not commit.";
   }
 
@@ -512,8 +511,8 @@ class RaftConsensusQuorumTest : public YBTest {
                      const log::LogEntries& replica_entries,
                      const string& leader_name,
                      const string& replica_name) {
-    SCOPED_TRACE(PrintOnError(leader_entries, Substitute("Leader: $0", leader_name)));
-    SCOPED_TRACE(PrintOnError(replica_entries, Substitute("Replica: $0", replica_name)));
+    SCOPED_TRACE(PrintOnError(leader_entries, Format("Leader: $0", leader_name)));
+    SCOPED_TRACE(PrintOnError(replica_entries, Format("Replica: $0", replica_name)));
 
     // Check that the REPLICATE messages come in the same order on both nodes.
     VerifyReplicateOrderMatches(leader_entries, replica_entries);
@@ -527,8 +526,8 @@ class RaftConsensusQuorumTest : public YBTest {
   string PrintOnError(const log::LogEntries& replica_entries,
                       const string& replica_id) {
     string ret = "";
-    SubstituteAndAppend(&ret, "$1 log entries for replica $0:\n",
-                        replica_id, replica_entries.size());
+    ret += Format("$1 log entries for replica $0:\n",
+                  replica_id, replica_entries.size());
     for (const auto& replica_entry : replica_entries) {
       StrAppend(&ret, "Replica log entry: ", replica_entry->ShortDebugString(), "\n");
     }
@@ -537,7 +536,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   // Read the ConsensusMetadata for the given peer from disk.
   std::unique_ptr<ConsensusMetadata> ReadConsensusMetadataFromDisk(int peer_index) {
-    string peer_uuid = Substitute("peer-$0", peer_index);
+    string peer_uuid = Format("peer-$0", peer_index);
     std::unique_ptr<ConsensusMetadata> cmeta;
     CHECK_OK(ConsensusMetadata::Load(fs_managers_[peer_index], kTestTablet, peer_uuid, &cmeta));
     return cmeta;
@@ -975,7 +974,7 @@ class RaftConsensusWalSyncTest : public RaftConsensusQuorumTest {
     // nothing else in the process shares the counters.
     for (int i = 0; i < 3; ++i) {
       DriveIoStatsRegistry::Instance().Register(
-          GetTestPath(Substitute("peer-$0-root", i)), nullptr);
+          GetTestPath(Format("peer-$0-root", i)), nullptr);
     }
   }
 
@@ -994,7 +993,7 @@ class RaftConsensusWalSyncTest : public RaftConsensusQuorumTest {
 
   DriveIoStats* FollowerDriveStats() {
     return DriveIoStatsRegistry::Instance().Find(
-        GetTestPath(Substitute("peer-$0-root", kFollowerIdx)));
+        GetTestPath(Format("peer-$0-root", kFollowerIdx)));
   }
 };
 
@@ -1205,6 +1204,46 @@ struct CatchupProbeObservation {
   // The leader's own log end; the follower's conflicting op lies beyond it.
   OpId leader_last_received;
 };
+
+// An election persists the new term and the vote for self with a single flush.
+TEST_F(RaftConsensusQuorumTest, ElectionFlushesConsensusMetadataOnce) {
+  ASSERT_OK(BuildAndStartConfig(3));
+  shared_ptr<RaftConsensus> leader;
+  ASSERT_OK(peers_->GetPeerByIdx(2, &leader));
+  shared_ptr<RaftConsensus> candidate;
+  ASSERT_OK(peers_->GetPeerByIdx(0, &candidate));
+  // Catch the candidate up with the leader's log and term first: otherwise the pre-election is
+  // denied for a stale log, and the term update would count as a flush below.
+  OpIdPB last_op_id;
+  vector<scoped_refptr<ConsensusRound>> rounds;
+  REPLICATE_SEQUENCE_OF_MESSAGES(1, 2, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id,
+                                 &rounds);
+  WaitForCommitIfNotAlreadyPresent(last_op_id, 0, 2);
+  const auto term_before = leader->LeaderTerm();
+  ASSERT_EQ(ReadConsensusMetadataFromDisk(0)->current_term(), term_before);
+
+  std::atomic<int> candidate_flushes{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("ConsensusMetadata::Flush", [&](void* arg) {
+    if (static_cast<ConsensusMetadata*>(arg)->peer_uuid() == candidate->peer_uuid()) {
+      ++candidate_flushes;
+    }
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(candidate->StartElection(LeaderElectionData{
+      .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+      .pending_commit = false,
+      .must_be_committed_opid = OpId()}));
+  ASSERT_OK(candidate->WaitUntilLeaderForTests(MonoDelta::FromSeconds(15)));
+
+  ASSERT_EQ(candidate_flushes.load(), 1);
+  AssertDurableTermAndVote(0, term_before + 1, candidate->peer_uuid());
+}
 
 class RaftConsensusCatchupProbeTest : public RaftConsensusQuorumTest {
  public:

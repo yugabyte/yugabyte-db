@@ -317,6 +317,22 @@ od_hashmap_list_item_t *yb_od_hashmap_find_item(od_hashmap_t *hm,
 	return item;
 }
 
+bool yb_od_hashmap_remove_key(od_hashmap_t *hm, yb_od_hash_64_t keyhash,
+			      od_hashmap_elt_t *key)
+{
+	size_t bucket_index = keyhash % hm->size;
+	pthread_mutex_lock(&hm->buckets[bucket_index]->mu);
+
+	od_hashmap_list_item_t *item = yb_od_bucket_search_by_key(
+		hm->buckets[bucket_index], key->data, key->len);
+	bool found = item != NULL;
+	if (found)
+		od_hashmap_list_item_free(item);
+
+	pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
+	return found;
+}
+
 od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, yb_od_hash_64_t keyhash,
 				  od_hashmap_elt_t *key)
 {

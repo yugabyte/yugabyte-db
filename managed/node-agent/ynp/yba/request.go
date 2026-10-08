@@ -106,6 +106,29 @@ func GetSessionInfo(
 	return &sessionInfo, nil
 }
 
+// GetYBAInfo makes an API call to YBA to get the instance info, which reports whether YBA itself
+// is running in FIPS mode.
+func GetYBAInfo(
+	ctx context.Context,
+	ybaUrl, apiKey string,
+	skipTlsVerify bool,
+) (*model.YBAInfo, error) {
+	ybaInfoUrl := ybaUrl + util.PlatformGetYBAInfoEndpoint()
+	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaUrl), "https") || skipTlsVerify
+	headers := getAuthHeaders(apiKey)
+	resp, _, err := MakeRequest(ctx, ybaInfoUrl, "GET", headers, nil, skipTLSVerify)
+	if err != nil {
+		return nil, err
+	}
+	var ybaInfo model.YBAInfo
+	if err := json.Unmarshal(resp, &ybaInfo); err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to unmarshal YBA info response: %s, error: %v", string(resp), err)
+		return nil, err
+	}
+	return &ybaInfo, nil
+}
+
 // GetRuntimeConfig makes an API call to YBA to get the runtime config value for the given key in the scope.
 func GetRuntimeConfig(
 	ctx context.Context,

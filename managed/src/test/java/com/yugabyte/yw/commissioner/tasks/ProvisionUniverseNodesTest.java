@@ -9,6 +9,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -63,10 +64,16 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.providerType = Common.CloudType.aws;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider.getUuid(),
+        Common.CloudType.aws,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.getUuid());
     defaultUniverse = createUniverse(defaultCustomer.getId());
@@ -112,8 +119,9 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-          userIntent.provider = onPremProvider.getUuid().toString();
-          userIntent.providerType = Common.CloudType.onprem;
+          TestUtils.existingProviderInitializer(userIntent)
+              .setProviderUUID(onPremProvider.getUuid())
+              .setProviderType(Common.CloudType.onprem);
           userIntent.regionList = ImmutableList.of(onPremRegion.getUuid());
         });
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -137,6 +145,85 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
   public void testValidateParamsAwsProviderAllowed() {
     ProvisionUniverseNodesParams params = createTaskParams();
     TaskInfo taskInfo = submitTask(params);
+  }
+
+  // Stubs the ActiveState the node agent scope precheck reads from the yb user's systemd manager.
+  private void stubUserLevelNodeAgentState(String activeState) {
+    lenient()
+        .when(
+            mockNodeUniverseManager.runCommand(
+                any(),
+                any(),
+                argThat(
+                    (List<String> cmd) ->
+                        cmd != null && cmd.stream().anyMatch(a -> a.contains("ActiveState"))),
+                any()))
+        .thenReturn(ShellResponse.create(0, "Command output: " + activeState));
+  }
+
+  @Test
+  public void testUserScopedNodeAgentRejected() {
+    // A node agent under the yb user's systemd was installed by node-agent-provision.sh, not by
+    // YBA, so the node is user-provisioned and re-provisioning it must be rejected.
+    setupOnPremUniverse(false /* skipProvisioning */);
+    stubUserLevelNodeAgentState("active");
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    // The node agent scope precheck runs after the generic ones, which cannot pass in this
+    // environment; skipping them leaves this check as the only thing that can fail the task.
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // The parent task only reports that the precheck group failed; the reason is on the subtask.
+    Set<String> precheckErrors =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.RunNodeCommand)
+            .map(TaskInfo::getErrorMessage)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    assertTrue(
+        "Expected the node agent scope precheck to reject the node, got: " + precheckErrors,
+        precheckErrors.stream().anyMatch(m -> m.contains("user-level node agent")));
+  }
+
+  @Test
+  public void testRootScopedNodeAgentAllowed() {
+    // No user-scoped unit: `systemctl --user show` reports inactive for a unit it does not know.
+    setupOnPremUniverse(false /* skipProvisioning */);
+    stubUserLevelNodeAgentState("inactive");
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    // The task may still fail later for unrelated reasons in this environment; all that matters is
+    // that the node agent scope precheck is not what stopped it.
+    Set<String> precheckErrors =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.RunNodeCommand)
+            .map(TaskInfo::getErrorMessage)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    assertTrue(
+        "A root-scoped node agent must not be rejected, got: " + precheckErrors,
+        precheckErrors.isEmpty());
+  }
+
+  @Test
+  public void testInstallNodeAgentAlwaysReinstalls() {
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    Set<TaskInfo> installTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.InstallNodeAgent)
+            .collect(Collectors.toSet());
+    assertFalse("InstallNodeAgent subtasks should be created", installTasks.isEmpty());
+    assertTrue(
+        "Re-provisioning must reinstall the node agent regardless of its recorded state",
+        installTasks.stream().allMatch(t -> getBooleanParam(t, "reinstall")));
   }
 
   @Test
@@ -360,6 +447,11 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
   private static String getStringParam(TaskInfo taskInfo, String field) {
     JsonNode params = taskInfo.getTaskParams();
     return (params != null && params.hasNonNull(field)) ? params.get(field).textValue() : null;
+  }
+
+  private static boolean getBooleanParam(TaskInfo taskInfo, String field) {
+    JsonNode params = taskInfo.getTaskParams();
+    return params != null && params.hasNonNull(field) && params.get(field).booleanValue();
   }
 
   private static boolean isLeaderBlacklistAdd(TaskInfo taskInfo) {

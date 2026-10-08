@@ -27,7 +27,6 @@
 #include <sys/syscall.h>
 #endif // __linux__
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
@@ -68,6 +67,8 @@
 #ifdef __linux__
 #ifndef FALLOC_FL_KEEP_SIZE
 #include <linux/falloc.h>
+
+#include "yb/util/format.h"
 #endif
 #endif // __linux__
 
@@ -602,7 +603,7 @@ Status PosixWritableFile::Sync() {
   // is still actionable: a slow sync of a lot of bytes is a big flush, a slow sync of a few
   // bytes is a slow device. The path names the drive.
   const auto pending_bytes = unsynced_bytes_.load(std::memory_order_relaxed);
-  LOG_SLOW_EXECUTION(WARNING, 1000, strings::Substitute(
+  LOG_SLOW_EXECUTION(WARNING, 1000, Format(
       "sync call for $0 ($1 unsynced bytes)", filename_, pending_bytes)) {
     if (pending_sync_) {
       pending_sync_ = false;

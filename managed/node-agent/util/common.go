@@ -1,3 +1,5 @@
+// Copyright (c) YugabyteDB, Inc.
+
 package util
 
 import (
@@ -201,6 +203,11 @@ func PlatformGetUserEndpoint(cuuid, uuid string) string {
 // Returns the platform endpoint for fetching SessionInfo.
 func PlatformGetSessionInfoEndpoint() string {
 	return "/api/session_info"
+}
+
+// Returns the platform endpoint for fetching YBA instance info.
+func PlatformGetYBAInfoEndpoint() string {
+	return "/api/v2/yba-info"
 }
 
 // Returns the platform endpoint for fetching instance types.

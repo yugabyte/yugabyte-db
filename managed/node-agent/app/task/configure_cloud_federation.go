@@ -23,10 +23,12 @@ const (
 	YbControllerService = "yb-controller.service"
 
 	// federationDirName is the dedicated directory under ~/.yugabyte that holds every federation
-	// artifact (creds, env, stamp), so teardown and node cleanup can drop the whole folder at once.
+	// artifact (creds, env, stamp, scripts), so teardown and node cleanup can drop the whole folder
+	// at once.
 	federationDirName = "federation"
 
-	// On-node artifact names (all live under ~/.yugabyte/federation, except the systemd drop-in).
+	// On-node artifact names (all live under ~/.yugabyte/federation, except the systemd drop-in and
+	// the S3-on-GCP ~/.aws/config managed block).
 	federationDropInFileName = "10-yb-federation.conf"
 	federationEnvFileName    = "federation.env"
 	gcpFedCredsFileName      = "gcp-fed-creds.json"
@@ -35,9 +37,18 @@ const (
 	federationAppliedStampName = ".federation-applied"
 
 	// Template subpaths (relative to resources/templates/, under ServerTemplateSubpath).
-	federationEnvTemplate    = "yb-federation.env.j2"
-	federationDropInTemplate = "yb-controller-federation.conf.j2"
-	gcpFedCredsTemplate      = "gcp-fed-creds.json.j2"
+	federationEnvTemplate        = "yb-federation.env.j2"
+	federationDropInTemplate     = "yb-controller-federation.conf.j2"
+	gcpFedCredsTemplate          = "gcp-fed-creds.json.j2"
+	awsCredentialProcessTemplate = "aws_credential_process.sh.j2"
+
+	// S3-on-GCP artifacts: a credential_process script under the federation dir and a profile in
+	// ~/.aws/config.
+	awsCredentialProcessScriptName = "aws_credential_process.sh"
+	// The block bracketing the managed credential_process profile in ~/.aws/config; teardown and
+	// re-apply strip exactly this block, leaving any other profiles in the file untouched.
+	awsConfigBlockBegin = "# BEGIN YB MANAGED BLOCK - CLOUD FEDERATION"
+	awsConfigBlockEnd   = "# END YB MANAGED BLOCK - CLOUD FEDERATION"
 
 	// Systemd drop-in directory name for the YBC unit (e.g. yb-controller.service.d).
 	ybcServiceDropInDirName = YbControllerService + ".d"
@@ -104,7 +115,7 @@ func (h *ConfigureCloudFederation) Handle(ctx context.Context) (*pb.DescribeTask
 	util.FileLogger().Infof(
 		ctx,
 		"Reconciling cloud federation (direction=%s, enabled=%t)",
-		h.param.GetFlowDirection(),
+		h.param.GetTargetCloud(),
 		h.param.GetEnabled(),
 	)
 
@@ -175,15 +186,27 @@ func (h *ConfigureCloudFederation) restartYbc(ctx context.Context) error {
 // the applied stamp is equivalent to comparing rendered content, without re-rendering here.
 func (h *ConfigureCloudFederation) desiredStateHash(ybHome string) (string, error) {
 	var canonical string
-	switch h.param.GetFlowDirection() {
-	case pb.ConfigureCloudFederationInput_GCS_ON_AWS:
-		cfg := h.param.GetGcsOnAws()
-		if err := validateGcsOnAwsInputs(cfg); err != nil {
+	switch h.param.GetTargetCloud() {
+	case pb.ConfigureCloudFederationInput_GCP:
+		cfg := h.param.GetGcs()
+		if err := validateGcsInputs(cfg); err != nil {
 			return "", err
 		}
 		canonical = fmt.Sprintf("v1|gcs|%s|%s", ybHome, cfg.GetAudience())
+	case pb.ConfigureCloudFederationInput_AWS:
+		cfg := h.param.GetS3()
+		if err := validateS3Inputs(cfg); err != nil {
+			return "", err
+		}
+		canonical = fmt.Sprintf(
+			"v1|s3|%s|%s|%s|%s",
+			ybHome,
+			cfg.GetRoleArn(),
+			cfg.GetAudience(),
+			cfg.GetProfileName(),
+		)
 	default:
-		return "", fmt.Errorf("unsupported flow direction: %s", h.param.GetFlowDirection())
+		return "", fmt.Errorf("unsupported federation target cloud: %s", h.param.GetTargetCloud())
 	}
 	sum := sha256.Sum256([]byte(canonical))
 	return hex.EncodeToString(sum[:]), nil
@@ -205,9 +228,14 @@ func (h *ConfigureCloudFederation) inSync(ybHome, desiredHash string) bool {
 	if err != nil || !federationPathExists(filepath.Join(dropInDir, federationDropInFileName)) {
 		return false
 	}
-	switch h.param.GetFlowDirection() {
-	case pb.ConfigureCloudFederationInput_GCS_ON_AWS:
+	switch h.param.GetTargetCloud() {
+	case pb.ConfigureCloudFederationInput_GCP:
 		return federationPathExists(filepath.Join(fedDir, gcpFedCredsFileName))
+	case pb.ConfigureCloudFederationInput_AWS:
+		// The credential_process script and the managed ~/.aws/config block are the artifacts YBC
+		// depends on; a hand-removed block must count as drift even when the stamp matches.
+		return federationPathExists(filepath.Join(fedDir, awsCredentialProcessScriptName)) &&
+			awsManagedBlockPresent(filepath.Join(ybHome, ".aws", "config"))
 	}
 	return false
 }
@@ -218,6 +246,11 @@ func (h *ConfigureCloudFederation) federationArtifactsPresent(ybHome string) boo
 	// The whole federation directory is dropped on teardown, so a non-empty directory means
 	// artifacts remain. An empty directory is treated as nothing to tear down.
 	if dirHasEntries(federationDir(ybHome)) {
+		return true
+	}
+	// The S3-on-GCP managed block lives in ~/.aws/config, outside the federation dir, so a leftover
+	// block still counts as an artifact that needs tearing down.
+	if awsManagedBlockPresent(filepath.Join(ybHome, ".aws", "config")) {
 		return true
 	}
 	if dropInDir, _, err := h.dropInDir(); err == nil {
@@ -255,7 +288,7 @@ func dirHasEntries(path string) bool {
 	return err == nil && len(entries) > 0
 }
 
-// setup writes the GCS credential artifact, the env file consumed by YBC, and
+// setup writes the credential artifact(s) for the active flow, the env file consumed by YBC, and
 // the systemd drop-in that points YBC at that env file.
 func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) error {
 	fedDir := federationDir(ybHome)
@@ -273,10 +306,10 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 	}
 
 	var envCtx map[string]any
-	switch h.param.GetFlowDirection() {
-	case pb.ConfigureCloudFederationInput_GCS_ON_AWS:
-		cfg := h.param.GetGcsOnAws()
-		if err := validateGcsOnAwsInputs(cfg); err != nil {
+	switch h.param.GetTargetCloud() {
+	case pb.ConfigureCloudFederationInput_GCP:
+		cfg := h.param.GetGcs()
+		if err := validateGcsInputs(cfg); err != nil {
 			return err
 		}
 		credsFile := filepath.Join(fedDir, gcpFedCredsFileName)
@@ -290,10 +323,24 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 		); err != nil {
 			return err
 		}
-		envCtx = map[string]any{"gcp_creds_path": credsFile}
+		envCtx = map[string]any{"flow": "gcs", "gcp_creds_path": credsFile}
+
+	case pb.ConfigureCloudFederationInput_AWS:
+		cfg := h.param.GetS3()
+		if err := validateS3Inputs(cfg); err != nil {
+			return err
+		}
+		if err := h.writeS3Artifacts(ctx, ybHome, cfg); err != nil {
+			return err
+		}
+		envCtx = map[string]any{
+			"flow":            "s3",
+			"aws_profile":     cfg.GetProfileName(),
+			"aws_config_path": filepath.Join(ybHome, ".aws", "config"),
+		}
 
 	default:
-		return fmt.Errorf("unsupported flow direction: %s", h.param.GetFlowDirection())
+		return fmt.Errorf("unsupported federation target cloud: %s", h.param.GetTargetCloud())
 	}
 
 	if _, err := module.CopyFile(
@@ -377,18 +424,22 @@ func (h *ConfigureCloudFederation) writeDropIn(ctx context.Context, envFile stri
 	}, h.logOut)
 }
 
-// teardown removes the federation directory (all artifacts) and the systemd drop-in.
+// teardown removes the federation directory (all artifacts) and the systemd drop-in. The S3-on-GCP
+// managed block lives in ~/.aws/config, outside that directory, so it is stripped separately.
 func (h *ConfigureCloudFederation) teardown(ctx context.Context, ybHome string) error {
 	if err := h.removeDropIn(ctx); err != nil {
 		return err
 	}
 	// The systemd drop-in must live under yb-controller.service.d and is removed above; every other
-	// artifact is contained in the federation directory, so a single recursive delete clears it.
+	// federation artifact is contained in the federation directory, so a single recursive delete
+	// clears it. The one exception is the S3-on-GCP managed block in the shared ~/.aws/config, so
+	// strip only that block (safe no-op when the file/block is absent), leaving other profiles.
 	return module.RunShellSteps(ctx, h.username, []struct {
 		Desc string
 		Cmd  string
 	}{
 		{"remove-federation-dir", fmt.Sprintf("rm -rf %s", federationDir(ybHome))},
+		{"remove-federation-aws-block", removeAwsBlockCmd(filepath.Join(ybHome, ".aws", "config"))},
 	}, h.logOut)
 }
 
@@ -435,14 +486,132 @@ func (h *ConfigureCloudFederation) dropInDir() (string, bool, error) {
 // template, so the charset excludes quotes/backslashes/whitespace (JSON-safe).
 var gcpAudienceRegex = regexp.MustCompile(`^[A-Za-z0-9._:/-]{1,512}$`)
 
-// validateGcsOnAwsInputs rejects an empty or malformed audience before it is
+// validateGcsInputs rejects an empty or malformed audience before it is
 // rendered into the external_account JSON template.
-func validateGcsOnAwsInputs(cfg *pb.GcsOnAwsConfig) error {
+func validateGcsInputs(cfg *pb.GcsConfig) error {
 	if cfg == nil {
-		return errors.New("gcsOnAws config is required for GCS_ON_AWS")
+		return errors.New("gcs config is required when the target cloud is GCP")
 	}
 	if !gcpAudienceRegex.MatchString(cfg.GetAudience()) {
 		return errors.New("invalid or empty audience for GCS-on-AWS federation")
 	}
 	return nil
+}
+
+// S3-on-GCP allowlists: roleArn/profileName are interpolated into aws_credential_process.sh and the
+// echo'd ~/.aws/config block, so their charsets exclude quotes/backslashes/whitespace to keep the
+// rendered shell safe; audience reuses the JSON-safe GCS charset (gcpAudienceRegex).
+var (
+	// Restricted to the standard 'aws' partition on purpose: the credential_process script and
+	// YBA both use the global STS endpoint, which aws-cn and aws-us-gov do not serve. Accepting
+	// those ARNs here would defer the failure to an opaque STS error at backup time.
+	awsRoleArnRegex = regexp.MustCompile(
+		`^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9._/+=,@-]{1,256}$`,
+	)
+	awsProfileRegex = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+)
+
+// validateS3Inputs rejects empty or malformed inputs before they are rendered into the
+// credential_process script and the ~/.aws/config profile.
+func validateS3Inputs(cfg *pb.S3Config) error {
+	if cfg == nil {
+		return errors.New("s3 config is required when the target cloud is AWS")
+	}
+	if !awsRoleArnRegex.MatchString(cfg.GetRoleArn()) {
+		return errors.New("invalid or empty roleArn for S3-on-GCP federation")
+	}
+	if !gcpAudienceRegex.MatchString(cfg.GetAudience()) {
+		return errors.New("invalid or empty audience for S3-on-GCP federation")
+	}
+	if !awsProfileRegex.MatchString(cfg.GetProfileName()) {
+		return errors.New("invalid or empty profileName for S3-on-GCP federation")
+	}
+	return nil
+}
+
+// awsManagedBlockPresent reports whether the managed credential_process block is present in the
+// given ~/.aws/config. Pure read, so it is safe to call from inSync / federationArtifactsPresent.
+func awsManagedBlockPresent(awsConfig string) bool {
+	data, err := os.ReadFile(awsConfig)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), awsConfigBlockBegin)
+}
+
+// writeS3Artifacts renders the credential_process script under the federation dir and installs the
+// managed credential_process profile in ~/.aws/config. Idempotent: the existing managed block is
+// stripped before the new one is appended, so re-running on drift never duplicates it.
+func (h *ConfigureCloudFederation) writeS3Artifacts(
+	ctx context.Context,
+	ybHome string,
+	cfg *pb.S3Config,
+) error {
+	fedDir := federationDir(ybHome)
+	scriptPath := filepath.Join(fedDir, awsCredentialProcessScriptName)
+	awsDir := filepath.Join(ybHome, ".aws")
+	awsConfig := filepath.Join(awsDir, "config")
+
+	// The federation dir is already created (0700) by setup; only ~/.aws needs to be ensured here.
+	if err := module.RunShellSteps(ctx, h.username, []struct {
+		Desc string
+		Cmd  string
+	}{
+		{"create-aws-dir", fmt.Sprintf("mkdir -p %s && chmod 0700 %s", awsDir, awsDir)},
+	}, h.logOut); err != nil {
+		return err
+	}
+
+	if _, err := module.CopyFile(
+		ctx,
+		map[string]any{
+			"audience": cfg.GetAudience(),
+			"role_arn": cfg.GetRoleArn(),
+		},
+		filepath.Join(module.ServerTemplateSubpath, awsCredentialProcessTemplate),
+		scriptPath,
+		fs.FileMode(0750),
+		h.username,
+	); err != nil {
+		return err
+	}
+
+	return module.RunShellSteps(ctx, h.username, []struct {
+		Desc string
+		Cmd  string
+	}{
+		{"remove-existing-federation-aws-block", removeAwsBlockCmd(awsConfig)},
+		{
+			"append-federation-aws-block",
+			fmt.Sprintf(
+				`echo '%s
+[profile %s]
+credential_process = %s
+%s' >> %s && chmod 0600 %s`,
+				awsConfigBlockBegin,
+				cfg.GetProfileName(),
+				scriptPath,
+				awsConfigBlockEnd,
+				awsConfig,
+				awsConfig,
+			),
+		},
+	}, h.logOut)
+}
+
+// removeAwsBlockCmd returns a shell command that strips the managed block from ~/.aws/config,
+// leaving any other profiles intact. Safe when the file or the block is absent.
+func removeAwsBlockCmd(awsConfig string) string {
+	return fmt.Sprintf(
+		`if [ -f %s ]; then `+
+			`awk '/%s/ {inblock=1} /%s/ {inblock=0; next} !inblock' %s > %s.tmp && `+
+			`mv %s.tmp %s; fi`,
+		awsConfig,
+		awsConfigBlockBegin,
+		awsConfigBlockEnd,
+		awsConfig,
+		awsConfig,
+		awsConfig,
+		awsConfig,
+	)
 }
