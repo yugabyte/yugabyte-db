@@ -1031,6 +1031,57 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
       << ") but got path_id " << second_pid;
 }
 
+// Tiered storage: ResolveTargetTierPathId is the validate/repair step run on every tablet open
+// (see TSTabletManager::OpenTablet) so a stale cached target_tier_path_id -- from e.g. a disk
+// that got removed from --fs_data_dirs -- doesn't silently point flushes/compactions at a
+// directory that no longer belongs to the intended tier.
+TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  // No target tier persisted yet -- must resolve to home (path_id 0) without persisting
+  // anything (i.e. still empty afterwards).
+  auto no_pref_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(no_pref_pid, 0u);
+  ASSERT_TRUE(meta->target_storage_tier().empty());
+
+  // A freshly-resolved, still-valid target must be reused as-is (not re-resolved to some other
+  // disk in the same tier).
+  auto hdd_pid = ASSERT_RESULT(tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_OK(meta->SetTargetTier("hdd", hdd_pid));
+  auto resolved_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(resolved_pid, hdd_pid);
+
+  // Simulate a stale cached path_id (as if this tablet's tier_paths changed under it, e.g. a
+  // relabeled disk) by pointing target_tier_path_id at an "ssd" disk while target_storage_tier
+  // still says "hdd". ResolveTargetTierPathId must detect the mismatch, re-resolve to a real
+  // "hdd" disk, and persist the repair.
+  uint32_t ssd_pid = 0;
+  bool found_ssd = false;
+  for (const auto& tp : meta->tier_paths()) {
+    if (tp.tier == "ssd") {
+      ssd_pid = tp.path_id;
+      found_ssd = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(found_ssd);
+  ASSERT_OK(meta->SetTargetTier("hdd", ssd_pid));
+
+  auto repaired_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  std::unordered_map<uint32_t, std::string> tier_by_path_id;
+  for (const auto& tp : meta->tier_paths()) {
+    tier_by_path_id[tp.path_id] = tp.tier;
+  }
+  ASSERT_EQ(tier_by_path_id.at(repaired_pid), "hdd")
+      << "Repaired path_id " << repaired_pid << " is not an hdd disk";
+
+  // The repair must be persisted, not just returned in-memory.
+  ASSERT_EQ(meta->target_storage_tier(), "hdd");
+  ASSERT_EQ(meta->target_tier_path_id(), repaired_pid);
+}
+
 namespace {
   const HybridTime kNoLastCompact = HybridTime(tablet::kNoLastFullCompactionTime);
   // An arbitrary realistic time.

@@ -1367,8 +1367,13 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
       LOG_IF_WITH_PREFIX(DFATAL, regular_rocksdb_options.db_paths.front().path != db_dir)
           << "tier_paths[0] (" << regular_rocksdb_options.db_paths.front().path
           << ") does not match home rocksdb_dir (" << db_dir << ")";
+
+      // Point flushes and compaction output at the persisted target disk. OpenTablet validated or
+      // repaired target_tier_path_id (ResolveTargetTierPathId) before this runs.
+      regular_rocksdb_options.target_path_id = metadata()->target_tier_path_id();
       LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
-                            << " tiered db_paths: " << desc;
+                            << " tiered db_paths (target_path_id="
+                            << regular_rocksdb_options.target_path_id << "): " << desc;
     }
   }
 
@@ -4840,7 +4845,11 @@ Status Tablet::ForceRocksDBCompact(
   options.skip_corrupt_data_blocks_unsafe = skip_corrupt_data_blocks_unsafe;
   if (compaction_reason != rocksdb::CompactionReason::kPostSplitCompaction) {
     options.exclusive_manual_compaction = FLAGS_tablet_exclusive_full_compaction;
-    return ForceRocksDBCompact(options, options);
+    // Ensure the compaction output goes to the correct tier.
+    // Only apply to regular DB, as the intents DB has a single db_paths entry.
+    auto regular_options = options;
+    regular_options.target_path_id = metadata()->target_tier_path_id();
+    return ForceRocksDBCompact(regular_options, options);
   }
 
   // Specific handling for post split compaction.
@@ -4875,6 +4884,7 @@ Status Tablet::ForceRocksDBCompact(
       regular_options.file_number_upper_bound = *file_number_upper_bound;
       regular_options.input_size_limit_per_job = input_size_threshold;
     }
+    regular_options.target_path_id = metadata()->target_tier_path_id();
   }
 
   return ForceRocksDBCompact(regular_options, options);
@@ -4897,6 +4907,312 @@ Status Tablet::ForceRocksDBCompact(
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get(), intents_options));
   }
   return Status::OK();
+}
+
+// Tiered storage: bookkeeping for one migration pass, from StartTierMigrationPass to
+// FinishTierMigrationPass. Refcounted via shared_ptr, each scheduled file's callback holds a ref,
+// so `op` (which keeps regular_db_ alive) outlives every callback that might still fire,
+// including the ones RocksDB's own shutdown aborts.
+struct TierMigrationPass {
+  ScopedRWOperation op;
+  std::string target_dir;
+  uint32_t target_path_id = 0;
+
+  std::atomic<size_t> pending{0};
+  std::atomic<uint32_t> moved{0};
+  std::atomic<uint32_t> deferred{0};
+  std::atomic<uint32_t> obsoleted{0};
+  std::atomic<uint32_t> hard_failed{0};
+
+  std::mutex error_mutex;
+  Status first_hard_error;
+};
+
+Result<std::string> Tablet::LookupTierDir(uint32_t path_id) const {
+  for (const auto& tier_path : metadata()->tier_paths()) {
+    if (tier_path.path_id == path_id) {
+      return tier_path.path;
+    }
+  }
+  return STATUS_FORMAT(
+      InvalidArgument, "Tablet $0 has no directory pinned for path_id $1", tablet_id(), path_id);
+}
+
+std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& target_dir) const {
+  std::vector<uint64_t> candidates;
+  if (!regular_db_) {
+    return candidates;
+  }
+  for (const auto& file : regular_db_->GetLiveFilesMetaData()) {
+    if (file.db_path != target_dir) {
+      candidates.push_back(file.name_id);
+    }
+  }
+  return candidates;
+}
+
+Status Tablet::ClaimTierMigrationPass() {
+  std::lock_guard lock(tier_migration_mutex_);
+  auto& status = tier_migration_status_;
+  if (status.pass_in_flight) {
+    return STATUS(ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
+  }
+  status.pass_in_flight = true;
+  status.state = TierMigrationStatus::State::kInProgress;
+  status.files_total = 0;
+  status.files_moved = 0;
+  status.files_deferred = 0;
+  status.files_failed = 0;
+  status.obsoleted = 0;
+  return Status::OK();
+}
+
+Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  if (!regular_db_) {
+    return STATUS(IllegalState, "Tablet has no regular RocksDB open");
+  }
+  RETURN_NOT_OK(LookupTierDir(target_path_id));
+
+  {
+    std::lock_guard lock(tier_target_mutex_);
+    if (metadata()->target_storage_tier() != target_tier ||
+        metadata()->target_tier_path_id() != target_path_id) {
+      RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
+    }
+    RETURN_NOT_OK_PREPEND(
+        regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
+        "Failed to set target_path_id on regular DB");
+  }
+
+  // Intent (re)asserted: convergence is unproven again, and earlier failures no longer count.
+  std::lock_guard lock(tier_migration_mutex_);
+  tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
+  tier_migration_status_.consecutive_failed_passes = 0;
+  tier_migration_status_.last_error = Status::OK();
+  return Status::OK();
+}
+
+Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  if (!regular_db_) {
+    return STATUS(IllegalState, "Tablet has no regular RocksDB open");
+  }
+  if (metadata()->target_storage_tier().empty()) {
+    return STATUS(IllegalState, "Tablet has no target storage tier");
+  }
+  const auto target_path_id = metadata()->target_tier_path_id();
+  const auto target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
+
+  RETURN_NOT_OK(ClaimTierMigrationPass());
+
+  auto candidates = CollectTierMigrationCandidates(target_dir);
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    auto& status = tier_migration_status_;
+    status.files_total = narrow_cast<uint32_t>(candidates.size());
+    if (candidates.empty()) {
+      status.pass_in_flight = false;
+      status.consecutive_failed_passes = 0;
+      status.last_error = Status::OK();
+      return status;
+    }
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Tier migration pass (path_id=" << target_path_id << "): scheduling "
+                        << candidates.size() << " SST move(s) to " << target_dir;
+
+  auto pass = std::make_shared<TierMigrationPass>();
+  pass->op = std::move(scoped_operation);
+  pass->target_dir = target_dir;
+  pass->target_path_id = target_path_id;
+  ScheduleTierMigrationFiles(std::move(pass), std::move(candidates));
+
+  std::lock_guard lock(tier_migration_mutex_);
+  return tier_migration_status_;
+}
+
+Result<TierMigrationStatus> Tablet::AlterTabletTier(
+    const std::string& target_tier, uint32_t target_path_id) {
+  RETURN_NOT_OK(SetTierMigrationTarget(target_tier, target_path_id));
+  auto status = StartTierMigrationPass();
+  if (status.ok() || !status.status().IsServiceUnavailable()) {
+    return status;
+  }
+  // A pass is already in flight. It keeps moving toward the target it started with; the next
+  // pass picks up the intent just persisted. Report its progress rather than failing.
+  std::lock_guard lock(tier_migration_mutex_);
+  return tier_migration_status_;
+}
+
+void Tablet::ScheduleTierMigrationFiles(
+    std::shared_ptr<TierMigrationPass> pass, std::vector<uint64_t> candidates) {
+  // Lets a test race a candidate away after it was collected but before it is scheduled, to
+  // exercise the NotFound path in OnTierMigrationFileDone.
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::ScheduleTierMigrationFiles");
+
+  pass->pending.store(candidates.size(), std::memory_order_relaxed);
+
+  for (const auto file_number : candidates) {
+    VLOG_WITH_PREFIX(2) << "TieredStorage Tablet::StartTierMigrationPass: scheduling move file="
+                        << file_number << " to='" << pass->target_dir << "' (target_path_id="
+                        << pass->target_path_id << ")";
+
+    // The callback can fire inline, on this thread, if the pool rejects the task, so `pass` must
+    // already carry everything it needs, and this thread must hold no lock the callback takes.
+    auto callback = [this, pass](const Status& status) {
+      OnTierMigrationFileDone(pass, status);
+    };
+    auto status = regular_db_->ScheduleDBPathMove(
+        file_number, pass->target_path_id, callback);
+    if (!status.ok()) {
+      // ScheduleDBPathMove never invoked the callback in this case, so report the outcome here.
+      OnTierMigrationFileDone(pass, status);
+    }
+  }
+}
+
+void Tablet::OnTierMigrationFileDone(
+    const std::shared_ptr<TierMigrationPass>& pass, const Status& status) {
+  if (status.ok() || status.IsAlreadyPresent()) {
+    // AlreadyPresent: the file reached the target by another route before the move ran, e.g. a
+    // compaction whose output already targeted target_path_id replaced it.
+    pass->moved.fetch_add(1, std::memory_order_relaxed);
+  } else if (status.IsAborted()) {
+    // Busy with a compaction. Not a failure: the next pass retries it, unless that compaction's
+    // own output has landed it on the target by then.
+    pass->deferred.fetch_add(1, std::memory_order_relaxed);
+  } else if (status.IsNotFound()) {
+    // Gone between the scan and the move, e.g. a compaction rewrote it away. It no longer
+    // needs moving either way.
+    pass->obsoleted.fetch_add(1, std::memory_order_relaxed);
+  } else {
+    pass->hard_failed.fetch_add(1, std::memory_order_relaxed);
+    std::lock_guard lock(pass->error_mutex);
+    if (pass->first_hard_error.ok()) {
+      pass->first_hard_error = status;
+    }
+  }
+
+  if (pass->pending.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+    return;  // Not the last callback.
+  }
+
+  FinishTierMigrationPass(pass);
+}
+
+void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& pass) {
+  const uint32_t moved = pass->moved.load(std::memory_order_relaxed);
+  const uint32_t deferred = pass->deferred.load(std::memory_order_relaxed);
+  const uint32_t obsoleted = pass->obsoleted.load(std::memory_order_relaxed);
+  const uint32_t hard_failed = pass->hard_failed.load(std::memory_order_relaxed);
+  Status hard_error;
+  {
+    std::lock_guard lock(pass->error_mutex);
+    hard_error = pass->first_hard_error;
+  }
+
+  // Even a pass with nothing left behind proves nothing by itself: a flush or compaction that was
+  // already running when the target switched can have landed a file on the old disk since the
+  // scan, and the target may have changed while this pass ran. Deciding that the tablet has
+  // converged (kDone) is the background reconciler's job, from a fresh scan of its own.
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    auto& status = tier_migration_status_;
+    status.pass_in_flight = false;
+    status.files_moved = moved;
+    status.files_deferred = deferred;
+    status.files_failed = hard_failed;
+    status.obsoleted = obsoleted;
+    if (hard_failed == 0) {
+      status.consecutive_failed_passes = 0;
+      status.last_error = Status::OK();
+    } else {
+      status.last_error = hard_error;
+      status.consecutive_failed_passes = moved > 0 ? 0 : status.consecutive_failed_passes + 1;
+    }
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Tier migration pass (path_id=" << pass->target_path_id
+                        << ") done: moved=" << moved << " deferred=" << deferred
+                        << " obsoleted=" << obsoleted << " hard_failed=" << hard_failed
+                        << (hard_error.ok() ? "" : Format(", first error: $0", hard_error));
+}
+
+Result<TabletTierInfo> Tablet::GetTierInfo() const {
+  // Keeps regular_db_ alive for the GetLiveFilesMetaData scan below: a concurrent tablet
+  // shutdown/delete waits for this to be released before destroying the DB.
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  TabletTierInfo info;
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    info.migration = tier_migration_status_;
+  }
+  info.wal_dir = metadata()->wal_dir();
+  info.target_tier = metadata()->target_storage_tier();
+  info.target_tier_path_id = metadata()->target_tier_path_id();
+
+  info.tier_paths.reserve(metadata()->tier_paths().size());
+  for (const auto& tp : metadata()->tier_paths()) {
+    TierPathStats stats;
+    stats.path_id = tp.path_id;
+    stats.tier = tp.tier;
+    stats.path = tp.path;
+    stats.is_home = (tp.path_id == 0);
+    info.tier_paths.push_back(stats);
+  }
+
+  // Home tier (path_id 0) is where the first flush will land absent any migration, so an empty
+  // tablet (no live SSTs yet, e.g. still bootstrapping or just created and never flushed) is
+  // trivially "on" its home tier rather than "none". Overwritten below once there is at
+  // least one live SST to derive current_tier from directly.
+  for (const auto& stats : info.tier_paths) {
+    if (stats.is_home) {
+      info.current_tier = stats.tier;
+      break;
+    }
+  }
+
+  if (!regular_db_) {
+    return info;
+  }
+
+  std::unordered_set<std::string> tiers_seen;
+  for (const auto& file : regular_db_->GetLiveFilesMetaData()) {
+    TierPathStats* matched_stats = nullptr;
+    for (auto& stats : info.tier_paths) {
+      if (stats.path == file.db_path) {
+        matched_stats = &stats;
+        break;
+      }
+    }
+
+    if (matched_stats) {
+      ++matched_stats->sst_count;
+      matched_stats->total_bytes += file.total_size;
+      tiers_seen.insert(matched_stats->tier);
+    } else {
+      ++info.unmatched_sst_count;
+      // Should never happen: every live SST's db_path is one of db_paths, which OpenRocksDB
+      // populated directly from tier_paths. A mismatch here means tier_paths on this replica no
+      // longer matches what RocksDB was actually opened with.
+      LOG_WITH_PREFIX(DFATAL) << "Live SST file=" << file.name_id << " db_path='" << file.db_path
+                              << "' matches no tier_paths entry";
+    }
+  }
+
+  if (tiers_seen.size() == 1) {
+    info.current_tier = *tiers_seen.begin();
+  } else if (tiers_seen.size() > 1) {
+    // Straddling more than one tier (e.g. mid-migration): neither the home-tier default set
+    // above nor a single derived tier is accurate, so leave it unset rather than pick one.
+    info.current_tier.clear();
+  }
+  return info;
 }
 
 std::string Tablet::TEST_DocDBDumpStr(

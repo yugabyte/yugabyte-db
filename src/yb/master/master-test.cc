@@ -2904,6 +2904,10 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::ChangeMetadataResponsePB)
   UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
                          tserver::FlushTabletsResponsePB)
+  UNUSED_TS_ADMIN_METHOD(AlterTabletTier, tserver::AlterTabletTierRequestPB,
+                         tserver::AlterTabletTierResponsePB)
+  UNUSED_TS_ADMIN_METHOD(GetTabletTierInfo, tserver::GetTabletTierInfoRequestPB,
+                         tserver::GetTabletTierInfoResponsePB)
   UNUSED_TS_ADMIN_METHOD(CountIntents, tserver::CountIntentsRequestPB,
                          tserver::CountIntentsResponsePB)
   UNUSED_TS_ADMIN_METHOD(AddTableToTablet, tserver::AddTableToTabletRequestPB,

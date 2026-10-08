@@ -123,6 +123,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
@@ -2202,6 +2203,137 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
         resp->clear_failed_tablet_id();
       }
       break;
+  }
+
+  context.RespondSuccess();
+}
+
+namespace {
+
+TierMigrationStatusPB::State ToTierMigrationStatePB(tablet::TierMigrationStatus::State state) {
+  switch (state) {
+    case tablet::TierMigrationStatus::State::kNone:
+      return TierMigrationStatusPB::NONE;
+    case tablet::TierMigrationStatus::State::kInProgress:
+      return TierMigrationStatusPB::IN_PROGRESS;
+    case tablet::TierMigrationStatus::State::kDone:
+      return TierMigrationStatusPB::DONE;
+    case tablet::TierMigrationStatus::State::kFailed:
+      return TierMigrationStatusPB::FAILED;
+  }
+  FATAL_INVALID_ENUM_VALUE(tablet::TierMigrationStatus::State, state);
+}
+
+void FillTierMigrationStatusPB(
+    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
+  pb->set_state(ToTierMigrationStatePB(status.state));
+  pb->set_pass_in_flight(status.pass_in_flight);
+  pb->set_files_total(status.files_total);
+  pb->set_files_moved(status.files_moved);
+  pb->set_files_failed(status.files_failed);
+  pb->set_files_deferred(status.files_deferred);
+  pb->set_obsoleted(status.obsoleted);
+  pb->set_consecutive_failed_passes(status.consecutive_failed_passes);
+  if (!status.last_error.ok()) {
+    pb->set_last_error(status.last_error.ToString());
+  }
+}
+
+}  // namespace
+
+void TabletServiceAdminImpl::AlterTabletTier(
+    const AlterTabletTierRequestPB* req,
+    AlterTabletTierResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterTabletTier", req, resp,
+                               &context)) {
+    return;
+  }
+
+  auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+  const auto& tablet = peer_tablet.tablet;
+  if (!tablet) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "Tablet not available"), &context);
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Processing AlterTabletTier for tablet " << req->tablet_id()
+                        << " -> tier " << req->target_tier() << " from "
+                        << context.requestor_string();
+
+  const auto meta = peer_tablet.tablet_peer->tablet_metadata();
+
+  // Keep the disk already resolved for this tier when the tier is unchanged. Re-running the
+  // least-loaded-disk policy could pick a different disk within the same tier purely because the
+  // first call changed the load counts, forcing a pointless rewrite of every SST.
+  Result<uint32_t> path_id = meta->target_storage_tier() == req->target_tier()
+      ? server_->tablet_manager()->ResolveTargetTierPathId(meta)
+      : server_->tablet_manager()->SelectPathIdForTier(
+            *meta, meta->table_id(), req->target_tier());
+  if (!path_id.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), path_id.status(), &context);
+    return;
+  }
+
+  auto status = tablet->AlterTabletTier(req->target_tier(), *path_id);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status.status(), &context);
+    return;
+  }
+
+  FillTierMigrationStatusPB(*status, resp->mutable_migration());
+  context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::GetTabletTierInfo(
+    const GetTabletTierInfoRequestPB* req,
+    GetTabletTierInfoResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "GetTabletTierInfo", req, resp,
+                               &context)) {
+    return;
+  }
+
+  auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+  const auto& tablet = peer_tablet.tablet;
+  if (!tablet) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "Tablet not available"), &context);
+    return;
+  }
+
+  auto info = tablet->GetTierInfo();
+  if (!info.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), info.status(), &context);
+    return;
+  }
+
+  resp->set_tablet_id(req->tablet_id());
+  if (!info->current_tier.empty()) {
+    resp->set_current_tier(info->current_tier);
+  }
+  if (!info->target_tier.empty()) {
+    resp->set_target_tier(info->target_tier);
+    resp->set_target_tier_path_id(info->target_tier_path_id);
+  }
+  resp->set_wal_dir(info->wal_dir);
+  resp->set_unmatched_sst_count(info->unmatched_sst_count);
+
+  if (info->migration.state != tablet::TierMigrationStatus::State::kNone) {
+    FillTierMigrationStatusPB(info->migration, resp->mutable_migration());
+  }
+
+  for (const auto& stats : info->tier_paths) {
+    auto* tp_pb = resp->add_tier_paths();
+    tp_pb->set_path_id(stats.path_id);
+    tp_pb->set_tier(stats.tier);
+    tp_pb->set_path(stats.path);
+    tp_pb->set_is_home(stats.is_home);
+    tp_pb->set_sst_count(stats.sst_count);
+    tp_pb->set_total_bytes(stats.total_bytes);
   }
 
   context.RespondSuccess();

@@ -607,7 +607,9 @@ Status KvStoreInfo::LoadFromPB(
           .path    = rocksdb_dir,
       });
     }
+    target_tier_path_id = pb.target_tier_path_id();
   }
+  target_storage_tier = pb.target_storage_tier();
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   rocksdb_parent_data_compacted = pb.rocksdb_parent_data_compacted();
@@ -842,6 +844,12 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
     tppb->set_tier(tp.tier);
     tppb->set_path(tp.path);
   }
+  if (target_storage_tier.empty()) {
+    pb->clear_target_storage_tier();
+  } else {
+    pb->set_target_storage_tier(target_storage_tier);
+  }
+  pb->set_target_tier_path_id(target_tier_path_id);
   if (lower_bound_key.empty()) {
     pb->clear_lower_bound_key();
   } else {
@@ -896,6 +904,8 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
   return YB_STRUCT_EQUALS(kv_store_id,
                           rocksdb_dir,
                           tier_paths,
+                          target_storage_tier,
+                          target_tier_path_id,
                           lower_bound_key,
                           upper_bound_key,
                           rocksdb_parent_data_compacted,
@@ -998,6 +1008,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
   ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
+  ret->kv_store_.target_storage_tier = data.target_storage_tier;
+  ret->kv_store_.target_tier_path_id = 0;
   RETURN_NOT_OK(ret->Flush());
   return ret;
 }
@@ -1118,6 +1130,33 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(ColocationId colocation_id)
 void RaftGroupMetadata::TEST_SetTierPaths(std::vector<TierPathInfo> paths) {
   std::lock_guard lock(data_mutex_);
   kv_store_.tier_paths = std::move(paths);
+}
+
+std::string RaftGroupMetadata::target_storage_tier() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.target_storage_tier;
+}
+
+uint32_t RaftGroupMetadata::target_tier_path_id() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.target_tier_path_id;
+}
+
+Status RaftGroupMetadata::SetTargetTier(const std::string& target_tier, uint32_t target_path_id) {
+  {
+    std::lock_guard lock(data_mutex_);
+    kv_store_.target_storage_tier = target_tier;
+    kv_store_.target_tier_path_id = target_path_id;
+  }
+  return Flush();
+}
+
+Status RaftGroupMetadata::ClearTargetTierPathId() {
+  {
+    std::lock_guard lock(data_mutex_);
+    kv_store_.target_tier_path_id = 0;
+  }
+  return Flush();
 }
 
 Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,

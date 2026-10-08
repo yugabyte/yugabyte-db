@@ -299,6 +299,10 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   // below and re-applied to the persisted superblock in FetchAll(). RBS downloads all SSTs into the
   // local home dir (path_id 0); a subsequent tier reconcile can migrate them later.
   kv_store->clear_tier_paths();
+  // target_storage_tier (e.g. "ssd"/"hdd") is intentionally left as-is; still applies on this new
+  // replica. target_tier_path_id must be cleared. TSTabletManager will re-resolve it the first time
+  // this tablet is opened (via ResolveTargetTierPathId), since RBS always lands data on path_id 0.
+  kv_store->clear_target_tier_path_id();
 
   superblock_->set_tablet_data_state(tablet::TABLET_DATA_COPYING);
   wal_seqnos_.assign(resp.deprecated_wal_segment_seqnos().begin(),
@@ -399,6 +403,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
             .colocated = colocated,
             .snapshot_schedules = {},
             .hosted_services = hosted_services,
+            .target_storage_tier = kv_store->target_storage_tier(),
         },
         data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
