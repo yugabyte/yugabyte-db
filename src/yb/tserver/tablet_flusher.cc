@@ -172,9 +172,7 @@ TabletFlusher::Reservation::~Reservation() {
 
 void TabletFlusher::Reservation::Release() {
   if (auto* flusher = std::exchange(flusher_, nullptr)) {
-    std::lock_guard lock(flusher->mutex_);
-    --flusher->reserved_;
-    flusher->ReleaseUnlocked({tablet_id_});
+    flusher->Release({tablet_id_}, /* reserved = */ true);
   }
 }
 
@@ -222,8 +220,9 @@ Result<TabletFlusher::Reservation> TabletFlusher::Reserve(const TabletId& tablet
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(Admit({tablet_id}));
   ++reserved_;
-  // The reserved lane is sized for admitted preflights only; a second reserver would break the
-  // guarantee that every reserved job gets a worker.
+  // Lane occupancy (unconsumed reservations plus reserved jobs not yet retired) stays within the
+  // lane because only admitted preflights reserve; a second reserver would break the guarantee
+  // that every reserved job gets a worker.
   DCHECK_LE(reserved_, make_unsigned(FLAGS_snapshot_preflush_concurrency));
   return Reservation(this, tablet_id);
 }
@@ -238,9 +237,11 @@ Status TabletFlusher::Submit(
   });
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(Admit(ids));
-  auto status = Enqueue(*pool_, std::move(tablets), ids, request, deadline, std::move(callback));
+  auto status = Enqueue(
+      *pool_, /* reserved = */ false, std::move(tablets), ids, request, deadline,
+      std::move(callback));
   if (!status.ok()) {
-    ReleaseUnlocked(ids);
+    ReleaseUnlocked(ids, /* reserved = */ false);
   }
   return status;
 }
@@ -255,24 +256,24 @@ Status TabletFlusher::Submit(
   // Take over the admission here so the reservation's destructor cannot re-enter mutex_ on the
   // failure paths below; the job (or the explicit release) owns it from now on.
   reservation.flusher_ = nullptr;
-  --reserved_;
   std::unordered_set<TabletId> ids{tablet->tablet_id()};
   auto status = closing_ ? STATUS(ShutdownInProgress, "Tablet flusher is shutting down")
-                         : Enqueue(*reserved_pool_, {tablet}, ids, request, deadline,
-                                   std::move(callback));
+                         : Enqueue(*reserved_pool_, /* reserved = */ true, {tablet}, ids, request,
+                                   deadline, std::move(callback));
   if (!status.ok()) {
-    ReleaseUnlocked(ids);
+    ReleaseUnlocked(ids, /* reserved = */ true);
   }
   return status;
 }
 
 Status TabletFlusher::Enqueue(
-    ThreadPool& pool, std::vector<tablet::TabletPtr> tablets, std::unordered_set<TabletId> ids,
-    const FlushTabletsRequestPB& request, CoarseTimePoint deadline, Callback callback) {
+    ThreadPool& pool, bool reserved, std::vector<tablet::TabletPtr> tablets,
+    std::unordered_set<TabletId> ids, const FlushTabletsRequestPB& request,
+    CoarseTimePoint deadline, Callback callback) {
   // Serialize enqueue with StartShutdown so its subsequent pool drain includes every admitted
   // job. SubmitFunc only enqueues; neither the job nor its callback runs inline under this lock.
-  return pool.SubmitFunc([this, tablets = std::move(tablets), ids = std::move(ids), request,
-                          deadline, callback = std::move(callback)] {
+  return pool.SubmitFunc([this, reserved, tablets = std::move(tablets), ids = std::move(ids),
+                          request, deadline, callback = std::move(callback)] {
     TabletId failed_tablet_id;
     Status status;
     {
@@ -290,22 +291,27 @@ Status TabletFlusher::Enqueue(
     if (status.ok()) {
       status = FlushBatch(tablets, request).Run(deadline, &failed_tablet_id);
     }
-    Release(ids);
+    // Retire before the callback: the callback's `results` keeps the preflight admitted, so lane
+    // occupancy never exceeds admitted preflights.
+    Release(ids, reserved);
     callback(status, failed_tablet_id);
   });
 }
 
-void TabletFlusher::ReleaseUnlocked(const std::unordered_set<TabletId>& ids) {
+void TabletFlusher::ReleaseUnlocked(const std::unordered_set<TabletId>& ids, bool reserved) {
   --outstanding_;
+  if (reserved) {
+    --reserved_;
+  }
   active_metric_->Decrement();
   for (const auto& id : ids) {
     tablets_.erase(id);
   }
 }
 
-void TabletFlusher::Release(const std::unordered_set<TabletId>& ids) {
+void TabletFlusher::Release(const std::unordered_set<TabletId>& ids, bool reserved) {
   std::lock_guard lock(mutex_);
-  ReleaseUnlocked(ids);
+  ReleaseUnlocked(ids, reserved);
 }
 
 void TabletFlusher::StartShutdown() {

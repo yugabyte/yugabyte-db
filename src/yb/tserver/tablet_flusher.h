@@ -75,11 +75,11 @@ class TabletFlusher {
   static Status Validate(const FlushTabletsRequestPB& request, CoarseTimePoint deadline);
   Status Admit(const std::unordered_set<TabletId>& ids) REQUIRES(mutex_);
   Status Enqueue(
-      ThreadPool& pool, std::vector<tablet::TabletPtr> tablets, std::unordered_set<TabletId> ids,
-      const FlushTabletsRequestPB& request, CoarseTimePoint deadline, Callback callback)
-      REQUIRES(mutex_);
-  void ReleaseUnlocked(const std::unordered_set<TabletId>& ids) REQUIRES(mutex_);
-  void Release(const std::unordered_set<TabletId>& ids);
+      ThreadPool& pool, bool reserved, std::vector<tablet::TabletPtr> tablets,
+      std::unordered_set<TabletId> ids, const FlushTabletsRequestPB& request,
+      CoarseTimePoint deadline, Callback callback) REQUIRES(mutex_);
+  void ReleaseUnlocked(const std::unordered_set<TabletId>& ids, bool reserved) REQUIRES(mutex_);
+  void Release(const std::unordered_set<TabletId>& ids, bool reserved);
 
   std::unique_ptr<ThreadPool> pool_;
   std::unique_ptr<ThreadPool> reserved_pool_;
@@ -87,7 +87,7 @@ class TabletFlusher {
   std::mutex mutex_;
   bool closing_ GUARDED_BY(mutex_) = false;
   size_t outstanding_ GUARDED_BY(mutex_) = 0;
-  // Reservations not yet consumed by Submit; bounded by the reserved lane size.
+  // Reserved lane occupancy: unconsumed reservations plus reserved jobs not yet retired.
   size_t reserved_ GUARDED_BY(mutex_) = 0;
   std::unordered_set<TabletId> tablets_ GUARDED_BY(mutex_);
   scoped_refptr<AtomicGauge<uint64_t>> active_metric_;
