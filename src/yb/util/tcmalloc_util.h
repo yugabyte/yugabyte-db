@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <optional>
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 
 // Returns the tcmalloc property with the given name, or 0 if tcmalloc is not used. In case of an
@@ -60,5 +62,15 @@ void ConfigureTCMalloc(int64_t mem_limit);
 int64_t GetTCMallocSamplingPeriod();
 
 void SetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+
+// Returns true if glibc registered rseq for this process, which prevents Google TCMalloc from
+// registering its own rseq area and using per-CPU caches.
+bool GlibcRegisteredRseq();
+
+// If Google TCMalloc per-CPU caches are inactive because glibc registered rseq first, re-executes
+// the current process with glibc's rseq registration disabled through GLIBC_TUNABLES. Child
+// processes inherit the setting. argv must be the original, unmodified argument vector. Returns
+// only if the process is not re-executed.
+Status MaybeReexecToEnableTCMallocPerCpuCaches(char** argv);
 
 }  // namespace yb

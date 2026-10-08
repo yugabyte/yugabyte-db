@@ -12,17 +12,25 @@
 
 #include "yb/util/tcmalloc_util.h"
 
+#include <dlfcn.h>
+#include <unistd.h>
+
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tcmalloc_impl_util.h"
 
@@ -75,6 +83,12 @@ DEFINE_RUNTIME_bool(mem_tracker_include_pageheap_free_in_root_consumption, false
     "memory limits being hit when we actually have available memory in the pageheap. So we "
     "exclude it by default.");
 TAG_FLAG(mem_tracker_include_pageheap_free_in_root_consumption, advanced);
+
+DEFINE_NON_RUNTIME_bool(tcmalloc_reexec_to_disable_glibc_rseq, true,
+    "If Google TCMalloc per-CPU caches are inactive because glibc registered rseq for the "
+    "process, re-execute the master or tserver with GLIBC_TUNABLES=glibc.pthread.rseq=0 so that "
+    "TCMalloc can use per-CPU caches. Child processes such as postgres inherit the setting.");
+TAG_FLAG(tcmalloc_reexec_to_disable_glibc_rseq, advanced);
 
 DECLARE_string(tmp_dir);
 
@@ -288,6 +302,42 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
 #elif YB_GPERFTOOLS_TCMALLOC
   MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
 #endif
+}
+
+bool GlibcRegisteredRseq() {
+  // glibc 2.35+ (and backports such as the one in RHEL 9's glibc 2.34) exports the size of the
+  // rseq area it registered, which is zero if registration is disabled or failed.
+  auto* rseq_size = static_cast<const unsigned int*>(dlsym(RTLD_DEFAULT, "__rseq_size"));
+  return rseq_size && *rseq_size > 0;
+}
+
+Status MaybeReexecToEnableTCMallocPerCpuCaches(char** argv) {
+#if YB_GOOGLE_TCMALLOC
+  constexpr const char* kTunablesEnvVar = "GLIBC_TUNABLES";
+  constexpr const char* kDisableRseqTunable = "glibc.pthread.rseq=0";
+
+  if (!FLAGS_tcmalloc_reexec_to_disable_glibc_rseq ||
+      ::tcmalloc::MallocExtension::PerCpuCachesActive() || !GlibcRegisteredRseq()) {
+    return Status::OK();
+  }
+
+  std::string tunables;
+  if (const char* current = getenv(kTunablesEnvVar)) {
+    if (strstr(current, kDisableRseqTunable)) {
+      // glibc ignored the tunable, so re-executing again would loop.
+      return Status::OK();
+    }
+    tunables = std::string(current) + ":";
+  }
+  tunables += kDisableRseqTunable;
+  if (setenv(kTunablesEnvVar, tunables.c_str(), /* overwrite= */ 1) != 0) {
+    return STATUS_FROM_ERRNO("setenv failed", errno);
+  }
+  execv("/proc/self/exe", argv);
+  return STATUS_FROM_ERRNO("execv failed", errno);
+#else
+  return Status::OK();
+#endif  // YB_GOOGLE_TCMALLOC
 }
 
 }  // namespace yb
