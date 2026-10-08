@@ -16,8 +16,8 @@
 // any real workload.
 //
 // Build and run (use a release build for meaningful numbers):
-//   ./yb_build.sh release --cxx-benchmark mutex-benchmark \
-//       --benchmark-args '--benchmark_filter=AbslMutex'
+//   ./yb_build.sh release --cxx-benchmark mutex-benchmark
+// Add --benchmark-args '--benchmark_filter=AbslMutex' to run a subset.
 //
 // ThreadRange() runs the loop body on 1, 2, 4, ... 64 threads at once. "Time" is the average time
 // per iteration as seen by one thread; items_per_second is the total across all threads.

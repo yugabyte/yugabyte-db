@@ -496,11 +496,12 @@ run_cxx_benchmark() {
   # ADD_YB_BENCHMARK puts each benchmark in a benchmarks-<dir> directory of the build root.
   local benchmark_paths=( "$BUILD_ROOT"/benchmarks-*/"$cxx_benchmark_name" )
   if [[ ! -x ${benchmark_paths[0]} ]]; then
-    fatal "Could not find benchmark program '$cxx_benchmark_name' in" \
-          "$BUILD_ROOT/benchmarks-*. Is it added with ADD_YB_BENCHMARK?"
+    fatal "Could not find benchmark program '$cxx_benchmark_name' in $BUILD_ROOT/benchmarks-*." \
+          "Only programs added with ADD_YB_BENCHMARK are placed there."
   fi
   (
     set_sanitizer_runtime_options
+    set +u  # "set -u" fails on an empty benchmark_args with bash < 4.4 (macOS /bin/bash).
     set -x
     "${benchmark_paths[0]}" "${benchmark_args[@]}"
   )
@@ -764,6 +765,10 @@ if [[ ${should_run_ctest} == "true" ]]; then
   if [[ $run_java_tests == "false" ]]; then
     build_java=false
   fi
+fi
+
+if [[ ${#benchmark_args[@]} -gt 0 && -z $cxx_benchmark_name ]]; then
+  fatal "--benchmark-args is only used with --cxx-benchmark"
 fi
 
 if [[ $num_test_repetitions -lt 1 ]]; then
