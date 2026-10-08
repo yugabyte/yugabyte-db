@@ -60,6 +60,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -1145,18 +1146,85 @@ TEST_F(SnapshotTest, RescheduleOperationsForExpiredSnapshot) {
 
 class RestoreAndDeleteValidationTest : public SnapshotTest {
  public:
-  TxnSnapshotId CreateTableAndSnapshotDuringWrites(int insertions = 100) {
+  void SetUp() override {
+    // NON_RUNTIME, so it has to be set before the masters start.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 250;
+    google::SetVLOGLevel("master_snapshot_coordinator*", 1);
+    SnapshotTest::SetUp();
+  }
+
+  TxnSnapshotId CreateTableAndSnapshotDuringWrites(
+      int insertions = 100, std::optional<int32_t> retention_duration_hours = std::nullopt) {
     auto workload = CreateDefaultWorkload();
     workload.Setup();
     workload.Start();
     workload.WaitInserted(insertions);
-    const auto snapshot_id = CreateSnapshot();
+    const auto snapshot_id = CreateSnapshot(retention_duration_hours);
     int64_t max_inserted = workload.rows_inserted();
     workload.WaitInserted(max_inserted + insertions);
     workload.StopAndJoin();
     return snapshot_id;
   }
 };
+
+// Automatic snapshot GC must not delete a snapshot that an in-progress restoration is using.
+TEST_F(RestoreAndDeleteValidationTest, TtlExpiryDuringRestore) {
+  constexpr int kRequiredDeclinedCycles = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites(
+      100, 1 /* retention_duration_hours */);
+
+  // Hold the restoration in progress before the tablet phase.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = true;
+  auto restoration_id = ASSERT_RESULT(RestoreSnapshot(snapshot_id));
+
+  auto delete_status = DeleteSnapshot(snapshot_id);
+  ASSERT_TRUE(delete_status.IsInvalidArgument()) << delete_status;
+  ASSERT_STR_CONTAINS(
+      delete_status.ToString(), Format("restoration $0 is in progress", restoration_id));
+
+  // Expire the snapshot now that the restoration is in flight, by casting the 1 hour set
+  // before to 1ms.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry) = true;
+
+  // Keep these strings in sync with MasterSnapshotCoordinator.
+  StringWaiterLogSink expiry_considered(Format("Snapshot $0 has expired", snapshot_id));
+  StringWaiterLogSink delete_started(Format("Cleanup snapshot: $0", snapshot_id));
+
+  ASSERT_OK(WaitFor(
+      [this, &snapshot_id, &restoration_id, &expiry_considered, &delete_started]()
+          -> Result<bool> {
+        SCHECK_EQ(
+            delete_started.GetEventCount(), 0, IllegalState,
+            Format("Background deletion of snapshot $0 started while restoration $1 was using it",
+                   snapshot_id, restoration_id));
+        RETURN_NOT_OK_PREPEND(
+            CheckAllSnapshots({{snapshot_id, SysSnapshotEntryPB::COMPLETE}}),
+            Format("Snapshot $0 was GC'd while restoration $1 was using it",
+                   snapshot_id, restoration_id));
+        return expiry_considered.GetEventCount() >= kRequiredDeclinedCycles;
+      },
+      60s * kTimeMultiplier,
+      Format("Coordinator to decline deleting in-use snapshot $0 for $1 cycles",
+             snapshot_id, kRequiredDeclinedCycles),
+      MonoDelta::FromMilliseconds(50), 1.0));
+
+  // The restoration is still in progress here: the observation window above is ~1.5s.
+  // The first expiry consideration lands within one 250ms poll, then kRequiredDeclinedCycles - 1
+  // more, plus WaitFor's 50ms sampling: ~1.5s, well within the 60s timeout.
+  // Sanitizer builds stretch that timeout further via kTimeMultiplier.
+  delete_status = DeleteSnapshot(snapshot_id);
+  ASSERT_TRUE(delete_status.IsInvalidArgument()) << delete_status;
+  ASSERT_STR_CONTAINS(
+      delete_status.ToString(), Format("restoration $0 is in progress", restoration_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = false;
+  ASSERT_OK(WaitForSnapshotRestorationDone(restoration_id));
+
+  // Deferred, not cancelled. Also proves the snapshot really was expirable above.
+  ASSERT_OK(WaitForSnapshotOpDone("IsSnapshotDeleted", snapshot_id));
+}
 
 TEST_F(RestoreAndDeleteValidationTest, DeleteDuringRestore) {
   auto snapshot_id = CreateTableAndSnapshotDuringWrites();

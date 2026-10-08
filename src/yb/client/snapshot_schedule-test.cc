@@ -40,6 +40,7 @@
 #include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 
@@ -53,6 +54,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
+DECLARE_bool(TEST_pause_issuing_tserver_snapshot_requests);
 
 namespace yb {
 namespace client {
@@ -179,6 +181,78 @@ TEST_F(SnapshotScheduleTest, GC) {
 
     std::this_thread::sleep_for(100ms);
   }
+}
+
+// Deleting a snapshot schedule must not collect or retire it while an in-progress restoration is
+// using one of its snapshots. Retiring the schedule leaks the snapshot: nothing revisits it.
+TEST_F(SnapshotScheduleTest, DeleteScheduleDuringRestore) {
+  const auto kInterval = 5s * kTimeMultiplier;
+  constexpr int kRequiredPolls = 6;
+
+  // Retire the deleted schedule on the first poll, so the retirement races the paused restoration.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 0;
+
+  google::SetVLOGLevel("master_snapshot_coordinator*", 4);
+
+  ASSERT_NO_FATALS(WriteData());
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, kTableName.namespace_type(), kTableName.namespace_name(), WaitSnapshot::kTrue,
+      kInterval, kInterval * 100 /* retention */));
+  // Restore to a time after the schedule was created, so the sys catalog restore keeps it. This
+  // also picks the second snapshot, an interval later, so there is no race with the first.
+  auto restore_at = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, restore_at));
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->PickSuitableSnapshot(schedule_id, restore_at));
+
+  StringWaiterLogSink coordinator_polls("Poll()");
+
+  // Hold the restoration in progress before the tablet phase.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = true;
+  auto restoration_id = ASSERT_RESULT(snapshot_util_->StartRestoration(snapshot_id, restore_at));
+
+  ASSERT_OK(snapshot_util_->WaitRestorationInState(
+      restoration_id, master::SysSnapshotEntryPB::RESTORING));
+
+  ASSERT_OK(snapshot_util_->DeleteSchedule(schedule_id));
+  const auto polls_before = coordinator_polls.GetEventCount();
+
+  // Keep these strings in sync with MasterSnapshotCoordinator and SnapshotScheduleState.
+  StringWaiterLogSink snapshot_delete_started(Format("Cleanup snapshot: $0", snapshot_id));
+  StringWaiterLogSink schedule_retired(Format("Snapshot Schedule $0 cleanup started", schedule_id));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        SCHECK_EQ(
+            snapshot_delete_started.GetEventCount(), 0, IllegalState,
+            Format("Background deletion of snapshot $0 started while restoration $1 was using it",
+                   snapshot_id, restoration_id));
+        SCHECK_EQ(
+            schedule_retired.GetEventCount(), 0, IllegalState,
+            Format("Snapshot schedule $0 was retired while restoration $1 was still using its "
+                   "snapshot $2, which leaks the snapshot: nothing revisits a retired schedule",
+                   schedule_id, restoration_id, snapshot_id));
+        return coordinator_polls.GetEventCount() >= polls_before + kRequiredPolls;
+      },
+      60s * kTimeMultiplier,
+      Format("Coordinator to poll $0 times with deleted schedule $1 pinned by restoration $2",
+             kRequiredPolls, schedule_id, restoration_id),
+      MonoDelta::FromMilliseconds(50), 1.0));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = false;
+  ASSERT_OK(snapshot_util_->WaitRestorationInState(
+      restoration_id, master::SysSnapshotEntryPB::RESTORED));
+
+  ASSERT_OK(snapshot_util_->WaitSnapshotCleaned(snapshot_id));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& schedule : VERIFY_RESULT(snapshot_util_->ListSchedules())) {
+          if (TryFullyDecodeSnapshotScheduleId(schedule.id()) == schedule_id) {
+            return false;
+          }
+        }
+        return true;
+      },
+      60s * kTimeMultiplier, Format("Deleted schedule $0 to be retired", schedule_id)));
 }
 
 TEST_F(SnapshotScheduleTest, TablegroupGC) {
