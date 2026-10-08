@@ -70,7 +70,6 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/qlexpr/index.h"
@@ -386,7 +385,6 @@ using rpc::RpcContext;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using strings::Substitute;
 using tablet::ChangeMetadataOperation;
 using tablet::CloneTabletRequestPB;
 using tablet::OnlyAbortTxnsNotUsingTableLocks;
@@ -954,7 +952,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       *resp->add_failed_index_ids() = index_table_id;
       SetupErrorAndRespond(
           resp->mutable_error(),
-          STATUS_SUBSTITUTE(
+          STATUS_FORMAT(
               InvalidArgument, "Index $0 not found in index_map. Current schema is $1",
               index_table_id, our_schema_version),
           TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
@@ -981,7 +979,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       DCHECK_NE(our_schema_version, their_schema_version);
       SetupErrorAndRespond(
           resp->mutable_error(),
-          STATUS_SUBSTITUTE(
+          STATUS_FORMAT(
               InvalidArgument,
               "Tablet has a different schema $0 vs $1. "
               "Requested index is not ready to backfill. IndexMap: $2",
@@ -1170,7 +1168,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
                  << "\n request-schema=" << req_schema.ToString();
     SetupErrorAndRespond(
         resp->mutable_error(),
-        STATUS_SUBSTITUTE(
+        STATUS_FORMAT(
             InvalidArgument, "Tablet has a newer schema Tab $0. Req $1 vs Existing version : $2",
             req->tablet_id(), req->schema_version(), schema_version),
         TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, &context);
@@ -3202,8 +3200,8 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
   ConsensusConfigType type = req->type();
   if (PREDICT_FALSE(type != CONSENSUS_CONFIG_ACTIVE && type != CONSENSUS_CONFIG_COMMITTED)) {
     HandleErrorResponse(resp, &context,
-        STATUS(InvalidArgument, Substitute("Unsupported ConsensusConfigType $0 ($1)",
-                                           ConsensusConfigType_Name(type), type)));
+        STATUS(InvalidArgument, Format("Unsupported ConsensusConfigType $0 ($1)",
+                                       ConsensusConfigType_Name(type), type)));
     return;
   }
   LeaderLeaseStatus leader_lease_status;

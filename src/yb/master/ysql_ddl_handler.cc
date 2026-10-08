@@ -24,6 +24,7 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
@@ -642,7 +643,7 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   table_pb.set_updates_only_index_permissions(false);
   table_pb.set_state(SysTablesEntryPB::ALTERING);
   table_pb.set_state_msg(
-    strings::Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+    Format("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
   auto final_cleanup = rollback_till_ddl_state_index == 0;
   if (final_cleanup) {

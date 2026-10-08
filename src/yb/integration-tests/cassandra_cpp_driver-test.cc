@@ -18,7 +18,6 @@
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/cql_test_util.h"
@@ -31,6 +30,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
@@ -49,7 +49,6 @@ using std::tuple;
 using std::get;
 using std::map;
 
-using strings::Substitute;
 
 using yb::CoarseBackoffWaiter;
 using yb::client::YBTableName;
@@ -1577,7 +1576,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDrive
   LOG(INFO) << "Inserting " << kNumRows << " rows";
   for (int i = 1; i <= kNumRows; i++) {
     ASSERT_OK(session_.ExecuteQuery(
-        Substitute("insert into test_table (k, v) values ($0, $0);", i)));
+        Format("insert into test_table (k, v) values ($0, $0);", i)));
   }
 
   LOG(INFO) << "Creating index";
@@ -1604,9 +1603,9 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDrive
   LOG(INFO) << "Inserting " << kNumRows / 2 << " rows again.";
   for (int i = 1; i < kNumRows / 2; i++) {
     if (session_
-            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ExecuteQuery(Format("delete from test_table where k=$0;", i))
             .ok()) {
-      WARN_NOT_OK(session_.ExecuteQuery(Substitute(
+      WARN_NOT_OK(session_.ExecuteQuery(Format(
                       "insert into test_table (k, v) values ($0, $0);", i)),
                   "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -1627,9 +1626,9 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDrive
   LOG(INFO) << "Inserting " << kNumRows / 2 << " more rows again.";
   for (int i = kNumRows / 2; i <= kNumRows; i++) {
     if (session_
-            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ExecuteQuery(Format("delete from test_table where k=$0;", i))
             .ok()) {
-      WARN_NOT_OK(session_.ExecuteQuery(Substitute(
+      WARN_NOT_OK(session_.ExecuteQuery(Format(
                       "insert into test_table (k, v) values (-$0, $0);", i)),
                   "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -1657,7 +1656,7 @@ TEST_F_EX(
   LOG(INFO) << "Inserting " << kNumRows << " rows";
   for (int i = 1; i <= kNumRows; i++) {
     ASSERT_OK(session_.ExecuteQuery(
-        Substitute("insert into test_table (k, v) values ($0, 'v-$0');", i)));
+        Format("insert into test_table (k, v) values ($0, 'v-$0');", i)));
   }
 
   LOG(INFO) << "Creating index";
@@ -1684,10 +1683,10 @@ TEST_F_EX(
   LOG(INFO) << "Inserting " << kNumRows / 2 << " rows again.";
   for (int i = 1; i < kNumRows / 2; i++) {
     if (session_
-            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ExecuteQuery(Format("delete from test_table where k=$0;", i))
             .ok()) {
       WARN_NOT_OK(
-          session_.ExecuteQuery(Substitute(
+          session_.ExecuteQuery(Format(
               "insert into test_table (k, v) values (-$0, 'v-$0');", i)),
           "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -1708,10 +1707,10 @@ TEST_F_EX(
   LOG(INFO) << "Inserting " << kNumRows / 2 << " more rows again.";
   for (int i = kNumRows / 2; i <= kNumRows; i++) {
     if (session_
-            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ExecuteQuery(Format("delete from test_table where k=$0;", i))
             .ok()) {
       WARN_NOT_OK(
-          session_.ExecuteQuery(Substitute(
+          session_.ExecuteQuery(Format(
               "insert into test_table (k, v) values (-$0, 'v-$0');", i)),
           "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -3261,7 +3260,7 @@ TEST_F_EX(CppCassandraDriverTest, TestInsertLocality, CppCassandraDriverTestNoPa
   ColumnsTuple input("", "test_value");
 
   for (int i = 0; i < total_keys; ++i) {
-    get<0>(input) = Substitute("key_$0", i);
+    get<0>(input) = Format("key_$0", i);
 
     // Prepared object can now be used to create new statement.
     auto statement = prepared.Bind();
@@ -3517,11 +3516,10 @@ class CppCassandraDriverTestPartitionsVtableCache : public CppCassandraDriverTes
  private:
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTest::ExtraMasterFlags();
-    flags.push_back(Substitute("--partitions_vtable_cache_refresh_secs=$0", kCacheRefreshSecs));
-    flags.push_back(Substitute("--generate_partitions_vtable_on_changes=$0", false));
-    flags.push_back(Substitute(
-        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=$0",
-        false));
+    flags.push_back(Format("--partitions_vtable_cache_refresh_secs=$0", kCacheRefreshSecs));
+    flags.push_back("--generate_partitions_vtable_on_changes=false");
+    flags.push_back(
+        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=false");
     return flags;
   }
 
@@ -3602,11 +3600,10 @@ class CppCassandraDriverTestPartitionsVtableCacheUpdateOnChanges :
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTest::ExtraMasterFlags();
     // Test for generating system.partitions as changes occur, rather than via a bg task.
-    flags.push_back(Substitute("--partitions_vtable_cache_refresh_secs=$0", 0));
-    flags.push_back(Substitute("--generate_partitions_vtable_on_changes=$0", true));
-    flags.push_back(Substitute(
-        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=$0",
-        true));
+    flags.push_back(Format("--partitions_vtable_cache_refresh_secs=$0", 0));
+    flags.push_back("--generate_partitions_vtable_on_changes=true");
+    flags.push_back(
+        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=true");
     return flags;
   }
 };

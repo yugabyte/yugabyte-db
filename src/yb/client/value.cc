@@ -32,18 +32,17 @@
 
 #include "yb/client/value.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/client/value-internal.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/types.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/util/status.h"
 
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 
 namespace yb {
 namespace client {
@@ -148,8 +147,8 @@ Status YBValue::Data::CheckTypeAndGetPointer(const string& col_name,
       break;
 
     default:
-      return STATUS(InvalidArgument, Substitute("cannot determine value for column $0 (type $1)",
-                                                col_name, ti->name));
+      return STATUS(InvalidArgument, Format("cannot determine value for column $0 (type $1)",
+                                            col_name, ti->name));
   }
   return Status::OK();
 }
@@ -159,7 +158,7 @@ Status YBValue::Data::CheckValType(const string& col_name,
                                      const char* type_str) const {
   if (type_ != type) {
     return STATUS(InvalidArgument,
-        Substitute("non-$0 value for $0 column $1", type_str, col_name));
+        Format("non-$0 value for $0 column $1", type_str, col_name));
   }
   return Status::OK();
 }
@@ -170,8 +169,8 @@ Status YBValue::Data::CheckAndPointToBool(const string& col_name,
   int64_t int_val = int_val_;
   if (int_val != 0 && int_val != 1) {
     return STATUS(InvalidArgument,
-        Substitute("value $0 out of range for boolean column '$1'",
-                   int_val, col_name));
+        Format("value $0 out of range for boolean column '$1'",
+               int_val, col_name));
   }
   *val_void = &int_val_;
   return Status::OK();
@@ -195,8 +194,8 @@ Status YBValue::Data::CheckAndPointToInt(const string& col_name,
   int64_t int_val = int_val_;
   if (int_val < int_min || int_val > int_max) {
     return STATUS(InvalidArgument,
-        Substitute("value $0 out of range for $1-bit signed integer column '$2'",
-                   int_val, int_size * 8, col_name));
+        Format("value $0 out of range for $1-bit signed integer column '$2'",
+               int_val, int_size * 8, col_name));
   }
 
   *val_void = &int_val_;

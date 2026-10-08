@@ -24,6 +24,7 @@
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -113,7 +114,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
   Status Start(size_t index, ThreadPoolTask* task) EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
     SCHECK_EQ(state_, WorkerState::kRunning, IllegalState, "Worker already stopped");
-    auto name = strings::Substitute("$0_$1_worker", share_.options.name, index);
+    auto name = Format("$0_$1_worker", share_.options.name, index);
     return Thread::Create(share_.options.name, name, &Worker::Execute, this, task, &thread_);
   }
 

@@ -35,7 +35,6 @@
 #include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
@@ -172,18 +171,18 @@ std::string MonoDelta::ToPrettyString() const {
     return str + suffix;
   };
   if (nano_delta_ < MonoTime::kNanosecondsPerMillisecond) {
-    return AugmentTail("us", StringPrintf(
-        "%.3f", static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMicrosecond));
+    return AugmentTail("us", FixedPoint(
+        static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMicrosecond, 3));
   }
   if (nano_delta_ < MonoTime::kNanosecondsPerSecond) {
-    return AugmentTail("ms", StringPrintf(
-        "%.3f", static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMillisecond));
+    return AugmentTail("ms", FixedPoint(
+        static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMillisecond, 3));
   }
   return ToString();
 }
 
 std::string MonoDelta::ToString() const {
-  return Initialized() ? StringPrintf("%.3fs", ToSeconds()) : "<uninitialized>";
+  return Initialized() ? FixedPoint(ToSeconds(), 3) + "s" : "<uninitialized>";
 }
 
 MonoDelta::MonoDelta(int64_t delta)
@@ -374,7 +373,7 @@ std::string MonoTime::ToString() const {
     return "MonoTime::kMax";
   if (IsMin())
     return "MonoTime::kMin";
-  return StringPrintf("%.3fs", ToSeconds());
+  return FixedPoint(ToSeconds(), 3) + "s";
 }
 
 std::string MonoTime::ToFormattedString(const std::string& format) const {

@@ -15,18 +15,10 @@
 
 #pragma once
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/format.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
-
-#define STATUS_SUBSTITUTE(status_type, ...) \
-    (Status(Status::BOOST_PP_CAT(k, status_type), \
-            __FILE__, \
-            __LINE__, \
-            strings::Substitute(__VA_ARGS__)))
 
 #define STATUS_FORMAT(status_type, ...) \
     (::yb::Status(::yb::Status::BOOST_PP_CAT(k, status_type), \

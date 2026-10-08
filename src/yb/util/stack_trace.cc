@@ -44,6 +44,8 @@
 
 #if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
+
+#include "yb/util/format.h"
 #endif
 
 using std::string;
@@ -410,7 +412,7 @@ string StackTrace::ToLogFormatHexString() const {
   string buf;
   for (int i = 0; i < num_frames_; i++) {
     void* pc = frames_[i];
-    StringAppendF(&buf, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
+    buf += Format("    @ $0\n", FormatStackTraceAddress(pc));
   }
   return buf;
 }

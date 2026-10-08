@@ -165,7 +165,7 @@ bool result = DoSomething(
 
 ### String substitution functions
 
-For string substitution and formatting functions (`Format`, `Substitute`, `StringPrintf`, and so on) avoid putting substitution parameters on the same line as the format string, unless the entire function call fits on one line:
+For string substitution and formatting functions (such as `Format`) avoid putting substitution parameters on the same line as the format string, unless the entire function call fits on one line:
 
 ```cpp
 // Suppose this is the right margin -----------------------------------------------------------> |
@@ -610,13 +610,23 @@ Result<int> foo();
 
 ### String formatting
 
-Use the `Format` function to produce formatted strings, rather than the older `Substitute` function.
+Use the `Format` function to produce formatted strings. Don't use `StringPrintf`.
 
-While the two functions have similar syntax, with inline substitution parameters `$0`, `$1`, and so on, `Format` has several advantages:
+`Format` uses inline substitution parameters `$0`, `$1`, and so on, and has several advantages:
 
 * It uses the `ToString` utility, so it can convert many different types of objects to strings, such as collections, protobufs, or any class with a `ToString` member function.
 * You don't need to call `arg.ToString()`. Just pass `arg` to the `Format` function as-is, and it will call `ToString` for you.
-* `Format` is a bit faster than `Substitute` on some benchmarks.
+
+`Format` has no printf-style field specifiers. When you need fixed precision, padding, or hex output, pass one of the helpers from `yb/util/format.h` as an argument:
+
+```cpp
+Format("Took $0 s", FixedPoint(seconds, 3));         // printf("%.3f")
+Format("wal-$0", ZeroPadded(sequence_number, 9));    // printf("%09d")
+Format("0x$0", HexString(hash, 4));                  // printf("%04x")
+Format("$0|", PadRight(name, 20));                   // printf("%-20s")
+```
+
+Note that `Format` prints a `bool` as `1` or `0` and a `char` as its numeric value. Use `std::string_view(&c, 1)` to print a single character.
 
 ### consensus::OpId
 

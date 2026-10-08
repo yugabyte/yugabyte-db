@@ -55,7 +55,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
@@ -70,6 +69,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
@@ -124,7 +124,6 @@ METRIC_DEFINE_entity(table);
 
 using std::string;
 
-using strings::Substitute;
 
 namespace yb::tablet {
 
@@ -991,7 +990,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
     wal_top_dir = wal_root_dirs[0];
   }
 
-  const string table_dir_name = Substitute("table-$0", data.table_info->table_id);
+  const string table_dir_name = Format("table-$0", data.table_info->table_id);
   const string tablet_dir_name = MakeTabletDirName(data.raft_group_id);
   const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
   const string rocksdb_dir = JoinPathSegments(
@@ -1249,12 +1248,12 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
   std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
     return STATUS(IllegalState,
-        Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
-                   "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
-                   "Tablet data state: $1 ($2)",
-                   raft_group_id_,
-                   TabletDataState_Name(tablet_data_state_),
-                   tablet_data_state_));
+        Format("Tablet $0 is not in TABLET_DATA_DELETED state. "
+               "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
+               "Tablet data state: $1 ($2)",
+               raft_group_id_,
+               TabletDataState_Name(tablet_data_state_),
+               tablet_data_state_));
   }
 
   string path = VERIFY_RESULT(FilePath());
@@ -1521,7 +1520,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             fs_manager_->encrypted_env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),
-                        Substitute("Failed to write Raft group metadata $0", raft_group_id_));
+                        Format("Failed to write Raft group metadata $0", raft_group_id_));
 
   return Status::OK();
 }
@@ -1549,7 +1548,7 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(
     Env* env, const std::string& path, RaftGroupReplicaSuperBlockPB* superblock) {
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(env, path, superblock),
-      Substitute("Could not load Raft group metadata from $0", path));
+      Format("Could not load Raft group metadata from $0", path));
   return Status::OK();
 }
 

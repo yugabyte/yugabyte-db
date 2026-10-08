@@ -419,7 +419,6 @@ namespace yb::tablet {
 
 bool TEST_fail_on_seq_scan_with_vector_indexes = false;
 
-using strings::Substitute;
 
 using client::YBSession;
 using client::YBTablePtr;
@@ -3430,8 +3429,8 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
     // Flush the updated schema metadata to disk.
     return metadata_->Flush();
   }
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid ChangeMetadataOperation: $0",
-                           operation->ToString());
+  return STATUS_FORMAT(InvalidArgument, "Invalid ChangeMetadataOperation: $0",
+                       operation->ToString());
 }
 
 namespace {
@@ -4012,7 +4011,7 @@ Status Tablet::FlushWithRetries(
   return (
       failed_indexes->empty()
           ? Status::OK()
-          : STATUS_SUBSTITUTE(
+          : STATUS_FORMAT(
                 IllegalState, "Index op failed for $0 requests after $1 retries with errors: $2",
                 pending_ops.size(), num_retries, AsString(error_msg_cnts)));
 }
@@ -4279,7 +4278,7 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(
     BlockingRocksDbShutdownStart blocking_rocksdb_shutdown_start, const Stop stop) {
   VTRACE(1, LogPrefix());
   LOG_SLOW_EXECUTION(WARNING, 1000,
-                     Substitute("$0Waiting for pending ops to complete", LogPrefix())) {
+                     Format("$0Waiting for pending ops to complete", LogPrefix())) {
     return ScopedRWOperationPause(
         blocking_rocksdb_shutdown_start ? &pending_op_counter_blocking_rocksdb_shutdown_start_
                                         : &pending_op_counter_not_blocking_rocksdb_shutdown_start_,

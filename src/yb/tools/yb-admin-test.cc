@@ -52,7 +52,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/cql_test_util.h"
@@ -100,7 +99,6 @@ using std::string;
 using std::unordered_map;
 using itest::TabletServerMap;
 using itest::TServerDetails;
-using strings::Substitute;
 
 namespace {
 
@@ -488,7 +486,7 @@ TEST_F(AdminCliTest, BlackList) {
 
 TEST_F(AdminCliTest, InvalidMasterAddresses) {
   int port = AllocateFreePort();
-  string unreachable_host = Substitute("127.0.0.1:$0", port);
+  string unreachable_host = Format("127.0.0.1:$0", port);
   std::string error_string;
   ASSERT_NOK(Subprocess::Call(ToStringVector(
       GetAdminToolPath(), "--master_addresses", unreachable_host,
@@ -667,7 +665,7 @@ class AdminCliTestForTableLocks : public AdminCliTest {
         "\\{txn: ([a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}) subtxn_id: "
         "([0-9]+)\\}");
     faststring buf;
-    auto url = strings::Substitute("http://$0/$1", ToString(addr), page);
+    auto url = Format("http://$0/$1", ToString(addr), page);
     RETURN_NOT_OK(curl.FetchURL(url, &buf));
     auto lt_out = buf.ToString();
     VLOG(1) << "Response from url: " << url << " :\n" << lt_out;
@@ -2443,8 +2441,8 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
 
   // Create transaction tables for each zone.
   for (int i = 0; i < 3; ++i) {
-    string table_name = Substitute("transactions_z$0", i);
-    string placement = Substitute("c.r.z$0", i);
+    string table_name = Format("transactions_z$0", i);
+    string placement = Format("c.r.z$0", i);
     ASSERT_OK(CallAdmin("create_transaction_table", table_name));
     ASSERT_OK(CallAdmin("modify_table_placement_info", "system", table_name, placement, 1));
   }
@@ -2453,12 +2451,12 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   std::shared_ptr<client::YBTable> table;
   for (int i = 0; i < 3; ++i) {
     const auto table_name =
-        YBTableName(YQLDatabase::YQL_DATABASE_CQL, "system", Substitute("transactions_z$0", i));
+        YBTableName(YQLDatabase::YQL_DATABASE_CQL, "system", Format("transactions_z$0", i));
     ASSERT_OK(client->OpenTable(table_name, &table));
     ASSERT_EQ(table->table_type(), YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
     ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 1);
     auto pb = table->replication_info()->live_replicas().placement_blocks(0).cloud_info();
-    ASSERT_EQ(pb.placement_zone(), Substitute("z$0", i));
+    ASSERT_EQ(pb.placement_zone(), Format("z$0", i));
   }
 
   // Add two new tservers, to zone3 and an unused zone.

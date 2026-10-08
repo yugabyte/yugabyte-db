@@ -33,7 +33,7 @@
 
 #include <string>
 
-#include "yb/gutil/stringprintf.h"
+#include "yb/util/format.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -49,18 +49,16 @@ std::string HexDump(const Slice &slice) {
     const uint8_t *line_p = p;
     auto line_len = std::min<decltype(rem)>(rem, 16);
     auto line_rem = line_len;
-    StringAppendF(&output, "%06lx: ", line_p - slice.data());
+    output += Format("$0: ", HexString(line_p - slice.data(), 6));
 
     while (line_rem >= 2) {
-      StringAppendF(&output, "%02x%02x ",
-                    p[0] & 0xff, p[1] & 0xff);
+      output += Format("$0$1 ", HexString(p[0], 2), HexString(p[1], 2));
       p += 2;
       line_rem -= 2;
     }
 
     if (line_rem == 1) {
-      StringAppendF(&output, "%02x   ",
-                    p[0] & 0xff);
+      output += Format("$0   ", HexString(p[0], 2));
       p += 1;
       line_rem -= 1;
     }

@@ -52,7 +52,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"

@@ -109,7 +109,6 @@ using docdb::RateLimiterSharingMode;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
 using master::TabletReportUpdatesPB;
-using strings::Substitute;
 using tablet::TabletPeer;
 using gflags::FlagSaver;
 
@@ -125,7 +124,7 @@ class TsTabletManagerTest : public YBTest {
   }
 
   string GetDrivePath(int index) {
-    return JoinPathSegments(test_data_root_, Substitute("drive-$0", index + 1));
+    return JoinPathSegments(test_data_root_, Format("drive-$0", index + 1));
   }
 
   virtual void CreateMiniTabletServer() {
@@ -845,7 +844,7 @@ TEST_F(TsTabletManagerTest, DataAndWalFilesLocations) {
   for (int i = 0; i < kDrivesNum; ++i) {
     tablet_manager_->GetAndRegisterDataAndWalDir(fs_manager_,
                                                  kTableId,
-                                                 Substitute("tablet-$0", i + 1),
+                                                 Format("tablet-$0", i + 1),
                                                  &data,
                                                  &wal);
     ASSERT_EQ(data.substr(0, drive_path_len), wal.substr(0, drive_path_len));
@@ -863,8 +862,8 @@ TEST_F(TsTabletManagerTest, EvenDriveSelection) {
     std::string prev_data_drive;
     for (size_t j = 0; j < kNumTablets; ++j) {
       tablet_manager_->GetAndRegisterDataAndWalDir(fs_manager_,
-                                                  Substitute("table-$0", i+ 1),
-                                                  Substitute("tablet-$0", j + 1),
+                                                  Format("table-$0", i+ 1),
+                                                  Format("tablet-$0", j + 1),
                                                   &data,
                                                   &wal);
       const auto chosen_data_drive = data.substr(0, drive_path_len);
@@ -904,7 +903,7 @@ class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
 
   // Index helpers: ssd drives are 0..(kSsdDrives-1), hdd drives are kSsdDrives..
   std::string GetTieredDrivePath(int index) {
-    return JoinPathSegments(test_data_root_, Substitute("tiered-drive-$0", index));
+    return JoinPathSegments(test_data_root_, Format("tiered-drive-$0", index));
   }
 
   // Overrides the parent's disk layout with 2 ssd + 2 hdd drives instead of the plain
@@ -1020,7 +1019,7 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
   // Directly register extra tablets on the heavier drive to skew load.
   for (int i = 0; i < 3; ++i) {
     tablet_manager_->RegisterDataAndWalDir(
-        fs_manager_, kTableId, Substitute("fake-tablet-hdd-$0", i),
+        fs_manager_, kTableId, Format("fake-tablet-hdd-$0", i),
         heavier_data_root, any_wal_root);
   }
 

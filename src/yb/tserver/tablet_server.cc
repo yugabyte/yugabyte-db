@@ -60,8 +60,6 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 
@@ -109,6 +107,7 @@
 #include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -458,9 +457,9 @@ TabletServer::~TabletServer() {
 }
 
 std::string TabletServer::ToString() const {
-  return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
-                             yb::ToString(first_rpc_address()),
-                             fs_manager_->uuid());
+  return Format("TabletServer : rpc=$0, uuid=$1",
+                yb::ToString(first_rpc_address()),
+                fs_manager_->uuid());
 }
 
 MonoDelta TabletServer::default_client_timeout() {
@@ -1172,7 +1171,7 @@ Status GetDynamicUrlTile(
   }
   hp.set_port(port);
 
-  *url = strings::Substitute("http://$0$1", hp.ToString(), path);
+  *url = Format("http://$0$1", hp.ToString(), path);
   return Status::OK();
 }
 

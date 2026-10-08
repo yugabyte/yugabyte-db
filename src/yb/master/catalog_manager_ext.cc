@@ -44,7 +44,6 @@
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/async_snapshot_tasks.h"
@@ -105,7 +104,6 @@ using std::unordered_map;
 using std::unordered_set;
 using std::vector;
 
-using strings::Substitute;
 
 DECLARE_int32(master_rpc_timeout_ms);
 
@@ -829,7 +827,7 @@ Status CatalogManager::AbortSnapshotRestore(
   auto txn_restoration_id = TryFullyDecodeTxnSnapshotRestorationId(req->restoration_id());
 
   if (txn_restoration_id) {
-    LOG(INFO) << Substitute(
+    LOG(INFO) << Format(
         "Servicing AbortSnapshotRestore request. restoration id: $0, request: $1",
         txn_restoration_id.ToString(), req->ShortDebugString());
     return master_->snapshot_coordinator().AbortRestore(
@@ -3746,7 +3744,7 @@ Status CatalogManager::GetTableSchemaFromSysCatalog(
   auto status = sys_catalog_->GetTableSchema(
       req->table().table_id(), ReadHybridTime::FromUint64(read_time), &schema, &schema_version);
   if (!status.ok()) {
-    Status s = STATUS_SUBSTITUTE(
+    Status s = STATUS_FORMAT(
         NotFound, "Could not find specific schema from system catalog for request $0.",
         req->DebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);

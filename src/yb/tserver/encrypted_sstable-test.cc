@@ -14,8 +14,6 @@
 #include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
-#include "yb/gutil/stringprintf.h"
-
 #include "yb/encryption/encrypted_file.h"
 #include "yb/encryption/encryption_util.h"
 #include "yb/encryption/header_manager.h"
@@ -32,6 +30,7 @@
 
 #include "yb/tserver/universe_key_test_util.h"
 
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
@@ -51,7 +50,7 @@ namespace yb {
 namespace {
 
 std::string GetKey(int i) {
-  return StringPrintf("key%09dSSSSSSSS", i);
+  return Format("key$0SSSSSSSS", ZeroPadded(i, 9));
 }
 
 std::string GetValue(int i) {

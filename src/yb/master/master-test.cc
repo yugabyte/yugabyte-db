@@ -50,7 +50,6 @@
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
@@ -83,6 +82,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
@@ -120,7 +120,6 @@ METRIC_DECLARE_gauge_uint64(block_cache_usage);
 
 namespace yb::master {
 
-using strings::Substitute;
 
 class MasterTest : public MasterTestBase {
  protected:
@@ -1066,7 +1065,7 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 
   // Check prometheus metrics via webserver to verify block_cache metrics exist
   string addr = AsString(mini_master_->bound_http_addr());
-  string url = strings::Substitute("http://$0/prometheus-metrics", AsString(addr));
+  string url = Format("http://$0/prometheus-metrics", AsString(addr));
   EasyCurl curl;
   faststring buf;
 
@@ -1362,7 +1361,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(other_ns_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Keyspace '$0' already exists", other_ns_name));
+        Format("Keyspace '$0' already exists", other_ns_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1436,7 +1435,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(default_namespace_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Keyspace '$0' already exists", default_namespace_name));
+        Format("Keyspace '$0' already exists", default_namespace_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -2606,8 +2605,8 @@ void GetTableSchema(const char* table_name,
       Schema receivedSchema;
       CHECK_OK(SchemaFromPB(resp.schema(), &receivedSchema));
       CHECK(kSchema->Equals(receivedSchema)) <<
-          strings::Substitute("$0 not equal to $1",
-                              kSchema->ToString(), receivedSchema.ToString());
+          Format("$0 not equal to $1",
+                 kSchema->ToString(), receivedSchema.ToString());
     }
   }
 }
