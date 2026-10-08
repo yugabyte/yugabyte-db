@@ -3725,6 +3725,19 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 {
 	YbcPgYBTupleIdDescriptor *descr;
 
+	/*
+	 * Everything allocated while building and recording the intent, such as
+	 * collation sort keys, is garbage once this returns, so do that work in a
+	 * temporary context. This keeps memory use independent of how often each
+	 * caller resets its memory contexts. State that must outlive the call,
+	 * such as partition routing, must be allocated in a longer-lived context
+	 * explicitly.
+	 */
+	MemoryContext tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
+												 "YbAddTriggerFKReferenceIntent",
+												 ALLOCSET_DEFAULT_SIZES);
+	MemoryContext oldcxt = MemoryContextSwitchTo(tmpcxt);
+
 	descr =
 		YBCBuildYBTupleIdDescriptor(ri_FetchConstraintInfo(trigger,
 														   fk_rel,
@@ -3751,8 +3764,10 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr,
 														   YBCIsRegionLocal(fk_rel),
 														   is_deferred));
-		pfree(descr);
 	}
+
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(tmpcxt);
 }
 
 /*
