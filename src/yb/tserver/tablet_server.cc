@@ -1347,6 +1347,32 @@ Status TabletServer::SetTserverCatalogMessageList(
   return Status::OK();
 }
 
+void TabletServer::SetYsqlDbLastPrefetchedCatalogVersion(
+    uint32_t db_oid, uint64_t catalog_version) {
+  std::lock_guard l(lock_);
+  auto it = ysql_db_catalog_version_map_.find(db_oid);
+  if (it == ysql_db_catalog_version_map_.end()) {
+    // No shared memory slot for this database, so there is nowhere to record it and no backend
+    // that could read it back.
+    return;
+  }
+  const auto shm_index = it->second.shm_index;
+  CHECK(shm_index >= 0 &&
+        shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
+    << "shm_index: " << shm_index << ", db_oid: " << db_oid;
+  // Fills for different versions complete in whatever order their reads finish, so an older one
+  // can land last. Keep the newest, which is the one with the fewest invalidation messages to
+  // apply on top of it.
+  const auto index = static_cast<size_t>(shm_index);
+  if (catalog_version > shared_object()->ysql_db_last_prefetched_catalog_version(index)) {
+    shared_object()->SetYsqlDbLastPrefetchedCatalogVersion(index, catalog_version);
+    if (FLAGS_log_ysql_catalog_versions) {
+      LOG_WITH_FUNC(INFO) << "set db " << db_oid
+                          << " last prefetched catalog version: " << catalog_version;
+    }
+  }
+}
+
 void TabletServer::TriggerRelcacheInitConnection(
     const TriggerRelcacheInitConnectionRequestPB& req,
     StdStatusCallback callback) {
@@ -1705,6 +1731,12 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
         // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
         // the shared memory file to examine its contents).
         shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
+        // Clear the last prefetched version as well, and not only for debugging: a value left
+        // behind makes a starting backend in the next database believe this node holds a prefetch
+        // at that version. It does not, since the response cache is keyed per database, so that
+        // backend waits for the catalog version to catch up and fetches the invalidation messages,
+        // then finds nothing cached and falls back to the full prefetch anyway.
+        shared_object()->SetYsqlDbLastPrefetchedCatalogVersion(static_cast<size_t>(shm_index), 0);
         LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
                             << ", shm_index: " << shm_index
                             << ", debug_id: " << debug_id;

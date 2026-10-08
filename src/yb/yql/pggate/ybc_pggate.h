@@ -112,6 +112,10 @@ uint32_t YBCGetSharedYsqlCatalogPrefetchLoad();
 YbcStatus YBCGetSharedDBCatalogVersion(
     YbcPgOid db_oid, uint64_t* catalog_version);
 
+// For database db_oid, the newest catalog version this node holds a cached sys table prefetch
+// at. Zero if it holds none for that database.
+YbcStatus YBCGetSharedDbLastPrefetchedCatalogVersion(YbcPgOid db_oid, uint64_t* catalog_version);
+
 // Return the number of rows in pg_yb_catalog_table. Only used when per-db
 // catalog version mode is enabled.
 YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
@@ -968,7 +972,7 @@ void YBCRegisterSysTableForPrefetching(
     YbcPgOid database_oid, YbcPgOid table_oid, YbcPgOid index_oid, int row_oid_filtering_attr,
     bool fetch_ybctid);
 
-YbcStatus YBCPrefetchRegisteredSysTables();
+YbcStatus YBCPrefetchRegisteredSysTables(bool completes_connection_prefetch);
 
 YbcStatus YBCPgCheckIfPitrActive(bool* is_active);
 

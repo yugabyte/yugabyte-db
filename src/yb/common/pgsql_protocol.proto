@@ -430,14 +430,16 @@ message PgsqlBackfillSpecPB {
 }
 
 // Why a read is prefetching whole catalog tables. Every prefetch sends a wave of these to the
-// master leader, and the master admits them by kind. CACHE_REFRESH is for a prefetch something is
-// already blocked on: a backend refreshing its catalog cache, or the relcache-init backend, whose
-// file every new connection on its node waits for. A connection still starting up can afford to
-// wait, so it gets CONNECTION_START.
+// master leader, and the master admits them by kind. HIGH_PRIORITY is for a prefetch something is
+// already blocked on: a backend refreshing its catalog cache, the relcache-init backend whose
+// file every new connection on its node waits for, and the small read a backend makes before it
+// can authenticate. The large prefetch of a connection that is still starting up can afford to
+// wait, so that gets CONNECTION_START.
+// Make sure this is in sync with YbcPgSysTablePrefetchKind in ybc_pg_typedefs.h.
 enum YsqlCatalogPrefetchKindPB {
   YSQL_CATALOG_PREFETCH_NONE = 0;
   YSQL_CATALOG_PREFETCH_CONNECTION_START = 1;
-  YSQL_CATALOG_PREFETCH_CACHE_REFRESH = 2;
+  YSQL_CATALOG_PREFETCH_HIGH_PRIORITY = 2;
 }
 
 // Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.

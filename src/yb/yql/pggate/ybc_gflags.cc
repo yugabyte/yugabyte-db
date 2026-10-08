@@ -99,6 +99,13 @@ DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 5 * 1024 * 1024,
     "Maximum combined response size in bytes of each catalog prefetch round. Capped at the safe "
     "maximum RPC response size. 0 uses that safe maximum.");
 
+// Backs the yb_enable_stale_catalog_prefetch GUC: pg_wrapper writes this into postgresql.conf
+// under the name without the ysql_ prefix, and a runtime change reloads it.
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_stale_catalog_prefetch, true,
+    "Whether a connection starting while the master leader reports that it is shedding catalog "
+    "prefetches may read the catalog at a version this node already has cached, instead of "
+    "fetching the whole catalog from the leader.");
+
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
     "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
     "before client authentication. Authentication reads pg_authid by role name "

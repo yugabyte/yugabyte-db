@@ -2683,6 +2683,24 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_stale_catalog_prefetch", PGC_SIGHUP, CLIENT_CONN_OTHER,
+			gettext_noop("Let a connection start from a catalog version this node already has "
+						 "cached."),
+			gettext_noop("A connection beginning while the master leader reports that it is "
+						 "shedding catalog prefetches reads the catalog at a version this node "
+						 "already holds, rather than fetching the whole catalog from the leader, "
+						 "and applies the invalidation messages in between before it runs "
+						 "anything. Turning this off makes every connection fetch from the "
+						 "leader as before, and returns the read a backend makes ahead of "
+						 "authentication to the ordinary admission priority on the master."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_stale_catalog_prefetch,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_pg_locks_integrate_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Enables pg_locks to integrate and display advisory locks details correctly."),
 			NULL,
@@ -2877,6 +2895,19 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_xcluster_automatic_mode_target_ddl,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_fail_stale_catalog_message_check", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the invalidation messages that would carry a connection "
+						 "from a catalog version cached on this node to the current one always "
+						 "look unusable, so the connection does a full prefetch instead."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_stale_catalog_message_check,
 		false,
 		NULL, NULL, NULL
 	},
