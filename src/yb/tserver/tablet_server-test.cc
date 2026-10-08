@@ -1152,35 +1152,38 @@ TEST_F(TabletServerTest, ApplyXClusterGuardedInfoIfNewer) {
     return info;
   };
   auto get_role = [&]() { return server->GetXClusterContext().GetXClusterRole(kNamespace); };
+  auto get_oid_cache_invalidations_count = [&]() {
+    return server->GetXClusterContext().GetOidCacheInvalidationsCount();
+  };
 
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(2, 5, XClusterNamespaceInfoPB::AUTOMATIC_SOURCE, 10));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 10);
 
   // An earlier version is ignored, even with a higher count.
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(1, 6, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 10);
 
   // The same version is ignored.
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(2, 5, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 10);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 10);
 
   // A higher count in the same term is applied.
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(2, 6, XClusterNamespaceInfoPB::AUTOMATIC_TARGET, 11));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_TARGET);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 11);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 11);
 
   // A higher term is applied, even with a lower count.
   server->ApplyXClusterGuardedInfoIfNewer(
       make_info(3, 0, XClusterNamespaceInfoPB::AUTOMATIC_SOURCE, 12));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
-  EXPECT_EQ(server->get_oid_cache_invalidations_count(), 12);
+  EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 12);
 }
 
 }  // namespace yb::tserver

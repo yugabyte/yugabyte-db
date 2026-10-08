@@ -295,3 +295,28 @@ message RotateSshKeyInput {
 
 message RotateSshKeyOutput {
 }
+
+message HealthCheckInput {
+    // Opaque id for this schedule configuration. Changing it forces a reschedule.
+    string generation_id = 1;
+    string yb_home_dir = 2;
+    int32 schedule_interval_sec = 3;
+    int32 run_timeout_sec = 4;
+    int32 idle_timeout_sec = 5;
+    bool ddl_atomicity_check = 6;
+    string master_leader_url = 7;
+    string yba_ynp_version = 8;
+    // Earliest acceptable end_epoch_secs for a cached result. Set once per YBA
+    // health cycle (typically cycle_start - schedule_interval) so every node
+    // returns a result from the same window, or waits for the next tick.
+    int64 min_result_epoch_secs = 9;
+}
+
+message HealthCheckOutput {
+    // Same as HealthCheckInput.generation_id for the schedule that produced this result.
+    string generation_id = 1;
+    string report_json = 2;
+    int64 start_epoch_secs = 3;
+    int64 end_epoch_secs = 4;
+    optional Error error = 5;
+}

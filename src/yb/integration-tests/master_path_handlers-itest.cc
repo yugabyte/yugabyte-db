@@ -249,12 +249,15 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
 class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> {
  public:
+  virtual int32_t tablet_overhead_size_percentage() const { return 20; }
+
   void InitCluster() override {
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) = 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) =
+        tablet_overhead_size_percentage();
     opts.num_tablet_servers = num_tablet_servers();
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
@@ -2109,6 +2112,23 @@ TEST_F(MasterPathHandlersItest, HeapProfile) {
 #if YB_GOOGLE_TCMALLOC
   ASSERT_RESULT(GetHtmlTableRows("/pprof/heap", "heap_profile"));
 #endif
+}
+
+class MasterPathHandlersNoTabletOverheadItest : public MasterPathHandlersItest {
+ public:
+  int32_t tablet_overhead_size_percentage() const override { return 0; }
+  int num_tablet_servers() const override { return 1; }
+  int num_masters() const override { return 1; }
+};
+
+// Without tablet overhead memory the universe has no computable tablet peer limit.
+TEST_F_EX(
+    MasterPathHandlersItest, TabletPeerLimitUndefinedWithoutOverhead,
+    MasterPathHandlersNoTabletOverheadItest) {
+  auto cols = ASSERT_RESULT(GetHtmlTableColumn(
+      "/tablet-servers", "universe_summary", "Tablet Peer Limit (Unenforced)"));
+  ASSERT_EQ(cols.size(), 1);
+  ASSERT_EQ(cols[0], "limit undefined");
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {

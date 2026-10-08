@@ -2442,7 +2442,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Boolean> showNewUniverseUIToEveryone =
       new ConfKeyInfo<>(
           "yb.ui.enable_new_universe_experience_for_all_users",
@@ -2489,4 +2488,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " controller, if it does not already exist.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentHealthCheckerDisabled =
+      new ConfKeyInfo<>(
+          "yb.node_agent.health_checker.disabled",
+          ScopeType.GLOBAL,
+          "Node Agent Health Checker Disabled",
+          "Node agent checker offloaded to run asynchronously on its own schedule",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -16,7 +16,11 @@ import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
 import { YBProgressBarState } from '@app/redesign/components/YBProgress/YBLinearProgress';
 import { PollingIntervalMs } from '@app/components/xcluster/constants';
-import { getIsDbUpgradeTask } from '../../TaskUtils';
+import {
+  getIsDbUpgradeTask,
+  isTaskCompletedWithinDays,
+  SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS
+} from '../../TaskUtils';
 import { Task, TaskState } from '../../dtos';
 import { OperationBannerProgressContent } from './OperationBannerProgressContent';
 import { OperationBannerLoadingIcon, OperationBannerWaveIcon } from './operationBannerIcons';
@@ -24,9 +28,17 @@ import { OperationBannerLoadingIcon, OperationBannerWaveIcon } from './operation
 interface DbUpgradeTaskBannerProps {
   task: Task;
   universeUuid: string;
+  /** When set, the upgrade-completed (Ready) success banner can be dismissed. */
+  isUpgradeCompletedBannerDismissed?: boolean;
+  onDismissUpgradeCompletedBanner?: () => void;
 }
 
-export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerProps) => {
+export const DbUpgradeTaskBanner = ({
+  task,
+  universeUuid,
+  isUpgradeCompletedBannerDismissed = false,
+  onDismissUpgradeCompletedBanner
+}: DbUpgradeTaskBannerProps) => {
   const [isDbUpgradeManagementSidePanelOpen, setIsDbUpgradeManagementSidePanelOpen] =
     useState(false);
   const [isDbUpgradeRollBackModalOpen, setIsDbUpgradeRollBackModalOpen] = useState(false);
@@ -157,7 +169,9 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
         );
       } else if (
         universeDetailsQuery.data?.info?.software_upgrade_state ===
-        UniverseInfoSoftwareUpgradeState.Ready
+          UniverseInfoSoftwareUpgradeState.Ready &&
+        !isUpgradeCompletedBannerDismissed &&
+        isTaskCompletedWithinDays(task, SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS)
       ) {
         bannerComponent = (
           <YBOperationBanner
@@ -182,6 +196,8 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
                 }}
               />
             }
+            dismissable={!!onDismissUpgradeCompletedBanner}
+            onClose={onDismissUpgradeCompletedBanner}
           />
         );
       }

@@ -45,6 +45,8 @@ import com.yugabyte.yw.nodeagent.DownloadSoftwareOutput;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.FileInfo;
+import com.yugabyte.yw.nodeagent.HealthCheckInput;
+import com.yugabyte.yw.nodeagent.HealthCheckOutput;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorOutput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
@@ -81,6 +83,7 @@ import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
 import io.grpc.ConnectivityState;
 import io.grpc.Context;
+import io.grpc.Deadline;
 import io.grpc.ForwardingClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
@@ -1346,6 +1349,18 @@ public class NodeAgentClient {
     return runAsyncTask(nodeAgent, builder.build(), RotateSshKeyOutput.class);
   }
 
+  public HealthCheckOutput runOrGetHealthCheck(
+      NodeAgent nodeAgent, HealthCheckInput input, String user, Duration timeout) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setHealthCheckInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), HealthCheckOutput.class, timeout);
+  }
+
   public synchronized void cleanupCachedClients() {
     try {
       cachedChannels.cleanUp();
@@ -1358,6 +1373,16 @@ public class NodeAgentClient {
   // Common method to submit async task and wait for the result.
   private <T> T runAsyncTask(
       NodeAgent nodeAgent, SubmitTaskRequest request, Class<T> responseClass) {
+    return runAsyncTask(
+        nodeAgent,
+        request,
+        responseClass,
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime));
+  }
+
+  // Common method to submit async task and wait for the result.
+  private <T> T runAsyncTask(
+      NodeAgent nodeAgent, SubmitTaskRequest request, Class<T> responseClass, Duration timeout) {
     Objects.requireNonNull(request.getTaskId(), "Task ID must be set");
     long pollDeadlineMs =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDescribePollDeadline).toMillis();
@@ -1370,6 +1395,7 @@ public class NodeAgentClient {
     DescribeTaskRequest describeTaskRequest =
         DescribeTaskRequest.newBuilder().setTaskId(taskId).build();
     CircularFifoQueue<String> outputBuffer = new CircularFifoQueue<>(maxOutputBufferLines);
+    Deadline deadline = Deadline.after(timeout.toMillis(), TimeUnit.MILLISECONDS);
     int transientFailures = 0;
     while (true) {
       try {
@@ -1383,6 +1409,14 @@ public class NodeAgentClient {
             .describeTask(describeTaskRequest, responseObserver);
         return responseObserver.waitForResponse();
       } catch (StatusRuntimeException e) {
+        if (deadline.isExpired()) {
+          abortTask(nodeAgent, taskId);
+          throw new RuntimeException(
+              String.format(
+                  "Task %s on node agent %s did not complete within %s",
+                  taskId, nodeAgent, timeout),
+              e);
+        }
         if (e.getStatus().getCode() == Code.DEADLINE_EXCEEDED) {
           // Reset transient failure count.
           transientFailures = 0;

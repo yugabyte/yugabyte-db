@@ -8,12 +8,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
+// These helpers exercise production shell that requires GNU coreutils
+// (readlink -e, realpath -m, chmod --reference). Skip on hosts that lack them
+// (notably macOS), since the scripts only run on Linux DB nodes.
+func requireGNUCoreutils(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skipf(
+			"mount_ephemeral_drives helpers require GNU coreutils on linux; got %s",
+			runtime.GOOS,
+		)
+	}
+}
+
 func mountEphemeralDrivesModulePath(t *testing.T) string {
 	t.Helper()
+	requireGNUCoreutils(t)
 	if projectDir := os.Getenv("PROJECT_DIR"); projectDir != "" {
 		return filepath.Join(
 			projectDir,

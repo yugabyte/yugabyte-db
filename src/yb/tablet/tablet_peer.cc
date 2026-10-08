@@ -2163,7 +2163,9 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
         NotFound, TransactionError(TransactionErrorCode::kAborted),
         "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
         "term $2 is $3). Retry the transaction.",
-        tablet_id(), op_id, leader_state.term, first_index);
+        tablet_id(), op_id, leader_state.term, first_index)
+        .CloneAndAddErrorCode(
+            tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
   }
 
   // Two or more terms ago - we can't verify presence without a log lookup.
@@ -2171,7 +2173,9 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
       NotFound, TransactionError(TransactionErrorCode::kAborted),
       "Tablet $0: tablet leader moved more than once since async write $1 was issued "
       "(write from term $2, current term is $3). Retry the transaction.",
-      tablet_id(), op_id, op_id.term, leader_state.term);
+      tablet_id(), op_id, op_id.term, leader_state.term)
+      .CloneAndAddErrorCode(
+          tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
 }
 
 Status TabletPeer::VerifyAsyncWriteCompletion(const OpId& op_id) {

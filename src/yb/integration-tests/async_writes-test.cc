@@ -60,6 +60,9 @@ DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_int64(protege_synchronization_timeout_ms);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_WaitForAsyncWrite);
+METRIC_DECLARE_counter(write_pipelining_aborts);
+METRIC_DECLARE_counter(write_pipelining_abort_discarded_reads);
+METRIC_DECLARE_counter(write_pipelining_abort_discarded_writes);
 
 namespace yb {
 
@@ -371,6 +374,52 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
     return total;
   }
 
+  uint64_t SumTserverCounter(const CounterPrototype& proto) {
+    uint64_t total = 0;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* ts = cluster_->mini_tablet_server(i);
+      if (!ts->is_started()) {
+        continue;
+      }
+      total += ts->metric_entity().FindOrCreateMetric<Counter>(&proto)->value();
+    }
+    return total;
+  }
+
+  struct WritePipeliningAbortMetrics {
+    uint64_t aborts;
+    uint64_t discarded_reads;
+    uint64_t discarded_writes;
+  };
+
+  WritePipeliningAbortMetrics GetWritePipeliningAbortMetrics() {
+    return {
+        .aborts = SumTserverCounter(METRIC_write_pipelining_aborts),
+        .discarded_reads = SumTserverCounter(METRIC_write_pipelining_abort_discarded_reads),
+        .discarded_writes = SumTserverCounter(METRIC_write_pipelining_abort_discarded_writes),
+    };
+  }
+
+  // The aborted read/write counters are reported when the client transaction object is destroyed,
+  // which happens asynchronously to the pg statement that observed the failure.
+  void WaitForWritePipeliningAbortMetrics(const WritePipeliningAbortMetrics& expected) {
+    WritePipeliningAbortMetrics actual;
+    auto status = LoggedWaitFor(
+        [&]() -> Result<bool> {
+          actual = GetWritePipeliningAbortMetrics();
+          return actual.aborts == expected.aborts &&
+                 actual.discarded_reads == expected.discarded_reads &&
+                 actual.discarded_writes == expected.discarded_writes;
+        },
+        30s, "Wait for write pipelining abort metrics");
+    ASSERT_TRUE(status.ok()) << status << ", expected aborts=" << expected.aborts
+                             << " reads=" << expected.discarded_reads
+                             << " writes=" << expected.discarded_writes
+                             << ", actual aborts=" << actual.aborts
+                             << " reads=" << actual.discarded_reads
+                             << " writes=" << actual.discarded_writes;
+  }
+
   void LeaderStepDownAfterWriteAckTest(bool perform_read, bool with_ddl = false);
   void LeaderStepDownBeforeWriteAckTest(bool use_pk);
 
@@ -463,6 +512,8 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read, bool
   // queue_->AppendOperations and BreakConnectivityWithAll.
   auto followers = ASSERT_RESULT(RejectFollowerUpdates(tablet_id, old_leader_idx));
 
+  const auto metrics_before = GetWritePipeliningAbortMetrics();
+
   ASSERT_OK(conn_->Execute("BEGIN"));
   if (with_ddl) {
     // Run the DDL before arming the sync point, so that its own writes are not blocked.
@@ -510,6 +561,25 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read, bool
       // Ensure the abort happens immediately, instead of waiting for DDL verification to time out.
       ASSERT_LT(MonoTime::Now() - start, 10s * kTimeMultiplier);
     }
+  }
+
+  if (with_ddl) {
+    // The DDL's catalog writes are part of the aborted transaction, so they also count.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          return GetWritePipeliningAbortMetrics().discarded_writes >
+                 metrics_before.discarded_writes + 1;
+        },
+        30s, "Wait for discarded DDL writes"));
+    ASSERT_EQ(GetWritePipeliningAbortMetrics().aborts, metrics_before.aborts + 1);
+  } else {
+    // Just expect one discarded write for the initial INSERT. The read doesn't succeed, so doesn't
+    // get counted in the metrics.
+    ASSERT_NO_FATALS(WaitForWritePipeliningAbortMetrics({
+        .aborts = metrics_before.aborts + 1,
+        .discarded_reads = metrics_before.discarded_reads,
+        .discarded_writes = metrics_before.discarded_writes + 1,
+    }));
   }
 
   // Reset the connection and make sure the transaction was aborted.
@@ -983,6 +1053,8 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateHoldsAcrossLeaderCrash) {
   // Keep Y's tablet and the transaction status tablets clear of the crash.
   ASSERT_OK(MoveLeadersOffTserver(old_leader_idx, tablet_x));
 
+  const auto metrics_before = GetWritePipeliningAbortMetrics();
+
   // conn1: lock account Y first, while the whole cluster is healthy. This creates the
   // transaction (status record) and writes conn1's txn metadata on Y's tablet, all
   // quorum-replicated. Give the status record a couple of heartbeat periods to settle so the
@@ -1067,6 +1139,14 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateHoldsAcrossLeaderCrash) {
       << final_x + final_y << ") break the total >= 0 invariant the FOR UPDATE locks existed "
          "to protect. conn1's COMMIT was never gated on its lock write because the read-path "
          "async_write_op_id ack was lost.";
+
+  // Discarded reads: the two FOR UPDATE reads plus the UPDATE's row fetch.
+  // Discarded writes: the UPDATE's write op.
+  ASSERT_NO_FATALS(WaitForWritePipeliningAbortMetrics({
+      .aborts = metrics_before.aborts + 1,
+      .discarded_reads = metrics_before.discarded_reads + 3,
+      .discarded_writes = metrics_before.discarded_writes + 1,
+  }));
 }
 
 // The SERIALIZABLE flavor of SelectForUpdateHoldsAcrossLeaderCrash: plain SELECTs write read
@@ -1660,6 +1740,9 @@ TEST_F(YSqlAsyncWriteTest, RepeatedStepDownsWithAsyncWrites) {
   const auto count = ASSERT_RESULT(
       conn_->FetchRow<pgwrapper::PGUint64>(Format("SELECT COUNT(*) FROM $0", kTableName)));
   ASSERT_EQ(count, kNumIterations);
+
+  // Every write was verified on the next leader, so nothing was attributed to write pipelining.
+  ASSERT_EQ(GetWritePipeliningAbortMetrics().aborts, 0);
 }
 
 class YSqlAsyncWriteLongLeaseTest : public YSqlAsyncWriteTest {

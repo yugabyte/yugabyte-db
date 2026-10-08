@@ -790,7 +790,7 @@ void MasterPathHandlers::DisplayUniverseSummary(
        universe_counts.per_placement_cluster_counts) {
     auto placement_uuid_entry = Format(
         "$0 $1", placement_uuid == live_id ? "Primary Cluster" : "Read Replica", placement_uuid);
-    std::string limit_entry = "N/A";
+    std::string limit_entry = "limit undefined";
     if (cluster_counts.tablet_replica_limit.has_value()) {
       limit_entry = Format(
           cluster_counts.active_tablet_peer_count > *cluster_counts.tablet_replica_limit

@@ -1006,24 +1006,28 @@ Status CatalogManager::DoImportSnapshotMeta(
       }
     }
   }
-  // For YSQL restores (both backup/restore and clone), we would have run ysql_dump before
-  // ImportSnapshot. It is important to invalidate the TServer's OID cache after ImportSnapshot so
-  // that the TServer is aware of all objects that were created. Otherwise, the following order of
-  // events is possible:
-  // 1. The dump script creates a table with OID 16384 because that is what the dump script says
-  //    to use (using binary_upgrade_set_next_heap_relfilenode). This does not go through the
-  //    TServer's oid allocator.
-  // 2. The dump script creates an object that needs a new OID (e.g., a CHECK constraint). To get a
-  //    new OID, the TServer calls ReservePgsqlOids, which returns 16384-17000 as available OIDs.
-  // 3. The constraint is created with OID 16385 because that is the first free OID in the range.
-  // 4. A snapshot schedule is created for the restored database.
-  // 5. The table is dropped (actually hidden, because of the snapshot schedule).
-  // 6. The table is recreated with OID 16384, which PG thinks is a free OID because the table is
-  //    not in pg_class anymore. This fails on master because the original table with this OID still
-  //    exists.
+  // Restores (backup/restore and clone) first replay a ysql_dump script, which assigns pg_class and
+  // pg_type OIDs explicitly (binary-upgrade mode), bypassing the OID allocator.  Objects that still
+  // need new OIDs during the replay (e.g., CHECK constraints) make the TServer reserve and cache a
+  // chunk of OIDs that can overlap those explicit OIDs.  Unless that chunk is discarded, the
+  // TServer can later allocate one of these OIDs from it, possibly leading to a collision with one
+  // of the explicit OIDs already in use.  (Postgres normally detects and avoids collisions with
+  // OIDs in use in its catalog tables but it cannot detect collisions with OIDs being used for
+  // hidden DocDB tables.)  AdvanceOidCounters above moved master's counters past every OID in use,
+  // so chunks fetched after this invalidation are safe.
+  //
   // Invalidating the OID cache forces the TServer to refresh its OID cache on the next heartbeat
   // it receives from the master.
   RETURN_NOT_OK(InvalidateTserverOidCaches());
+  // We deliberately do not wait for the invalidation to reach every TServer (e.g., via
+  // PropagateXClusterGuardedInfo): that would make restores and clones fail, or stall for up to the
+  // xCluster-guarded lease duration, whenever a TServer has died recently.  Only TServers that
+  // allocated OIDs in the new database before AdvanceOidCounters can hold a stale chunk for it.
+  // For a clone that is just the TServer that replayed the dump, since the database does not accept
+  // other connections until the clone completes; for a backup restore it is in practice the same.
+  // That TServer was just in use and gets the invalidation with its next heartbeat; until then, a
+  // DDL that allocates a hidden table's OID fails.  This is both unlikely and not particularly
+  // harmful, so we prefer to avoid the chance of failing/stalling restores and clones.
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
