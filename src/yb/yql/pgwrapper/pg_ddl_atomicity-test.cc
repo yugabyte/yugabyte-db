@@ -2023,10 +2023,11 @@ TEST_F(PgDdlAtomicityMiniClusterTest, DropTableWithIndexesOnMasterCrash) {
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0 (v1)", kTableName));
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0 (v2)", kTableName));
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
-  const std::vector<TableId> dropped_table_ids = {
-      table_id,
-      ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName + "_idx1")),
-      ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName + "_idx2"))};
+  const auto index1_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName + "_idx1"));
+  const auto index2_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName + "_idx2"));
+  const std::vector<TableId> dropped_table_ids = {table_id, index1_id, index2_id};
 
   // The master persists the deletion and then fails before it applies it in memory. The DROP TABLE
   // statement waits for a DDL verification that only completes once the flag is cleared.
