@@ -125,6 +125,9 @@ struct Attempt {
   std::unique_ptr<tablet::SnapshotOperation> operation;
   tablet::ScopedReadOperation read_operation;
   std::shared_ptr<FlushResults> results;
+  // Local flush admission taken with the preflight slot, so no follower is asked to flush for an
+  // attempt this server would then reject. Consumed by the local flush job.
+  TabletFlusher::Reservation local_flush;
   CoarseTimePoint deadline;
   std::optional<consensus::ConsensusStatePB> configuration;
 };
@@ -198,6 +201,8 @@ class SnapshotPreflush::Impl {
               "Snapshot preflight capacity exhausted");
     SCHECK(!admission_->active.contains(results->tablet_id), ServiceUnavailable,
             "Snapshot preflight already in progress for tablet");
+    attempt->local_flush = VERIFY_RESULT(
+        server_.tablet_manager()->tablet_flusher().Reserve(results->tablet_id));
     admission_->active.emplace(results->tablet_id, results);
     results->admitted = true;
     admission_->metric->Increment();
@@ -304,8 +309,11 @@ class SnapshotPreflush::Impl {
     FlushTabletsRequestPB request;
     request.set_operation(FlushTabletsRequestPB::FLUSH);
     request.set_flags(tablet::FLUSH_COMPACT_ALL);
+    // Lock order is preflight admission -> flusher (see AdmitAndSubmit). `results` outlives this
+    // call, so a callback copy destroyed under the flusher mutex never runs ~FlushResults, which
+    // takes the admission mutex.
     auto status = server_.tablet_manager()->tablet_flusher().Submit(
-        {attempt->tablet.tablet}, request, attempt->deadline,
+        std::move(attempt->local_flush), attempt->tablet.tablet, request, attempt->deadline,
         [results](const Status& status, const TabletId&) { results->Complete(status); });
     if (!status.ok()) {
       results->Complete(status);

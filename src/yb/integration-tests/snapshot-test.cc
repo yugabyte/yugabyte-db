@@ -46,6 +46,7 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 
@@ -74,12 +75,14 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_enable_remote_bootstrap);
+DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_bool(enable_async_snapshot_directory_cleanup);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(snapshot_create_flush_before_submit);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_int32(snapshot_preflush_timeout_ms);
+DECLARE_int32(tablet_flush_max_outstanding);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
@@ -763,6 +766,142 @@ TEST_F(SnapshotTest, SameTermMembershipChangeRejectsPreflight) {
   ASSERT_STR_CONTAINS(status.ToString(), "configuration changed");
   ASSERT_FALSE(leader_peer->tablet_metadata()->fs_manager()->env()->FileExists(JoinPathSegments(
       leader_peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString())));
+}
+
+// Local flush admission is part of preflight admission: a leader without a free local flush slot
+// rejects the request before any follower is asked to flush.
+TEST_F(SnapshotTest, LocalFlushCapacityRejectsBeforeFollowerFlush) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 1;
+  auto restore_capacity = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 16;
+  });
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(2);
+  workload.Setup();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 6);
+  const auto snapshot_tablet_id = peers.front()->tablet_id();
+  auto* leader = GetLeaderForTablet(cluster_.get(), snapshot_tablet_id);
+  ASSERT_NE(leader, nullptr);
+  // Occupy the leader's only flush slot with a different tablet hosted on the same server.
+  tablet::TabletPtr other;
+  for (const auto& peer : peers) {
+    if (peer->tablet_id() != snapshot_tablet_id &&
+        peer->permanent_uuid() == leader->server()->permanent_uuid()) {
+      other = ASSERT_RESULT(peer->shared_tablet());
+    }
+  }
+  ASSERT_NE(other, nullptr);
+  CountDownLatch flushed(1), release(1);
+  std::atomic<int> snapshot_tablet_flushes{0};
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    auto* tablet = static_cast<tablet::Tablet*>(arg);
+    if (tablet == other.get()) {
+      flushed.CountDown();
+      release.Wait();
+    } else if (tablet->tablet_id() == snapshot_tablet_id) {
+      snapshot_tablet_flushes.fetch_add(1, std::memory_order_acq_rel);
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  Status admin_status;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] {
+    tserver::TabletServerAdminServiceProxy proxy(
+        &client_->proxy_cache(), HostPort::FromBoundEndpoint(leader->bound_rpc_addr()));
+    tserver::FlushTabletsRequestPB request;
+    request.set_dest_uuid(leader->server()->permanent_uuid());
+    request.add_tablet_ids(other->tablet_id());
+    tserver::FlushTabletsResponsePB response;
+    RpcController controller;
+    controller.set_timeout(30s);
+    admin_status = proxy.FlushTablets(request, &response, &controller);
+    if (admin_status.ok() && response.has_error()) {
+      admin_status = StatusFromPB(response.error().status());
+    }
+  });
+  ASSERT_TRUE(flushed.WaitFor(10s));
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  // Overload surfaces as an RPC-level busy error, which the master's task layer retries.
+  const auto rejected = CreateTabletSnapshot(leader, snapshot_tablet_id, snapshot_id);
+  ASSERT_NOK(rejected);
+  ASSERT_EQ(rpc::RpcError(rejected.status()), rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY)
+      << rejected.status();
+  ASSERT_STR_CONTAINS(rejected.status().ToString(), "Tablet flush capacity exhausted");
+  ASSERT_EQ(snapshot_tablet_flushes.load(std::memory_order_acquire), 0);
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(admin_status);
+  const auto retry = ASSERT_RESULT(CreateTabletSnapshot(leader, snapshot_tablet_id, snapshot_id));
+  ASSERT_FALSE(retry.has_error()) << retry.DebugString();
+  ASSERT_EQ(snapshot_tablet_flushes.load(std::memory_order_acquire), 3);
+}
+
+// Every captured replica must flush, so a peer still being remote bootstrapped delays snapshot
+// creation until it is running; the error stays retryable for the master.
+TEST_F(SnapshotTest, BootstrappingPeerDelaysPreflight) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  const auto kTimeout = 30s * kTimeMultiplier;
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(1);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 3);
+  const auto tablet_id = peers.front()->tablet_id();
+  auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
+  ASSERT_NE(leader, nullptr);
+  ASSERT_OK(cluster_->AddTabletServer());
+  auto* joining = cluster_->mini_tablet_server(3);
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  auto* leader_details = ts_map[leader->server()->permanent_uuid()].get();
+  auto* joining_details = ts_map[joining->server()->permanent_uuid()].get();
+  ASSERT_NE(leader_details, nullptr);
+  ASSERT_NE(joining_details, nullptr);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
+  auto unpause = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
+  });
+  ASSERT_OK(itest::AddServer(
+      leader_details, tablet_id, joining_details, consensus::PeerMemberType::PRE_VOTER,
+      std::nullopt, kTimeout));
+  // The joining peer is registered while copying data, so it cannot serve a flush yet.
+  ASSERT_OK(WaitFor([&] {
+    return joining->server()->tablet_manager()->GetTablet(tablet_id).ok();
+  }, kTimeout, "Bootstrapping peer registered"));
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  const auto reply = ASSERT_RESULT(CreateTabletSnapshot(leader, tablet_id, snapshot_id));
+  ASSERT_TRUE(reply.has_error());
+  const auto status = StatusFromPB(reply.error().status());
+  ASSERT_TRUE(status.IsTryAgain()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Snapshot preflush on replica");
+  // The joining peer answers with TABLET_NOT_FOUND; the leader must not forward that code, which
+  // the master treats as terminal.
+  ASSERT_NE(reply.error().code(), tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
+  ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(4, leader_details, tablet_id, kTimeout));
+  ASSERT_OK(WaitFor([&] {
+    auto peer = joining->server()->tablet_manager()->GetTablet(tablet_id);
+    return peer.ok() && (**peer).state() == tablet::RUNNING;
+  }, kTimeout, "Joined peer running"));
+  const auto retry = ASSERT_RESULT(CreateTabletSnapshot(leader, tablet_id, snapshot_id));
+  ASSERT_FALSE(retry.has_error()) << retry.DebugString();
+  // Four replicas of an RF3 table would fail the fixture's cluster verification.
+  ASSERT_OK(client_->DeleteTable(kTableName, /* wait = */ true));
 }
 
 TEST_F(SnapshotTest, MissingFollowerTabletIsRetryable) {

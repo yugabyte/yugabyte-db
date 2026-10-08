@@ -54,6 +54,7 @@ DECLARE_bool(snapshot_create_flush_before_submit);
 DECLARE_int32(snapshot_preflush_concurrency);
 DECLARE_int32(snapshot_preflush_timeout_ms);
 DECLARE_int32(tablet_flush_concurrency);
+DECLARE_int32(tablet_flush_max_outstanding);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 METRIC_DECLARE_gauge_uint64(snapshot_preflush_active);
 METRIC_DECLARE_gauge_uint64(tablet_flush_active);
@@ -588,24 +589,31 @@ class SnapshotPreflushLimitServiceTest : public SnapshotPreflushServiceTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_concurrency) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_concurrency) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 1;
     SnapshotPreflushServiceTest::SetUp();
+  }
+
+  Status AdminFlush(const TabletId& id, MonoDelta timeout = 10s) {
+    FlushTabletsRequestPB request;
+    request.set_dest_uuid(mini_server_->server()->permanent_uuid());
+    request.add_tablet_ids(id);
+    FlushTabletsResponsePB response;
+    RpcController controller;
+    controller.set_timeout(timeout);
+    RETURN_NOT_OK(admin_proxy_->FlushTablets(request, &response, &controller));
+    return response.has_error() ? StatusFromPB(response.error().status()) : Status::OK();
+  }
+
+  uint64_t ActivePreflights() {
+    return mini_server_->server()->metric_entity()
+        ->FindOrNull<AtomicGauge<uint64_t>>(METRIC_snapshot_preflush_active)->value();
   }
 
   void TestCapacity(bool snapshot) {
     Status first_status;
     auto second = ASSERT_RESULT(AddTablet("second-tablet"));
     auto send = [&](const TabletId& id) -> Status {
-      if (snapshot) {
-        return CreateSnapshot(id, TxnSnapshotId::GenerateRandom());
-      }
-      FlushTabletsRequestPB request;
-      request.set_dest_uuid(mini_server_->server()->permanent_uuid());
-      request.add_tablet_ids(id);
-      FlushTabletsResponsePB response;
-      RpcController controller;
-      controller.set_timeout(10s);
-      RETURN_NOT_OK(admin_proxy_->FlushTablets(request, &response, &controller));
-      return response.has_error() ? StatusFromPB(response.error().status()) : Status::OK();
+      return snapshot ? CreateSnapshot(id, TxnSnapshotId::GenerateRandom()) : AdminFlush(id);
     };
     CountDownLatch flushed(1), release(1);
     auto* sync = SyncPoint::GetInstance();
@@ -637,6 +645,158 @@ TEST_F(SnapshotPreflushLimitServiceTest, OriginLimitAcrossDistinctTablets) {
 
 TEST_F(SnapshotPreflushLimitServiceTest, ReceiverLimitAcrossDistinctTablets) {
   TestCapacity(false);
+}
+
+// The leader's own flush must be admitted together with the preflight slot. Otherwise the server
+// would ask followers to flush and then reject the attempt itself.
+TEST_F(SnapshotPreflushLimitServiceTest, LocalFlushCapacityRejectsPreflightAtAdmission) {
+  auto second = ASSERT_RESULT(AddTablet("second-tablet"));
+  CountDownLatch flushed(1), release(1);
+  std::atomic<bool> submitted{false};
+  auto* sync = SyncPoint::GetInstance();
+  PauseFlush(flushed, release, &submitted);
+  TestThreadHolder threads;
+  Status admin_status;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] { admin_status = AdminFlush(second->tablet_id()); });
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  const auto rejected = CreateSnapshot(kTabletId, TxnSnapshotId::GenerateRandom());
+  ASSERT_EQ(rpc::RpcError(rejected), rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY) << rejected;
+  ASSERT_STR_CONTAINS(rejected.ToString(), "Tablet flush capacity exhausted");
+  // Rejected at admission: nothing was started that could retain the preflight slot.
+  ASSERT_EQ(ActivePreflights(), 0);
+  ASSERT_EQ(ActiveFlushes(), 1);
+  ASSERT_FALSE(submitted.load(std::memory_order_acquire));
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(admin_status);
+  ASSERT_OK(CreateSnapshot(kTabletId, TxnSnapshotId::GenerateRandom()));
+  ASSERT_NO_FATALS(WaitForRetiredPreflight());
+}
+
+// An admitted preflight holds its local flush slot; later admin requests cannot take it.
+TEST_F(SnapshotPreflushLimitServiceTest, IncomingFlushCannotTakeReservedSlot) {
+  auto second = ASSERT_RESULT(AddTablet("second-tablet"));
+  CountDownLatch flushed(1), release(1);
+  auto* sync = SyncPoint::GetInstance();
+  PauseFlush(flushed, release);
+  TestThreadHolder threads;
+  Status snapshot_status;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] {
+    snapshot_status = CreateSnapshot(kTabletId, TxnSnapshotId::GenerateRandom());
+  });
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  const auto rejected = AdminFlush(second->tablet_id());
+  ASSERT_EQ(rpc::RpcError(rejected), rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY) << rejected;
+  ASSERT_STR_CONTAINS(rejected.ToString(), "Tablet flush capacity exhausted");
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(snapshot_status);
+  ASSERT_NO_FATALS(WaitForRetiredPreflight());
+  ASSERT_OK(AdminFlush(second->tablet_id()));
+}
+
+// Outstanding capacity above the worker count queues work instead of rejecting it.
+TEST_F(SnapshotPreflushLimitServiceTest, OutstandingCapacityQueuesBehindWorkers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 2;
+  auto first = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  auto second = ASSERT_RESULT(AddTablet("second-tablet"));
+  auto third = ASSERT_RESULT(AddTablet("third-tablet"));
+  CountDownLatch flushed(1), release(1);
+  std::atomic<int> second_flushed{0};
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    auto* tablet = static_cast<tablet::Tablet*>(arg);
+    if (tablet == first.get()) {
+      flushed.CountDown();
+      release.Wait();
+    } else if (tablet == second.get()) {
+      second_flushed.fetch_add(1, std::memory_order_acq_rel);
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  Status first_status, second_status;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] { first_status = AdminFlush(first->tablet_id()); });
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  threads.AddThreadFunctor([&] { second_status = AdminFlush(second->tablet_id()); });
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 2; }, 5s, "Second flush admitted"));
+  // The single worker is busy, so the second batch waits rather than running concurrently.
+  SleepFor(100ms);
+  ASSERT_EQ(second_flushed.load(std::memory_order_acquire), 0);
+  const auto rejected = AdminFlush(third->tablet_id());
+  ASSERT_EQ(rpc::RpcError(rejected), rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY) << rejected;
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(first_status);
+  ASSERT_OK(second_status);
+  ASSERT_EQ(second_flushed.load(std::memory_order_acquire), 1);
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 0; }, 5s, "Flushes retired"));
+}
+
+// Queued work whose caller gave up fails before launching any I/O, and releases its slot.
+TEST_F(SnapshotPreflushLimitServiceTest, ExpiredQueuedFlushDoesNotLaunch) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 2;
+  auto first = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  auto second = ASSERT_RESULT(AddTablet("second-tablet"));
+  ASSERT_OK(WriteSingleRow(second->tablet_id(), 1, 11, "value"));
+  CountDownLatch flushed(1), release(1);
+  std::atomic<int> second_flushed{0};
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    auto* tablet = static_cast<tablet::Tablet*>(arg);
+    if (tablet == first.get()) {
+      flushed.CountDown();
+      release.Wait();
+    } else if (tablet == second.get()) {
+      second_flushed.fetch_add(1, std::memory_order_acq_rel);
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  Status first_status;
+  auto result = std::make_shared<std::promise<Status>>();
+  auto future = result->get_future();
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] { first_status = AdminFlush(first->tablet_id()); });
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  auto& flusher = mini_server_->server()->tablet_manager()->tablet_flusher();
+  FlushTabletsRequestPB request;
+  request.set_operation(FlushTabletsRequestPB::FLUSH);
+  ASSERT_OK(flusher.Submit({second}, request, CoarseMonoClock::Now() + 200ms,
+      [result](const Status& status, const TabletId&) { result->set_value(status); }));
+  ASSERT_EQ(ActiveFlushes(), 2);
+  SleepFor(400ms);
+  ASSERT_EQ(future.wait_for(0s), std::future_status::timeout);
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(first_status);
+  ASSERT_EQ(future.wait_for(5s), std::future_status::ready);
+  ASSERT_TRUE(future.get().IsTimedOut());
+  ASSERT_EQ(second_flushed.load(std::memory_order_acquire), 0);
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 0; }, 5s, "Flushes retired"));
 }
 
 TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
