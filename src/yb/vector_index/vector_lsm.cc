@@ -330,11 +330,16 @@ class VectorLSMInsertTask :
     insert_callback_ = std::move(insert_callback);
   }
 
+  void set_epoch(uint64_t allocate_epoch) { epoch_ = allocate_epoch; }
+
+  uint64_t epoch() const { return epoch_; }
+
   void Add(VectorId vector_id, Vector&& vector) {
     vectors_.emplace_back(vector_id, std::move(vector));
   }
 
   void Run() override {
+    TEST_SYNC_POINT("VectorLSMInsertTask::Run:Begin");
     insert_callback_(DoInsert());
     insert_callback_ = {};
   }
@@ -385,6 +390,7 @@ class VectorLSMInsertTask :
   VectorIndexPtr index_;
   InsertCallback insert_callback_;
   std::vector<std::pair<VectorId, Vector>> vectors_;
+  uint64_t epoch_ = 0;
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -405,6 +411,7 @@ class VectorLSMInsertRegistryBase
       {
         std::lock_guard lock(mutex_);
         stopping_ = true;
+        TEST_SYNC_POINT("VectorLSMInsertRegistryBase::Shutdown:Stopping");
         if (allocated_tasks_ == 0) {
           break;
         }
@@ -445,8 +452,8 @@ class VectorLSMInsertRegistryBase
       // Catches a task that completed before ExecuteTasks moved it to active_tasks_.
       DCHECK(!active_tasks_.empty());
       active_tasks_.erase(active_tasks_.iterator_to(*raw_task));
+      DoTaskDoneUnlocked(raw_task);
       ReturnTaskUnlocked(std::move(task));
-      DoTaskDoneUnlocked();
     }
   }
 
@@ -466,9 +473,9 @@ class VectorLSMInsertRegistryBase
     while (!tasks.empty()) {
       InsertTaskPtr task(&tasks.front());
       tasks.pop_front();
+      DoTaskDoneUnlocked(task.get());
       ReturnTaskUnlocked(std::move(task));
     }
-    DoTaskDoneUnlocked();
   }
 
   bool HasRunningTasks() {
@@ -519,7 +526,7 @@ class VectorLSMInsertRegistryBase
     }
   }
 
-  virtual void DoTaskDoneUnlocked() REQUIRES(mutex_) {
+  virtual void DoTaskDoneUnlocked(InsertTask* /*task*/) REQUIRES(mutex_) {
     // Nothing to do, could be used in derived classes.
   }
 
@@ -560,10 +567,41 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
       }
     }
 
-    return DoAllocateTasks(num_tasks, std::forward<Args>(args)...);
+    auto tasks = VERIFY_RESULT(DoAllocateTasks(num_tasks, std::forward<Args>(args)...));
+    for (auto& task : tasks) {
+      // Stamp at allocate time so AdvanceEpochAndWait sees these tasks even if BindTasks is later.
+      task.set_epoch(allocate_epoch_);
+    }
+    tasks_in_current_epoch_ += num_tasks;
+    return tasks;
   }
 
-  void DoTaskDoneUnlocked() override REQUIRES(mutex_) {
+  // Waits for tasks that were already allocated when this was called. Inserts that allocate after
+  // the epoch is advanced are not waited for, so a continuous ingest cannot stall WaitForFlush.
+  void AdvanceEpochAndWait() EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
+    tasks_in_older_epochs_ += tasks_in_current_epoch_;
+    tasks_in_current_epoch_ = 0;
+    ++allocate_epoch_;
+    while (tasks_in_older_epochs_ != 0) {
+      if (allocated_tasks_cond_.wait_for(GetLockForCondition(lock), 1s) ==
+              std::cv_status::timeout) {
+        LOG_WITH_PREFIX(WARNING)
+            << "Long wait for existing vector insert tasks: " << tasks_in_older_epochs_
+            << " older-epoch, " << tasks_in_current_epoch_ << " current-epoch, "
+            << allocated_tasks_ << " allocated";
+      }
+    }
+  }
+
+  void DoTaskDoneUnlocked(InsertTask* task) override REQUIRES(mutex_) {
+    if (task->epoch() < allocate_epoch_) {
+      DCHECK_GT(tasks_in_older_epochs_, 0);
+      --tasks_in_older_epochs_;
+    } else {
+      DCHECK_GT(tasks_in_current_epoch_, 0);
+      --tasks_in_current_epoch_;
+    }
     allocated_tasks_cond_.notify_all();
   }
 
@@ -586,6 +624,9 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
   using Base::allocated_tasks_;
 
   std::condition_variable_any allocated_tasks_cond_;
+  uint64_t allocate_epoch_ GUARDED_BY(mutex_) = 0;
+  size_t tasks_in_current_epoch_ GUARDED_BY(mutex_) = 0;
+  size_t tasks_in_older_epochs_ GUARDED_BY(mutex_) = 0;
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -655,10 +696,19 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     }
     num_entries += entries.size();
     num_tasks += new_tasks;
-    if (frontiers) {
+    // Empty inserts only update frontiers (no tasks). Non-empty batches commit on task
+    // success so a failed insert does not publish frontiers for unwritten entries.
+    // TODO(vector_index): when large transactions are supported, in-memory frontiers must
+    // cover registered-but-unfinished inserts so IntentsDbFlushFilter can clamp a flushed
+    // op that still has an unflushed batch in this chunk.
+    if (frontiers && new_tasks == 0) {
       rocksdb::UpdateFrontiers(user_frontiers, *frontiers);
     }
     return true;
+  }
+
+  void CommitFrontiers(const rocksdb::UserFrontiers& frontiers) {
+    rocksdb::UpdateFrontiers(user_frontiers, frontiers);
   }
 
   void InsertTaskDone() {
@@ -674,9 +724,12 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   ImmutableChunkPtr Immutate(size_t order_no, std::promise<Status>* flush_promise) {
     // Move should not be used for index as the mutable chunk could still be used by other
     // entities, for example by VectorLSMInsertTask.
+    // Clone so later successful Insert()s can still CommitFrontiers on this MutableChunk;
+    // DoFlush merges those into the immutable copy before save.
     return std::make_shared<ImmutableChunk>(
         order_no, num_entries ? index : VectorIndexPtr{},
-        std::move(user_frontiers), flush_promise);
+        user_frontiers ? user_frontiers->Clone() : rocksdb::UserFrontiersPtr{},
+        flush_promise);
   }
 
   std::string ToString() const {
@@ -699,7 +752,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   VectorIndexPtr index;
 
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
-  const rocksdb::UserFrontiersPtr user_frontiers;
+  rocksdb::UserFrontiersPtr user_frontiers;
 
  private:
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
@@ -763,8 +816,10 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
     auto& added_chunk = *update.mutable_add_chunks()->Add();
     added_chunk.set_serial_no(serial_no());
     added_chunk.set_order_no(order_no);
-    user_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
-    user_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+    if (user_frontiers) {
+      user_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+      user_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+    }
   }
 
   void MarkObsolete() {
@@ -1369,16 +1424,24 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     return Status::OK();
   }
 
-  insert_registry_->BindTasks(tasks, chunk->index, [this, chunk](const Status& status) {
-    if (!status.ok()) {
-      auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
-      LOG(ERROR) << LogPrefix() << failure;
-      CheckFailure(failure);
-    }
-    // A failed chunk is still saved: CheckFailure records the failure, and an unsaved chunk would
-    // block the updates queue and CompleteShutdown.
-    chunk->InsertTaskDone();
-  });
+  std::shared_ptr<rocksdb::UserFrontiers> frontiers_to_commit;
+  if (context.frontiers) {
+    frontiers_to_commit = context.frontiers->Clone();
+  }
+  insert_registry_->BindTasks(
+      tasks, chunk->index, [this, chunk, frontiers_to_commit](const Status& status) {
+        if (!status.ok()) {
+          auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
+          LOG(ERROR) << LogPrefix() << failure;
+          CheckFailure(failure);
+        } else if (frontiers_to_commit) {
+          std::lock_guard lock(mutex_);
+          chunk->CommitFrontiers(*frontiers_to_commit);
+        }
+        // A failed chunk is still saved: CheckFailure records the failure, and an unsaved chunk
+        // would block the updates queue and CompleteShutdown.
+        chunk->InsertTaskDone();
+      });
 
   size_t entries_per_task = ceil_div(entries.size(), num_tasks);
   auto tasks_it = tasks.begin();
@@ -1689,7 +1752,17 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
   VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(*chunk);
 
   SaveIndexToFileResult saved;
-  if (chunk->index) {
+  VectorIndexPtr index;
+  {
+    std::lock_guard lock(mutex_);
+    if (chunk->index && chunk->index->Size() == 0) {
+      // RegisterInsert can bump num_entries before any vector is written. Cancelled tasks leave
+      // Size() == 0; SaveToFile rejects that and would pin the chunk in updates_queue_.
+      chunk->index = {};
+    }
+    index = chunk->index;
+  }
+  if (index) {
     LOG_IF(DFATAL, chunk->file.get())
         << "Chunk is already saved to "
         << GetChunkPath(options_, chunk->file->serial_no());
@@ -1701,7 +1774,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
 
     // Measures the time to serialize and write a single vector index chunk file to disk.
     const auto flush_start = MonoTime::Now();
-    saved = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
+    saved = VERIFY_RESULT(SaveIndexToFile(*index, serial_no));
     if (metrics_) {
       metrics_->flush_write_bytes->IncrementBy(saved.first->size_on_disk());
       metrics_->flush_us->Increment((MonoTime::Now() - flush_start).ToMicroseconds());
@@ -1849,7 +1922,13 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
   auto chunk = immutable_chunks_.back();
   updates_queue_.emplace(chunk->order_no, chunk);
 
-  mutable_chunk_->save_callback = [this, chunk]() {
+  mutable_chunk_->save_callback = [this, chunk, mut = mutable_chunk_]() {
+    {
+      std::lock_guard lock(mutex_);
+      if (mut->user_frontiers) {
+        rocksdb::UpdateFrontiers(chunk->user_frontiers, *mut->user_frontiers);
+      }
+    }
     SaveChunk(chunk);
   };
 
@@ -1968,6 +2047,9 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
     RETURN_NOT_OK(DoFlush(wait ? &promise : nullptr));
     mutable_chunk_ = nullptr;
   }
+  // After this point a concurrent Insert() allocates a new mutable chunk. CreateSplitChildTablet
+  // calls Flush(wait=false) then WaitForFlush(); the latter must still see those inserts.
+  TEST_SYNC_POINT("VectorLSM::Flush:AfterDoFlush");
 
   return wait ? promise.get_future().get() : Status::OK();
 }
@@ -2127,13 +2209,29 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::WaitForFlush() {
+void VectorLSM<Vector, DistanceResult>::WaitForUpdatesQueueEmpty() {
   UniqueLock lock(mutex_);
+  while (!updates_queue_.empty()) {
+    if (updates_queue_empty_cv_.wait_for(lock, 1s) == std::cv_status::timeout) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Long wait for vector LSM flush queue, chunks left: " << updates_queue_.size();
+    }
+  }
+}
 
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::WaitForFlush() {
   // TODO(vector_index) Don't wait flushes that started after this call.
-  updates_queue_empty_cv_.wait(
-      lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return updates_queue_.empty(); });
 
+  // Inserts that start after DoFlush allocate a new mutable chunk and never join updates_queue_.
+  // CreateSplitChildTablet's Flush(kSync) is Flush(wait=false) then this wait; it must still
+  // drain those tasks or CompleteShutdown can block on them after the split.
+  if (insert_registry_) {
+    insert_registry_->AdvanceEpochAndWait();
+  }
+
+  // Also covers the original DoFlush chunk, and a waited insert that RollChunk -> DoFlush.
+  WaitForUpdatesQueueEmpty();
   return Status::OK();
 }
 
