@@ -206,6 +206,14 @@ passes flags through. `--target benchmarks` builds all of them.
     --benchmark-args '--benchmark_filter=AbslMutex'
 ```
 
+Use a release build; debug and sanitizer builds only check that benchmarks compile. For numbers
+closest to a release server binary, use an LTO build: `./yb_build.sh release --full-lto
+--cxx-benchmark <name>` builds and runs `<name>-lto`, the benchmark statically linked as one LTO
+unit the way `yb-server` is, so inlining across YB libraries is included. That link is slow and
+needs a lot of memory, so `<name>-lto` is built only when `--cxx-benchmark` asks for it, never by a
+plain build or `--target benchmarks`. LTO builds need an LTO third-party archive, which
+`build-support/thirdparty_archives.yml` currently lists for AlmaLinux 8 only.
+
 ### Java Tests
 
 ```bash

@@ -15,7 +15,8 @@
 // The critical section is a single increment, so this stresses lock handoff rather than modeling
 // any real workload.
 //
-// Build and run (use a release build for meaningful numbers):
+// Build and run (use a release build for meaningful numbers; add --full-lto to measure the
+// statically linked, LTO-optimized variant, as release servers are linked):
 //   ./yb_build.sh release --cxx-benchmark mutex-benchmark
 // Add --benchmark-args '--benchmark_filter=AbslMutex' to run a subset.
 //

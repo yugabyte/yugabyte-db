@@ -566,7 +566,11 @@ class LinkHelper:
                     ', '.join(sorted(self.static_libs_from_ldd[static_lib_path])))
                 self.new_args.append(static_lib_path)
 
-        self.add_pgcommon_srv_library()
+        if self.yb_pgbackend_needed:
+            # Only a binary with the embedded Postgres backend needs the server variant of
+            # libpgcommon; its objects reference backend symbols (palloc, errstart, ...) that would
+            # not resolve in e.g. a benchmark.
+            self.add_pgcommon_srv_library()
         self.new_args.append('-fwhole-program')
         if self.yb_pgbackend_needed:
             # We are most likely building the main server process, so add other Postgres libraries

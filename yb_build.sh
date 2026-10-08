@@ -98,7 +98,8 @@ set_vars_for_cxx_test() {
     make_targets+=( "$cxx_test_name" )
   fi
   if [[ -n $cxx_benchmark_name ]]; then
-    make_targets+=( "$cxx_benchmark_name" )
+    set_cxx_benchmark_program_name
+    make_targets+=( "$cxx_benchmark_program_name" )
   fi
 
   # This is necessary to avoid failures if we are just building one test.
@@ -492,12 +493,24 @@ run_cxx_test() {
   fi
 }
 
+# Sets cxx_benchmark_program_name, the program --cxx-benchmark builds and runs. In an LTO build
+# that is <name>-lto, the statically linked, whole-program-optimized variant ADD_YB_BENCHMARK adds
+# next to each benchmark (it is not part of the default build, so it has to be requested by name).
+# With --skip-final-lto-link that target does not exist, so the dynamically linked program is used.
+set_cxx_benchmark_program_name() {
+  cxx_benchmark_program_name=$cxx_benchmark_name
+  if [[ ${YB_LINKING_TYPE:-dynamic} == *-lto && ${YB_SKIP_FINAL_LTO_LINK:-0} != "1" ]]; then
+    cxx_benchmark_program_name+="-lto"
+  fi
+}
+
 run_cxx_benchmark() {
+  set_cxx_benchmark_program_name
   # ADD_YB_BENCHMARK puts each benchmark in a benchmarks-<dir> directory of the build root.
-  local benchmark_paths=( "$BUILD_ROOT"/benchmarks-*/"$cxx_benchmark_name" )
+  local benchmark_paths=( "$BUILD_ROOT"/benchmarks-*/"$cxx_benchmark_program_name" )
   if [[ ! -x ${benchmark_paths[0]} ]]; then
-    fatal "Could not find benchmark program '$cxx_benchmark_name' in $BUILD_ROOT/benchmarks-*." \
-          "Only programs added with ADD_YB_BENCHMARK are placed there."
+    fatal "Could not find benchmark program '$cxx_benchmark_program_name' in" \
+          "$BUILD_ROOT/benchmarks-*. Only programs added with ADD_YB_BENCHMARK are placed there."
   fi
   (
     set_sanitizer_runtime_options

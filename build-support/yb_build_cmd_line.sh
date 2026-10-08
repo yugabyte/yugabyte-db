@@ -214,7 +214,9 @@ Test options:
 
   --cxx-benchmark, --cb <cxx_benchmark_program_name>
     Build and run the given C++ microbenchmark (added with ADD_YB_BENCHMARK). Only that program and
-    what it links are built.
+    what it links are built. In an LTO build (--full-lto or --thin-lto) this builds and runs the
+    statically linked, whole-program-optimized <name>-lto variant, which is linked the way release
+    server binaries are; with --skip-final-lto-link the dynamically linked program is used instead.
   --benchmark-args
     Extra arguments to pass to the benchmark, e.g. '--benchmark_filter=AbslMutex'. Used with
     --cxx-benchmark.
@@ -355,6 +357,7 @@ set_default_yb_build_args() {
   must_use_tcmalloc=false
   cxx_test_name=""
   cxx_benchmark_name=""
+  cxx_benchmark_program_name=""
   benchmark_args=()
   test_existence_check=true
   object_files_to_delete=()
