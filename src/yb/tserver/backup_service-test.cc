@@ -589,6 +589,8 @@ TEST_F(SnapshotPreflushServiceTest, LocalFlushFailureDoesNotSubmit) {
 class SnapshotPreflushLimitServiceTest : public SnapshotPreflushServiceTest {
  protected:
   void SetUp() override {
+    // Below the validated minimum on purpose (direct writes skip validation): with a single slot,
+    // one reservation or one admin batch exhausts the flusher, which is what these tests provoke.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_concurrency) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_concurrency) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 1;
@@ -653,7 +655,11 @@ TEST_F(SnapshotPreflushLimitServiceTest, ReceiverLimitAcrossDistinctTablets) {
 // cannot leave an admitted preflight to expire in the queue after it fanned out.
 TEST_F(SnapshotPreflushLimitServiceTest, ReservedFlushRunsWhileAdminWorkersBusy) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 2;
+  const auto saved_timeout = FLAGS_snapshot_preflush_timeout_ms;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = 2000;
+  auto restore_timeout = ScopeExit([saved_timeout] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = saved_timeout;
+  });
   auto second = ASSERT_RESULT(AddTablet("second-tablet"));
   CountDownLatch flushed(1), release(1);
   auto* sync = SyncPoint::GetInstance();

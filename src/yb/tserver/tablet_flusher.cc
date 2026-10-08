@@ -19,7 +19,8 @@
 #include "yb/util/threadpool.h"
 
 DEFINE_NON_RUNTIME_int32(tablet_flush_concurrency, 4,
-    "Workers running admin/local preflight flush jobs per tablet server.");
+    "Workers running admin FlushTablets jobs per tablet server. Snapshot preflight local flushes "
+    "use a separate lane sized by snapshot_preflush_concurrency.");
 DEFINE_validator(tablet_flush_concurrency, FLAG_GT_VALUE_VALIDATOR(0));
 TAG_FLAG(tablet_flush_concurrency, advanced);
 DECLARE_int32(snapshot_preflush_concurrency);
@@ -171,7 +172,9 @@ TabletFlusher::Reservation::~Reservation() {
 
 void TabletFlusher::Reservation::Release() {
   if (auto* flusher = std::exchange(flusher_, nullptr)) {
-    flusher->Release({tablet_id_});
+    std::lock_guard lock(flusher->mutex_);
+    --flusher->reserved_;
+    flusher->ReleaseUnlocked({tablet_id_});
   }
 }
 
@@ -218,6 +221,10 @@ Status TabletFlusher::Admit(const std::unordered_set<TabletId>& ids) {
 Result<TabletFlusher::Reservation> TabletFlusher::Reserve(const TabletId& tablet_id) {
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(Admit({tablet_id}));
+  ++reserved_;
+  // The reserved lane is sized for admitted preflights only; a second reserver would break the
+  // guarantee that every reserved job gets a worker.
+  DCHECK_LE(reserved_, make_unsigned(FLAGS_snapshot_preflush_concurrency));
   return Reservation(this, tablet_id);
 }
 
@@ -248,6 +255,7 @@ Status TabletFlusher::Submit(
   // Take over the admission here so the reservation's destructor cannot re-enter mutex_ on the
   // failure paths below; the job (or the explicit release) owns it from now on.
   reservation.flusher_ = nullptr;
+  --reserved_;
   std::unordered_set<TabletId> ids{tablet->tablet_id()};
   auto status = closing_ ? STATUS(ShutdownInProgress, "Tablet flusher is shutting down")
                          : Enqueue(*reserved_pool_, {tablet}, ids, request, deadline,
@@ -263,7 +271,8 @@ Status TabletFlusher::Enqueue(
     const FlushTabletsRequestPB& request, CoarseTimePoint deadline, Callback callback) {
   // Serialize enqueue with StartShutdown so its subsequent pool drain includes every admitted
   // job. SubmitFunc only enqueues; neither the job nor its callback runs inline under this lock.
-  return pool.SubmitFunc([this, tablets, ids, request, deadline, callback] {
+  return pool.SubmitFunc([this, tablets = std::move(tablets), ids = std::move(ids), request,
+                          deadline, callback = std::move(callback)] {
     TabletId failed_tablet_id;
     Status status;
     {
@@ -275,10 +284,8 @@ Status TabletFlusher::Enqueue(
     if (status.ok() && CoarseMonoClock::Now() >= deadline) {
       // The caller gave up while this job waited for a worker; do not spend I/O on it.
       expired_queued_metric_->Increment();
+      // No tablet was attempted, so none is reported as failed.
       status = STATUS(TimedOut, "Tablet flush deadline expired while queued");
-      if (!tablets.empty()) {
-        failed_tablet_id = tablets.front()->tablet_id();
-      }
     }
     if (status.ok()) {
       status = FlushBatch(tablets, request).Run(deadline, &failed_tablet_id);

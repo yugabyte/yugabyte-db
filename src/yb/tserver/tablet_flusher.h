@@ -87,6 +87,8 @@ class TabletFlusher {
   std::mutex mutex_;
   bool closing_ GUARDED_BY(mutex_) = false;
   size_t outstanding_ GUARDED_BY(mutex_) = 0;
+  // Reservations not yet consumed by Submit; bounded by the reserved lane size.
+  size_t reserved_ GUARDED_BY(mutex_) = 0;
   std::unordered_set<TabletId> tablets_ GUARDED_BY(mutex_);
   scoped_refptr<AtomicGauge<uint64_t>> active_metric_;
   scoped_refptr<Counter> expired_queued_metric_;

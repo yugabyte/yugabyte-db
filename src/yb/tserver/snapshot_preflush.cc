@@ -37,11 +37,16 @@ DEFINE_RUNTIME_int32(snapshot_preflush_timeout_ms, 10000,
     "Preflight flush budget, capped by the snapshot RPC deadline.");
 DEFINE_validator(snapshot_preflush_timeout_ms, FLAG_GT_VALUE_VALIDATOR(0));
 TAG_FLAG(snapshot_preflush_timeout_ms, advanced);
+DECLARE_int32(tablet_flush_max_outstanding);
+
 DEFINE_NON_RUNTIME_int32(snapshot_preflush_concurrency, 4,
     "Maximum outstanding snapshot preflights per tablet server, including retiring flush work. "
     "Each admitted preflight also holds one tablet_flush_max_outstanding slot and one worker of "
     "the reserved flush lane on this server.");
-DEFINE_validator(snapshot_preflush_concurrency, FLAG_GT_VALUE_VALIDATOR(0));
+// Inverse of the tablet_flush_max_outstanding validator: delayed validators only re-run for
+// flags set on the command line, so each side must check the other.
+DEFINE_validator(snapshot_preflush_concurrency, FLAG_GT_VALUE_VALIDATOR(0),
+    FLAG_LT_FLAG_VALIDATOR(tablet_flush_max_outstanding));
 TAG_FLAG(snapshot_preflush_concurrency, advanced);
 
 METRIC_DEFINE_event_stats(server, snapshot_preflush_duration_us, "Snapshot preflight duration",
