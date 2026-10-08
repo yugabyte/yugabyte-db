@@ -69,32 +69,29 @@ Result<std::vector<dockv::KeyBytes>> BuildVectorKeyPrefixes(
   };
   std::vector<KeyColumnValues> key_columns;
   size_t num_prefixes = 1;
-  for (size_t idx = 0; idx != table.num_key_columns(); ++idx) {
-    if (num_hash_key_columns && idx == num_hash_key_columns) {
-      break;
-    }
+  const auto num_prefix_columns =
+      num_hash_key_columns ? num_hash_key_columns : table.num_key_columns();
+  for (size_t idx = 0; idx != num_prefix_columns; ++idx) {
     PgColumn column(table.schema(), idx);
     auto it = std::ranges::find(columns, column.attr_num(), &YbcPgVectorKeyColumn::attr_num);
     if (it == columns.end() || it->nvalues == 0) {
       break;
     }
+    SCHECK_EQ(
+        column.internal_type(), InternalTypeOf(it->type_entity), InvalidArgument,
+        "Key value type does not match column type");
     num_prefixes *= it->nvalues;
     if (num_prefixes > kMaxVectorKeyPrefixes) {
       return std::vector<dockv::KeyBytes>();
     }
     auto& key_column = key_columns.emplace_back(KeyColumnValues{
         .sorting_type = column.desc().sorting_type(), .values = {}});
-    for (const auto& value : std::span(it->values, it->nvalues)) {
-      if (value.is_null) {
-        return std::vector<dockv::KeyBytes>();
-      }
-      auto* constant = arena.NewObject<PgConstant>(
-          &arena, value.type_entity, value.collation_info.collate_is_valid_non_c,
-          value.collation_info.sortkey, value.datum, /* is_null= */ false);
-      SCHECK_EQ(
-          column.internal_type(), constant->internal_type(), InvalidArgument,
-          "Key value type does not match column type");
-      key_column.values.push_back(VERIFY_RESULT(constant->Eval()));
+    for (auto datum : std::span(it->datums, it->nvalues)) {
+      auto* value = arena.NewObject<LWQLValuePB>(&arena);
+      DatumToQLValue(
+          it->type_entity, /* collate_is_valid_non_c= */ false, /* collation_sortkey= */ nullptr,
+          datum, /* is_null= */ false, value);
+      key_column.values.push_back(value);
     }
   }
   if (key_columns.empty() || key_columns.size() < num_hash_key_columns) {
@@ -113,7 +110,9 @@ Result<std::vector<dockv::KeyBytes>> BuildVectorKeyPrefixes(
       const auto* value = key_columns[i].values[positions[i]];
       components.push_back(
           dockv::KeyEntryValue::FromQLValuePB(*value, key_columns[i].sorting_type));
-      hashed_values.push_back(value);
+      if (num_hash_key_columns) {
+        hashed_values.push_back(value);
+      }
     }
     // Dropping the group end that closes the encoded key leaves a byte prefix of every key with
     // these components: for a hash partitioned table the key has only the hash group, so the

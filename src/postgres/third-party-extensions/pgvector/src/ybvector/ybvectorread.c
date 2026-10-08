@@ -28,7 +28,6 @@
 #include "access/relscan.h"
 #include "access/stratnum.h"
 #include "access/sysattr.h"
-#include "access/yb_target.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_type.h"
 #include "catalog/yb_type.h"
@@ -139,28 +138,38 @@ convertIntegerValue(Datum value, Oid value_type, Oid column_type, Datum *result)
 }
 
 /*
- * Whether opno compares an integer column with a value of another integer
- * type for equality, e.g. int8 = int4 for "bigint_col = 3".  The integer
- * types share one btree operator family, whose cross-type equality is exact.
- * Sets *value_type to the type of the compared value.
+ * Whether opno, which isn't the column type's own equality operator, compares
+ * an integer column with a value of another integer type for equality, e.g.
+ * int8 = int4 for "bigint_col = 3".  The integer types share one btree
+ * operator family, whose cross-type equality is exact.  Sets *value_type to
+ * the type of the compared value.
  */
 static bool
 isIntegerCrossTypeEquality(Oid opno, Oid column_type, bool var_on_right,
 						   Oid *value_type)
 {
-	Oid			opclass = GetDefaultOpClass(column_type, BTREE_AM_OID);
+	Oid			opclass;
 	Oid			left_type;
 	Oid			right_type;
 
-	if (!isIntegerType(column_type) || !OidIsValid(opclass) ||
+	if (!isIntegerType(column_type))
+		return false;
+	opclass = GetDefaultOpClass(column_type, BTREE_AM_OID);
+	if (!OidIsValid(opclass) ||
 		get_op_opfamily_strategy(opno, get_opclass_family(opclass)) !=
 		BTEqualStrategyNumber)
 		return false;
 	op_input_types(opno, &left_type, &right_type);
-	if ((var_on_right ? right_type : left_type) != column_type)
-		return false;
+
+	/*
+	 * The integer types aren't binary-compatible, so the bare Var has the
+	 * operator's input type on its side, and the integer family holds only
+	 * int2/int4/int8 operators.
+	 */
+	Assert((var_on_right ? right_type : left_type) == column_type);
 	*value_type = var_on_right ? left_type : right_type;
-	return isIntegerType(*value_type) && *value_type != column_type;
+	Assert(isIntegerType(*value_type) && *value_type != column_type);
+	return true;
 }
 
 static Expr *
@@ -233,8 +242,14 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	Oid			input_type = InvalidOid;
 	Oid			cross_type = InvalidOid;
 
+	/*
+	 * Quals under a non-C collation aren't pushed down, so only the C
+	 * collation can reach here; skip anything else rather than encode a
+	 * collation sort key.
+	 */
 	if (!keyEqualityIsExact(att->atttypid) ||
-		inputcollid != att->attcollation)
+		inputcollid != att->attcollation ||
+		YBIsCollationValidNonC(att->attcollation))
 		return InvalidAttrNumber;
 	if (opno != getKeyEqualityOperator(att->atttypid, &input_type) &&
 		!isIntegerCrossTypeEquality(opno, att->atttypid, var_on_right,
@@ -285,6 +300,9 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	}
 	return var->varattno;
 }
+
+StaticAssertDecl(sizeof(Datum) == sizeof(uint64_t),
+				 "YbcPgVectorKeyColumn.datums holds Datums");
 
 /*
  * The vector index of a table is stored in the table's own tablets, so a
@@ -340,22 +358,12 @@ bindKeyFilter(IndexScanDesc scan, YbOpaque yb_scan)
 		if (idx < ncolumns && columns[idx].nvalues <= nvalues)
 			continue;
 
-		YbcPgAttrValueDescriptor *attrs =
-			palloc(sizeof(YbcPgAttrValueDescriptor) * Max(nvalues, 1));
-		Oid			type_id = TupleDescAttr(tupdesc, attnum - 1)->atttypid;
-
-		for (int i = 0; i < nvalues; ++i)
-		{
-			attrs[i].attr_num = attnum;
-			attrs[i].datum = values[i];
-			attrs[i].is_null = false;
-			attrs[i].type_entity = YbDataTypeFromOidMod(attnum, type_id);
-			attrs[i].collation_id = ybc_get_attcollation(tupdesc, attnum);
-			YBSetupAttrCollationInfo(&attrs[i], &column_info);
-		}
 		columns[idx].attr_num = attnum;
+		columns[idx].type_entity =
+			YbDataTypeFromOidMod(attnum,
+								 TupleDescAttr(tupdesc, attnum - 1)->atttypid);
 		columns[idx].nvalues = nvalues;
-		columns[idx].values = attrs;
+		columns[idx].datums = (const uint64_t *) values;
 		if (idx == ncolumns)
 			++ncolumns;
 	}
