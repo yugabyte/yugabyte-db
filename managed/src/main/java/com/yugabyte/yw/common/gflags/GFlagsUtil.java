@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -1240,6 +1241,46 @@ public class GFlagsUtil {
             throw new PlatformServiceException(
                 BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
           }
+        }
+      }
+      validateFipsCompliancyOfHelmOverrides(
+          userIntent.universeOverrides, userIntent.azOverrides, fipsEnabled);
+    }
+  }
+
+  /**
+   * Kubernetes helm overrides carry gflags too (gflags.master and gflags.tserver in the values) and
+   * are merged over the gflags YBA generates, so they could turn the FIPS gflag off where the
+   * gflags API refuses to.
+   */
+  public static void validateFipsCompliancyOfHelmOverrides(
+      String universeOverrides, Map<String, String> azOverrides, boolean fipsEnabled) {
+    if (!fipsEnabled) {
+      return;
+    }
+    List<String> overrides = new ArrayList<>();
+    overrides.add(universeOverrides);
+    if (azOverrides != null) {
+      overrides.addAll(azOverrides.values());
+    }
+    for (String overridesYaml : overrides) {
+      Map<String, String> flatOverrides;
+      try {
+        flatOverrides = HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
+      } catch (Exception e) {
+        // Overrides that cannot be read cannot be checked, so they are not accepted either.
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
+      }
+      for (String server : List.of("master", "tserver")) {
+        String value = flatOverrides.get("gflags." + server + "." + OPENSSL_REQUIRE_FIPS);
+        if (value != null && !value.equals("true")) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes"
+                      + " overrides cannot set %s %s to %s",
+                  server, OPENSSL_REQUIRE_FIPS, value));
         }
       }
     }
