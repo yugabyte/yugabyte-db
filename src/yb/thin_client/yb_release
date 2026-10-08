@@ -73,7 +73,9 @@ log "Full-LTO build root: $build_root"
 lto_out="$build_root/lib/$lib_name"
 
 # Emit the link command without running the linker. Needs only the configured build graph, not built
-# objects (--incomplete-build), and it names every object the client links -- our build work-list.
+# objects (--incomplete-build), as long as the client doesn't link libyb_pgbackend: lto.py reads the
+# built Postgres archives only for targets that do. It names every object the client links -- our
+# build work-list.
 log "Computing the whole-program link command (and the real object closure) for $lib_name"
 "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
   --build-root="$build_root" \
@@ -87,19 +89,19 @@ log "Computing the whole-program link command (and the real object closure) for 
 link_args_file="${lto_out}_lto_link_cmd_args.txt"
 [[ -f "$link_args_file" ]] || fatal "Whole-program link did not emit args file: $link_args_file"
 
-# libpgcommon/libpgport are byproducts of the monolithic postgres target, so request the archives
-# rather than the individual objects.
+# Postgres libraries come out of the monolithic postgres target, which depends on the whole server
+# and can't link under --no-tcmalloc (--no-undefined), so this script can't build them.
+if pg_link_args=$( grep -E '(^|/)(postgres_build|postgres/lib)/' "$link_args_file" ); then
+  fatal "$lib_name now links Postgres code, which this --no-tcmalloc closure-only build can't" \
+    "produce:"$'\n'"$pg_link_args"
+fi
+
 log "Building the client's real link closure only (not the full server/PG tree)"
 mapfile -t closure_objs < <(
   grep -oE '[^ ]+\.cc\.o' "$link_args_file" | grep -F "$build_root/" |
     sed "s#${build_root}/##" | sort -u )
 [[ ${#closure_objs[@]} -gt 0 ]] || fatal "Could not extract the object closure from $link_args_file"
-pg_targets=()
-grep -qE 'postgres_build/src/common/' "$link_args_file" && \
-  pg_targets+=( "postgres_build/src/common/libpgcommon.a" )
-grep -qE 'postgres_build/src/port/' "$link_args_file" && \
-  pg_targets+=( "postgres_build/src/port/libpgport.a" )
-log "Closure: ${#closure_objs[@]} objects + ${#pg_targets[@]} PostgreSQL static lib(s)"
+log "Closure: ${#closure_objs[@]} objects"
 # Two guards against shipping a .so built from a STALE object:
 #
 # YB_BUILD_ROOT must be exported -- several closure objects order-only-depend on
@@ -113,7 +115,7 @@ shim_obj_target="src/yb/thin_client/CMakeFiles/yb_thin_client.dir/yb_thin_client
 ( cd "$build_root" && YB_BUILD_ROOT="$build_root" ninja "$shim_obj_target" ) \
   || fatal "failed to compile $shim_obj_target -- see ninja output above"
 ( cd "$build_root" && YB_BUILD_ROOT="$build_root" \
-    ninja -k 0 "${closure_objs[@]}" "${pg_targets[@]}" ) || \
+    ninja -k 0 "${closure_objs[@]}" ) || \
   log "note: a non-closure byproduct failed to link (expected with --no-tcmalloc); continuing"
 
 # Belt-and-braces on the above: if the object is older than its source, ninja skipped it.
