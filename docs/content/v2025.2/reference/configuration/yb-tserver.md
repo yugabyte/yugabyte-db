@@ -385,6 +385,19 @@ You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 
 Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
+##### client_connection_check_interval
+
+{{% tags/wrap %}}
+
+Default: `0` (disabled)
+{{% /tags/wrap %}}
+
+PostgreSQL parameter that sets how often a backend checks whether its client is still connected while a query runs. A backend whose client has disconnected ends the query and exits. For details, refer to [client_connection_check_interval](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-CLIENT-CONNECTION-CHECK-INTERVAL) in the PostgreSQL documentation.
+
+In YugabyteDB (on Linux), the check also applies while a new connection starts up, including while the backend waits for catalog preload requests. If the client disconnects during startup, for example because its connect timeout expires, the backend exits with `FATAL: connection to client lost` instead of waiting for the preload to finish.
+
+During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](#ysql-pg-conf-csv), because per-database and per-role settings are loaded after the preload.
+
 ##### enable_bitmapscan
 
 {{% tags/wrap %}}
