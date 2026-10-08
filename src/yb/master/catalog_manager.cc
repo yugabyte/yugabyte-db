@@ -13133,17 +13133,27 @@ Status CatalogManager::BuildLocationsForTablet(
 
     locs_pb->mutable_replicas()->Reserve(narrow_cast<int32_t>(locs->size()));
     for (const auto& [ts_uuid, tablet_replica] : *locs) {
+      // The replica map is rebuilt only when a new Raft config is reported, so it can still name a
+      // tserver that has since been replaced (another tserver registered at its address) or
+      // removed from the registry. Clients would cache such a replica and route to it: a replaced
+      // one answers for a different uuid, a removed one has no address at all. Unresponsive
+      // tservers are deliberately not filtered: that is master-side visibility, not membership.
+      auto strong_ts_desc_ptr = tablet_replica.ts_desc.lock();
+      if (!strong_ts_desc_ptr || strong_ts_desc_ptr->IsReplaced() ||
+          strong_ts_desc_ptr->IsRemoved()) {
+        YB_LOG_EVERY_N_SECS(INFO, 60)
+            << "Omitting replica of tablet " << tablet->id() << " on tserver " << ts_uuid
+            << " from tablet locations: tserver is no longer registered";
+        continue;
+      }
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(tablet_replica.role);
       replica_pb->set_member_type(tablet_replica.member_type);
       replica_pb->set_state(tablet_replica.state);
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
       out_ts_info->set_permanent_uuid(ts_uuid);
-      auto strong_ts_desc_ptr = tablet_replica.ts_desc.lock();
-      if (strong_ts_desc_ptr) {
-        CopyRegistration(strong_ts_desc_ptr->GetRegistration(), out_ts_info);
-        out_ts_info->set_placement_uuid(strong_ts_desc_ptr->placement_uuid());
-      }
+      CopyRegistration(strong_ts_desc_ptr->GetRegistration(), out_ts_info);
+      out_ts_info->set_placement_uuid(strong_ts_desc_ptr->placement_uuid());
     }
   } else if (cstate.IsInitialized()) {
     // If the locations were not cached.

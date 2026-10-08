@@ -356,6 +356,12 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
     return LockForRead()->pb.state() == SysTabletServerEntryPB::REPLACED;
   }
 
+  // Indicates that this tserver was explicitly removed from the registry; only code that still
+  // holds a shared_ptr to the descriptor can observe this state.
+  bool IsRemoved() const {
+    return LockForRead()->pb.state() == SysTabletServerEntryPB::REMOVED;
+  }
+
   std::size_t NumTasks() const;
 
   bool IsLive() const;
