@@ -4581,7 +4581,9 @@ class PgClientSession::Impl {
         << " locks for txn " << txn_id << " subtxn_id " << AsString(subtxn_id)
         << " ash_meta: " << (wait_state ? wait_state->metadata().ToString() : "n/a");
     if (!use_global_release_path) {
-      if (FLAGS_enable_object_lock_fastpath && object_lock_shared_state_) {
+      // The shared memory fastpath can only drop all locks of the session, so it must not be used
+      // when releasing locks of a single subtxn (ROLLBACK TO SAVEPOINT).
+      if (!subtxn_id && FLAGS_enable_object_lock_fastpath && object_lock_shared_state_) {
         ParentProcessGuard g;
         if ((*object_lock_shared_state_)->TServerUnlockAll()) {
           return docdb::TxnBlockedTableLockRequests::kFalse;
