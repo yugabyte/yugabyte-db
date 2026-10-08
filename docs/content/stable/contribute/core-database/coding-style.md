@@ -610,7 +610,7 @@ Result<int> foo();
 
 ### String formatting
 
-Use the `Format` function to produce formatted strings. Don't use `StringPrintf`; the older `Substitute` function has been removed.
+Use the `Format` function to produce formatted strings. Don't use `StringPrintf`.
 
 `Format` uses inline substitution parameters `$0`, `$1`, and so on, and has several advantages:
 
