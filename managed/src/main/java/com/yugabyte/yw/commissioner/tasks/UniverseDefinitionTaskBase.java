@@ -1710,7 +1710,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
-          cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
+          cluster.clusterType,
+          cluster.userIntent.numNodes,
+          cluster.userIntent.replicationFactor,
+          opType == UniverseOpType.EDIT && univCluster != null
+              ? univCluster.userIntent.replicationFactor
+              : null);
 
       if (cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes)) {
         if (opType == UniverseOpType.EDIT
