@@ -2173,10 +2173,7 @@ Status TabletPeer::VerifyAsyncWriteReceived(
     if (log_op_id.ok() && *log_op_id == op_id) {
       return Status::OK();
     }
-    if (!log_op_id.ok() && !log_op_id.status().IsNotFound()) {
-      return log_op_id.status();
-    }
-    // NotFound means the entry was GCed, so the write can't be confirmed.
+    // A failed lookup (e.g. the entry was GCed) means the write can't be confirmed either.
     return STATUS_EC_FORMAT(
         NotFound, TransactionError(TransactionErrorCode::kAborted),
         "Tablet $0: async write $1 is not in the log of the term $2 leader (found $3). Retry the "
