@@ -14,13 +14,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 #
-# Simple linter for src/yb code.
+# Linter that rejects the StringPrintf family in src/yb code.
 set -euo pipefail
 
 . "${BASH_SOURCE%/*}/common.sh"
 
-# Formatting
-#
 # yb/gutil/stringprintf.h stays for gutil's own use, so nothing but this rule
 # keeps the printf-style helpers out of new code.  Comment lines are skipped so
 # that prose can still name them.  ybc_util.cc formats a va_list passed from C
