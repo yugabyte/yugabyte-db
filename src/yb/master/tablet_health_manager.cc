@@ -33,13 +33,14 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
@@ -214,7 +215,8 @@ AreNodesSafeToTakeDownDriver::FindTserversToContact(ReplicaCountMap* required_re
 
       // Get table replication factor, if we have not already done so.
       if (!min_replicas.has_value()) {
-        auto rf = VERIFY_RESULT(catalog_manager_->GetTableReplicationFactor(table));
+        auto rf = CatalogManagerUtil::GetReplicationFactor(
+            VERIFY_RESULT(catalog_manager_->GetTableReplicationInfoNoDefault(table)));
         min_replicas = rf / 2 + 1;
       }
       (*required_replicas)[tablet->id()] = *min_replicas;

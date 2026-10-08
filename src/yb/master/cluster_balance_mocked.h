@@ -7,8 +7,7 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_manager.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
  public:
@@ -48,8 +47,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return std::cref(it->second);
   }
 
-  ReplicationInfoPB GetTableReplicationInfo(
-      const scoped_refptr<const TableInfo>& table) const override {
+  ReplicationInfoPB GetTableReplicationInfo(const TableInfoPtr& table) const override {
     return replication_info_;
   }
 
@@ -130,5 +128,4 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   friend class TestLoadBalancerEnterprise;
 };
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

@@ -1806,6 +1806,93 @@ TEST_F(AdminCliTest, AddTransactionStatusTablet) {
   }, kWaitNewTabletReadyTimeout, "Timeout waiting for new status tablet to be ready"));
 }
 
+// Verify that adding a transaction status tablet persists both the new tablet and the shrunk
+// partition of the tablet it was split from, so the partitions are still valid after the master
+// reloads the sys catalog.
+TEST_F(AdminCliTest, AddTransactionStatusTabletPersistsAcrossMasterRestart) {
+  const std::string kNamespaceName = "test_namespace";
+  const std::string kTableName = "test_table";
+  const auto kTimeout = 30s;
+
+  BuildAndStart({}, {});
+
+  // Force creation of system.transactions.
+  auto session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(session.ExecuteQueryFormat("CREATE KEYSPACE IF NOT EXISTS $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat("USE $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY) "
+      "WITH transactions = { 'enabled' : true }", kTableName));
+
+  auto global_txn_table = YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  auto global_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
+
+  // Returns the number of tablets of the transaction status table, after checking that their
+  // partitions cover the whole hash space without gaps or overlaps.
+  auto get_num_tablets = [&]() -> Result<size_t> {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+    RETURN_NOT_OK(client_->GetTabletsFromTableId(
+        global_txn_table_id, /* max_tablets = */ 1000, &locations));
+    std::vector<std::pair<std::string, std::string>> partitions;
+    for (const auto& location : locations) {
+      partitions.emplace_back(
+          location.partition().partition_key_start(), location.partition().partition_key_end());
+    }
+    std::sort(partitions.begin(), partitions.end());
+    std::string partitions_str;
+    for (const auto& [start, end] : partitions) {
+      partitions_str += Format(
+          "[$0, $1) ", Slice(start).ToDebugHexString(), Slice(end).ToDebugHexString());
+    }
+    std::string expected_start;
+    for (const auto& [start, end] : partitions) {
+      SCHECK_EQ(start, expected_start, IllegalState,
+                Format("Transaction status table partitions are not contiguous: $0",
+                       partitions_str));
+      expected_start = end;
+    }
+    SCHECK(expected_start.empty(), IllegalState,
+           Format("Transaction status table partitions do not cover the hash space: $0",
+                  partitions_str));
+    return partitions.size();
+  };
+
+  auto wait_for_num_tablets = [&](size_t expected, const std::string& description) {
+    return LoggedWaitFor([&]() -> Result<bool> {
+      auto num_tablets = get_num_tablets();
+      if (!num_tablets.ok()) {
+        LOG(INFO) << num_tablets.status();
+        return false;
+      }
+      return *num_tablets == expected;
+    }, kTimeout, description);
+  };
+
+  auto restart_master = [&]() -> Status {
+    RETURN_NOT_OK(RestartAllMasters(cluster_.get()));
+    return cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), kTimeout);
+  };
+
+  const auto num_tablets_before = ASSERT_RESULT(get_num_tablets());
+  ASSERT_GT(num_tablets_before, 0);
+
+  ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
+  ASSERT_OK(wait_for_num_tablets(num_tablets_before + 1, "First status tablet added"));
+
+  ASSERT_OK(restart_master());
+  ASSERT_OK(wait_for_num_tablets(
+      num_tablets_before + 1, "Status tablets valid after first master restart"));
+
+  // Adding another tablet after the restart should split a correctly persisted partition.
+  ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
+  ASSERT_OK(wait_for_num_tablets(num_tablets_before + 2, "Second status tablet added"));
+
+  ASSERT_OK(restart_master());
+  ASSERT_OK(wait_for_num_tablets(
+      num_tablets_before + 2, "Status tablets valid after second master restart"));
+}
+
 class AdminCliListTabletsTest : public AdminCliTest {
  public:
   template <class... Args>
