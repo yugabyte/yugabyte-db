@@ -282,6 +282,10 @@ Status MasterTabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
 }
 
+void MasterTabletServer::MarkTServersAsFailed(const std::vector<std::string>& ts_uuids) {
+  client()->MarkTServersAsFailed(ts_uuids);
+}
+
 Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const {
   LOG(DFATAL) << "Unexpected call of YCQLStatementStats()";

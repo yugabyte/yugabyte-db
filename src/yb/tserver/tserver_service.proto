@@ -139,6 +139,12 @@ service TabletServerService {
   rpc ClearAllMetaCachesOnServer(ClearAllMetaCachesOnServerRequestPB)
       returns (ClearAllMetaCachesOnServerResponsePB);
 
+  // Mark all cached replicas hosted by the given tservers as permanently failed in this server's
+  // meta cache, so they are not routed to until a master or Raft refresh replaces them. Operator
+  // counterpart of the master's blacklisted_tservers_with_no_tablets heartbeat hint.
+  rpc MarkTServersAsFailedInMetaCache(MarkTServersAsFailedInMetaCacheRequestPB)
+      returns (MarkTServersAsFailedInMetaCacheResponsePB);
+
   // Clear metacache entries (tables and tablets) that belong to the provided namespace.
   rpc ClearMetacache(ClearMetacacheRequestPB)
       returns (ClearMetacacheResponsePB);

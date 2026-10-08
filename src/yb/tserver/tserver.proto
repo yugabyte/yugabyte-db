@@ -436,6 +436,15 @@ message ClearAllMetaCachesOnServerRequestPB {}
 
 message ClearAllMetaCachesOnServerResponsePB {}
 
+message MarkTServersAsFailedInMetaCacheRequestPB {
+  // Permanent uuids of the tservers whose cached replicas should be marked as failed.
+  repeated string ts_uuids = 1;
+}
+
+message MarkTServersAsFailedInMetaCacheResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 message ClearMetacacheRequestPB {
   // Only Ysql namespace can be cleared from metacache.
   optional string namespace_id = 1;

@@ -130,6 +130,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Status ClearMetacache(const std::string& namespace_id) override;
 
+  void MarkTServersAsFailed(const std::vector<std::string>& ts_uuids) override;
+
   Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const override;
 

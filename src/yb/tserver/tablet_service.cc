@@ -4079,6 +4079,18 @@ void TabletServiceImpl::ClearAllMetaCachesOnServer(
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::MarkTServersAsFailedInMetaCache(
+    const MarkTServersAsFailedInMetaCacheRequestPB* req,
+    MarkTServersAsFailedInMetaCacheResponsePB* resp, rpc::RpcContext context) {
+  if (req->ts_uuids().empty()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(InvalidArgument, "No tserver uuids specified"), &context);
+    return;
+  }
+  server_->MarkTServersAsFailed({req->ts_uuids().begin(), req->ts_uuids().end()});
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::ClearMetacache(
     const ClearMetacacheRequestPB* req, ClearMetacacheResponsePB* resp, rpc::RpcContext context) {
   if (!req->has_namespace_id()) {

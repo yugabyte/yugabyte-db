@@ -147,6 +147,7 @@ const char* const kReloadCertificatesOp = "reload_certificates";
 const char* const kRemoteBootstrapOp = "remote_bootstrap";
 const char* const kListMasterServersOp = "list_master_servers";
 const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
+const char* const kMarkTServerFailedInMetaCacheOp = "mark_tserver_failed_in_metacache";
 const char* const kClearUniverseUuidOp = "clear_universe_uuid";
 const char* const kClearYCQLMetaDataCacheOnServerOp = "clear_ycql_metadatacache";
 const char* const kReleaseAllLocksForTxnOp = "unsafe_release_all_locks_for_txn";
@@ -323,6 +324,10 @@ class TsAdminClient {
   Status ListMasterServers();
 
   Status ClearAllMetaCachesOnServer();
+
+  // Marks all replicas cached on this server for the tserver with the given uuid as permanently
+  // failed, so they are not routed to until a master or Raft refresh replaces them.
+  Status MarkTServerFailedInMetaCache(const std::string& ts_uuid);
 
   Status ClearYCQLMetaDataCacheOnServer();
 
@@ -1045,6 +1050,20 @@ Status TsAdminClient::ClearAllMetaCachesOnServer() {
   return Status::OK();
 }
 
+Status TsAdminClient::MarkTServerFailedInMetaCache(const std::string& ts_uuid) {
+  CHECK(initted_);
+  tserver::MarkTServersAsFailedInMetaCacheRequestPB req;
+  tserver::MarkTServersAsFailedInMetaCacheResponsePB resp;
+  req.add_ts_uuids(ts_uuid);
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(ts_proxy_->MarkTServersAsFailedInMetaCache(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Status TsAdminClient::ClearYCQLMetaDataCacheOnServer() {
   CHECK(initted_);
   tserver::ClearYCQLMetaDataCacheOnServerRequestPB req;
@@ -1199,6 +1218,7 @@ void SetUsage(const char* argv0) {
       << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n"
       << "  " << kListMasterServersOp << "\n"
       << "  " << kClearAllMetaCachesOnServerOp << "\n"
+      << "  " << kMarkTServerFailedInMetaCacheOp << " <ts_uuid>\n"
       << "  " << kClearUniverseUuidOp << "\n"
       << "  " << kClearYCQLMetaDataCacheOnServerOp << "\n"
       << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n"
@@ -1470,6 +1490,13 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.ClearAllMetaCachesOnServer(),
         "Unable to clear the meta-cache on tablet server with address " + addr);
+  } else if (op == kMarkTServerFailedInMetaCacheOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+    const std::string ts_uuid = argv[2];
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.MarkTServerFailedInMetaCache(ts_uuid),
+        "Unable to mark tserver " + ts_uuid + " as failed in the meta-cache on tablet server " +
+            "with address " + addr);
   } else if (op == kClearUniverseUuidOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 

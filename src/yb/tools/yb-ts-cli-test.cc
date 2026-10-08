@@ -31,6 +31,11 @@
 //
 // Tests for the yb-admin command-line tool.
 
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
 #include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
 #include "yb/util/format.h"
@@ -47,6 +52,7 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 
@@ -62,10 +68,13 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
+#include "yb/util/json_document.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_thread_holder.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 using std::vector;
@@ -130,6 +139,66 @@ TEST_F(YBTsCliTest, SetFlagTest) {
 
   // Extended PG validation failure: invalid GUC value.
   ASSERT_NOK(run_set_flag("ysql_pg_conf_csv", "log_min_messages=foo"));
+}
+
+// mark_tserver_failed_in_metacache marks, on the target tserver only, every cached replica hosted
+// by the given tserver uuid as permanently failed, and leaves the other replicas alone. The target
+// tserver's meta cache is populated by running YSQL statements through it.
+TEST_F(YBTsCliTest, MarkTServerFailedInMetaCache) {
+  ASSERT_NO_FATALS(StartCluster(
+      /* extra_ts_flags */ {}, /* extra_master_flags */ {}, /* num_tablet_servers */ 3,
+      /* num_masters */ 1, /* enable_ysql */ true));
+  auto* gateway = cluster_->tablet_server(0);
+  const auto victim_uuid = cluster_->tablet_server(1)->uuid();
+  const auto bystander_uuid = cluster_->tablet_server(2)->uuid();
+
+  {
+    auto conn = ASSERT_RESULT(pgwrapper::PGConnBuilder({
+        .host = cluster_->ysql_hostport(0).host(),
+        .port = cluster_->ysql_hostport(0).port(),
+        .dbname = "yugabyte"}).Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 3 TABLETS"));
+    ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 30) AS i"));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>("SELECT COUNT(*) FROM t")), 30);
+  }
+
+  // Returns {uuid -> {failure_status, permanent_failure}} across every replica in the gateway's
+  // meta cache, keyed by the replica's tserver.
+  auto replica_states = [&]() -> Result<std::map<std::string, std::set<std::string>>> {
+    faststring page;
+    RETURN_NOT_OK(integration_tests::path_handlers_util::GetUrl(
+        "http://" + AsString(gateway->bound_http_hostport()) + "/api/v1/meta-cache", &page));
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(page.ToString()));
+    std::map<std::string, std::set<std::string>> states;
+    for (const auto& tablet : VERIFY_RESULT(root["MainMetaCache"]["tablets"].GetArray())) {
+      for (const auto& replica : VERIFY_RESULT(tablet["replicas"].GetArray())) {
+        states[VERIFY_RESULT(replica["permanent_uuid"].GetString())].insert(Format(
+            "$0/$1", VERIFY_RESULT(replica["failure_status"].GetString()),
+            VERIFY_RESULT(replica["permanent_failure"].GetBool()) ? "permanent" : "retryable"));
+      }
+    }
+    return states;
+  };
+
+  auto states = ASSERT_RESULT(replica_states());
+  ASSERT_TRUE(states.contains(victim_uuid)) << AsString(states);
+  ASSERT_EQ(states[victim_uuid], std::set<std::string>{"OK/retryable"});
+  ASSERT_EQ(states[bystander_uuid], std::set<std::string>{"OK/retryable"});
+
+  ASSERT_OK(Subprocess::Call(std::vector<std::string>{
+      GetTsCliToolPath(), "--server_address", AsString(gateway->bound_rpc_addr()),
+      "mark_tserver_failed_in_metacache", victim_uuid}));
+
+  states = ASSERT_RESULT(replica_states());
+  ASSERT_EQ(states[victim_uuid], std::set<std::string>{"FAILED/permanent"});
+  ASSERT_EQ(states[bystander_uuid], std::set<std::string>{"OK/retryable"});
+
+  // A uuid the gateway has never heard of is a no-op, not an error.
+  ASSERT_OK(Subprocess::Call(std::vector<std::string>{
+      GetTsCliToolPath(), "--server_address", AsString(gateway->bound_rpc_addr()),
+      "mark_tserver_failed_in_metacache", "not-a-tserver"}));
+  ASSERT_EQ(ASSERT_RESULT(replica_states()), states);
 }
 
 // Test deleting a tablet.

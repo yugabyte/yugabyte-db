@@ -153,6 +153,10 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual Status ClearMetacache(const std::string& namespace_id) = 0;
 
+  // Marks all cached replicas hosted by these tservers as permanently failed in the shared
+  // client's meta cache.
+  virtual void MarkTServersAsFailed(const std::vector<std::string>& ts_uuids) = 0;
+
   virtual Status ClearYCQLMetaDataCache() = 0;
 
   virtual Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
