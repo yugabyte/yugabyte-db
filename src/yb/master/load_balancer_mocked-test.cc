@@ -807,6 +807,28 @@ TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationInSourceLoad) {
   ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
 }
 
+// Like ExcludeOverreplicationInSourceLoad, but the source has more over-replicated tablets than
+// its load variance to the destination, so the difference is negative.
+TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationLargerThanLoadVariance) {
+  PrepareTestStateSingleAz();
+  // Over-replicate tablets 0 and 1 onto ts3, and tablet 2 onto ts4. ts0-ts2 each have 4 tablets,
+  // 3 of them over-replicated. ts3 has 2 and ts4 has 1, and neither has tablet 3.
+  ts_descs_.push_back(SetupTS("3333", "a"));
+  ts_descs_.push_back(SetupTS("4444", "a"));
+  AddRunningReplica(tablets_[0].get(), ts_descs_[3]);
+  AddRunningReplica(tablets_[1].get(), ts_descs_[3]);
+  AddRunningReplica(tablets_[2].get(), ts_descs_[4]);
+
+  // Should not find a replica to move. The check assumes a source could lose all its
+  // over-replicated replicas, which would leave ts0, ts1 or ts2 with only tablet 3: fewer tablets
+  // than ts3 and as many as ts4. For ts3 the load variance (2) minus the over-replicated tablets
+  // (3) is negative.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)))
+      << Format("Moved tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
+}
+
 // A split parent whose children are running is deleted as soon as the tservers finish the split,
 // so its replicas are not counted in the load of their tservers.
 TEST_F(LoadBalancerMockedTest, ExcludeSplitParentFromLoad) {

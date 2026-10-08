@@ -1264,7 +1264,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
     for (auto right = last_pos; right > left; --right) {
       const TabletServerId& low_load_uuid = state_->sorted_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_load_[right];
-      ssize_t load_variance = state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid);
+      size_t load_variance = state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid);
       bool is_global_balancing_move = false;
 
       if (load_variance < state_->options_->kMinLoadVarianceToBalance) {
@@ -1301,7 +1301,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
       // the same zone. We want to move 50 tablets, but without this check (and with unlimited adds
       // or laggy removes), we would move 99 tablets to TS B and then remove evenly from both.
       if (!is_global_balancing_move &&
-          load_variance - state_->GetPossiblyTransientLoad(high_load_uuid) <
+          load_variance < state_->GetPossiblyTransientLoad(high_load_uuid) +
               state_->options_->kMinLoadVarianceToBalance) {
         VLOG(3) << Format(
             "Skipping tserver pair $0 and $1 because the load variance would be too low after "
