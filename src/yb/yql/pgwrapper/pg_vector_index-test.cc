@@ -19,6 +19,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
@@ -62,6 +63,7 @@
 #include "yb/vector_index/vector_lsm.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
@@ -4346,6 +4348,113 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingDumpFormatV1) {
     ++v1_meta_values;
   }
   ASSERT_EQ(v1_meta_values, 1);
+}
+
+// ysql_dump recreates the table from the surviving columns, so DocDB assigns those columns dense
+// ids. The ybhnsw index records that dense id. ImportSnapshot puts the source column ids back on
+// the master catalog. Restore merges the snapshot superblock, which still has the source
+// vector_idx_options, onto the tablet. Search has to use that id: the restored graph was built
+// against it.
+class PgVectorIndexBackupRestoreTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV1;
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexBackupRestoreTest);
+
+TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
+  }
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  constexpr auto kSourceDb = "vec_restore_db";
+  constexpr auto kRestoredDb = "vec_restored_db";
+  constexpr auto kTable = "t";
+  constexpr auto kIndex = "v_idx";
+
+  auto table_id = [this](const std::string& db, const std::string& name) -> Result<TableId> {
+    master::GetNamespaceInfoResponsePB ns;
+    RETURN_NOT_OK(client_->GetNamespaceInfo(db, YQL_DATABASE_PGSQL, &ns));
+    const auto& namespace_id = ns.namespace_().id();
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.has_table() && table.table_name() == name && table.namespace_id() == namespace_id) {
+        return table.table_id();
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Didn't find $0.$1", db, name);
+  };
+  auto column_id = [this, kTable, &table_id](
+      const std::string& db, const std::string& column) -> Result<int32_t> {
+    auto table = VERIFY_RESULT(client_->OpenTable(VERIFY_RESULT(table_id(db, kTable))));
+    const auto& schema = table->schema();
+    const auto& columns = schema.columns();
+    for (size_t i = 0; i < columns.size(); ++i) {
+      if (columns[i].name() == column) {
+        return schema.ColumnId(i);
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Column $0 not found in $1.$2", column, db, kTable);
+  };
+
+  {
+    auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(admin.ExecuteFormat(
+        "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+    auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id int PRIMARY KEY, embedding vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN extra vector(3)", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN extra", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v vector(3)", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
+    ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (7, '[1, 0, 0]', '[0, 1, 0]')", kTable));
+  }
+  const auto source_v_column_id = ASSERT_RESULT(column_id(kSourceDb, "v"));
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
+
+  const auto restored_v_column_id = ASSERT_RESULT(column_id(kRestoredDb, "v"));
+  ASSERT_EQ(restored_v_column_id, source_v_column_id);
+  auto index = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(table_id(kRestoredDb, kIndex))));
+  ASSERT_TRUE(index->index_info().is_vector_index());
+  ASSERT_EQ(index->index_info().vector_idx_options().column_id(), source_v_column_id);
+
+  // The tablet skips opening a vector index whose column id is not in the schema.
+  size_t num_restored_indexes = 0;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      if (vector_index->table_id() != index->id()) {
+        continue;
+      }
+      ++num_restored_indexes;
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index->id()));
+      ASSERT_EQ(table_info->doc_read_context->vector_idx_options->column_id(), source_v_column_id);
+    }
+  }
+  ASSERT_EQ(num_restored_indexes, 1);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
+  // One row is otherwise a sequential scan plus a sort, which never opens the vector index.
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT id FROM $0 ORDER BY v <-> '[0, 1, 0]' LIMIT 1", kTable)));
+  ASSERT_EQ(rows, (std::vector<int32_t>{7}));
 }
 
 // Covers table-owned V1 reverse-mapping packing GC across packing modes.

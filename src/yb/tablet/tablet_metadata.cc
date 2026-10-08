@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 
 #include "yb/ash/wait_state.h"
 
@@ -612,6 +613,72 @@ Status KvStoreInfo::MergeWithRestored(
       snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
+// The snapshot lists every vector index that was on the tablet, including invalid indexes the
+// dump omitted and indexes dropped while a snapshot schedule still retained the tablet. Those
+// have no local table. A local vector index with no snapshot entry is the one whose options and
+// restored graph can disagree.
+Result<std::unordered_set<ColocationId>> SnapshotVectorIndexColocationIds(
+    const google::protobuf::RepeatedPtrField<TableInfoPB>& snapshot_tables) {
+  std::unordered_set<ColocationId> ids;
+  for (const auto& snapshot_table : snapshot_tables) {
+    if (!snapshot_table.index_info().has_vector_idx_options()) {
+      continue;
+    }
+    const auto& schema = snapshot_table.schema();
+    SCHECK(
+        schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id(),
+        Corruption, "Snapshot vector index $0 has no colocation id", snapshot_table.table_name());
+    ids.insert(schema.colocated_table_id().colocation_id());
+  }
+  return ids;
+}
+
+Status CheckLocalVectorIndexesInSnapshot(
+    const TableInfoMap& tables, const std::unordered_set<ColocationId>& snapshot_colocation_ids) {
+  for (const auto& [table_id, table_info] : tables) {
+    if (!table_info->IsVectorIndex()) {
+      continue;
+    }
+    SCHECK(
+        table_info->schema().has_colocation_id(), Corruption,
+        "Local vector index $0 has no colocation id", table_id);
+    const auto colocation_id = table_info->schema().colocation_id();
+    SCHECK(
+        snapshot_colocation_ids.find(colocation_id) != snapshot_colocation_ids.end(), Corruption,
+        "Local vector index $0 colocation id $1 has no snapshot counterpart", table_id,
+        colocation_id);
+  }
+  return Status::OK();
+}
+
+// ysql_dump assigns dense DocDB ids and CREATE INDEX records that id. The snapshot superblock
+// still has the source vector_idx_options, including the column id and the permanent index id
+// the restored graph files are stored under. SetSchema keeps the local index_info, so copy the
+// snapshot options onto the local index, matched by colocation id. table_id stays local.
+Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_table) {
+  if (!snapshot_table.index_info().has_vector_idx_options() || !target->IsVectorIndex()) {
+    return Status::OK();
+  }
+  const auto& source_options = snapshot_table.index_info().vector_idx_options();
+  // TODO(#34559): when column_id and id already match, this keeps the restore cluster's
+  // backend and store_payload, which CREATE INDEX took from that cluster's flags. The restored
+  // chunk files were written with the source values, so this assumes both clusters share
+  // --vector_index_backend and --vector_index_store_payload.
+  if (target->index_info->vector_idx_options().column_id() == source_options.column_id() &&
+      target->index_info->vector_idx_options().id() == source_options.id()) {
+    return Status::OK();
+  }
+  LOG(INFO) << "Restoring vector index options for " << target->table_id << " column id "
+            << target->index_info->vector_idx_options().column_id() << " -> "
+            << source_options.column_id();
+  IndexInfoPB index_info_pb;
+  target->index_info->ToPB(&index_info_pb);
+  *index_info_pb.mutable_vector_idx_options() = source_options;
+  target->index_info = std::make_unique<qlexpr::IndexInfo>(index_info_pb);
+  target->doc_read_context->vector_idx_options = source_options;
+  return Status::OK();
+}
+
 Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
@@ -633,6 +700,10 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     for (const auto& [table_id, table_info] : tables) {
       if (table_id == primary_table_id) {
         RETURN_NOT_OK(table_info->MergeSchemaPackings(*primary_table_info, overwrite));
+        if (overwrite) {
+          table_info->doc_read_context->mutable_schema()->UpdateMissingValuesFrom(
+              primary_table_info->schema().columns());
+        }
         continue;
       }
       RSTATUS_DCHECK(
@@ -641,21 +712,45 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
           table_info->ToString());
     }
     if (overwrite) {
-      auto schema = tables.begin()->second->doc_read_context->mutable_schema();
-      schema->UpdateMissingValuesFrom(primary_table_info->schema().columns());
+      auto snapshot_colocation_ids = VERIFY_RESULT(
+          SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()));
+      for (const auto& snapshot_table : snapshot_kvstoreinfo.tables()) {
+        if (!snapshot_table.index_info().has_vector_idx_options()) {
+          continue;
+        }
+        const auto colocation_id = snapshot_table.schema().colocated_table_id().colocation_id();
+        auto it = colocation_to_table.find(colocation_id);
+        if (it == colocation_to_table.end()) {
+          // The dump does not recreate an invalid index, or one dropped while a snapshot schedule
+          // still retained the tablet. The superblock still lists it.
+          LOG(WARNING) << "No local table for snapshot vector index " << snapshot_table.table_name()
+                       << " colocation id " << colocation_id;
+          continue;
+        }
+        RETURN_NOT_OK(RestoreVectorIndexOptions(it->second.get(), snapshot_table));
+      }
+      RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(tables, snapshot_colocation_ids));
     }
     return Status::OK();
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
     TableInfo* target_table = VERIFY_RESULT(FindMatchingTable(snapshot_table_pb, primary_table_id));
-    if (target_table != nullptr) {
-      auto schema = target_table->doc_read_context->mutable_schema();
-      if (overwrite) {
-        schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
-      }
-      RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
+    if (target_table == nullptr) {
+      continue;
     }
+    auto schema = target_table->doc_read_context->mutable_schema();
+    if (overwrite) {
+      schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
+    }
+    RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
+    if (overwrite) {
+      RETURN_NOT_OK(RestoreVectorIndexOptions(target_table, snapshot_table_pb));
+    }
+  }
+  if (overwrite) {
+    RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(
+        tables, VERIFY_RESULT(SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()))));
   }
   return Status::OK();
 }
