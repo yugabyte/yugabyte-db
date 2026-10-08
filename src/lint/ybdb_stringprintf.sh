@@ -20,15 +20,17 @@ set -euo pipefail
 . "${BASH_SOURCE%/*}/common.sh"
 
 # yb/gutil/stringprintf.h stays for gutil's own use, so nothing but this rule
-# keeps the printf-style helpers out of new code.  Comment lines are skipped so
-# that prose can still name them.  ybc_util.cc formats a va_list passed from C
-# callers, which Format() cannot take, so StringAppendV is allowed there.
+# keeps the printf-style helpers out of new code.  Lines that start a // or /*
+# comment, or continue a block comment with "* ", are skipped so that prose can
+# still name them; "*out = StringPrintf(...)" is still code.  ybc_util.cc
+# formats a va_list passed from C callers, which Format() cannot take, so
+# StringAppendV is allowed there.
 pattern='StringPrintf|SStringPrintf|StringAppendF|StringPrintfVector'
 if [[ "$1" != src/yb/yql/pggate/util/ybc_util.cc ]]; then
   pattern+='|StringAppendV'
 fi
 { grep -nwE "$pattern" "$1" || true; } \
-  | { grep -vE '^[0-9]+:\s*//' || true; } \
+  | { grep -vE '^[0-9]+:\s*(//|/\*|\*(\s|/|$))' || true; } \
   | sed 's|^|error:bad_stringprintf:'\
 'Use Format() instead of the StringPrintf family. For printf-style field'\
 ' formatting pass FixedPoint, ZeroPadded, HexString, PadLeft, PadRight or'\
