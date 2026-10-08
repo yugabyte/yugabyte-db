@@ -459,10 +459,10 @@ void Batcher::TransactionReady(ash::WaitStateInfoPtr wait_state, const Status& s
   }
 }
 
-std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
+std::pair<std::map<PartitionKey, Status>, std::map<internal::RequestIdAllocation, Status>>
     Batcher::CollectOpsErrors() {
   std::map<PartitionKey, Status> errors_by_partition_key;
-  std::map<RetryableRequestId, Status> errors_by_request_id;
+  std::map<internal::RequestIdAllocation, Status> errors_by_request;
   for (auto& op : ops_queue_) {
     if (op.tablet) {
       const auto& partition = op.tablet->partition();
@@ -502,16 +502,16 @@ std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
 
     if (!op.error.ok()) {
       errors_by_partition_key.emplace(op.partition_key, op.error);
-      // Write operations under retrying with the retry batcher should have a valid request_id
-      // for de-duplication at server side. All operations in this batcher having same request
-      // id should be executed by a single WriteRpc.
-      if (op.yb_op->request_id().has_value()) {
-        errors_by_request_id.emplace(*op.yb_op->request_id(), op.error);
+      // Write operations under retrying with the retry batcher carry the retryable request for
+      // de-duplication at server side. All operations in this batcher sharing a request should
+      // be executed by a single WriteRpc.
+      if (op.yb_op->retryable_request()) {
+        errors_by_request.emplace(op.yb_op->retryable_request(), op.error);
       }
     }
   }
 
-  return std::make_pair(errors_by_partition_key, errors_by_request_id);
+  return std::make_pair(errors_by_partition_key, errors_by_request);
 }
 
 void Batcher::AllLookupsDone() {
@@ -529,7 +529,7 @@ void Batcher::AllLookupsDone() {
 
   auto errors_pair = CollectOpsErrors();
   const auto& errors_by_partition_key = errors_pair.first;
-  const auto& errors_by_request_id = errors_pair.second;
+  const auto& errors_by_request = errors_pair.second;
 
   state_ = BatcherState::kTransactionPrepare;
 
@@ -541,19 +541,19 @@ void Batcher::AllLookupsDone() {
     // If some operation tablet lookup failed - set this error for all operations designated for
     // the same partition key. We are doing this to keep guarantee on the order of ops for the
     // same partition key (see InFlightOp::sequence_number_).
-    // Also set this error for all operations with same request id. This happens when retrying
-    // a batcher, we do this to avoid the request id is marked as replicated at server side
-    // before all operations with this request id are all done.
-    EraseIf([this, &errors_by_partition_key, &errors_by_request_id](auto& op) {
+    // Also set this error for all operations with the same retryable request. This happens when
+    // retrying a batcher, we do this to avoid the request id is marked as replicated at server
+    // side before all operations with this request id are all done.
+    EraseIf([this, &errors_by_partition_key, &errors_by_request](auto& op) {
       if (op.error.ok()) {
         const auto lookup_error_it = errors_by_partition_key.find(op.partition_key);
         if (lookup_error_it != errors_by_partition_key.end()) {
           op.error = lookup_error_it->second;
-        } else if (op.yb_op->request_id().has_value()) {
-          const auto lookup_error_by_request_id_it =
-              errors_by_request_id.find(*op.yb_op->request_id());
-          if (lookup_error_by_request_id_it != errors_by_request_id.end()) {
-            op.error = lookup_error_by_request_id_it->second;
+        } else if (op.yb_op->retryable_request()) {
+          const auto lookup_error_by_request_it =
+              errors_by_request.find(op.yb_op->retryable_request());
+          if (lookup_error_by_request_it != errors_by_request.end()) {
+            op.error = lookup_error_by_request_it->second;
           }
         }
       }
@@ -721,20 +721,19 @@ RequestIdAllocation Batcher::NextRequestIdAndMinRunningRequestId() {
 }
 
 void Batcher::RequestsFinished() {
-  for (const auto& [id, details] : retryable_requests_) {
-    details.allocator->Finish(id);
+  for (const auto& request : retryable_requests_) {
+    request.allocator->Finish(request.id);
   }
 }
 
-void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id) {
-  auto it = other->retryable_requests_.find(id);
+void Batcher::MoveRequestFrom(const BatcherPtr& other, const RequestIdAllocation& request) {
+  auto it = other->retryable_requests_.find(request);
   if (it == other->retryable_requests_.end()) {
-    // The request id has been moved.
-    DCHECK(retryable_requests_.contains(id));
+    // Moved with another op of the same RPC.
+    DCHECK(retryable_requests_.contains(request));
     return;
   }
-  retryable_requests_.insert(std::move(*it));
-  other->retryable_requests_.erase(it);
+  retryable_requests_.insert(other->retryable_requests_.extract(it));
 }
 
 Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
@@ -951,9 +950,9 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
                       << " due to: " << error->status();
     const auto op = error->shared_failed_op();
     op->ResetTablet();
-    // Transmit failed request id to retry_batcher.
-    if (op->request_id()) {
-      MoveRequestDetailsFrom(failed_batcher, *op->request_id());
+    // The retry batcher takes the request over, so that the failed one does not finish it.
+    if (op->retryable_request()) {
+      MoveRequestFrom(failed_batcher, op->retryable_request());
     }
     Add(op);
   }

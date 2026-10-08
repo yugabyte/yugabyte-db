@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <string>
+#include <tuple>
 
 #include "yb/common/retryable_request.h"
 
@@ -22,10 +23,11 @@ namespace yb::client::internal {
 
 class RequestIdAllocator;
 
-/// A running retryable request: what to send with it, and what finishes it.
+/// A running retryable request: what to send with it, and what finishes it. Default constructed,
+/// it is no request.
 struct RequestIdAllocation {
-  RetryableRequestId id;
-  RetryableRequestId min_running;
+  RetryableRequestId id = 0;
+  RetryableRequestId min_running = 0;
 
   /// Client id to send with the request. The server deduplicates by client id and request id
   /// together, and the sharded allocator has one per shard.
@@ -33,6 +35,15 @@ struct RequestIdAllocation {
 
   /// Finishes the request: the shard, for the sharded allocator.
   RequestIdAllocator* allocator = nullptr;
+
+  explicit operator bool() const {
+    return client_id != nullptr;
+  }
+
+  /// Identifies the request: the ids of different allocators are unrelated.
+  bool operator<(const RequestIdAllocation& rhs) const {
+    return std::tie(allocator, id) < std::tie(rhs.allocator, rhs.id);
+  }
 };
 
 /// Allocates the retryable request ids of a client, and generates the client ids that they are
