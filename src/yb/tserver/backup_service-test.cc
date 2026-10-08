@@ -58,6 +58,7 @@ DECLARE_int32(tablet_flush_max_outstanding);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 METRIC_DECLARE_gauge_uint64(snapshot_preflush_active);
 METRIC_DECLARE_gauge_uint64(tablet_flush_active);
+METRIC_DECLARE_counter(tablet_flush_expired_queued);
 
 namespace yb {
 namespace tserver {
@@ -581,6 +582,7 @@ TEST_F(SnapshotPreflushServiceTest, LocalFlushFailureDoesNotSubmit) {
   auto status = CreateSnapshot(kTabletId, TxnSnapshotId::GenerateRandom());
   ASSERT_TRUE(status.IsShutdownInProgress()) << status;
   ASSERT_NO_FATALS(WaitForRetiredPreflight());
+  ASSERT_EQ(ActiveFlushes(), 0);
   ASSERT_OK(WriteSingleRow(kTabletId, 1, 11, "value"));
 }
 
@@ -645,6 +647,41 @@ TEST_F(SnapshotPreflushLimitServiceTest, OriginLimitAcrossDistinctTablets) {
 
 TEST_F(SnapshotPreflushLimitServiceTest, ReceiverLimitAcrossDistinctTablets) {
   TestCapacity(false);
+}
+
+// A reserved local flush runs on its own lane, so admin batches holding every shared worker
+// cannot leave an admitted preflight to expire in the queue after it fanned out.
+TEST_F(SnapshotPreflushLimitServiceTest, ReservedFlushRunsWhileAdminWorkersBusy) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = 2000;
+  auto second = ASSERT_RESULT(AddTablet("second-tablet"));
+  CountDownLatch flushed(1), release(1);
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    if (static_cast<tablet::Tablet*>(arg) == second.get()) {
+      flushed.CountDown();
+      release.Wait();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  Status admin_status;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] { admin_status = AdminFlush(second->tablet_id()); });
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  // The only shared worker is held above; the snapshot must still finish within its budget.
+  ASSERT_OK(CreateSnapshot(kTabletId, TxnSnapshotId::GenerateRandom()));
+  ASSERT_EQ(mini_server_->server()->metric_entity()
+      ->FindOrNull<Counter>(METRIC_tablet_flush_expired_queued)->value(), 0);
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(admin_status);
+  ASSERT_NO_FATALS(WaitForRetiredPreflight());
 }
 
 // The leader's own flush must be admitted together with the preflight slot. Otherwise the server
@@ -738,7 +775,8 @@ TEST_F(SnapshotPreflushLimitServiceTest, OutstandingCapacityQueuesBehindWorkers)
   ASSERT_TRUE(flushed.WaitFor(5s));
   threads.AddThreadFunctor([&] { second_status = AdminFlush(second->tablet_id()); });
   ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 2; }, 5s, "Second flush admitted"));
-  // The single worker is busy, so the second batch waits rather than running concurrently.
+  // The single worker (tablet_flush_concurrency = 1 in this fixture) is busy, so the second batch
+  // cannot have run; the sleep only gives a wrong implementation time to show itself.
   SleepFor(100ms);
   ASSERT_EQ(second_flushed.load(std::memory_order_acquire), 0);
   const auto rejected = AdminFlush(third->tablet_id());
@@ -788,6 +826,8 @@ TEST_F(SnapshotPreflushLimitServiceTest, ExpiredQueuedFlushDoesNotLaunch) {
   ASSERT_OK(flusher.Submit({second}, request, CoarseMonoClock::Now() + 200ms,
       [result](const Status& status, const TabletId&) { result->set_value(status); }));
   ASSERT_EQ(ActiveFlushes(), 2);
+  // Relies on tablet_flush_concurrency = 1: the queued job cannot start until the first is
+  // released, by which time its deadline has passed.
   SleepFor(400ms);
   ASSERT_EQ(future.wait_for(0s), std::future_status::timeout);
   release.CountDown();
@@ -796,6 +836,8 @@ TEST_F(SnapshotPreflushLimitServiceTest, ExpiredQueuedFlushDoesNotLaunch) {
   ASSERT_EQ(future.wait_for(5s), std::future_status::ready);
   ASSERT_TRUE(future.get().IsTimedOut());
   ASSERT_EQ(second_flushed.load(std::memory_order_acquire), 0);
+  ASSERT_EQ(mini_server_->server()->metric_entity()
+      ->FindOrNull<Counter>(METRIC_tablet_flush_expired_queued)->value(), 1);
   ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 0; }, 5s, "Flushes retired"));
 }
 

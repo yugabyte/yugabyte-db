@@ -66,6 +66,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -93,6 +94,8 @@ DECLARE_bool(TEST_tablet_verify_flushed_frontier_after_modifying);
 DECLARE_bool(TEST_treat_hours_as_milliseconds_for_snapshot_expiry);
 DECLARE_bool(TEST_fail_tserver_snapshot_op);
 DECLARE_int32(unresponsive_ts_rpc_retry_limit);
+
+METRIC_DECLARE_gauge_uint64(tablet_flush_active);
 
 namespace yb {
 
@@ -215,6 +218,11 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     controller_.Reset();
     controller_.set_timeout(10s);
     return &controller_;
+  }
+
+  uint64_t ActiveFlushes(MiniTabletServer* server) {
+    return server->server()->metric_entity()
+        ->FindOrNull<AtomicGauge<uint64_t>>(METRIC_tablet_flush_active)->value();
   }
 
   Result<tserver::TabletSnapshotOpResponsePB> CreateTabletSnapshot(
@@ -766,6 +774,8 @@ TEST_F(SnapshotTest, SameTermMembershipChangeRejectsPreflight) {
   ASSERT_STR_CONTAINS(status.ToString(), "configuration changed");
   ASSERT_FALSE(leader_peer->tablet_metadata()->fs_manager()->env()->FileExists(JoinPathSegments(
       leader_peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString())));
+  // The attempt failed after admission; its local flush slot must not leak.
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes(leader) == 0; }, 5s, "Leader flush slot released"));
 }
 
 // Local flush admission is part of preflight admission: a leader without a free local flush slot
@@ -773,9 +783,11 @@ TEST_F(SnapshotTest, SameTermMembershipChangeRejectsPreflight) {
 TEST_F(SnapshotTest, LocalFlushCapacityRejectsBeforeFollowerFlush) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  // Written directly, so the > snapshot_preflush_concurrency validator does not apply.
+  const auto saved_capacity = FLAGS_tablet_flush_max_outstanding;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 1;
-  auto restore_capacity = ScopeExit([] {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 16;
+  auto restore_capacity = ScopeExit([saved_capacity] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = saved_capacity;
   });
   auto workload = CreateDefaultWorkload();
   workload.set_num_tablets(2);
@@ -872,6 +884,11 @@ TEST_F(SnapshotTest, BootstrappingPeerDelaysPreflight) {
   auto* joining_details = ts_map[joining->server()->permanent_uuid()].get();
   ASSERT_NE(leader_details, nullptr);
   ASSERT_NE(joining_details, nullptr);
+  // Four replicas of an RF3 table would fail the fixture's cluster verification and hide the
+  // real failure, so drop the table however this test ends.
+  auto drop_table = ScopeExit([this] {
+    ASSERT_OK(client_->DeleteTable(kTableName, /* wait = */ true));
+  });
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
   auto unpause = ScopeExit([] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
@@ -900,8 +917,6 @@ TEST_F(SnapshotTest, BootstrappingPeerDelaysPreflight) {
   }, kTimeout, "Joined peer running"));
   const auto retry = ASSERT_RESULT(CreateTabletSnapshot(leader, tablet_id, snapshot_id));
   ASSERT_FALSE(retry.has_error()) << retry.DebugString();
-  // Four replicas of an RF3 table would fail the fixture's cluster verification.
-  ASSERT_OK(client_->DeleteTable(kTableName, /* wait = */ true));
 }
 
 TEST_F(SnapshotTest, MissingFollowerTabletIsRetryable) {

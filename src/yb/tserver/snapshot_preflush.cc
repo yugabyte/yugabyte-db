@@ -38,7 +38,9 @@ DEFINE_RUNTIME_int32(snapshot_preflush_timeout_ms, 10000,
 DEFINE_validator(snapshot_preflush_timeout_ms, FLAG_GT_VALUE_VALIDATOR(0));
 TAG_FLAG(snapshot_preflush_timeout_ms, advanced);
 DEFINE_NON_RUNTIME_int32(snapshot_preflush_concurrency, 4,
-    "Maximum outstanding snapshot preflights per tablet server, including retiring flush work.");
+    "Maximum outstanding snapshot preflights per tablet server, including retiring flush work. "
+    "Each admitted preflight also holds one tablet_flush_max_outstanding slot and one worker of "
+    "the reserved flush lane on this server.");
 DEFINE_validator(snapshot_preflush_concurrency, FLAG_GT_VALUE_VALIDATOR(0));
 TAG_FLAG(snapshot_preflush_concurrency, advanced);
 
@@ -166,6 +168,7 @@ class SnapshotPreflush::Impl {
     auto status = AdmitAndSubmit(attempt);
     if (!status.ok()) {
       rejections_->Increment();
+      attempt->local_flush.Release();
       attempt->read_operation.Reset();
       attempt->operation->Aborted(status, false);
     }
@@ -201,6 +204,8 @@ class SnapshotPreflush::Impl {
               "Snapshot preflight capacity exhausted");
     SCHECK(!admission_->active.contains(results->tablet_id), ServiceUnavailable,
             "Snapshot preflight already in progress for tablet");
+    // Establishes the lock order preflight admission -> flusher. Nothing may take the flusher
+    // mutex and then this one, including ~FlushResults running under the flusher mutex.
     attempt->local_flush = VERIFY_RESULT(
         server_.tablet_manager()->tablet_flusher().Reserve(results->tablet_id));
     admission_->active.emplace(results->tablet_id, results);
@@ -225,6 +230,8 @@ class SnapshotPreflush::Impl {
         timeouts_->Increment();
       }
       LOG(WARNING) << "Snapshot preflight for " << attempt->results->tablet_id << ": " << status;
+      // Unconsumed when the attempt failed before its local flush was submitted.
+      attempt->local_flush.Release();
       attempt->operation->Aborted(status, false);
       return;
     }
@@ -309,9 +316,8 @@ class SnapshotPreflush::Impl {
     FlushTabletsRequestPB request;
     request.set_operation(FlushTabletsRequestPB::FLUSH);
     request.set_flags(tablet::FLUSH_COMPACT_ALL);
-    // Lock order is preflight admission -> flusher (see AdmitAndSubmit). `results` outlives this
-    // call, so a callback copy destroyed under the flusher mutex never runs ~FlushResults, which
-    // takes the admission mutex.
+    // `results` outlives this call, so a callback copy destroyed under the flusher mutex never
+    // runs ~FlushResults, which takes the admission mutex (see the lock order in AdmitAndSubmit).
     auto status = server_.tablet_manager()->tablet_flusher().Submit(
         std::move(attempt->local_flush), attempt->tablet.tablet, request, attempt->deadline,
         [results](const Status& status, const TabletId&) { results->Complete(status); });

@@ -22,20 +22,28 @@ DEFINE_NON_RUNTIME_int32(tablet_flush_concurrency, 4,
     "Workers running admin/local preflight flush jobs per tablet server.");
 DEFINE_validator(tablet_flush_concurrency, FLAG_GT_VALUE_VALIDATOR(0));
 TAG_FLAG(tablet_flush_concurrency, advanced);
+DECLARE_int32(snapshot_preflush_concurrency);
+
 DEFINE_RUNTIME_int32(tablet_flush_max_outstanding, 16,
     "Maximum admitted admin/local preflight flush jobs per tablet server, including jobs "
     "reserved by a snapshot preflight, waiting for a worker, running, or retiring after failure. "
-    "Keep this above snapshot_preflush_concurrency so local reservations leave room for "
-    "flush requests from other servers.");
-DEFINE_validator(tablet_flush_max_outstanding, FLAG_GT_VALUE_VALIDATOR(0));
+    "Must exceed snapshot_preflush_concurrency so local reservations leave room for flush "
+    "requests from other servers.");
+DEFINE_validator(tablet_flush_max_outstanding,
+    FLAG_GT_FLAG_VALIDATOR(snapshot_preflush_concurrency));
 TAG_FLAG(tablet_flush_max_outstanding, advanced);
 
 DECLARE_bool(TEST_skip_force_superblock_flush);
 
 THREAD_POOL_METRICS_DEFINE(server, tablet_flush_pool, "Admin tablet flush workers");
+THREAD_POOL_METRICS_DEFINE(server, tablet_flush_reserved_pool,
+    "Snapshot preflight local flush workers");
 METRIC_DEFINE_gauge_uint64(server, tablet_flush_active, "Admitted tablet flush jobs",
     yb::MetricUnit::kOperations,
     "Flush jobs including reserved, queued, running, and retiring work", 0);
+METRIC_DEFINE_counter(server, tablet_flush_expired_queued, "Tablet flush jobs expired in queue",
+    yb::MetricUnit::kOperations,
+    "Admitted flush jobs whose deadline passed before a worker picked them up");
 
 namespace yb::tserver {
 namespace {
@@ -163,16 +171,21 @@ TabletFlusher::Reservation::~Reservation() {
 
 void TabletFlusher::Reservation::Release() {
   if (auto* flusher = std::exchange(flusher_, nullptr)) {
-    flusher->Release(tablet_id_);
+    flusher->Release({tablet_id_});
   }
 }
 
 TabletFlusher::TabletFlusher(const scoped_refptr<MetricEntity>& metrics)
-    : active_metric_(METRIC_tablet_flush_active.Instantiate(metrics, 0)) {
+    : active_metric_(METRIC_tablet_flush_active.Instantiate(metrics, 0)),
+      expired_queued_metric_(METRIC_tablet_flush_expired_queued.Instantiate(metrics)) {
   CHECK_OK(ThreadPoolBuilder("tablet-flush")
       .set_max_threads(FLAGS_tablet_flush_concurrency)
       .set_metrics(THREAD_POOL_METRICS_INSTANCE(metrics, tablet_flush_pool))
       .Build(&pool_));
+  CHECK_OK(ThreadPoolBuilder("tablet-flush-reserved")
+      .set_max_threads(FLAGS_snapshot_preflush_concurrency)
+      .set_metrics(THREAD_POOL_METRICS_INSTANCE(metrics, tablet_flush_reserved_pool))
+      .Build(&reserved_pool_));
 }
 
 TabletFlusher::~TabletFlusher() {
@@ -218,7 +231,7 @@ Status TabletFlusher::Submit(
   });
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(Admit(ids));
-  auto status = Enqueue(std::move(tablets), request, deadline, std::move(callback));
+  auto status = Enqueue(*pool_, std::move(tablets), ids, request, deadline, std::move(callback));
   if (!status.ok()) {
     ReleaseUnlocked(ids);
   }
@@ -235,21 +248,22 @@ Status TabletFlusher::Submit(
   // Take over the admission here so the reservation's destructor cannot re-enter mutex_ on the
   // failure paths below; the job (or the explicit release) owns it from now on.
   reservation.flusher_ = nullptr;
+  std::unordered_set<TabletId> ids{tablet->tablet_id()};
   auto status = closing_ ? STATUS(ShutdownInProgress, "Tablet flusher is shutting down")
-                         : Enqueue({tablet}, request, deadline, std::move(callback));
+                         : Enqueue(*reserved_pool_, {tablet}, ids, request, deadline,
+                                   std::move(callback));
   if (!status.ok()) {
-    ReleaseUnlocked({tablet->tablet_id()});
+    ReleaseUnlocked(ids);
   }
   return status;
 }
 
 Status TabletFlusher::Enqueue(
-    std::vector<tablet::TabletPtr> tablets, const FlushTabletsRequestPB& request,
-    CoarseTimePoint deadline, Callback callback) {
+    ThreadPool& pool, std::vector<tablet::TabletPtr> tablets, std::unordered_set<TabletId> ids,
+    const FlushTabletsRequestPB& request, CoarseTimePoint deadline, Callback callback) {
   // Serialize enqueue with StartShutdown so its subsequent pool drain includes every admitted
   // job. SubmitFunc only enqueues; neither the job nor its callback runs inline under this lock.
-  return pool_->SubmitFunc(
-      [this, tablets = std::move(tablets), request, deadline, callback = std::move(callback)] {
+  return pool.SubmitFunc([this, tablets, ids, request, deadline, callback] {
     TabletId failed_tablet_id;
     Status status;
     {
@@ -258,12 +272,18 @@ Status TabletFlusher::Enqueue(
         status = STATUS(ShutdownInProgress, "Tablet flusher is shutting down");
       }
     }
+    if (status.ok() && CoarseMonoClock::Now() >= deadline) {
+      // The caller gave up while this job waited for a worker; do not spend I/O on it.
+      expired_queued_metric_->Increment();
+      status = STATUS(TimedOut, "Tablet flush deadline expired while queued");
+      if (!tablets.empty()) {
+        failed_tablet_id = tablets.front()->tablet_id();
+      }
+    }
     if (status.ok()) {
-      // Run rejects expired deadlines before launching, so queued work a caller gave up on
-      // does not consume a worker's I/O.
       status = FlushBatch(tablets, request).Run(deadline, &failed_tablet_id);
     }
-    Release(tablets);
+    Release(ids);
     callback(status, failed_tablet_id);
   });
 }
@@ -276,18 +296,9 @@ void TabletFlusher::ReleaseUnlocked(const std::unordered_set<TabletId>& ids) {
   }
 }
 
-void TabletFlusher::Release(const std::vector<tablet::TabletPtr>& tablets) {
-  std::unordered_set<TabletId> ids;
-  for (const auto& tablet : tablets) {
-    ids.insert(tablet->tablet_id());
-  }
+void TabletFlusher::Release(const std::unordered_set<TabletId>& ids) {
   std::lock_guard lock(mutex_);
   ReleaseUnlocked(ids);
-}
-
-void TabletFlusher::Release(const TabletId& tablet_id) {
-  std::lock_guard lock(mutex_);
-  ReleaseUnlocked({tablet_id});
 }
 
 void TabletFlusher::StartShutdown() {
@@ -296,8 +307,10 @@ void TabletFlusher::StartShutdown() {
 }
 
 void TabletFlusher::CompleteShutdown() {
-  pool_->Wait();
-  pool_->Shutdown();
+  for (auto* pool : {pool_.get(), reserved_pool_.get()}) {
+    pool->Wait();
+    pool->Shutdown();
+  }
 }
 
 }  // namespace yb::tserver

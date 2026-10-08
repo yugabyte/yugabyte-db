@@ -31,18 +31,25 @@ apply-time stalls, and is a policy change rather than a bug fix.
 | `snapshot_create_flush_before_submit` | `false` | Runtime; enables preflight on the leader |
 | `snapshot_preflush_timeout_ms` | `10000` | Runtime; capped by the snapshot RPC deadline |
 | `snapshot_preflush_concurrency` | `4` | Startup; admitted preflights per server |
-| `tablet_flush_concurrency` | `4` | Startup; workers running admin/local flush jobs |
-| `tablet_flush_max_outstanding` | `16` | Runtime; admitted flush jobs: reserved, queued, running, retiring |
+| `tablet_flush_concurrency` | `4` | Startup; workers running admin flush jobs |
+| `tablet_flush_max_outstanding` | `16` | Runtime; admitted flush jobs: reserved, queued, running, retiring; must exceed `snapshot_preflush_concurrency` |
 
 Admission is non-waiting and excludes overlapping work for the same tablet. Overload is a
 retryable error. The leader reserves its own flush slot together with the preflight slot, before
 any follower is contacted, so a server cannot reject an attempt it has already fanned out; the
-reservation is consumed by the local flush job or released when the attempt fails earlier. Jobs
-admitted beyond the worker count wait in the pool; a job whose deadline passed while queued fails
-without launching I/O. Keep `tablet_flush_max_outstanding` above `snapshot_preflush_concurrency`
-so local reservations leave room for other servers' requests; the fan-out of one snapshot is one
-batch per replica, so a server hosting replicas of many concurrently preflushed tablets needs
-proportionally more headroom. An RPC timeout does not stop a physical flush: receiver admission
+reservation is consumed by the local flush job or released when the attempt fails earlier.
+Reserved jobs run on a lane of `snapshot_preflush_concurrency` workers: at most that many
+reservations exist, so admin bulk flushes (for example a whole-table `FlushTables`, one batch per
+server) occupying the shared workers cannot make an admitted preflight expire in the queue after
+its followers already flushed. Other admitted jobs beyond the worker count wait in the shared pool;
+a job whose deadline passed while queued fails without launching I/O and is counted in
+`tablet_flush_expired_queued`. `tablet_flush_max_outstanding` must exceed
+`snapshot_preflush_concurrency` (validated) so local reservations leave room for other servers'
+requests. Sizing bound: a server can hold `snapshot_preflush_concurrency` reservations plus up to
+`(N - 1) * max_concurrent_snapshot_rpcs_per_tserver` incoming follower flushes when every other
+server's in-flight snapshot RPC targets a tablet with a replica here; that is a worst case under
+full placement skew, not expected load, but it is where the default of 16 stops covering clusters
+of roughly a dozen nodes. An RPC timeout does not stop a physical flush: receiver admission
 remains held until the job finishes, and late completions cannot submit an expired snapshot
 attempt. Partial failures stop further launches but retain the batch's reservations until
 already-started work and RocksDB flush-job cleanup retire. The first error and its tablet ID
