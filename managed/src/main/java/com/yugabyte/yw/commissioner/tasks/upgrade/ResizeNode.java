@@ -613,6 +613,30 @@ public class ResizeNode extends UpgradeTaskBase {
         .collect(Collectors.toMap(c -> c.uuid, c -> c));
   }
 
+  /**
+   * Records the gflags this resize applies into the freeze-captured target. Legacy top-level {@code
+   * masterGFlags}/{@code tserverGFlags} are not cluster fields, so the generic target would drop
+   * them; RollbackResizeNode diffs against what is stored here.
+   */
+  @Override
+  protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
+    UniverseDefinitionTaskParams target = super.getTargetUniverseDetails();
+    Universe universe = getUniverse();
+    if (target == null || !taskParams().flagsProvided(universe)) {
+      return target;
+    }
+    Map<UUID, Cluster> newVersions = taskParams().getNewVersionsOfClusters(universe);
+    for (Cluster cluster : target.clusters) {
+      Cluster newVersion = newVersions.get(cluster.uuid);
+      if (newVersion != null) {
+        cluster.userIntent.specificGFlags = newVersion.userIntent.specificGFlags;
+        cluster.userIntent.masterGFlags = newVersion.userIntent.masterGFlags;
+        cluster.userIntent.tserverGFlags = newVersion.userIntent.tserverGFlags;
+      }
+    }
+    return target;
+  }
+
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node, String instanceType) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeInstanceType");
     ChangeInstanceType.Params params = new ChangeInstanceType.Params();
