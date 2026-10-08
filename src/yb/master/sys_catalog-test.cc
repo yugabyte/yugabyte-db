@@ -34,6 +34,7 @@
 #include <memory>
 #include <vector>
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -933,13 +934,24 @@ TEST(SysCatalogInitializationTest, MergeAddTableChanges) {
     change->mutable_add_table()->set_table_id(table_id);
     return change;
   };
-  add_table("t1", "a");
-  add_table("t1", "b");
-  add_change("t1")->set_remove_table_id("b");
-  add_table("t1", "c");
-  add_table("t2", "d");
-  add_table("t2", "e")->set_only_abort_txns_not_using_table_locks(true);
-  add_table("t2", "f");
+  const auto a = GetPgsqlTableId(1, 1);
+  const auto b = GetPgsqlTableId(1, 2);
+  const auto c = GetPgsqlTableId(1, 3);
+  const auto d = GetPgsqlTableId(2, 1);
+  const auto e = GetPgsqlTableId(2, 2);
+  const auto f = GetPgsqlTableId(2, 3);
+  const auto g = GetPgsqlTableId(2, 4);
+  const auto h = GetPgsqlTableId(2, 5);
+  add_table("t1", a);
+  add_table("t1", b);
+  add_change("t1")->set_remove_table_id(b);
+  add_table("t1", c);
+  add_table("t1", d);
+  add_table("t1", e)->set_only_abort_txns_not_using_table_locks(true);
+  add_table("t1", f)->set_only_abort_txns_not_using_table_locks(true);
+  add_table("t2", g);
+  add_table("t2", h)->set_wal_retention_secs(1);
+  add_table("t2", "not_a_pg_table");
 
   auto merged = MergeAddTableChanges(std::move(changes));
 
@@ -951,16 +963,20 @@ TEST(SysCatalogInitializationTest, MergeAddTableChanges) {
     }
     return result;
   };
-  ASSERT_EQ(merged.size(), 6);
+  ASSERT_EQ(merged.size(), 8);
   ASSERT_EQ(merged[0].tablet_id(), "t1");
-  ASSERT_EQ(merged_table_ids(merged[0]), (vector<string>{"a", "b"}));
-  ASSERT_EQ(merged[1].remove_table_id(), "b");
-  ASSERT_EQ(merged_table_ids(merged[2]), (vector<string>{"c"}));
-  ASSERT_EQ(merged[3].tablet_id(), "t2");
-  ASSERT_EQ(merged_table_ids(merged[3]), (vector<string>{"d"}));
-  ASSERT_EQ(merged[4].add_table().table_id(), "e");
+  ASSERT_EQ(merged_table_ids(merged[0]), (vector<string>{a, b}));
+  ASSERT_EQ(merged[1].remove_table_id(), b);
+  ASSERT_EQ(merged_table_ids(merged[2]), (vector<string>{c}));
+  ASSERT_EQ(merged_table_ids(merged[3]), (vector<string>{d}));
+  ASSERT_FALSE(merged[3].only_abort_txns_not_using_table_locks());
+  ASSERT_EQ(merged_table_ids(merged[4]), (vector<string>{e, f}));
   ASSERT_TRUE(merged[4].only_abort_txns_not_using_table_locks());
-  ASSERT_EQ(merged_table_ids(merged[5]), (vector<string>{"f"}));
+  ASSERT_EQ(merged[5].tablet_id(), "t2");
+  ASSERT_EQ(merged_table_ids(merged[5]), (vector<string>{g}));
+  ASSERT_EQ(merged[6].add_table().table_id(), h);
+  ASSERT_EQ(merged[6].wal_retention_secs(), 1);
+  ASSERT_EQ(merged[7].add_table().table_id(), "not_a_pg_table");
 }
 
 } // namespace master

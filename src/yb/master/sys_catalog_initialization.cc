@@ -13,8 +13,11 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
+#include <optional>
+
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -66,14 +69,29 @@ const char* kSysCatalogSnapshotTabletMetadataChangesFile =
     "exported_tablet_metadata_changes";
 const char* kUseInitialSysCatalogSnapshotEnvVar = "YB_USE_INITIAL_SYS_CATALOG_SNAPSHOT";
 
-bool IsSingleAddTable(const tablet::ChangeMetadataRequestPB& req) {
+// Database of the table that req adds, if req is a change that CatalogManager::CopyPgsqlSysTables
+// would batch: add_table plus at most only_abort_txns_not_using_table_locks.
+std::optional<uint32_t> BatchableAddTableDatabaseOid(const tablet::ChangeMetadataRequestPB& req) {
   if (!req.has_add_table()) {
-    return false;
+    return std::nullopt;
   }
   std::vector<const google::protobuf::FieldDescriptor*> fields;
   req.GetReflection()->ListFields(req, &fields);
-  // tablet_id and add_table.
-  return fields.size() == 2;
+  for (const auto* field : fields) {
+    switch (field->number()) {
+      case tablet::ChangeMetadataRequestPB::kTabletIdFieldNumber:
+      case tablet::ChangeMetadataRequestPB::kAddTableFieldNumber:
+      case tablet::ChangeMetadataRequestPB::kOnlyAbortTxnsNotUsingTableLocksFieldNumber:
+        continue;
+      default:
+        return std::nullopt;
+    }
+  }
+  auto database_oid = GetPgsqlDatabaseOidByTableId(req.add_table().table_id());
+  if (!database_oid.ok()) {
+    return std::nullopt;
+  }
+  return *database_oid;
 }
 
 }  // anonymous namespace
@@ -128,20 +146,28 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
 
 // Each change metadata operation on the sys catalog rewrites and fsyncs the whole superblock, so
 // replaying the snapshot's add_table changes one by one is quadratic. Merge consecutive ones into
-// add_multiple_tables requests.
+// one add_multiple_tables request per database, as CREATE DATABASE replicates them.
 std::vector<tablet::ChangeMetadataRequestPB> MergeAddTableChanges(
     tserver::ExportedTabletMetadataChanges&& changes) {
   std::vector<tablet::ChangeMetadataRequestPB> result;
-  bool last_is_merged = false;
+  std::optional<uint32_t> last_database_oid;
   for (auto& change : *changes.mutable_metadata_changes()) {
-    if (!IsSingleAddTable(change)) {
+    auto database_oid = BatchableAddTableDatabaseOid(change);
+    if (!database_oid) {
       result.push_back(std::move(change));
-      last_is_merged = false;
+      last_database_oid.reset();
       continue;
     }
-    if (!last_is_merged || result.back().tablet_id() != change.tablet_id()) {
-      result.emplace_back().set_tablet_id(change.tablet_id());
-      last_is_merged = true;
+    if (database_oid != last_database_oid ||
+        result.back().tablet_id() != change.tablet_id() ||
+        result.back().only_abort_txns_not_using_table_locks() !=
+            change.only_abort_txns_not_using_table_locks()) {
+      auto& batch = result.emplace_back();
+      batch.set_tablet_id(change.tablet_id());
+      if (change.only_abort_txns_not_using_table_locks()) {
+        batch.set_only_abort_txns_not_using_table_locks(true);
+      }
+      last_database_oid = database_oid;
     }
     *result.back().add_add_multiple_tables() = std::move(*change.mutable_add_table());
   }
