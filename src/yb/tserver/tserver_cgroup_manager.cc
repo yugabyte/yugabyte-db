@@ -21,6 +21,7 @@
 #include "yb/util/cgroups.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/metrics.h"
 #include "yb/util/os-util.h"
@@ -184,7 +185,7 @@ REGISTER_CALLBACK(qos_capped_pool_cpu_weight, "qos cpu limit update", ApplyQosCp
 REGISTER_CALLBACK(qos_system_med_cpu_max_percent, "qos cpu limit update", ApplyQosCpuLimits);
 
 std::string FormatNanoseconds(int64_t ns) {
-  return StringPrintf("%.3f", static_cast<double>(ns) / 1e9);
+  return FixedPoint(static_cast<double>(ns) / 1e9, 3);
 }
 
 void CgroupThreadsToHtml(Cgroup& cgroup, HtmlPrintHelper& helper, std::ostream& out) {
@@ -645,7 +646,7 @@ void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_
             <td>$3% ($4)</td>
             <td>$5</td>
         )#", depth, depth == 0 ? "Root" : name, throttle_status,
-        StringPrintf("%.3f", (100.0 * cpu_weight) / total_weight), cpu_weight, quota_str,
+        FixedPoint((100.0 * cpu_weight) / total_weight, 3), cpu_weight, quota_str,
         cgroup.is_leaf() ? "expand" : "collapse");
 
     if (current_stats.ok()) {
@@ -664,7 +665,7 @@ void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_
           FormatNanoseconds(current_stats->usage_sys_ns),
           FormatNanoseconds(current_stats->usage_ns),
           FormatNanoseconds(current_stats->throttled_time_ns),
-          StringPrintf("%.3f", throttled_percentage),
+          FixedPoint(throttled_percentage, 3),
           current_stats->nr_throttled,
           current_stats->nr_periods);
     } else {

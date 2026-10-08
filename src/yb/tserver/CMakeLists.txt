@@ -441,6 +441,7 @@ ADD_YB_LIBRARY(tserver_mock
 set(YB_TEST_LINK_LIBS
   rpc_test_util
   tserver
+  yb_common_test_util
   tserver_mock
   tserver_test_util
   yb_client # yb::client::YBTableName

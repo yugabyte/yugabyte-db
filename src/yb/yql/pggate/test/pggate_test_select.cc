@@ -30,6 +30,7 @@
 #include "yb/tools/test_admin_client.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -126,7 +127,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   YbcPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YbcPgExpr expr_job;
-  string job = strings::Substitute("Job_title_$0", seed);
+  string job = Format("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
   YbcPgExpr expr_oid;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_oid));
@@ -157,7 +158,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
-    job = strings::Substitute("Job_title_$0", seed);
+    job = Format("Job_title_$0", seed);
     CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_job, job.c_str(), false));
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_oid, seed, false));
   }
@@ -235,7 +236,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    string expected_job_name = Format("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
     #ifdef YB_TODO
@@ -307,7 +308,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    string expected_job_name = Format("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
     #ifdef YB_TODO
@@ -899,7 +900,7 @@ class PggateTestBucketizedSelect : public PggateTest {
       CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_bkt, bucket_id, false));
       CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_k1, k1, false));
       CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_k2, k2, false));
-      auto description = strings::Substitute("Bucket: $0, k1: $1, k2: $2", bucket_id, k1, k2);
+      auto description = Format("Bucket: $0, k1: $1, k2: $2", bucket_id, k1, k2);
       CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_descr, description.c_str(), false));
       BeginTransaction();
       CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));

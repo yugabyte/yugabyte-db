@@ -19,3 +19,4 @@ test: yb.orig.matview_refresh_locking
 test: yb.orig.ddl_lock_conflicts
 test: yb.orig.index_check_concurrent_drop
 test: yb.orig.lock-status-ddl-waiters
+test: yb.orig.reset_txn_snapshot_after_ddl

@@ -54,7 +54,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
@@ -2324,7 +2323,9 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
         }
         return leader.get() == ts_idx_to_bootstrap;
       },
-      timeout, "Waiting for ts_idx_to_bootstrap to become leader"));
+      // Leader transfer away from a blacklisted tserver can exceed 10s on a loaded host.
+      MonoDelta::FromSeconds(kTimeMultiplier * 60),
+      "Waiting for ts_idx_to_bootstrap to become leader"));
 
   // Check persistence of previously inserted data.
   auto new_conn = ASSERT_RESULT(ConnectToDB(database));

@@ -21,21 +21,12 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressDDLIsolationNoTxnDDLNoObjectLocking extends BasePgRegressTest {
+public class TestPgRegressDDLIsolationNoObjectLocking extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    // DDL savepoint requires transactional DDL to be enabled.
-    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
-    flagMap.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "false");
-    flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("ysql_enable_concurrent_ddl", "false");
-    // ysql_enable_concurrent_ddl is a preview flag that now defaults to true, so overriding it
-    // must be acknowledged via allowed_preview_flags_csv.
-    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
     flagMap.put("yb_fail_catalog_write_on_catalog_version_mismatch", "true");
     return flagMap;
@@ -47,16 +38,7 @@ public class TestPgRegressDDLIsolationNoTxnDDLNoObjectLocking extends BasePgRegr
     // The catalog version check runs on the master for system catalog (DDL) writes, so object
     // locking must be disabled on the master too (not just on tservers). Otherwise the check is
     // short-circuited on the master and the guard never engages.
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    // DDL savepoint requires transactional DDL to be enabled.
-    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
-    flagMap.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "false");
-    flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("ysql_enable_concurrent_ddl", "false");
-    // ysql_enable_concurrent_ddl is a preview flag that now defaults to true, so overriding it
-    // must be acknowledged via allowed_preview_flags_csv.
-    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
     flagMap.put("yb_fail_catalog_write_on_catalog_version_mismatch", "true");
     return flagMap;
@@ -73,7 +55,7 @@ public class TestPgRegressDDLIsolationNoTxnDDLNoObjectLocking extends BasePgRegr
                             Collections.singletonMap("heartbeat_interval_ms", "2000"));
     runPgRegressTest(
         PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
-        "yb_ddl_isolation_no_txnal_ddl_no_object_locking_delayed_heartbeat_schedule",
+        "yb_ddl_isolation_no_object_locking_delayed_heartbeat_schedule",
         0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE,
         true /* use_all_hosts */);
   }

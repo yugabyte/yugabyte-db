@@ -42,6 +42,7 @@
 
 #include "yb/gutil/map-util.h"
 
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
@@ -50,7 +51,6 @@ namespace consensus {
 
 using google::protobuf::RepeatedPtrField;
 using std::string;
-using strings::Substitute;
 
 Status GetRaftConfigMember(const RaftConfigPB& config,
                            const std::string& uuid,
@@ -61,8 +61,8 @@ Status GetRaftConfigMember(const RaftConfigPB& config,
       return Status::OK();
     }
   }
-  return STATUS(NotFound, Substitute("Peer with uuid $0 not found in consensus config { $1 }",
-                                     uuid, config.ShortDebugString()));
+  return STATUS(NotFound, Format("Peer with uuid $0 not found in consensus config { $1 }",
+                                 uuid, config.ShortDebugString()));
 }
 
 Status GetMutableRaftConfigMember(RaftConfigPB* config,
@@ -75,7 +75,7 @@ Status GetMutableRaftConfigMember(RaftConfigPB* config,
       return Status::OK();
     }
   }
-  return STATUS(NotFound, Substitute("Peer with uuid $0 not found in consensus config", uuid));
+  return STATUS(NotFound, Format("Peer with uuid $0 not found in consensus config", uuid));
 }
 
 Status GetRaftConfigLeader(const ConsensusStatePB& cstate, RaftPeerPB* peer_pb) {
@@ -96,7 +96,7 @@ Status GetHostPortFromConfig(const RaftConfigPB& config, const std::string& uuid
       return Status::OK();
     }
   }
-  return STATUS(NotFound, Substitute("Consensus config did not find $0.", uuid));
+  return STATUS(NotFound, Format("Consensus config did not find $0.", uuid));
 }
 
 bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req) {
@@ -176,48 +176,48 @@ Status VerifyRaftConfig(const RaftConfigPB& config, RaftConfigState type) {
   std::set<string> uuids;
   if (config.peers_size() == 0) {
     return STATUS(IllegalState,
-        Substitute("RaftConfig must have at least one peer. RaftConfig: $0",
-                   config.ShortDebugString()));
+        Format("RaftConfig must have at least one peer. RaftConfig: $0",
+               config.ShortDebugString()));
   }
 
   if (type == COMMITTED_QUORUM) {
     // Committed configurations must have 'opid_index' populated.
     if (!config.has_committed_op_index()) {
       return STATUS(IllegalState,
-          Substitute("Committed configs must have opid_index set. RaftConfig: $0",
-                     config.ShortDebugString()));
+          Format("Committed configs must have opid_index set. RaftConfig: $0",
+                 config.ShortDebugString()));
     }
   } else if (type == UNCOMMITTED_QUORUM) {
     // Uncommitted configurations must *not* have 'opid_index' populated.
     if (config.has_committed_op_index()) {
       return STATUS(IllegalState,
-          Substitute("Uncommitted configs must not have opid_index set. RaftConfig: $0",
-                     config.ShortDebugString()));
+          Format("Uncommitted configs must not have opid_index set. RaftConfig: $0",
+                 config.ShortDebugString()));
     }
   }
 
   int num_peers = config.peers_size();
   for (const RaftPeerPB& peer : config.peers()) {
     if (!peer.has_permanent_uuid() || peer.permanent_uuid() == "") {
-      return STATUS(IllegalState, Substitute("One peer didn't have an uuid or had the empty"
+      return STATUS(IllegalState, Format("One peer didn't have an uuid or had the empty"
           " string. RaftConfig: $0", config.ShortDebugString()));
     }
     if (ContainsKey(uuids, peer.permanent_uuid())) {
       return STATUS(IllegalState,
-          Substitute("Found multiple peers with uuid: $0. RaftConfig: $1",
-                     peer.permanent_uuid(), config.ShortDebugString()));
+          Format("Found multiple peers with uuid: $0. RaftConfig: $1",
+                 peer.permanent_uuid(), config.ShortDebugString()));
     }
     uuids.insert(peer.permanent_uuid());
 
     if (num_peers > 1 && peer.last_known_private_addr().empty()) {
       return STATUS(IllegalState,
-          Substitute("Peer: $0 has no address. RaftConfig: $1",
-                     peer.permanent_uuid(), config.ShortDebugString()));
+          Format("Peer: $0 has no address. RaftConfig: $1",
+                 peer.permanent_uuid(), config.ShortDebugString()));
     }
     if (!peer.has_member_type()) {
       return STATUS(IllegalState,
-          Substitute("Peer: $0 has no member type set. RaftConfig: $1", peer.permanent_uuid(),
-                     config.ShortDebugString()));
+          Format("Peer: $0 has no member type set. RaftConfig: $1", peer.permanent_uuid(),
+                 config.ShortDebugString()));
     }
   }
 
@@ -236,8 +236,8 @@ Status VerifyConsensusState(const ConsensusStatePB& cstate, RaftConfigState type
   if (cstate.has_leader_uuid() && !cstate.leader_uuid().empty()) {
     if (!IsRaftConfigVoter(cstate.leader_uuid(), cstate.config())) {
       return STATUS(IllegalState,
-          Substitute("Leader with UUID $0 is not a VOTER in the config! Consensus state: $1",
-                     cstate.leader_uuid(), cstate.ShortDebugString()));
+          Format("Leader with UUID $0 is not a VOTER in the config! Consensus state: $1",
+                 cstate.leader_uuid(), cstate.ShortDebugString()));
     }
   }
 

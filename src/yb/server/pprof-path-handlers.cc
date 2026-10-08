@@ -54,13 +54,13 @@
 #include <string>
 #include <vector>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/server/webserver.h"
@@ -376,7 +376,7 @@ static void PprofSymbolHandler(const Webserver::WebRequest& req,
     }
   }
 
-  LOG(INFO) << strings::Substitute(
+  LOG(INFO) << Format(
       "Handled request for /pprof/symbol: requested=$0 invalid_addrs=$1 missing=$2",
       pieces.size(), invalid_addrs, missing_symbols);
 }
@@ -415,8 +415,8 @@ static void PprofCallsiteProfileHandler(
       timing_stats.AddRow(
           EscapeForHtmlToString(entry.file_path), entry.line_number,
           EscapeForHtmlToString(entry.function_name), EscapeForHtmlToString(entry.code_line),
-          entry.count, entry.total_cycles, StringPrintf("%.3f", entry.avg_cycles), entry.total_usec,
-          StringPrintf("%.3f", entry.avg_usec));
+          entry.count, entry.total_cycles, FixedPoint(entry.avg_cycles, 3), entry.total_usec,
+          FixedPoint(entry.avg_usec, 3));
     }
     timing_stats.Print();
   }

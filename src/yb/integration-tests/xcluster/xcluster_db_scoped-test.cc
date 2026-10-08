@@ -21,6 +21,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
@@ -49,10 +50,7 @@ DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 
 using namespace std::chrono_literals;
 
@@ -1969,9 +1967,7 @@ TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
 TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndexConcurrentDDL) {
   // Disable auto analyze becauses the query plan changes
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());

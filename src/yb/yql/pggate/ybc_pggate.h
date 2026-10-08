@@ -106,6 +106,10 @@ void YBCRefreshClusterReplicationInfo();
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 
+// Catalog prefetch load on the master leader as of the last heartbeat. Values match
+// YsqlCatalogPrefetchLoadPB: 0 unknown, 1 low, 2 busy, 3 super busy.
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad();
+
 // Set per-db catalog_version to the local tserver's per-db catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedDBCatalogVersion(
@@ -790,6 +794,14 @@ bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
+
+// Whether DDLs run inside the enclosing transaction block.
+// ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
+// enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the
+// object locking feature. It therefore follows table locking for the current transaction, which
+// is off until the object locking infra auto flag is promoted and stays at the value latched when
+// the transaction began.
+bool YBCIsDdlTransactionBlockEnabled();
 
 // Effective per-RPC response byte cap that pggate applies when the executor
 // doesn't request a smaller limit.  Equals

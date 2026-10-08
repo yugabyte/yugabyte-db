@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
@@ -35,9 +37,7 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_string(vmodule);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 METRIC_DECLARE_counter(handler_latency_yb_tserver_PgClientService_OpenTable);
 METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_GetTableSchema);
 
@@ -72,12 +72,19 @@ class PgCatalogVersionTest : public LibPqTestBase {
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
 
+  // These report the mode the running cluster is in. Several tests below restart it in the legacy
+  // mode (invalidation messages off, for instance, which the DDL mode requires), so reading this
+  // process's own gflags would report the build default instead of what the cluster is running.
+  bool IsClusterFlagEnabled(const std::string& flag) const {
+    return CHECK_RESULT(cluster_->GetFlag(cluster_->tablet_server(0), flag)) == "true";
+  }
+
   bool IsObjectLockingEnabled() const {
-    return ANNOTATE_UNPROTECTED_READ(FLAGS_enable_object_locking_for_table_locks);
+    return IsClusterFlagEnabled("enable_object_locking_for_table_locks");
   }
 
   bool IsTransactionalDdlEnabled() const {
-    return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
+    return IsClusterFlagEnabled("ysql_yb_ddl_transaction_block_enabled");
   }
 
   void CheckDroppedDatabaseError(const Status& status, Oid db_oid) {
@@ -125,7 +132,8 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   void RestartClusterWithInvalMessageMode(
       bool mode,
-      const std::vector<string>& extra_tserver_flags = {}) {
+      const std::vector<string>& extra_tserver_flags = {},
+      const std::vector<string>& extra_master_flags = {}) {
     const auto mode_str = mode ? "true" : "false";
     LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=" << mode_str;
     cluster_->Shutdown();
@@ -133,13 +141,14 @@ class PgCatalogVersionTest : public LibPqTestBase {
       auto* flags = cluster_->master(i)->mutable_flags();
       flags->push_back(Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
       flags->push_back("--log_ysql_catalog_versions=true");
-      // Object locking (and therefore concurrent DDL) requires invalidation messages, enforced by
-      // the cross-flag validators in common_flags.cc. So whenever invalidation messages are off,
-      // object locking and concurrent DDL must be off too, otherwise the daemons FATAL at startup.
+      // The new DDL mode requires invalidation messages, enforced by the cross-flag validators in
+      // common_flags.cc, so it must be off whenever invalidation messages are off, otherwise the
+      // daemons FATAL at startup.
       if (!mode) {
-        flags->push_back("--enable_object_locking_for_table_locks=false");
-        flags->push_back("--ysql_enable_concurrent_ddl=false");
-        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+        ToggleDDLMode(*flags, /* use_legacy = */ true);
+      }
+      for (const auto& flag : extra_master_flags) {
+        flags->push_back(flag);
       }
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -147,9 +156,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
       flags->push_back(Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
       flags->push_back("--log_ysql_catalog_versions=true");
       if (!mode) {
-        flags->push_back("--enable_object_locking_for_table_locks=false");
-        flags->push_back("--ysql_enable_concurrent_ddl=false");
-        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+        ToggleDDLMode(*flags, /* use_legacy = */ true);
       }
       for (const auto& flag : extra_tserver_flags) {
         flags->push_back(flag);
@@ -158,8 +165,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_OK(cluster_->Restart());
   }
   void RestartClusterWithInvalMessageEnabled(
-      const std::vector<string>& extra_tserver_flags = {}) {
-    RestartClusterWithInvalMessageMode(true /* mode */, extra_tserver_flags);
+      const std::vector<string>& extra_tserver_flags = {},
+      const std::vector<string>& extra_master_flags = {}) {
+    RestartClusterWithInvalMessageMode(true /* mode */, extra_tserver_flags, extra_master_flags);
   }
   void RestartClusterWithInvalMessageDisabled(
       const std::vector<string>& extra_tserver_flags = {}) {
@@ -2024,8 +2032,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageQueueOverflowTest) {
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageExceedPgMaxNumMessagesTest) {
-  RestartClusterWithInvalMessageEnabled(
-      {"--ysql_yb_ddl_transaction_block_enabled=true"});
+  std::vector<std::string> extra_tserver_flags;
+  std::vector<std::string> extra_master_flags;
+  ToggleDDLMode(extra_tserver_flags, /* use_legacy = */ false);
+  ToggleDDLMode(extra_master_flags, /* use_legacy = */ false);
+  RestartClusterWithInvalMessageEnabled(extra_tserver_flags, extra_master_flags);
   auto conn_same_node = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(0)));
   auto conn_other_node = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(1)));
   ASSERT_OK(conn_same_node.Execute("SET log_min_messages = DEBUG1"));
@@ -3572,19 +3583,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
 TEST_P(PgCatalogVersionConnManagerOnlyTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerDdlVersionGapWait)) {
   cluster_->Shutdown();
-  // Concurrent DDL requires object locking, so whenever object locking is off, concurrent DDL
-  // must be off too, otherwise the daemons FATAL at startup.
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-    auto* flags = cluster_->master(i)->mutable_flags();
-    flags->push_back("--enable_object_locking_for_table_locks=false");
-    flags->push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(*cluster_->master(i)->mutable_flags(), /* use_legacy = */ true);
   }
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    auto* flags = cluster_->tablet_server(i)->mutable_flags();
-    flags->push_back("--enable_object_locking_for_table_locks=false");
-    flags->push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(*cluster_->tablet_server(i)->mutable_flags(), /* use_legacy = */ true);
   }
   ASSERT_OK(cluster_->Restart());
 
@@ -4016,17 +4019,8 @@ class PgCatalogVersionFrozenCacheTest : public PgCatalogVersionTest {
     // only with them does the committing backend call SetTserverCatalogMessageList, which is
     // what puts its own tserver ahead of the frozen cache.
     for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      ToggleDDLMode(*flags, /* use_legacy = */ !UseObjectLocking());
       flags->push_back("--ysql_yb_enable_invalidation_messages=true");
-      if (UseObjectLocking()) {
-        flags->push_back("--enable_object_locking_for_table_locks=true");
-        flags->push_back("--ysql_yb_ddl_transaction_block_enabled=true");
-      } else {
-        flags->push_back("--enable_object_locking_for_table_locks=false");
-        // Concurrent DDL requires object locking, so keep the two consistent (and allow-list the
-        // preview flag so its non-default value is permitted).
-        flags->push_back("--ysql_enable_concurrent_ddl=false");
-        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
-      }
     }
 
     // Make the staleness check fire fast and deterministically, so the test does not have to wait
@@ -4234,14 +4228,8 @@ class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
     // CatalogVersionChecker (GetYsqlDBCatalogVersion). With object locking enabled,
     // CatalogVersionChecker short-circuits and never reads the catalog version, so the
     // cache is not exercised. Disable object locking to avoid this.
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent (and allow-list the
-    // preview flag so its non-default value is permitted).
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
   }
 };
 
@@ -4364,11 +4352,7 @@ class PgCatalogVersionMasterFailoverTest : public PgCatalogVersionTest {
       // With object locking, releasing the DDL's exclusive lock pushes catalog versions and
       // invalidation messages from the master to every tserver, bypassing the heartbeat. This
       // test needs the heartbeat to be the only path that carries them to the observer node.
-      flags->push_back("--enable_object_locking_for_table_locks=false");
-      // Concurrent DDL requires object locking, so keep the two flags consistent (and allow-list
-      // the preview flag so its non-default value is permitted).
-      flags->push_back("--ysql_enable_concurrent_ddl=false");
-      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      ToggleDDLMode(*flags, /* use_legacy = */ true);
     }
   }
 };

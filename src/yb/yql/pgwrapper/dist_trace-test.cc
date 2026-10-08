@@ -29,6 +29,8 @@
 #include "opentelemetry/trace/tracer.h"
 #include "opentelemetry/proto/collector/trace/v1/trace_service.pb.h"
 
+#include "yb/common/ddl_mode-test-util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/remote_method.h"
@@ -776,8 +778,8 @@ class DistTraceTest : public LibPqTestBase {
         Format("--pg_client_use_shared_memory=$0", UsePgClientSharedMemory()));
     if (UsePgClientSharedMemory()) {
       // Object locking defaults off in debug builds; the AcquireObjectLock exchange needs it on.
-      options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-      options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+      ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+      ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
     }
   }
 

@@ -58,7 +58,6 @@ namespace yb {
 namespace consensus {
 
 using std::string;
-using strings::Substitute;
 
 ///////////////////////////////////////////////////
 // VoteCounter
@@ -95,7 +94,7 @@ Status VoteCounter::RegisterVote(const std::string& voter_uuid, ElectionVote vot
   // Sanity check to ensure we did not exceed the allowed number of voters.
   if (PREDICT_FALSE(yes_votes_ + no_votes_ == num_voters_)) {
     // More unique voters than allowed!
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Vote from peer $0 would cause the number of votes to exceed the expected number of "
         "voters, which is $1. Votes already received from the following peers: {$2}",
         voter_uuid,
@@ -332,9 +331,9 @@ void LeaderElection::HandleHigherTermUnlocked(const string& voter_uuid, const Vo
   DCHECK(lock_.is_locked());
   DCHECK_GT(state.response.responder_term(), consensus_term());
 
-  string msg = Substitute("Vote denied by peer $0 with higher term. Message: $1",
-                          state.response.responder_uuid(),
-                          StatusFromPB(state.response.consensus_error().status()).ToString());
+  string msg = Format("Vote denied by peer $0 with higher term. Message: $1",
+                      state.response.responder_uuid(),
+                      StatusFromPB(state.response.consensus_error().status()).ToString());
   LOG_WITH_PREFIX(WARNING) << msg;
 
   if (!result_.decided()) {
@@ -390,11 +389,11 @@ void LeaderElection::HandleVoteDeniedUnlocked(const string& voter_uuid, const Vo
 }
 
 std::string LeaderElection::LogPrefix() const {
-  return Substitute("T $0 P $1 [CANDIDATE]: Term $2 $3election: ",
-                    request_.tablet_id(),
-                    request_.candidate_uuid(),
-                    request_.candidate_term(),
-                    (result_.preelection ? "pre-" : ""));
+  return Format("T $0 P $1 [CANDIDATE]: Term $2 $3election: ",
+                request_.tablet_id(),
+                request_.candidate_uuid(),
+                request_.candidate_term(),
+                (result_.preelection ? "pre-" : ""));
 }
 
 } // namespace consensus

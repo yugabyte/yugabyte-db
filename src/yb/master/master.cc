@@ -87,6 +87,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
@@ -211,7 +212,7 @@ string Master::ToString() const {
   if (state_.load() != kRunning) {
     return "Master (stopped)";
   }
-  return strings::Substitute("Master@$0", yb::ToString(first_rpc_address()));
+  return Format("Master@$0", yb::ToString(first_rpc_address()));
 }
 
 Status Master::Init() {

@@ -32,6 +32,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -2300,6 +2301,81 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testLegacyGFlagsRecordedInStateTransitionTarget() throws InterruptedException {
+    Map<String, String> beforeMaster = new HashMap<>(Map.of("old-master", "1"));
+    Map<String, String> beforeTserver = new HashMap<>(Map.of("old-tserver", "2"));
+    Map<String, String> targetMaster = ImmutableMap.of("masterFlag", "123");
+    Map<String, String> targetTserver = ImmutableMap.of("tserverFlag", "123");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams.UserIntent intent =
+                  u.getUniverseDetails().getPrimaryCluster().userIntent;
+              intent.specificGFlags = null;
+              intent.masterGFlags = beforeMaster;
+              intent.tserverGFlags = beforeTserver;
+            });
+
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TestUtils.existingProviderInitializer(taskParams.getPrimaryCluster().userIntent)
+        .setInstanceType(NEW_INSTANCE_TYPE);
+    taskParams.masterGFlags = targetMaster;
+    taskParams.tserverGFlags = targetTserver;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.creatingUser = defaultUser;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    TestUtils.setFakeHttpContext(defaultUser);
+    // Freeze finishes the first runSubTasks batch and captures the target; abort before
+    // PersistResizeNode / UpdateAndPersistGFlags so the universe still holds before gflags.
+    setPausePosition(3);
+    UUID taskUUID = commissioner.submit(TaskType.ResizeNode, taskParams);
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    CommissionerBaseTest.waitForTaskPaused(taskInfo.getUuid(), commissioner);
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    int freezePosition = -1;
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    for (int i = 0; i < subTasks.size(); i++) {
+      if (subTasks.get(i).getTaskType() == TaskType.FreezeUniverse) {
+        freezePosition = i;
+        break;
+      }
+    }
+    assertTrue(freezePosition >= 0);
+    setAbortPosition(freezePosition + 1);
+    commissioner.resumeTask(taskInfo.getUuid());
+    try {
+      taskInfo = waitForTask(taskInfo.getUuid());
+      assertEquals(Aborted, taskInfo.getTaskState());
+      Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      StateTransitionDetails details = universe.getStateTransitionDetails();
+      assertNotNull(details);
+      UniverseDefinitionTaskParams.UserIntent targetIntent =
+          details.getTargetUniverseDetails().getPrimaryCluster().userIntent;
+      assertEquals(targetMaster, targetIntent.masterGFlags);
+      assertEquals(targetTserver, targetIntent.tserverGFlags);
+      UniverseDefinitionTaskParams.UserIntent currentIntent =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      assertEquals(beforeMaster, currentIntent.masterGFlags);
+      assertEquals(beforeTserver, currentIntent.tserverGFlags);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+  }
+
+  @Test
   public void testMarkRollbackUnsafeAfterVolumeSizeCheckpoint() throws InterruptedException {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
@@ -2572,5 +2648,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       }
       assertEquals(newIntent.tserverGFlags, ImmutableMap.of("tserverFlag", "123"));
     }
+  }
+
+  @Test
+  public void testResizeNodeIsAbortable() {
+    // The task list reports abortable from the @Abortable annotation, which gates the Abort button.
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.ResizeNode));
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.RollbackResizeNode));
   }
 }

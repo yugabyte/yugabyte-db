@@ -124,7 +124,6 @@ using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
 using yb::log::Log;
 using yb::tserver::WriteResponsePB;
-using strings::Substitute;
 using yb::consensus::StateChangeContext;
 using yb::consensus::StateChangeReason;
 
@@ -364,7 +363,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
       return STATUS(IllegalState, "Loaded consesnsus metadata, but peer did not have a uuid");
     }
     if (peer.permanent_uuid() != fs_manager->uuid()) {
-      return STATUS(IllegalState, Substitute(
+      return STATUS(IllegalState, Format(
           "Loaded consensus metadata, but peer uuid ($0) was different than our uuid ($1)",
           peer.permanent_uuid(), fs_manager->uuid()));
     }
@@ -551,14 +550,14 @@ void SysCatalogTable::SysCatalogStateChanged(
       WARN_NOT_OK(GetRaftConfigMember(context->change_record.old_config(),
                                       context->remove_uuid,
                                       &peer),
-                  Substitute("Could not find uuid=$0 in config.", context->remove_uuid));
+                  Format("Could not find uuid=$0 in config.", context->remove_uuid));
       WARN_NOT_OK(
           inform_removed_master_pool_->SubmitFunc(
               [this, host_port = DesiredHostPort(peer, master_->MakeCloudInfoPB())]() {
             WARN_NOT_OK(master_->InformRemovedMaster(host_port),
                         "Failed to inform removed master " + host_port.ShortDebugString());
           }),
-          Substitute("Error submitting removal task for uuid=$0", context->remove_uuid));
+          Format("Error submitting removal task for uuid=$0", context->remove_uuid));
     }
   } else {
     VLOG(2) << "Reason '" << context->ToString() << "' provided in state change context, "
@@ -728,10 +727,10 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 }
 
 std::string SysCatalogTable::LogPrefix() const {
-  return Substitute("T $0 P $1 [$2]: ",
-                    tablet_peer()->tablet_id(),
-                    tablet_peer()->permanent_uuid(),
-                    table_name());
+  return Format("T $0 P $1 [$2]: ",
+                tablet_peer()->tablet_id(),
+                tablet_peer()->permanent_uuid(),
+                table_name());
 }
 
 Status SysCatalogTable::WaitUntilRunning() {

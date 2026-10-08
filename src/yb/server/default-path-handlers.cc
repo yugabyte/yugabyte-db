@@ -71,7 +71,6 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
@@ -124,7 +123,6 @@ using std::string;
 using std::endl;
 using std::map;
 using std::vector;
-using strings::Substitute;
 
 using namespace std::placeholders;
 
@@ -453,7 +451,7 @@ static Result<MetricLevel> MetricLevelFromName(const std::string& level) {
   } else if (level == "warn") {
     return MetricLevel::kWarn;
   }
-  return STATUS(NotSupported, Substitute("Unknown Metric Level $0", level));
+  return STATUS(NotSupported, Format("Unknown Metric Level $0", level));
 }
 
 template<class Value>

@@ -112,7 +112,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/async_rpc_tasks.h"
@@ -728,7 +727,6 @@ using dockv::Partition;
 using dockv::PartitionSchema;
 using rpc::RpcContext;
 using server::MonitoredTask;
-using strings::Substitute;
 using tablet::TABLET_DATA_DELETED;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
@@ -1245,7 +1243,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
-    return STATUS_SUBSTITUTE(IllegalState,
+    return STATUS_FORMAT(IllegalState,
         "Node $0 not leader. Consensus state: $1", uuid, cstate.ShortDebugString());
   }
 
@@ -1357,7 +1355,7 @@ Status CatalogManager::GetTableDiskSize(const GetTableDiskSizeRequestPB* req,
 
   const auto table_info = GetTableInfo(table_id);
   if (!table_info) {
-    auto s = STATUS_SUBSTITUTE(NotFound, "Table with id $0 does not exist", table_id);
+    auto s = STATUS_FORMAT(NotFound, "Table with id $0 does not exist", table_id);
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
@@ -1725,7 +1723,7 @@ Status CatalogManager::CheckResource(
     if (req->resource_type() == ResourceType::KEYSPACE) {
       if (!ns.ok()) {
         // Matches Apache Cassandra's error.
-        Status s = STATUS_SUBSTITUTE(
+        Status s = STATUS_FORMAT(
             NotFound, "Resource <keyspace $0> doesn't exist", namespace_info.name());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
       }
@@ -1736,7 +1734,7 @@ Status CatalogManager::CheckResource(
       }
       if (table == nullptr) {
         // Matches Apache Cassandra's error.
-        Status s = STATUS_SUBSTITUTE(
+        Status s = STATUS_FORMAT(
             NotFound, "Resource <object '$0.$1'> doesn't exist",
             namespace_info.name(), req->resource_name());
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
@@ -2216,7 +2214,7 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
       return Status::OK();
     }
   }
-  return STATUS_SUBSTITUTE(IllegalState,
+  return STATUS_FORMAT(IllegalState,
       "None of the local addresses are present in master_addresses $0.",
       master_->opts().master_addresses_flag);
 }
@@ -2247,7 +2245,7 @@ Status CatalogManager::InitSysCatalogAsync() {
     RETURN_NOT_OK(CheckLocalHostInMasterAddresses());
     RETURN_NOT_OK_PREPEND(
         sys_catalog_->CreateNew(master_->fs_manager()),
-        Substitute(
+        Format(
             "Encountered errors during system catalog initialization:"
             "\n\tError on Load: $0\n\tError on CreateNew: ",
             s.ToString()));
@@ -2265,7 +2263,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   {
     std::lock_guard l(state_lock_);
     if (PREDICT_FALSE(state_ != kRunning)) {
-      return STATUS_SUBSTITUTE(ServiceUnavailable,
+      return STATUS_FORMAT(ServiceUnavailable,
           "Catalog manager is shutting down. State: $0", state_);
     }
   }
@@ -2273,20 +2271,20 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   string uuid = master_->fs_manager()->uuid();
   if (master_->opts().IsShellMode()) {
     // Consensus and other internal fields should not be checked when is shell mode.
-    return STATUS_SUBSTITUTE(IllegalState,
+    return STATUS_FORMAT(IllegalState,
         "Catalog manager of $0 is in shell mode, not the leader", uuid);
   }
   auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
-    return STATUS_SUBSTITUTE(IllegalState,
+    return STATUS_FORMAT(IllegalState,
         "Not the leader. Local UUID: $0, Consensus state: $1", uuid, cstate.ShortDebugString());
   }
 
   {
     auto leader_ready_term = leader_ready_term_.load();
     if (PREDICT_FALSE(leader_ready_term != cstate.current_term())) {
-      return STATUS_SUBSTITUTE(ServiceUnavailable,
+      return STATUS_FORMAT(ServiceUnavailable,
           "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
           leader_ready_term, cstate.current_term());
     }
@@ -4027,7 +4025,7 @@ Status CatalogManager::CreateYsqlSysTableInMemory(
   // Verify that the table does not exist, or has been deleted.
   table = tables_->FindTableOrNull(data.req.table_id());
   if (table != nullptr && !table->is_deleted()) {
-    Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+    Status s = STATUS_FORMAT(AlreadyPresent,
         "YSQL table '$0.$1' (ID: $2) already exists", ns.name(), table->name(), table->id());
     LOG(WARNING) << "Found table: " << table->ToStringWithState()
                  << ". Failed creating YSQL system table with error: "
@@ -4316,7 +4314,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceInfo& ns,
       status = CreateYsqlSysTable(ns, data, epoch);
     }
     if (!status.ok()) {
-      return status.CloneAndPrepend(Substitute(
+      return status.CloneAndPrepend(Format(
           "Failure when creating PGSQL System Tables: $0",
           data.resp.error().ShortDebugString()));
     }
@@ -4391,8 +4389,8 @@ Status CatalogManager::CanAddPartitionsToTable(
   auto max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
   auto replicas_per_tablet = GetNumReplicasOrGlobalReplicationFactor(placement_info);
   if (replicas_per_tablet > 1 && max_tablets > 0 && desired_partitions > max_tablets) {
-    std::string msg = Substitute("The requested number of tablets ($0) is over the permitted "
-                                 "maximum ($1)", desired_partitions, max_tablets);
+    std::string msg = Format("The requested number of tablets ($0) is over the permitted "
+                             "maximum ($1)", desired_partitions, max_tablets);
     return STATUS(InvalidArgument, msg);
   }
   return Status::OK();
@@ -4583,7 +4581,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     TRACE("Looking up indexed table");
     indexed_table.info = GetTableInfo(req.indexed_table_id());
     if (!indexed_table) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
             NotFound, "The indexed table $0 does not exist", req.indexed_table_id());
     }
 
@@ -4810,13 +4808,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       // On the other hand, on master restart or leader change, we do not load deleted
       // tables/indexes in memory.
       if (table != nullptr && !table->is_deleted()) {
-        s = STATUS_SUBSTITUTE(AlreadyPresent, "Object with id $0 ('$1.$2') already exists",
-                              table->id(), ns->name(), table->name());
+        s = STATUS_FORMAT(AlreadyPresent, "Object with id $0 ('$1.$2') already exists",
+                          table->id(), ns->name(), table->name());
       }
     } else {
       table = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
       if (table != nullptr) {
-        s = STATUS_SUBSTITUTE(AlreadyPresent,
+        s = STATUS_FORMAT(AlreadyPresent,
                 "Object '$0.$1' already exists", ns->name(), table->name());
       }
     }
@@ -4842,7 +4840,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       (ns->state() == SysNamespaceEntryPB::PREPARING &&
         (ns->name() == kSystemNamespaceName || req.name() == parent_table_name));
     if (!valid_ns_state) {
-      Status s = STATUS_SUBSTITUTE(TryAgain, "Invalid Namespace State ($0). Cannot create $1.$2",
+      Status s = STATUS_FORMAT(TryAgain, "Invalid Namespace State ($0). Cannot create $1.$2",
           SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), req.name());
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
@@ -4854,13 +4852,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       tablegroup = tablegroup_manager_->Find(req.tablegroup_id());
       bool is_parent = IsTablegroupParentTableId(req.table_id());
       if (tablegroup == nullptr && !is_parent) {
-        Status s = STATUS_SUBSTITUTE(InvalidArgument, "Tablegroup with ID $0 does not exist",
-                                     req.tablegroup_id());
+        Status s = STATUS_FORMAT(InvalidArgument, "Tablegroup with ID $0 does not exist",
+                                 req.tablegroup_id());
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
       }
       if (tablegroup != nullptr && is_parent) {
-        Status s = STATUS_SUBSTITUTE(AlreadyPresent, "Tablegroup with ID $0 already exists",
-                                     req.tablegroup_id());
+        Status s = STATUS_FORMAT(AlreadyPresent, "Tablegroup with ID $0 already exists",
+                                 req.tablegroup_id());
 
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
       }
@@ -5237,7 +5235,7 @@ Status CatalogManager::VerifyTablePgLayer(
   }
   auto opt_exists = exists.get();
   SCHECK(opt_exists.has_value(), IllegalState,
-         Substitute("Unexpected opt_exists for $0", table->ToString()));
+         Format("Unexpected opt_exists for $0", table->ToString()));
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   auto l = table->LockForWrite();
   auto* mutable_table_info = table->mutable_metadata()->mutable_dirty();
@@ -5245,7 +5243,7 @@ Status CatalogManager::VerifyTablePgLayer(
 
   SCHECK(
       mutable_table_info->is_running(), Aborted,
-      Substitute(
+      Format(
           "Unexpected table state ($0), abandoning transaction GC work for $1",
           SysTablesEntryPB_State_Name(metadata.state()), table->ToString()));
 
@@ -5314,9 +5312,9 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   size_t replica_quorum_needed = num_replicas / 2 + 1;
   if (FLAGS_catalog_manager_check_ts_count_for_create_table &&
       replica_quorum_needed > num_live_tservers) {
-    msg = Substitute("Not enough live tablet servers to create table with replication factor $0. "
-                     "Need at least $1 tablet servers whereas $2 are alive.",
-                     num_replicas, replica_quorum_needed, num_live_tservers);
+    msg = Format("Not enough live tablet servers to create table with replication factor $0. "
+                 "Need at least $1 tablet servers whereas $2 are alive.",
+                 num_replicas, replica_quorum_needed, num_live_tservers);
     LOG(WARNING) << msg
                  << " Placement info: " << placement_info.ShortDebugString()
                  << ", replication factor flag: " << FLAGS_replication_factor;
@@ -5330,7 +5328,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     for (const auto& pb : placement_info.placement_blocks()) {
       minimum_sum += pb.min_num_replicas();
       if (!pb.has_cloud_info()) {
-        msg = Substitute("Got placement info without cloud info set: $0", pb.ShortDebugString());
+        msg = Format("Got placement info without cloud info set: $0", pb.ShortDebugString());
         s = STATUS(InvalidArgument, msg);
         LOG(WARNING) << msg;
         return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
@@ -5339,8 +5337,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     // Total replicas requested should be at least the sum of minimums
     // requested in individual placement blocks.
     if (minimum_sum > num_replicas) {
-      msg = Substitute("Sum of minimum replicas per placement ($0) is greater than num_replicas "
-                       " ($1)", minimum_sum, num_replicas);
+      msg = Format("Sum of minimum replicas per placement ($0) is greater than num_replicas "
+                   " ($1)", minimum_sum, num_replicas);
       s = STATUS(InvalidArgument, msg);
       LOG(WARNING) << msg;
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
@@ -5353,8 +5351,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       maximum_sum += GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
     }
     if (maximum_sum < num_replicas) {
-      msg = Substitute("Sum of maximum replicas per placement ($0) is less than num_replicas "
-                       "($1)", maximum_sum, num_replicas);
+      msg = Format("Sum of maximum replicas per placement ($0) is less than num_replicas "
+                   "($1)", maximum_sum, num_replicas);
       s = STATUS(InvalidArgument, msg);
       LOG(WARNING) << msg;
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
@@ -5367,9 +5365,9 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     // Fail if we don't have enough tablet servers in the areas requested.
     // We need n/2 + 1 for quorum.
     if (allowed_ts.size() < replica_quorum_needed) {
-      msg = Substitute("Not enough tablet servers in the requested placements. "
-                        "Need at least $0, have $1",
-                        replica_quorum_needed, allowed_ts.size());
+      msg = Format("Not enough tablet servers in the requested placements. "
+                    "Need at least $0, have $1",
+                    replica_quorum_needed, allowed_ts.size());
       s = STATUS(InvalidArgument, msg);
       LOG(WARNING) << msg;
       return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
@@ -5410,9 +5408,9 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     // If we place the replicas in accordance with above, we should be able to place
     // at least replica_quorum_needed otherwise we fail.
     if (total_feasible_replicas < replica_quorum_needed) {
-      msg = Substitute("Not enough tablet servers in the requested placements. "
-                        "Can only find $0 tablet servers for the replicas but need at least "
-                        "$1.", total_feasible_replicas, replica_quorum_needed);
+      msg = Format("Not enough tablet servers in the requested placements. "
+                    "Can only find $0 tablet servers for the replicas but need at least "
+                    "$1.", total_feasible_replicas, replica_quorum_needed);
       s = STATUS(InvalidArgument, msg);
       LOG(WARNING) << msg;
       return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
@@ -5512,7 +5510,7 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
     const LeaderEpoch& epoch,
     const ReplicationInfoPB* replication_info) {
   if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
-    return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
+    return STATUS_FORMAT(AlreadyPresent, "Table already exists: $0", table_name);
   }
 
   LOG(INFO) << "Creating transaction status table: " << table_name;
@@ -6463,7 +6461,7 @@ Result<bool> CatalogManager::HasTableWithColocationId(
     const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
   SharedLock lock(mutex_);
   const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
-  SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
+  SCHECK(tablegroup, NotFound, Format("Tablegroup with ID $0 not found", tablegroup_id));
   return tablegroup->HasChildTable(colocation_id);
 }
 
@@ -6476,7 +6474,7 @@ Result<TableId> CatalogManager::GetColocatedTableId(
 Result<TableId> CatalogManager::GetColocatedTableIdUnlocked(
     const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
   const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
-  SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
+  SCHECK(tablegroup, NotFound, Format("Tablegroup with ID $0 not found", tablegroup_id));
   return tablegroup->GetChildTableId(colocation_id);
 }
 
@@ -6637,7 +6635,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
                                      rpc::RpcContext* rpc,
                                      const LeaderEpoch& epoch) {
   // Lookup the table and verify if it exists.
-  TRACE(Substitute("Looking up object by id $0", table_id));
+  TRACE(Format("Looking up object by id $0", table_id));
   auto table_result = FindTableById(table_id);
   if (!table_result.ok()) {
     return SetupError(
@@ -6645,7 +6643,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   }
   auto& table = *table_result;
 
-  TRACE(Substitute("Locking object with id $0", table_id));
+  TRACE(Format("Locking object with id $0", table_id));
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(
       table->LockForRead(), resp));
 
@@ -6730,7 +6728,7 @@ void CatalogManager::SendTruncateTabletRequest(
   tablet->table()->AddTask(call);
   WARN_NOT_OK(
       ScheduleTask(call),
-      Substitute("Failed to send truncate request for tablet $0", tablet->id()));
+      Format("Failed to send truncate request for tablet $0", tablet->id()));
 }
 
 template <class Resp>
@@ -7699,7 +7697,7 @@ Status CatalogManager::DeleteTableInMemory(
       table_identifier, is_index_table, update_indexed_table) << "\n" << GetStackTrace();
 
   // Lookup the table and verify if it exists.
-  TRACE(Substitute("Looking up $0", object_type));
+  TRACE(Format("Looking up $0", object_type));
   TableInfoPtr table;
   if (data_map_ptr && table_identifier.has_table_id()) {
     auto it = data_map_ptr->find(table_identifier.table_id());
@@ -7736,7 +7734,7 @@ Status CatalogManager::DeleteTableInMemory(
 
   std::map<TableId, DeletingTableData> data_map;
   if (!data_map_ptr) {
-    TRACE(Substitute("Locking $0", object_type));
+    TRACE(Format("Locking $0", object_type));
     RETURN_NOT_OK(DeleteTableInMemoryAcquireLocks(
         table, is_index_table, update_indexed_table, schedules_to_tables_map, &data_map));
     data_map_ptr = &data_map;
@@ -7781,7 +7779,7 @@ Status CatalogManager::DeleteTableInMemory(
     l.mutable_data()->pb.set_hide_state(SysTablesEntryPB::HIDING);
   } else {
     l.mutable_data()->set_state(SysTablesEntryPB::DELETING,
-                                 Substitute("Started deleting at $0", LocalTimeAsString()));
+                                 Format("Started deleting at $0", LocalTimeAsString()));
   }
 
   auto now = master_->clock()->Now();
@@ -7825,8 +7823,8 @@ Status CatalogManager::DeleteTableInMemory(
     s = MarkIndexInfoFromTableForDeletion(
         indexed_table_id, table->id(), /* multi_stage */ false, epoch, resp, data_map_ptr, ns_info);
     if (!s.ok()) {
-      s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
-                                       s.ToString()));
+      s = s.CloneAndPrepend(Format("An error occurred while deleting index info: $0",
+                                   s.ToString()));
       LOG(WARNING) << s.ToString();
       return CheckIfNoLongerLeaderAndSetupError(s, resp);
     }
@@ -7907,7 +7905,7 @@ std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDelet
     // Update the metadata for the on-disk state.
     LOG(INFO) << "Marking table as DELETED: " << table->ToString();
     lock.mutable_data()->set_state(SysTablesEntryPB::DELETED,
-        Substitute("Deleted with tablets at $0", LocalTimeAsString()));
+        Format("Deleted with tablets at $0", LocalTimeAsString()));
   } else {
     return {TableInfo::WriteLock(), TransactionId::Nil()};
   }
@@ -8238,7 +8236,7 @@ Status ApplyAlterSteps(server::Clock* clock,
         // Verify that encoding is appropriate for the new column's type.
         ColumnSchemaPB new_col_pb = step.add_column().schema();
         if (new_col_pb.has_id()) {
-          return STATUS_SUBSTITUTE(InvalidArgument,
+          return STATUS_FORMAT(InvalidArgument,
               "column $0: client should not specify column id", new_col_pb.ShortDebugString());
         }
         ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
@@ -8305,7 +8303,7 @@ Status ApplyAlterSteps(server::Clock* clock,
         // TODO: EDIT_COLUMN.
 
       default: {
-        return STATUS_SUBSTITUTE(InvalidArgument, "Invalid alter step type: $0", step.type());
+        return STATUS_FORMAT(InvalidArgument, "Invalid alter step type: $0", step.type());
       }
     }
   }
@@ -8371,7 +8369,7 @@ Status CatalogManager::AlterTableWithBatchTracker(
     namespace_id = ns->id();
     // Don't use Namespaces that aren't running.
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
-      Status s = STATUS_SUBSTITUTE(TryAgain,
+      Status s = STATUS_FORMAT(TryAgain,
           "Namespace not running (State=$0). Cannot alter table $1.$2",
           SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name());
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
@@ -8426,7 +8424,7 @@ Status CatalogManager::AlterTableWithBatchTracker(
     scoped_refptr<TableInfo> other_table = FindPtrOrNull(
         table_names_map_, {namespace_id, req->new_table_name()});
     if (other_table != nullptr) {
-      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+      Status s = STATUS_FORMAT(AlreadyPresent,
           "Object '$0.$1' already exists",
           GetNamespaceNameUnlocked(namespace_id), other_table->name());
       LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
@@ -8593,7 +8591,7 @@ Status CatalogManager::AlterTableWithBatchTracker(
       tablets[0]->tablet_id() != master::kSysCatalogTabletId) {
     l.mutable_data()->set_state(
         SysTablesEntryPB::ALTERING,
-        Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+        Format("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
   }
 
   // Update a task to rollback alter if the corresponding YSQL transaction
@@ -8732,8 +8730,8 @@ Status CatalogManager::UpdateSysCatalogWithNewSchema(
   }
   if (!s.ok()) {
     s = s.CloneAndPrepend(
-        Substitute("An error occurred while updating sys-catalog tables entry: $0",
-                   s.ToString()));
+        Format("An error occurred while updating sys-catalog tables entry: $0",
+               s.ToString()));
     LOG(WARNING) << s.ToString();
     if (resp)
       return CheckIfNoLongerLeaderAndSetupError(s, resp);
@@ -8954,7 +8952,7 @@ Status CatalogManager::GetTablegroupSchema(const GetTablegroupSchemaRequestPB* r
   {
     SharedLock lock(mutex_);
     const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
-    SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
+    SCHECK(tablegroup, NotFound, Format("Tablegroup with ID $0 not found", tablegroup_id));
     table_ids = tablegroup->ChildTableIds();
   }
 
@@ -9525,7 +9523,7 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
 
     scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
     if (ns == nullptr) {
-      Status s = STATUS_SUBSTITUTE(
+      Status s = STATUS_FORMAT(
           NotFound, "Could not find namespace by namespace id $0.",
           tablegroup->database_id());
       return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
@@ -9654,7 +9652,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
               db_type == YQL_DATABASE_PGSQL ? &pg_createdb_oid_collision_errcode : nullptr);
         } else {
           return_status =
-              STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists", req->name());
+              STATUS_FORMAT(AlreadyPresent, "Keyspace '$0' already exists", req->name());
         }
         LOG(WARNING) << "Found keyspace: " << ns->id()
                      << ". Failed creating keyspace with error: " << return_status.ToString()
@@ -10106,8 +10104,8 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
       return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, STATUS(InternalError,
               "Namespace Create Failed: not onlined."));
     default:
-      Status s = STATUS_SUBSTITUTE(IllegalState, "IsCreateNamespaceDone failure: state=$0",
-                                   SysNamespaceEntryPB_State_Name(metadata.state()));
+      Status s = STATUS_FORMAT(IllegalState, "IsCreateNamespaceDone failure: state=$0",
+                               SysNamespaceEntryPB_State_Name(metadata.state()));
       LOG(WARNING) << s.ToString();
       resp->set_done(true);
       return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
@@ -10616,14 +10614,14 @@ Status CatalogManager::DeleteYsqlDBTables(
     table_infos.push_back(table.get());
     // Mark the table state as DELETING tablets.
     l.mutable_data()->set_state(SysTablesEntryPB::DELETING,
-        Substitute("Started deleting at $0", LocalTimeAsString()));
+        Format("Started deleting at $0", LocalTimeAsString()));
   }
   // Update all the table states in raft in bulk.
   Status s = sys_catalog_->Upsert(epoch, table_infos);
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
-                                     s.ToString()));
+    s = s.CloneAndPrepend(Format("An error occurred while updating sys tables: $0",
+                                 s.ToString()));
     LOG(WARNING) << s.ToString();
     return CheckIfNoLongerLeader(s);
   }
@@ -10704,7 +10702,7 @@ Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestP
   } else if (metadata.state() == SysNamespaceEntryPB::DELETING) {
     resp->set_done(false);
   } else {
-    Status s = STATUS_SUBSTITUTE(IllegalState,
+    Status s = STATUS_FORMAT(IllegalState,
         "Servicing IsDeleteNamespaceDone request for $0: NOT deleted (state=$1)",
         ns_pb.DebugString(), metadata.state());
     LOG(WARNING) << s.ToString();
@@ -10740,8 +10738,8 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 
     // Don't allow an alter if the namespace isn't running.
     if (pb.state() != SysNamespaceEntryPB::RUNNING) {
-      Status s = STATUS_SUBSTITUTE(TryAgain, "Namespace not running.  State = $0",
-                                   SysNamespaceEntryPB::State_Name(pb.state()));
+      Status s = STATUS_FORMAT(TryAgain, "Namespace not running.  State = $0",
+                               SysNamespaceEntryPB::State_Name(pb.state()));
       return SetupError(resp->mutable_error(), NamespaceMasterError(pb.state()), s);
     }
 
@@ -10759,7 +10757,7 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
       auto ns = FindNamespaceUnlocked(ns_identifier);
       if (ns.ok() && req->namespace_().has_database_type() &&
           (**ns).database_type() == req->namespace_().database_type()) {
-        Status s = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists", (**ns).name());
+        Status s = STATUS_FORMAT(AlreadyPresent, "Keyspace '$0' already exists", (**ns).name());
         LOG(WARNING)
             << "Found keyspace: " << (**ns).id() << ". Failed altering keyspace with error: " << s
             << " Request:\n" << req->DebugString();
@@ -10888,7 +10886,7 @@ Status CatalogManager::RedisConfigGet(
   SharedLock lock(mutex_);
   scoped_refptr<RedisConfigInfo> cfg = FindPtrOrNull(redis_config_map_, req->keyword());
   if (cfg == nullptr) {
-    Status s = STATUS_SUBSTITUTE(NotFound, "Redis config for $0 does not exists", req->keyword());
+    Status s = STATUS_FORMAT(NotFound, "Redis config for $0 does not exists", req->keyword());
     return SetupError(resp->mutable_error(), MasterErrorPB::REDIS_CONFIG_NOT_FOUND, s);
   }
   auto rci = cfg->LockForRead();
@@ -10931,7 +10929,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
 
     if (tp != nullptr) {
       resp->set_id(tp->id());
-      s = STATUS_SUBSTITUTE(AlreadyPresent,
+      s = STATUS_FORMAT(AlreadyPresent,
           "Type '$0.$1' already exists", ns->name(), req->name());
       LOG(WARNING) << "Found type: " << tp->id() << ". Failed creating type with error: "
                    << s.ToString() << " Request:\n" << req->DebugString();
@@ -10943,7 +10941,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
       if (FindPtrOrNull(udtype_ids_map_, udt_id) == nullptr) {
           // This may be caused by a stale cache (e.g. referenced type name resolves to an old,
           // deleted type). Return InvalidArgument so query layer will clear cache and retry.
-          s = STATUS_SUBSTITUTE(InvalidArgument,
+          s = STATUS_FORMAT(InvalidArgument,
           "Type id '$0' referenced by type '$1' does not exist", udt_id, req->name());
         return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
       }
@@ -10974,7 +10972,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
   // Update the on-disk system catalog.
   s = sys_catalog_->Upsert(leader_ready_term(), tp);
   if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute(
+    s = s.CloneAndPrepend(Format(
         "An error occurred while inserting user-defined type to sys-catalog: $0", s.ToString()));
     LOG(WARNING) << s.ToString();
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
@@ -11033,13 +11031,13 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
               col.type(),
               [&tp](const QLTypePB::UDTypeInfo& udtype_info) -> Status {
                 return udtype_info.id() == tp->id()
-                    ? STATUS(QLError, Substitute("Used type $0 id $1", tp->name(), tp->id()))
+                    ? STATUS(QLError, Format("Used type $0 id $1", tp->name(), tp->id()))
                     : Status::OK();
               });
 
           if (!tp_is_not_used.ok()) {
             Status s = STATUS(QLError,
-                Substitute("Cannot delete type '$0.$1'. It is used in column $2 of table $3",
+                Format("Cannot delete type '$0.$1'. It is used in column $2 of table $3",
                     ns->name(), tp->name(), col.name(), ltm->name()));
             LOG_WITH_FUNC(WARNING) << s << ": " << tp_is_not_used;
             return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
@@ -11060,7 +11058,7 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
                 ltm->field_types(i),
                 /*transitive=*/false, tp->id())) {
           Status s = STATUS(
-              QLError, Substitute(
+              QLError, Format(
                            "Cannot delete type '$0.$1'. It is used in field $2 of type '$3'",
                            ns->name(), tp->name(), ltm->field_names(i), ltm->name()));
           return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
@@ -11577,7 +11575,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   const TabletId& tablet_id = req.tablet_id();
   std::unique_lock<std::mutex> l(remote_bootstrap_mtx_, std::try_to_lock);
   if (!l.owns_lock()) {
-    return STATUS_SUBSTITUTE(AlreadyPresent,
+    return STATUS_FORMAT(AlreadyPresent,
         "Remote bootstrap of tablet $0 already in progress", tablet_id);
   }
 
@@ -11665,8 +11663,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer()->status_listener()),
                    meta,
                    master_->fs_manager()->uuid(),
-                   Substitute("Remote bootstrap: Unable to fetch data from remote peer $0 ($1)",
-                              bootstrap_peer_uuid, bootstrap_peer_addr.ToString()),
+                   Format("Remote bootstrap: Unable to fetch data from remote peer $0 ($1)",
+                          bootstrap_peer_uuid, bootstrap_peer_addr.ToString()),
                    nullptr);
 
   // Write out the last files to make the new replica visible and update the
@@ -12025,7 +12023,7 @@ void CatalogManager::SendDeleteTabletRequest(
   }
 
   auto status = ScheduleTask(call);
-  WARN_NOT_OK(status, Substitute("Failed to send delete request for tablet $0", tablet_id));
+  WARN_NOT_OK(status, Format("Failed to send delete request for tablet $0", tablet_id));
 }
 
 std::shared_ptr<AsyncDeleteReplica> CatalogManager::MakeDeleteReplicaTask(
@@ -12214,13 +12212,13 @@ Status CatalogManager::HandleAssignCreatingTablet(
   // Mark old tablet as replaced.
   tablet->mutable_metadata()->mutable_dirty()->set_state(
     SysTabletsEntryPB::REPLACED,
-    Substitute("Replaced by $0 at $1",
-               replacement->tablet_id(), LocalTimeAsString()));
+    Format("Replaced by $0 at $1",
+           replacement->tablet_id(), LocalTimeAsString()));
 
   // Mark new tablet as being created.
   replacement->mutable_metadata()->mutable_dirty()->set_state(
     SysTabletsEntryPB::CREATING,
-    Substitute("Replacement for $0", tablet->tablet_id()));
+    Format("Replacement for $0", tablet->tablet_id()));
 
   deferred->modified_tablets.push_back(tablet);
   deferred->modified_tablets.push_back(replacement);
@@ -12371,7 +12369,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
     s = SelectReplicasForTablet(ts_descs, tablet, &table_load_state, global_load_state);
     if (!s.ok()) {
       LOG_WITH_FUNC(INFO) << "Select replicas for tablet " << tablet->id() << " failed: " << s;
-      s = s.CloneAndPrepend(Substitute(
+      s = s.CloneAndPrepend(Format(
           "An error occurred while selecting replicas for tablet $0: $1",
           tablet->tablet_id(), s.ToString()));
       tablet->table()->SetCreateTableErrorStatus(s);
@@ -12490,7 +12488,7 @@ Status CatalogManager::SelectReplicasForTablet(
   auto table_guard = tablet->table()->LockForRead();
 
   if (!table_guard->pb.IsInitialized()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "TableInfo for tablet $0 is not initialized (aborted CreateTable attempt?)",
         tablet->tablet_id());
   }
@@ -12912,7 +12910,7 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
   for (const consensus::RaftPeerPB& peer : cstate.config().peers()) {
     TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
     if (!peer.has_permanent_uuid()) {
-      return STATUS_SUBSTITUTE(IllegalState, "Missing UUID $0", peer.ShortDebugString());
+      return STATUS_FORMAT(IllegalState, "Missing UUID $0", peer.ShortDebugString());
     }
     replica_pb->set_role(GetConsensusRole(peer.permanent_uuid(), cstate));
     if (peer.has_member_type()) {
@@ -13637,7 +13635,7 @@ Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
     master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
 
     if (implicit_cast<size_t>(req->expected_num_servers()) > ts_descs.size()) {
-      Status s = STATUS_SUBSTITUTE(IllegalState,
+      Status s = STATUS_FORMAT(IllegalState,
           "Found $0, which is below the expected number of servers $1.",
           ts_descs.size(), req->expected_num_servers());
       return SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
@@ -13808,7 +13806,7 @@ Status CatalogManager::CollectTable(
     all_tables->push_back(table_description);
   }
   if (flags.Test(CollectFlag::kAddIndexes)) {
-    TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
+    TRACE(Format("Locking object with id $0", table_description.table_info->id()));
 
     if (!indexed_table_id.empty()) {
       return STATUS(InvalidArgument, "Expected table, but found index",

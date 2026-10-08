@@ -55,7 +55,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
@@ -70,6 +69,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
@@ -124,7 +124,6 @@ METRIC_DEFINE_entity(table);
 
 using std::string;
 
-using strings::Substitute;
 
 namespace yb::tablet {
 
@@ -608,7 +607,9 @@ Status KvStoreInfo::LoadFromPB(
           .path    = rocksdb_dir,
       });
     }
+    target_tier_path_id = pb.target_tier_path_id();
   }
+  target_storage_tier = pb.target_storage_tier();
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   rocksdb_parent_data_compacted = pb.rocksdb_parent_data_compacted();
@@ -685,26 +686,25 @@ Status CheckLocalVectorIndexesInSnapshot(
   return Status::OK();
 }
 
-// ysql_dump assigns dense DocDB ids and CREATE INDEX records that id. The snapshot superblock
-// still has the source vector_idx_options, including the column id and the permanent index id
-// the restored graph files are stored under. SetSchema keeps the local index_info, so copy the
-// snapshot options onto the local index, matched by colocation id. table_id stays local.
+// CREATE INDEX on the restore cluster fills the local vector_idx_options, but the restored chunk
+// files were written with the snapshot superblock's:
+// - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
+// - id is the permanent index id the restored graph files are stored under.
+// - hnsw.backend and store_payload come from --vector_index_backend and
+//   --vector_index_store_payload; they set the chunk file names and whether each vector carries a
+//   ybctid.
+// SetSchema keeps the local index_info, so copy the snapshot options onto the local index,
+// matched by colocation id. table_id stays local.
 Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_table) {
   if (!snapshot_table.index_info().has_vector_idx_options() || !target->IsVectorIndex()) {
     return Status::OK();
   }
   const auto& source_options = snapshot_table.index_info().vector_idx_options();
-  // TODO(#34559): when column_id and id already match, this keeps the restore cluster's
-  // backend and store_payload, which CREATE INDEX took from that cluster's flags. The restored
-  // chunk files were written with the source values, so this assumes both clusters share
-  // --vector_index_backend and --vector_index_store_payload.
-  if (target->index_info->vector_idx_options().column_id() == source_options.column_id() &&
-      target->index_info->vector_idx_options().id() == source_options.id()) {
+  std::string diff;
+  if (pb_util::ArePBsEqual(target->index_info->vector_idx_options(), source_options, &diff)) {
     return Status::OK();
   }
-  LOG(INFO) << "Restoring vector index options for " << target->table_id << " column id "
-            << target->index_info->vector_idx_options().column_id() << " -> "
-            << source_options.column_id();
+  LOG(INFO) << "Restoring vector index options for " << target->table_id << ": " << diff;
   IndexInfoPB index_info_pb;
   target->index_info->ToPB(&index_info_pb);
   *index_info_pb.mutable_vector_idx_options() = source_options;
@@ -844,6 +844,12 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
     tppb->set_tier(tp.tier);
     tppb->set_path(tp.path);
   }
+  if (target_storage_tier.empty()) {
+    pb->clear_target_storage_tier();
+  } else {
+    pb->set_target_storage_tier(target_storage_tier);
+  }
+  pb->set_target_tier_path_id(target_tier_path_id);
   if (lower_bound_key.empty()) {
     pb->clear_lower_bound_key();
   } else {
@@ -898,6 +904,8 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
   return YB_STRUCT_EQUALS(kv_store_id,
                           rocksdb_dir,
                           tier_paths,
+                          target_storage_tier,
+                          target_tier_path_id,
                           lower_bound_key,
                           upper_bound_key,
                           rocksdb_parent_data_compacted,
@@ -992,7 +1000,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
     wal_top_dir = wal_root_dirs[0];
   }
 
-  const string table_dir_name = Substitute("table-$0", data.table_info->table_id);
+  const string table_dir_name = Format("table-$0", data.table_info->table_id);
   const string tablet_dir_name = MakeTabletDirName(data.raft_group_id);
   const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
   const string rocksdb_dir = JoinPathSegments(
@@ -1000,6 +1008,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
   ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
+  ret->kv_store_.target_storage_tier = data.target_storage_tier;
+  ret->kv_store_.target_tier_path_id = 0;
   RETURN_NOT_OK(ret->Flush());
   return ret;
 }
@@ -1120,6 +1130,33 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(ColocationId colocation_id)
 void RaftGroupMetadata::TEST_SetTierPaths(std::vector<TierPathInfo> paths) {
   std::lock_guard lock(data_mutex_);
   kv_store_.tier_paths = std::move(paths);
+}
+
+std::string RaftGroupMetadata::target_storage_tier() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.target_storage_tier;
+}
+
+uint32_t RaftGroupMetadata::target_tier_path_id() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.target_tier_path_id;
+}
+
+Status RaftGroupMetadata::SetTargetTier(const std::string& target_tier, uint32_t target_path_id) {
+  {
+    std::lock_guard lock(data_mutex_);
+    kv_store_.target_storage_tier = target_tier;
+    kv_store_.target_tier_path_id = target_path_id;
+  }
+  return Flush();
+}
+
+Status RaftGroupMetadata::ClearTargetTierPathId() {
+  {
+    std::lock_guard lock(data_mutex_);
+    kv_store_.target_tier_path_id = 0;
+  }
+  return Flush();
 }
 
 Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
@@ -1250,12 +1287,12 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
   std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
     return STATUS(IllegalState,
-        Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
-                   "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
-                   "Tablet data state: $1 ($2)",
-                   raft_group_id_,
-                   TabletDataState_Name(tablet_data_state_),
-                   tablet_data_state_));
+        Format("Tablet $0 is not in TABLET_DATA_DELETED state. "
+               "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
+               "Tablet data state: $1 ($2)",
+               raft_group_id_,
+               TabletDataState_Name(tablet_data_state_),
+               tablet_data_state_));
   }
 
   string path = VERIFY_RESULT(FilePath());
@@ -1522,7 +1559,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             fs_manager_->encrypted_env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),
-                        Substitute("Failed to write Raft group metadata $0", raft_group_id_));
+                        Format("Failed to write Raft group metadata $0", raft_group_id_));
 
   return Status::OK();
 }
@@ -1550,7 +1587,7 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(
     Env* env, const std::string& path, RaftGroupReplicaSuperBlockPB* superblock) {
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(env, path, superblock),
-      Substitute("Could not load Raft group metadata from $0", path));
+      Format("Could not load Raft group metadata from $0", path));
   return Status::OK();
 }
 

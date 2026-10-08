@@ -24,6 +24,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 
 #include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
@@ -97,13 +98,8 @@ DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
 DECLARE_bool(TEST_block_apply_intent);
@@ -248,33 +244,22 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   }));
 }
 
-class XClusterDDLReplicationConcurrentDDLTest
-    : public XClusterDDLReplicationTest,
-      public ::testing::WithParamInterface<std::pair<bool, bool>> {
+// Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
+// cross-flag validators in common_flags.cc, so a single parameter drives all three.
+class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTest,
+                                                public ::testing::WithParamInterface<bool> {
  public:
   void SetUp() override {
-    auto [object_locking, concurrent_ddl] = GetParam();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = object_locking;
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = object_locking;
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = object_locking;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = object_locking;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
+    const auto object_locking = GetParam();
+    ToggleDDLMode(/* use_legacy = */ !object_locking);
     XClusterDDLReplicationTest::SetUp();
   }
 };
 
 INSTANTIATE_TEST_CASE_P(
-    ObjLockOff_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest,
-    ::testing::Values(std::make_pair(false, false)));
+    ObjLockOff_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
 INSTANTIATE_TEST_CASE_P(
-    ObjLockOn_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest,
-    ::testing::Values(std::make_pair(true, false)));
-INSTANTIATE_TEST_CASE_P(
-    ObjLockOn_ConcDDLOn, XClusterDDLReplicationConcurrentDDLTest,
-    ::testing::Values(std::make_pair(true, true)));
+    ObjLockOn_ConcDDLOn, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
 
 TEST_P(XClusterDDLReplicationConcurrentDDLTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClustersAndReplication());
@@ -1944,7 +1929,7 @@ class XClusterTransactionalDDLReplicationTest : public XClusterDDLReplicationTes
                                                 public ::testing::WithParamInterface<bool> {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     XClusterDDLReplicationTest::SetUp();
   }
 };
@@ -6897,7 +6882,7 @@ TEST_F(XClusterWalAnchorStreamTest, DeleteReplicationGroupTearsDownAnchor) {
 class XClusterWalAnchorStreamTxnBlockTest : public XClusterWalAnchorStreamTest {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     // Sweep the hidden tables of dropped tables often, so that their anchors get dropped promptly
     // once cdc_wal_retention_time_secs elapses.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;

@@ -150,9 +150,9 @@ ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
 Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
 
 {{< note title="Note" >}}
-Step 4 and the surrounding `BEGIN`/`COMMIT` block rely on two features, both Early Access and available in YugabyteDB {{<release "2025.2">}} and later:
+Step 4 and the surrounding `BEGIN`/`COMMIT` block rely on two features, both Early Access in YugabyteDB {{<release "2025.2">}} and later:
 
-- [Object locking](/stable/explore/transactions/explicit-locking/#enable-table-level-locks), for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true`.
+- [Object locking](/stable/architecture/transactions/concurrency-control/#table-level-locks), for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true`.
 - [Transactional DDL](/stable/architecture/transactions/transactional-ddl/), to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
   Object locking depends on this flag as well.
 

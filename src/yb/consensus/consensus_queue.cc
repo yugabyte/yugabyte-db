@@ -54,12 +54,12 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -161,7 +161,6 @@ using log::Log;
 using std::unique_ptr;
 using std::string;
 using std::max;
-using strings::Substitute;
 
 METRIC_DEFINE_gauge_int64(tablet, majority_done_ops, "Leader Operations Acked by Majority",
                           MetricUnit::kOperations,
@@ -352,10 +351,10 @@ void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
   }
   for (const PeersMap::value_type& entry : peers_map_) {
     if (!ContainsKey(config_peer_uuids, entry.first)) {
-      LOG_WITH_PREFIX_UNLOCKED(FATAL) << Substitute("Peer $0 is not in the active config. "
-                                                    "Queue state: $1",
-                                                    entry.first,
-                                                    queue_state_.ToString());
+      LOG_WITH_PREFIX_UNLOCKED(FATAL) << Format("Peer $0 is not in the active config. "
+                                                "Queue state: $1",
+                                                entry.first,
+                                                queue_state_.ToString());
     }
   }
 }
@@ -611,11 +610,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       // We never drop from 2 voters to 1 voter automatically, at least for now (12/4/18). We may
       // want to revisit this later, we're just being cautious with this.
       // We remove unconditionally any failed non-voter replica (PRE_VOTER,PRE_OBSERVER,OBSERVER).
-      string msg = Substitute("Leader has been unable to successfully communicate "
-                              "with Peer $0 for more than $1 seconds ($2)",
-                              uuid,
-                              FLAGS_follower_unavailable_considered_failed_sec,
-                              unreachable_time.ToString());
+      string msg = Format("Leader has been unable to successfully communicate "
+                          "with Peer $0 for more than $1 seconds ($2)",
+                          uuid,
+                          FLAGS_follower_unavailable_considered_failed_sec,
+                          unreachable_time.ToString());
       NotifyObserversOfFailedFollower(uuid, current_term, msg);
     }
   }
@@ -1823,7 +1822,7 @@ void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
   out << "<table>" << endl;;
   out << "  <tr><th>Peer</th><th>Watermark</th></tr>" << endl;
   for (const PeersMap::value_type& entry : peers_map_) {
-    out << Substitute(
+    out << Format(
                "  <tr><td><ul><li>$0</li><li>$1</li></ul></td><td>$2</td></tr>",
                EscapeForHtmlToString("UUID: " + entry.first),
                EscapeForHtmlToString("Host: " + entry.second->last_known_private_addr[0].host()),
@@ -1858,10 +1857,10 @@ string PeerMessageQueue::ToString() const {
 }
 
 string PeerMessageQueue::ToStringUnlocked() const {
-  return Substitute("Consensus queue metrics:"
-                    "Only Majority Done Ops: $0, In Progress Ops: $1, Cache: $2",
-                    metrics_.num_majority_done_ops->value(), metrics_.num_in_progress_ops->value(),
-                    log_cache_.StatsString());
+  return Format("Consensus queue metrics:"
+                "Only Majority Done Ops: $0, In Progress Ops: $1, Cache: $2",
+                metrics_.num_majority_done_ops->value(), metrics_.num_in_progress_ops->value(),
+                log_cache_.StatsString());
 }
 
 void PeerMessageQueue::RegisterObserver(PeerMessageQueueObserver* observer) {
@@ -2095,10 +2094,10 @@ string PeerMessageQueue::LogPrefixUnlocked() const {
   // TODO: we should probably use an atomic here. We'll just annotate away the TSAN error for now,
   // since the worst case is a slightly out-of-date log message, and not very likely.
   Mode mode = ANNOTATE_UNPROTECTED_READ(queue_state_.mode);
-  return Substitute("T $0 P $1 [$2]: ",
-                    tablet_id_,
-                    local_peer_uuid_,
-                    ModeToStr(mode));
+  return Format("T $0 P $1 [$2]: ",
+                tablet_id_,
+                local_peer_uuid_,
+                ModeToStr(mode));
 }
 
 string PeerMessageQueue::QueueState::ToString() const {

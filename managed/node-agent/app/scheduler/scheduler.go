@@ -69,9 +69,7 @@ func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
 		util.FileLogger().Warnf(ctx, "Task %s is still running", taskID)
 		return nil
 	}
-	defer func() {
-		info.compareAndSetRunning(false)
-	}()
+	defer info.compareAndSetRunning(false)
 	err := executor.GetInstance().ExecuteTask(ctx, info.handler)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Failed to submit job %s. Error: %s", taskID, err)
@@ -80,18 +78,33 @@ func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
 	return nil
 }
 
+// Schedule runs handler on a fixed interval.
+// If runImmediately is true, handler runs once before waiting for the first tick;
+// otherwise the first run is after interval.
 func (s *Scheduler) Schedule(
 	ctx context.Context,
 	interval time.Duration,
+	runImmediately bool,
 	handler util.Handler,
 ) uuid.UUID {
-	taskID := util.NewUUID()
-	taskInfo := &taskInfo{mutex: &sync.Mutex{}, id: taskID, interval: interval, handler: handler}
-	s.tasks.Store(taskID, taskInfo)
+	scheduleID := util.NewUUID()
+	taskInfo := &taskInfo{
+		mutex:    &sync.Mutex{},
+		id:       scheduleID,
+		interval: interval,
+		handler:  handler,
+	}
+	s.tasks.Store(scheduleID, taskInfo)
 	go func() {
 		taskInfo.ticker = time.NewTicker(interval)
-		defer s.tasks.Delete(taskID)
+		defer s.tasks.Delete(scheduleID)
 		defer taskInfo.ticker.Stop()
+		if runImmediately {
+			if err := s.executeTask(ctx, scheduleID); err != nil {
+				util.FileLogger().
+					Errorf(ctx, "Failed immediate run for scheduled task %s", scheduleID)
+			}
+		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -99,14 +112,19 @@ func (s *Scheduler) Schedule(
 			case <-s.ctx.Done():
 				return
 			case <-taskInfo.ticker.C:
-				err := s.executeTask(ctx, taskID)
+				err := s.executeTask(ctx, scheduleID)
 				if err != nil {
-					util.FileLogger().Errorf(ctx, "Exiting scheduled task %s", taskID)
+					util.FileLogger().Errorf(ctx, "Exiting scheduled task %s", scheduleID)
 				}
 			}
 		}
 	}()
-	return taskID
+	return scheduleID
+}
+
+func (s *Scheduler) IsScheduleActive(scheduleID uuid.UUID) bool {
+	_, ok := s.tasks.Load(scheduleID)
+	return ok
 }
 
 func (s *Scheduler) WaitOnShutdown() {

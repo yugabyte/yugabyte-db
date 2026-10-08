@@ -917,6 +917,7 @@ static bool yb_bypass_cond_recheck;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
 static bool yb_conn_mgr_selective_deallocate;
+static bool yb_disable_ddl_transaction_block_for_read_committed;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -3494,13 +3495,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_disable_ddl_transaction_block_for_read_committed", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("If true, DDL operations in READ COMMITTED mode will "
-						 "be executed in a separate DDL transaction instead of "
-						 "the as part of the enclosing transaction block even "
-						 "if ysql_yb_ddl_transaction_block_enabled is true. In "
-						 "other words, for Read Committed, fall back to the "
-						 "mode when ysql_yb_ddl_transaction_block_enabled is "
-						 "false."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -6308,6 +6303,31 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_invalidation_message_expiration_secs,
 		10, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ddl_wait_for_master_prefetch_drain_ms", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum time a DDL waits for the master to work through the catalog "
+						 "prefetches caused by the previous catalog version bump, before "
+						 "bumping the version again."),
+			gettext_noop("Each bump sends every tserver to the master leader for a fresh catalog "
+						 "prefetch, and a bump before the previous wave drains adds to it rather "
+						 "than replacing it. Spacing bumps out trades latency in this session for "
+						 "load on the leader. The wait runs up to twice this long while the "
+						 "leader is turning away prefetches that are already under way, since "
+						 "adding to that discards work it has started. This is a deadline, not "
+						 "an expected wait: a leader that is keeping up reports no load and "
+						 "nothing waits at all. A leader that stays loaded is the other end: "
+						 "every transaction pays the full deadline, so a long migration runs at "
+						 "one catalog version bump per deadline. The wait counts against "
+						 "statement_timeout. On a leader that is already loaded, the DDL itself "
+						 "would often reach that timeout anyway. 0 disables the wait. The DDL "
+						 "proceeds when the time is up whether or not the leader has drained."),
+			GUC_UNIT_MS
+		},
+		&yb_ddl_wait_for_master_prefetch_drain_ms,
+		30000, 0, 86400000,
 		NULL, NULL, NULL
 	},
 

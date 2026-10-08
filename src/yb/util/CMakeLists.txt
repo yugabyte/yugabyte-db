@@ -156,6 +156,7 @@ set(UTIL_SRCS
   flags/flag_tags.cc
   flags/flags.cc
   flags/flags_callback.cc
+  format.cc
   hdr_histogram.cc
   hexdump.cc
   html_print_helper.cc
