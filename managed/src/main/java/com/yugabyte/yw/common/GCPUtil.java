@@ -42,6 +42,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData.RegionLocations;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface.VPCType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.BufferedReader;
@@ -111,8 +112,28 @@ public class GCPUtil implements CloudUtil {
 
   public static final String NETWORK_SELFLINK =
       "https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s";
+  public static final String SUBNETWORK_SELFLINK =
+      "https://www.googleapis.com/compute/v1/projects/%s/regions/%s/subnetworks/%s";
 
   public static final List<String> YB_DEFAULT_INSTANCE_TAGS = Arrays.asList("cluster-server");
+
+  /** The project of the provider's VPC network: the shared VPC host project when there is one. */
+  public static String getVpcProject(GCPCloudInfo cloudInfo) {
+    return StringUtils.isNotEmpty(cloudInfo.getSharedVPCProject())
+        ? cloudInfo.getSharedVPCProject()
+        : cloudInfo.getGceProject();
+  }
+
+  /** The provider's VPC network, or an empty string when YBA creates the network. */
+  public static String getVpcNetwork(GCPCloudInfo cloudInfo) {
+    if (cloudInfo.getVpcType() == VPCType.EXISTING) {
+      return cloudInfo.getDestVpcId();
+    }
+    if (cloudInfo.getVpcType() == VPCType.HOSTVPC) {
+      return cloudInfo.getHostVpcId();
+    }
+    return "";
+  }
 
   public static final String ENFORCEMENT_BEFORE_CLASSIC_FIREWALL = "BEFORE_CLASSIC_FIREWALL";
   public static final String ENFORCEMENT_AFTER_CLASSIC_FIREWALL = "AFTER_CLASSIC_FIREWALL";

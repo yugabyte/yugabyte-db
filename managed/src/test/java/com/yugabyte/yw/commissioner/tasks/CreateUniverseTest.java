@@ -287,7 +287,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     taskParams.getPrimaryCluster().placementInfo.cloudList.get(0).regionList.get(0).lbFQDN =
         "db.example.com";
     String lbName = ManagedLoadBalancerUtil.getPrivateName(taskParams.getPrimaryCluster().uuid);
-    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-1"), any(), any(), any()))
+    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-1"), any(), any(), any(), any()))
         .thenReturn("lbi.elb.example.com");
 
     TaskInfo taskInfo = submitTask(taskParams);

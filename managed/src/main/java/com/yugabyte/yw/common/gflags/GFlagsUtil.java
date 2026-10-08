@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -815,6 +816,15 @@ public class GFlagsUtil {
     return result == null ? "/tmp" : result;
   }
 
+  // A GCP passthrough load balancer keeps its own IP as the packet destination, health probes
+  // included, so a proxy bound to the private IP alone refuses them. Any GCP load balancer: YBA
+  // can't tell the user's kind, and a proxy load balancer works either way.
+  public static boolean listensOnLoadBalancerAddress(@Nullable Cluster cluster) {
+    return cluster != null
+        && cluster.userIntent.providerType == CloudType.gcp
+        && (cluster.userIntent.enableLB || ManagedLoadBalancerUtil.isEnabled(cluster));
+  }
+
   private static Map<String, String> getYSQLGFlags(
       AnsibleConfigureServers.Params taskParam,
       Universe universe,
@@ -823,7 +833,9 @@ public class GFlagsUtil {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
+    if (useHostname
+        || useSecondaryIp
+        || listensOnLoadBalancerAddress(universe.getCluster(node.placementUuid))) {
       pgsqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -982,7 +994,9 @@ public class GFlagsUtil {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String cqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
+    if (useHostname
+        || useSecondaryIp
+        || listensOnLoadBalancerAddress(universe.getCluster(node.placementUuid))) {
       cqlProxyBindAddress = "0.0.0.0";
     }
 

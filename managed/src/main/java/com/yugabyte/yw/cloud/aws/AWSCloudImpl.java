@@ -951,7 +951,8 @@ public class AWSCloudImpl implements CloudAPI {
   /**
    * Creates the internal NLB with the subnet of each zone it serves, or reuses the NLB with the
    * same name. Every run adds the subnets of zones that the NLB does not cover. It never removes a
-   * subnet, because that drops live connections in the zone.
+   * subnet, because that drops live connections in the zone. The ports are not needed:
+   * manageNodeGroup adds a listener per port.
    *
    * @return the DNS name that AWS gives the NLB.
    */
@@ -961,6 +962,7 @@ public class AWSCloudImpl implements CloudAPI {
       String regionCode,
       String name,
       List<AvailabilityZone> zones,
+      List<Integer> ports,
       Map<String, String> tags) {
     Map<String, String> subnetByZone = getZoneSubnets(zones);
     if (subnetByZone.isEmpty()) {
