@@ -41,10 +41,6 @@ DEFINE_RUNTIME_uint64(ysql_lease_refresher_rpc_timeout_ms, 15000,
 DEFINE_RUNTIME_uint64(ysql_lease_refresher_interval_ms, 1000,
     "The interval between requests from a tablet server to the master to refresh its ysql lease.");
 
-DEFINE_RUNTIME_uint64(ysql_lease_refresher_initial_interval_ms, 100,
-    "The interval between ysql lease requests from a tablet server to the master until the tablet "
-    "server acquires its first lease. PostgreSQL is not started before that.");
-
 DEFINE_test_flag(bool, tserver_enable_ysql_lease_refresh, true,
     "Whether to enable the lease refresh RPCs tablet servers send to the master leader.");
 
@@ -89,6 +85,7 @@ class YsqlLeaseClient::Impl {
   void Shutdown();
   std::future<Status> RelinquishLease(MonoDelta timeout) const;
   void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
+  void TriggerASAP();
 
  private:
   MasterLeaderFinder finder_;
@@ -119,6 +116,10 @@ void YsqlLeaseClient::UpdateMasterAddresses(server::MasterAddressesPtr master_ad
   impl_->UpdateMasterAddresses(std::move(master_addresses));
 }
 
+void YsqlLeaseClient::TriggerASAP() {
+  impl_->TriggerASAP();
+}
+
 YsqlLeaseClient::~YsqlLeaseClient() {
   Shutdown();
 }
@@ -141,9 +142,14 @@ Status YsqlLeaseClient::Impl::Start() {
 #endif
   RETURN_NOT_OK(poll_scheduler_.Start(cgroup));
   // PostgreSQL is not started before the first lease is acquired, so do not wait a full interval
-  // before asking for it.
-  poll_scheduler_.TriggerASAP();
+  // before asking for it. If the tablet server has not registered with the master yet, the request
+  // fails and TriggerASAP is called again once it registers.
+  TriggerASAP();
   return Status::OK();
+}
+
+void YsqlLeaseClient::Impl::TriggerASAP() {
+  poll_scheduler_.TriggerASAP();
 }
 
 void YsqlLeaseClient::Impl::Shutdown() {
@@ -195,13 +201,7 @@ Status YsqlLeasePoller::Poll() {
 }
 
 MonoDelta YsqlLeasePoller::IntervalToNextPoll(int32_t consecutive_failures) {
-  auto interval_ms = FLAGS_ysql_lease_refresher_interval_ms;
-  // Lease epochs granted by the master start at 1.
-  auto lease_info = server_.GetYSQLLeaseInfo();
-  if (lease_info.ok() && lease_info->lease_epoch == 0) {
-    interval_ms = std::min(interval_ms, FLAGS_ysql_lease_refresher_initial_interval_ms);
-  }
-  return MonoDelta::FromMilliseconds(interval_ms);
+  return MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_interval_ms);
 }
 
 void YsqlLeasePoller::Init() {}
