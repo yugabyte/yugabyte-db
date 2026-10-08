@@ -610,13 +610,25 @@ Result<int> foo();
 
 ### String formatting
 
-Use the `Format` function to produce formatted strings, rather than the older `Substitute` function.
+Use the `Format` function to produce formatted strings, rather than the older `Substitute` and `StringPrintf` functions.
 
 While the two functions have similar syntax, with inline substitution parameters `$0`, `$1`, and so on, `Format` has several advantages:
 
 * It uses the `ToString` utility, so it can convert many different types of objects to strings, such as collections, protobufs, or any class with a `ToString` member function.
 * You don't need to call `arg.ToString()`. Just pass `arg` to the `Format` function as-is, and it will call `ToString` for you.
 * `Format` is a bit faster than `Substitute` on some benchmarks.
+
+### Preferred utilities
+
+In new code, use the following utilities rather than the legacy forms that do the same job:
+
+| Use | Instead of |
+| --- | --- |
+| `Format` (see [String formatting](#string-formatting)) | `Substitute`, `StringPrintf` |
+| `CheckedStol`, `CheckedStoll`, `CheckedStoInt` and the other `CheckedSto*` functions in `yb/util/stol_utils.h`, which return a `Result` instead of throwing | `std::sto*`, `safe_strto*` |
+| `std::function` | `boost::function` |
+| `std::optional` | `boost::optional` |
+| `ScopeExit` from `yb/util/scope_exit.h` | `BOOST_SCOPE_EXIT`, `absl::Cleanup` |
 
 ### consensus::OpId
 
