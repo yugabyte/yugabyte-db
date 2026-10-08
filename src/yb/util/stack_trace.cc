@@ -32,6 +32,7 @@
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/libbacktrace_util.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/monotime.h"
@@ -44,8 +45,6 @@
 
 #if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
-
-#include "yb/util/format.h"
 #endif
 
 using std::string;

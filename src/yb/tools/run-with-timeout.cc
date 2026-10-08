@@ -31,8 +31,6 @@
 
 #ifdef __linux__
 #include <sys/resource.h>
-
-#include "yb/util/format.h"
 #endif
 
 constexpr int kWaitSecAfterSigQuit = 30;
