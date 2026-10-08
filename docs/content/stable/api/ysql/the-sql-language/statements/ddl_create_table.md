@@ -216,7 +216,7 @@ Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/1
 
 ### INHERITS
 
-A table can inherit columns and check constraints from one or more parent tables. Primary keys, unique constraints, indexes, and foreign keys are not inherited. See [Table inheritance](../../ddl-inherit/).
+A table can inherit columns, check constraints, and not-null constraints from one or more parent tables. Primary keys, unique constraints, indexes, and foreign keys are not inherited. See [Table inheritance](../../ddl-inherit/).
 
 ### PARTITION BY
 

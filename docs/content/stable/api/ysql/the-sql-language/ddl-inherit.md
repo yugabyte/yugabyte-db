@@ -19,7 +19,7 @@ For an accounts schema that uses `INHERITS`, see [Table inheritance example](../
 
 ## What a child inherits
 
-Columns, column defaults, and check constraints propagate from a parent to its children.
+Columns, column defaults, check constraints, and not-null constraints propagate from a parent to its children. A check constraint marked `NO INHERIT` stays on the parent only.
 
 Primary keys, unique constraints, indexes, and foreign keys do not propagate. Define them on each child.
 
@@ -27,7 +27,7 @@ A table can inherit from more than one parent, and a child can itself be a paren
 
 ## Queries and updates
 
-`SELECT`, `UPDATE`, and `DELETE` on a parent operate on the parent and every child. `ONLY` restricts the statement to the named table. The [example](../../../../explore/ysql-language-features/advanced-features/inheritance/#queries-and-updates-on-data) uses `ONLY` with the accounts tables.
+`SELECT`, `UPDATE`, and `DELETE` on a parent operate on the parent and every child. `ONLY` restricts the statement to the named table. `INSERT` always inserts into the named table only; rows inserted into a parent aren't routed to a child. For an example that uses `ONLY`, see [Queries and updates on data](../../../../explore/ysql-language-features/advanced-features/inheritance/#queries-and-updates-on-data).
 
 ## Schema changes
 

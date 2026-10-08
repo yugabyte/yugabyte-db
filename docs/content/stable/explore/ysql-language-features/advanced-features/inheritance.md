@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YSQL supports table inheritance with the `INHERITS` keyword. What a child inherits, how schema changes propagate, and the current limitations are in [Table inheritance](../../../../api/ysql/the-sql-language/ddl-inherit/).
+YSQL supports table inheritance with the `INHERITS` keyword. For what a child inherits, how schema changes propagate, and current limitations, see [Table inheritance](../../../../api/ysql/the-sql-language/ddl-inherit/).
 
 ## Example
 

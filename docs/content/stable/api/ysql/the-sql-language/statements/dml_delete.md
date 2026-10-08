@@ -24,7 +24,7 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
 {{%/ebnf%}}
 
 {{< note title="Table inheritance" >}}
-`ONLY` and `*` in [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) apply when other tables inherit a listed table. See [Table inheritance](../../ddl-inherit/).
+By default, `DELETE` on a table also updates matching rows in tables that inherit from it. Use `ONLY` before the table name to update the named table alone; `*` after it makes the default explicit. See [Table inheritance](../../ddl-inherit/).
 {{< /note >}}
 
 See the section [The WITH clause and common table expressions](../../with-clause/) for more information about the semantics of the `common_table_expression` grammar rule.
