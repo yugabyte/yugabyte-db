@@ -1325,6 +1325,174 @@ TEST_F_EX(
   }
 }
 
+class MasterPathHandlersHiddenTablespaceItest :
+    public MasterPathHandlersUnderReplicationItest {
+ public:
+  void SetUp() override {
+    opts_.enable_ysql = true;
+    // Fast refresh: the test waits for it to place tables and to observe the canary's move.
+    opts_.extra_master_flags.push_back("--ysql_tablespace_info_refresh_secs=1");
+    MasterPathHandlersUnderReplicationItest::SetUp();
+  }
+
+ protected:
+  // tablet_server(i) is started with --placement_zone=z${i}, so index == zone.
+  std::string TServerUuidInZone(size_t zone_index) {
+    return cluster_->tablet_server(zone_index)->uuid();
+  }
+
+  Result<client::YBTableName> FindTable(const std::string& table_name) {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    for (const auto& listed :
+         VERIFY_RESULT(client->ListTables(table_name, /* exclude_ysql */ false))) {
+      if (listed.table_name() == table_name) {
+        return listed;
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
+  }
+
+  Result<master::TabletLocationsPB> GetSoleTablet(const client::YBTableName& table) {
+    master::GetTableLocationsResponsePB locs;
+    RETURN_NOT_OK(itest::GetTableLocations(
+        cluster_.get(), table, 10s * kTimeMultiplier, RequireTabletsRunning::kTrue, &locs));
+    SCHECK_EQ(locs.tablet_locations_size(), 1, IllegalState, "Expected exactly one tablet");
+    return locs.tablet_locations(0);
+  }
+
+  Status WaitForSoleReplicaOn(const std::string& table_name, const std::string& ts_uuid) {
+    return WaitFor([&]() -> Result<bool> {
+      auto table = FindTable(table_name);
+      if (!table.ok()) {
+        return false;
+      }
+      auto tablet = GetSoleTablet(*table);
+      if (!tablet.ok()) {
+        return false;
+      }
+      return tablet->replicas_size() == 1 &&
+             tablet->replicas(0).ts_info().permanent_uuid() == ts_uuid;
+    }, 60s * kTimeMultiplier, Format("Wait for sole replica on TS $0", ts_uuid));
+  }
+
+  // What the master itself resolves via GetTablespaceForTable, as rendered by HandleTablePage.
+  // Asserting on this, not only on the alert, rejects a fix that merely stops reporting.
+  // nullopt: no tablespace resolved, so the row is not rendered.
+  Result<std::optional<uint32_t>> ResolvedTablespaceOid(const TableId& table_id) {
+    faststring result;
+    RETURN_NOT_OK(GetUrl("/table?id=" + table_id, &result));
+    const std::string page = result.ToString();
+    const std::string marker = "Tablespace OID:</td><td>";
+    const auto pos = page.find(marker);
+    if (pos == std::string::npos) {
+      return std::nullopt;
+    }
+    auto start = pos + marker.size();
+    auto end = start;
+    while (end < page.size() && isdigit(static_cast<unsigned char>(page[end]))) {
+      ++end;
+    }
+    SCHECK_GT(end, start, IllegalState, "Tablespace OID row present but held no digits");
+    return static_cast<uint32_t>(std::stoul(page.substr(start, end - start)));
+  }
+
+  // nullopt when the tablet is absent from the endpoint; otherwise it is
+  // expected_num_replicas, which differs per defect and makes failures self-describing.
+  Result<std::optional<int32_t>> UnderReplicatedExpectedReplicas(const TabletId& tablet_id) {
+    faststring result;
+    RETURN_NOT_OK(GetUrl("/api/v1/tablet-under-replication", &result));
+    JsonDocument doc;
+    auto json_obj = VERIFY_RESULT(doc.Parse(result.ToString()));
+    for (const auto& tablet_json :
+         VERIFY_RESULT(json_obj["underreplicated_tablets"].GetArray())) {
+      if (VERIFY_RESULT(tablet_json["tablet_uuid"].GetString()) == tablet_id) {
+        return VERIFY_RESULT(tablet_json["expected_num_replicas"].GetInt32());
+      }
+    }
+    return std::nullopt;
+  }
+
+  Result<uint32_t> TablespaceOidByName(pgwrapper::PGConn* conn, const std::string& name) {
+    return static_cast<uint32_t>(VERIFY_RESULT(conn->FetchRow<int64_t>(
+        Format("SELECT oid::int8 FROM pg_tablespace WHERE spcname = '$0'", name))));
+  }
+
+  Status StartSnapshotSchedule() {
+    // Keyspace-level filter: namespace only, no table name. The two-argument
+    // YBTableName constructor sets the TABLE name, which would silently produce a
+    // schedule covering nothing and make DROP delete rather than hide.
+    client::YBTableName keyspace(YQL_DATABASE_PGSQL);
+    keyspace.set_namespace_name("yugabyte");
+    RETURN_NOT_OK(yb_admin_client_->CreateSnapshotSchedule(
+        keyspace,
+        MonoDelta::FromMinutes(1) /* interval */,
+        MonoDelta::FromMinutes(60) /* retention */));
+    return Status::OK();
+  }
+};
+
+// Regression test for https://github.com/yugabyte/yugabyte-db/issues/31968.
+// A table's tablespace must survive the table being hidden by PITR and survive a master
+// failover, because the master's only other source for it is the pg_class row that DROP
+// deletes. Each assertion below rejects a different incomplete fix.
+TEST_F_EX(MasterPathHandlersItest, TestHiddenTableTablespaceSurvivesDropAndFailover,
+          MasterPathHandlersHiddenTablespaceItest) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+
+  // ts_a pins to z0, ts_b to z1; both RF-1 so the difference is unambiguous.
+  const test::Tablespace ts_a("ts_a", 1, {test::PlacementBlock("c", "r", "z0", 1)});
+  const test::Tablespace ts_b("ts_b", 1, {test::PlacementBlock("c", "r", "z1", 1)});
+  ASSERT_OK(conn.Execute(ts_a.CreateCmd()));
+  ASSERT_OK(conn.Execute(ts_b.CreateCmd()));
+  const auto ts_b_oid = ASSERT_RESULT(TablespaceOidByName(&conn, "ts_b"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY) TABLESPACE ts_a"));
+  ASSERT_OK(WaitForSoleReplicaOn("t", TServerUuidInZone(0)));
+  const auto table = ASSERT_RESULT(FindTable("t"));
+  const auto table_id = table.table_id();
+  const auto tablet_id = ASSERT_RESULT(GetSoleTablet(table)).tablet_id();
+  ASSERT_EQ(ASSERT_RESULT(UnderReplicatedExpectedReplicas(tablet_id)), std::nullopt);
+  // Moved to ts_b after the DROP below; seeing the move proves a refresh read pg_class post-DROP.
+  ASSERT_OK(conn.Execute("CREATE TABLE canary (k INT PRIMARY KEY) TABLESPACE ts_a"));
+  const auto canary_id = ASSERT_RESULT(FindTable("canary")).table_id();
+
+  ASSERT_OK(StartSnapshotSchedule());
+  ASSERT_OK(conn.Execute("ALTER TABLE t SET TABLESPACE ts_b"));
+  // The load balancer must have finished the move before the drop, otherwise
+  // expected and actual placement still agree and the under-replication checks pass vacuously.
+  ASSERT_OK(WaitForSoleReplicaOn("t", TServerUuidInZone(1)));
+  ASSERT_EQ(ASSERT_RESULT(ResolvedTablespaceOid(table_id)), ts_b_oid);
+  ASSERT_EQ(ASSERT_RESULT(UnderReplicatedExpectedReplicas(tablet_id)), std::nullopt);
+
+  ASSERT_OK(conn.Execute("DROP TABLE t"));
+  // With the fix nothing about t changes when the map is rebuilt without its pg_class row, so
+  // wait on canary instead: the refresh that reports canary's move read pg_class after the DROP.
+  ASSERT_OK(conn.Execute("ALTER TABLE canary SET TABLESPACE ts_b"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto oid = ResolvedTablespaceOid(canary_id);
+    return oid.ok() && *oid == ts_b_oid;
+  }, 30s * kTimeMultiplier, "Wait for a tablespace refresh after the DROP"));
+
+  // Rejects suppressing the alert: this asserts what the master believes, not what it
+  // reports. Without the fix the map miss falls back to ts_a, the creation-time value.
+  ASSERT_EQ(ASSERT_RESULT(ResolvedTablespaceOid(table_id)), ts_b_oid)
+      << "Master resolved the wrong tablespace for the hidden table";
+  ASSERT_EQ(ASSERT_RESULT(UnderReplicatedExpectedReplicas(tablet_id)), std::nullopt);
+
+  // Rejects keeping the tablespace only in memory: a new leader would load it empty and
+  // fall back to the cluster default. Nothing about the table changed between the two
+  // assertions.
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  // Page requests still go to the master chosen in SetUp(); if it is no longer leader, it
+  // fetches the page from the new leader (RedirectToLeader).
+  // Errors are retried: the request can fail while the new leader is still coming up.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto oid = ResolvedTablespaceOid(table_id);
+    return oid.ok() && *oid == ts_b_oid;
+  }, 30s * kTimeMultiplier, "Master lost the hidden table's tablespace across a failover"));
+  ASSERT_EQ(ASSERT_RESULT(UnderReplicatedExpectedReplicas(tablet_id)), std::nullopt);
+}
+
 class MasterPathHandlersUnderReplicationTwoTsItest :
     public MasterPathHandlersUnderReplicationItest {
  protected:

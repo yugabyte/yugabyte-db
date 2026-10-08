@@ -2891,6 +2891,75 @@ Status CatalogManager::CreateTransactionStatusTablesForTablespaces(
   return Status::OK();
 }
 
+namespace {
+// Cap on tables persisted per refresh cycle. The first cycle after an upgrade has to backfill
+// every table; spreading that over several cycles keeps any single consensus round small.
+constexpr size_t kMaxTablespaceIdsPersistedPerCycle = 128;
+}  // namespace
+
+Status CatalogManager::PersistTablespaceIds(
+    const TableToTablespaceIdMap& table_to_tablespace_map, const LeaderEpoch& epoch) {
+  // Two passes. The first resolves TableInfos (which takes mutex_) and filters out tables that
+  // are already up to date, while holding no CoW locks. The second takes CoW write locks while
+  // holding nothing else. Interleaving the two would hold a CoW write lock across a mutex_
+  // acquisition, the reverse of the order used elsewhere (e.g. AddTransactionStatusTablet).
+  std::vector<std::pair<TableInfoPtr, std::optional<TablespaceId>>> to_persist;
+  for (const auto& [table_id, tablespace_id] : table_to_tablespace_map) {
+    if (to_persist.size() >= kMaxTablespaceIdsPersistedPerCycle) {
+      break;
+    }
+    auto table = GetTableInfo(table_id);
+    if (!table) {
+      continue;
+    }
+    auto l = table->LockForRead();
+    const bool up_to_date = tablespace_id
+        ? l->pb.has_tablespace_id() && l->pb.tablespace_id() == *tablespace_id
+        : l->pb.has_no_custom_tablespace();
+    if (up_to_date) {
+      continue;
+    }
+    to_persist.emplace_back(std::move(table), tablespace_id);
+  }
+  if (to_persist.empty()) {
+    return Status::OK();
+  }
+
+  // Lock in table id order, the order used when a single operation locks several tables.
+  std::sort(to_persist.begin(), to_persist.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.first->id() < rhs.first->id();
+  });
+  std::vector<TableInfo*> tables;
+  std::vector<TableInfo::WriteLock> locks;
+  tables.reserve(to_persist.size());
+  locks.reserve(to_persist.size());
+  for (auto& [table, observed] : to_persist) {
+    auto lock = table->LockForWrite();
+    if (lock->started_deleting()) {
+      continue;
+    }
+    if (observed) {
+      lock.mutable_data()->pb.set_tablespace_id(*observed);
+    } else {
+      // Sets the empty marker message; being in a oneof, this also clears tablespace_id.
+      lock.mutable_data()->pb.mutable_no_custom_tablespace();
+    }
+    tables.push_back(table.get());
+    locks.push_back(std::move(lock));
+  }
+  if (tables.empty()) {
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tables));
+  // Reverse of lock order: Commit() waits for readers, so release higher ids first (see #10304).
+  for (auto it = locks.rbegin(); it != locks.rend(); ++it) {
+    it->Commit();
+  }
+  VLOG(2) << "Persisted tablespace id for " << tables.size() << " table(s)";
+  return Status::OK();
+}
+
 Status CatalogManager::DoRefreshTablespaceInfo(const LeaderEpoch& epoch) {
   VLOG(2) << "Running RefreshTablespaceInfoPeriodically task";
 
@@ -2921,6 +2990,11 @@ Status CatalogManager::DoRefreshTablespaceInfo(const LeaderEpoch& epoch) {
   }
 
   if (table_to_tablespace_map) {
+    // Durably record what pg_class just reported, so the mapping outlives the pg_class row.
+    // Best effort: a failure here must not stop the in-memory refresh above from taking effect.
+    WARN_NOT_OK(PersistTablespaceIds(*table_to_tablespace_map, epoch),
+                "Failed to persist table to tablespace mappings");
+
     // Trigger transaction table creates for tablespaces with tables and no transaction tables.
     RETURN_NOT_OK(CreateTransactionStatusTablesForTablespaces(
         *tablespace_info, *table_to_tablespace_map, epoch));
@@ -6378,9 +6452,6 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   TableId table_id
       = !req.table_id().empty() ? req.table_id() : GenerateIdUnlocked(SysRowEntryType::TABLE);
   scoped_refptr<TableInfo> table = NewTableInfo(table_id, colocated);
-  if (req.has_tablespace_id()) {
-    table->SetTablespaceIdForTableCreation(req.tablespace_id());
-  }
   if (indexed_table && *indexed_table) {
     if ((**indexed_table).id() < table_id) {
       indexed_table->Lock();
@@ -6402,6 +6473,13 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   }
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
+  // No custom tablespace arrives as an absent or an empty id (CreateTablegroup sends "").
+  if (req.has_tablespace_id() && !req.tablespace_id().empty()) {
+    metadata->set_tablespace_id(req.tablespace_id());
+  } else {
+    // Sets the empty marker message; being in a oneof, this also clears tablespace_id.
+    metadata->mutable_no_custom_tablespace();
+  }
   *metadata->mutable_hosted_stateful_services() = req.hosted_stateful_services();
 
   if (req.has_replication_info()) {
@@ -12627,8 +12705,12 @@ Status CatalogManager::SelectReplicasForTablet(
         tablet->tablet_id());
   }
 
+  // Neither tablespace case is set only for a table an older master created; place it by the
+  // cluster default, as a custom tablespace is not known yet. The load balancer moves it later.
+  const auto tablespace_id =
+      table_guard->pb.has_tablespace_id() ? table_guard->pb.tablespace_id() : TablespaceId();
   auto replication_info = VERIFY_RESULT(GetTableReplicationInfo(
-        table_guard->pb.replication_info(), tablet->table()->TablespaceIdForTableCreation()));
+        table_guard->pb.replication_info(), tablespace_id));
 
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
           ->pb.mutable_committed_consensus_state();

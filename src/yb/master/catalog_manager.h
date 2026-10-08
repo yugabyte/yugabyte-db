@@ -1985,6 +1985,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Helper function to refresh the tablespace info.
   Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
 
+  // Writes the observed tablespace of a capped number of tables whose persisted value differs into
+  // their SysTablesEntryPB. Only tables present in the map are touched: a table absent from it may
+  // be HIDDEN, and its last known tablespace is exactly the value that must not be cleared.
+  Status PersistTablespaceIds(
+      const TableToTablespaceIdMap& table_to_tablespace_map, const LeaderEpoch& epoch);
+
   void ResetCachedCatalogVersions() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
   // Refresh the in-memory map for YSQL pg_yb_catalog_version table. Concurrent refreshes and
