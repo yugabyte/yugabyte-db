@@ -43,7 +43,6 @@
 
 #include "opentelemetry/trace/span.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/rpc/connection.h"

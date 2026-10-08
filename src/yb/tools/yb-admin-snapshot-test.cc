@@ -44,6 +44,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
@@ -788,7 +789,7 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
   const std::string json_end = "]}]";
 
   ASSERT_OK(RunAdminToolCommand(
-      "modify_placement_info", strings::Substitute("$0,$1,$2", c1z1, c1z2, c2z1), 5, ""));
+      "modify_placement_info", Format("$0,$1,$2", c1z1, c1z2, c2z1), 5, ""));
 
   ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", ""));
   auto output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
@@ -809,12 +810,12 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
           json_end),
       string::npos);
 
-  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1)));
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", Format("$0:1", c1z1)));
   output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
   ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
   ASSERT_NE(output.find(multi_affinitized_leaders_json_start + c1z1_json + json_end), string::npos);
 
-  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1), c1z2));
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", Format("$0:1", c1z1), c1z2));
   output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
   ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
   ASSERT_NE(
@@ -822,8 +823,8 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
       string::npos);
 
   ASSERT_OK(RunAdminToolCommand(
-      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:2", c1z2),
-      strings::Substitute("$0:3", c2z1)));
+      "set_preferred_zones", Format("$0:1", c1z1), Format("$0:2", c1z2),
+      Format("$0:3", c2z1)));
   output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
   ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
   ASSERT_NE(
@@ -833,8 +834,8 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
       string::npos);
 
   ASSERT_OK(RunAdminToolCommand(
-      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:1", c1z2),
-      strings::Substitute("$0:2", c2z1)));
+      "set_preferred_zones", Format("$0:1", c1z1), Format("$0:1", c1z2),
+      Format("$0:2", c2z1)));
   output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
   ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
   ASSERT_NE(
@@ -843,15 +844,15 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
           c2z1_json + json_end),
       string::npos);
 
-  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:", c1z1)));
-  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:0", c1z1)));
-  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:-13", c1z1)));
-  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:2", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", Format("$0:", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", Format("$0:0", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", Format("$0:-13", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", Format("$0:2", c1z1)));
   ASSERT_NOK(RunAdminToolCommand(
-      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:3", c1z2)));
+      "set_preferred_zones", Format("$0:1", c1z1), Format("$0:3", c1z2)));
   ASSERT_NOK(RunAdminToolCommand(
-      "set_preferred_zones", strings::Substitute("$0:2", c1z1), strings::Substitute("$0:2", c1z2),
-      strings::Substitute("$0:3", c2z1)));
+      "set_preferred_zones", Format("$0:2", c1z1), Format("$0:2", c1z2),
+      Format("$0:3", c2z1)));
 }
 
 TEST_F(AdminCliTest, TestSetPreferredZoneWithWildcardPlacement) {

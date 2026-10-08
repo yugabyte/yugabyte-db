@@ -37,6 +37,7 @@
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.pb.h"
+#include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
@@ -47,7 +48,6 @@
 using yb::tablet::MaintenanceManagerStatusPB;
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 
 METRIC_DEFINE_entity(test);
 METRIC_DEFINE_gauge_uint32(test, maintenance_ops_running,
@@ -296,7 +296,7 @@ TEST_F(MaintenanceManagerTest, TestLogRetentionPrioritization) {
 TEST_F(MaintenanceManagerTest, TestCompletedOpsHistory) {
   unsigned int seed = SeedRandom();
   for (int i = 0; i < 5; i++) {
-    string name = Substitute("op$0", i);
+    string name = Format("op$0", i);
     TestMaintenanceOp op(name, MaintenanceOp::HIGH_IO_USAGE, OP_RUNNABLE, test_tracker_);
     auto op_category =
         static_cast<TestOpCategory>(rand_r(&seed) % TestOpCategory::Test_NumOpCategory);

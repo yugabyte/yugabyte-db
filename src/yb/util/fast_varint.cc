@@ -38,7 +38,7 @@ std::array<uint8_t, 0x100> MakeUnsignedVarIntSize() {
 auto kUnsignedVarIntSize = MakeUnsignedVarIntSize();
 
 Status NotEnoughEncodedBytes(size_t decoded_varint_size, size_t bytes_provided) {
-  return STATUS_SUBSTITUTE(
+  return STATUS_FORMAT(
       Corruption,
       "Decoded VarInt size as $0 but only $1 bytes provided",
       decoded_varint_size, bytes_provided);

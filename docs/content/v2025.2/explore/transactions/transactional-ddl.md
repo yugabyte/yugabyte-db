@@ -20,9 +20,11 @@ For more information and current limitations, see [Transactional DDL](../../../a
 
 ## Roll back a DDL statement
 
-{{% explore-setup-single-new %}}
+{{< note title="Before you start" >}}
 
-While in early access, transactional DDL is disabled by default. To enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `ysql_yb_ddl_transaction_block_enabled` to true.
+{{<tags/feature/ea idea="1677">}}This example requires transactional DDL (disabled by default). Create and connect to a YugabyteDB universe, then enable `ysql_yb_ddl_transaction_block_enabled` as described in [Enable transactional DDL](../../../architecture/transactions/transactional-ddl/#enable-transactional-ddl).
+
+{{< /note >}}
 
 The following example shows an `ALTER TABLE` inside a transaction. The insert and the schema change commit together, or they both roll back.
 

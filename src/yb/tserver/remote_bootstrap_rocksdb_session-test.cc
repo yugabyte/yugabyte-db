@@ -26,6 +26,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
@@ -62,7 +63,7 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
   void InsertOneRow(int32_t key) {
     WriteRequestPB req;
     req.set_tablet_id(tablet_peer_->tablet_id());
-    AddTestRowInsert(key, key * 2, Substitute("k$0", key), &req);
+    AddTestRowInsert(key, key * 2, Format("k$0", key), &req);
 
     auto arena = SharedThreadSafeArena();
     auto* resp = arena->NewArenaObject<LWWriteResponsePB>();

@@ -15,7 +15,6 @@
 
 #include <thread>
 
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"

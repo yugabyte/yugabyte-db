@@ -29,8 +29,6 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -98,7 +96,6 @@ namespace master {
 using namespace std::literals;
 using namespace std::placeholders;
 using server::MonitoredTaskState;
-using strings::Substitute;
 using tserver::AcquireObjectLockRequestPB;
 using tserver::AcquireObjectLockResponsePB;
 using tserver::ReleaseObjectLockRequestPB;
@@ -234,6 +231,11 @@ class ObjectLockInfoManager::Impl {
   std::shared_ptr<CountDownLatch> ReleaseLocksHeldByExpiredLeaseEpoch(
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
       std::optional<LeaderEpoch> leader_epoch);
+
+  void PopulateLeaseEpochFloors(tserver::AcquireObjectLockRequestPB& req) const EXCLUDES(mutex_);
+  void PopulateLeaseEpochFloorsUnlocked(
+      google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors) const
+      REQUIRES(mutex_);
 
   std::unordered_map<std::string, TServerLeaseInfo> GetLeaseInfos() const EXCLUDES(mutex_);
 
@@ -977,6 +979,7 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnloc
       }
     }
   }
+  PopulateLeaseEpochFloorsUnlocked(*entries.mutable_lease_epoch_floors());
   VLOG(3) << "Exported " << yb::ToString(entries);
   return entries;
 }
@@ -1063,6 +1066,7 @@ void ObjectLockInfoManager::Impl::LockObject(
 
   // Acquire locks locally first
   auto req_shared = std::make_shared<AcquireObjectLockRequestPB>(std::move(req));
+  PopulateLeaseEpochFloors(*req_shared);
   ASH_ENABLE_CONCURRENT_UPDATES();
   auto wait_state_ptr = ash::WaitStateInfo::CurrentWaitState();
   local_lock_manager->AcquireObjectLocksAsync(
@@ -1436,6 +1440,35 @@ ObjectLockInfoManager::Impl::GetLeaseInfos() const {
     };
   }
   return result;
+}
+
+void ObjectLockInfoManager::Impl::PopulateLeaseEpochFloors(AcquireObjectLockRequestPB& req) const {
+  LockGuard lock(mutex_);
+  PopulateLeaseEpochFloorsUnlocked(*req.mutable_lease_epoch_floors());
+}
+
+void ObjectLockInfoManager::Impl::PopulateLeaseEpochFloorsUnlocked(
+    google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors) const {
+  for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+    auto l = object_info->LockForRead();
+    const auto& lease_info = l->pb.lease_info();
+    if (!lease_info.has_lease_epoch()) {
+      continue;
+    }
+
+    auto ignore_lease_epochs_before = lease_info.lease_epoch();
+    if (!lease_info.live_lease() &&
+        ignore_lease_epochs_before != std::numeric_limits<uint64_t>::max()) {
+      ++ignore_lease_epochs_before;
+    }
+    if (ignore_lease_epochs_before == 0) {
+      continue;
+    }
+
+    auto* floor = floors.Add();
+    floor->set_session_host_uuid(uuid);
+    floor->set_ignore_lease_epochs_before(ignore_lease_epochs_before);
+  }
 }
 
 void ObjectLockInfoManager::Impl::BootstrapLocksPostLoad() {

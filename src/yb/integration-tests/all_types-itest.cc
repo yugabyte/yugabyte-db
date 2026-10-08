@@ -54,7 +54,6 @@
 #include "yb/consensus/consensus.proxy.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
@@ -98,7 +97,7 @@ struct TypeDescriptor;
 template<>
 struct TypeDescriptor<KeyTypeWrapper<yb::DataType::BINARY>> {
   static void AddHashValue(QLWriteRequestMsg* req, int value) {
-    QLAddBinaryHashValue(req, StringPrintf("%016x", value));
+    QLAddBinaryHashValue(req, HexString(static_cast<uint32_t>(value), 16));
   }
 
   static int64_t GetIntVal(const QLValue& value) {
@@ -109,7 +108,7 @@ struct TypeDescriptor<KeyTypeWrapper<yb::DataType::BINARY>> {
 template<>
 struct TypeDescriptor<KeyTypeWrapper<yb::DataType::STRING>> {
   static void AddHashValue(QLWriteRequestMsg* req, int value) {
-    QLAddStringHashValue(req, StringPrintf("%016x", value));
+    QLAddStringHashValue(req, HexString(static_cast<uint32_t>(value), 16));
   }
 
   static int64_t GetIntVal(const QLValue& value) {
@@ -319,7 +318,7 @@ class AllTypesItest : public YBTest {
     table_.AddInt16ColumnValue(req, "int16_val", int_val);
     table_.AddInt32ColumnValue(req, "int32_val", int_val);
     table_.AddInt64ColumnValue(req, "int64_val", int_val);
-    std::string content = StringPrintf("hello %010x", int_val);
+    std::string content = Format("hello $0", HexString(static_cast<uint32_t>(int_val), 10));
     table_.AddStringColumnValue(req, "string_val", content);
     table_.AddBoolColumnValue(req, "bool_val", int_val % 2);
     table_.AddBinaryColumnValue(req, "binary_val", content);
@@ -367,7 +366,7 @@ class AllTypesItest : public YBTest {
     ASSERT_EQ(static_cast<int16_t>(expected_int_val), row.column(2).int16_value());
     ASSERT_EQ(static_cast<int32_t>(expected_int_val), row.column(3).int32_value());
     ASSERT_EQ(expected_int_val, row.column(4).int64_value());
-    string content = StringPrintf("hello %010" PRIx64, expected_int_val);
+    string content = Format("hello $0", HexString(static_cast<uint64_t>(expected_int_val), 10));
     ASSERT_EQ(content, row.column(5).string_value());
     ASSERT_EQ(content, row.column(6).binary_value());
     ASSERT_EQ(expected_int_val % 2, row.column(7).bool_value());

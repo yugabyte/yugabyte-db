@@ -41,7 +41,6 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/cgroups.h"
@@ -59,7 +58,6 @@ DEFINE_RUNTIME_bool(threadpool_use_current_trace_for_tasks, false,
 
 namespace yb {
 
-using strings::Substitute;
 using std::unique_ptr;
 using std::deque;
 

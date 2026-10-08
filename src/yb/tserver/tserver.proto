@@ -458,6 +458,13 @@ message ClearUniverseUuidResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message LeaseEpochFloorPB {
+  // The source tserver UUID owning transactions/sessions referenced by forwarded object locks.
+  optional bytes session_host_uuid = 1;
+  // Any acquire from this source with lease_epoch < ignore_lease_epochs_before is rejected.
+  optional uint64 ignore_lease_epochs_before = 2;
+}
+
 message AcquireObjectLockRequestPB {
   optional bytes txn_id = 1;
   optional uint32 subtxn_id = 2;
@@ -475,6 +482,9 @@ message AcquireObjectLockRequestPB {
   optional uint64 recipient_lease_epoch = 10;
   // Used for ignoring conflicts between transactional object locks and host session object locks.
   optional bytes background_transaction_id = 11;
+  // Source lease-epoch floors derived from master's lease view and applied on the recipient before
+  // lock processing to fence stale source epochs.
+  repeated LeaseEpochFloorPB lease_epoch_floors = 12;
 }
 
 message AcquireObjectLockResponsePB {
@@ -585,4 +595,7 @@ message WaitForLockersMultipleResponsePB {
 
 message DdlLockEntriesPB {
   repeated AcquireObjectLockRequestPB lock_entries = 1;
+  // Master's lease view at export time. Applied after replaying lock_entries, since the replayed
+  // entries may belong to lease epochs older than these floors (e.g. unacked releases).
+  repeated LeaseEpochFloorPB lease_epoch_floors = 2;
 }

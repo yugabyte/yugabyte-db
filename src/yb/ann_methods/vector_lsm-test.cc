@@ -1427,7 +1427,8 @@ TEST_P(VectorLSMTest, ConcurrentCompactionsDisableBlockCachePercentage) {
 // Absolute MB limit wins over the percentage-of-cache limit when both are set.
 TEST_P(VectorLSMTest, MemStoreSizeMbOverridesBlockCachePercentage) {
   constexpr size_t kDimensions = 16;
-  constexpr size_t kNumInputChunks = 4;
+  // Two chunks suffice for multiple output chunks; more exceed the test timeout under TSAN.
+  constexpr size_t kNumInputChunks = 2;
   constexpr size_t kMemStoreLimitMb = 1;
   // 100% of the 8MB test cache would allow ~8x more vectors per chunk than the 1MB absolute limit.
   constexpr uint32_t kBlockCachePercentage = 100;

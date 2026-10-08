@@ -64,6 +64,12 @@ Therefore, if you don't specify a primary key at table-creation time, YugabyteDB
 
 `FOREIGN KEY` and `REFERENCES` specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table. It is used to enforce referential integrity of data.
 
+#### Foreign keys on partitioned tables
+
+A foreign key that references a partitioned table is not supported. A partitioned table can declare a foreign key.
+
+For an example of how to create and manage partitioned tables in YSQL, see [Table partitioning](/stable/explore/ysql-language-features/advanced-features/partitions/).
+
 ### Unique
 
 This enforces that the set of columns specified in the `UNIQUE` constraint are unique in the table, that is, no two rows can have the same values for the set of columns specified in the `UNIQUE` constraint.
@@ -133,7 +139,7 @@ Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tab
 
 For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
 
-Presplitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+Presplitting tablets using `SPLIT INTO` distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 

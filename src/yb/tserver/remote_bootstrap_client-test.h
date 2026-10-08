@@ -48,6 +48,7 @@
 #include "yb/tserver/remote_bootstrap-test-base.h"
 
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 
 
@@ -117,7 +118,7 @@ Status RemoteBootstrapClientTest::CompareFileContents(
   uint64_t size2 = VERIFY_RESULT(file2->Size());
   if (size1 != size2) {
     return STATUS(Corruption, "Sizes of files don't match",
-                              strings::Substitute("$0 vs $1 bytes", size1, size2));
+                              Format("$0 vs $1 bytes", size1, size2));
   }
 
   Slice slice1, slice2;

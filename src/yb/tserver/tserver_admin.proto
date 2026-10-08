@@ -314,6 +314,122 @@ message FlushTabletsResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 }
 
+// Records target_tier as the tablet replica's placement intent and starts moving its live SSTs
+// there, one DB path move per SST on the compaction/flush thread pool. Returns as soon as the moves
+// are scheduled; the tablet stays RUNNING throughout. If a migration pass is already in flight the
+// intent is still recorded and the response describes that pass. Poll GetTabletTierInfo for
+// progress. Whatever a pass leaves behind is retried by the background reconciler (follow-up
+// work), as is master dispatch of this RPC.
+message AlterTabletTierRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+  required bytes tablet_id = 2;
+  required string target_tier = 3;
+}
+
+message AlterTabletTierResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // The pass now in flight, or just completed if there was nothing to move.
+  optional TierMigrationStatusPB migration = 2;
+}
+
+// Where a tablet replica stands relative to its persisted target tier (target_tier /
+// target_tier_path_id in GetTabletTierInfoResponsePB). Not persisted: after a tserver restart the
+// next migration pass rebuilds it.
+message TierMigrationStatusPB {
+  // Nested so the enumerators can stay unprefixed: protobuf scopes enum values to the enclosing
+  // namespace rather than to the enum, and a package-level NONE already exists in yb.tserver.
+  enum State {
+    // Nothing has looked at this tablet since the tserver started.
+    NONE = 0;
+    // A target is set. AlterTabletTier and every migration pass leave the tablet here; only the
+    // background reconciler moves it to DONE or FAILED.
+    IN_PROGRESS = 1;
+    // A reconciler scan found every live SST under the target directory.
+    DONE = 2;
+    // Passes kept hitting hard errors without moving anything, so automatic retries stopped
+    // until the next AlterTabletTier.
+    FAILED = 3;
+  }
+
+  optional State state = 1 [ default = NONE ];
+
+  // Counters of the most recent pass.
+  // Live SSTs its scan found outside the target directory.
+  optional uint32 files_total = 2;
+  // Now under the target directory (moved, or already there).
+  optional uint32 files_moved = 3;
+  // Hit an unrecoverable error; see last_error.
+  optional uint32 files_failed = 4;
+  // Busy with a compaction at the time; the next pass retries them.
+  optional uint32 files_deferred = 5;
+  optional string last_error = 6;
+  // Gone before the move ran (rewritten by a compaction). They no longer need moving.
+  optional uint32 obsoleted = 7;
+
+  // True while the most recent pass still has moves outstanding.
+  optional bool pass_in_flight = 8;
+  // Passes in a row that hit a hard error without moving a single file.
+  optional uint32 consecutive_failed_passes = 9;
+}
+
+// Reports which storage tier(s) and directories a tablet's live SSTs currently sit on.
+message GetTabletTierInfoRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+  required bytes tablet_id = 2;
+}
+
+// One entry per path_id known to this tablet replica (RaftGroupMetadata::tier_paths()), i.e.
+// one per disk the tablet's regular DB could place an SST on, whether or not it currently has
+// any files there.
+message TierPathInfoPB {
+  optional uint32 path_id = 1;
+  optional string tier = 2;
+  optional string path = 3;
+
+  // path_id 0: where the MANIFEST/CURRENT files and the tablet superblock live. Never moves,
+  // regardless of how many times AlterTabletTier is called.
+  optional bool is_home = 4;
+
+  // Live regular-DB SSTs currently under this path_id, and their combined size across both
+  // physical files of each split SST (the base .sst and its .sblock data file).
+  optional uint32 sst_count = 5;
+  optional uint64 total_bytes = 6;
+}
+
+message GetTabletTierInfoResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional bytes tablet_id = 2;
+
+  // The tier all live regular-DB SSTs currently sit on. Defaults to the home tier (path_id 0)
+  // when there are zero live SSTs yet (e.g. never flushed) -- an empty tablet is trivially "on"
+  // its home tier.
+  optional string current_tier = 3;
+
+  repeated TierPathInfoPB tier_paths = 4;
+
+  // WAL directory is tier-agnostic (not part of tier_paths) and never moved by AlterTabletTier.
+  optional string wal_dir = 5;
+
+  // Count of live regular-DB SSTs whose directory matched no tier_paths entry. Should always
+  // be 0; a nonzero value indicates a stale/inconsistent tier_paths on this replica.
+  optional uint32 unmatched_sst_count = 6;
+
+  // The tier this tablet is supposed to end up on -- the persisted placement intent
+  // (set at creation from the tablespace, or later via AlterTabletTier). Unset means no preference.
+  optional string target_tier = 7;
+
+  // The last resolved disk (path_id) for this tablet. Only meaningful together
+  // with target_tier; ignore if target_tier is unset.
+  optional uint32 target_tier_path_id = 8;
+
+  // Progress of the most recent (or currently running) AlterTabletTier migration on this
+  // replica. Unset if AlterTabletTier has never been called since this tserver process started.
+  optional TierMigrationStatusPB migration = 9;
+}
+
 message CountIntentsRequestPB {
 }
 
@@ -492,6 +608,13 @@ service TabletServerAdminService {
   }
 
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
+
+  // Records target_tier as a tablet replica's placement intent and starts moving its SSTs there
+  // via DB path moves. Returns as soon as the moves are scheduled; poll GetTabletTierInfo.
+  rpc AlterTabletTier(AlterTabletTierRequestPB) returns (AlterTabletTierResponsePB);
+
+  // Reports which storage tier(s)/directories a tablet replica's live SSTs currently occupy.
+  rpc GetTabletTierInfo(GetTabletTierInfoRequestPB) returns (GetTabletTierInfoResponsePB);
 
   rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
 

@@ -64,11 +64,9 @@
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rbs_info_task.h"
 #include "yb/master/catalog_entity_info.h"
@@ -101,6 +99,7 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
@@ -286,7 +285,6 @@ using std::string;
 using std::stringstream;
 using std::unique_ptr;
 using std::min;
-using strings::Substitute;
 using server::MonitoredTask;
 
 using namespace std::placeholders;
@@ -636,7 +634,7 @@ void MasterPathHandlers::TServerDisplay(
       }
     }
     html_row.AddColumn(std::move(tserver_info.server_id));
-    html_row.AddColumn(StringPrintf("%.1fs", tserver_info.time_since_heartbeat.ToSeconds()));
+    html_row.AddColumn(FixedPoint(tserver_info.time_since_heartbeat.ToSeconds(), 1) + "s");
 
     if (desc->IsBlacklisted(blacklist)) {
       tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
@@ -687,8 +685,8 @@ void MasterPathHandlers::TServerDisplay(
     html_row.AddColumn(desc->num_sst_files());
     html_row.AddColumn(HumanizeBytes(desc->total_sst_file_size()));
     html_row.AddColumn(HumanizeBytes(desc->uncompressed_sst_file_size()));
-    html_row.AddColumn(StringPrintf("%.1f", desc->read_ops_per_sec()));
-    html_row.AddColumn(StringPrintf("%.1f", desc->write_ops_per_sec()));
+    html_row.AddColumn(FixedPoint(desc->read_ops_per_sec(), 1));
+    html_row.AddColumn(FixedPoint(desc->write_ops_per_sec(), 1));
 
     html_row.AddColumn(tserver_info.placement);
 
@@ -744,7 +742,7 @@ void TServerClockDisplay(
     LocalTserverInfo tserver_info(*desc);
 
     html_row.AddColumn(std::move(tserver_info.server_id));
-    html_row.AddColumn(StringPrintf("%.1fs", tserver_info.time_since_heartbeat.ToSeconds()));
+    html_row.AddColumn(FixedPoint(tserver_info.time_since_heartbeat.ToSeconds(), 1) + "s");
     html_row.AddColumn(tserver_info.FormattedStatus());
 
     // Render physical time.
@@ -763,7 +761,7 @@ void TServerClockDisplay(
       html_row.AddColumn(std::move(uptime));
     }
 
-    html_row.AddColumn(StringPrintf("%.2fms", desc->heartbeat_rtt().ToMicroseconds() / 1000.0));
+    html_row.AddColumn(FixedPoint(desc->heartbeat_rtt().ToMicroseconds() / 1000.0, 2) + "ms");
 
     html_row.AddColumn(tserver_info.placement);
   }
@@ -1081,7 +1079,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         // Some stats may be repeated as strings due to backwards compatability.
         jw.String("time_since_hb");
-        jw.String(StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds()));
+        jw.String(FixedPoint(desc->TimeSinceHeartbeat().ToSeconds(), 1) + "s");
         jw.String("time_since_hb_sec");
         jw.Double(desc->TimeSinceHeartbeat().ToSeconds());
 
@@ -1807,7 +1805,7 @@ void MasterPathHandlers::HandleNamespacesHTML(
                 << "  <th>Colocated</th>\n";
 
       for (const auto& namespace_row : *namespaces) {
-        (*output) << Substitute(
+        (*output) << Format(
             "<tr>"
             "<td>$0</td>"
             "<td>$1</td>"
