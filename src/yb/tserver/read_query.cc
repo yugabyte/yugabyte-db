@@ -389,7 +389,9 @@ Status ReadQuery::DoPerform() {
   }
   const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
 
-  if (serializable_isolation || has_row_mark || req_->has_pending_async_write_op_id()) {
+  const auto has_pending_async_writes = !req_->pending_async_write_op_ids().empty() ||
+                                        req_->has_deprecated_pending_async_write_op_id();
+  if (serializable_isolation || has_row_mark || has_pending_async_writes) {
     // At this point we expect that we don't have pure read serializable transactions, and always
     // write read intents to detect conflicts with other writes. Reuse the peer already resolved
     // above (LookupLeaderTablet looks one up itself when it is absent, e.g. when the transaction
@@ -405,10 +407,17 @@ Status ReadQuery::DoPerform() {
       RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer_.peer.get()));
     }
 
-    if (req_->has_pending_async_write_op_id()) {
-      // The client had in-flight async write(s) on this tablet - verify this leader has it.
+    // The client had in-flight async write(s) on this tablet - verify this leader has them.
+    if (!req_->pending_async_write_op_ids().empty()) {
+      for (const auto& op_id : req_->pending_async_write_op_ids()) {
+        RETURN_NOT_OK(leader_peer_.peer->VerifyAsyncWriteReceived(OpId::FromPB(op_id)));
+      }
+    } else if (req_->has_deprecated_pending_async_write_op_id()) {
+      // (DEPRECATE_EOL 2.31) Old clients send only the earliest term's fence and rely on the
+      // server rejecting a write from two or more terms ago.
       RETURN_NOT_OK(leader_peer_.peer->VerifyAsyncWriteReceived(
-          OpId::FromPB(req_->pending_async_write_op_id())));
+          OpId::FromPB(req_->deprecated_pending_async_write_op_id()),
+          tablet::AllowLogLookup::kFalse));
     }
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(

@@ -457,6 +457,8 @@ class PeerMessageQueue {
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
+  Result<OpId> LookupOpId(int64_t op_index) const;
+
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);
 

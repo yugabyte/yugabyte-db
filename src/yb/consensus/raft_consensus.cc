@@ -4010,6 +4010,10 @@ size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
   return queue_->EvictLogCache(bytes_to_evict);
 }
 
+Result<OpId> RaftConsensus::LookupOpId(int64_t op_index) const {
+  return queue_->LookupOpId(op_index);
+}
+
 Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {
   auto lock = state_->LockForRead();
   if(state_->state() != ReplicaState::kRunning) {

@@ -918,8 +918,13 @@ ReadRpc::ReadRpc(
   req_.set_consistency_level(yb_consistency_level);
   req_.dup_proxy_uuid(data.batcher->proxy_uuid());
   req_.set_use_async_write(data.use_async_write);
-  if (data.pending_async_write_op_id.valid()) {
-    data.pending_async_write_op_id.ToPB(req_.mutable_pending_async_write_op_id());
+  if (!data.pending_async_write_op_ids.empty()) {
+    // Old servers only read this field, and reject the gaps the later fences would cover.
+    data.pending_async_write_op_ids.front().ToPB(
+        req_.mutable_deprecated_pending_async_write_op_id());
+    for (const auto& op_id : data.pending_async_write_op_ids) {
+      op_id.ToPB(req_.add_pending_async_write_op_ids());
+    }
   }
 
   switch (table()->table_type()) {

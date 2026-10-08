@@ -771,9 +771,8 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
   const auto& first_op = group.begin->yb_op;
   auto transaction = this->transaction();
   if (transaction) {
-    data.pending_async_write_op_id = VERIFY_RESULT(
-        transaction->GetAsyncWriteOpIdForReadCheck(tablet_id));
-    if (data.pending_async_write_op_id.valid()) {
+    data.pending_async_write_op_ids = transaction->GetAsyncWriteOpIdsForReadCheck(tablet_id);
+    if (!data.pending_async_write_op_ids.empty()) {
       data.need_metadata = true;
     }
   }

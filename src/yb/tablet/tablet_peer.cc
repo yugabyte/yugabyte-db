@@ -2132,7 +2132,8 @@ void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallba
   callback(VerifyAsyncWriteCompletion(op_id));
 }
 
-Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
+Status TabletPeer::VerifyAsyncWriteReceived(
+    const OpId& op_id, AllowLogLookup allow_log_lookup) {
   auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
   if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
     return Status::OK();
@@ -2151,27 +2152,46 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
     return Status::OK();
   }
 
-  if (op_id.term + 1 == leader_state.term) {
-    // One term ago - the current term's NO_OP committed everything before it. Also covers
-    // a split child on its first elected term, since first_index == split_op_id.index + 1.
-    if (op_id.index < first_index) {
+  if (op_id.index < first_index) {
+    if (op_id.term + 1 == leader_state.term) {
+      // One term ago - the current term's NO_OP committed everything before it. Also covers
+      // a split child on its first elected term, since first_index == split_op_id.index + 1.
       return Status::OK();
     }
-    // Write was lost/overwritten. Tag as a transaction abort so that the query layer can
-    // transparently retry the transaction instead of surfacing an internal error.
+
+    if (!allow_log_lookup) {
+      return STATUS_EC_FORMAT(
+          NotFound, TransactionError(TransactionErrorCode::kAborted),
+          "Tablet $0: tablet leader moved more than once since async write $1 was issued "
+          "(write from term $2, current term is $3). Retry the transaction.",
+          tablet_id(), op_id, op_id.term, leader_state.term);
+    }
+
+    // Two or more terms ago - an intermediate term may have overwritten the write, so validate it
+    // from the log.
+    auto log_op_id = consensus->LookupOpId(op_id.index);
+    if (log_op_id.ok() && *log_op_id == op_id) {
+      return Status::OK();
+    }
+    if (!log_op_id.ok() && !log_op_id.status().IsNotFound()) {
+      return log_op_id.status();
+    }
+    // NotFound means the entry was GCed, so the write can't be confirmed.
     return STATUS_EC_FORMAT(
         NotFound, TransactionError(TransactionErrorCode::kAborted),
-        "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
-        "term $2 is $3). Retry the transaction.",
-        tablet_id(), op_id, leader_state.term, first_index);
+        "Tablet $0: async write $1 is not in the log of the term $2 leader (found $3). Retry the "
+        "transaction.",
+        tablet_id(), op_id, leader_state.term,
+        log_op_id.ok() ? AsString(*log_op_id) : log_op_id.status().ToString());
   }
 
-  // Two or more terms ago - we can't verify presence without a log lookup.
+  // Write was lost/overwritten. Tag as a transaction abort so that the query layer can
+  // transparently retry the transaction instead of surfacing an internal error.
   return STATUS_EC_FORMAT(
       NotFound, TransactionError(TransactionErrorCode::kAborted),
-      "Tablet $0: tablet leader moved more than once since async write $1 was issued "
-      "(write from term $2, current term is $3). Retry the transaction.",
-      tablet_id(), op_id, op_id.term, leader_state.term);
+      "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
+      "term $2 is $3). Retry the transaction.",
+      tablet_id(), op_id, leader_state.term, first_index);
 }
 
 Status TabletPeer::VerifyAsyncWriteCompletion(const OpId& op_id) {

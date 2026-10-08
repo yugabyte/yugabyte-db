@@ -1345,41 +1345,22 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  Result<OpId> GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const
+  OpIds GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const
       EXCLUDES(async_write_query_mutex_) {
+    OpIds result;
     std::lock_guard l(async_write_query_mutex_);
     auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
-    if (!write_query || write_query->op_ids.empty()) {
-      return OpId::Invalid();
+    if (!write_query) {
+      return result;
     }
-    // Pending writes across >2 terms means the tablet leader moved more than once before the
-    // earlier async writes were confirmed complete. Currently we don't support this (the server's
-    // VerifyAsyncWriteReceived only handles same-term and one-term-ago), so fail client-side and
-    // abort the transaction.
-    auto min_op = *write_query->op_ids.begin();
-    auto max_op = *write_query->op_ids.rbegin();
-    SCHECK_EC_FORMAT(
-        max_op.term - min_op.term <= 1, IllegalState,
-        TransactionError(TransactionErrorCode::kAborted),
-        "Tablet $0: tablet leader moved more than once before async writes completed "
-        "(min_op: $1, max_op: $2)",
-        tablet_id, min_op, max_op);
-
-    // Now we either have pending writes within the same term, or across 2 consecutive terms.
-    //
-    // In either case, we return the max op_id of the earliest pending term - raft's prefix property
-    // covers all earlier writes from that term.
-    // - If the pending writes are in the same term, then this max covers all pending writes.
-    // - If the pending writes are across 2 terms, then the leader will locally have the writes from
-    //   the greater term, so there's no need to check for those.
-    //
-    // If leader moves before we can send this read, then the server will also validate:
-    // - If the pending writes are in the same term, then verifying the new leader has the last
-    //   write is still sufficient (we are only at a 1 term difference which is supported).
-    // - If the pending writes are across 2 terms, then we now have a write that is 2+ terms old, so
-    //   the server will abort the transaction.
-    auto next_term_begin = write_query->op_ids.lower_bound(OpId(min_op.term + 1, 0));
-    return *std::prev(next_term_begin);
+    // Get the last op per term, since a later leader may have overwritten an earlier term's writes.
+    const auto& op_ids = write_query->op_ids;
+    for (auto it = op_ids.begin(); it != op_ids.end();) {
+      auto next_term_begin = op_ids.lower_bound(OpId(it->term + 1, 0));
+      result.push_back(*std::prev(next_term_begin));
+      it = next_term_begin;
+    }
+    return result;
   }
 
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
@@ -3024,8 +3005,8 @@ void YBTransaction::RecordAsyncWriteCompletion(
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
 }
 
-Result<OpId> YBTransaction::GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const {
-  return impl_->GetAsyncWriteOpIdForReadCheck(tablet_id);
+OpIds YBTransaction::GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const {
+  return impl_->GetAsyncWriteOpIdsForReadCheck(tablet_id);
 }
 
 void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
