@@ -172,6 +172,14 @@ class Executor : public qlexpr::QLExprExecutor {
   // Grants or revokes permissions to resources (roles/tables/keyspaces).
   Status ExecPTNode(const PTGrantRevokePermission* tnode);
 
+  // LIST ROLES and LIST PERMISSIONS. Execution reads system_auth.roles and
+  // system_auth.role_permissions from the master (so the result reflects every committed GRANT
+  // and REVOKE), and FinishListStatement() computes the result once both reads complete.
+  Status ExecPTNode(const PTListRoles* tnode, TnodeContext* tnode_context);
+  Status ExecPTNode(const PTListPermissions* tnode, TnodeContext* tnode_context);
+  Status AddAuthCatalogReads(const TreeNode* tnode, TnodeContext* tnode_context);
+  Status FinishListStatement(TnodeContext* tnode_context);
+
   // Select statement.
   Status ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context);
 
@@ -236,6 +244,11 @@ class Executor : public qlexpr::QLExprExecutor {
   Status ProcessOpStatus(const PTDmlStmt* stmt,
                          const client::YBqlOpPtr& op,
                          ExecContext* exec_context);
+
+  // Process the status of a system_auth read issued by LIST ROLES / LIST PERMISSIONS.
+  Status ProcessListOpStatus(const TreeNode* tnode,
+                             const client::YBqlOpPtr& op,
+                             ExecContext* exec_context);
 
   // Process status of FlushAsyncDone.
   using OpErrors = std::unordered_map<const client::YBqlOp*, Status>;

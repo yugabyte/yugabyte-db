@@ -13,9 +13,12 @@
 
 #include "yb/common/roles_permissions.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/strings/substitute.h"
+
+DECLARE_bool(ycql_enable_list_roles_permissions);
 
 using std::string;
 using std::vector;
@@ -29,6 +32,7 @@ const std::unordered_map<string, vector<PermissionType>> all_permissions_by_reso
                        MODIFY_PERMISSION, SELECT_PERMISSION}},
     {"TABLE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, DROP_PERMISSION, MODIFY_PERMISSION,
                SELECT_PERMISSION}},
+    // DESCRIBE is added while the ycql_enable_list_roles_permissions AutoFlag is on (see below).
     {"ROLE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, DROP_PERMISSION}},
     {"ALL_ROLES", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, CREATE_PERMISSION, DESCRIBE_PERMISSION,
                    DROP_PERMISSION}}
@@ -36,7 +40,17 @@ const std::unordered_map<string, vector<PermissionType>> all_permissions_by_reso
 
 const std::vector<PermissionType> empty_permissions;
 
+// As in Apache Cassandra, DESCRIBE on a single role lets the grantee list its permissions
+// (LIST PERMISSIONS OF role). It is gated with LIST by the ycql_enable_list_roles_permissions
+// AutoFlag, so that during a rolling upgrade neither GRANT DESCRIBE ON ROLE nor the creator's
+// grant on a new role stores it before every process supports it.
+const std::vector<PermissionType> role_permissions_with_describe = {
+    ALTER_PERMISSION, AUTHORIZE_PERMISSION, DESCRIBE_PERMISSION, DROP_PERMISSION};
+
 const vector<PermissionType>& all_permissions_for_resource(ResourceType resource_type) {
+  if (resource_type == ResourceType::ROLE && FLAGS_ycql_enable_list_roles_permissions) {
+    return role_permissions_with_describe;
+  }
   const auto iter = all_permissions_by_resource.find(ResourceType_Name(resource_type));
   if (iter == all_permissions_by_resource.end()) {
     return empty_permissions;
