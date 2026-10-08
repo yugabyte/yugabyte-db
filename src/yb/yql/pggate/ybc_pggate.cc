@@ -306,6 +306,8 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode 
     case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
       LOG(ERROR) << "Emergency fallback prefetching cache mode is used";
       return PrefetchingCacheMode::RENEW_CACHE_HARD;
+    case YB_YQL_PREFETCHER_TRUST_CACHE_LOOKUP_ONLY:
+      return PrefetchingCacheMode::TRUST_CACHE_LOOKUP_ONLY;
   }
   LOG(DFATAL) << "Unexpected YbcPgSysTablePrefetcherCacheMode value " << mode;
   return PrefetchingCacheMode::RENEW_CACHE_HARD;
@@ -2319,6 +2321,12 @@ YbcStatus YBCGetSharedDBCatalogVersion(YbcPgOid db_oid, uint64_t* catalog_versio
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(db_oid), catalog_version);
 }
 
+YbcStatus YBCGetSharedDbLastPrefetchedCatalogVersion(
+    YbcPgOid db_oid, uint64_t* catalog_version) {
+  return ExtractValueFromResult(
+      pgapi->GetSharedDbLastPrefetchedCatalogVersion(db_oid), catalog_version);
+}
+
 YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
   return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
 }
@@ -2591,8 +2599,8 @@ void YBCRegisterSysTableForPrefetching(
       row_oid_filtering_attr, fetch_ybctid);
 }
 
-YbcStatus YBCPrefetchRegisteredSysTables() {
-  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables());
+YbcStatus YBCPrefetchRegisteredSysTables(bool completes_connection_prefetch) {
+  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables(completes_connection_prefetch));
 }
 
 YbcStatus YBCPgCheckIfPitrActive(bool* is_active) {

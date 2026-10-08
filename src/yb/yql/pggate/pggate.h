@@ -173,6 +173,8 @@ class PgApiImpl {
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
 
   [[nodiscard]] uint32_t GetSharedYsqlCatalogPrefetchLoad() const;
+  Result<uint64_t> GetSharedDbLastPrefetchedCatalogVersion(PgOid db_oid);
+
   Result<uint32_t> GetNumberOfDatabases();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
@@ -813,7 +815,7 @@ class PgApiImpl {
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
       bool fetch_ybctid);
-  Status PrefetchRegisteredSysTables();
+  Status PrefetchRegisteredSysTables(bool completes_connection_prefetch);
 
   //------------------------------------------------------------------------------------------------
   // System Validation.

@@ -617,14 +617,18 @@ typedef enum {
   YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-  YB_YQL_PREFETCHER_RENEW_CACHE_HARD
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+  // Serve the request only from what is already cached; if no cached response matches, fail
+  // instead of reading the catalog. Used to start a connection from an older catalog version that
+  // this node already holds.
+  YB_YQL_PREFETCHER_TRUST_CACHE_LOOKUP_ONLY
 } YbcPgSysTablePrefetcherCacheMode;
 
 // Mirrors YsqlCatalogPrefetchKindPB in pgsql_protocol.proto.
 typedef enum {
   YB_YQL_PREFETCH_KIND_NONE = 0,
   YB_YQL_PREFETCH_KIND_CONNECTION_START = 1,
-  YB_YQL_PREFETCH_KIND_CACHE_REFRESH = 2,
+  YB_YQL_PREFETCH_KIND_HIGH_PRIORITY = 2,
 } YbcPgSysTablePrefetchKind;
 
 typedef struct {

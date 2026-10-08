@@ -789,6 +789,8 @@ extern int yb_test_sleep_before_executor_start_ms;
  * Resets to 0 after triggering.
  */
 extern int yb_test_fail_next_ddl;
+extern bool yb_test_fail_stale_catalog_message_check;
+extern bool yb_enable_stale_catalog_prefetch;
 
 /* Test fault injection: fail drop after heap_drop_with_catalog. */
 extern bool yb_test_fail_drop_after_heap_drop;
@@ -1737,6 +1739,11 @@ extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
 
 extern bool yb_default_collation_resolved;
 
+/*
+ * Whether every message in the lists is one this backend knows how to apply. Looks only at the
+ * message bytes, so a caller can ask before it has anything to apply them to.
+ */
+extern bool YbCanApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 
 extern bool YbInvalidationMessagesTableExists();
@@ -1746,6 +1753,12 @@ extern bool yb_is_calling_internal_sql_for_ddl;
 extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 
 extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
+
+/* Whether this backend is authenticating on connection manager's behalf. */
+extern bool YbIsPerformingConnMgrAuth();
+
+/* The admission priority to ask the master for when prefetching ahead of authentication. */
+extern YbcPgSysTablePrefetchKind YbAuthPrefetchKind();
 
 extern bool YbIsInvalidationMessageEnabled();
 
