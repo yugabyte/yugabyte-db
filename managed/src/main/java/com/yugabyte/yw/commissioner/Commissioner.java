@@ -303,23 +303,6 @@ public class Commissioner {
   }
 
   /**
-   * Initiates platform shutdown: seals the task executor, aborts in-flight tasks after the given
-   * timeout, then runs application shutdown hooks once tasks have drained. Does not wait for
-   * completion. YBA is no longer usable after this call, until it is restarted.
-   *
-   * @param abortTimeout how long running tasks may continue before abort is forced
-   * @return true if shutdown was initiated by this call
-   */
-  public boolean initiateShutdown(Duration abortTimeout) {
-    return taskExecutor.shutdownAsync(abortTimeout);
-  }
-
-  /** Returns whether the task executor is shutting down and how many tasks remain. */
-  public TaskExecutor.ShutdownStatus getShutdownStatus() {
-    return taskExecutor.getShutdownStatus();
-  }
-
-  /**
    * Resumes a paused task. This is useful for fault injection to pause a task at a predefined
    * position (e.g 0) and get the list of subtasks to set the abort position during resume.
    *
@@ -548,6 +531,15 @@ public class Commissioner {
   }
 
   /**
+   * Whether rollback of this task type replays a {@code state_transition_details} checkpoint (edit
+   * universe / add node). Such rollbacks are ineligible when no checkpoint was captured.
+   */
+  private boolean rollbackRequiresStateTransitionDetails(TaskType taskType) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskType);
+    return computer != null && computer.requiresStateTransitionDetails();
+  }
+
+  /**
    * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
    * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
    * safety gate.
@@ -581,7 +573,11 @@ public class Commissioner {
       Universe universe = universeOpt.get();
       StateTransitionDetails details = universe.getStateTransitionDetails();
       if (details == null) {
-        return true;
+        // Checkpoint-based rollbacks (edit universe / add node) need a captured delta; a task with
+        // none - e.g. aborted at precheck, before the freeze/checkpoint - is not rollbackable, so
+        // submit stays consistent with listing (which requires placement ownership the task never
+        // took). Non-checkpoint rollbacks (software upgrade) do not use state_transition_details.
+        return !rollbackRequiresStateTransitionDetails(taskInfo.getTaskType());
       }
       // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
       if (!Objects.equals(

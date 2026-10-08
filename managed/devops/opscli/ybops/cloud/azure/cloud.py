@@ -34,6 +34,7 @@ class AzureCloud(AbstractCloud):
     BASE_INSTANCE_METADATA_API = "http://169.254.169.254/metadata/instance?api-version="
     API_VERSION = "2021-02-01"
     METADATA_API_TIMEOUT_SECONDS = 3
+    DISK_RESIZE_TIMEOUT_SEC = 600
 
     def __init__(self):
         super(AzureCloud, self).__init__("azu")
@@ -282,6 +283,43 @@ class AzureCloud(AbstractCloud):
     def stop_instance(self, host_info):
         return self.get_admin().deallocate_instance(host_info['name'])
 
+    @staticmethod
+    def _disk_rescan_command(device_name, size_gb):
+        """Shell command that makes the guest kernel pick up a resized Azure managed disk and
+        fails unless the device reaches size_gb GiB within DISK_RESIZE_TIMEOUT_SEC.
+
+        SCSI disks (sdX) expose a per-device 'rescan' attribute. NVMe namespaces (nvmeXnY) do
+        not: a rescan is requested from the owning controller through 'rescan_controller'. The
+        namespace's 'device' link points at the controller without native multipath and at the
+        NVMe subsystem with it, so fall back to rescanning every controller in the latter case.
+
+        The NVMe rescan only queues the scan, and the new size may not have reached the guest
+        yet, so the rescan is repeated until the size shows up. Without this, xfs_growfs can run
+        against the old size and succeed without growing anything.
+        """
+        if device_name.startswith("nvme"):
+            rescan_script = (
+                "ctrl=$(readlink -f /sys/class/block/{dev}/device); "
+                "if [ -w \"$ctrl/rescan_controller\" ]; then "
+                "echo 1 > \"$ctrl/rescan_controller\"; "
+                "else for f in /sys/class/nvme/*/rescan_controller; do echo 1 > \"$f\"; done; fi"
+            ).format(dev=device_name)
+        else:
+            rescan_script = "echo 1 > /sys/class/block/{dev}/device/rescan".format(
+                dev=device_name)
+        # /sys/class/block/<dev>/size is always in 512-byte sectors.
+        wait_script = (
+            "want={sectors}; "
+            "for i in $(seq {timeout}); do "
+            "{rescan}; "
+            "[ \"$(cat /sys/class/block/{dev}/size)\" -ge \"$want\" ] && exit 0; "
+            "sleep 1; done; "
+            "echo \"/dev/{dev} has $(cat /sys/class/block/{dev}/size) sectors, expected at least "
+            "$want ({gb} GiB) after {timeout}s\" >&2; exit 1"
+        ).format(sectors=size_gb * 1024 * 1024 * 2, timeout=AzureCloud.DISK_RESIZE_TIMEOUT_SEC,
+                 rescan=rescan_script, dev=device_name, gb=size_gb)
+        return "sudo bash -c '{}' && sudo fdisk -l /dev/{}".format(wait_script, device_name)
+
     def expand_file_system(self, args, connect_options):
         remote_shell = RemoteShell(connect_options)
         mount_points = self.get_mount_points_csv(args).split(',')
@@ -300,11 +338,8 @@ class AzureCloud(AbstractCloud):
                     "Unsupported Azure data disk {} for mount point {}".format(
                         device_path, mount_point))
 
-            # Both SCSI and NVMe Azure managed disks expose a sysfs rescan entry.
-            rescan_command = \
-                "sudo bash -c 'echo 1 > /sys/class/block/{}/device/rescan' " \
-                "&& sudo fdisk -l /dev/{}".format(device_name, device_name)
-            remote_shell.check_exec_command(rescan_command)
+            remote_shell.check_exec_command(
+                self._disk_rescan_command(device_name, args.volume_size))
             logging.info("Expanding file system with mount point: {}".format(mount_point))
             remote_shell.check_exec_command(
                 'sudo xfs_growfs {}'.format(quoted_mount_point))

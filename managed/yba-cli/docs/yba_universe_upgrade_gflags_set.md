@@ -25,6 +25,8 @@ yba universe upgrade gflags set -n <universe-name> \
       --upgrade-option string                [Optional] Upgrade Options, defaults to Rolling. Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime), Non-Restart (default "Rolling")
       --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 18000)
       --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 18000)
+      --primary-batch-size int32             [Optional] Number of primary-cluster tservers to restart in each rolling batch. Only applied when --upgrade-option is Rolling. (default 1)
+      --read-replica-batch-size int32        [Optional] Number of read-replica tservers to restart in each rolling batch. Only applied when --upgrade-option is Rolling. (default 1)
       --dry-run                              [Optional] Only validate the input and do not actually set the GFlags.
   -h, --help                                 help for set
 ```

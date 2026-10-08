@@ -1660,7 +1660,7 @@ public class NodeManager extends DevopsBase {
     Provider provider = nodeTaskParam.getProvider();
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (!NodeAgentClient.isCloudTypeSupported(provider.getCloudCode())) {
-      log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
+      log.trace("Skipping node agent command args for {} provider", provider.getCloudCode());
       return;
     }
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
@@ -1847,6 +1847,9 @@ public class NodeManager extends DevopsBase {
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
                 commandArgs.add("--instance_template");
                 commandArgs.add(instanceTemplate);
+                if (confGetter.getGlobalConf(GlobalConfKeys.readGcpInstanceTemplate)) {
+                  commandArgs.add("--read_instance_template");
+                }
               }
             } else if (Common.CloudType.oci == provider.getCloudCode()) {
               OCIRegionCloudInfo o = CloudInfoInterface.get(taskParam.getRegion());
@@ -2251,7 +2254,7 @@ public class NodeManager extends DevopsBase {
             if (node != null
                 && cluster != null
                 && provider.getCloudCode() != Common.CloudType.onprem
-                && (deviceInfo = cluster.userIntent.getDeviceInfoForNode(node)) != null) {
+                && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
               commandArgs.add("--num_volumes");
               commandArgs.add(String.valueOf(deviceInfo.numVolumes));
             }

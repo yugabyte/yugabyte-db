@@ -29,6 +29,8 @@
 #include "opentelemetry/trace/tracer.h"
 #include "opentelemetry/proto/collector/trace/v1/trace_service.pb.h"
 
+#include "yb/common/ddl_mode-test-util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/remote_method.h"
@@ -776,8 +778,8 @@ class DistTraceTest : public LibPqTestBase {
         Format("--pg_client_use_shared_memory=$0", UsePgClientSharedMemory()));
     if (UsePgClientSharedMemory()) {
       // Object locking defaults off in debug builds; the AcquireObjectLock exchange needs it on.
-      options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-      options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+      ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+      ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
     }
   }
 
@@ -2622,6 +2624,39 @@ TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterPkRewriteOnPublishedTable) {
   ASSERT_EQ(
       ASSERT_RESULT(conn_->FetchRow<std::string>(
           "SELECT count(*)::text FROM pk_rewrite_test")), "2");
+}
+
+// Catalog reads issued from PortalStart (ASH plan-id hashing on a cold cache) must sit under
+// the execute span, not directly under the root query span.
+TEST_F(DistTraceRpcTest, TestExecuteSpanCoversPortalStart) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE customer (c_id int, c_d_id int, c_w_id int, c_first text, c_last text, "
+      "c_balance numeric, PRIMARY KEY ((c_w_id, c_d_id) HASH, c_id))"));
+  ASSERT_OK(conn_->Execute(
+      "INSERT INTO customer SELECT i % 3000, (i / 3000) % 10, 1, 'first_'||i, 'last_'||i, 100.0 "
+      "FROM generate_series(1, 30000) i"));
+
+  // A fresh backend has cold catalog caches, so the lookups happen inside this query.
+  auto fresh_conn = ASSERT_RESULT(Connect(true /* simple_query_protocol */));
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(fresh_conn.FetchFormat(
+      "SELECT c_first, c_last, c_balance FROM customer "
+      "WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 42 /*traceparent='$0'*/", tp.full));
+
+  // The root span ends last, so once it has arrived every child span is in the collector too.
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "query", 1));
+  auto root = collector_.FindSpansByName(tp.trace_id, "query").front();
+  auto execute_spans = collector_.FindSpansByName(tp.trace_id, "execute");
+  ASSERT_EQ(execute_spans.size(), 1);
+
+  size_t under_execute = 0;
+  for (const auto& span : collector_.FindSpansByNamePrefix(tp.trace_id, "rpc ")) {
+    if (span.service_name != "ysql") continue;
+    ASSERT_NE(span.parent_span_id, root.span_id)
+        << span.op_name << " is a direct child of the root query span";
+    under_execute += span.parent_span_id == execute_spans.front().span_id;
+  }
+  ASSERT_GT(under_execute, 0) << "no RPC span parented to execute";
 }
 
 TEST_F(DistTraceConnMgrTest,

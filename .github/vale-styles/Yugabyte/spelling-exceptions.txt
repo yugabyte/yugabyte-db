@@ -125,6 +125,7 @@ Cobertura
 Codepen
 Cognito
 Cohesity
+cooldown
 colocated
 colocating
 colocation
@@ -478,6 +479,8 @@ pgaudit
 PgBouncer
 pgLoader
 pgvector
+pg_dump
+pg_dumpall
 pg_hint_plan
 pg_partman
 pg_stat_activity

@@ -29,6 +29,24 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 	ScanKeyData scankey[2];
 	SysScanDesc scan;
 
+	/*
+	 * YB: AlterSetting is invoked in four different contexts:
+	 *  1. ALTER ROLE ... SET: set a variable for a specific role
+	 *  2. ALTER ROLE ALL SET: set a variable for all roles
+	 *  3. ALTER DATABASE ... SET: set a variable for a specific database
+	 *  4. ALTER ROLE ... IN DATABASE ... SET: set a variable for a specific role within a database
+	 *
+	 * Password validity only makes sense in the context of (1) and (2). Roles
+	 * are global across databases, and hence password validity for a role
+	 * cannot be enforced at a database-scope.
+	 */
+	if (setstmt->name && strcmp(setstmt->name, "yb_password_validity") == 0 &&
+		databaseid != InvalidOid)
+		ereport(ERROR,
+				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+				 errmsg("parameter \"%s\" can only be set for a specific role",
+						setstmt->name)));
+
 	valuestr = ExtractSetVariableArgs(setstmt);
 
 	/* Get the old tuple, if any. */

@@ -44,12 +44,17 @@ typedef struct
 /*
  * YB: info used by IndexScan and IndexOnlyScan nodes.
  *
- * Holds info used for merge scans.
+ * Holds info used for merge scans.  'stream_cols' lists the merge stream keys
+ * in index column order (see yb_finalize_merge_scan_stream_cols).  The
+ * executor must bind each of them per stream, and ybValidateMergeScanBinds
+ * checks that it does.  pggate treats every key column before the last merge
+ * sort column as a stream key (PgDmlRead::IsMergeSortColumn), including the
+ * columns this list leaves out.
  */
 typedef struct
 {
 	NodeTag		type;
-	List	   *saop_cols;		/* List of YbMergeScanSaopColInfo */
+	List	   *stream_cols;	/* List of YbMergeScanStreamColInfo */
 	YbSortInfo *sort_cols;
 } YbMergeScanInfo;
 
@@ -1048,6 +1053,11 @@ typedef struct NestLoop
 /*
  * Information to use for each hashable clause in a batched nested loop join.
  * This is used by the hash batching strategy of BNL.
+ *
+ * The inner side of the clause is either a column of the inner tuple
+ * (innerHashAttNo) or an expression over the inner tuple (innerHashExpr, with
+ * innerHashAttNo 0), such as the key of an expression index.  The outer side
+ * is always an expression.
  */
 typedef struct YbBNLHashClauseInfo
 {
@@ -1056,7 +1066,8 @@ typedef struct YbBNLHashClauseInfo
 								 * with. The inner side must be the left input of
 								 * this op.
 								 */
-	int			innerHashAttNo; /* Attno of inner side variable. */
+	int			innerHashAttNo; /* Attno of inner side variable, 0 if none. */
+	Expr	   *innerHashExpr;	/* Inner side expression, NULL if a variable. */
 	Expr	   *outerParamExpr; /* Outer expression of this clause. */
 	Expr	   *orig_expr;
 } YbBNLHashClauseInfo;

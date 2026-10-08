@@ -29,6 +29,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +46,7 @@ import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.ProcessUtil;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -60,9 +63,10 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final String DEFAULT_PG_USER = "yugabyte";
   protected static final int STATS_UPDATE_INTERVAL = 2;
   protected static final int TSERVER_IDX = 0;
+  private static final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS =
+      30000 * BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
-  private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -102,8 +106,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
       builder.addCommonTServerFlag(
       "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
     }
-    builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
-      Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
   }
 
   @Override
@@ -126,6 +128,16 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected WireConn.Builder rawConnBuilder() {
     return WireConn.builder(miniCluster);
+  }
+
+  /**
+   * Absolute path to the shared test_certs directory used by every SSL-related test in this
+   * package (ysql.crt/key/der, ca.crt, crl files, ...). Rooted next to the build's bin directory,
+   * so it works both under the source tree and in the packaged test layout.
+   */
+  protected static String certsDir() {
+    FileSystem fs = FileSystems.getDefault();
+    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 
   protected void disableWarmupRandomMode(MiniYBClusterBuilder builder) {
@@ -193,12 +205,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected void enableVersionMatchingAndRestartCluster() throws Exception {
     enableVersionMatchingAndRestartCluster(true);
-  }
-
-  protected void modifyExtendedQueryProtocolAndRestartCluster(
-      boolean optimized_extended_query_protocol) throws Exception {
-    ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
-    restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
   protected void disableWarmupModeAndRestartCluster() throws Exception {
@@ -592,7 +598,15 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         },
         600000);
     LOG.info("initdb has completed successfully on master");
+    // Wait for PG on every node, not just tserver 0 as the check below does, as BasePgSQLTest.
+    waitForAllTServerPgWebservers(WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS);
     verifyClusterAcceptsConnMgrConnections();
+  }
+
+  protected void waitForAllTServerPgWebservers(long timeoutMs) throws Exception {
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      TestUtils.waitForServer(ts.getLocalhostIP(), ts.getPgsqlWebPort(), timeoutMs);
+    }
   }
 
   public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {

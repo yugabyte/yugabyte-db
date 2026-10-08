@@ -509,6 +509,37 @@ error:
 	return -1;
 }
 
+/*
+ * YB: Export the peer's leaf certificate in DER form.
+ *
+ * A peer that sent no certificate is not an error: *buf is left NULL and 0 is
+ * returned. When a certificate is present but cannot be encoded, -1 is
+ * returned and the reason is recorded on io. The caller owns *buf and must
+ * release it with OPENSSL_free().
+ */
+int yb_mm_tls_get_peer_cert_der(mm_io_t *io, unsigned char **buf, int *len)
+{
+	*buf = NULL;
+	*len = 0;
+
+	X509 *cert = SSL_get_peer_certificate(io->tls_ssl);
+	if (cert == NULL)
+		return 0;
+
+	/* *buf == NULL: i2d_X509 allocates with OPENSSL_malloc. */
+	int der_len = i2d_X509(cert, buf);
+	X509_free(cert);
+	if (der_len <= 0) {
+		mm_tls_error(io, 0, "i2d_X509()");
+		OPENSSL_free(*buf);
+		*buf = NULL;
+		return -1;
+	}
+
+	*len = der_len;
+	return 0;
+}
+
 static void mm_tls_handshake_cb(mm_fd_t *handle)
 {
 	mm_machine_t *machine = mm_self;

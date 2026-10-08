@@ -209,6 +209,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   public Result create(UUID customerUUID, Http.Request request) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    UniverseControllerRequestBinder.rejectFipsDisabledOnFipsYba(request);
     UniverseResp universeResp =
         universeCRUDHandler.createUniverse(
             customer, bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class));

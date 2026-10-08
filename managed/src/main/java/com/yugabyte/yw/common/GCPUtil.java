@@ -157,15 +157,25 @@ public class GCPUtil implements CloudUtil {
     return new CloudLocationInfo(bucket, cloudPath);
   }
 
+  /**
+   * Whether YBA must federate to reach this bucket, i.e. YBA runs on AWS and the bucket is on GCP.
+   * A YBA already on GCP reaches the bucket with its own identity, so it must take the native path:
+   * the external_account credential_source is AWS IMDS, which does not exist there.
+   */
+  public static boolean isCrossCloudFederationConfig(CustomerConfigStorageGCSData gcsData) {
+    return gcsData != null && gcsData.useCrossCloudFederation;
+  }
+
   public static Storage getStorageService(CustomerConfigStorageGCSData gcsData) throws IOException {
     if (gcsData.useGcpIam) {
-      if (StringUtils.isNotBlank(gcsData.federationAudience)) {
+      if (isCrossCloudFederationConfig(gcsData)
+          && StringUtils.isNotBlank(gcsData.crossCloudFederationAudience)) {
         // Cross-cloud WIF: build external_account creds in-process from the audience. YBA uses its
         // own AWS instance identity (must be bound to the bucket's WIF principalSet).
         // GoogleCredentials.fromStream dispatches on the "external_account" type.
         try (InputStream is =
             new ByteArrayInputStream(
-                buildExternalAccountJson(gcsData.federationAudience)
+                buildExternalAccountJson(gcsData.crossCloudFederationAudience)
                     .getBytes(StandardCharsets.UTF_8))) {
           return getStorageService(is, null);
         }
@@ -286,7 +296,8 @@ public class GCPUtil implements CloudUtil {
         configData instanceof CustomerConfigStorageGCSData
             && ((CustomerConfigStorageGCSData) configData).useGcpIam;
     if (isGcsIam
-        && StringUtils.isBlank(((CustomerConfigStorageGCSData) configData).federationAudience)) {
+        && StringUtils.isBlank(
+            ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
       // useGcpIam config with no resolvable federation audience (config-level validation, or
       // same-cloud GKE): YBA cannot list the bucket. Skip; the node/YBC does the real check.
       return true;
@@ -344,7 +355,8 @@ public class GCPUtil implements CloudUtil {
         configData instanceof CustomerConfigStorageGCSData
             && ((CustomerConfigStorageGCSData) configData).useGcpIam;
     if (isGcsIam
-        && StringUtils.isBlank(((CustomerConfigStorageGCSData) configData).federationAudience)) {
+        && StringUtils.isBlank(
+            ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
       // useGcpIam with no resolvable audience: YBA can't list the bucket; node-side YBC validation
       // covers it. Skip.
       return;
@@ -552,7 +564,8 @@ public class GCPUtil implements CloudUtil {
         configData instanceof CustomerConfigStorageGCSData
             && ((CustomerConfigStorageGCSData) configData).useGcpIam;
     if (isGcsIam
-        && StringUtils.isBlank(((CustomerConfigStorageGCSData) configData).federationAudience)) {
+        && StringUtils.isBlank(
+            ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
       // useGcpIam with no resolvable audience: YBA can't reach the bucket. Federation backups are
       // always YBC, so report present and let the node-side YBC path do the authoritative check.
       return true;

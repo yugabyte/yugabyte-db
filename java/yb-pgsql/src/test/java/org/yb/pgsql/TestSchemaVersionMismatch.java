@@ -61,11 +61,14 @@ public class TestSchemaVersionMismatch extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // The test expects schema version mismatch errors admist processing of DDLs, most of which
     // are eliminated with object locking. Hence, disable the feature for the test.
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("ysql_enable_concurrent_ddl", "false");
-    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 

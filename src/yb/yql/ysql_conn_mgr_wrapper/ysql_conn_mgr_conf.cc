@@ -37,6 +37,7 @@
 DECLARE_bool(logtostderr);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 DECLARE_bool(ysql_conn_mgr_use_auth_backend);
+DECLARE_bool(ysql_conn_mgr_cert_auth);
 DECLARE_bool(ysql_conn_mgr_enable_multi_route_pool);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
@@ -60,11 +61,9 @@ DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_probes);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
 DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
 DECLARE_uint32(ysql_conn_mgr_pool_timeout);
-DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_max_prepared_statements);
-DECLARE_bool(ysql_conn_mgr_enable_parse_queue_tracking);
 DECLARE_bool(ysql_conn_mgr_wait_for_rfq_on_sync);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
 DECLARE_uint32(ysql_conn_mgr_reserve_internal_conns);
@@ -386,6 +385,7 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
     {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
+    {"{%yb_cert_auth%}", BoolToString(FLAGS_ysql_conn_mgr_cert_auth)},
     {"{%yb_client_login_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_auth_msg_timeout)},
     {"{%readahead_buffer_size%}", std::to_string(FLAGS_ysql_conn_mgr_readahead_buffer_size)},
     {"{%cache_coroutine%}", std::to_string(FLAGS_ysql_conn_mgr_cache_coroutine)},
@@ -396,16 +396,12 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%tcp_keepalive_usr_timeout%}",
      std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_usr_timeout)},
     {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
-    {"{%yb_optimized_extended_query_protocol%}",
-      BoolToString(FLAGS_ysql_conn_mgr_optimized_extended_query_protocol)},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
     {"{%yb_ysql_max_connections%}", std::to_string(conf_->ysql_max_connections)},
     {"{%yb_optimized_session_parameters%}",
       BoolToString(FLAGS_ysql_conn_mgr_optimized_session_parameters)},
     {"{%yb_max_pools%}", std::to_string(FLAGS_ysql_conn_mgr_max_pools)},
     {"{%yb_max_prepared_statements%}", std::to_string(FLAGS_ysql_conn_mgr_max_prepared_statements)},
-    {"{%yb_enable_parse_queue_tracking%}",
-      BoolToString(FLAGS_ysql_conn_mgr_enable_parse_queue_tracking)},
     {"{%yb_wait_for_rfq_on_sync%}",
       BoolToString(FLAGS_ysql_conn_mgr_wait_for_rfq_on_sync)},
     {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},

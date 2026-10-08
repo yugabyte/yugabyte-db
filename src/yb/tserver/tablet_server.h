@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #pragma once
 
 #include <atomic>
@@ -42,30 +43,23 @@
 #include <utility>
 #include <vector>
 
-#include "yb/common/common_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
-#include "yb/consensus/metadata.pb.h"
-
-#include "yb/cdc/cdc_consumer.fwd.h"
-#include "yb/cdc/xrepl_types.h"
-
 #include "yb/client/client_fwd.h"
+
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/docdb/object_lock_shared_fwd.h"
 
 #include "yb/encryption/encryption_fwd.h"
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
-
-#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 
-#include "yb/server/webserver_options.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
@@ -79,7 +73,6 @@
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
 
@@ -142,7 +135,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   static constexpr int32_t kUnknownClusterConfigVersion = -1;
 
   explicit TabletServer(const TabletServerOptions& opts);
-  ~TabletServer();
+  ~TabletServer() override;
 
   // Initializes the tablet server, including the bootstrapping of all
   // existing tablets.
@@ -297,18 +290,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void ResetCatalogVersionsFingerprint() EXCLUDES(lock_) override;
   void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
-  uint32_t get_oid_cache_invalidations_count() const override {
-    return oid_cache_invalidations_count_.load();
-  }
-
-  void set_oid_cache_invalidations_count(uint32_t oid_cache_invalidations_count) {
-    uint32_t old_value = oid_cache_invalidations_count_.load();
-    if (old_value < oid_cache_invalidations_count) {
-      LOG(INFO) << "Received higher oid_cache_invalidations_count value ("
-                << oid_cache_invalidations_count << " > " << old_value << ")";
-      oid_cache_invalidations_count_.store(oid_cache_invalidations_count);
-    }
-  }
+  void UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count);
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version,
@@ -433,7 +415,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClusterConfigHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
-  Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
+  Status XClusterHandleMasterHeartbeatResponse(
+      const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time);
+
+  void ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
@@ -602,9 +588,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
 
-  // Highest value of SysXClusterConfigEntryPB.oid_cache_invalidations_count received from any
-  // TSHeartbeatResponsePB.  This value is bumped to invalidate all the TServer OID caches.
-  std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
+  // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
+  // ApplyXClusterGuardedInfoIfNewer RPCs, and guards the version below.
+  std::mutex xcluster_guarded_info_version_mutex_;
+  // (term, count) of the most recently applied copy; (0, 0) is below any real version.
+  std::pair<int64_t, uint64_t> xcluster_guarded_info_version_
+      GUARDED_BY(xcluster_guarded_info_version_mutex_){0, 0};
 
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ GUARDED_BY(lock_) = 0;

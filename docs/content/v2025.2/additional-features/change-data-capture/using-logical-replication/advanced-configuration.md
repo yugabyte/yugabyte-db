@@ -18,6 +18,7 @@ You can use the following [YB-TServer flags](../../../../reference/configuration
 
 - [ysql_yb_default_replica_identity](../../../../reference/configuration/yb-tserver/#ysql-yb-default-replica-identity)
 - [cdcsdk_enable_dynamic_table_support](../../../../reference/configuration/yb-tserver/#cdcsdk-enable-dynamic-table-support)
+- [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling)
 - [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs)
 - [cdcsdk_max_consistent_records](../../../../reference/configuration/yb-tserver/#cdcsdk-max-consistent-records)
 - [cdcsdk_vwal_getchanges_resp_max_size_bytes](../../../../reference/configuration/yb-tserver/#cdcsdk-vwal-getchanges-resp-max-size-bytes)

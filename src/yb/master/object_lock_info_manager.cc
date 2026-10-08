@@ -549,6 +549,8 @@ WaitForLockersMultipleRequestPB TserverRequestFor(
   }
   if (master_request.has_background_transaction_id()) {
     req.set_background_transaction_id(master_request.background_transaction_id());
+    req.set_background_transaction_status_tablet(
+        master_request.background_transaction_status_tablet());
   }
   return req;
 }
@@ -1430,7 +1432,7 @@ ObjectLockInfoManager::Impl::GetLeaseInfos() const {
   for (const auto& [uuid, object_info] : object_lock_infos_map_) {
     result[uuid] = TServerLeaseInfo{
         .lease_info = object_info->LockForRead()->pb.lease_info(),
-        .lease_expiry = std::max(object_info->ysql_lease_deadline() - now, MonoDelta::kZero),
+        .time_to_lease_deadline = object_info->ysql_lease_deadline() - now,
     };
   }
   return result;

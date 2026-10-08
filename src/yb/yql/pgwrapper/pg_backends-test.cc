@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdlib>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master_admin.proxy.h"
@@ -445,13 +446,8 @@ class PgBackendsTestYsqlLeaseDisabled : public PgBackendsTest {
     // When table locks are enabled, the ysql lease is implicitly enabled internally via
     // IsYsqlLeaseEnabled() in ysql_operation_lease.cc. We disable it here so that the test
     // actually exercises the old catalog lease logic.
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
     options->extra_master_flags.push_back(
         Format("--master_ts_ysql_catalog_lease_ms=$0", kYsqlLeaseSec * 1000));
     // Set a short timeout so that if the test fails (e.g. on a build without the fix),
@@ -498,7 +494,7 @@ class PgBackendsTestPgTimeout : public PgBackendsTest {
           "--enable_object_locking_for_table_locks=false",
           "--ysql_yb_ddl_transaction_block_enabled=false",
           "--ysql_yb_enable_ddl_savepoint_support=false",
-          "--allowed_preview_flags_csv=ysql_enable_concurrent_ddl",
+          "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false",
           "--ysql_enable_concurrent_ddl=false"
         });
   }
@@ -946,13 +942,8 @@ class PgBackendsTestRf3TableLocksDisabled : public PgBackendsTestRf3 {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTestRf3::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 };
 

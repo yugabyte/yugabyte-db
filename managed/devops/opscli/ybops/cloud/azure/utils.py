@@ -758,22 +758,34 @@ class AzureCloudAdmin():
                     "vm_size": instance_type
                 }
             }
-            if capacity_reservation is not None:
-                logging.info("using capacity reservation {}".format(capacity_reservation))
-                properties = {
-                    "capacityReservation": {
-                        "capacityReservationGroup": {
-                            "id": CAPACITY_RESERVATION_PATH.format(SUBSCRIPTION_ID, RESOURCE_GROUP,
-                                                                   capacity_reservation)
-                        }
-                    }
-                }
-                vm_parameters["properties"] = properties
-
-            return self.compute_client.virtual_machines.begin_update(
+            if capacity_reservation is None:
+                return self.compute_client.virtual_machines.begin_update(
+                    RESOURCE_GROUP,
+                    vm_name,
+                    vm_parameters
+                )
+            # In some regions (e.g. uksouth) Azure fails an update that sets vm_size and the
+            # capacity reservation group together with a bare InternalOperationError, while
+            # the same two changes applied one after the other succeed. The VM is deallocated
+            # here, so the intermediate state (new size, no group) never gets allocated.
+            self.compute_client.virtual_machines.begin_update(
                 RESOURCE_GROUP,
                 vm_name,
                 vm_parameters
+            ).wait()
+            logging.info("using capacity reservation {}".format(capacity_reservation))
+            properties = {
+                "capacityReservation": {
+                    "capacityReservationGroup": {
+                        "id": CAPACITY_RESERVATION_PATH.format(SUBSCRIPTION_ID, RESOURCE_GROUP,
+                                                               capacity_reservation)
+                    }
+                }
+            }
+            return self.compute_client.virtual_machines.begin_update(
+                RESOURCE_GROUP,
+                vm_name,
+                {"properties": properties}
             )
         update_result = self._create_instance(change_func, instance_type, cloud_instance_types)
         update_result.wait()

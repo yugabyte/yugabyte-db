@@ -1048,8 +1048,10 @@ create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Build only a subset of targets when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_conn_mgr_template
-      update_ysql_migrations )
+  # yugabyted and yb-admin-driven tests run yb-admin/yb-ts-cli; a stale one crashes against
+  # rebuilt protobuf libraries.
+  make_targets+=( yb-master yb-tserver yb-admin yb-ts-cli gen_auto_flags_json postgres
+      initial_sys_catalog_snapshot update_ysql_conn_mgr_template update_ysql_migrations )
   # yb-ysql-conn-mgr tests launch bin/odyssey, so it must be part of the subset.
   if [[ "${build_odyssey:-}" == "true" ]]; then
     make_targets+=( odyssey )

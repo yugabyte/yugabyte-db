@@ -293,6 +293,10 @@ public class CreateBackup extends UniverseTaskBase {
           stateLogMsg);
       return;
     }
+    // Scheduled backups bypass BackupHelper.createBackupTask, which is where this is normally
+    // stamped; without it the backup is undeletable once its universe is gone.
+    backupHelper.applyCrossCloudFederationSnapshot(taskParams, universe);
+
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     // backupTaskUUID is present iff its an incremental backup
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());

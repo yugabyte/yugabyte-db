@@ -646,7 +646,7 @@ The [subsection that describes this function](../justfy-and-extract-epoch/#the-j
 {{< tip title="Use the 'strict equals' operator, '==', rather than the native '=', to compare 'interval' values." >}}
 Yugabyte staff members have carefully considered the practical value of the native _interval-interval_ overload of the `=` operator that YSQL inherits from PostgreSQL.
 
-They believe that the use-cases where the functionality will be useful are rare—and that, rather, a "strict equals" notion, that requires pairwise equality of the individual fields of the [_\[mm, dd, ss\]_ internal representations](../interval-representation/) of the _interval_ values that are compared, will generally be more valuable.
+They believe that the use cases where the functionality will be useful are rare—and that, rather, a "strict equals" notion, that requires pairwise equality of the individual fields of the [_\[mm, dd, ss\]_ internal representations](../interval-representation/) of the _interval_ values that are compared, will generally be more valuable.
 {{< /tip >}}
 
 See the section [Comparing two _interval_ values](../interval-arithmetic/interval-interval-comparison/) for the larger discussion on this topic.

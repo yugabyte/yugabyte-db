@@ -3061,7 +3061,15 @@ void CDCSDKYsqlTest::WaitUntilSplitIsSuccesful(
     const int expected_num_tablets) {
   ASSERT_OK(WaitFor(
       [this, tablet_id, &table, &expected_num_tablets]() -> Result<bool> {
-        auto status = SplitTablet(tablet_id, &test_cluster_);
+        // Split needs an SST in the regular DB. Transactional writes are applied to it
+        // asynchronously, so an earlier flush may have left the rows in the memtable.
+        auto status = WaitForFlushTables(
+            {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+            /* is_compaction = */ false);
+        if (!status.ok()) {
+          return false;
+        }
+        status = SplitTablet(tablet_id, &test_cluster_);
         if (!status.ok()) {
           return false;
         }
@@ -3576,8 +3584,10 @@ void CDCSDKYsqlTest::CDCSDKDropColumnsWithExplictTransaction(bool packed_row) {
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  change_resp =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  // The txn is streamed only after its APPLY is replicated, which may lag behind commit.
+  const auto checkpoint = change_resp.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 10, /* is_explicit_checkpoint = */ true, &checkpoint));
   record_size = change_resp.cdc_sdk_proto_records_size();
   for (uint32_t idx = 0; idx < record_size; idx++) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(idx);
@@ -3695,7 +3705,9 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) 
       kValue2ColumnName, kValue3ColumnName, &conn));
 
   GetChangesResponsePB change_resp;
-  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // The txn is streamed only after its APPLY is replicated, which may lag behind commit.
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 9, /* is_explicit_checkpoint = */ true));
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   // Number of columns for the above insert records should be 3.
   for (uint32_t idx = 0; idx < record_size; idx++) {
@@ -3717,8 +3729,9 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) 
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  change_resp =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  const auto checkpoint = change_resp.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 10, /* is_explicit_checkpoint = */ true, &checkpoint));
   record_size = change_resp.cdc_sdk_proto_records_size();
   for (uint32_t idx = 0; idx < record_size; idx++) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(idx);

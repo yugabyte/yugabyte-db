@@ -1661,8 +1661,8 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, you can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, if you specify a placement multiple times, the total count from all mentions is taken.
-* *replication-factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement-info*.
+* *placement-info*: Comma-delimited list of placements in the form *cloud*.*region*.*zone*`[:min[:max]]`. The optional minimum indicates how many replicas of each tablet must be placed in the block; it defaults to 1. The optional maximum limits how many replicas of one tablet can be placed in the block; when omitted, the number of replicas in the block is only limited by the replication factor. Maximums are only supported when every placement block in the policy is fully qualified; if any block specifies a maximum, no block in the policy may use the wildcard (`*`) placements described below. It is not recommended to repeat the same placement multiple times, but instead to specify the total counts after the colons. However, if you repeat a placement, its minimums are summed, and its maximums are summed if every occurrence specifies one (if any occurrence omits the maximum, the block has no maximum). For example, `aws.us-west.us-west-2a:1:2,aws.us-west.us-west-2a:1:2` is equivalent to `aws.us-west.us-west-2a:2:4`, whereas `aws.us-west.us-west-2a:1:2,aws.us-west.us-west-2a:1` is equivalent to `aws.us-west.us-west-2a:2`.
+* *replication-factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of minimum replica counts specified in *placement-info*, and less than or equal to the total of maximum replica counts.
 * *placement-id*: The identifier of the primary cluster, which can be any unique string. Optional; if not set, a randomly-generated ID is used.
 
 **Example**
@@ -1679,6 +1679,23 @@ This will place a minimum of:
 1. 2 replicas in aws.us-west.us-west-2a
 2. 2 replicas in aws.us-west.us-west-2b
 3. 1 replica in aws.us-west.us-west-2c
+
+To additionally limit how many replicas of each tablet can be placed in a zone, specify a maximum after the minimum:
+
+```sh
+./bin/yb-admin \
+    --master_addresses $MASTER_RPC_ADDRS \
+    modify_placement_info  \
+    aws.us-west.us-west-2a:1:2,aws.us-west.us-west-2b:1:2,aws.us-west.us-west-2c:1:2 5
+```
+
+This permits:
+
+1. Between 1 and 2 replicas in aws.us-west.us-west-2a
+2. Between 1 and 2 replicas in aws.us-west.us-west-2b
+3. Between 1 and 2 replicas in aws.us-west.us-west-2c
+
+The maximum is a hard cap on placement decisions: neither table creation nor the load balancer will add replicas above a block's maximum, even if that means a tablet is temporarily under-replicated while other placement blocks lack tablet servers. The one exception is transient: when replacing a replica within the same block (for example, moving data off a blacklisted server onto another server in the same zone), the replacement replica is added before the old one is removed, so the block can briefly hold one replica above its maximum until the removal completes.
 
 You can verify the new placement information by running the following `curl` command:
 
@@ -1708,19 +1725,21 @@ This requests a placement of 3 replicas anywhere in the `us-east-1` region of `a
 
 #### set_preferred_zones
 
-Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
+Sets [leader affinity](../../architecture/key-concepts/#leader-affinity) for the cluster (preferred zones). The load balancer places tablet leaders on alive, healthy replicas in the listed availability zones, in order of preference. When no healthy replica is available in preference 1, preference 2 is used, and so on. Zones you omit are used only after every preferred rank is exhausted.
 
-Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
+This command does not change tablet replica placement (use [modify_placement_info](#modify-placement-info)) and does not move YB-Master processes. By default, the sys catalog (master) leader steps down onto a master that is already running in a preferred zone.
+
+Having tablet leaders in a single region reduces the number of network hops for transactional writes, which lowers latency.
 
 {{< note title="Note" >}}
 
-* Make sure you've already run [modify_placement_info](#modify-placement-info) command beforehand.
+* Make sure you've already run [modify_placement_info](#modify-placement-info). Preferred zones must match existing placement blocks.
 
-* By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
+* By default, transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction; using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
-* Leader blacklisted nodes don't host any leaders irrespective of their preference.
+* Leader-blacklisted nodes don't host any leaders, regardless of preference.
 
-* Cluster configuration stores preferred zones in either affinitized_leaders or multi_affinitized_leaders object.
+* Cluster configuration stores preferred zones in `multi_affinitized_leaders`. Older clusters may still have `affinitized_leaders`; this command rewrites the list as `multi_affinitized_leaders`.
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
@@ -1738,8 +1757,8 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *cloud.region.zone*: Specifies the cloud, region, and zone. Default is `cloud1.datacenter1.rack1`.
-* *preference*: Specifies the leader preference for a zone. Values have to be contiguous non-zero integers. Multiple zones can have the same value. Default is 1.
+* *cloud.region.zone*: Specifies the cloud, region, and zone. Use `*` for any zone in a region (`gcp.us-west1.*`) or any region in a cloud (`gcp.*.*`). Default is `cloud1.datacenter1.rack1`.
+* *preference*: Leader preference. Values must be contiguous integers starting at 1. Multiple zones can share a value (leaders are spread across them). Default is 1.
 
 **Example**
 
@@ -1791,7 +1810,7 @@ replication_info {
 }
 ```
 
-The following command sets the preferred region to `gcp.us-west1` and the fallback to zone `gcp.us-east4.us-east4-a`:
+The following command prefers both zones in `gcp.us-west1` (rank 1) and falls back to `gcp.us-east4.us-east4-a` (rank 2):
 
 ```sh
 ssh -i $PEM $ADMIN_USER@$MASTER1 \
@@ -1801,6 +1820,8 @@ ssh -i $PEM $ADMIN_USER@$MASTER1 \
     gcp.us-west1.us-west1-b:1 \
     gcp.us-east4.us-east4-a:2
 ```
+
+The equivalent region-level form is `gcp.us-west1.*:1 gcp.us-east4.us-east4-a:2`.
 
 Verify by running the following.
 

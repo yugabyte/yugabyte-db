@@ -83,7 +83,9 @@ std::string Slice::ToDebugString(size_t max_len) const {
 
   size_t num_not_graph = 0;
   for (size_t i = 0; i < bytes_to_print; i++) {
-    if (!isgraph(begin_[i])) {
+    // C locale explicitly: in UTF-8 locales macOS's isgraph() accepts bytes >= 0xA1,
+    // letting raw binary through into logs.
+    if (!std::isgraph(static_cast<char>(begin_[i]), std::locale::classic())) {
       ++num_not_graph;
     }
   }
@@ -106,7 +108,7 @@ std::string Slice::ToDebugString(size_t max_len) const {
   } else {
     for (size_t i = 0; i < bytes_to_print; i++) {
       auto ch = begin_[i];
-      if (!isgraph(ch)) {
+      if (!std::isgraph(static_cast<char>(ch), std::locale::classic())) {
         if (ch == '\r') {
           ret += "\\r";
         } else if (ch == '\n') {

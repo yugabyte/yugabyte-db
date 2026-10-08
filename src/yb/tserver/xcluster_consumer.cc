@@ -622,6 +622,10 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
   // Shutdown outside of master_data_mutex_ lock, to not block any heartbeats.
   std::vector<std::shared_ptr<client::XClusterRemoteClientHolder>> clients_to_delete;
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
+  // Paused ddl_queue pollers blocked inside a replicated DDL that cannot finish while paused. This
+  // is level triggered: a DDL can start after the pause flag was set (a poll cycle already in
+  // flight still runs its DDLs), and a terminate can fail, so re-check on every pass.
+  std::vector<std::shared_ptr<XClusterPoller>> pollers_to_kill_ddl_backend;
   {
     ACQUIRE_SHARED_LOCK_IF_ONLINE;
     std::lock_guard write_lock_pollers(pollers_map_mutex_);
@@ -630,7 +634,11 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
       std::shared_ptr<XClusterPoller> poller = it->second;
       // Check if we need to delete this poller.
       std::string reason;
-      if (ShouldContinuePolling(producer_info, *poller, reason)) {
+      const bool should_continue_polling = ShouldContinuePolling(producer_info, *poller, reason);
+      if (poller->ShouldKillStuckDdlBackend()) {
+        pollers_to_kill_ddl_backend.emplace_back(poller);
+      }
+      if (should_continue_polling) {
         ++it;
         continue;
       }
@@ -654,6 +662,31 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
         }
       }
     }
+
+    // These pollers are no longer in pollers_map_, so ShouldContinuePolling does not update their
+    // pause state. Do it here so a stuck DDL on them is also killed when the stream is paused.
+    for (auto it = ddl_queue_pollers_with_deferred_shutdown_.begin();
+         it != ddl_queue_pollers_with_deferred_shutdown_.end();) {
+      const auto& poller = *it;
+      DCHECK(poller->IsDdlQueuePoller());
+      if (poller->IsShutdownComplete()) {
+        it = ddl_queue_pollers_with_deferred_shutdown_.erase(it);
+        continue;
+      }
+      const auto& master_it =
+          producer_consumer_tablet_map_from_master_.find(poller->GetProducerTabletInfo());
+      if (master_it != producer_consumer_tablet_map_from_master_.end()) {
+        poller->SetPaused(master_it->disable_stream);
+        if (poller->ShouldKillStuckDdlBackend()) {
+          pollers_to_kill_ddl_backend.emplace_back(poller);
+        }
+      }
+      ++it;
+    }
+  }
+
+  for (const auto& poller : pollers_to_kill_ddl_backend) {
+    poller->KillStuckDdlBackend();
   }
 
   for (const auto& poller : pollers_to_shutdown) {
@@ -662,6 +695,13 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
 
   for (const auto& poller : pollers_to_shutdown) {
     poller->CompleteShutdown();
+  }
+
+  for (const auto& poller : pollers_to_shutdown) {
+    if (!poller->IsShutdownComplete()) {
+      DCHECK(poller->IsDdlQueuePoller());
+      ddl_queue_pollers_with_deferred_shutdown_.emplace_back(poller);
+    }
   }
 
   for (const auto& poller : pollers_to_shutdown) {

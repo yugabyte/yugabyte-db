@@ -138,6 +138,8 @@ yugabyte=# SELECT * FROM t;
 
 For detailed information on the COPY FROM command, refer to the [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/) statement reference.
 
+If you create the table and load it in the same transaction (for example, `CREATE TABLE AS`, or `CREATE TABLE` followed by `COPY` in a transaction block), YugabyteDB can skip the provisional-write step. See [Faster writes to new tables](../../../explore/transactions/new-table-writes/).
+
 #### Error handling
 
 If the `COPY FROM` command fails during the process, you should try rerunning it. However, you don't have to rerun the entire file. `COPY FROM` imports data into rows individually, starting from the top of the file. So if you know that some of the rows have been successfully imported prior to the failure, you can safely ignore those rows by adding the `SKIP` parameter.
@@ -157,6 +159,8 @@ To import an entire database from a `pg_dump` or `ysql_dump` export, use ysqlsh 
 ```sql
 ysqlsh -f <database_name>.sql
 ```
+
+Dumps taken with ysql_dump or ysql_dumpall (v2025.2.7.0+ and v2026.1.2.0+) begin with the [`\restrict`](../../../api/ysqlsh-meta-commands/#restrict-restrict) meta-command. Replay them with ysqlsh from the same or a later version. See [ysql_dump Notes](../../../admin/ysql-dump/#notes).
 
 {{< note title="Note" >}}
 After the data import step, remember to recreate any constraints and triggers that might have been disabled to speed up loading the data. This ensures that the database will perform relational integrity checking for data going forward.

@@ -64,6 +64,7 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
 
@@ -222,6 +223,10 @@ Status Master::Init() {
 
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
+  WARN_NOT_OK(
+      ysql_manager_impl().CleanupStalePgUpgradeSocketDir(),
+      "Failed to clean up stale pg_upgrade socket directory");
+
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
   cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
@@ -286,7 +291,7 @@ const std::string& Master::permanent_uuid() const {
 void Master::SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) {
   async_client_init->builder()
       .set_master_address_flag_name("master_addresses")
-      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
+      .default_admin_operation_timeout(default_client_timeout())
       .AddMasterAddressSource([this] {
         return catalog_manager_->GetMasterAddresses();
   });

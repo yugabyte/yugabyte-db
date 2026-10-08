@@ -333,6 +333,10 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   }
 
   opts.extra_master_flags = extra_master_flags;
+  // Several tests remove a TServer via ExternalMiniCluster::RemoveTabletServer, which requires the
+  // TServer to have definitely lost its xCluster-guarded information lease; shorten the lease so
+  // that happens within the tests' deadlines.
+  opts.extra_master_flags.emplace_back("--xcluster_guarded_lease_duration_ms=3000");
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
@@ -2320,7 +2324,9 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
         }
         return leader.get() == ts_idx_to_bootstrap;
       },
-      timeout, "Waiting for ts_idx_to_bootstrap to become leader"));
+      // Leader transfer away from a blacklisted tserver can exceed 10s on a loaded host.
+      MonoDelta::FromSeconds(kTimeMultiplier * 60),
+      "Waiting for ts_idx_to_bootstrap to become leader"));
 
   // Check persistence of previously inserted data.
   auto new_conn = ASSERT_RESULT(ConnectToDB(database));
@@ -2469,6 +2475,167 @@ TEST_F(RemoteBootstrapITest, TestNewPeerStaysPreVoterIfUnableToCatchUp) {
   // Assert that the peer stay in PRE_VOTER state and isn't promoted to VOTER.
   ASSERT_OK(itest::WaitUntilCommittedConfigMemberTypeIs(
       1, leader_ts, tablet_id, timeout, PeerMemberType::PRE_VOTER));
+}
+
+TEST_F(RemoteBootstrapITest, TestPreVoterPromotionWaitsForCatchupAndSurvivesWalGc) {
+  const int num_tablet_servers = 3;
+  const auto timeout = MonoDelta::FromSeconds(kTimeMultiplier * 60);
+  const auto no_promotion_window = MonoDelta::FromSeconds(kTimeMultiplier * 5);
+
+  vector<string> ts_flags = GetTserverFlagsForFasterWalGc();
+  ts_flags.push_back("--enable_leader_failure_detection=false");
+  ts_flags.push_back("--enable_consensus_exponential_backoff=false");
+  ts_flags.push_back("--evict_failed_followers=false");
+  ts_flags.push_back("--TEST_inject_delay_leader_change_role_append_secs=5");
+  vector<string> master_flags = { "--enable_load_balancing=false" };
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, num_tablet_servers));
+
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
+  workload.set_payload_bytes(2048);
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.Start();
+  workload.WaitInserted(500);
+
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts0 = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+  ASSERT_OK(itest::WaitForNumTabletsOnTS(ts0, 1, timeout, &tablets));
+  const string tablet_id = tablets[0].tablet_status().tablet_id();
+
+  TServerDetails* leader_ts = nullptr;
+  ASSERT_OK(itest::FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+  int leader_idx = -1;
+  for (int i = 0; i < num_tablet_servers; ++i) {
+    if (cluster_->tablet_server(i)->uuid() == leader_ts->uuid()) {
+      leader_idx = i;
+      break;
+    }
+  }
+  ASSERT_NE(leader_idx, -1);
+
+  std::vector<TServerDetails*> followers;
+  ASSERT_OK(itest::FindTabletFollowers(
+      CreateTabletServerMapUnowned(ts_map_), tablet_id, timeout, &followers));
+  ASSERT_EQ(followers.size(), 2);
+  const auto lagging_voter_uuid = followers[0]->uuid();
+  int lagging_voter_idx = -1;
+  for (int i = 0; i < num_tablet_servers; ++i) {
+    if (cluster_->tablet_server(i)->uuid() == lagging_voter_uuid) {
+      lagging_voter_idx = i;
+      break;
+    }
+  }
+  ASSERT_NE(lagging_voter_idx, -1);
+
+  cluster_->tablet_server(lagging_voter_idx)->Shutdown();
+  ASSERT_OK(cluster_->WaitForTSToCrash(lagging_voter_idx, timeout));
+  workload.WaitInserted(3000);
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_OK(cluster_->LogGCOnSingleTServer(leader_idx, {tablet_id}, true /* rollover */));
+    SleepFor(500ms);
+  }
+
+  LogWaiter lagging_voter_missing_wal_log_waiter(
+      cluster_->tablet_server_by_uuid(leader_ts->uuid()),
+      Format("logs necessary to catch up peer $0 have been garbage collected", lagging_voter_uuid));
+  ASSERT_OK(cluster_->tablet_server(lagging_voter_idx)->Restart());
+  ASSERT_OK(lagging_voter_missing_wal_log_waiter.WaitFor(timeout));
+
+  consensus::ConsensusStatePB cstate;
+  ASSERT_OK(itest::GetConsensusState(
+      leader_ts, tablet_id, CONSENSUS_CONFIG_COMMITTED, timeout, &cstate));
+  std::unordered_set<std::string> config_uuids;
+  for (const auto& peer : cstate.config().peers()) {
+    config_uuids.insert(peer.permanent_uuid());
+  }
+
+  ASSERT_OK(cluster_->AddTabletServer(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {Format("--TEST_tablet_bootstrap_delay_ms=$0", 10 * kTimeMultiplier * 1000)}));
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+
+  int new_peer_idx = -1;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    const auto& ts_uuid = cluster_->tablet_server(i)->uuid();
+    if (config_uuids.find(ts_uuid) == config_uuids.end()) {
+      new_peer_idx = static_cast<int>(i);
+      break;
+    }
+  }
+  ASSERT_NE(new_peer_idx, -1);
+  const auto new_peer_uuid = cluster_->tablet_server(new_peer_idx)->uuid();
+  auto* new_peer_details = ts_map_[new_peer_uuid].get();
+
+  ASSERT_OK(itest::FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+  ASSERT_OK(itest::AddServer(
+      leader_ts, tablet_id, new_peer_details, PeerMemberType::PRE_VOTER, std::nullopt, timeout));
+
+  ASSERT_OK(itest::WaitUntilCommittedConfigMemberTypeIs(
+      1, leader_ts, tablet_id, timeout, PeerMemberType::PRE_VOTER));
+  ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(3, leader_ts, tablet_id, timeout));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      new_peer_idx, tablet_id, TABLET_DATA_READY, timeout));
+
+  LogWaiter promote_log_waiter(
+      cluster_->tablet_server_by_uuid(leader_ts->uuid()),
+      "Sending ChangeConfig request to promote peer");
+
+  const auto no_promotion_deadline = MonoTime::Now() + no_promotion_window;
+  while (MonoTime::Now() < no_promotion_deadline) {
+    consensus::ConsensusStatePB committed_config;
+    ASSERT_OK(itest::GetConsensusState(
+        leader_ts, tablet_id, CONSENSUS_CONFIG_COMMITTED, timeout, &committed_config));
+
+    size_t num_voters = 0;
+    size_t num_pre_voters = 0;
+    for (const auto& peer : committed_config.config().peers()) {
+      if (peer.member_type() == PeerMemberType::VOTER) {
+        ++num_voters;
+      } else if (peer.member_type() == PeerMemberType::PRE_VOTER) {
+        ++num_pre_voters;
+      }
+    }
+
+    ASSERT_EQ(num_voters, 3);
+    ASSERT_EQ(num_pre_voters, 1);
+    SleepFor(200ms);
+  }
+
+  ASSERT_OK(promote_log_waiter.WaitFor(timeout));
+
+  auto num_voters = [](const consensus::ConsensusStatePB& cstate) {
+    size_t count = 0;
+    for (const auto& peer : cstate.config().peers()) {
+      if (peer.member_type() == PeerMemberType::VOTER) {
+        ++count;
+      }
+    }
+    return count;
+  };
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        consensus::ConsensusStatePB active_config;
+        RETURN_NOT_OK(itest::GetConsensusState(
+            leader_ts, tablet_id, consensus::CONSENSUS_CONFIG_ACTIVE, timeout, &active_config));
+        consensus::ConsensusStatePB committed_config;
+        RETURN_NOT_OK(itest::GetConsensusState(
+            leader_ts, tablet_id, CONSENSUS_CONFIG_COMMITTED, timeout, &committed_config));
+
+        if (num_voters(active_config) != 4 || num_voters(committed_config) != 3) {
+          return false;
+        }
+
+        RETURN_NOT_OK(cluster_->LogGCOnSingleTServer(leader_idx, {tablet_id}, true /* rollover */));
+        return true;
+      },
+      timeout,
+      "Waiting for pending config window to trigger WAL GC"));
+
+  ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(4, leader_ts, tablet_id, timeout));
+
+  workload.StopAndJoin();
 }
 
 TEST_F(RemoteBootstrapITest, TestRBSAddNewPeerWithDiskspaceCheck) {

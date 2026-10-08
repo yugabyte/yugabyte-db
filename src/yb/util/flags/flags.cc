@@ -38,6 +38,7 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/trim.hpp>
 
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/strings/split.h"
@@ -733,6 +734,12 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   if (!FLAGS_tmp_dir.starts_with('/')) {
     LOG(FATAL) << "tmp_dir must be an absolute path, found value to be " << FLAGS_tmp_dir;
   }
+}
+
+void ParseCommandLineFlagsForTests(int* argc, char*** argv) {
+  // Set before ParseCommandLineFlags so that user provided override takes precedence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_promote_all_auto_flags) = ShouldTestPromoteAllAutoFlags();
+  ParseCommandLineFlags(argc, argv, /* remove_flags */ true);
 }
 
 bool RefreshFlagsFile(const std::string& filename) {

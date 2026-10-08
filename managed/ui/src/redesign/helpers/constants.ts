@@ -142,6 +142,10 @@ export const UNIVERSE_ACTION_TO_FROZEN_TASK_MAP = {
   ENCRYPTION_IN_TRANSIT: 'TlsToggle_Universe',
   INSTALL_NODE_AGENT: 'Install_NodeAgent',
   REPROVISION_NODES_WITH_YNP: 'ProvisionUniverseNodes_Universe',
+  UPDATE_NODE_AGENT: 'Update_NodeAgent',
+  // Enable/Disable Advanced Observability re-register the universe, so they use the register id.
+  REGISTER_UNIVERSE_TO_PERF_ADVISOR: 'RegisterWithPACollector_Universe',
+  UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR: 'UnregisterFromPACollector_Universe',
 
   // xCluster replication Tab - refer to the button where you can disable (check api is called from)
   CONFIGURE_REPLICATION: 'Create_XClusterConfig',
@@ -197,6 +201,9 @@ export const UNIVERSE_TASKS = {
   ENCRYPTION_IN_TRANSIT: 'ENCRYPTION_IN_TRANSIT',
   INSTALL_NODE_AGENT: 'INSTALL_NODE_AGENT',
   REPROVISION_NODES_WITH_YNP: 'REPROVISION_NODES_WITH_YNP',
+  UPDATE_NODE_AGENT: 'UPDATE_NODE_AGENT',
+  REGISTER_UNIVERSE_TO_PERF_ADVISOR: 'REGISTER_UNIVERSE_TO_PERF_ADVISOR',
+  UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR: 'UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR',
 
   // xCluster replication actions
   CONFIGURE_REPLICATION: 'CONFIGURE_REPLICATION',
@@ -227,6 +234,15 @@ export const UNIVERSE_TASKS = {
   // Backup actions
   CREATE_BACKUP: 'CREATE_BACKUP'
 };
+
+// Edit-style rollback tasks. When one fails it holds the universe lock, so it is the universe's
+// `updatingTask`. Mirrors the backend's TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.
+export const EDIT_ROLLBACK_TASK_TYPES = [
+  'RollbackEditUniverse',
+  'RollbackEditKubernetesUniverse',
+  'RollbackAddNodeToUniverse',
+  'RollbackResizeNode'
+];
 
 export const MIN_PG_SUPPORTED_PREVIEW_VERSION = '2.23.0.0-b416';
 export const MIN_PG_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';

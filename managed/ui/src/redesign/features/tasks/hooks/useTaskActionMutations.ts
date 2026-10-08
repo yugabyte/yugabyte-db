@@ -11,18 +11,17 @@ import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 
 import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
-import { api } from '@app/redesign/helpers/api';
 import {
   useRefreshCustomerTasks,
   useRefreshUniverseTasksCache
 } from '@app/redesign/helpers/cacheUtils';
-import { YBPTask } from '@app/redesign/helpers/dtos';
 import { handleServerError } from '@app/utils/errorHandlingUtils';
-import { rollbackTask as rollbackCustomerTask } from '@app/v2/api/task/task';
+import {
+  rollbackTask as rollbackCustomerTask,
+  retryTask as retryCustomerTask
+} from '@app/v2/api/task/task';
 import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import type { YBATaskRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-
-import { Task } from '../dtos';
 
 interface TaskActionToastMessages {
   /** Toast shown when the retried task completes successfully. */
@@ -58,7 +57,7 @@ interface TaskActionToastMessages {
  * `mutate(undefined, { onSettled })`; they run after the shared handlers.
  */
 export const useTaskActionMutations = (
-  task: Task,
+  taskUuid: string,
   universeUuid: string | undefined,
   messages?: TaskActionToastMessages
 ) => {
@@ -96,14 +95,14 @@ export const useTaskActionMutations = (
     );
   };
 
-  const retryTaskMutation = useMutation<YBPTask, Error | AxiosError>(
-    () => api.retryTask(task.id),
+  const retryTaskMutation = useMutation<YBATaskRespResponse, Error | AxiosError>(
+    () => retryCustomerTask(taskUuid, {}),
     {
       onSuccess: (response) => {
         refreshTaskRelatedContext();
-        if (response?.taskUUID) {
+        if (response?.task_uuid) {
           pollSubmittedTask(
-            response.taskUUID,
+            response.task_uuid,
             messages?.retryCompleted ?? t('messages.taskRetryCompleted')
           );
         }
@@ -117,7 +116,7 @@ export const useTaskActionMutations = (
   );
 
   const rollbackTaskMutation = useMutation<YBATaskRespResponse, Error | AxiosError>(
-    () => rollbackCustomerTask(task.id, {}),
+    () => rollbackCustomerTask(taskUuid, {}),
     {
       onSuccess: (response) => {
         refreshTaskRelatedContext();

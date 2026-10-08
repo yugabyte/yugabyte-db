@@ -15,6 +15,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.time.Duration;
@@ -34,11 +36,16 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -73,12 +80,17 @@ import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsResponse;
 import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeSubnetsResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesModificationsRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesModificationsResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesResponse;
 import software.amazon.awssdk.services.ec2.model.DescribeVpcsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeVpcsResponse;
 import software.amazon.awssdk.services.ec2.model.Ec2Exception;
 import software.amazon.awssdk.services.ec2.model.Filter;
 import software.amazon.awssdk.services.ec2.model.Image;
 import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.ec2.model.InstanceBlockDeviceMapping;
 import software.amazon.awssdk.services.ec2.model.InstanceTypeOffering;
 import software.amazon.awssdk.services.ec2.model.LocationType;
 import software.amazon.awssdk.services.ec2.model.Reservation;
@@ -86,28 +98,45 @@ import software.amazon.awssdk.services.ec2.model.ResourceType;
 import software.amazon.awssdk.services.ec2.model.SecurityGroup;
 import software.amazon.awssdk.services.ec2.model.Subnet;
 import software.amazon.awssdk.services.ec2.model.TagSpecification;
+import software.amazon.awssdk.services.ec2.model.Volume;
+import software.amazon.awssdk.services.ec2.model.VolumeModification;
 import software.amazon.awssdk.services.ec2.model.Vpc;
 import software.amazon.awssdk.services.elasticloadbalancingv2.ElasticLoadBalancingV2Client;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.Action;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.ActionTypeEnum;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.AddTagsRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.CreateListenerRequest;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.CreateLoadBalancerRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.CreateTargetGroupRequest;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.DeleteLoadBalancerRequest;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.DeleteTargetGroupRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.DeregisterTargetsRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeListenersRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeLoadBalancersRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeTargetGroupsRequest;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeTargetGroupsResponse;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeTargetHealthRequest;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.DuplicateLoadBalancerNameException;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.DuplicateTargetGroupNameException;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.ForwardActionConfig;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.InvalidConfigurationRequestException;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.IpAddressType;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.Listener;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.LoadBalancer;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.LoadBalancerAttribute;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.LoadBalancerNotFoundException;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.LoadBalancerSchemeEnum;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.LoadBalancerTypeEnum;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.Matcher;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.ModifyListenerRequest;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.ModifyLoadBalancerAttributesRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.ModifyTargetGroupAttributesRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.ModifyTargetGroupAttributesResponse;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.ModifyTargetGroupRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.ModifyTargetGroupResponse;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.RegisterTargetsRequest;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.ResourceInUseException;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.SetSubnetsRequest;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.TargetDescription;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.TargetGroup;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.TargetGroupAttribute;
@@ -141,6 +170,16 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
+
+  private static final long TARGET_GROUP_DELETE_RETRY_DELAY_SECS = 2;
+  private static final long TARGET_GROUP_DELETE_TIMEOUT_SECS = 120;
+
+  private static final String MISSING_ELB_SERVICE_LINKED_ROLE_MSG =
+      "The AWS account has no Elastic Load Balancing service-linked role"
+          + " (AWSServiceRoleForElasticLoadBalancing), and YBA does not have the"
+          + " iam:CreateServiceLinkedRole permission to create it. Create the role once with 'aws"
+          + " iam create-service-linked-role --aws-service-name"
+          + " elasticloadbalancing.amazonaws.com', then retry.";
 
   public ElasticLoadBalancingV2Client getELBClient(Provider provider, String regionCode) {
     AwsCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
@@ -496,7 +535,7 @@ public class AWSCloudImpl implements CloudAPI {
         Listener listener = getListenerByPort(lbClient, lbName, port);
         // If no listener exists for a port, create target group and listener
         // else check target group settings and add/remove nodes from target group
-        String targetGroupName = "tg-" + UUID.randomUUID().toString().substring(0, 29);
+        String targetGroupName = getTargetGroupName(lbName, port);
         String targetGroupArn = null;
         if (listener == null) {
           targetGroupArn =
@@ -558,7 +597,7 @@ public class AWSCloudImpl implements CloudAPI {
     try {
       // Check target group settings
       TargetGroup targetGroup = getTargetGroup(lbClient, targetGroupArn);
-      boolean validProtocol = targetGroup.protocol().equals(protocol);
+      boolean validProtocol = targetGroup.protocolAsString().equals(protocol);
       boolean validPort = targetGroup.port() == port;
       // If protocol or port incorrect then create new target group and update
       // listener
@@ -583,6 +622,8 @@ public class AWSCloudImpl implements CloudAPI {
     }
   }
 
+  // Keeps the health check as createTargetGroup sets it: the configured protocol on the
+  // forwarded port, with the path of that port for HTTP.
   private void checkTargetGroupHealthCheckConfiguration(
       ElasticLoadBalancingV2Client lbClient,
       int port,
@@ -592,32 +633,26 @@ public class AWSCloudImpl implements CloudAPI {
     ModifyTargetGroupRequest.Builder modifyTargetGroupRequestBuilder =
         ModifyTargetGroupRequest.builder().targetGroupArn(targetGroup.targetGroupArn());
     Protocol healthCheckProtocol = healthCheckConfiguration.getHealthCheckProtocol();
-    List<Integer> healthCheckPorts = healthCheckConfiguration.getHealthCheckPorts();
-    // If there is no health probe corrosponding to the port that is being forwareded, we
-    // select the 0th indexed port as the default health check for that forwarding rule
-    // This is because this case would only arise in case of custom health checks
-    // TODO: Find a way to link the correct custom health check to the correct forwarding rule
-    Integer healthCheckPort = healthCheckPorts.isEmpty() ? port : healthCheckPorts.get(0);
-    String healthCheckPath =
-        healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort);
-    if (!targetGroup.healthCheckProtocol().equals(healthCheckProtocol.name())) {
+    if (!targetGroup.healthCheckProtocolAsString().equals(healthCheckProtocol.name())) {
       modifyTargetGroupRequestBuilder =
           modifyTargetGroupRequestBuilder.healthCheckProtocol(healthCheckProtocol.name());
       healthCheckModified = true;
     }
-    if (!targetGroup.healthCheckPort().equals(Integer.toString(healthCheckPort))) {
+    if (!targetGroup.healthCheckPort().equals(Integer.toString(port))) {
       modifyTargetGroupRequestBuilder =
-          modifyTargetGroupRequestBuilder.healthCheckPort(Integer.toString(healthCheckPort));
+          modifyTargetGroupRequestBuilder.healthCheckPort(Integer.toString(port));
       healthCheckModified = true;
     }
-    if (healthCheckProtocol == Protocol.HTTP
-        && (targetGroup.healthCheckPath() == null
-            || !targetGroup.healthCheckPath().equals(healthCheckPath))) {
-      modifyTargetGroupRequestBuilder =
-          modifyTargetGroupRequestBuilder
-              .healthCheckPath(healthCheckPath)
-              .matcher(Matcher.builder().httpCode("200").build());
-      healthCheckModified = true;
+    if (healthCheckProtocol == Protocol.HTTP) {
+      String healthCheckPath = healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(port);
+      if (targetGroup.healthCheckPath() == null
+          || !targetGroup.healthCheckPath().equals(healthCheckPath)) {
+        modifyTargetGroupRequestBuilder =
+            modifyTargetGroupRequestBuilder
+                .healthCheckPath(healthCheckPath)
+                .matcher(Matcher.builder().httpCode("200").build());
+        healthCheckModified = true;
+      }
     }
 
     if (healthCheckModified) {
@@ -645,6 +680,11 @@ public class AWSCloudImpl implements CloudAPI {
   /**
    * Create a target group for the load balancer with the provided list of nodes.
    *
+   * <p>Target group names are deterministic, so the create can return a target group that an
+   * earlier run left behind, with its targets: AWS returns the existing group when the settings
+   * match and reports a duplicate name when they differ. checkNodeGroup then makes the targets and
+   * the health check match the request.
+   *
    * @param lbClient the AWS ELB client for API calls.
    * @param lbName the load balancer name.
    * @param targetGroupName the target group name.
@@ -662,9 +702,16 @@ public class AWSCloudImpl implements CloudAPI {
       List<String> instanceIDs,
       NLBHealthCheckConfiguration healthCheckConfiguration) {
     String vpc = getLoadBalancerByName(lbClient, lbName).vpcId();
-    String targetGroupArn =
-        createTargetGroup(lbClient, targetGroupName, protocol, port, vpc, healthCheckConfiguration);
-    registerTargets(lbClient, targetGroupArn, instanceIDs, port);
+    String targetGroupArn;
+    try {
+      targetGroupArn =
+          createTargetGroup(
+              lbClient, targetGroupName, protocol, port, vpc, healthCheckConfiguration);
+    } catch (DuplicateTargetGroupNameException e) {
+      LOG.info("Target group {} exists with other settings, reusing it", targetGroupName);
+      targetGroupArn = getTargetGroupByName(lbClient, targetGroupName).targetGroupArn();
+    }
+    checkNodeGroup(lbClient, targetGroupArn, protocol, port, instanceIDs, healthCheckConfiguration);
     return targetGroupArn;
   }
 
@@ -710,13 +757,40 @@ public class AWSCloudImpl implements CloudAPI {
     return lbClient.describeTargetGroups(request).targetGroups().get(0);
   }
 
+  private static TargetGroup getTargetGroupByName(
+      ElasticLoadBalancingV2Client lbClient, String targetGroupName) {
+    DescribeTargetGroupsRequest request =
+        DescribeTargetGroupsRequest.builder().names(targetGroupName).build();
+    return lbClient.describeTargetGroups(request).targetGroups().get(0);
+  }
+
+  /**
+   * Returns the name of the target group of a load balancer port: tg-[22 hex characters]-[port].
+   * The name holds a hash of the load balancer name, because both names have at most 32 characters.
+   * The prefix lets deleteManagedLoadBalancer find the target groups of a load balancer that no
+   * longer exists.
+   */
+  @VisibleForTesting
+  static String getTargetGroupName(String lbName, int port) {
+    return getTargetGroupNamePrefix(lbName) + port;
+  }
+
+  private static String getTargetGroupNamePrefix(String lbName) {
+    return "tg-" + DigestUtils.sha256Hex(lbName).substring(0, 22) + "-";
+  }
+
   @VisibleForTesting
   String getListenerTargetGroup(Listener listener) {
-    List<Action> actions = listener.defaultActions();
-    for (Action action : actions) {
-      if (action.type().equals(ActionTypeEnum.FORWARD.toString())) {
-
+    for (Action action : listener.defaultActions()) {
+      if (action.type() != ActionTypeEnum.FORWARD) {
+        continue;
+      }
+      if (action.targetGroupArn() != null) {
         return action.targetGroupArn();
+      }
+      // createListener and setListenerTargetGroup forward through a forward config.
+      if (action.forwardConfig() != null && !action.forwardConfig().targetGroups().isEmpty()) {
+        return action.forwardConfig().targetGroups().get(0).targetGroupArn();
       }
     }
     return null;
@@ -865,6 +939,284 @@ public class AWSCloudImpl implements CloudAPI {
       if (tag.key().equals("node-uuid")) uuid = tag.value();
     }
     return new NodeID(name, uuid);
+  }
+
+  // Managed load balancer methods
+
+  @Override
+  public boolean supportsManagedLoadBalancer() {
+    return true;
+  }
+
+  /**
+   * Creates the internal NLB with the subnet of each zone it serves, or reuses the NLB with the
+   * same name. Every run adds the subnets of zones that the NLB does not cover. It never removes a
+   * subnet, because that drops live connections in the zone.
+   *
+   * @return the DNS name that AWS gives the NLB.
+   */
+  @Override
+  public String ensureManagedLoadBalancer(
+      Provider provider,
+      String regionCode,
+      String name,
+      List<AvailabilityZone> zones,
+      Map<String, String> tags) {
+    Map<String, String> subnetByZone = getZoneSubnets(zones);
+    if (subnetByZone.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "No zone of region " + regionCode + " has a subnet for load balancer " + name);
+    }
+    try (ElasticLoadBalancingV2Client lbClient = getELBClient(provider, regionCode)) {
+      LoadBalancer lb = findLoadBalancer(lbClient, name).orElse(null);
+      if (lb == null) {
+        lb = createNetworkLoadBalancer(lbClient, name, regionCode, tags, subnetByZone.values());
+      } else {
+        addMissingSubnets(lbClient, lb, subnetByZone);
+        addTags(lbClient, lb, tags);
+      }
+      // Every run sets the attribute, because a run can fail between the create and this call.
+      enableCrossZoneLoadBalancing(lbClient, lb);
+      return lb.dnsName();
+    }
+  }
+
+  /**
+   * Deletes the NLB, then its target groups: the ones that its listeners forward to, and the ones
+   * named for it. The names find the target groups of a run that deleted the NLB and then failed,
+   * and a target group that manageNodeGroup created but never attached to a listener.
+   */
+  @Override
+  public void deleteManagedLoadBalancer(Provider provider, String regionCode, String name) {
+    try (ElasticLoadBalancingV2Client lbClient = getELBClient(provider, regionCode)) {
+      deleteNlbAndTargetGroups(lbClient, regionCode, name);
+    }
+  }
+
+  private static void deleteNlbAndTargetGroups(
+      ElasticLoadBalancingV2Client lbClient, String regionCode, String name) {
+    Set<String> targetGroupArns = new LinkedHashSet<>();
+    Optional<LoadBalancer> lb = findLoadBalancer(lbClient, name);
+    if (lb.isEmpty()) {
+      LOG.info("Load balancer {} does not exist in {}", name, regionCode);
+    } else {
+      String lbArn = lb.get().loadBalancerArn();
+      targetGroupArns.addAll(getListenerTargetGroupArns(lbClient, lbArn));
+      try {
+        lbClient.deleteLoadBalancer(
+            DeleteLoadBalancerRequest.builder().loadBalancerArn(lbArn).build());
+        LOG.info("Deleted load balancer {} in {}", name, regionCode);
+      } catch (LoadBalancerNotFoundException e) {
+        LOG.info("Load balancer {} was already deleted", name);
+      }
+    }
+    targetGroupArns.addAll(findTargetGroupArnsByPrefix(lbClient, getTargetGroupNamePrefix(name)));
+    for (String targetGroupArn : targetGroupArns) {
+      // A target group can stay in use for a short time after its load balancer is deleted.
+      RetryTaskUntilCondition<Boolean> retry =
+          new RetryTaskUntilCondition<>(
+              () -> tryDeleteTargetGroup(lbClient, targetGroupArn), deleted -> deleted);
+      if (!retry.retryUntilCond(
+          TARGET_GROUP_DELETE_RETRY_DELAY_SECS, TARGET_GROUP_DELETE_TIMEOUT_SECS)) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Target group " + targetGroupArn + " is still in use after load balancer deletion");
+      }
+    }
+    if (!targetGroupArns.isEmpty()) {
+      LOG.info("Deleted the target groups {} of load balancer {}", targetGroupArns, name);
+    }
+  }
+
+  private static Set<String> getListenerTargetGroupArns(
+      ElasticLoadBalancingV2Client lbClient, String lbArn) {
+    Set<String> targetGroupArns = new LinkedHashSet<>();
+    for (Listener listener :
+        lbClient
+            .describeListeners(DescribeListenersRequest.builder().loadBalancerArn(lbArn).build())
+            .listeners()) {
+      for (Action action : listener.defaultActions()) {
+        if (action.targetGroupArn() != null) {
+          targetGroupArns.add(action.targetGroupArn());
+        }
+        if (action.forwardConfig() != null) {
+          action.forwardConfig().targetGroups().stream()
+              .map(TargetGroupTuple::targetGroupArn)
+              .forEach(targetGroupArns::add);
+        }
+      }
+    }
+    return targetGroupArns;
+  }
+
+  // DescribeTargetGroups filters by name or ARN, not by prefix, so this reads every target group
+  // in the region.
+  private static List<String> findTargetGroupArnsByPrefix(
+      ElasticLoadBalancingV2Client lbClient, String prefix) {
+    List<String> targetGroupArns = new ArrayList<>();
+    String marker = null;
+    do {
+      DescribeTargetGroupsResponse response =
+          lbClient.describeTargetGroups(
+              DescribeTargetGroupsRequest.builder().marker(marker).pageSize(400).build());
+      for (TargetGroup targetGroup : response.targetGroups()) {
+        if (targetGroup.targetGroupName().startsWith(prefix)) {
+          targetGroupArns.add(targetGroup.targetGroupArn());
+        }
+      }
+      marker = response.nextMarker();
+    } while (marker != null);
+    return targetGroupArns;
+  }
+
+  private static Optional<LoadBalancer> findLoadBalancer(
+      ElasticLoadBalancingV2Client lbClient, String name) {
+    try {
+      return lbClient
+          .describeLoadBalancers(DescribeLoadBalancersRequest.builder().names(name).build())
+          .loadBalancers()
+          .stream()
+          .findFirst();
+    } catch (LoadBalancerNotFoundException e) {
+      return Optional.empty();
+    }
+  }
+
+  // Provider AZ code (for example us-west-2a) -> subnet ID, for the zones that have one.
+  private static Map<String, String> getZoneSubnets(List<AvailabilityZone> zones) {
+    Map<String, String> subnetByZone = new TreeMap<>();
+    for (AvailabilityZone az : zones) {
+      if (StringUtils.isNotBlank(az.getSubnet())) {
+        subnetByZone.put(az.getCode(), az.getSubnet());
+      }
+    }
+    return subnetByZone;
+  }
+
+  /**
+   * Creates the NLB. When the name is taken, returns the NLB that appeared after the describe call,
+   * for example from a run whose create call timed out after AWS accepted it.
+   */
+  private static LoadBalancer createNetworkLoadBalancer(
+      ElasticLoadBalancingV2Client lbClient,
+      String name,
+      String regionCode,
+      Map<String, String> tags,
+      Collection<String> subnets) {
+    CreateLoadBalancerRequest request =
+        CreateLoadBalancerRequest.builder()
+            .name(name)
+            .type(LoadBalancerTypeEnum.NETWORK)
+            .scheme(LoadBalancerSchemeEnum.INTERNAL)
+            .ipAddressType(IpAddressType.IPV4)
+            .subnets(subnets)
+            .tags(toElbTags(tags))
+            .build();
+    try {
+      LoadBalancer lb = lbClient.createLoadBalancer(request).loadBalancers().get(0);
+      LOG.info("Created load balancer {} in {}", name, regionCode);
+      return lb;
+    } catch (DuplicateLoadBalancerNameException e) {
+      LOG.info("Load balancer {} in {} was created after the describe call", name, regionCode);
+      return findLoadBalancer(lbClient, name).orElseThrow(() -> e);
+    } catch (AwsServiceException e) {
+      if (isMissingServiceLinkedRole(e)) {
+        throw new PlatformServiceException(BAD_REQUEST, MISSING_ELB_SERVICE_LINKED_ROLE_MSG);
+      }
+      throw e;
+    }
+  }
+
+  // Some AZs of the NLB may have no nodes.
+  private static void enableCrossZoneLoadBalancing(
+      ElasticLoadBalancingV2Client lbClient, LoadBalancer lb) {
+    lbClient.modifyLoadBalancerAttributes(
+        ModifyLoadBalancerAttributesRequest.builder()
+            .loadBalancerArn(lb.loadBalancerArn())
+            .attributes(
+                LoadBalancerAttribute.builder()
+                    .key("load_balancing.cross_zone.enabled")
+                    .value("true")
+                    .build())
+            .build());
+  }
+
+  // Adds new tags and changes the values of existing ones. It never removes a tag, and a tag error
+  // is not worth failing the task.
+  private static void addTags(
+      ElasticLoadBalancingV2Client lbClient, LoadBalancer lb, Map<String, String> tags) {
+    try {
+      lbClient.addTags(
+          AddTagsRequest.builder()
+              .resourceArns(lb.loadBalancerArn())
+              .tags(toElbTags(tags))
+              .build());
+    } catch (AwsServiceException | SdkClientException e) {
+      LOG.warn(
+          "Could not update the tags of load balancer {}: {}",
+          lb.loadBalancerName(),
+          e.getMessage());
+    }
+  }
+
+  // AWS creates the ELB service-linked role on the first load balancer in an account. That call
+  // needs iam:CreateServiceLinkedRole, which the documented YBA policy does not grant.
+  private static boolean isMissingServiceLinkedRole(AwsServiceException e) {
+    String errorCode = e.awsErrorDetails() == null ? null : e.awsErrorDetails().errorCode();
+    return StringUtils.startsWith(errorCode, "AccessDenied")
+        && StringUtils.contains(e.getMessage(), "iam:CreateServiceLinkedRole");
+  }
+
+  private static void addMissingSubnets(
+      ElasticLoadBalancingV2Client lbClient, LoadBalancer lb, Map<String, String> subnetByZone) {
+    Set<String> lbZones = new HashSet<>();
+    List<String> subnets = new ArrayList<>();
+    lb.availabilityZones()
+        .forEach(
+            zone -> {
+              lbZones.add(zone.zoneName());
+              subnets.add(zone.subnetId());
+            });
+    List<String> newSubnets =
+        subnetByZone.entrySet().stream()
+            // An NLB takes one subnet for each AZ.
+            .filter(e -> !lbZones.contains(e.getKey()) && !subnets.contains(e.getValue()))
+            .map(Map.Entry::getValue)
+            .collect(Collectors.toList());
+    if (newSubnets.isEmpty()) {
+      return;
+    }
+    subnets.addAll(newSubnets);
+    lbClient.setSubnets(
+        SetSubnetsRequest.builder().loadBalancerArn(lb.loadBalancerArn()).subnets(subnets).build());
+    LOG.info("Added subnets {} to load balancer {}", newSubnets, lb.loadBalancerName());
+  }
+
+  private static List<software.amazon.awssdk.services.elasticloadbalancingv2.model.Tag> toElbTags(
+      Map<String, String> tags) {
+    return tags.entrySet().stream()
+        .map(
+            e ->
+                software.amazon.awssdk.services.elasticloadbalancingv2.model.Tag.builder()
+                    .key(e.getKey())
+                    .value(e.getValue())
+                    .build())
+        .collect(Collectors.toList());
+  }
+
+  private static boolean tryDeleteTargetGroup(
+      ElasticLoadBalancingV2Client lbClient, String targetGroupArn) {
+    try {
+      lbClient.deleteTargetGroup(
+          DeleteTargetGroupRequest.builder().targetGroupArn(targetGroupArn).build());
+    } catch (TargetGroupNotFoundException e) {
+      LOG.info("Target group {} was already deleted", targetGroupArn);
+    } catch (ResourceInUseException e) {
+      LOG.info("Target group {} is still in use: {}", targetGroupArn, e.getMessage());
+      return false;
+    }
+    return true;
   }
 
   public GetCallerIdentityResponse getStsClientOrBadRequest(Provider provider, Region region) {
@@ -1366,5 +1718,150 @@ public class AWSCloudImpl implements CloudAPI {
       throw new PlatformServiceException(
           BAD_REQUEST, "Capacity reservation deletion failed: " + e.getMessage());
     }
+  }
+
+  /**
+   * Current instance type plus IOPS/throughput/size of attached data EBS volumes (root excluded)
+   * and the latest {@code DescribeVolumesModifications} startTime. No modification records means a
+   * first modify: {@code lastModificationStart} is {@link Instant#EPOCH} so the cooldown has
+   * already expired.
+   */
+  @Override
+  public Optional<CloudAPI.NodeDiskSpec> describeNodeDataDiskSpec(
+      Provider provider, NodeDetails node) {
+    if (node == null || node.cloudInfo == null || StringUtils.isBlank(node.cloudInfo.region)) {
+      throw new PlatformServiceException(BAD_REQUEST, "node is missing an AWS region");
+    }
+    Ec2Client ec2Client = getEC2Client(provider, node.cloudInfo.region);
+    String instanceId = resolveInstanceId(ec2Client, node);
+    Instance instance = describeInstance(ec2Client, instanceId);
+    List<String> volumeIds = dataVolumeIds(instance);
+    if (volumeIds.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "node " + node.nodeName + " has no data EBS volumes");
+    }
+    DescribeVolumesResponse volumes =
+        ec2Client.describeVolumes(DescribeVolumesRequest.builder().volumeIds(volumeIds).build());
+    Set<String> missing = new HashSet<>(volumeIds);
+    if (volumes.volumes() != null) {
+      for (Volume volume : volumes.volumes()) {
+        missing.remove(volume.volumeId());
+      }
+    }
+    if (!missing.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "DescribeVolumes did not return every data volume for "
+              + node.nodeName
+              + ": missing "
+              + missing);
+    }
+    List<CloudAPI.NodeDiskSpec> perVolume = new ArrayList<>(volumes.volumes().size());
+    for (Volume volume : volumes.volumes()) {
+      perVolume.add(
+          new CloudAPI.NodeDiskSpec(
+              null,
+              volume.iops(),
+              volume.throughput(),
+              volume.size(),
+              latestModificationStart(ec2Client, volume.volumeId())));
+    }
+    String instanceType =
+        instance.instanceTypeAsString() != null
+            ? instance.instanceTypeAsString()
+            : (instance.instanceType() == null ? null : instance.instanceType().toString());
+    return Optional.of(CloudAPI.NodeDiskSpec.mergeDataDisks(instanceType, perVolume));
+  }
+
+  private String resolveInstanceId(Ec2Client ec2Client, NodeDetails node) {
+    if (StringUtils.isNotBlank(node.cloudInfo.id)) {
+      return node.cloudInfo.id;
+    }
+    String uuid = node.nodeUuid == null ? null : node.nodeUuid.toString();
+    List<String> ids =
+        getInstanceIDs(ec2Client, Collections.singletonList(new NodeID(node.nodeName, uuid)));
+    return ids.get(0);
+  }
+
+  private static Instance describeInstance(Ec2Client ec2Client, String instanceId) {
+    DescribeInstancesRequest request =
+        DescribeInstancesRequest.builder().instanceIds(instanceId).build();
+    List<Reservation> reservations = ec2Client.describeInstances(request).reservations();
+    if (reservations != null) {
+      for (Reservation reservation : reservations) {
+        if (CollectionUtils.isNotEmpty(reservation.instances())) {
+          return reservation.instances().get(0);
+        }
+      }
+    }
+    throw new PlatformServiceException(
+        BAD_REQUEST, "AWS instance " + instanceId + " was not found");
+  }
+
+  private static List<String> dataVolumeIds(Instance instance) {
+    String rootDeviceName = instance.rootDeviceName();
+    if (StringUtils.isBlank(rootDeviceName)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "AWS instance " + instance.instanceId() + " has no root device name");
+    }
+    List<String> volumeIds = new ArrayList<>();
+    if (instance.blockDeviceMappings() == null) {
+      return volumeIds;
+    }
+    for (InstanceBlockDeviceMapping mapping : instance.blockDeviceMappings()) {
+      if (rootDeviceName.equals(mapping.deviceName())) {
+        continue;
+      }
+      if (mapping.ebs() == null || StringUtils.isBlank(mapping.ebs().volumeId())) {
+        continue;
+      }
+      volumeIds.add(mapping.ebs().volumeId());
+    }
+    return volumeIds;
+  }
+
+  /**
+   * Latest modification start for one volume. {@code InvalidVolumeModification.NotFound} (or no
+   * records) means the volume has never been modified: return {@link Instant#EPOCH} so the cooldown
+   * is already expired. A modification record without {@code startTime} is treated as now (fail
+   * closed).
+   */
+  private static Instant latestModificationStart(Ec2Client ec2Client, String volumeId) {
+    Instant latest = Instant.EPOCH;
+    String token = null;
+    try {
+      do {
+        DescribeVolumesModificationsRequest.Builder request =
+            DescribeVolumesModificationsRequest.builder().volumeIds(volumeId);
+        if (StringUtils.isNotBlank(token)) {
+          request.nextToken(token);
+        }
+        DescribeVolumesModificationsResponse response =
+            ec2Client.describeVolumesModifications(request.build());
+        if (response.volumesModifications() != null) {
+          for (VolumeModification modification : response.volumesModifications()) {
+            Instant start =
+                modification.startTime() == null ? Instant.now() : modification.startTime();
+            if (start.isAfter(latest)) {
+              latest = start;
+            }
+          }
+        }
+        token = response.nextToken();
+      } while (StringUtils.isNotBlank(token));
+    } catch (Ec2Exception e) {
+      if (isVolumeModificationNotFound(e)) {
+        return latest;
+      }
+      throw e;
+    }
+    return latest;
+  }
+
+  private static boolean isVolumeModificationNotFound(Ec2Exception e) {
+    if (e.awsErrorDetails() == null || e.awsErrorDetails().errorCode() == null) {
+      return false;
+    }
+    return "InvalidVolumeModification.NotFound".equals(e.awsErrorDetails().errorCode());
   }
 }

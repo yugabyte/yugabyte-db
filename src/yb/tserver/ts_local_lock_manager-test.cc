@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 
 #include "yb/docdb/docdb-test.h"
@@ -39,9 +41,6 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_assert_olm_empty_locks_map);
 DECLARE_bool(TEST_olm_skip_scheduling_waiter_resumption);
 DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
@@ -86,8 +85,7 @@ constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
 class TSLocalLockManagerTest : public TabletServerTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_assert_olm_empty_locks_map) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_skip_sending_wait_for_probes) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = true;
@@ -838,6 +836,62 @@ TEST_F(TSLocalLockManagerTest, TestWaiterResumptionStateLogic) {
   ASSERT_OK(status_futures[1].get());
   ASSERT_OK(ReleaseLocksForOwner(lock_owners[1], CoarseTimePoint::max()));
   ASSERT_OK(ReleaseLocksForOwner(lock_owners[2], CoarseTimePoint::max()));
+}
+
+TEST_F(TSLocalLockManagerTest, TestTimedOutResumeSignalsNextWaiter) {
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE));
+
+  const auto head_deadline = CoarseMonoClock::Now() + 8s * kTimeMultiplier;
+  std::atomic<bool> head_gave_up{false};
+  std::atomic<bool> next_resumed_before_head_gave_up{false};
+  SyncPoint::GetInstance()->SetCallBack("WaiterEntry::Resume", [&](void* arg) {
+    const auto txn_id = *static_cast<TransactionId*>(arg);
+    if (txn_id == kTxn2.txn_id) {
+      while (CoarseMonoClock::Now() <= head_deadline) {
+        SleepFor(10ms);
+      }
+      head_gave_up.store(true);
+      return;
+    }
+    if (txn_id == kTxn3.txn_id && !head_gave_up.load()) {
+      next_resumed_before_head_gave_up.store(true);
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto disable_sync_point = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  auto head = std::async(std::launch::async, [&] {
+    return LockRelation(
+        kTxn2, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE, head_deadline);
+  });
+  ASSERT_OK(WaitFor([&]() {
+    return WaitingLocksSize() >= 1;
+  }, 5s * kTimeMultiplier, "Waiting for the head waiter to be queued"));
+  auto next = std::async(std::launch::async, [&]() {
+    return LockRelation(
+        kTxn3, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE,
+        CoarseMonoClock::Now() + 60s);
+  });
+  ASSERT_OK(WaitFor([&] {
+    return WaitingLocksSize() >= 2;
+  }, 5s * kTimeMultiplier, "Both requests should be queued behind the holder"));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  auto head_status = head.get();
+  ASSERT_NOK(head_status);
+  ASSERT_STR_CONTAINS(head_status.ToString(), "Failed to acquire object locks within deadline");
+  ASSERT_FALSE(next_resumed_before_head_gave_up.load())
+      << "Release resumed the next waiter itself; the head deadline had already expired";
+
+  ASSERT_OK(WaitFor([&] {
+    return next.wait_for(0s) == std::future_status::ready;
+  }, 5s * kTimeMultiplier, "Next waiter wasn't resumed after head waiter missed its deadline"));
+  ASSERT_OK(next.get());
+  ASSERT_OK(ReleaseLocksForOwner(kTxn3));
 }
 #endif
 

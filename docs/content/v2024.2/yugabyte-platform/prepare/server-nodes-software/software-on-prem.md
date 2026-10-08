@@ -25,6 +25,10 @@ When deploying universes using an on-premises provider, YugabyteDB Anywhere reli
 
 - YugabyteDB Anywhere is [installed and running](../../../install-yugabyte-platform/).
 
+### Create data directories or mount points
+
+Configure data directories or mount points for the node (typically `/data`). If you have multiple data drives, these might be for example `/mnt/d0`, `/mnt/d1`, and so on. The data drives must be accessible to the `yugabyte` user that will be created by the script.
+
 ## How to prepare the nodes for use in a database cluster
 
 After you have created the VMs with the operating system and additional software, you must further prepare the VMs as follows:
@@ -63,36 +67,34 @@ tar -xvzf node-agent.tar.gz && cd {{<yb-version version="v2024.2" format="build"
 
 #### Direct download
 
-Alternatively, the node agent package is included in the YBA Installer package. Download and extract the YBA Installer by entering the following commands:
+Alternatively, obtain the node agent package from the YBA Installer package.
 
-```sh
-wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2024.2" format="long">}}/yba_installer_full-{{<yb-version version="v2024.2" format="build">}}-linux-x86_64.tar.gz
-tar -xf yba_installer_full-{{<yb-version version="v2024.2" format="build">}}-linux-x86_64.tar.gz
-cd yba_installer_full-{{<yb-version version="v2024.2" format="build">}}/
-```
+1. Download and extract the YBA Installer by entering the following commands:
 
-Extract the yugabundle package:
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2024.2" format="long">}}/yba_installer_full-{{<yb-version version="v2024.2" format="build">}}-linux-x86_64.tar.gz
+    tar -xf yba_installer_full-{{<yb-version version="v2024.2" format="build">}}-linux-x86_64.tar.gz
+    cd yba_installer_full-{{<yb-version version="v2024.2" format="build">}}/
+    ```
 
-```sh
-tar -xf yugabundle-{{<yb-version version="v2024.2" format="build">}}-centos-x86_64.tar.gz
-cd yugabyte-{{<yb-version version="v2024.2" format="build">}}/
-```
+1. Extract the yugabundle package:
 
-Extract the node agent package and go to the `scripts` directory:
+    ```sh
+    tar -xf yugabundle-{{<yb-version version="v2024.2" format="build">}}-centos-x86_64.tar.gz
+    cd yugabyte-{{<yb-version version="v2024.2" format="build">}}/
+    ```
 
-```sh
-tar -xf node_agent-{{<yb-version version="v2024.2" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="v2024.2" format="build">}}/scripts/
-```
+1. Extract the node agent package and go to the `scripts` directory:
 
-or
+    ```sh
+    tar -xf node_agent-{{<yb-version version="v2024.2" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="v2024.2" format="build">}}/scripts/
+    ```
 
-```sh
-tar -xf node_agent-{{<yb-version version="v2024.2" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="v2024.2" format="build">}}/scripts/
-```
+    On ARM, run:
 
-### Create data directories or mount points
-
-Configure data directories or mount points for the node (typically `/data`). If you have multiple data drives, these might be for example `/mnt/d0`, `/mnt/d1`, and so on. The data drives must be accessible to the `yugabyte` user that will be created by the script.
+    ```sh
+    tar -xf node_agent-{{<yb-version version="v2024.2" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="v2024.2" format="build">}}/scripts/
+    ```
 
 ### Modify the configuration file
 
@@ -157,13 +159,13 @@ After the node is provisioned, reboot the node.
 
 If the preflight check fails, rebooting the node may solve some issues (for example, incorrect ulimit settings).
 
-#### Verify provisioning
+## Verify provisioning
 
 After running the script and rebooting the VM, you can verify that provisioning was successful and YugabyteDB Anywhere can communicate with the node by navigating to `https://<yugabytedbanywhere-host-ip>/nodeagent`, where `yugabytedbanywhere-host-ip` is the IP address hosting your YugabyteDB Anywhere instance.
 
 The page lists the node agents that have been activated and their status.
 
-#### Preflight check
+## Preflight check
 
 For troubleshooting, you can run the script's preflight checks separately as follows:
 

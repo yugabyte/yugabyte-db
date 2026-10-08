@@ -144,6 +144,8 @@ The fast-path COPY is applied only when all of the following conditions are met:
 
 With fast-path enabled, the unit of atomicity is determined by `ysql_session_max_batch_size` rather than `ROWS_PER_TRANSACTION`. For example, if `ysql_session_max_batch_size` is set to 3072, which means at most 3072 writes will be included in the same batch. For a table without indexes, this results in an atomic unit of 3072 rows. For a table with two indexes, the unit of atomicity will be 1024 rows which ensure the 1024 rows and their indexes are written atomically. Only use fast-path COPY if this level of atomicity aligns with your requirements.
 
+This colocated COPY fast path is separate from [faster writes to new tables](../../../../../explore/transactions/new-table-writes/), which skips provisional writes when COPY loads a table created in the same transaction. That optimization does not apply to colocated tables.
+
 ## Examples
 
 The examples below assume a table like this:

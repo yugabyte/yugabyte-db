@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,6 +41,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.CustomWsClientFactory;
@@ -54,6 +56,7 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -71,8 +74,10 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -351,6 +356,145 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RestartUniverse)));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testRestartUniverseRollingWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
+    ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+    bodyJson.set(
+        "rollMaxBatchSize",
+        Json.newObject().put("primaryBatchSize", 2).put("readReplicaBatchSize", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    ArgumentCaptor<UpgradeTaskParams> argCaptor = ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.RestartUniverse), argCaptor.capture());
+
+    UpgradeTaskParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testRestartUniverseRejectsNonPositivePrimaryBatchSize() {
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
+
+    for (int batchSize : new int[] {0, -1}) {
+      ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+      bodyJson.set(
+          "rollMaxBatchSize",
+          Json.newObject().put("primaryBatchSize", batchSize).put("readReplicaBatchSize", 1));
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+      assertBadRequest(
+          result, "rollMaxBatchSize.primaryBatchSize must be at least 1, got " + batchSize);
+    }
+    verify(mockCommissioner, never()).submit(any(), any());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testRestartUniverseRejectsNonPositiveReadReplicaBatchSize() {
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
+
+    for (int batchSize : new int[] {0, -1}) {
+      ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+      bodyJson.set(
+          "rollMaxBatchSize",
+          Json.newObject().put("primaryBatchSize", 1).put("readReplicaBatchSize", batchSize));
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+      assertBadRequest(
+          result, "rollMaxBatchSize.readReplicaBatchSize must be at least 1, got " + batchSize);
+    }
+    verify(mockCommissioner, never()).submit(any(), any());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testNonPositiveBatchSizeRejectedOnlyOnFirstTry() {
+    Universe universe = createUniverse(customer.getId());
+    RestartTaskParams params = new RestartTaskParams();
+    params.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    params.rollMaxBatchSize = RollMaxBatchSize.of(0, 0);
+
+    assertThrows(
+        PlatformServiceException.class, () -> params.verifyParams(universe, true /* isFirstTry */));
+    // A retry cannot correct the stored value, so validation must let it through and rely on the
+    // partition iterator's clamp to roll sequentially instead.
+    params.verifyParams(universe, false /* isFirstTry */);
+  }
+
+  @Test
+  public void testRestartK8sUniverseRollingWithBatchSize() {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverseKubernetesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    k8sUniverse.updateConfig(Map.of(Universe.HELM2_LEGACY, "true"));
+    k8sUniverse.save();
+
+    Result result =
+        runUpgrade(
+            k8sUniverse,
+            p -> p.rollMaxBatchSize = RollMaxBatchSize.of(2, 2),
+            RestartTaskParams.class,
+            "restart");
+    assertOk(result);
+
+    ArgumentCaptor<RestartTaskParams> argCaptor = ArgumentCaptor.forClass(RestartTaskParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.RestartUniverseKubernetesUpgrade), argCaptor.capture());
+    RestartTaskParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides Batch Universe");
+
+    Result result =
+        runUpgrade(
+            universe,
+            p -> {
+              p.universeOverrides = "tserver:\n  podLabels:\n    env: test";
+              p.rollMaxBatchSize = RollMaxBatchSize.of(2, 2);
+            },
+            KubernetesOverridesUpgradeParams.class,
+            "kubernetes_overrides");
+    assertOk(result);
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.KubernetesOverridesUpgrade), argCaptor.capture());
+    KubernetesOverridesUpgradeParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertEquals("tserver:\n  podLabels:\n    env: test", taskParams.universeOverrides);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -1375,6 +1519,43 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testGFlagsUpgradeKubernetesWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsKubernetesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe =
+        createUniverse("GFlags Batch Universe", customer.getId(), CloudType.kubernetes);
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/upgrade/gflags";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+    bodyJson.set("tserverGFlags", Json.parse("{ \"tserver-flag\": \"456\"}"));
+    bodyJson.set(
+        "rollMaxBatchSize",
+        Json.newObject().put("primaryBatchSize", 2).put("readReplicaBatchSize", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.GFlagsKubernetesUpgrade), argCaptor.capture());
+    GFlagsUpgradeParams taskParams = argCaptor.getValue();
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
   public void testGflagsUpgradeSameParamsSpecificGFlags() {
     SpecificGFlags gFlags =
         SpecificGFlags.construct(Map.of("master-flag", "1"), Map.of("tserver-flag", "2"));
@@ -2033,8 +2214,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             universe -> {
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
-                  ApiUtils.getDummyDeviceInfo(1, 100);
+              TestUtils.existingProviderInitializer(
+                      universe.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
             });
     PlatformServiceException exception =
         assertThrows(
@@ -2043,7 +2225,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                 runUpgrade(
                     defaultUniverse,
                     p -> {
-                      p.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
+                      TestUtils.updateDeviceInfo(
+                          p.getPrimaryCluster().userIntent,
+                          UniverseTaskBase.ServerType.TSERVER,
+                          deviceInfo -> deviceInfo.volumeSize--);
                     },
                     ResizeNodeParams.class,
                     "resize_node"));
@@ -2256,6 +2441,38 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         .put("rootCA", rootCA != null ? rootCA.toString() : "");
   }
 
+  // KubernetesOverridesUpgradeParams.verifyParams walks placement + kubeconfig via
+  // KubernetesUtil.validateUpgradeServiceEndpoints. A bare ModelFactory k8s universe has
+  // null/empty placement and no KUBECONFIG, which NPEs or throws "No config found".
+  private Universe prepareK8sUniverseForOverridesUpgrade(String universeName) {
+    Universe universe = createUniverse(universeName, customer.getId(), CloudType.kubernetes);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    provider.setConfigMap(ImmutableMap.of("KUBECONFIG", "test"));
+    provider.save();
+    Region region = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, "az-1", "PlacementAZ 1", "subnet-1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              PlacementInfo placementInfo = new PlacementInfo();
+              PlacementInfoUtil.addPlacementZone(az.getUuid(), placementInfo, 1, 1, false);
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.regionList = ImmutableList.of(region.getUuid());
+              details.upsertPrimaryCluster(userIntent, null, placementInfo);
+              u.setUniverseDetails(details);
+            });
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+    return universe;
+  }
+
   private Universe prepareUniverseForVMImageUpgrade(Provider provider, String instanceTypeString) {
     when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
 
@@ -2284,11 +2501,16 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
           userIntent.numNodes = 3;
-          userIntent.instanceType = instanceType.getInstanceTypeCode();
           userIntent.replicationFactor = 3;
-          userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-          userIntent.provider = provider.getUuid().toString();
           userIntent.regionList = ImmutableList.of(region.getUuid());
+
+          TestUtils.initUserIntent(
+              userIntent,
+              provider,
+              instanceType.getInstanceTypeCode(),
+              ApiUtils.getDummyDeviceInfo(1, 100),
+              "demo-access");
+
           universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
 
           universeDetails.nodeDetailsSet = new HashSet<>();

@@ -32,7 +32,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -59,7 +58,6 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_call_home.h"
 #include "yb/master/master_client.proxy.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_ysql_lease_client.h"
@@ -67,8 +65,8 @@
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-
 #include "yb/master/ts_manager.h"
+
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -76,7 +74,6 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/call_home-test-util.h"
-#include "yb/server/call_home.h"
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/tablet/tablet_metadata.h"
@@ -88,17 +85,14 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
-#include "yb/util/tsan_util.h"
-#include "yb/util/user.h"
 
-using std::shared_ptr;
 using std::make_shared;
+using std::shared_ptr;
 using std::string;
 using std::vector;
 
@@ -116,17 +110,15 @@ DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_qos);
 DECLARE_bool(enable_db_history_retention_pins);
-DECLARE_int32(qos_max_db_count);
-DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
+DECLARE_int32(qos_max_db_count);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_uint32(initial_tserver_registration_duration_secs);
 
-METRIC_DECLARE_counter(block_cache_misses);
-METRIC_DECLARE_counter(block_cache_hits);
+METRIC_DECLARE_gauge_uint64(block_cache_usage);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using strings::Substitute;
 
@@ -1079,22 +1071,15 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
   faststring buf;
 
   ASSERT_OK(curl.FetchURL(url, &buf));
-  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_misses");
-  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_hits");
+  ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_usage");
 
-  // Check block cache metrics directly and verify
-  // that the counters are greater than 0
+  // Check block cache usage metric directly and verify usage is greater than 0.
   const auto metric_map = mini_master_->master()->metric_entity()->TEST_UsageMetricsMap();
 
-  scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(
-      FindOrDie(metric_map,
-                &METRIC_block_cache_misses).get());
-  scoped_refptr<Counter> cache_hits_counter = down_cast<Counter *>(
-      FindOrDie(metric_map,
-                &METRIC_block_cache_hits).get());
+  auto cache_usage = down_cast<AtomicGauge<uint64_t>*>(
+      FindOrDie(metric_map, &METRIC_block_cache_usage).get());
 
-  ASSERT_GT(cache_misses_counter->value(), 0);
-  ASSERT_GT(cache_hits_counter->value(), 0);
+  ASSERT_GT(cache_usage->value(), 0);
 }
 
 TEST_F(MasterTest, TestTablegroups) {
@@ -2935,6 +2920,9 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
   UNUSED_TS_ADMIN_METHOD(UpdateTransactionTablesVersion,
                          tserver::UpdateTransactionTablesVersionRequestPB,
                          tserver::UpdateTransactionTablesVersionResponsePB)
+  UNUSED_TS_ADMIN_METHOD(ApplyXClusterGuardedInfoIfNewer,
+                         tserver::ApplyXClusterGuardedInfoIfNewerRequestPB,
+                         tserver::ApplyXClusterGuardedInfoIfNewerResponsePB)
   UNUSED_TS_ADMIN_METHOD(CloneTablet, tablet::CloneTabletRequestPB,
                          tserver::CloneTabletResponsePB)
   UNUSED_TS_ADMIN_METHOD(ClonePgSchema, tserver::ClonePgSchemaRequestPB,
@@ -3543,5 +3531,4 @@ TEST_F(MasterTest, TestQosMaxDbCount) {
   ASSERT_OK(CreateNamespace("cql_ks", YQLDatabase::YQL_DATABASE_CQL, &resp));
 }
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

@@ -2329,6 +2329,11 @@ _readYbBatchedNestLoop(void)
 		local_node->hashClauseInfos[i].innerHashAttNo = atoi(token);
 	}
 
+	/* Ignore :innerHashExprs */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+		local_node->hashClauseInfos[i].innerHashExpr = nodeRead(NULL, 0);
+
 	/* Ignore :outerParamExprs */
 	pg_strtok(&length);
 	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
@@ -2976,18 +2981,18 @@ _readYbMergeScanInfo(void)
 {
 	READ_LOCALS(YbMergeScanInfo);
 
-	READ_NODE_FIELD(saop_cols);
+	READ_NODE_FIELD(stream_cols);
 	READ_NODE_FIELD(sort_cols);
 
 	READ_DONE();
 }
 
-static YbMergeScanSaopColInfo *
-_readYbMergeScanSaopColInfo(void)
+static YbMergeScanStreamColInfo *
+_readYbMergeScanStreamColInfo(void)
 {
-	READ_LOCALS(YbMergeScanSaopColInfo);
+	READ_LOCALS(YbMergeScanStreamColInfo);
 
-	READ_NODE_FIELD(saop);
+	READ_NODE_FIELD(clause);
 	READ_INT_FIELD(indexcol);
 	READ_INT_FIELD(num_elems);
 	READ_BOOL_FIELD(derived);
@@ -3302,8 +3307,8 @@ parseNodeString(void)
 		return_value = _readYbUpdateAffectedEntities();
 	else if (MATCH("YBMERGESCANINFO", 15))
 		return_value = _readYbMergeScanInfo();
-	else if (MATCH("YBMERGESCANSAOPCOLINFO", 22))
-		return_value = _readYbMergeScanSaopColInfo();
+	else if (MATCH("YBMERGESCANSTREAMCOLINFO", 24))
+		return_value = _readYbMergeScanStreamColInfo();
 	else if (MATCH("YBSORTINFO", 10))
 		return_value = _readYbSortInfo();
 	else

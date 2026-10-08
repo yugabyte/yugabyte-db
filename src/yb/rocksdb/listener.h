@@ -82,7 +82,10 @@ YB_DEFINE_ENUM(CompactionReason,
   // Scheduled full compaction
   (kScheduledFullCompaction)
   // Post-split compaction
-  (kPostSplitCompaction));
+  (kPostSplitCompaction)
+  // DB::ScheduleDBPathMove: raw byte-for-byte move of one SST to another db storage path, not a
+  // real compaction (no rewrite of the file's contents).
+  (kDBPathMoveCompaction));
 
 // FlushReason tags why a flush was triggered. Unlike upstream RocksDB's `CompactionReason`,
 // this is a Yugabyte extension for logging and per-reason ticker metrics.

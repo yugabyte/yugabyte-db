@@ -388,11 +388,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
   //
-  // 'target_tier', when non-empty, restricts data-directory candidates to disks tagged with
-  // that tier (see FsManager::GetDataRootDirsForTier), so the tablet's home dir lands on the
-  // requested tier (e.g. from a tablespace's storage_tier). WAL directory selection is always
-  // tier-agnostic, since WAL dirs are not part of tier_paths. If no disks are configured for
-  // the requested tier on this node, falls back to the default (all-disk) policy.
+  // 'target_tier' (e.g. from a tablespace's storage_tier) restricts data-directory candidates
+  // to disks tagged with that tier (see FsManager::GetDataRootDirsForTier), so the tablet's
+  // home dir lands on the requested tier. When empty, this defaults to kDefaultStorageTier
+  // ("ssd") rather than spreading across every configured disk regardless of tier -- see
+  // storage_tier.h. WAL directory selection is always tier-agnostic, since WAL dirs are not
+  // part of tier_paths. By default, WAL lives on the fastest tier with disks ("ssd").
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
                                    const TabletId& tablet_id,
@@ -407,11 +408,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
   //
   // This is the primitive that AlterTabletTier will call to resolve which path_id to pass to
-  // light_weight_compact when migrating SSTs to a different tier.
+  // ScheduleDBPathMove when migrating SSTs to a different tier.
   //
   // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
   // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
-  // place data on the returned path_id (e.g. after a successful light_weight_compact) are
+  // place data on the returned path_id (e.g. after a successful ScheduleDBPathMove) are
   // responsible for calling RegisterDataAndWalDir themselves to commit the assignment, so later
   // calls to this function and to GetAndRegisterDataAndWalDir see accurate load counts.
   //

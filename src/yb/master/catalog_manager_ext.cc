@@ -1006,24 +1006,28 @@ Status CatalogManager::DoImportSnapshotMeta(
       }
     }
   }
-  // For YSQL restores (both backup/restore and clone), we would have run ysql_dump before
-  // ImportSnapshot. It is important to invalidate the TServer's OID cache after ImportSnapshot so
-  // that the TServer is aware of all objects that were created. Otherwise, the following order of
-  // events is possible:
-  // 1. The dump script creates a table with OID 16384 because that is what the dump script says
-  //    to use (using binary_upgrade_set_next_heap_relfilenode). This does not go through the
-  //    TServer's oid allocator.
-  // 2. The dump script creates an object that needs a new OID (e.g., a CHECK constraint). To get a
-  //    new OID, the TServer calls ReservePgsqlOids, which returns 16384-17000 as available OIDs.
-  // 3. The constraint is created with OID 16385 because that is the first free OID in the range.
-  // 4. A snapshot schedule is created for the restored database.
-  // 5. The table is dropped (actually hidden, because of the snapshot schedule).
-  // 6. The table is recreated with OID 16384, which PG thinks is a free OID because the table is
-  //    not in pg_class anymore. This fails on master because the original table with this OID still
-  //    exists.
+  // Restores (backup/restore and clone) first replay a ysql_dump script, which assigns pg_class and
+  // pg_type OIDs explicitly (binary-upgrade mode), bypassing the OID allocator.  Objects that still
+  // need new OIDs during the replay (e.g., CHECK constraints) make the TServer reserve and cache a
+  // chunk of OIDs that can overlap those explicit OIDs.  Unless that chunk is discarded, the
+  // TServer can later allocate one of these OIDs from it, possibly leading to a collision with one
+  // of the explicit OIDs already in use.  (Postgres normally detects and avoids collisions with
+  // OIDs in use in its catalog tables but it cannot detect collisions with OIDs being used for
+  // hidden DocDB tables.)  AdvanceOidCounters above moved master's counters past every OID in use,
+  // so chunks fetched after this invalidation are safe.
+  //
   // Invalidating the OID cache forces the TServer to refresh its OID cache on the next heartbeat
   // it receives from the master.
   RETURN_NOT_OK(InvalidateTserverOidCaches());
+  // We deliberately do not wait for the invalidation to reach every TServer (e.g., via
+  // PropagateXClusterGuardedInfo): that would make restores and clones fail, or stall for up to the
+  // xCluster-guarded lease duration, whenever a TServer has died recently.  Only TServers that
+  // allocated OIDs in the new database before AdvanceOidCounters can hold a stale chunk for it.
+  // For a clone that is just the TServer that replayed the dump, since the database does not accept
+  // other connections until the clone completes; for a backup restore it is in practice the same.
+  // That TServer was just in use and gets the invalidation with its next heartbeat; until then, a
+  // DDL that allocates a hidden table's OID fails.  This is both unlikely and not particularly
+  // harmful, so we prefer to avoid the chance of failing/stalling restores and clones.
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
@@ -2501,6 +2505,63 @@ Status CatalogManager::ImportTableEntry(
       notify_ts_for_schema_change = true;
     }
 
+    // CREATE INDEX on the restore cluster fills vector_idx_options from local state, which can
+    // differ from the snapshot's:
+    // - The CREATE TABLE that recreates the indexed table on restore assigns column ids
+    //   sequentially. If a column was dropped from the indexed table before the snapshot was
+    //   taken, the snapshotted and restored tables can have different column ids. Phase 3 fixes
+    //   the indexed table's column ids when it imports that table.
+    // - hnsw.backend and store_payload come from --vector_index_backend and
+    //   --vector_index_store_payload, which can differ between the two clusters.
+    // - id names the tablet's vector index directory. The tablet takes it from the snapshot
+    //   superblock, so the restored files are found under the snapshot's id.
+    // Here in phase 4, while importing the vector index, we copy the snapshot's options, if
+    // necessary, into both the index's and the indexed table's metadata, so they match the
+    // tablets'.
+    //
+    // Do not bump either schema version. The tablets do not need this rewrite: their copy comes
+    // from the superblock merge.
+    if (meta.has_index_info() && meta.index_info().has_vector_idx_options() &&
+        table->is_vector_index()) {
+      const auto& source_options = meta.index_info().vector_idx_options();
+      // Returns whether `options` changed.
+      auto restore_options = [&source_options](PgVectorIdxOptionsPB* options) {
+        if (pb_util::ArePBsEqual(*options, source_options, /* diff_str= */ nullptr)) {
+          return false;
+        }
+        *options = source_options;
+        return true;
+      };
+      auto indexed_table = VERIFY_RESULT(FindTableById(table->indexed_table_id()));
+      // Write-lock tables in increasing table id order, and commit in reverse.
+      const bool index_first = table->id() < indexed_table->id();
+      auto first_l = (index_first ? table : indexed_table)->LockForWrite();
+      auto second_l = (index_first ? indexed_table : table)->LockForWrite();
+      auto& index_l = index_first ? first_l : second_l;
+      auto& indexed_l = index_first ? second_l : first_l;
+
+      auto* options =
+          index_l.mutable_data()->pb.mutable_index_info()->mutable_vector_idx_options();
+      const auto old_options = options->ShortDebugString();
+      bool updated = restore_options(options);
+      if (updated) {
+        LOG_WITH_FUNC(INFO) << "Restoring vector index options for " << table->ToString()
+                            << " from " << old_options << " to " << options->ShortDebugString();
+      }
+      for (auto& index_info : *indexed_l.mutable_data()->pb.mutable_indexes()) {
+        if (index_info.table_id() == table->id() && index_info.has_vector_idx_options() &&
+            restore_options(index_info.mutable_vector_idx_options())) {
+          updated = true;
+        }
+      }
+      if (updated) {
+        // Upsert skips whichever of the two entries is unchanged.
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, indexed_table));
+        second_l.Commit();
+        first_l.Commit();
+      }
+    }
+
     // Set missing values for tables that were created with a default value. ysql_dump will not
     // properly set that value because it is only set on ADD COLUMN, and it creates the column
     // directly in CREATE TABLE.
@@ -2526,14 +2587,19 @@ Status CatalogManager::ImportTableEntry(
     }
 
     // Restore table properties fixed at create time (partitioning_version,
-    // owns_vector_reverse_mapping) from backup snapshot metadata.
+    // owns_vector_reverse_mapping, skip_vector_reverse_mapping) from backup snapshot
+    // metadata.
     const bool restore_partitioning_version =
         persisted_schema.table_properties().partitioning_version() !=
         schema.table_properties().partitioning_version();
     const bool restore_owns_vector_reverse_mapping =
         persisted_schema.table_properties().owns_vector_reverse_mapping() !=
         schema.table_properties().owns_vector_reverse_mapping();
-    if (restore_partitioning_version || restore_owns_vector_reverse_mapping) {
+    const bool restore_skip_vector_reverse_mapping =
+        persisted_schema.table_properties().writes_vector_reverse_mapping() !=
+        schema.table_properties().writes_vector_reverse_mapping();
+    if (restore_partitioning_version || restore_owns_vector_reverse_mapping ||
+        restore_skip_vector_reverse_mapping) {
       auto l = table->LockForWrite();
       auto* table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
       if (restore_partitioning_version) {
@@ -2542,6 +2608,10 @@ Status CatalogManager::ImportTableEntry(
       if (restore_owns_vector_reverse_mapping) {
         table_props->set_owns_vector_reverse_mapping(
             schema.table_properties().owns_vector_reverse_mapping());
+      }
+      if (restore_skip_vector_reverse_mapping) {
+        table_props->set_skip_vector_reverse_mapping(
+            !schema.table_properties().writes_vector_reverse_mapping());
       }
 
       l.mutable_data()->pb.set_version(l->pb.version() + 1);

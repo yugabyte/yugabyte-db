@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics, and transparent schema change propagation across the regions would benefit from this feature.
+Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use cases requiring low latency multi-region deployments, transactional consistency semantics, and transparent schema change propagation across the regions would benefit from this feature.
 
 Geo-partitioning allows you to move data closer to users to:
 

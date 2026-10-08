@@ -374,6 +374,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       UpdateTransactionTablesVersionResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ApplyXClusterGuardedInfoIfNewer(
+      const ApplyXClusterGuardedInfoIfNewerRequestPB* req,
+      ApplyXClusterGuardedInfoIfNewerResponsePB* resp, rpc::RpcContext context) override;
+
   void CloneTablet(
       const tablet::CloneTabletRequestPB* req,
       CloneTabletResponsePB* resp,

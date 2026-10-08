@@ -63,6 +63,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -259,6 +260,10 @@ public class YbcBackupUtil {
 
     @JsonProperty("customer_uuid")
     public String customerUUID;
+
+    // Null in success markers written before this was recorded.
+    @JsonProperty("fips_enabled")
+    public Boolean fipsEnabled;
 
     @JsonProperty("backup_uuid")
     public String backupUUID;
@@ -468,6 +473,18 @@ public class YbcBackupUtil {
           String.format("Error parsing success marker string. %s", e.getMessage()));
     } catch (Exception e) {
       throw new PlatformServiceException(PRECONDITION_FAILED, e.getMessage());
+    }
+  }
+
+  public static Boolean getFipsEnabledFromSuccessMarker(String extendedArgs) {
+    if (StringUtils.isEmpty(extendedArgs)) {
+      return null;
+    }
+    try {
+      return new ObjectMapper().readValue(extendedArgs, YbcSuccessBackupConfig.class).fipsEnabled;
+    } catch (Exception e) {
+      log.error("Could not fetch FIPS mode from success marker");
+      return null;
     }
   }
 
@@ -1071,6 +1088,7 @@ public class YbcBackupUtil {
       config.backupUUID = tableParams.backupUuid.toString();
       config.customerUUID = tableParams.customerUuid.toString();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      config.fipsEnabled = universeDetails.fipsEnabled;
       if (universeDetails.isSoftwareRollbackAllowed
           && universeDetails.prevYBSoftwareConfig != null) {
         // Adding DB version on which users can rollback from current state.
@@ -1489,6 +1507,13 @@ public class YbcBackupUtil {
                   return universeKeys != null && !universeKeys.isNull();
                 });
     restorePreflightResponseBuilder.hasKMSHistory(hasKMSHistory);
+
+    restorePreflightResponseBuilder.fipsEnabled(
+        ybcSuccessMarkerMap.values().stream()
+            .map(sM -> getFipsEnabledFromSuccessMarker(sM.extendedArgsString))
+            .filter(Objects::nonNull)
+            .findFirst()
+            .orElse(null));
 
     // Populate namespace type, name, tables list( if applicable ) etc. here
     Map<String, PerLocationBackupInfo> perLocationBackupInfoMap =

@@ -32,6 +32,7 @@
 
 #include <atomic>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -70,6 +71,54 @@ TEST(TestCountDownLatch, TestLatch) {
   ASSERT_OK(pool->SubmitFunc(std::bind(DecrementLatch, &latch, 1000)));
   latch.Wait();
   ASSERT_EQ(0, latch.count());
+}
+
+// CountDown tells the caller whether its own decrement is the one that emptied the latch, so
+// concurrent callers can elect exactly one of themselves to run a follow-up action.
+TEST(TestCountDownLatch, TestCountDownReportsTheTriggeringCall) {
+  CountDownLatch latch(3);
+  ASSERT_FALSE(latch.CountDown());
+  ASSERT_FALSE(latch.CountDown());
+  ASSERT_TRUE(latch.CountDown());
+  // Counting down an already-empty latch elects nobody.
+  ASSERT_FALSE(latch.CountDown());
+
+  // Overshooting the remaining count still reports a single trigger.
+  CountDownLatch overshoot(2);
+  ASSERT_TRUE(overshoot.CountDown(5));
+  ASSERT_FALSE(overshoot.CountDown(5));
+}
+
+// The election has to hold when the decrements race, which is the case the callers rely on: a
+// non-atomic decrement-then-read lets several threads observe a zero count and all act on it.
+TEST(TestCountDownLatch, TestConcurrentCountDownElectsOne) {
+  constexpr int kThreads = 8;
+  constexpr int kRounds = 200;
+
+  for (int round = 0; round < kRounds; ++round) {
+    CountDownLatch latch(kThreads);
+    CountDownLatch start(1);
+    std::atomic<int> triggers(0);
+
+    std::vector<scoped_refptr<Thread>> threads;
+    for (int i = 0; i < kThreads; ++i) {
+      scoped_refptr<Thread> t;
+      ASSERT_OK(Thread::Create("test", "cdl-test", [&latch, &start, &triggers]() {
+        start.Wait();
+        if (latch.CountDown()) {
+          triggers.fetch_add(1, std::memory_order_relaxed);
+        }
+      }, &t));
+      threads.push_back(t);
+    }
+    start.CountDown();
+    for (auto& t : threads) {
+      t->Join();
+    }
+
+    ASSERT_EQ(0, latch.count());
+    ASSERT_EQ(1, triggers.load(std::memory_order_relaxed)) << "round " << round;
+  }
 }
 
 // Test that resetting to zero while there are waiters lets the waiters

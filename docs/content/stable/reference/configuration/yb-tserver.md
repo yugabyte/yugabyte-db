@@ -675,6 +675,47 @@ Default: `20000`
 
 Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
+##### yb_enable_global_views
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2134">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables querying of [cluster-wide database views](../../../explore/observability/cluster-wide-db-views/) (`gv$<view_name>`), which return per-node statistics from every live YB-TServer. This is a SUSET parameter: a superuser can set it for a session (`SET yb_enable_global_views = on`) or for a role (`ALTER ROLE ... SET yb_enable_global_views = on`). To enable it cluster-wide, set `--ysql_pg_conf_csv=yb_enable_global_views=true` on every YB-TServer.
+
+The `gv$` views always exist in `pg_catalog`; querying one while this parameter is off fails. Querying a cluster-wide database view also requires membership in `pg_read_all_stats`. See [Enable cluster-wide database views](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/#enable-cluster-wide-database-views).
+
+#### Faster writes to new tables
+
+To try the optimization, see [Faster writes to new tables](../../../explore/transactions/new-table-writes/). For write-path details, see [Skip intents optimization](../../../architecture/transactions/skip-intents/).
+
+##### yb_enable_new_relation_fastpath_write
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2337">}}
+Default: `on`
+{{% /tags/wrap %}}
+
+Enables faster writes into tables that the same transaction created or rebuilt. When on, qualifying statements skip the provisional-write (intents) path and write straight to the main store.
+
+Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot change it inside a transaction block, or after the first query of a transaction has run.
+
+Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-enable-new-relation-fastpath-write) flag.
+
+##### yb_enable_new_relation_fastpath_write_in_txn_blocks
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2337">}}
+Default: `off`
+{{% /tags/wrap %}}
+
+Extends [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) to explicit transaction blocks. Requires that setting to be on, [transactional DDL](../../../architecture/transactions/transactional-ddl/) to be enabled, and [Read Committed isolation](../../../architecture/transactions/read-committed/).
+
+Do not enable this setting through [ysql_pg_conf_csv](#ysql-pg-conf-csv) while transactional DDL is off: the setting reads back as on, but writes continue on the normal path and no error is reported. Use the [--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks](#ysql-yb-enable-new-relation-fastpath-write-in-txn-blocks) flag instead, which is validated at startup.
+
+Can be set using the [--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks](#ysql-yb-enable-new-relation-fastpath-write-in-txn-blocks) flag.
+
 #### Bucket-based index scan optimization
 
 ##### yb_enable_derived_equalities
@@ -958,6 +999,17 @@ Default: `1`
 {{% /tags/wrap %}}
 
 When [--durable_wal_write](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
+
+##### --export_drive_io_metrics
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Enables [per-drive write I/O metrics](../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#per-drive-write-i-o). When `false`, those metrics are not exported.
 
 ##### --log_min_seconds_to_retain
 
@@ -1440,6 +1492,25 @@ Default: `14400` (4 hours)
 {{% /tags/wrap %}}
 
 Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+##### --cdc_skip_unqualified_tables_for_polling
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2026.1.2.0 and later.
+
+When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed by this slot.
+
+When this flag is `false` (the default), VWAL refuses to add the unqualified tablet to the polling list and returns `Cannot add tablet: <id> to the polling list as it has been unqualified for stream: <id>`. The tablet is not polled.
+
+
+A table is unqualified if its tablets have expired (not polled within [--cdc_intent_retention_ms](#cdc-intent-retention-ms)) or are not of interest (not polled within [--cdcsdk_tablet_not_of_interest_timeout_secs](#cdcsdk-tablet-not-of-interest-timeout-secs) of stream or slot creation).
+
+For more information, refer to [Limitations](../../../additional-features/change-data-capture/using-logical-replication/#limitations).
 
 ##### --timestamp_syscatalog_history_retention_interval_sec
 
@@ -2648,10 +2719,19 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
 
+##### --remote_pg_query_execution_rpc_timeout_ms
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2134">}}
+{{<tags/feature/t-server>}}
+Default: `15000`
+{{% /tags/wrap %}}
+
+Per-node timeout, in milliseconds, for the RPC that carries a [cluster-wide database view](../../../launch-and-manage/monitor-and-alert/cluster-wide-db-views/) remote query. Runtime-modifiable. A node that exceeds this timeout is skipped with a WARNING, and the query returns rows from the remaining nodes.
+
 ##### --ysql_enable_write_pipelining
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="1298">}}
 {{<tags/feature/restart-needed>}}
 {{% tags/feature/t-server %}}
 Default: `false`
@@ -2659,7 +2739,30 @@ Default: `false`
 
 Enables concurrent replication of multiple write operations in a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
 
-Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+##### --ysql_yb_enable_new_relation_fastpath_write
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2337">}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) configuration parameter. Enables faster writes into tables that the same transaction created or rebuilt.
+
+See also the `yb_enable_new_relation_fastpath_write` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+##### --ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2337">}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Cluster-wide equivalent of the [yb_enable_new_relation_fastpath_write_in_txn_blocks](#yb-enable-new-relation-fastpath-write-in-txn-blocks) configuration parameter. Extends the new-table write optimization to explicit transaction blocks.
+
+This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+
+See also the `yb_enable_new_relation_fastpath_write_in_txn_blocks` configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 ##### --use_cgroups_cpu
 

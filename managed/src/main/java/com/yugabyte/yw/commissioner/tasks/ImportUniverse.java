@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -619,22 +620,28 @@ public class ImportUniverse extends UniverseTaskBase {
     UserIntent userIntent = new UserIntent();
     userIntent.universeName = taskParams().universeName;
     userIntent.ybSoftwareVersion = dbVersion;
-    userIntent.providerType = provider.getCloudCode();
-    userIntent.provider = provider.getUuid().toString();
+
+    ProviderInitializer providerInitializer =
+        Util.newProviderInitializer(
+                userIntent, provider.getUuid(), provider.getCloudCode(), confGetter)
+            .setProviderType(provider.getCloudCode())
+            .setInstanceType(
+                context.serverInstanceTypes.get(ServerType.TSERVER).getInstanceTypeCode())
+            .setInstanceTags(taskParams().instanceTags)
+            .setDeviceInfo(createDeviceInfo(provider, ServerType.TSERVER));
+
     userIntent.useSystemd = true;
-    userIntent.instanceType =
-        context.serverInstanceTypes.get(ServerType.TSERVER).getInstanceTypeCode();
     userIntent.replicationFactor =
         Integer.parseInt(masterConfOutput.gflags.get("replication_factor"));
     userIntent.dedicatedNodes = taskParams().dedicatedNodes;
-    userIntent.instanceTags = taskParams().instanceTags;
     userIntent.numNodes = Sets.union(context.masterHosts, context.tserverHosts).size();
     userIntent.enableExposingService = UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
-    userIntent.deviceInfo = createDeviceInfo(provider, ServerType.TSERVER);
+
     if (taskParams().dedicatedNodes) {
-      userIntent.masterDeviceInfo = createDeviceInfo(provider, ServerType.MASTER);
-      userIntent.masterInstanceType =
-          context.serverInstanceTypes.get(ServerType.MASTER).getInstanceTypeCode();
+      providerInitializer
+          .setMasterDeviceInfo(createDeviceInfo(provider, ServerType.MASTER))
+          .setMasterInstanceType(
+              context.serverInstanceTypes.get(ServerType.MASTER).getInstanceTypeCode());
     }
     // Record the migration config to be used later in migration.
     userIntent.setMigrationConfig(context.createUniverseMigrationConfig(taskParams()));
@@ -741,7 +748,8 @@ public class ImportUniverse extends UniverseTaskBase {
                                   node.cloudInfo.cloud = provider.getCloudCode().toString();
                                   node.cloudInfo.instance_type = nodeInstance.getInstanceTypeCode();
                                   node.cloudInfo.mount_roots =
-                                      cluster.userIntent.deviceInfo.mountPoints;
+                                      cluster.userIntent.getBaseDeviceInfo(provider.getUuid())
+                                          .mountPoints;
                                   node.placementUuid = cluster.uuid;
                                   node.azUuid = z.zone.getUuid();
                                   node.state = NodeState.Live;
@@ -758,7 +766,9 @@ public class ImportUniverse extends UniverseTaskBase {
                                     node.dedicatedTo = ServerType.MASTER;
                                     // This will get corrected on migration.
                                     node.cloudInfo.mount_roots =
-                                        cluster.userIntent.masterDeviceInfo.mountPoints;
+                                        cluster.userIntent.getBaseDeviceInfo(
+                                                provider.getUuid(), ServerType.MASTER)
+                                            .mountPoints;
                                     node.isMaster = true;
                                   } else {
                                     node.dedicatedTo = ServerType.TSERVER;

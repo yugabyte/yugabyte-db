@@ -1317,7 +1317,7 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
 
     // Unblock AllowedHistoryCutoff's xCluster GetSafeTime early-return so the DB pin logic runs.
     ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
-        master::TSHeartbeatResponsePB()));
+        master::TSHeartbeatResponsePB(), MonoTime()));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_history_retention_pins) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kSafetyWindowSec;
@@ -1404,7 +1404,7 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
     ASSERT_NO_FATAL_FAILURE(Reload());
     config_ = mini_server_->CreateLocalConfig();
     ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
-        master::TSHeartbeatResponsePB()));
+        master::TSHeartbeatResponsePB(), /*lease_expiration_time=*/MonoTime()));
   }
 
   HybridTime ClusterPin(PgOid db_oid = kDbOid) const {

@@ -113,6 +113,7 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -605,8 +606,18 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     if (userIntent == null || userIntent.dedicatedNodes) {
       return;
     }
+    // Legacy fields are what configure() rejects. The specification initializer only updates
+    // provider specs, and there is no provider UUID to iterate before one is chosen.
     userIntent.masterInstanceType = null;
     userIntent.masterDeviceInfo = null;
+    userIntent
+        .getAllProviderUUIDs()
+        .forEach(
+            providerUUID -> {
+              Util.providerInitializerForExistingIntent(userIntent, providerUUID)
+                  .setMasterInstanceType(null)
+                  .setMasterDeviceInfo(null);
+            });
     UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
     if (overrides != null && overrides.getPerProcess() != null) {
       // Otherwise after dedicated->non-dedicated switch, any tserver overrides that remain will
@@ -1255,11 +1266,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               ? Provider.getOrBadRequest(UUID.fromString(primary.userIntent.provider))
               : null;
       if (provider == null
-          || CloudInfoInterface.getCrossCloudFederationAudience(provider) == null) {
+          || CloudInfoInterface.getCrossCloudFederationTargets(provider).isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "Enable federated IAM and set the audience on this universe's provider before enabling"
                 + " it on the universe.");
+      }
+      if (primary.userIntent.isMulticloudSupport()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, CrossCloudFederationTarget.MULTICLOUD_UNSUPPORTED_ERROR);
       }
     }
     ManageCrossCloudFederationUniverse.Params params =

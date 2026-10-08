@@ -120,6 +120,8 @@ You can rotate the new key as follows:
 
 ## Disable encryption
 
+Disabling encryption at rest stops encryption of new data. Data already on disk stays encrypted until compaction rewrites it, and the cluster still needs the universe keys to read that data.
+
 You can disable cluster-wide encryption as follows:
 
 1. Disable encryption by executing the following yb-admin command:
@@ -141,7 +143,7 @@ You can disable cluster-wide encryption as follows:
     ```
 
 
-{{< note title="Note" >}}
+{{< note title="Keep your keys" >}}
 
 Store your keys securely, including those that have been rotated. If you want to restore distributed snapshots of an encrypted cluster to a new cluster,
 you need to copy the keys used for encryption (including rotated keys) to the new cluster. (Backup, restore, and key management are automated in YugabyteDB Anywhere.)

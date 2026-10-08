@@ -63,7 +63,7 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   };
 
   const { retryTaskMutation, rollbackTaskMutation } = useTaskActionMutations(
-    currentTask,
+    currentTask.id,
     taskUniverseUuid
   );
 

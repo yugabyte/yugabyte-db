@@ -4771,11 +4771,21 @@ create_indexscan_plan(PlannerInfo *root,
 
 	YbMergeScanInfo *yb_merge_scan_info = NULL;
 
-	if (best_path->yb_index_path_info.merge_scan_saop_cols)
+	if (best_path->yb_index_path_info.merge_scan_stream_cols)
 	{
+		ListCell   *yb_lc;
+
 		yb_merge_scan_info = makeNode(YbMergeScanInfo);
-		yb_merge_scan_info->saop_cols =
-			best_path->yb_index_path_info.merge_scan_saop_cols;
+		/* setrefs.c repoints each entry's clause, so copy the entries. */
+		foreach(yb_lc, best_path->yb_index_path_info.merge_scan_stream_cols)
+		{
+			YbMergeScanStreamColInfo *yb_info =
+				makeNode(YbMergeScanStreamColInfo);
+
+			*yb_info = *lfirst_node(YbMergeScanStreamColInfo, yb_lc);
+			yb_merge_scan_info->stream_cols =
+				lappend(yb_merge_scan_info->stream_cols, yb_info);
+		}
 	}
 
 	/* Finally ready to build the plan node */
@@ -4834,25 +4844,25 @@ create_indexscan_plan(PlannerInfo *root,
 
 	if (yb_merge_scan_info)
 	{
-		Bitmapset  *yb_saop_col_idxs = NULL;
+		Bitmapset  *yb_stream_col_idxs = NULL;
 		ListCell   *yb_lc;
 		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
 			makeNode(YbSortInfo);
 
-		foreach(yb_lc, yb_merge_scan_info->saop_cols)
+		foreach(yb_lc, yb_merge_scan_info->stream_cols)
 		{
-			YbMergeScanSaopColInfo *yb_saop_col_info =
-				lfirst_node(YbMergeScanSaopColInfo, yb_lc);
+			YbMergeScanStreamColInfo *yb_stream_col_info =
+				lfirst_node(YbMergeScanStreamColInfo, yb_lc);
 
-			yb_saop_col_idxs = bms_add_member(yb_saop_col_idxs,
-											  yb_saop_col_info->indexcol);
+			yb_stream_col_idxs = bms_add_member(yb_stream_col_idxs,
+												yb_stream_col_info->indexcol);
 		}
 
 		yb_sort_info->type = T_YbSortInfo;
 		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
 									   best_path->path.pathkeys,
 									   best_path->path.parent->relids,
-									   yb_saop_col_idxs,
+									   yb_stream_col_idxs,
 									   &yb_sort_info->numCols,
 									   &yb_sort_info->sortColIdx,
 									   &yb_sort_info->sortOperators,
@@ -7152,6 +7162,38 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		YbBatchedExpr *bexpr = (YbBatchedExpr *) node;
 		List	   *batched_elems = NIL;
 
+#ifdef USE_ASSERT_CHECKING
+
+		/*
+		 * Every batched Var below shares root->yb_cur_batch_no, so one
+		 * batched nested loop join has to fill all of them (see
+		 * yb_ppi_batched_groups); yb_availBatchedRelids holds one entry per
+		 * enclosing such join.  yb_batched_clause_final_check keeps paths
+		 * that would span two of them out, and a violation here has no
+		 * symptom other than lost rows, so fail loudly instead.
+		 */
+		Relids		batched_vars =
+			bms_intersect(pull_varnos(root, (Node *) bexpr->orig_expr),
+						  root->yb_cur_batched_relids);
+
+		if (!bms_is_empty(batched_vars))
+		{
+			bool		one_join = false;
+			ListCell   *lc;
+
+			foreach(lc, root->yb_availBatchedRelids)
+			{
+				if (bms_is_subset(batched_vars, (Relids) lfirst(lc)))
+				{
+					one_join = true;
+					break;
+				}
+			}
+
+			Assert(one_join);
+		}
+#endif
+
 		/*
 		 * Populate batched_elems with each batched instance of
 		 * bexpr->orig_expr's contents.
@@ -7417,21 +7459,22 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.merge_scan_saop_cols.  Add these to ..._indexquals as
-	 * well.
+	 * yb_index_path_info.merge_scan_stream_cols.  Add these to ..._indexquals
+	 * as well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.merge_scan_saop_cols)
+	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
 	{
-		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
 
 		if (info->derived)
 		{
 			Node	   *clause;
 
-			stripped_indexquals = lappend(stripped_indexquals, info->saop);
+			stripped_indexquals = lappend(stripped_indexquals, info->clause);
 			/* For now, row-array-compare merge scan is not supported. */
 			clause = fix_indexqual_clause(root, index, info->indexcol,
-										  (Node *) info->saop,
+										  (Node *) info->clause,
 										  list_make1_int(info->indexcol));
 			fixed_indexquals = lappend(fixed_indexquals, clause);
 		}

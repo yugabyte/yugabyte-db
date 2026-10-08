@@ -63,6 +63,7 @@
 
 namespace yb {
 class Cgroup;
+class PriorityThreadPoolSuspender;
 }  // namespace yb
 
 namespace rocksdb {
@@ -169,6 +170,11 @@ class DBImpl : public DB {
                               const std::vector<std::string>& input_file_names,
                               const int output_level,
                               const int output_path_id = -1) override;
+
+  using DB::ScheduleDBPathMove;
+  Status ScheduleDBPathMove(
+      ColumnFamilyHandle* column_family, uint64_t file_number, uint32_t target_path_id,
+      DBPathMoveCompactionCallback callback) override;
 
   virtual Status PauseBackgroundWork() override;
   virtual Status ContinueBackgroundWork() override;
@@ -505,12 +511,7 @@ class DBImpl : public DB {
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
-  Result<std::string> FindTargetKey(
-      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override;
-
-  Result<uint64_t> Cross(Slice key) override;
-
-  Result<uint64_t> TotalDataSize() override;
+  std::unique_ptr<PinnedVersion> PinCurrentVersion() override;
 
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override;
 
@@ -600,14 +601,24 @@ class DBImpl : public DB {
 
   class ThreadPoolTask;
 
+  class CompactionTaskBase;
+  friend class CompactionTaskBase;
+
   class CompactionTask;
   friend class CompactionTask;
 
   class FlushTask;
   friend class FlushTask;
 
+  struct DBPathMoveCompactionContext;
+
+  class DBPathMoveCompactionTask;
+  friend class DBPathMoveCompactionTask;
+
   class TaskPriorityUpdater;
   friend class TaskPriorityUpdater;
+
+  class PinnedVersionImpl;
 
   Status NewDB();
 
@@ -662,6 +673,27 @@ class DBImpl : public DB {
       Version* version, const std::vector<std::string>& input_file_names,
       const int output_level, int output_path_id, JobContext* job_context,
       LogBuffer* log_buffer);
+
+  // Looks up the SST a db path move was scheduled for and, if it is still live, not held by any
+  // compaction and not already on target_path_id, claims it the way a compaction claims its
+  // inputs: marks it being_compacted and takes a ref on the version it was found in, so the
+  // FileMetaData stays valid while the move runs with mutex_ released. Fills in `context` only on
+  // success. Called by DBPathMoveCompactionTask when it starts running, never when it is
+  // scheduled. Caller must hold mutex_.
+  Status PickDBPathMoveCompaction(
+      ColumnFamilyData* cfd, uint64_t file_number, uint32_t target_path_id,
+      DBPathMoveCompactionContext& context);
+
+  // Performs the copy and the MANIFEST update for a picked db path move. Runs on a background
+  // thread and acquires mutex_ itself; must be called without it held. Always ends with
+  // ReleaseDBPathMoveCompaction, whether or not the move completed.
+  Status ExecuteDBPathMoveCompaction(
+      const DBPathMoveCompactionContext& context, yb::PriorityThreadPoolSuspender* suspender);
+
+  // Undoes PickDBPathMoveCompaction: clears the being_compacted claim on the source file and drops
+  // the version ref, like Compaction::ReleaseCompactionFiles plus ~Compaction. Called exactly once
+  // per successful pick, on every outcome. Caller must hold mutex_.
+  void ReleaseDBPathMoveCompaction(const DBPathMoveCompactionContext& context);
 
   ColumnFamilyData* GetColumnFamilyDataByName(const std::string& cf_name);
 
@@ -942,7 +974,9 @@ class DBImpl : public DB {
 
   // Those tasks are managed by thread pool.
   // And we remove them from this set, when they are processed/aborted by thread pool.
-  std::unordered_set<CompactionTask*> compaction_tasks_;
+  // Holds both regular compactions and db path move compactions, so that shutdown, the exclusive
+  // manual-compaction barrier and priority updates account for db path moves too.
+  std::unordered_set<ThreadPoolTask*> compaction_tasks_;
 
   // stores the total number of compactions that are currently running
   int num_total_running_compactions_;

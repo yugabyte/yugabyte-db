@@ -49,6 +49,9 @@ DEFINE_test_flag(string, transaction_manager_preferred_tablet, "",
                  "For testing only. If non-empty, transaction manager will try to use the status "
                  "tablet with id matching this flag, if present in the list of status tablets.");
 
+DEFINE_test_flag(bool, transaction_manager_disable_local_filter, false,
+                 "Disable filter for using locally-led transaction status tablets.");
+
 METRIC_DEFINE_counter(server, transaction_promotions,
                       "Number of transactions being promoted to global transactions",
                       yb::MetricUnit::kTransactions,
@@ -68,6 +71,27 @@ METRIC_DEFINE_counter(server, initially_tablespace_local_transactions,
                       "Number of transactions that were started as tablespace-local transactions",
                       yb::MetricUnit::kTransactions,
                       "Number of transactions that were started as tablespace-local transactions");
+
+METRIC_DEFINE_counter(server, write_pipelining_aborts,
+                      "Number of transactions aborted because a pipelined write could not be "
+                      "verified after a tablet leader change",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions aborted because a pipelined write could not be "
+                      "verified after a tablet leader change");
+
+METRIC_DEFINE_counter(server, write_pipelining_abort_discarded_reads,
+                      "Number of read operations completed by transactions that were later "
+                      "aborted because a pipelined write could not be verified",
+                      yb::MetricUnit::kOperations,
+                      "Number of read operations completed by transactions that were later "
+                      "aborted because a pipelined write could not be verified");
+
+METRIC_DEFINE_counter(server, write_pipelining_abort_discarded_writes,
+                      "Number of write operations completed by transactions that were later "
+                      "aborted because a pipelined write could not be verified",
+                      yb::MetricUnit::kOperations,
+                      "Number of write operations completed by transactions that were later "
+                      "aborted because a pipelined write could not be verified");
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -210,7 +234,8 @@ class TransactionTableState {
       callback(FLAGS_TEST_transaction_manager_preferred_tablet);
       return true;
     }
-    if (local_tablet_filter_) {
+    if (PREDICT_TRUE(!FLAGS_TEST_transaction_manager_disable_local_filter) &&
+        local_tablet_filter_) {
       std::vector<const TabletId*> ids;
       ids.reserve(tablets.size());
       for (const auto& id : tablets) {
@@ -399,6 +424,11 @@ class TransactionManager::Impl {
           METRIC_initially_region_local_transactions.Instantiate(metric_entity);
       initially_tablespace_local_transactions_ =
           METRIC_initially_tablespace_local_transactions.Instantiate(metric_entity);
+      write_pipelining_aborts_ = METRIC_write_pipelining_aborts.Instantiate(metric_entity);
+      write_pipelining_abort_discarded_reads_ =
+          METRIC_write_pipelining_abort_discarded_reads.Instantiate(metric_entity);
+      write_pipelining_abort_discarded_writes_ =
+          METRIC_write_pipelining_abort_discarded_writes.Instantiate(metric_entity);
     }
   }
 
@@ -538,6 +568,18 @@ class TransactionManager::Impl {
     return initially_tablespace_local_transactions_;
   }
 
+  scoped_refptr<Counter> write_pipelining_aborts_metric() const {
+    return write_pipelining_aborts_;
+  }
+
+  scoped_refptr<Counter> write_pipelining_abort_discarded_reads_metric() const {
+    return write_pipelining_abort_discarded_reads_;
+  }
+
+  scoped_refptr<Counter> write_pipelining_abort_discarded_writes_metric() const {
+    return write_pipelining_abort_discarded_writes_;
+  }
+
  private:
   YBClient* const client_;
   scoped_refptr<ClockBase> clock_;
@@ -555,6 +597,9 @@ class TransactionManager::Impl {
   scoped_refptr<Counter> initially_global_transactions_;
   scoped_refptr<Counter> initially_region_local_transactions_;
   scoped_refptr<Counter> initially_tablespace_local_transactions_;
+  scoped_refptr<Counter> write_pipelining_aborts_;
+  scoped_refptr<Counter> write_pipelining_abort_discarded_reads_;
+  scoped_refptr<Counter> write_pipelining_abort_discarded_writes_;
 };
 
 TransactionManager::TransactionManager(
@@ -648,6 +693,18 @@ scoped_refptr<Counter> TransactionManager::initially_region_local_transactions_m
 
 scoped_refptr<Counter> TransactionManager::initially_tablespace_local_transactions_metric() const {
   return impl_->initially_tablespace_local_transactions_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::write_pipelining_aborts_metric() const {
+  return impl_->write_pipelining_aborts_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::write_pipelining_abort_discarded_reads_metric() const {
+  return impl_->write_pipelining_abort_discarded_reads_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::write_pipelining_abort_discarded_writes_metric() const {
+  return impl_->write_pipelining_abort_discarded_writes_metric();
 }
 
 TransactionManager::TransactionManager(TransactionManager&& rhs) = default;

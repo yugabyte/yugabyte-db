@@ -122,6 +122,11 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
+      // Before VM creation, so that a cloud permission error fails the edit first. This creates the
+      // load balancers of new regions and reconciles the existing ones.
+      for (Cluster cluster : clusters) {
+        createEnsureManagedLoadBalancerTasks(cluster);
+      }
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
       if (!nodesToProvision.isEmpty()) {

@@ -105,6 +105,11 @@ using yb::ash::PggateRPC;
 
 namespace yb::pggate {
 
+MonoDelta DefaultRpcTimeout() {
+  return MonoDelta::FromMilliseconds(client::YsqlClientReadWriteTimeoutMs()) +
+      MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+}
+
 namespace {
 // The following two terms are used to express how long an operation can take to complete:
 // - Timeout: the maximum duration of time that an operation is allowed to run for.
@@ -204,8 +209,7 @@ class PgTimeout {
   }
 
   static MonoDelta GetDefaultRpcTimeout() {
-    return MonoDelta::FromMilliseconds(client::YsqlClientReadWriteTimeoutMs()) +
-        MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+    return DefaultRpcTimeout();
   }
 
   const CoarseTimePoint& MinDeadline(const CoarseTimePoint& a, const CoarseTimePoint& b) const {
@@ -678,6 +682,25 @@ static PggateRPC kDebugLogRPCs[] = {
   PggateRPC::kWaitForLockersMultiple
 };
 
+class RequestSequenceNum {
+ public:
+  explicit RequestSequenceNum(std::atomic<uint64_t>& next_op_serial_no)
+      : next_serial_no_(next_op_serial_no) {}
+
+  void Register(tserver::LWPgPerformRequestPB& req) {
+    auto& sn = *req.mutable_sequence_num();
+    if (last_serial_no_) {
+      sn.mutable_predecessor_serial_no()->set_value(*last_serial_no_);
+    }
+    last_serial_no_ = next_serial_no_.fetch_add(1, std::memory_order_acq_rel);
+    sn.set_serial_no(*last_serial_no_);
+  }
+
+ private:
+  std::atomic<uint64_t>& next_serial_no_;
+  std::optional<uint64_t> last_serial_no_;
+};
+
 class PgClient::Impl : public BigDataFetcher {
  public:
   Impl(
@@ -692,7 +715,7 @@ class PgClient::Impl : public BigDataFetcher {
             proxy_init_info.resolve_cache_timeout),
         heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
         wait_event_watcher_(wait_event_watcher),
-        next_perform_op_serial_no_(next_perform_op_serial_no) {
+        request_sequence_num_(next_perform_op_serial_no) {
     tablet_server_count_cache_.fill(0);
   }
 
@@ -1152,23 +1175,20 @@ class PgClient::Impl : public BigDataFetcher {
 
   PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
-    auto get_next_serial_no =
-        [this] { return next_perform_op_serial_no_.fetch_add(1, std::memory_order_acq_rel); };
-
-    if (PREDICT_FALSE(
-        FLAGS_TEST_emulate_op_lost_on_write &&
-        !options->ddl_mode() &&
-        operations.size() == 1 &&
-        operations.front()->is_write())) {
-      const auto serial_no = get_next_serial_no();
-      LOG(INFO) << "Emulating lost of operation with serial_no=" << serial_no;
-    }
-
     auto& arena = operations.front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
-    req.set_serial_no(get_next_serial_no());
+    request_sequence_num_.Register(req);
+    if (FLAGS_TEST_emulate_op_lost_on_write &&
+        !options->ddl_mode() &&
+        operations.size() == 1 &&
+        operations.front()->is_write()) [[unlikely]] {
+      const auto lost_serial_no = req.sequence_num().serial_no();
+      request_sequence_num_.Register(req);
+      LOG(INFO) << "Emulating lost of operation with serial_no=" << lost_serial_no;
+    }
+
     PrepareOperations(&req, operations);
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->PerformAsync(req, resp, controller, std::move(callback));
@@ -2178,8 +2198,7 @@ class PgClient::Impl : public BigDataFetcher {
   std::optional<BigSharedMemoryDescriptor> big_shared_memory_;
   bool big_shared_memory_response_pending_ = false;
   ThreadSafeArena object_locks_arena_;
-  std::atomic<uint64_t>& next_perform_op_serial_no_;
-
+  RequestSequenceNum request_sequence_num_;
   ClusterConfig cluster_config_;
 };
 

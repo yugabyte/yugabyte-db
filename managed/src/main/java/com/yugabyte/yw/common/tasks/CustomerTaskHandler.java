@@ -9,9 +9,6 @@ import static play.mvc.Http.Status.NOT_FOUND;
 
 import api.v2.handlers.HandlerPagingSupport;
 import api.v2.mappers.TaskMapper;
-import api.v2.models.TaskExecutorShutdownResp;
-import api.v2.models.TaskExecutorShutdownSpec;
-import api.v2.models.TaskExecutorShutdownStatus;
 import api.v2.models.TaskPagedQuerySpec;
 import api.v2.models.TaskPagedResp;
 import api.v2.models.YBATask;
@@ -21,7 +18,6 @@ import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -39,7 +35,6 @@ import com.yugabyte.yw.models.paging.TaskPagedApiResponse;
 import com.yugabyte.yw.models.paging.TaskPagedQuery;
 import com.yugabyte.yw.models.paging.TaskPagedResponse;
 import io.ebean.Query;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -72,21 +67,6 @@ public class CustomerTaskHandler {
     this.confGetter = confGetter;
     this.commissioner = commissioner;
     this.customerTaskManager = customerTaskManager;
-  }
-
-  /** Initiates commissioner task executor shutdown using the given abort timeout. */
-  public TaskExecutorShutdownResp shutdownTaskExecutor(TaskExecutorShutdownSpec spec) {
-    boolean success = commissioner.initiateShutdown(Duration.ofSeconds(spec.getAbortTimeSeconds()));
-    return new TaskExecutorShutdownResp().success(success);
-  }
-
-  /** Returns the current task executor shutdown status. */
-  public TaskExecutorShutdownStatus getShutdownStatus() {
-    TaskExecutor.ShutdownStatus status = commissioner.getShutdownStatus();
-    return new TaskExecutorShutdownStatus()
-        .isShutdownInitiated(status.isShutdownInitiated())
-        .isShutdownComplete(status.isShutdownComplete())
-        .numRunningTasks(status.getNumRunningTasks());
   }
 
   /** Retries a previously failed, retry-capable customer task. */

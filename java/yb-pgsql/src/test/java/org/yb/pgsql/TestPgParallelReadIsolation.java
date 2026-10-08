@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
@@ -35,16 +36,29 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
       LoggerFactory.getLogger(TestPgParallelReadIsolation.class);
   private static final String COLOCATED_DB = "codb";
   private static final String MAIN_TABLE = "foo";
-  private static final int NUM_ROWS = 100000;
+  // Under sanitizers the full-size table keeps ~1GB per tserver resident in the colocated
+  // tablet's memtable and intents.  Several copies of the test running in parallel then exhaust
+  // the host, starving reactor threads past the consensus stuck-RPC threshold, which FATALs the
+  // daemons.  Row count does not affect what any of the tests here assert: parallelism is forced
+  // via yb_parallel_range_rows, which yields the same two workers for either size.
+  private static final int NUM_ROWS = BuildTypeUtil.nonSanitizerVsSanitizer(100000, 10000);
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
-    flagMap.put("enable_object_locking_for_table_locks", "true");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
-    flagMap.put("ysql_enable_concurrent_ddl", "true");
+    // testParallelReadWithConcurrentAlters runs ALTER TABLE alongside parallel readers, and
+    // testFreshUserSnapshotInConcurrentDDLMode needs the concurrent DDL mode. Without object
+    // locking to serialize the DDL against the readers, a worker can target a just-dropped
+    // attribute and trip Assert(!attr->attisdropped) in YbDmlAppendTargetRegularAttr.
+    toggleDDLMode(flagMap, /* useLegacy */ false);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     return flagMap;
   }
 

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The `yb_tablet_metadata` view provides a YSQL-accessible interface for fetching tablet distribution and leadership information across a YugabyteDB cluster.
+The `yb_tablet_metadata` view returns tablet placement, leadership, and state for the whole cluster. The examples below look up tablets, leaders, range boundaries, and the tablet that holds a row.
 
 While the [yb_local_tablets](../yb-local-tablets/) view provides information about tablets on the local node, `yb_tablet_metadata` exposes tablet placement and replica roles cluster-wide, serving as the YSQL equivalent of the YCQL `system.partitions` table.
 

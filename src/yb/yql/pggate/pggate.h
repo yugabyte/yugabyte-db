@@ -125,6 +125,7 @@ class PgApiImpl {
   void Shutdown();
 
   void SetupPgBackendCgroup(YbcPgOid dboid);
+  void SetConnectedDatabaseOid(YbcPgOid dboid);
 
   const YbcPgCallbacks* pg_callbacks() const { return &pg_callbacks_; }
 
@@ -132,6 +133,8 @@ class PgApiImpl {
   void Interrupt();
 
   void ResetCatalogReadTime();
+  void SetHistoricalReadContext(const ReadHybridTime& read_time, const char* transaction_id);
+  void ResetHistoricalReadContext();
   [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
   uint64_t GetSessionID() const { return pg_client_.SessionID(); }
@@ -708,6 +711,7 @@ class PgApiImpl {
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
   bool IsDdlModeWithRegularTransactionBlock() const;
+  bool IsTableLockingEnabledForCurrentTxn() const;
   Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------

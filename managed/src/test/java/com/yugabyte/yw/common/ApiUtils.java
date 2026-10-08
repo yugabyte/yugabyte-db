@@ -18,7 +18,6 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -66,16 +65,11 @@ public class ApiUtils {
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-        userIntent.providerType = cloudType;
+        ProviderInitializer pi = TestUtils.existingProviderInitializer(userIntent);
         if (cloudType != null) {
-          Customer c = Customer.get(universe.getCustomerId());
-          List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
-          if (providerList.size() > 0) {
-            userIntent.provider = providerList.get(0).getUuid().toString();
-          }
+          pi.setProviderType(cloudType);
         }
-
-        userIntent.accessKeyCode = DEFAULT_ACCESS_KEY_CODE;
+        pi.setAccessCode(DEFAULT_ACCESS_KEY_CODE);
         // Add a desired number of nodes.
         userIntent.numNodes = userIntent.replicationFactor;
         universeDetails.upsertPrimaryCluster(userIntent, null, null);
@@ -375,15 +369,6 @@ public class ApiUtils {
     return mockUniverseUpdaterWithInactiveNodes(false);
   }
 
-  public static Universe insertInstanceTags(UUID univUUID) {
-    UniverseUpdater updater =
-        universe -> {
-          UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-          userIntent.instanceTags.put("Cust", "Test");
-        };
-    return Universe.saveDetails(univUUID, updater);
-  }
-
   public static Universe.UniverseUpdater mockUniverseUpdaterWithInactiveNodes(
       final boolean setMasters) {
     return new Universe.UniverseUpdater() {
@@ -445,8 +430,10 @@ public class ApiUtils {
 
   public static void configureDedicatedMasterFields(UserIntent userIntent) {
     userIntent.dedicatedNodes = true;
-    userIntent.masterInstanceType = userIntent.instanceType;
-    userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
+    UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
+    TestUtils.existingProviderInitializer(userIntent)
+        .setMasterInstanceType(userIntent.getBaseInstanceType(providerUUID))
+        .setMasterDeviceInfo(userIntent.getBaseDeviceInfo(providerUUID).clone());
   }
 
   public static Universe.UniverseUpdater mockUniverseUpdaterSetDedicated() {
@@ -560,7 +547,7 @@ public class ApiUtils {
             getDummyNodeDetailSet(readonlyClusterUUID, 0, readOnlyNodes);
         for (NodeDetails roNode : readReplicaNodesSet) {
           roNode.state = NodeState.Live;
-          roNode.cloudInfo.cloud = userIntent.providerType.name();
+          roNode.cloudInfo.cloud = userIntent.getAllCloudTypes().iterator().next().name();
         }
 
         universeDetails.nodeDetailsSet.addAll(readReplicaNodesSet);
@@ -655,16 +642,17 @@ public class ApiUtils {
       Region r, Provider p, InstanceType i, int numNodes, int tserverDiskSize, int masterDiskSize) {
     UserIntent ui = new UserIntent();
     ui.regionList = ImmutableList.of(r.getUuid());
-    ui.provider = p.getUuid().toString();
-    ui.providerType = Common.CloudType.valueOf(p.getCode());
     ui.numNodes = numNodes;
-    if (!ui.providerType.equals(CloudType.kubernetes)) {
-      ui.instanceType = i.getInstanceTypeCode();
+    ProviderInitializer initializer = TestUtils.getProviderInitializerForTests(ui, p.getUuid());
+    CloudType cloudType = Common.CloudType.valueOf(p.getCode());
+    initializer.setProviderType(cloudType);
+    if (!cloudType.equals(CloudType.kubernetes)) {
+      initializer.setInstanceType(i.getInstanceTypeCode());
     }
-    ui.deviceInfo = getDummyDeviceInfo(1, tserverDiskSize);
+    initializer.setDeviceInfo(getDummyDeviceInfo(1, tserverDiskSize));
     // masterDeviceInfo can only be set when dedicatedNodes is true.
     if (masterDiskSize > 0) {
-      ui.masterDeviceInfo = getDummyDeviceInfo(1, masterDiskSize);
+      initializer.setMasterDeviceInfo(getDummyDeviceInfo(1, masterDiskSize));
     }
     ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
     ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
@@ -887,10 +875,10 @@ public class ApiUtils {
   public static UserIntent getDummyUserIntent(
       DeviceInfo deviceInfo, Provider provider, String instanceType) {
     UserIntent userIntent = new UserIntent();
-    userIntent.provider = provider.getUuid().toString();
-    userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    userIntent.instanceType = instanceType;
-    userIntent.deviceInfo = deviceInfo;
+    TestUtils.getProviderInitializerForTests(userIntent, provider.getUuid())
+        .setProviderType(Common.CloudType.valueOf(provider.getCode()))
+        .setInstanceType(instanceType)
+        .setDeviceInfo(deviceInfo);
     return userIntent;
   }
 }

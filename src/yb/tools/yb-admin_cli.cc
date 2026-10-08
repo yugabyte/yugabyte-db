@@ -82,6 +82,13 @@ DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
 DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output");
+DEFINE_NON_RUNTIME_string(xcluster_source_certs_dir_name, "",
+    "Directory with certificates for connecting to the source universe, used by the "
+    "verify_xcluster_* commands. Empty falls back to --certs_dir_name and then --certs_dir, which "
+    "name this universe's certificates and are only correct when both universes share a "
+    "certificate authority; otherwise name the directory holding the source's certificates, which "
+    "xCluster keeps at <certs_for_cdc_dir>/<replication_group_id> on the target's nodes. Since "
+    "empty always means fall back, a TLS target cannot reach a plaintext source.");
 
 #define REGISTER_COMMAND(command_name) \
   Register(#command_name, command_name##_args, command_name##_action)
@@ -726,7 +733,8 @@ Status list_tablets_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 }
 
 const auto modify_table_placement_info_args =
-    "<table> <placement_info> <replication_factor> [<placement_uuid>]";
+    "<table> <placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_table_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 3 || args.size() > 5) {
@@ -756,7 +764,9 @@ Status modify_table_placement_info_action(
   return Status::OK();
 }
 
-const auto modify_placement_info_args = "<placement_info> <replication_factor> [<placement_uuid>]";
+const auto modify_placement_info_args =
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -781,7 +791,8 @@ Status clear_placement_info_action(
 }
 
 const auto add_read_replica_placement_info_args =
-    "<placement_info> <replication_factor> [<placement_uuid>]";
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status add_read_replica_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -796,7 +807,8 @@ Status add_read_replica_placement_info_action(
 }
 
 const auto modify_read_replica_placement_info_args =
-    "<placement_info> <replication_factor> [<placement_uuid>]";
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_read_replica_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -3105,7 +3117,8 @@ Status verify_xcluster_slice_action(
   // continuation key that only compares correctly once encoded. A bad range surfaces as a kError
   // result rather than a CLI argument error.
   ClusterAdminClient source_client(
-      source_master_addresses, MonoDelta::FromMilliseconds(FLAGS_timeout_ms));
+      source_master_addresses, MonoDelta::FromMilliseconds(FLAGS_timeout_ms),
+      FLAGS_xcluster_source_certs_dir_name);
   RETURN_NOT_OK_PREPEND(
       source_client.Init(),
       Format("Unable to connect to source masters at [$0]", source_master_addresses));
@@ -3155,7 +3168,8 @@ Status verify_xcluster_group_action(
     }
   }
   return client->VerifyXClusterGroup(
-      xcluster::ReplicationGroupId(args[0]), options, skip_tables);
+      xcluster::ReplicationGroupId(args[0]), options, skip_tables,
+      FLAGS_xcluster_source_certs_dir_name);
 }
 
 const auto xcluster_failover_args = "<replication_group_id>";

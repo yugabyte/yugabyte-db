@@ -529,6 +529,16 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
+			/* YB: YbThrowError packet */
+		case 'x':
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			doing_extended_query_message = true;
+			break;
+
 		default:
 
 			/*
@@ -1546,6 +1556,8 @@ exec_simple_query(const char *query_string)
 		/*
 		 * Start the portal.  No parameters here.
 		 */
+		/* YB: the execute span covers PortalStart (ExecutorStart) as well as PortalRun. */
+		YB_DIST_TRACE_START_SPAN("execute");
 		PortalStart(portal, NULL, 0, InvalidSnapshot);
 
 		/*
@@ -1600,6 +1612,7 @@ exec_simple_query(const char *query_string)
 						 receiver,
 						 receiver,
 						 &qc);
+		YB_DIST_TRACE_END_SPAN();
 
 		/*
 		 * YB: The receiver is allocated in the MessageContext and needs to
@@ -2664,6 +2677,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
 
+	YB_DIST_TRACE_START_SPAN("execute");
 	completed = PortalRun(portal,
 						  max_rows,
 						  true, /* always top level */
@@ -2671,6 +2685,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 						  receiver,
 						  receiver,
 						  &qc);
+	YB_DIST_TRACE_END_SPAN();
 
 	receiver->rDestroy(receiver);
 
@@ -5513,17 +5528,6 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	if (YBHasSkippedIntentsWrite())
-	{
-		const char *retry_err = ("query layer retry isn't possible because "
-								 "we have skipped intents write");
-
-		edata->message = psprintf("%s (%s)", edata->message, retry_err);
-		if (yb_debug_log_internal_restarts)
-			elog(LOG, "%s", retry_err);
-		return false;
-	}
-
 	if (attempt >= yb_max_query_layer_retries)
 	{
 		const char *retry_err = psprintf("yb_max_query_layer_retries set to %d are exhausted",
@@ -5561,40 +5565,64 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	command_tag = retry_data->command_tag;
 
 	/*
-	 * If we're executing a prepared statement, we're interested in the command
-	 * tag of the underlying statement.
+	 * EXECUTE and EXPLAIN only wrap another statement, and retriability is a
+	 * property of that statement, so resolve the tag down to it. For EXPLAIN
+	 * without ANALYZE the wrapped statement never runs, so deciding by its tag
+	 * is conservative.
 	 */
-	if (command_tag == CMDTAG_EXECUTE)
+	if (command_tag == CMDTAG_EXECUTE || command_tag == CMDTAG_EXPLAIN)
 	{
 		List	   *parsetree_list = yb_parse_query_silently(retry_data->query_string);
+		Node	   *stmt;
 
-		if (list_length(parsetree_list) == 0)
+		if (parsetree_list == NIL)
 		{
-			const char *retry_err = ("query layer retry isn't possible because "
-									 "the EXECUTE command could not be parsed");
+			const char *retry_err = psprintf("query layer retry isn't possible because "
+											 "the %s command could not be parsed",
+											 GetCommandTagName(command_tag));
 
 			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
 				elog(LOG, "%s", retry_err);
 			return false;
 		}
-		ExecuteStmt *execute_stmt = (ExecuteStmt *) linitial_node(RawStmt,
-																  parsetree_list)->stmt;
-		PreparedStatement *prepared_stmt = FetchPreparedStatement(execute_stmt->name,
-																  false /* throwError */ );
 
-		if (prepared_stmt == NULL)
+		/* Multi-statement queries were rejected above. */
+		Assert(list_length(parsetree_list) == 1);
+		stmt = linitial_node(RawStmt, parsetree_list)->stmt;
+		Assert(stmt != NULL);
+
+		/* EXPLAIN EXECUTE has both wrappers, so peel EXPLAIN off first. */
+		if (IsA(stmt, ExplainStmt))
 		{
-			const char *retry_err = ("query layer retry isn't possible because "
-									 "the prepared statement for the EXECUTE "
-									 "command could not be found");
-
-			edata->message = psprintf("%s (%s)", edata->message, retry_err);
-			if (yb_debug_log_internal_restarts)
-				elog(LOG, "%s", retry_err);
-			return false;
+			stmt = ((ExplainStmt *) stmt)->query;
+			Assert(stmt != NULL);
 		}
-		command_tag = prepared_stmt->plansource->commandTag;
+
+		if (IsA(stmt, ExecuteStmt))
+		{
+			PreparedStatement *prepared_stmt =
+				FetchPreparedStatement(((ExecuteStmt *) stmt)->name,
+									   false /* throwError */ );
+
+			if (prepared_stmt == NULL)
+			{
+				const char *retry_err = ("query layer retry isn't possible because "
+										 "the prepared statement for the EXECUTE "
+										 "command could not be found");
+
+				edata->message = psprintf("%s (%s)", edata->message, retry_err);
+				if (yb_debug_log_internal_restarts)
+					elog(LOG, "%s", retry_err);
+				return false;
+			}
+			command_tag = prepared_stmt->plansource->commandTag;
+		}
+		else
+		{
+			/* EXPLAIN of a statement other than EXECUTE. */
+			command_tag = CreateCommandTag(stmt);
+		}
 	}
 
 	/*
@@ -5629,6 +5657,9 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 *       (extendable via yb_extra_commands_to_retry_in_proc). Other
 	 *       top-level tags are retried only if listed in
 	 *       yb_extra_commands_to_retry.
+	 *
+	 * EXECUTE and EXPLAIN are resolved above to the tag of the statement they
+	 * wrap, so they follow that statement's rule rather than their own.
 	 *
 	 * 2. REPEATABLE READ / SERIALIZABLE:
 	 *    For all error kinds, only SELECT/INSERT/UPDATE/DELETE retry by
@@ -5687,6 +5718,26 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 				elog(LOG, "%s", retry_err);
 			return false;
 		}
+	}
+
+	/*
+	 * A write that skipped the intents DB cannot be undone by rolling back to
+	 * an internal savepoint or by restarting the transaction, so it blocks a
+	 * retry whatever the statement is. It is checked last because it is a
+	 * property of the transaction rather than of this statement: a statement
+	 * that is already unretriable for a reason of its own - its command tag,
+	 * the retry limit, data already sent to the client - reports that reason,
+	 * which tells the user more than the fastpath write does.
+	 */
+	if (YBHasSkippedIntentsWrite())
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "we have skipped intents write");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
 	}
 
 	return true;
@@ -6568,6 +6619,8 @@ PostgresMain(const char *dbname, const char *username)
 		proc_exit(0);
 	}
 
+	YbReleaseFreeMemoryAfterStartup();
+
 	/*
 	 * Also set up handler to log session end; we have to wait till now to be
 	 * sure Log_disconnections has its final value.
@@ -7063,6 +7116,13 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					const char *query_string;
 
+					/*
+					 * YB: Send YbQueryAck packet to ConnMgr so it can keep
+					 * track of unnamed prepared statement deallocation
+					 */
+					if (YbIsClientYsqlConnMgr() && whereToSendOutput == DestRemote)
+						pq_putemptymessage('8');
+
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
@@ -7232,6 +7292,25 @@ PostgresMain(const char *dbname, const char *username)
 						/* Get error data */
 						ErrorData  *edata;
 						MemoryContext errorcontext = MemoryContextSwitchTo(yb_oldcontext);
+
+						/*
+						 * YB: Tell ConnMgr before anything below can throw
+						 * again: yb_is_dml_command() re-parses query_string,
+						 * so a syntax error would be raised a second time and
+						 * skip the rest of this block.
+						 */
+						if (YbIsClientYsqlConnMgr() &&
+							whereToSendOutput == DestRemote &&
+							yb_echo != NULL && stmt_name[0] == '\0')
+						{
+							StringInfoData yb_buf;
+
+							pq_beginmessage(&yb_buf, '6');
+							pq_sendbyte(&yb_buf, YB_UNNAMED_PARSE_FAILED);
+							pq_sendbytes(&yb_buf, yb_echo + 1, yb_echo_len - 1);
+							pq_endmessage(&yb_buf);
+							pq_flush();
+						}
 
 						edata = CopyErrorData();
 
@@ -7714,6 +7793,7 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					MyProcPort->yb_is_auth_passthrough_req = true;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
+					MyProcPort->yb_forwarded_cert_parse_failed = false;
 
 					if (!YBCIsSysTablePrefetchingStarted() &&
 						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
@@ -7757,7 +7837,14 @@ PostgresMain(const char *dbname, const char *username)
 					 * NULL before that
 					 */
 					MyProcPort->authn_id = NULL;
-
+#ifdef USE_SSL
+					/*
+					 * YB: Reset the TLS connection state of the logical connection.
+					 * This is to avoid the certificate of the previous client getting used
+					 * by the next client if it throws an error during authentication.
+					 */
+					be_tls_close(MyProcPort);
+#endif
 					/*
 					 * HARD Code connection type between client and
 					 * ysql_conn_mgr to AF_INET (only supported) for
@@ -7778,6 +7865,8 @@ PostgresMain(const char *dbname, const char *username)
 
 					/* Start authentication */
 					{
+						int			rc;
+
 						start_xact_command();
 						/*
 						 * Parse input to populate MyProcPort with new client
@@ -7786,9 +7875,22 @@ PostgresMain(const char *dbname, const char *username)
 						 * between conn mgr and the control backend is already
 						 * done during control backend startup.
 						 */
-						YbProcessStartupPacket(MyProcPort,
-											   true /* ssl_done */ ,
-											   true /* gss_done */ );
+						rc = YbProcessStartupPacket(MyProcPort,
+													true /* ssl_done */ ,
+													true /* gss_done */ );
+						/*
+						 * YB: Unlike auth failure (WARNING, keep alive), a
+						 * startup-packet STATUS_ERROR leaves the wire
+						 * desynced. Kill this control backend and don't send
+						 * any message to client, read ProcessStartupPacket
+						 * description. It has already logged the reason.
+						 */
+						if (rc != STATUS_OK)
+						{
+							if (whereToSendOutput == DestRemote)
+								whereToSendOutput = DestNone;
+							proc_exit(0);
+						}
 
 						YbLogAuthPassthroughConnReceived(MyProcPort);
 
@@ -7836,10 +7938,24 @@ PostgresMain(const char *dbname, const char *username)
 					 * transaction MemoryContext which has been free'd now
 					 */
 
+#ifdef USE_SSL
+
+					/*
+					 * Drop the certificate of the client that just
+					 * authenticated. This control backend is reused for the
+					 * next client, and its own connection to the conn mgr is an
+					 * unauthenticated unix socket with no certificate of its
+					 * own, so leaving this set would let one client's identity
+					 * be seen while authenticating another.
+					 */
+					be_tls_close(MyProcPort);
+#endif
+
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
+					MyProcPort->yb_forwarded_cert_parse_failed = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;
@@ -7934,6 +8050,42 @@ PostgresMain(const char *dbname, const char *username)
 									firstchar)));
 				}
 				break;
+
+			case 'x':			/* YB: YbThrowError from ConnMgr */
+				{
+					/*
+					 * This packet is used by ConnMgr to send error to client in
+					 * the correct place in stream
+					 */
+					const char *yb_sqlstate;
+					const char *yb_message;
+
+					if (!YbIsClientYsqlConnMgr())
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("invalid frontend message type %d",
+											   firstchar)));
+
+					yb_sqlstate = pq_getmsgstring(&input_message);
+					yb_message = pq_getmsgstring(&input_message);
+					pq_getmsgend(&input_message);
+
+					if (strlen(yb_sqlstate) != 5)
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+										errmsg("invalid sqlstate \"%s\" in "
+											   "YbThrowError message",
+											   yb_sqlstate)));
+
+					ereport(ERROR,
+							(errcode(MAKE_SQLSTATE(yb_sqlstate[0], yb_sqlstate[1],
+												   yb_sqlstate[2], yb_sqlstate[3],
+												   yb_sqlstate[4])),
+							 errmsg("ConnMgr originated error: %s", yb_message)));
+					break;
+
+				}
+
 
 			default:
 				ereport(FATAL,

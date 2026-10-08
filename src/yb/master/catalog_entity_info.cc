@@ -779,6 +779,27 @@ Result<bool> TableInfo::RemoveTabletUnlocked(
   return result;
 }
 
+bool TableInfo::RemoveInactiveTablet(const TabletInfoPtr& tablet) {
+  // Read before taking lock_. Taking a tablet's lock under lock_ would invert the order used by
+  // the PITR restore path, which holds tablet write locks across TableInfo::RemoveTablets. Reads
+  // committed state, not dirty state, so no write lock on the tablet is required.
+  const auto partition_key_start =
+      tablet->LockForRead()->pb.partition().partition_key_start();
+
+  std::lock_guard l(lock_);
+  // Never drop a tablet that still owns a partition. A split parent shares its start key with its
+  // first child, so finding an entry is not enough -- it has to be this tablet.
+  auto partitions_it = partitions_.find(partition_key_start);
+  if (partitions_it != partitions_.end()) {
+    auto partitions_tablet = partitions_it->second.lock();
+    if (partitions_tablet && partitions_tablet->tablet_id() == tablet->tablet_id()) {
+      return false;
+    }
+  }
+  tablets_.erase(tablet->tablet_id());
+  return true;
+}
+
 Result<TabletInfos> TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req) const {
   if (req->has_include_inactive() && req->include_inactive()) {
     return GetInactiveTabletsInRange(

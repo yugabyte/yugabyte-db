@@ -870,6 +870,13 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
 		appendStringInfo(str, " %d", node->hashClauseInfos[i].innerHashAttNo);
 
+	appendStringInfoString(str, " :innerHashExprs");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+	{
+		appendStringInfoString(str, " ");
+		outNode(str, node->hashClauseInfos[i].innerHashExpr);
+	}
+
 	appendStringInfoString(str, " :outerParamExprs");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
 	{
@@ -4112,16 +4119,17 @@ _outYbMergeScanInfo(StringInfo str, const YbMergeScanInfo *node)
 {
 	WRITE_NODE_TYPE("YBMERGESCANINFO");
 
-	WRITE_NODE_FIELD(saop_cols);
+	WRITE_NODE_FIELD(stream_cols);
 	WRITE_NODE_FIELD(sort_cols);
 }
 
 static void
-_outYbMergeScanSaopColInfo(StringInfo str, const YbMergeScanSaopColInfo *node)
+_outYbMergeScanStreamColInfo(StringInfo str,
+							 const YbMergeScanStreamColInfo *node)
 {
-	WRITE_NODE_TYPE("YBMERGESCANSAOPCOLINFO");
+	WRITE_NODE_TYPE("YBMERGESCANSTREAMCOLINFO");
 
-	WRITE_NODE_FIELD(saop);
+	WRITE_NODE_FIELD(clause);
 	WRITE_INT_FIELD(indexcol);
 	WRITE_INT_FIELD(num_elems);
 	WRITE_BOOL_FIELD(derived);
@@ -4880,8 +4888,8 @@ outNode(StringInfo str, const void *obj)
 			case T_YbMergeScanInfo:
 				_outYbMergeScanInfo(str, obj);
 				break;
-			case T_YbMergeScanSaopColInfo:
-				_outYbMergeScanSaopColInfo(str, obj);
+			case T_YbMergeScanStreamColInfo:
+				_outYbMergeScanStreamColInfo(str, obj);
 				break;
 			case T_YbSortInfo:
 				_outYbSortInfo(str, obj);

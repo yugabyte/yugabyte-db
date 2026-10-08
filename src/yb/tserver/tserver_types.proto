@@ -140,6 +140,14 @@ message TabletServerErrorPB {
     // it. Distinct from a bare Expired, which also covers causes that may have replicated: a
     // fenced write definitively did not take effect.
     WRITE_FENCE_EXPIRED = 34;
+
+    // The thin client session is unknown to this tablet server or is shutting down, so the client
+    // must open a new one.
+    SESSION_LOST = 35;
+
+    // A pipelined (async) write acked by an earlier leader cannot be verified on the current one:
+    // it was overwritten after the leader change, or is more than one term old.
+    ASYNC_WRITE_LOST = 36;
   }
 
   // The error code.

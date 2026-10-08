@@ -363,6 +363,14 @@ if(NOT APPLE)
 endif()
 
 #######################################
+# yb_benchmark_main
+#######################################
+
+ADD_YB_TEST_LIBRARY(yb_benchmark_main
+                    SRCS benchmark_main.cc
+                    DEPS gbenchmark gflags glog yb_util)
+
+#######################################
 # Unit tests
 #######################################
 
@@ -535,3 +543,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
 
 ADD_YB_TEST(uint_set-test)
 YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)
+
+#######################################
+# Microbenchmarks
+#######################################
+
+ADD_YB_BENCHMARK(mutex-benchmark DEPS absl)

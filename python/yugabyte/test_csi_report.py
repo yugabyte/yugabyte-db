@@ -237,15 +237,14 @@ def test_delay_grows_with_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
                      for attempt in range(1, csi_report.GET_ATTEMPTS)]
 
 
-# ---------------------------------------------------------------------------------------------
-# classify_execution: the retry_kind decision table. Only fail_repetition vs repetition is
-# exclusive by construction (--fail_repetitions is rejected alongside --num_repetitions > 1);
-# a Spark task resubmit (attempt > 0) can occur inside either job, and the branch order in
-# classify_execution resolves those overlaps: fail_repetition wins (the "first attempt failed"
-# implication must stay exact for consumers), then task_resubmit (needs the resubmit wait),
-# then repetition. The kind attribute is what lets downstream consumers separate a
-# fail-repetition (which must never enter a first-attempt failure rate) from a Spark task
-# resubmit (infra artifact) and a plain repetition.
+class FakeJson(FakeResponse):
+    def __init__(self, body: Any) -> None:
+        super().__init__(200)
+        self.body = body
+
+    def json(self) -> Any:
+        return self.body
+
 
 @pytest.mark.parametrize('rerun,attempt,reps,attempt_index,expected', [
     # expected = (retry, retry_kind, wait)
@@ -436,3 +435,67 @@ def test_invalid_utf8_does_not_fail(tmp_path: Any) -> None:
 
     assert centered
     assert MARKER in text
+
+
+# The new-test repetitions are dispatched serially after the main pass, and only for a test whose
+# first attempt passed, so consumers may read the kind on an item as "the first attempt passed".
+# That has to hold for every execution of the job, a Spark resubmit inside it included, which is
+# why the kind outranks task_resubmit.
+@pytest.mark.parametrize('rerun,attempt,attempt_index,expected', [
+    (False, 0, 2, (True, 'new_test_repetition', False)),
+    (False, 3, 5, (True, 'new_test_repetition', False)),  # resubmit inside the new-test job
+    # fail_repetition still wins, so a first-attempt failure can never read as a passing birth.
+    (True, 0, 2, (True, 'fail_repetition', False)),
+])
+def test_classify_execution_new_test(rerun: bool, attempt: int, attempt_index: int,
+                                     expected: Any) -> None:
+    assert csi_report.classify_execution(
+        rerun, attempt, '1', attempt_index, new_test=True) == expected
+
+
+# ---------------------------------------------------------------------------------------------
+# create_test: which executions ask CSI for a previous item before reporting.
+#
+# The query runs on every worker for every such execution, so an execution that does not need it
+# must not make it. A fail repetition and a new-test repetition run serially after the main pass,
+# in which their first attempt completed and reported; a repetition or a resubmit cannot know that.
+# ---------------------------------------------------------------------------------------------
+
+def serve_create(monkeypatch: pytest.MonkeyPatch) -> List[Any]:
+    """A configured CSI that accepts item creation and records each request body, and that
+    fails the test if any query is made."""
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'DBFT')
+    created: List[Any] = []
+
+    def post(url: str, headers: Any = None, data: Any = None) -> Any:
+        created.append(json.loads(data))
+        response = FakeJson({'id': 'new-item-uuid'})
+        response.status_code = 201
+        return response
+
+    def get(url: str, headers: Any = None, params: Any = None) -> Any:
+        raise AssertionError("this execution must not query CSI for a previous item: " + url)
+
+    monkeypatch.setattr(csi_report.requests, 'post', post)
+    monkeypatch.setattr(csi_report.requests, 'get', get)
+    return created
+
+
+@pytest.mark.parametrize('new_test,rerun,retry_kind', [
+    ('1', False, 'new_test_repetition'),
+    ('', True, 'fail_repetition'),
+])
+def test_a_serial_repetition_reports_without_querying(
+        monkeypatch: pytest.MonkeyPatch, new_test: str, rerun: bool, retry_kind: str) -> None:
+    monkeypatch.setenv('YB_CSI_NEW_TEST', new_test)
+    created = serve_create(monkeypatch)
+    descriptor = test_descriptor.TestDescriptor('tests-x/a-test:::A.B:::attempt_7')
+
+    assert csi_report.create_test(descriptor, 0.0, 0, rerun=rerun) == 'new-item-uuid'
+
+    [item] = created
+    assert item['retry'] is True
+    assert item['uniqueId'] == 'tests-x/a-test:::A.B'
+    assert {'key': 'retry_kind', 'value': retry_kind} in item['attributes']

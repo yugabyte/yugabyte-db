@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -86,12 +85,7 @@ public class CheckShellConnectivity extends UniverseTaskBase {
             type,
             universe.getUniverseUUID(),
             error);
-        if (universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(CloudType.kubernetes)) {
+        if (Util.isKubernetesBasedUniverse(universe.getUniverseDetails())) {
           log.error(
               "If the universe is using cert manager, please ensure the rootCA provided to YBA is"
                   + " valid");

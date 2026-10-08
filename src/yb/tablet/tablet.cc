@@ -71,6 +71,7 @@
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/properties_collector/sst_stats_aggregator.h"
 #include "yb/docdb/properties_collector/sst_stats_collector.h"
+#include "yb/docdb/properties_collector/sst_stats_metrics.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -152,6 +153,11 @@ DEPRECATE_FLAG(int32, tablet_rocksdb_ops_quiet_down_timeout_ms, "04_2023");
 DEFINE_UNKNOWN_int32(intents_flush_max_delay_ms, 2000,
     "Max time to wait for regular db to flush during flush of intents. "
     "After this time flush of regular db will be forced.");
+
+DEFINE_RUNTIME_int32(vector_index_num_raft_ops_to_force_flush, 10000,
+    "When the oldest unflushed Raft operation of a vector index is more than this many operations "
+    "behind the log tail, the index is flushed. Bounds both the WAL a vector index retains and the "
+    "entries tablet bootstrap replays into it. Entries inserted by backfill do not count.");
 
 DEFINE_UNKNOWN_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
     "When writes to intents RocksDB are stopped and the number of Raft operations after "
@@ -285,7 +291,7 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
 DEFINE_RUNTIME_bool(tablet_split_use_middle_user_key, true,
     "Consider only user keys while determining middle key for tablet split");
 
-DEFINE_RUNTIME_bool(use_cross_split_key_detection_algorithm, false,
+DEFINE_RUNTIME_bool(use_cross_split_key_detection_algorithm, true,
     "If true, detect split keys so each child tablet holds roughly the same amount of SST data. "
     "If false, 2-way splits use an approximate middle key, and N-way splits evenly divide hash "
     "space (hash-partitioned tables only).");
@@ -1283,8 +1289,15 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
     // tablet (truncate, snapshot restore) replaces the previous aggregator, which stays alive for
     // as long as any reader still holds it.
     auto sst_stats = std::make_shared<docdb::SstStatsAggregator>();
-    std::lock_guard lock(sst_stats_mutex_);
-    sst_stats_ = std::move(sst_stats);
+    sst_stats_metrics_.reset();
+    if (tablet_metrics_entity_) {
+      sst_stats_metrics_ =
+          std::make_unique<docdb::SstStatsMetrics>(tablet_metrics_entity_, sst_stats);
+    }
+    {
+      std::lock_guard lock(sst_stats_mutex_);
+      sst_stats_ = std::move(sst_stats);
+    }
   }
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
@@ -1468,6 +1481,7 @@ void Tablet::RegularDbFilesChanged() {
 void Tablet::SetCleanupPool(
     ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
   snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+  vector_indexes_->SetScheduler(scheduler);
 
   if (!transaction_participant_) {
     return;
@@ -1808,6 +1822,11 @@ void Tablet::CompleteShutdown() {
       << "CompleteShutdown called without a preceding StartShutdown";
 
   snapshots_->CompleteShutdown();
+
+  // Final, unlike the vector index shutdown below, which a truncate or a restore also runs before
+  // re-opening the storages.
+  vector_indexes_->StopBackfillRetry();
+
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
@@ -1886,6 +1905,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
 
   op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
 
+  // Blocking operations stay unavailable until that pause is released, so a test can park a task
+  // that acquires one, e.g. a vector index backfill, until here to make it fail with TryAgain.
+  TEST_SYNC_POINT("Tablet::StartShutdownStorages:BlockingPaused");
+
   // Triggering vector indexes shutting down before RocksDB to let vector indexes release
   // ScopedRWOperation instances if any.
   vector_indexes_->StartShutdown();
@@ -1940,6 +1963,8 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
       db_uniq_ptr->reset();
     }
   }
+  // Freeze the gauges before making the old regular DB's aggregate unavailable.
+  sst_stats_metrics_.reset();
   {
     std::lock_guard lock(sst_stats_mutex_);
     // The file numbers tracked by this instance belong to the regular DB just destroyed. Existing
@@ -2267,7 +2292,8 @@ void Tablet::WriteToRocksDB(
         << ": " << rocksdb_write_status;
   }
 
-  if (FLAGS_TEST_docdb_log_write_batches) {
+  // The flag may be flipped concurrently, so check whether the formatter was created.
+  if (formatter) {
     std::ostringstream oss;
     oss << "Wrote " << formatter->Count()
       << " key/value pairs to " << storage_db_type
@@ -4379,6 +4405,11 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   RETURN_NOT_OK(ModifyFlushedFrontier(
       frontier, rocksdb::FrontierModificationMode::kUpdate,
       FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
+  // The vector indexes were replaced together with the regular DB. Without this stamp the new
+  // ones start from an empty frontier, and bootstrap replays the truncated writes back into them.
+  // Stamped here rather than in ModifyFlushedFrontier: every snapshot op goes through that one, and
+  // each stamp adds a chunk to the index manifest.
+  RETURN_NOT_OK(vector_indexes_->ModifyFlushedFrontier(frontier));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -4429,6 +4460,79 @@ Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const 
   result.intents = docdb::MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data);
   vector_indexes_->FillMaxPersistentOpIds(result.vector_indexes, invalid_if_no_new_data);
   return result;
+}
+
+Result<int64_t> Tablet::EarliestNeededLogIndex(
+    const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
+  FlushIntentsDbIfNecessary(latest_log_entry_op_id);
+  auto max_persistent_op_id = VERIFY_RESULT(MaxPersistentOpId(true /* invalid_if_no_new_data */));
+  int64_t min_index = std::numeric_limits<int64_t>::max();
+  auto add_storage = [&min_index, &add_factor](const char* name, const OpId& op_id) {
+    if (!op_id.valid()) {
+      return;
+    }
+    min_index = std::min(min_index, op_id.index);
+    add_factor(name, op_id.index, std::string());
+  };
+  add_storage("max persistent regular op ID idx", max_persistent_op_id.regular);
+  add_storage("max persistent intents op ID idx", max_persistent_op_id.intents);
+  return std::min(
+      min_index,
+      VERIFY_RESULT(EarliestNeededLogIndexForVectorIndexes(latest_log_entry_op_id, add_factor)));
+}
+
+Result<int64_t> Tablet::EarliestNeededLogIndexForVectorIndexes(
+    const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
+  int64_t min_index = std::numeric_limits<int64_t>::max();
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  auto vector_indexes = vector_indexes_->List();
+  if (!vector_indexes) {
+    return min_index;
+  }
+
+  // Vector indexes are reduced to one factor, naming each index and its OpId, so that a tablet
+  // with several of them does not emit a row per index with no way to tell them apart.
+  std::string details;
+  for (const auto& vector_index : *vector_indexes) {
+    auto flush_ability = vector_index->GetFlushAbility();
+    if (flush_ability == rocksdb::FlushAbility::kNoNewData) {
+      continue;
+    }
+    // Bound by the oldest operation the index holds in memory rather than by its flushed OpId: a
+    // backfill chunk is stamped with the OpId of the index creation while its entries come from
+    // the regular DB, so a backfilled index lags the log tail without needing the WAL. Backfill
+    // entries carry no OpId, so an empty smallest in-memory OpId means all unflushed entries are
+    // from backfill.
+    auto frontier = vector_index->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
+    if (!frontier) {
+      continue;
+    }
+    auto op_id = down_cast<const docdb::ConsensusFrontier&>(*frontier).op_id();
+    if (op_id.empty()) {
+      continue;
+    }
+    min_index = std::min(min_index, op_id.index);
+    if (!details.empty()) {
+      details += ", ";
+    }
+    details += Format("$0: $1", vector_index->table_id(), op_id.index);
+
+    auto index_delta = latest_log_entry_op_id.index - op_id.index;
+    if (index_delta > FLAGS_vector_index_num_raft_ops_to_force_flush &&
+        flush_ability == rocksdb::FlushAbility::kHasNewData) {
+      LOG_WITH_PREFIX(INFO)
+          << "Force flushing vector index " << vector_index->table_id() << ", it holds operations "
+          << index_delta << " behind the log tail, while only "
+          << FLAGS_vector_index_num_raft_ops_to_force_flush << " is allowed";
+      WARN_NOT_OK(vector_index->Flush(), "Flush vector index failed");
+    }
+  }
+  if (min_index != std::numeric_limits<int64_t>::max()) {
+    add_factor("min unflushed vector index op ID idx", min_index, Format(" ($0)", details));
+  }
+  return min_index;
 }
 
 void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) {
@@ -5129,7 +5233,17 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSplitChildTablet(
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
+  // SplitOperation rejects new WRITE_OPs once the split is pending, but ApplyIntents of
+  // already-replicated commits is not fenced and can still vector-Insert on this parent.
+  // The first flush puts finished applies in the RocksDB snapshot. WaitForFlush then drains
+  // vector tasks those applies already allocated; leftover vectors sit in a new mutable chunk.
   RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSplitChildTabletCreation));
+  // Seal that leftover chunk so CreateCheckpoint can hard-link it. Applies that have not
+  // finished yet are still in intents; children will apply them. Vector-only: RocksDB was
+  // already flushed.
+  RETURN_NOT_OK(Flush(
+      FlushMode::kSync, FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
+      rocksdb::FlushReason::kSplitChildTabletCreation));
 
   auto metadata = VERIFY_RESULT(metadata_->CreateSplitChildMetadata(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));
@@ -5430,16 +5544,20 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   }
   const Slice upper_bound_key = key_bounds_.upper;
 
-  const uint64_t total_data_size = VERIFY_RESULT(regular_db_->TotalDataSize());
+  // Pinned for the whole loop: a target computed on one version's Cross scale can land outside the
+  // search window when measured against another.
+  const auto pinned_version = regular_db_->PinCurrentVersion();
+
+  const uint64_t total_data_size = VERIFY_RESULT(pinned_version->TotalDataSize());
   SCHECK_GT(total_data_size, 0U, IllegalState, "No SST data available for size-based split");
 
   SplitKeysData split_keys;
   split_keys.encoded_keys.reserve(num_keys);
   split_keys.partition_keys.reserve(num_keys);
 
-  const uint64_t lower_cross = VERIFY_RESULT(regular_db_->Cross(lower_bound_key));
+  const uint64_t lower_cross = VERIFY_RESULT(pinned_version->Cross(lower_bound_key));
   const uint64_t upper_cross = upper_bound_key.empty()
-    ? total_data_size : VERIFY_RESULT(regular_db_->Cross(upper_bound_key));
+    ? total_data_size : VERIFY_RESULT(pinned_version->Cross(upper_bound_key));
 
   DCHECK_GE(upper_cross, lower_cross);
   auto chunk_size = (upper_cross - lower_cross) / split_factor;
@@ -5447,8 +5565,7 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   std::string last_key_buf = lower_bound_key.ToBuffer();
   for (int i = 0; i < num_keys; ++i) {
     auto target_size = lower_cross + chunk_size * (i + 1);
-    auto split_data_key =
-        regular_db_->FindTargetKey(last_key_buf, upper_bound_key, target_size);
+    auto split_data_key = pinned_version->FindTargetKey(last_key_buf, upper_bound_key, target_size);
     if (PREDICT_FALSE(!split_data_key.ok())) {
       // The Cross search found nothing to measure. For a 2-way split the approximate middle key is
       // a fine answer, so fall back rather than fail; call GetEncodedMiddleSplitKey directly, since

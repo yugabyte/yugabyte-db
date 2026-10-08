@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -39,12 +41,9 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_object_lock_fastpath);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_make_global_lock_release_async);
@@ -61,6 +60,7 @@ DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
 DECLARE_int32(master_ts_rpc_timeout_ms);
@@ -94,8 +94,7 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
         kDefaultMasterYSQLLeaseTTLMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) =
         kDefaultYSQLLeaseRefreshIntervalMilli;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
@@ -325,6 +324,49 @@ TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   ASSERT_OK(conn.CommitTransaction());
   ASSERT_OK(status_future.get());
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
+}
+
+// A DDL blocked on a conflicting object lock used to fail with a transport timeout naming neither
+// the lock nor the holder. This only happens with lock_timeout at its default of 0; setting it arms
+// postgres' timer, which already reports the conflict correctly, so the test shortens the fallback
+// deadline instead.
+class PgObjectLocksTestShortDeadline : public PgObjectLocksTestRF1 {
+ protected:
+  // Reproducing the field failure needs the shared memory exchange, off by default on macOS.
+  void BeforePgProcessStart() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+  }
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = 1000;
+    PgObjectLocksTestRF1::SetUp();
+  }
+};
+
+TEST_F_EX(PgObjectLocksTestRF1, DdlBlockedOnObjectLockReportsLockConflict,
+          PgObjectLocksTestShortDeadline) {
+  CreateTestTable();
+
+  auto blocker = ASSERT_RESULT(Connect());
+  ASSERT_OK(blocker.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(blocker.Execute("LOCK TABLE test IN SHARE UPDATE EXCLUSIVE MODE"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  // Setting lock_timeout would arm postgres' timer directly and hide the bug.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW lock_timeout")), "0");
+
+  const auto start = MonoTime::Now();
+  const auto status = conn.Execute("DROP TABLE test");
+  const auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "DROP TABLE returned after " << elapsed << ": " << status;
+
+  ASSERT_NOK(status);
+  ASSERT_LT(elapsed, MonoDelta::FromSeconds(60) * kTimeMultiplier);
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "canceling statement due to lock timeout (pgsql error 55P03)");
+
+  ASSERT_OK(blocker.CommitTransaction());
 }
 
 TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {
@@ -652,20 +694,8 @@ class PgObjectLocksTest : public LibPqTestBase {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) =
         yb::Format("libpq_utils=1,ts_local_lock_manager=2,$0", FLAGS_vmodule);
-    opts->extra_tserver_flags.emplace_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
-    // Concurrent DDL requires object locking, so when object locking is disabled, disable
-    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
-    // on. When object locking is enabled, leave concurrent DDL at its default.
-    if (!EnableTableLocks()) {
-      opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-      AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    }
-    opts->extra_tserver_flags.emplace_back(
-        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTransactionalDdl()));
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
-    opts->extra_tserver_flags.emplace_back(
-        yb::Format("--ysql_yb_enable_ddl_savepoint_support=$0", EnableTransactionalDdl()));
+    ToggleDDLMode(opts->extra_tserver_flags, /* use_legacy = */ !EnableTableLocks());
+    ToggleDDLMode(opts->extra_master_flags, /* use_legacy = */ !EnableTableLocks());
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
@@ -796,9 +826,6 @@ class PgObjectLocksTest : public LibPqTestBase {
     ASSERT_OK(cluster_->SetFlagOnTServers("TEST_delay_release_locks_ms", "0"));
   }
 
-  virtual bool EnableTransactionalDdl() const {
-    return true;
-  }
  private:
   const uint64_t kSessionTimeoutMs = 10000 * kTimeMultiplier;
 };
@@ -813,10 +840,6 @@ class PgObjectLocksTestAbortTxns : public PgObjectLocksTest,
   }
 
   bool EnableTableLocks() const override {
-    return GetParam();
-  }
-
-  bool EnableTransactionalDdl() const override {
     return GetParam();
   }
 };
@@ -848,14 +871,9 @@ INSTANTIATE_TEST_CASE_P(
     TableLocksEnabled, PgObjectLocksTestAbortTxns, ::testing::Bool(),
     ::testing::PrintToStringParamName());
 
-class PgObjectLocksTestAbortTxnsInMixedMode : public PgObjectLocksTestAbortTxns {
- protected:
-  bool EnableTransactionalDdl() const override {
-    // Always enable transactional DDL for this test. At least one of the nodes will be enabling
-    // the table locks.
-    return true;
-  }
-};
+// The cluster starts in the mode GetParam() asks for and TServer 1 is restarted into the opposite
+// mode below, so the two connections used by the test run against nodes in different modes.
+class PgObjectLocksTestAbortTxnsInMixedMode : public PgObjectLocksTestAbortTxns {};
 
 // We create connections to 2 different nodes.
 // And try combinations where the nodes may or may not be using table locks.
@@ -875,17 +893,9 @@ TEST_P(PgObjectLocksTestAbortTxnsInMixedMode, TestDDLAbortsTxnsInMixedMode) {
   // Restart TServer 1. To start with table locks in the opposite mode of ddl_using_table_locks.
   ts1->Shutdown();
   LogWaiter log_waiter(ts1, "Received new lease epoch");
-  // Append the flag here rather than pass it as an argument to Restart to ensure that this takes
-  // precedence over value set by GetParam()
-  ts1->mutable_flags()->push_back(yb::Format(
-      "--enable_object_locking_for_table_locks=$0", ts1_should_use_table_locks ? "true" : "false"));
-  // When object locking is disabled on the restarted TServer, disable concurrent DDL too;
-  // otherwise the cross-flag validator would FATAL if concurrent DDL defaults on. When object
-  // locking is enabled, leave concurrent DDL at its default.
-  if (!ts1_should_use_table_locks) {
-    ts1->mutable_flags()->push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(*ts1->mutable_flags(), "ysql_enable_concurrent_ddl");
-  }
+  // Append the flags here rather than pass them as an argument to Restart to ensure that these
+  // take precedence over the value set by GetParam()
+  ToggleDDLMode(*ts1->mutable_flags(), /* use_legacy = */ !ts1_should_use_table_locks);
   ASSERT_OK(ts1->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy));
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
 
@@ -918,7 +928,6 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
     // release builds. YBCIsLegacyModeForCatalogOps() is pinned to legacy without it, which would
     // leave the promotion unobservable in the catalog op mode, so pin it on for every build type.
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
-    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 
@@ -1061,6 +1070,116 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestCatalogOpModeStableAcrossPro
     ASSERT_OK(conn.Execute("COMMIT"));
     ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
   }
+}
+
+// Transactional DDL is part of the object locking feature, so it follows the object locking infra
+// auto flag that the transaction latched when it began. A transaction that started before the
+// promotion must keep running DDLs in an autonomous transaction, so its CREATE TABLE survives a
+// rollback; the next transaction runs the DDL inside the transaction block, so its CREATE TABLE is
+// rolled back with it.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestDdlTxnBlockModeStableAcrossPromotion) {
+  {
+    auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+    ASSERT_OK(conn.Execute("CREATE DATABASE testdb;"));
+  }
+
+  auto* ts1 = cluster_->tablet_server(0);
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
+
+  // This transaction latches the pre-promotion value of the auto flag.
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn.Execute("CREATE TABLE pre_promotion(k INT PRIMARY KEY)"));
+
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
+
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  // The DDL ran in an autonomous transaction, so the table is still there.
+  ASSERT_OK(conn.FetchAllAsString("SELECT * FROM pre_promotion"));
+
+  // The next transaction latches the promoted value and runs the DDL inside the transaction block.
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn.Execute("CREATE TABLE post_promotion(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_NOK(conn.FetchAllAsString("SELECT * FROM post_promotion"));
+}
+
+// A statement that commits intermediate transactions (ANALYZE on multiple tables here) re-latches
+// the object locking infra auto flag at every one of those commits. If the flag is promoted while
+// such a statement is in flight, the rest of the statement would run in the new mode while the
+// state it already built belongs to the old one, so the statement must fail instead.
+// TODO(#34635): Pin the latched value for the statement and replace this with an assertion that
+// the statement succeeds.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFails) {
+  {
+    auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+    ASSERT_OK(conn.Execute("CREATE DATABASE testdb;"));
+    conn = ASSERT_RESULT(ConnectToDB("testdb"));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE test2(k INT PRIMARY KEY, v INT)"));
+  }
+
+  auto* ts1 = cluster_->tablet_server(0);
+  // Used to observe that the promotion has reached this tserver's backends.
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
+
+  // The pipeline mode keeps Parse and Execute in separate protocol messages of one open
+  // transaction: Parse starts the transaction and latches the auto flag, and the backend applies
+  // the promotion in its message loop before it runs Execute.
+  const auto conn_str = Format(
+      "host=$0 port=$1 dbname=testdb user=$2", ts1->bind_host(), ts1->ysql_port(),
+      PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQenterPipelineMode(conn.get()), 1) << PQerrorMessage(conn.get());
+
+  // ANALYZE of more than one relation processes each in its own transaction, committing the
+  // previous one through YbCommitTransactionCommandIntermediate() (vacuum.c).
+  ASSERT_EQ(
+      PQsendPrepare(conn.get(), "analyze_stmt", "ANALYZE test, test2", 0, nullptr), 1)
+      << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQsendFlushRequest(conn.get()), 1) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQflush(conn.get()), 0) << PQerrorMessage(conn.get());
+  {
+    PGResultPtr res(PQgetResult(conn.get()));
+    ASSERT_EQ(PQresultStatus(res.get()), PGRES_COMMAND_OK) << PQresultErrorMessage(res.get());
+  }
+
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
+  // The flag reaches a backend as a SIGHUP that it applies in its message loop. Wait for another
+  // backend on this tserver to have applied it, which means the signal has been delivered.
+  ASSERT_OK(LoggedWaitFor(
+      [&observer]() -> Result<bool> {
+        return VERIFY_RESULT(observer.FetchRow<std::string>(
+                   "SHOW enable_object_locking_infra")) == "on";
+      },
+      MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backends"));
+
+  ASSERT_EQ(
+      PQsendQueryPrepared(conn.get(), "analyze_stmt", 0, nullptr, nullptr, nullptr, 0), 1)
+      << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQpipelineSync(conn.get()), 1) << PQerrorMessage(conn.get());
+  ASSERT_EQ(PQflush(conn.get()), 0) << PQerrorMessage(conn.get());
+
+  // A NULL result only delimits one pipelined command's results from the next, so read on until
+  // the sync point that ends the pipeline.
+  std::string error_message;
+  for (bool done = false; !done;) {
+    PGResultPtr res(PQgetResult(conn.get()));
+    if (!res) {
+      ASSERT_NE(PQstatus(conn.get()), CONNECTION_BAD) << PQerrorMessage(conn.get());
+      continue;
+    }
+    const auto status = PQresultStatus(res.get());
+    if (status == PGRES_PIPELINE_SYNC) {
+      done = true;
+    } else if (status == PGRES_FATAL_ERROR) {
+      error_message = PQresultErrorMessage(res.get());
+    }
+  }
+
+  LOG(INFO) << "ANALYZE returned: " << error_message;
+  ASSERT_STR_CONTAINS(error_message, "transactional DDL was enabled while the statement was "
+                                     "running");
 }
 
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
@@ -1600,10 +1719,6 @@ class PgObjecLocksTestOutOfOrderMessageHandling
         yb::Format("--pg_client_extra_timeout_ms=$0", kPgClientExtraTimeoutMs));
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--vmodule=ts_local_lock_manager=2,$0", FLAGS_vmodule));
-    // TODO(#33361): the UseDdlForLocks variants fail with concurrent DDL enabled. Disable it
-    // until the test is fixed to work in that mode.
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 
   DoMasterFailover ShouldDoMasterFailover() const {
@@ -1618,6 +1733,12 @@ class PgObjecLocksTestOutOfOrderMessageHandling
 };
 
 TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling) {
+  if (!ShouldUseExplicitLocksInsteadOfDdl()) {
+    // TODO(#33361): the UseDdlForLocks variants fail with concurrent DDL enabled. Concurrent DDL
+    // can no longer be turned off independently of object locking, so skip these variants until
+    // the test is fixed to work in that mode.
+    GTEST_SKIP() << "Skipping UseDdlForLocks variant, see #33361";
+  }
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
   auto* ts1 = cluster_->tablet_server(ts1_idx);
@@ -2232,8 +2353,6 @@ class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
         "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=2000");
     opts->extra_tserver_flags.emplace_back(
         "--tablet_validator_retain_delete_markers_validation_period_sec=5");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 
@@ -2395,6 +2514,84 @@ TEST_F_EX(
 
   ASSERT_OK(create_index_future.get());
   ASSERT_OK(truncate_future.get());
+}
+
+TEST_F_EX(
+    PgObjectLocksTest, WaitForLockersParticipatesInDeadlockDetection,
+    PgObjectLocksWithConcurrentDdl) {
+  auto* ts1 = cluster_->tablet_server(1);
+  auto* ts2 = cluster_->tablet_server(2);
+  ASSERT_OK(cluster_->SetFlagOnTServers("refresh_waiter_timeout_ms", "5000"));
+
+  auto setup_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE parent(k INT PRIMARY KEY)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE child(k INT PRIMARY KEY, parent_k INT REFERENCES parent(k))"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO parent VALUES (1)"));
+  const auto child_oid =
+      ASSERT_RESULT(setup_conn.FetchRow<PGOid>("SELECT 'child'::regclass::oid"));
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_pause_wait_for_lockers", "true"));
+  LogWaiter wait_for_lockers_waiter(
+      ts2, "Pausing due to flag TEST_pause_wait_for_lockers");
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    RETURN_NOT_OK(conn.Execute("SET statement_timeout = '60s'"));
+    return conn.Execute("CREATE INDEX child_parent_k_idx ON child(parent_k)");
+  });
+  ASSERT_OK(wait_for_lockers_waiter.WaitFor(10s * kTimeMultiplier));
+
+  auto insert_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(insert_conn.Execute("SET statement_timeout = '30s'"));
+  ASSERT_OK(insert_conn.Execute("SET yb_max_query_layer_retries = 0"));
+  ASSERT_OK(insert_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(insert_conn.Fetch("SELECT * FROM child"));
+
+  auto drop_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    RETURN_NOT_OK(conn.Execute("SET statement_timeout = '30s'"));
+    RETURN_NOT_OK(conn.Execute("SET yb_max_query_layer_retries = 0"));
+    return conn.Execute("DROP TABLE parent CASCADE");
+  });
+
+  auto observer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(observer_conn.FetchRow<PGUint64>(
+        Format("SELECT count(*) FROM pg_locks "
+               "WHERE relation = $0 AND NOT granted "
+               "AND mode = 'AccessExclusiveLock'", child_oid))) > 0;
+  }, 10s * kTimeMultiplier, "DROP should wait for CREATE INDEX's child-table lock"));
+
+  auto insert_future = std::async(std::launch::async, [&]() -> Status {
+    auto status = insert_conn.Execute("INSERT INTO child VALUES (1, 1)");
+    if (!status.ok()) {
+      WARN_NOT_OK(insert_conn.RollbackTransaction(), "Failed to roll back INSERT transaction");
+      return status;
+    }
+    return insert_conn.CommitTransaction();
+  });
+  SleepFor(1s * kTimeMultiplier);
+  ASSERT_EQ(insert_future.wait_for(0s), std::future_status::timeout);
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_pause_wait_for_lockers", "false"));
+  ASSERT_OK(WaitFor([&]() {
+    return create_index_future.wait_for(0s) == std::future_status::ready;
+  }, 40s * kTimeMultiplier, "CREATE INDEX should complete after deadlock detection"));
+  ASSERT_OK(create_index_future.get());
+  ASSERT_OK(WaitFor([&]() {
+    return drop_future.wait_for(0s) == std::future_status::ready &&
+           insert_future.wait_for(0s) == std::future_status::ready;
+  }, 20s * kTimeMultiplier, "DROP and INSERT should complete after deadlock detection"));
+  auto drop_status = drop_future.get();
+  auto insert_status = insert_future.get();
+  ASSERT_TRUE(drop_status.ok() ^ insert_status.ok())
+      << "drop_status: " << drop_status << ", insert_status: " << insert_status;
+  if (!drop_status.ok()) {
+    LOG(INFO) << "DROP failed with: " << drop_status;
+  }
+  if (!insert_status.ok()) {
+    LOG(INFO) << "INSERT failed with: " << insert_status;
+  }
 }
 
 YB_STRONGLY_TYPED_BOOL(Colocated);

@@ -578,7 +578,7 @@ public class GFlagsUtil {
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
     ybcFlags.putAll(customYbcGflags);
-    if (userIntent.providerType == CloudType.local) {
+    if (Util.isLocal(cluster)) {
       // In case of local provider, we want ybc to use /tmp directory
       // inside the respective node folder.
       ybcFlags.put(TMP_DIRECTORY, ybHomeDir + "/tmp");
@@ -1209,12 +1209,15 @@ public class GFlagsUtil {
   public static void validateFipsCompliancy(
       UniverseDefinitionTaskParams.UserIntent userIntent, boolean fipsEnabled) {
     if (fipsEnabled) {
-      if (!FIPS_SUPPORTED_PROVIDERS.contains(userIntent.providerType)) {
+      Set<CloudType> nonSupported =
+          userIntent.getAllCloudTypes().stream()
+              .filter(ct -> !FIPS_SUPPORTED_PROVIDERS.contains(ct))
+              .collect(Collectors.toSet());
+      if (!nonSupported.isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
-                "FIPS compliant universes are not supported on the %s provider",
-                userIntent.providerType));
+                "FIPS compliant universes are not supported on provider(s): %s", nonSupported));
       }
       // This is for new universes only, so don't consider old form of GFLags
       if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {

@@ -36,6 +36,8 @@
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -568,6 +570,12 @@ ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout)
       timeout_(timeout),
       initted_(false) {}
 
+ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout, string certs_dir)
+    : master_addr_list_(std::move(addrs)),
+      timeout_(timeout),
+      certs_dir_(std::move(certs_dir)),
+      initted_(false) {}
+
 ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout)
     : init_master_addr_(init_master_addr),
       timeout_(timeout),
@@ -651,7 +659,7 @@ Status ClusterAdminClient::Init() {
 
   // Check if caller will initialize the client and related parts.
   rpc::MessengerBuilder messenger_builder("yb-admin");
-  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder));
+  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder, certs_dir_));
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
@@ -2348,7 +2356,11 @@ Status ClusterAdminClient::FillPlacementInfo(
   // It is possible that placement_info_splits is empty, that is ok.
   // It just means we have no placement constraints on the total num replicas.
 
-  std::unordered_map<std::string, int> placement_to_min_replicas;
+  struct ReplicaLimits {
+    int64_t min_num_replicas = 0;
+    std::optional<int64_t> max_num_replicas = 0;
+  };
+  std::unordered_map<std::string, ReplicaLimits> placement_to_replica_limits;
   for (auto& placement_info_split : placement_info_splits) {
     StripWhiteSpace(&placement_info_split);
     if (placement_info_split.empty()) {
@@ -2358,21 +2370,49 @@ Status ClusterAdminClient::FillPlacementInfo(
     std::vector<std::string> placement_block_split =
         strings::Split(placement_info_split, ":", strings::AllowEmpty());
 
-    if (placement_block_split.size() == 0 || placement_block_split.size() > 2) {
+    if (placement_block_split.empty() || placement_block_split.size() > 3 ||
+        std::any_of(
+            placement_block_split.begin(), placement_block_split.end(),
+            [](const auto& component) { return component.empty(); })) {
       return STATUS(
           InvalidCommand,
-          "Each placement block must be of the form 'cloud.region.zone:[min_replica_count]'. "
+          "Each placement block must be of the form "
+          "'cloud.region.zone[:min_replica_count[:max_replica_count]]'. "
           "Invalid placement block: " + placement_info_split);
     }
 
     int min_replicas = 1;
-    if (placement_block_split.size() == 2) {
+    if (placement_block_split.size() >= 2) {
       min_replicas = VERIFY_RESULT(CheckedStoi(placement_block_split[1]));
     }
-    placement_to_min_replicas[placement_block_split[0]] += min_replicas;
+    std::optional<int64_t> max_replicas;
+    if (placement_block_split.size() == 3) {
+      max_replicas = VERIFY_RESULT(CheckedStoi(placement_block_split[2]));
+    }
+
+    auto& replica_limits = placement_to_replica_limits[placement_block_split[0]];
+    replica_limits.min_num_replicas += min_replicas;
+    if (replica_limits.max_num_replicas && max_replicas) {
+      *replica_limits.max_num_replicas += *max_replicas;
+    } else {
+      replica_limits.max_num_replicas.reset();
+    }
   }
 
-  for (auto& [placement_block, min_replicas] : placement_to_min_replicas) {
+  for (const auto& [placement_block, replica_limits] : placement_to_replica_limits) {
+    if (replica_limits.min_num_replicas < std::numeric_limits<int32_t>::min() ||
+        replica_limits.min_num_replicas > std::numeric_limits<int32_t>::max()) {
+      return STATUS_FORMAT(
+          InvalidCommand, "Aggregated min replica count is out of range for placement block $0",
+          placement_block);
+    }
+    if (replica_limits.max_num_replicas &&
+        (*replica_limits.max_num_replicas < std::numeric_limits<int32_t>::min() ||
+         *replica_limits.max_num_replicas > std::numeric_limits<int32_t>::max())) {
+      return STATUS_FORMAT(
+          InvalidCommand, "Aggregated max replica count is out of range for placement block $0",
+          placement_block);
+    }
     std::vector<std::string> blocks = strings::Split(placement_block, ".",
                                                     strings::AllowEmpty());
     auto* pb = placement_info_pb->add_placement_blocks();
@@ -2410,7 +2450,29 @@ Status ClusterAdminClient::FillPlacementInfo(
       pb->mutable_cloud_info()->set_placement_zone(blocks[2]);
     }
 
-    pb->set_min_num_replicas(min_replicas);
+    pb->set_min_num_replicas(static_cast<int32_t>(replica_limits.min_num_replicas));
+    if (replica_limits.max_num_replicas) {
+      pb->set_max_num_replicas(static_cast<int32_t>(*replica_limits.max_num_replicas));
+    }
+  }
+
+  // Explicit maxima require unambiguously attributing each tserver to one placement block, so
+  // they cannot be combined with wildcard (partially-specified) blocks anywhere in the placement.
+  // The master rejects this as well (CatalogManagerUtil::ValidateMaxNumReplicasFields), but
+  // failing here gives a friendlier error.
+  const auto& parsed_blocks = placement_info_pb->placement_blocks();
+  const bool has_explicit_max = std::any_of(
+      parsed_blocks.begin(), parsed_blocks.end(),
+      [](const auto& block) { return block.has_max_num_replicas(); });
+  if (has_explicit_max) {
+    for (const auto& block : parsed_blocks) {
+      if (!block.cloud_info().has_placement_region() ||
+          !block.cloud_info().has_placement_zone()) {
+        return STATUS(InvalidCommand,
+            "Max replica counts are not supported in combination with wildcard placements. "
+            "Invalid placement block: " + block.cloud_info().ShortDebugString());
+      }
+    }
   }
 
   return Status::OK();
@@ -5480,7 +5542,8 @@ Status ExpandColocationParent(
 Status ClusterAdminClient::VerifyXClusterGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const GroupVerifyOptions& options,
-    const std::unordered_set<TableId>& skip_source_table_ids) {
+    const std::unordered_set<TableId>& skip_source_table_ids,
+    const std::string& source_certs_dir) {
   const auto group_info = VERIFY_RESULT(
       XClusterClient().GetUniverseReplicationInfo(replication_group_id));
   SCHECK_FORMAT(
@@ -5495,7 +5558,7 @@ Status ClusterAdminClient::VerifyXClusterGroup(
       replication_group_id);
   const auto source_master_addrs =
       HostPort::ToCommaSeparatedString(group_info.source_master_addrs);
-  ClusterAdminClient source(source_master_addrs, timeout_);
+  ClusterAdminClient source(source_master_addrs, timeout_, source_certs_dir);
   RETURN_NOT_OK_PREPEND(
       source.Init(),
       Format("Unable to connect to source masters at [$0]", source_master_addrs));
