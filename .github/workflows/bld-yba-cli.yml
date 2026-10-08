@@ -2,15 +2,19 @@ name: "bld-yba-cli"
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review ]
+    types: [opened, synchronize, reopened]
     paths:
       - 'managed/yba-cli/**'
       - '!**/*.md'
 
-# Can be skipped if PR is draft or the commit message contains [skip ci] or [ci skip]
+# The jenkins environment requires approval, so the job waits until a yugabyte-dev member
+# approves it. A newer run for the same PR cancels the older one, if it is still waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   bld-yba-cli:
-    if: github.event.pull_request.draft == false
     environment: jenkins
     runs-on: ybdbghr
     steps:
