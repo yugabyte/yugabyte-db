@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
