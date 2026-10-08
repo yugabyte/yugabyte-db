@@ -84,6 +84,7 @@ TEST(FormatTest, String) {
                    std::string_view("View")));
   ASSERT_EQ("[zero\0zero]"s, Format("[$0]", "zero\0zero"s));
   ASSERT_EQ("[Embedded\0zero]"s, Format("[$0]", std::string_view("Embedded\0zero", 13)));
+  ASSERT_EQ("[][]", Format("[$0][$1]", std::string_view(), std::string()));
 }
 
 // Format respects the actual size of an array that has no terminating '\0'.

@@ -124,7 +124,10 @@ class FormatValue<T, std::enable_if_t<std::is_same_v<T, std::string> ||
   }
 
   char* Add(char* position) const {
-    memcpy(position, value_.data(), value_.size());
+    // An empty string_view may have a null data(), which memcpy must not be given.
+    if (!value_.empty()) {
+      memcpy(position, value_.data(), value_.size());
+    }
     return position + value_.size();
   }
 
