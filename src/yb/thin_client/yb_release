@@ -20,9 +20,9 @@
 #   yb_thin_client-<version>-<commit>-<build_type>-<system>-<arch>/
 #     lib/libyb_thin_client.so    include/yb_thin_client.h    version.txt
 #
-# The .so depends only on system libraries (no RPATH/RUNPATH), exports only the ybthin_* ABI, and
-# uses libc malloc (see --no-tcmalloc) so it does not interpose the allocator of the process that
-# loads it.
+# The .so depends only on glibc (no RPATH/RUNPATH; both checked after the link), exports only the
+# ybthin_* ABI, and uses libc malloc (see --no-tcmalloc) so it does not interpose the allocator of
+# the process that loads it.
 #
 # The whole-program link needs ~13 GiB of free RAM (same gate as yb_release's server link).
 #
@@ -150,8 +150,20 @@ done
 ( cd "$build_root" &&
   "${link_args[@]}" -Wl,--gc-sections -Wl,--version-script="$version_script" -o "$lto_out" )
 strip --strip-all "$lto_out"
-if readelf -d "$lto_out" | grep -E '\((RPATH|RUNPATH)\)'; then
+# Captured first so that a readelf failure aborts the release (set -e) instead of reading as a clean
+# .so to the greps below.
+dynamic_section=$( readelf -d "$lto_out" )
+if grep -E '\((RPATH|RUNPATH)\)' <<<"$dynamic_section"; then
   fatal "$lto_out has an RPATH/RUNPATH; the shim must depend only on system libraries"
+fi
+# With no RUNPATH, a non-glibc NEEDED entry would fail to load on consumers.
+glibc_lib_re='(libc|libm|libdl|librt|libpthread|libresolv)[.]so[.][0-9]+'
+glibc_lib_re+='|ld-linux-[a-z0-9_-]+[.]so[.][0-9]+'
+unexpected_needed=$( grep -F '(NEEDED)' <<<"$dynamic_section" | sed -E 's/.*\[(.*)\]$/\1/' |
+  grep -vxE "$glibc_lib_re" || true )
+if [[ -n $unexpected_needed ]]; then
+  fatal "$lto_out needs non-glibc libraries, which it cannot find without an RPATH:" \
+    "${unexpected_needed//$'\n'/ }"
 fi
 
 version=$( tr -d '[:space:]' < "$yb_src_root/version.txt" 2>/dev/null || echo "0.0.0.0" )
