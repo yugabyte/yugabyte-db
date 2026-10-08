@@ -24,8 +24,8 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<ta 33558>}}
 | High memory usage and potential out-of-memory errors during ordered secondary index scans
 | {{<product "ysql">}}
-| {{<release "2025.2.1.0">}} to {{<release "2025.2.5.2">}},<br>{{<release "2026.1.1.0">}} to {{<release "2026.1.1.1">}}
-| {{<nobreak "7 October 2026">}}
+| {{<release "2025.2.1.0">}} to {{<release "2025.2.5.2">}},<br>{{<release "2026.1.0.0">}} to {{<release "2026.1.1.1">}}
+| {{<nobreak "8 October 2026">}}
 |
 | {{<ta 32220>}}
 | Unique index inconsistency after primary-key updates on rows with NULL key columns
