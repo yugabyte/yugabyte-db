@@ -378,6 +378,10 @@ message TSHeartbeatResponsePB {
   // If present, this heartbeat response grants the TServer a xCluster-guarded information lease
   // of this duration from when the TServer sent the heartbeat request.
   optional uint32 xcluster_guarded_lease_duration_ms = 36;
+
+  // Advisory invalidation of cached replicas after explicit tserver removal. This is a single
+  // delivery attempt, not a membership list or permanent exclusion; metadata may restore replicas.
+  repeated string removed_tserver_uuids = 37;
 }
 
 service MasterHeartbeat {

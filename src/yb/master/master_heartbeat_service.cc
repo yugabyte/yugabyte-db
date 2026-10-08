@@ -49,6 +49,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
@@ -593,6 +594,11 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       LOG(WARNING) << "Could not get cluster config for heartbeat response: "
                    << cluster_config.status().ToUserMessage();
     }
+
+    for (const auto& uuid : ts_desc->TakeRemovedTServers()) {
+      resp->add_removed_tserver_uuids(uuid);
+    }
+    TEST_SYNC_POINT_CALLBACK("MasterHeartbeatService::RemovedTServersTaken", ts_desc.get());
 
     uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
     resp->set_transaction_tables_version(transaction_tables_version);

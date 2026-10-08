@@ -152,8 +152,9 @@ void TabletInvoker::SelectTabletServer()  {
     // refresh has occurred. This also avoids LookupTabletByKey() going into
     // "fast path" mode and not actually performing a metadata refresh from the
     // Master when it needs to.
+    TEST_SYNC_POINT_CALLBACK("TabletInvoker::BeforeMarkTServerAsFollower", current_ts_);
     const auto marked_as_follower = tablet_->MarkTServerAsFollower(current_ts_);
-    DCHECK(marked_as_follower)
+    VLOG_IF(2, !marked_as_follower)
         << "Tablet " << tablet_id_ << ": Specified server not found: "
         << current_ts_->ToString() << ". Replicas: " << tablet_->ReplicasAsString();
     current_ts_ = nullptr;
@@ -310,6 +311,10 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
   auto trace = trace_;
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace);
+  if (SyncPoint::GetInstance()->IsEnabled()) {
+    RpcSendTestData data{client_, tablet_id_, current_ts_->permanent_uuid()};
+    TEST_SYNC_POINT_CALLBACK("TabletInvoker::BeforeSendRpcToTserver", &data);
+  }
   rpc_->SendRpcToTserver(retrier_->attempt_num());
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
@@ -360,11 +365,10 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
 
     bool found = !tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason);
     if (!found) {
-      // Its possible that current_ts_ is not part of replicas if RemoteTablet.Refresh() is invoked
-      // which updates the set of replicas.
-      LOG(WARNING) << "Tablet " << tablet_id_ << ": Unable to mark replica "
-                   << current_ts_->ToString()
-                   << " as failed. Replicas: " << tablet_->ReplicasAsString();
+      // A concurrent refresh or removal hint may have erased the selected replica.
+      VLOG(2) << "Tablet " << tablet_id_ << ": Unable to mark replica "
+              << current_ts_->ToString()
+              << " as failed. Replicas: " << tablet_->ReplicasAsString();
     }
   }
   auto status = retrier_->DelayedRetry(command_, reason);

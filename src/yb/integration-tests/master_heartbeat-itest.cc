@@ -10,7 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -18,12 +21,14 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
@@ -47,19 +52,27 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/thread.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
 
+DECLARE_bool(allow_encryption_at_rest);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_pause_before_remote_bootstrap);
@@ -69,6 +82,7 @@ DECLARE_string(TEST_master_universe_uuid);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_bool(send_removed_tservers_on_heartbeat);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
@@ -1081,6 +1095,225 @@ TEST_F_EX(MasterHeartbeatITest, MaybeHasXClusterGuardedLease, MasterHeartbeatITe
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return tserver_desc->MaybeHasXClusterGuardedLease(); },
       3s * kTimeMultiplier, "Wait for xCluster-guarded information lease to be re-acquired"));
+}
+
+class RemovedTServerHeartbeatTest : public MasterHeartbeatITest {
+ public:
+  size_t num_tablet_servers() override { return 1; }
+  bool enable_ysql() override { return false; }
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_removed_tservers_on_heartbeat) = true;
+    MasterHeartbeatITest::SetUp();
+    desc_ = ASSERT_RESULT(mini_cluster_->WaitForTabletServerCount(1, true))[0];
+  }
+
+  master::TSHeartbeatRequestPB Request() {
+    master::TSHeartbeatRequestPB req;
+    *req.mutable_common() = MakeTSToMasterCommonPB(*desc_, std::nullopt);
+    req.set_universe_uuid(CHECK_RESULT(
+        mini_cluster_->mini_master()->catalog_manager().GetClusterConfig()).universe_uuid());
+    return req;
+  }
+
+  Result<master::TSHeartbeatResponsePB> Send(
+      const master::TSHeartbeatRequestPB& req, MonoDelta timeout) {
+    master::MasterHeartbeatProxy proxy(
+        proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout);
+    master::TSHeartbeatResponsePB resp;
+    RETURN_NOT_OK(proxy.TSHeartbeat(req, &resp, &rpc));
+    return resp;
+  }
+
+  Result<master::TSHeartbeatResponsePB> Send(const master::TSHeartbeatRequestPB& req) {
+    return Send(req, 10s * kTimeMultiplier);
+  }
+
+ protected:
+  master::TSDescriptorPtr desc_;
+};
+
+TEST_F(RemovedTServerHeartbeatTest, EarlyRepliesPreserveHintsAndNormalReplyTakesOnce) {
+  mini_cluster_->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
+  desc_->EnqueueRemovedTServer("victim-1");
+  desc_->EnqueueRemovedTServer("victim-2");
+  desc_->EnqueueRemovedTServer("victim-1");
+  auto req = Request();
+  req.mutable_common()->mutable_ts_instance()->set_instance_seqno(desc_->latest_seqno() + 1);
+  const auto early = ASSERT_RESULT(Send(req));
+  ASSERT_TRUE(early.needs_reregister());
+  ASSERT_TRUE(early.removed_tserver_uuids().empty());
+
+  req = Request();
+  req.set_universe_uuid(Uuid::Generate().ToString());
+  ASSERT_NOK(Send(req));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_removed_tservers_on_heartbeat) = false;
+  const auto normal = ASSERT_RESULT(Send(Request()));
+  ASSERT_FALSE(normal.has_error());
+  ASSERT_FALSE(normal.needs_reregister());
+  ASSERT_EQ((std::set<std::string>(normal.removed_tserver_uuids().begin(),
+                                   normal.removed_tserver_uuids().end())),
+            (std::set<std::string>{"victim-1", "victim-2"}));
+  const auto next = ASSERT_RESULT(Send(Request()));
+  ASSERT_TRUE(next.removed_tserver_uuids().empty());
+}
+
+TEST_F(RemovedTServerHeartbeatTest, LostReplyIsNotRetriedAndEnqueueAfterTakeSurvives) {
+  mini_cluster_->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
+  desc_->EnqueueRemovedTServer("lost");
+  CountDownLatch taken(1), release(1), released(1);
+  std::atomic<bool> first{true};
+  auto* sync_point = SyncPoint::GetInstance();
+  auto cleanup = ScopeExit([&] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  sync_point->SetCallBack("MasterHeartbeatService::RemovedTServersTaken", [&](void* arg) {
+    if (arg == desc_.get() && first.exchange(false)) {
+      taken.CountDown();
+      release.Wait();
+      released.CountDown();
+    }
+  });
+  sync_point->EnableProcessing();
+  std::promise<Result<master::TSHeartbeatResponsePB>> result;
+  auto future = result.get_future();
+  const auto req = Request();
+  TestThreadHolder threads;
+  auto unblock = ScopeExit([&] { release.CountDown(); });
+  threads.AddThreadFunctor([&] { result.set_value(Send(req, 1s * kTimeMultiplier)); });
+  ASSERT_TRUE(taken.WaitFor(10s * kTimeMultiplier));
+  desc_->EnqueueRemovedTServer("later");
+  ASSERT_OK(Wait(future, CoarseMonoClock::Now() + 10s * kTimeMultiplier));
+  const auto lost_response = future.get();
+  ASSERT_NOK(lost_response);
+  ASSERT_TRUE(lost_response.status().IsTimedOut());
+  release.CountDown();
+  ASSERT_TRUE(released.WaitFor(10s * kTimeMultiplier));
+  threads.JoinAll();
+  const auto next = ASSERT_RESULT(Send(req));
+  ASSERT_FALSE(next.has_error());
+  ASSERT_EQ(next.removed_tserver_uuids_size(), 1);
+  ASSERT_EQ(next.removed_tserver_uuids(0), "later");
+  ASSERT_TRUE(ASSERT_RESULT(Send(req)).removed_tserver_uuids().empty());
+}
+
+TEST_F(RemovedTServerHeartbeatTest, DescriptorReplacementLosesPendingHints) {
+  mini_cluster_->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
+  desc_->EnqueueRemovedTServer("victim");
+  const auto uuid = desc_->permanent_uuid();
+  ASSERT_OK(mini_cluster_->mini_master()->Restart(true));
+  auto replacement = ASSERT_RESULT(mini_cluster_->mini_master()->ts_manager().LookupTSByUUID(uuid));
+  ASSERT_NE(replacement.get(), desc_.get());
+  ASSERT_TRUE(replacement->TakeRemovedTServers().empty());
+  ASSERT_EQ(desc_->TakeRemovedTServers(), std::set<std::string>{"victim"});
+}
+
+TEST_F(RemovedTServerHeartbeatTest, ConsumerAcceptsOnlySuccessfulNormalReplies) {
+  auto* server = mini_cluster_->mini_tablet_server(0)->server();
+  auto* shared_client = server->client_future().get();
+  ASSERT_NE(shared_client, nullptr);
+  ASSERT_EQ(server->GetUniverseKeyManager(), nullptr);
+  std::atomic<size_t> responses{0};
+  std::mutex mutex;
+  std::map<std::string, int> received, applied;
+  int64_t polling_thread = 0;
+  auto* sync_point = SyncPoint::GetInstance();
+  auto cleanup = ScopeExit([&] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  sync_point->SetCallBack("Heartbeater::HeartbeatResponse", [&](void* arg) {
+    auto& resp = *static_cast<master::TSHeartbeatResponsePB*>(arg);
+    responses.fetch_add(1);
+    if (resp.removed_tserver_uuids().empty()) {
+      return;
+    }
+    std::lock_guard lock(mutex);
+    polling_thread = Thread::CurrentThreadId();
+    ASSERT_EQ(resp.removed_tserver_uuids_size(), 1);
+    const auto& hint = resp.removed_tserver_uuids(0);
+    ++received[hint];
+    if (hint == "error") {
+      resp.mutable_error()->set_code(master::MasterErrorPB::INTERNAL_ERROR);
+      StatusToPB(STATUS(IllegalState, "test heartbeat error"),
+                 resp.mutable_error()->mutable_status());
+    } else if (hint == "non-leader") {
+      resp.set_leader_master(false);
+    } else if (hint == "register") {
+      resp.set_needs_reregister(true);
+    } else if (hint == "handler-error") {
+      // Encryption is disabled, so SetUniverseKeyRegistry rejects this before hint application.
+      resp.mutable_universe_key_registry();
+    } else if (hint == "full-report") {
+      resp.set_needs_full_tablet_report(true);
+    }
+  });
+  sync_point->SetCallBack("MetaCache::InvalidateTServerReplicas:Done", [&](void* arg) {
+    const auto& data = *static_cast<client::internal::MetaCache::InvalidationTestData*>(arg);
+    if (data.client != shared_client) {
+      return;
+    }
+    std::lock_guard lock(mutex);
+    ASSERT_EQ(Thread::CurrentThreadId(), polling_thread);
+    for (const auto& uuid : data.ts_uuids) {
+      ++applied[uuid];
+    }
+  });
+  sync_point->EnableProcessing();
+  for (const auto& hint : {"error", "non-leader", "register", "handler-error", "full-report",
+                           "normal"}) {
+    desc_->EnqueueRemovedTServer(hint);
+    server->heartbeater()->TriggerASAP();
+    ASSERT_OK(WaitFor([&] {
+      std::lock_guard lock(mutex);
+      return received.contains(hint);
+    }, 10s * kTimeMultiplier, "Receive removal hint"));
+    const auto observed = responses.load();
+    ASSERT_OK(WaitFor([&] { return responses.load() > observed; },
+                      10s * kTimeMultiplier, "Finish handling the preceding response"));
+  }
+  std::lock_guard lock(mutex);
+  for (const auto& [hint, count] : received) {
+    ASSERT_EQ(count, 1) << hint;
+  }
+  ASSERT_EQ(applied, (std::map<std::string, int>{{"full-report", 1}, {"normal", 1}}));
+}
+
+class RemovedTServerConsumerTest : public YBTest {};
+
+TEST_F(RemovedTServerConsumerTest, UnreadyAndNullClientsDropHints) {
+  class ServerWithClientFuture : public tserver::TabletServer {
+   public:
+    ServerWithClientFuture(
+        const tserver::TabletServerOptions& options,
+        const std::shared_future<client::YBClient*>& future)
+        : TabletServer(options), future_(future) {}
+    const std::shared_future<client::YBClient*>& client_future() const override { return future_; }
+   private:
+    std::shared_future<client::YBClient*> future_;
+  };
+  std::promise<client::YBClient*> promise;
+  auto options = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  ServerWithClientFuture server(options, promise.get_future().share());
+  CountDownLatch completed(1);
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([&] {
+    server.InvalidateTServerReplicas({"victim"});
+    completed.CountDown();
+  });
+  const bool nonblocking = completed.WaitFor(1s * kTimeMultiplier);
+  promise.set_value(nullptr);
+  threads.JoinAll();
+  ASSERT_TRUE(nonblocking);
+  server.InvalidateTServerReplicas({"victim"});
 }
 
 }  // namespace yb::integration_tests

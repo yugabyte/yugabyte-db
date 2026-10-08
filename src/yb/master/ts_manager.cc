@@ -70,6 +70,12 @@ DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
 
 DEFINE_RUNTIME_bool(skip_tserver_version_checks, false, "Skip all tserver version checks");
 
+DEFINE_RUNTIME_bool(send_removed_tservers_on_heartbeat, false,
+    "Queue advisory cache invalidations for live tservers after explicit tablet server removal. "
+    "Each hint is attempted once through a heartbeat response. Disabling stops new hints; "
+    "previously queued hints still drain.");
+TAG_FLAG(send_removed_tservers_on_heartbeat, advanced);
+
 DECLARE_uint32(initial_tserver_registration_duration_secs);
 
 namespace yb::master {
@@ -560,6 +566,13 @@ Status TSManager::RemoveTabletServer(
   {
     std::lock_guard map_l(map_lock_);
     servers_by_id_.erase(desc->id());
+    if (FLAGS_send_removed_tservers_on_heartbeat) {
+      for (const auto& [id, recipient] : servers_by_id_) {
+        if (recipient->IsLive()) {
+          recipient->EnqueueRemovedTServer(permanent_uuid);
+        }
+      }
+    }
   }
   return Status::OK();
 }

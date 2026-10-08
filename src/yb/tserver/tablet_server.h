@@ -463,6 +463,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  void InvalidateTServerReplicas(const std::vector<std::string>& ts_uuids);
+
   Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;

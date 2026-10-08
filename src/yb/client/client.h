@@ -1152,6 +1152,9 @@ class YBClient {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  // Erases currently cached replicas; ordinary metadata refresh may restore them.
+  void InvalidateTServerReplicas(const std::vector<std::string>& ts_uuids);
+
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the
   // RemoteTablet was indeed refreshed, false otherwise.
@@ -1186,6 +1189,7 @@ class YBClient {
   friend class internal::AsyncRpc;
   friend class internal::TabletInvoker;
   friend class internal::ClientMasterRpcBase;
+  friend class MetaCacheInvalidationTest;
   friend class PlacementInfoTest;
   friend class XClusterClient;
   friend class XClusterRemoteClientHolder;

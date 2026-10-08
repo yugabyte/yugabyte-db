@@ -441,6 +441,7 @@ Status RemoteTablet::RefreshFromRaftConfigIfNewer(
     new_replicas.emplace_back(std::make_shared<RemoteReplica>((*tserver).get(), role));
   }
   replicas_ = std::move(new_replicas);
+  has_invalidated_nonlocal_replica_ = false;
   const auto new_opid_index = consensus_state.config().committed_op_index();
   raft_config_opid_index_.store(new_opid_index);
   VLOG(1) << "Raft config refresh succeeded with opid_index: " << new_opid_index
@@ -484,6 +485,7 @@ void RemoteTablet::Refresh(
     ++lookups_without_new_replicas_;
   }
   stale_ = false;
+  has_invalidated_nonlocal_replica_ = false;
   full_refresh_time_.store(MonoTime::Now(), std::memory_order_release);
 }
 
@@ -692,9 +694,12 @@ void RemoteTablet::GetRemoteTabletServers(
 }
 
 bool RemoteTablet::IsLocalRegion() {
-  auto tservers = GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
-  for (const auto &tserver : tservers) {
-    if (!tserver->IsLocalRegion()) {
+  SharedLock lock(mutex_);
+  if (has_invalidated_nonlocal_replica_) {
+    return false;
+  }
+  for (const auto& replica : replicas_) {
+    if (!replica->ts->IsLocalRegion()) {
       return false;
     }
   }
@@ -729,6 +734,24 @@ bool RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
   return found;
+}
+
+bool RemoteTablet::RemoveTServerReplicas(const std::unordered_set<RemoteTabletServer*>& servers) {
+  std::lock_guard lock(mutex_);
+  const auto old_size = replicas_.size();
+  std::erase_if(replicas_, [&](const auto& replica) REQUIRES(mutex_) {
+    if (!servers.contains(replica->ts)) {
+      return false;
+    }
+    if (!replica->ts->IsLocalRegion()) {
+      has_invalidated_nonlocal_replica_ = true;
+    }
+    if (current_leader_uuid_ == replica->ts->permanent_uuid()) {
+      current_leader_uuid_.clear();
+    }
+    return true;
+  });
+  return replicas_.size() != old_size;
 }
 
 std::string RemoteTablet::current_leader_uuid() const {
@@ -2555,6 +2578,42 @@ void MetaCache::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids
     for (const auto& tablet : tablets_by_id_) {
       tablet.second->MarkTServerAsFollower(ts);
     }
+  }
+}
+
+void MetaCache::InvalidateTServerReplicas(const std::vector<std::string>& ts_uuids) {
+  if (ts_uuids.empty()) {
+    return;
+  }
+  const bool collect_tablets = SyncPoint::GetInstance()->IsEnabled();
+  std::vector<TabletId> changed_tablets;
+  size_t affected_tablets = 0;
+  {
+    SharedLock lock(mutex_);
+    // Invokers retain raw server pointers, so ts_cache_ continues to own every server.
+    std::unordered_set<RemoteTabletServer*> servers;
+    for (const auto& uuid : ts_uuids) {
+      auto it = ts_cache_.find(uuid);
+      if (it != ts_cache_.end()) {
+        servers.insert(it->second.get());
+      }
+    }
+    if (!servers.empty()) {
+      for (const auto& [id, tablet] : tablets_by_id_) {
+        if (tablet->RemoveTServerReplicas(servers)) {
+          ++affected_tablets;
+          if (collect_tablets) {
+            changed_tablets.push_back(id);
+          }
+        }
+      }
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Invalidated replicas for removed tservers " << AsString(ts_uuids)
+                        << " in " << affected_tablets << " cached tablets";
+  if (collect_tablets) {
+    InvalidationTestData data{client_, ts_uuids, changed_tablets};
+    TEST_SYNC_POINT_CALLBACK("MetaCache::InvalidateTServerReplicas:Done", &data);
   }
 }
 
