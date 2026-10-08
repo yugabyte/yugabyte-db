@@ -20,6 +20,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/walltime.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/env_util.h"
@@ -35,8 +37,6 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
 
-DECLARE_uint32(auto_flags_apply_delay_ms);
-
 using namespace std::literals;
 
 namespace yb {
@@ -44,6 +44,10 @@ namespace yb {
 namespace {
 
 const MonoDelta kRpcTimeout = 20s * kTimeMultiplier;
+
+// Shorter than the 10s default, but still longer than the default heartbeat interval, so every
+// daemon usually gets a new config before it is applied.
+const uint32_t kAutoFlagsApplyDelayMs = 2000;
 
 // Fastdebug builds run against a fastdebug build of the old version when builds.xml has one, so
 // that the old version's DCHECKs and PG assertions run too. Otherwise the old version is a release
@@ -215,8 +219,6 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
 }
 
 
-void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
-
 // This is a pg15 version which supports upgrade only from certain versions.
 // Check if the given version is supported for upgrade.
 bool IsUpgradeSupported(const std::string& from_version) {
@@ -354,6 +356,10 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
       opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
+
+  for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
+    AddUnDefOkAndSetFlag(*flags, "auto_flags_apply_delay_ms", AsString(kAutoFlagsApplyDelayMs));
+  }
 
   ExternalMiniClusterITestBase::SetUpOptions(opts);
 }
@@ -560,7 +566,9 @@ Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
     return StatusFromPB(resp.error().status());
   }
 
-  WaitForAutoFlagApply();
+  if (resp.flags_promoted()) {
+    RETURN_NOT_OK(WaitForAutoFlagsConfigApplied(resp.new_config_version()));
+  }
 
   LOG(INFO) << "Promoted AutoFlags: " << resp.DebugString();
 
@@ -573,6 +581,56 @@ Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
   } else {
     // Can no longer rollback volatile flags.
     auto_flags_rollback_version_.reset();
+  }
+
+  return Status::OK();
+}
+
+Status UpgradeTestBase::WaitForAutoFlagsConfigApplied(uint32_t config_version) {
+  master::GetAutoFlagsConfigRequestPB req;
+  master::GetAutoFlagsConfigResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kRpcTimeout);
+  RETURN_NOT_OK(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>().GetAutoFlagsConfig(
+      req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  SCHECK_GE(
+      resp.config().config_version(), config_version, IllegalState,
+      "Master leader does not have the new AutoFlags config");
+
+  RETURN_NOT_OK(LoggedWaitFor(
+      [this, config_version]() -> Result<bool> {
+        for (auto* daemon : cluster_->daemons()) {
+          if (daemon->IsShutdown()) {
+            continue;
+          }
+          server::GetAutoFlagsConfigVersionRequestPB req;
+          server::GetAutoFlagsConfigVersionResponsePB resp;
+          rpc::RpcController rpc;
+          rpc.set_timeout(kRpcTimeout);
+          RETURN_NOT_OK(cluster_->GetProxy<server::GenericServiceProxy>(daemon)
+                            .GetAutoFlagsConfigVersion(req, &resp, &rpc));
+          if (resp.config_version() < config_version) {
+            return false;
+          }
+        }
+        return true;
+      },
+      60s * kTimeMultiplier, Format("Waiting for all daemons to get AutoFlags config $0",
+                                    config_version),
+      /*initial_delay=*/100ms));
+
+  // A daemon that gets the config before its apply time applies it at that time, so wait for it.
+  if (resp.config().has_config_apply_time()) {
+    HybridTime apply_time;
+    RETURN_NOT_OK(apply_time.FromUint64(resp.config().config_apply_time()));
+    const auto time_left = MonoDelta::FromMicroseconds(
+        static_cast<int64_t>(apply_time.GetPhysicalValueMicros()) - GetCurrentTimeMicros());
+    if (time_left > -500ms) {
+      SleepFor(time_left + 500ms);
+    }
   }
 
   return Status::OK();
@@ -681,7 +739,9 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
   }
   auto_flags_rollback_version_.reset();
 
-  WaitForAutoFlagApply();
+  if (resp.flags_rolledback()) {
+    RETURN_NOT_OK(WaitForAutoFlagsConfigApplied(resp.new_config_version()));
+  }
 
   LOG(INFO) << "Rolled back AutoFlags: " << resp.DebugString();
 
