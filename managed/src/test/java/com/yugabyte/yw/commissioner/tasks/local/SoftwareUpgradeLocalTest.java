@@ -952,11 +952,12 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     }
     TaskInfo taskInfo = task.getTaskInfo();
     Map<UUID, Set<String>> updatingTasks = new HashMap<>();
+    Map<UUID, Set<String>> placementLockTasks = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTarget = new HashMap<>();
     lastTaskByTarget.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return commissioner.buildTaskStatus(
-        task, taskInfo.getSubTasks(), updatingTasks, lastTaskByTarget);
+        task, taskInfo.getSubTasks(), updatingTasks, placementLockTasks, lastTaskByTarget);
   }
 
   /**
