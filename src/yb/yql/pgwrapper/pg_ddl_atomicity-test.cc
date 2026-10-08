@@ -2211,7 +2211,7 @@ TEST_F(PgDdlAtomicityMiniClusterTest, DropTableWithIndexAfterTableMarkedDeleting
 class PgDdlAtomicityTxnBlockMiniClusterTest : public PgDdlAtomicityMiniClusterTest {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgDdlAtomicityMiniClusterTest::SetUp();
   }
 };
@@ -2323,7 +2323,7 @@ TEST_F(PgDdlAtomicityTxnBlockMiniClusterTest, DropTableWithIndexAfterAlterInSame
 class PgDdlAtomicitySavepointMiniClusterTest : public PgDdlAtomicityMiniClusterTest {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
     PgDdlAtomicityMiniClusterTest::SetUp();
   }
