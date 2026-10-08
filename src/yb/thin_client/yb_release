@@ -90,8 +90,13 @@ link_args_file="${lto_out}_lto_link_cmd_args.txt"
 [[ -f "$link_args_file" ]] || fatal "Whole-program link did not emit args file: $link_args_file"
 
 # Postgres libraries come out of the monolithic postgres target, which depends on the whole server
-# and can't link under --no-tcmalloc (--no-undefined), so this script can't build them.
-if pg_link_args=$( grep -E '(^|/)(postgres_build|postgres/lib)/' "$link_args_file" ); then
+# and can't link under --no-tcmalloc (--no-undefined), so this script can't build them. Check the
+# original link command too: lto.py drops postgres/lib/*.so (e.g. libpq) from its args unless the
+# target links libyb_pgbackend.
+orig_link_cmd=$( cd "$build_root" && ninja -t commands -s "lib/$lib_name" )
+[[ -n $orig_link_cmd ]] || fatal "Could not get the original link command for lib/$lib_name"
+if pg_link_args=$( { tr ' ' '\n' <<<"$orig_link_cmd"; cat "$link_args_file"; } |
+                   grep -E '(^|/)(postgres_build|postgres/lib)/' ); then
   fatal "$lib_name now links Postgres code, which this --no-tcmalloc closure-only build can't" \
     "produce:"$'\n'"$pg_link_args"
 fi
