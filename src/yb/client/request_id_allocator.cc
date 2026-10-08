@@ -39,8 +39,9 @@ DEFINE_RUNTIME_uint32(client_request_id_shards, 0,
     "Number of shards that the retryable request ids of a client are split into. Each shard has "
     "its own client id and its own min_running_request_id, so more shards mean less contention "
     "between the threads and a smaller blast radius of a request that stays unfinished, but also "
-    "more per client state on the server. Zero picks an eighth of the CPUs, which keeps the "
-    "threads that share a shard well below the number where it degrades.");
+    "more per client state on the server. Zero picks an eighth of the CPUs, at least 1 and at "
+    "most 64, which keeps the threads that share a shard well below the number where it "
+    "degrades.");
 
 namespace yb::client::internal {
 
@@ -53,7 +54,7 @@ size_t NumRequestIdShards() {
   if (FLAGS_client_request_id_shards) {
     return FLAGS_client_request_id_shards;
   }
-  return std::clamp<size_t>(NumEffectiveCPUs() / 8, 2, 64);
+  return std::clamp<size_t>(NumEffectiveCPUs() / 8, 1, 64);
 }
 
 // Index of the calling thread, so that a thread always uses the same shard.
