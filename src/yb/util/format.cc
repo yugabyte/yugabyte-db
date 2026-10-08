@@ -13,6 +13,8 @@
 
 #include "yb/util/format.h"
 
+#include <algorithm>
+#include <charconv>
 #include <cstdio>
 
 namespace yb {
@@ -47,11 +49,23 @@ std::string PadLeft(std::string_view str, size_t width, char fill) {
 }
 
 std::string PadRight(std::string_view str, size_t width, char fill) {
-  std::string result(str);
+  std::string result;
+  result.reserve(std::max(width, str.size()));
+  result += str;
   if (result.size() < width) {
-    result.append(width - result.size(), fill);
+    result.resize(width, fill);
   }
   return result;
 }
+
+namespace internal {
+
+std::string HexString(uint64_t bits, size_t width) {
+  char buffer[16];
+  auto end = std::to_chars(buffer, buffer + sizeof(buffer), bits, 16).ptr;
+  return PadLeft(std::string_view(buffer, end - buffer), width, '0');
+}
+
+} // namespace internal
 
 } // namespace yb

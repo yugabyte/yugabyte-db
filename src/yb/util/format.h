@@ -15,7 +15,6 @@
 
 #pragma once
 
-#include <algorithm>
 #include <concepts>
 #include <string>
 #include <string_view>
@@ -290,19 +289,13 @@ std::string ZeroPadded(T value, size_t width) {
 
 // Same as printf("%0<width>x", value): lower case hex digits, no 0x prefix. A negative value is
 // printed as the two's complement bit pattern of its own type, e.g. HexString(int8_t(-1)) is "ff".
+namespace internal {
+std::string HexString(uint64_t bits, size_t width);
+} // namespace internal
+
 template <std::integral T>
 std::string HexString(T value, size_t width = 0) {
-  auto bits = static_cast<std::make_unsigned_t<T>>(value);
-  std::string result;
-  do {
-    result += "0123456789abcdef"[bits & 0xf];
-    bits >>= 4;
-  } while (bits);
-  if (result.size() < width) {
-    result.append(width - result.size(), '0');
-  }
-  std::reverse(result.begin(), result.end());
-  return result;
+  return internal::HexString(static_cast<std::make_unsigned_t<T>>(value), width);
 }
 
 } // namespace yb

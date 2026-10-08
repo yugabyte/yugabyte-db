@@ -22,7 +22,6 @@
 #include "yb/common/jsonb.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/gutil/strings/numbers.h"
 #include "yb/qlexpr/ql_serialization.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
@@ -887,19 +886,6 @@ TEST_F(TestQLQuery, TestPagingState) {
   }
 }
 
-// Renders floating point values with the shortest representation that parses back to the same
-// value, so that the generated statements match the stored values exactly.
-template <class T>
-std::string NumberToString(const T& value) {
-  if constexpr (std::is_same_v<T, float>) {
-    return SimpleFtoa(value);
-  } else if constexpr (std::is_same_v<T, double>) {
-    return SimpleDtoa(value);
-  } else {
-    return ToString(value);
-  }
-}
-
 template <class T>
 void RunPaginationWithDescTest(
     TestQLProcessor *processor, const char* type, const std::vector<T>& values,
@@ -912,7 +898,7 @@ void RunPaginationWithDescTest(
   /* Inserting the values. */
   for (auto& value : values) {
     string stmt = Format("INSERT INTO t_$0 (h, r1, r2, v) VALUES (1, $1, $2, $3);",
-        type, NumberToString(value), NumberToString(value), 0);
+        type, value, value, 0);
     CHECK_VALID_STMT(stmt);
   }
   /* Seting up low page size for reading to test paging. */
@@ -924,8 +910,7 @@ void RunPaginationWithDescTest(
   auto max_val = values.back();
   int page_count = 0;
   string select_stmt = Format("SELECT h, r1, r2, v FROM t_$0 WHERE h = 1 AND "
-    "r1 > $1 AND r2 > $2 AND r1 < $3 AND r2 < $4;", type, NumberToString(min_val),
-    NumberToString(min_val), NumberToString(max_val), NumberToString(max_val));
+    "r1 > $1 AND r2 > $2 AND r1 < $3 AND r2 < $4;", type, min_val, min_val, max_val, max_val);
   /* Reading rows, loading the rows vector to be checked later for each case */
   do {
     CHECK_OK(processor->Run(select_stmt, params));
@@ -1881,12 +1866,12 @@ TEST_F(TestQLQuery, TestFloatPrimaryKey) {
   CHECK_OK(processor->Run(create_stmt));
   for (int i = 0; i < 5; i++) {
     LOG(INFO) << "Inserting " << my_keys[i];
-    CHECK_OK(processor->Run(Format(insert_template, NumberToString(my_keys[i]), i)));
+    CHECK_OK(processor->Run(Format(insert_template, my_keys[i], i)));
   }
 
   for (int i = 0; i < 5; i++) {
     LOG(INFO) << "Selecting " << my_keys[i];
-    CHECK_OK(processor->Run(Format(select_template, "*", NumberToString(my_keys[i]))));
+    CHECK_OK(processor->Run(Format(select_template, "*", my_keys[i])));
     auto row_block = processor->row_block();
     ASSERT_EQ(1, row_block->row_count());
     std::vector<QLRow> &returned_rows = row_block->rows();
@@ -1915,12 +1900,12 @@ TEST_F(TestQLQuery, TestDoublePrimaryKey) {
   CHECK_OK(processor->Run(create_stmt));
   for (int i = 0; i < 5; i++) {
     LOG(INFO) << "Inserting " << my_keys[i];
-    CHECK_OK(processor->Run(Format(insert_template, NumberToString(my_keys[i]), i)));
+    CHECK_OK(processor->Run(Format(insert_template, my_keys[i], i)));
   }
 
   for (int i = 0; i < 5; i++) {
     LOG(INFO) << "Selecting " << my_keys[i];
-    CHECK_OK(processor->Run(Format(select_template, "*", NumberToString(my_keys[i]))));
+    CHECK_OK(processor->Run(Format(select_template, "*", my_keys[i])));
     auto row_block = processor->row_block();
     ASSERT_EQ(1, row_block->row_count());
     std::vector<QLRow> &returned_rows = row_block->rows();
