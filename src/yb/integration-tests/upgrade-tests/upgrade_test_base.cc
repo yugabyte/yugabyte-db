@@ -104,8 +104,11 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
 }
 
 // Download and extract the old version if it does not already exist, and return the old version bin
-// path. A ready.txt file is placed in the bin directory to indicate that the old version is ready
-// for use.
+// path. A ready.txt file is placed in the version directory to indicate that the old version is
+// ready for use.
+// The extracted version lives next to the downloaded tarball rather than in the build tree, so it
+// is reused across builds. Jenkins workers unpack a fresh build tree for every build, so a cache in
+// the build tree made almost every upgrade test extract the tarball again.
 Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
   std::string arch = "linux";
   std::string tar_bin = "tar";
@@ -116,11 +119,10 @@ Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
   arch += "_release";
 
   auto env = Env::Default();
-  const std::string build_root =
-      JoinPathSegments(DirName(env_util::GetRootDir("bin")), "db-upgrade");
-  RETURN_NOT_OK(env_util::CreateDirIfMissing(env, build_root));
+  const std::string kDownloadDir = "/opt/yb-build/db-upgrade";
+  RETURN_NOT_OK(env_util::CreateDirIfMissing(env, kDownloadDir));
   const auto version_root_path = JoinPathSegments(
-      build_root, Format("yugabyte_$0-$1_$2", build_info.version, build_info.build_number, arch));
+      kDownloadDir, Format("yugabyte_$0-$1_$2", build_info.version, build_info.build_number, arch));
   RETURN_NOT_OK(env_util::CreateDirIfMissing(env, version_root_path));
 
   // Get a lock on a file since multiple tests can be running in parallel and downloading the same
@@ -153,11 +155,9 @@ Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
   const auto download_url = GetRelevantUrl(build_info);
   const auto tar_file_name = BaseName(download_url);
 
-  const std::string kDownloadDir = "/opt/yb-build/db-upgrade";
   const auto tar_file_path = JoinPathSegments(kDownloadDir, tar_file_name);
 
   if (!env->FileExists(tar_file_path)) {
-    RETURN_NOT_OK(env_util::CreateDirIfMissing(env, kDownloadDir));
     LOG(INFO) << "Downloading " << download_url << " to " << tar_file_path;
     RETURN_NOT_OK(RunCommand(
         {"curl", "--retry", "3", "--retry-delay", "3", download_url, "-o", tar_file_path}));
