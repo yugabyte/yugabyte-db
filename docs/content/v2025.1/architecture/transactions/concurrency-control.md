@@ -1366,11 +1366,11 @@ Finally, advisory locks can be blocking or non-blocking:
 
 ### Enable table-level locks
 
-Table-level locks are disabled by default. To enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_object_locking_for_table_locks` to true.
+Table-level locks are disabled by default. To enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) preview flag `enable_object_locking_for_table_locks` to true.
 
-Because `enable_object_locking_for_table_locks` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=enable_object_locking_for_table_locks`).
+As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you also need to enable the [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl) preview flag.
 
-As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the preview flag [ysql_yb_ddl_transaction_block_enabled](../../../architecture/transactions/transactional-ddl/#enable-transactional-ddl).
+Because both are preview flags, add both to [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) (that is, `allowed_preview_flags_csv=enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled`).
 
 {{< warning title="Warning" >}}
 

@@ -1362,7 +1362,7 @@ Finally, advisory locks can be blocking or non-blocking:
 
 ## Table-level locks
 
-{{<tags/feature/ea idea="1114">}} Table-level locks for YSQL (available in {{<release "2025.1.1.0">}} and later) provide a mechanism to coordinate concurrent DML and DDL operations. The feature provides serializable semantics between DMLs and DDLs by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
+{{<tags/feature/ea idea="1114">}} Table-level locks for YSQL provide a mechanism to coordinate concurrent DML and DDL operations. The feature provides serializable semantics between DMLs and DDLs by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
 
 ### Enable table-level locks
 
