@@ -34,9 +34,11 @@ done
 read -r sha < <(gh api "repos/$repo/pulls/$pr" --jq '"\(.head.sha)"')
 
 # One line per run: "<id> <status> <conclusion> <name>". conclusion is null until it completes.
+# Exclude workflow that are not jenkins environment
 bld_runs() {
   gh api "repos/$repo/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
-    --jq '.workflow_runs[] | select(.name | startswith("bld-"))
+      --jq '.workflow_runs[] | select(.name | startswith("bld-"))
+        | select(.name != "bld-none" and .name != "bld-docs")
           | "\(.id) \(.status) \(.conclusion) \(.name)"'
 }
 
