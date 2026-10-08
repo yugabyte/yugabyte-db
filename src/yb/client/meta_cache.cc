@@ -506,14 +506,16 @@ bool RemoteTablet::is_split() const {
   return is_split_;
 }
 
-bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& status) {
+bool RemoteTablet::MarkReplicaFailed(
+    RemoteTabletServer *ts, const Status& status, PermanentFailure permanent) {
   std::lock_guard lock(mutex_);
   VLOG_WITH_PREFIX(2) << "Current remote replicas in meta cache: "
                       << ReplicasAsStringUnlocked() << ". Replica " << ts->ToString()
-                      << " has failed: " << status.ToString();
+                      << " has failed" << (permanent ? " permanently: " : ": ")
+                      << status.ToString();
   for (auto& rep : replicas_) {
     if (rep->ts == ts) {
-      rep->MarkFailed();
+      rep->MarkFailed(permanent);
       return true;
     }
   }
@@ -649,8 +651,9 @@ void RemoteTablet::GetRemoteTabletServers(
                 // Should continue here because otherwise failed state will be cleared.
                 continue;
               }
-            } else if ((MonoTime::Now() - replica->last_failed_time) <
-                       FLAGS_retry_failed_replica_ms * 1ms) {
+            } else if (replica->permanent_failure ||
+                       (MonoTime::Now() - replica->last_failed_time) <
+                           FLAGS_retry_failed_replica_ms * 1ms) {
               continue;
             }
             break;
@@ -783,6 +786,8 @@ void RemoteTablet::AddReplicasAsJson(JsonWriter* writer) const {
       writer->String(PeerRole_Name(replica->role));
       writer->String("failure_status");
       writer->String(replica->Failed() ? "FAILED" : "OK");
+      writer->String("permanent_failure");
+      writer->Bool(replica->permanent_failure);
       writer->String("last_failed_time");
       writer->String(replica->last_failed_time.ToFormattedString());
       writer->String("last_failed_time_in_ns");
@@ -2525,9 +2530,10 @@ void MetaCache::RefreshTablePartitions(
   });
 }
 
-void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
-                             const Status& status) {
-  LOG_WITH_PREFIX(INFO) << "Marking tablet server " << ts->ToString() << " as failed.";
+void MetaCache::MarkTSFailed(
+    RemoteTabletServer* ts, const Status& status, PermanentFailure permanent) {
+  LOG_WITH_PREFIX(INFO) << "Marking tablet server " << ts->ToString() << " as "
+                        << (permanent ? "permanently " : "") << "failed.";
   SharedLock<decltype(mutex_)> lock(mutex_);
 
   Status ts_status = status.CloneAndPrepend("TS failed");
@@ -2536,7 +2542,25 @@ void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
   for (const auto& tablet : tablets_by_id_) {
     // We just loop on all tablets; if a tablet does not have a replica on this
     // TS, MarkReplicaFailed() returns false and we ignore the return value.
-    tablet.second->MarkReplicaFailed(ts, ts_status);
+    tablet.second->MarkReplicaFailed(ts, ts_status, permanent);
+  }
+}
+
+void MetaCache::MarkTServersAsFailed(const std::vector<std::string>& ts_uuids) {
+  const auto status =
+      STATUS(ServiceUnavailable, "Tablet server is blacklisted and hosts no tablets");
+  for (const auto& uuid : ts_uuids) {
+    RemoteTabletServer* ts = nullptr;
+    {
+      SharedLock<decltype(mutex_)> lock(mutex_);
+      auto it = ts_cache_.find(uuid);
+      if (it == ts_cache_.end() || it->second.get() == local_tserver_) {
+        continue;
+      }
+      // Entries are never removed from ts_cache_, so the pointer stays valid after unlocking.
+      ts = it->second.get();
+    }
+    MarkTSFailed(ts, status, PermanentFailure::kTrue);
   }
 }
 
@@ -2665,7 +2689,7 @@ std::string RemoteReplica::ToString() const {
   return Format("$0 ($1, $2)",
                 ts->permanent_uuid(),
                 PeerRole_Name(role),
-                Failed() ? "FAILED" : "OK");
+                Failed() ? (permanent_failure ? "PERMANENTLY_FAILED" : "FAILED") : "OK");
 }
 
 std::string LookupContext::ToString() const {

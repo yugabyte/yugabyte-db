@@ -1152,6 +1152,11 @@ class YBClient {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  // Marks all cached replicas hosted by these tservers as permanently failed, i.e. not retried
+  // after retry_failed_replica_ms. A master or Raft refresh of a tablet replaces its replica list
+  // and thereby clears the mark.
+  void MarkTServersAsFailed(const std::vector<std::string>& ts_uuids);
+
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the
   // RemoteTablet was indeed refreshed, false otherwise.
@@ -1191,6 +1196,7 @@ class YBClient {
   friend class XClusterRemoteClientHolder;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
+  FRIEND_TEST(ClientTest, TestMarkTServersAsFailedIsPermanent);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
   FRIEND_TEST(ClientTest, MetaCacheIgnoreNonTargetTable);

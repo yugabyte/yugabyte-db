@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <future>
 #include <regex>
 #include <set>
 #include <thread>
@@ -129,6 +130,7 @@ DECLARE_int32(log_inject_latency_ms_mean);
 DECLARE_int32(log_inject_latency_ms_stddev);
 DECLARE_int32(master_inject_latency_on_tablet_lookups_ms);
 DECLARE_int32(max_create_tablets_per_ts);
+DECLARE_int32(retry_failed_replica_ms);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(replication_factor);
 
@@ -1045,6 +1047,69 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
                                                blacklist, &candidates, &rts);
     ASSERT_TRUE(s.IsServiceUnavailable());
   }
+}
+
+// A replica marked failed by MarkTServersAsFailed must stay failed past retry_failed_replica_ms,
+// unlike an ordinary failed mark, and a full refresh from the master must clear it.
+TEST_F(ClientTest, TestMarkTServersAsFailedIsPermanent) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_replica_ms) = 0;
+  TableHandle table;
+  ASSERT_NO_FATALS(
+      CreateTable(YBTableName(YQL_DATABASE_CQL, "permanent_failure"), kNumTablets, &table));
+  InsertTestRows(table, 1, 0);
+
+  scoped_refptr<internal::RemoteTablet> rt;
+  std::vector<internal::RemoteTabletServer*> tservers;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    rt = VERIFY_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
+    tservers.clear();
+    rt->GetRemoteTabletServers(&tservers);
+    if (tservers.size() == 3) {
+      return true;
+    }
+    rt->MarkStale();
+    return false;
+  }, 30s, "Wait for all replicas to be cached"));
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  internal::RemoteTabletServer* transient = tservers[0];
+  internal::RemoteTabletServer* permanent = tservers[1];
+
+  // With retry_failed_replica_ms = 0 an ordinary failed mark is retried on the next selection.
+  meta_cache.MarkTSFailed(transient, STATUS(NetworkError, "test"));
+  tservers.clear();
+  rt->GetRemoteTabletServers(&tservers);
+  ASSERT_EQ(tservers.size(), 3);
+
+  // A permanent mark is not.
+  meta_cache.MarkTServersAsFailed({permanent->permanent_uuid()});
+  for (int i = 0; i != 3; ++i) {
+    tservers.clear();
+    rt->GetRemoteTabletServers(&tservers);
+    ASSERT_EQ(tservers.size(), 2);
+    ASSERT_EQ(std::find(tservers.begin(), tservers.end(), permanent), tservers.end());
+  }
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
+
+  // Unknown UUIDs are ignored.
+  meta_cache.MarkTServersAsFailed({"not-a-tserver"});
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
+
+  // A full refresh from the master replaces the replica list and clears the mark: the master
+  // still lists this tserver, so the cache must trust it again.
+  std::promise<Result<internal::RemoteTabletPtr>> refreshed_promise;
+  client_->LookupTabletById(
+      rt->tablet_id(), table.table(), master::IncludeHidden::kFalse,
+      master::IncludeDeleted::kFalse, CoarseMonoClock::Now() + 30s,
+      [&refreshed_promise](const Result<internal::RemoteTabletPtr>& result) {
+        refreshed_promise.set_value(result);
+      },
+      UseCache::kFalse);
+  rt = ASSERT_RESULT(refreshed_promise.get_future().get());
+  tservers.clear();
+  rt->GetRemoteTabletServers(&tservers);
+  ASSERT_EQ(tservers.size(), 3);
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 0);
 }
 
 TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {

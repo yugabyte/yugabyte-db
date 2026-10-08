@@ -40,6 +40,11 @@ DEFINE_RUNTIME_bool(delay_leader_blacklist_completion_percent_until_tservers_hea
     "leader blacklist completion percent.");
 TAG_FLAG(delay_leader_blacklist_completion_percent_until_tservers_heartbeat, advanced);
 
+DEFINE_RUNTIME_bool(delay_blacklist_completion_percent_until_tservers_heartbeat, true,
+    "When set, the master will wait for all live tservers to heartbeat before reporting "
+    "blacklist load move completion percent.");
+TAG_FLAG(delay_blacklist_completion_percent_until_tservers_heartbeat, advanced);
+
 namespace yb::master {
 
 MasterClusterHandler::MasterClusterHandler(CatalogManager* catalog_manager, TSManager* ts_manager)
@@ -274,10 +279,13 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   resp->set_remaining(blacklist_replicas);
   resp->set_total(initial_load);
 
-  if (blacklist_leader && blacklist_replicas == 0 &&
-      FLAGS_delay_leader_blacklist_completion_percent_until_tservers_heartbeat) {
-    // Best effort wait to ensure all tservers have updated their meta-cache and marked
-    // the leader blacklisted tservers with no leaders as followers.
+  const bool delay_until_heartbeat = blacklist_leader
+      ? FLAGS_delay_leader_blacklist_completion_percent_until_tservers_heartbeat
+      : FLAGS_delay_blacklist_completion_percent_until_tservers_heartbeat;
+  if (blacklist_replicas == 0 && delay_until_heartbeat) {
+    // Best effort wait to ensure all tservers have updated their meta-cache: marked the leader
+    // blacklisted tservers with no leaders as followers, or the blacklisted tservers with no
+    // tablets as failed.
     const auto start_time = MonoTime::Now();
     WARN_NOT_OK(
         WaitFor([&]() {
@@ -286,8 +294,8 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
           return std::all_of(descs.begin(), descs.end(), [&](const auto& desc) {
             return desc->LastHeartbeatTime() > start_time;
           });
-        }, 10s, "Wait for live tservers to heartbeat before reporting leader blacklist completion"),
-        "Timed out waiting for master to propagate leader blacklisted tserver info on heartbeats.");
+        }, 10s, "Wait for live tservers to heartbeat before reporting blacklist completion"),
+        "Timed out waiting for master to propagate blacklisted tserver info on heartbeats.");
   }
   return Status::OK();
 }

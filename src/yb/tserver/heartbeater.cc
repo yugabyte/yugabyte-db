@@ -32,6 +32,7 @@
 
 #include "yb/tserver/heartbeater.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iosfwd>
 #include <memory>
@@ -501,6 +502,23 @@ Status HeartbeatPoller::TryHeartbeat() {
           resp.leader_blacklisted_tservers_with_no_leaders().begin(),
           resp.leader_blacklisted_tservers_with_no_leaders().end());
       server_.MarkTServersAsFollowers(blacklisted_uuids);
+    }
+
+    if (resp.blacklisted_tservers_with_no_tablets_size() > 0) {
+      // The master resends this list on every heartbeat while the condition holds, so only act on
+      // UUIDs that were absent from the previous response. Marking is permanent until a master or
+      // Raft refresh rebuilds the tablet's replica list, which is also how a tserver that is taken
+      // off the blacklist and gains tablets again re-enters the meta cache.
+      const auto& previous = last_hb_response_.blacklisted_tservers_with_no_tablets();
+      std::vector<std::string> newly_drained_uuids;
+      for (const auto& uuid : resp.blacklisted_tservers_with_no_tablets()) {
+        if (std::find(previous.begin(), previous.end(), uuid) == previous.end()) {
+          newly_drained_uuids.push_back(uuid);
+        }
+      }
+      if (!newly_drained_uuids.empty()) {
+        server_.MarkTServersAsFailed(newly_drained_uuids);
+      }
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as

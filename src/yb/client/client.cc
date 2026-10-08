@@ -3299,6 +3299,10 @@ void YBClient::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids)
   data_->meta_cache_->MarkTServersAsFollowers(ts_uuids);
 }
 
+void YBClient::MarkTServersAsFailed(const std::vector<std::string>& ts_uuids) {
+  data_->meta_cache_->MarkTServersAsFailed(ts_uuids);
+}
+
 template <class PB>
 bool YBClient::DoRefreshTabletInfoWithConsensusInfo(const PB& newly_received_info) {
   auto status = data_->meta_cache_->RefreshTabletInfoWithConsensusInfo(newly_received_info);

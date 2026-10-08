@@ -310,6 +310,10 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
   auto trace = trace_;
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace);
+  if (SyncPoint::GetInstance()->IsEnabled()) {
+    RpcSendTestData data{client_, tablet_id_, current_ts_->permanent_uuid()};
+    TEST_SYNC_POINT_CALLBACK("TabletInvoker::BeforeSendRpcToTserver", &data);
+  }
   rpc_->SendRpcToTserver(retrier_->attempt_num());
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }

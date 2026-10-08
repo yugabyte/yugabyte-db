@@ -180,22 +180,30 @@ class RemoteTabletServer {
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };
 
+YB_STRONGLY_TYPED_BOOL(PermanentFailure);
+
 struct RemoteReplica {
   RemoteTabletServer* ts;
   PeerRole role;
   MonoTime last_failed_time = MonoTime::kUninitialized;
+  // A permanent failure is never retried after retry_failed_replica_ms. It is set when the master
+  // reports that the tserver hosts no tablets, so the only thing that can make this replica valid
+  // again is a master or Raft refresh replacing the tablet's replica list.
+  bool permanent_failure = false;
   // The state of this replica. Only updated after calling GetTabletStatus.
   tablet::RaftGroupStatePB state = tablet::RaftGroupStatePB::UNKNOWN;
 
   RemoteReplica(RemoteTabletServer* ts_, PeerRole role_)
       : ts(ts_), role(role_) {}
 
-  void MarkFailed() {
+  void MarkFailed(PermanentFailure permanent = PermanentFailure::kFalse) {
     last_failed_time = MonoTime::Now();
+    permanent_failure = permanent_failure || permanent;
   }
 
   void ClearFailed() {
     last_failed_time = MonoTime::kUninitialized;
+    permanent_failure = false;
   }
 
   bool Failed() const {
@@ -298,9 +306,12 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // Mark any replicas of this tablet hosted by 'ts' as failed. They will
   // not be returned in future cache lookups.
   //
-  // The provided status is used for logging.
+  // The provided status is used for logging. A permanent failure is not retried after
+  // retry_failed_replica_ms; see RemoteReplica::permanent_failure.
   // Returns true if 'ts' was found among this tablet's replicas, false if not.
-  bool MarkReplicaFailed(RemoteTabletServer *ts, const Status& status);
+  bool MarkReplicaFailed(
+      RemoteTabletServer *ts, const Status& status,
+      PermanentFailure permanent = PermanentFailure::kFalse);
 
   // Return the number of failed replicas for this tablet.
   int GetNumFailedReplicas() const;
@@ -635,12 +646,20 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Mark any replicas of any tablets hosted by 'ts' as failed. They will
   // not be returned in future cache lookups.
-  void MarkTSFailed(RemoteTabletServer* ts, const Status& status);
+  void MarkTSFailed(
+      RemoteTabletServer* ts, const Status& status,
+      PermanentFailure permanent = PermanentFailure::kFalse);
 
   // For each tserver UUID in the given list, mark any replicas hosted by that tserver as
   // followers across all cached tablets. Used to proactively demote leaders on
   // leader-blacklisted tservers.
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
+  // For each tserver UUID in the given list, mark any replicas hosted by that tserver as
+  // permanently failed across all cached tablets. Used when the master reports that a blacklisted
+  // tserver hosts no tablets, so cached replicas pointing at it are stale by definition. UUIDs
+  // not present in the cache, and the local tserver, are ignored.
+  void MarkTServersAsFailed(const std::vector<std::string>& ts_uuids);
 
   // Acquire or release a permit to perform a (slow) master lookup.
   //
