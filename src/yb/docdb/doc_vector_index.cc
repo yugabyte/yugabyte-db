@@ -132,7 +132,8 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
   }
   return STATUS_FORMAT(
       NotSupported,
-      "Vector index backend $0 is no longer supported, drop and recreate the index",
+      "Vector index backend $0 is no longer supported. Roll back to the previous release and drop "
+      "the index before upgrading",
       HnswBackend_Name(backend));
 }
 

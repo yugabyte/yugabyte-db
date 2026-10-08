@@ -78,7 +78,7 @@ TEST_F(DocVectorIndexTest, DeprecatedBackendNotSupported) {
     auto result = CreateIndex(backend);
     ASSERT_NOK(result);
     ASSERT_TRUE(result.status().IsNotSupported()) << result.status();
-    ASSERT_STR_CONTAINS(result.status().ToString(), "drop and recreate the index");
+    ASSERT_STR_CONTAINS(result.status().ToString(), "drop the index before upgrading");
   }
 }
 
