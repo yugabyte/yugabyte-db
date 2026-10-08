@@ -795,6 +795,7 @@ partition_key = ( column_name | '(' expression ')' ) [ operator_class_name ] ;
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'TABLE'
                  [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')' \
+                 [ 'INHERITS' '(' table_name { ',' table_name } ')' ] \
                  [ 'PARTITION' 'BY' ( 'RANGE' | 'LIST' | 'HASH' ) '(' partition_key { ',' partition_key } ')' ] \
                  [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | 'COLOCATION_ID' '=' int_literal | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
