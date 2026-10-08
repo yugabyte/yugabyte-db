@@ -81,10 +81,16 @@ namespace {
 
 YB_DEFINE_ENUM(ThreadStackState, (kNone)(kSendFailed)(kReady));
 
+// Why the signal handler could not collect a stack.
+enum class EmptyStackReason : uint8_t { kNone, kInAllocDealloc, kCollectingStack };
+
 struct ThreadStackEntry : public MPSCQueueEntry<ThreadStackEntry> {
   ThreadIdForStack tid;
   StackTrace stack;
+  EmptyStackReason empty_reason;
 };
+
+thread_local bool is_collecting_stack = false;
 
 class CompletionFlag {
  public:
@@ -196,25 +202,27 @@ struct ThreadStackHelper {
         if (entry->stack) {
           entry_out = entry->stack;
         } else {
-          // If the thread is in the middle of collecting stack trace for any other reason then it
-          // will return an empty output.
-          static const Status status = STATUS(
-              TryAgain,
-              "Thread did not respond: maybe it was in the middle of a stack trace collection");
-          entry_out = status;
+          static const Status in_alloc_status = STATUS(TryAgain, kThreadStackInAllocDeallocMsg);
+          static const Status collecting_status = STATUS(TryAgain, kThreadStackCollectingMsg);
+          static const Status unknown_status = STATUS(TryAgain, kThreadStackUnknownReasonMsg);
+          entry_out = entry->empty_reason == EmptyStackReason::kInAllocDealloc ? in_alloc_status
+              : entry->empty_reason == EmptyStackReason::kCollectingStack ? collecting_status
+              : unknown_status;
         }
       }
       allocated.Push(entry);
     }
   }
 
-  void RecordStackTrace(const StackTrace& stack_trace) {
+  void RecordStackTrace(
+      const StackTrace& stack_trace, EmptyStackReason empty_reason = EmptyStackReason::kNone) {
     auto* entry = allocated.Pop();
     // If entry is nullptr, that means there are not enough allocated entries. In that case, don't
     // write a log message since we are in a signal handler.
     if (entry) {
       entry->tid = Thread::CurrentThreadIdForStack();
       entry->stack = stack_trace;
+      entry->empty_reason = empty_reason;
       collected.Push(entry);
     }
 
@@ -235,11 +243,16 @@ void HandleStackTraceSignal(int signum) {
 #if YB_GOOGLE_TCMALLOC
   // TODO(#17889): retry in this case. For now, just produce an empty stack trace.
   if (tcmalloc::MallocExtension::IsCurThreadInAllocDealloc()) {
-    thread_stack_helper.RecordStackTrace(stack_trace);
+    thread_stack_helper.RecordStackTrace(stack_trace, EmptyStackReason::kInAllocDealloc);
     errno = old_errno;
     return;
   }
 #endif
+  if (is_collecting_stack) {
+    thread_stack_helper.RecordStackTrace(stack_trace, EmptyStackReason::kCollectingStack);
+    errno = old_errno;
+    return;
+  }
   stack_trace.Collect(2);
 
   thread_stack_helper.RecordStackTrace(stack_trace);
@@ -311,8 +324,6 @@ bool InitSignalHandlerUnlocked(int signum) {
 // ------------------------------------------------------------------------------------------------
 
 void StackTrace::Collect(int skip_frames) {
-  static thread_local bool is_collecting_stack = false;
-
   if (is_collecting_stack) {
     // It is unsafe to call backtrace recursively. Return an empty stack trace.
     // A thread can get here if while it was collecting its own stack, it got interrupted by a
@@ -439,8 +450,7 @@ Result<StackTrace> ThreadStack(ThreadIdForStack tid) {
 }
 
 std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>& tids) {
-  static const Status default_status = STATUS(
-      RuntimeError, "Thread did not respond: maybe it is blocking signals");
+  static const Status default_status = STATUS(RuntimeError, kThreadStackTimedOutMsg);
 
   std::vector<Result<StackTrace>> result(tids.size(), default_status);
   std::lock_guard execution_lock(thread_stack_helper.mutex);
