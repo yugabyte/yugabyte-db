@@ -357,9 +357,11 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 10,  /
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");
 
-DEFINE_RUNTIME_PG_FLAG(uint32, yb_reorderbuffer_max_changes_in_memory, 4096,
-    "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
-    "streaming changes via logical replication . After that, changes are spooled to disk.");
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_reorderbuffer_max_memory_kb, 4096,
+    "Maximum reorder buffer memory in kilobytes before logical replication changes are streamed "
+    "or spilled to disk.");
+DEFINE_validator(ysql_yb_reorderbuffer_max_memory_kb, FLAG_GE_VALUE_VALIDATOR(64));
+DEPRECATE_FLAG(uint32, ysql_yb_reorderbuffer_max_changes_in_memory, "08_2026");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
     "Size threshold in bytes for a catcache tuple to be compressed.");

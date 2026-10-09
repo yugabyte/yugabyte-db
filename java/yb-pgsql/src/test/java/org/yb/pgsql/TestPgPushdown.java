@@ -47,6 +47,15 @@ public class TestPgPushdown extends BasePgSQLTest {
     return flags;
   }
 
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flags = super.getMasterFlags();
+    // WaitForYsqlBackendsCatalogVersion is continuously rejected at the new master until the below
+    // timeout. Setting it to a lower value to reduce test times for ones involving create index.
+    flags.put("master_ysql_operation_lease_ttl_ms", "10000");
+    return flags;
+  }
+
   @Test
   public void inequality_oneRangeColumn() throws Exception {
     String tableName = "inequality_predicate_pushdown";
@@ -808,14 +817,15 @@ public class TestPgPushdown extends BasePgSQLTest {
       String query = String.format(
             "%sSELECT %s FROM %s%s",
             hint, optimizedExpr, tableName, (quals != null ? " WHERE " + quals : ""));
-      verifyStatementMetric(
+      // verifyStatementMetric relies on handler_latency_yb_ysqlserver_SQLProcessor_Transactions
+      // metric which is a global metric across all backends. Relying on the delta of transactions
+      // to be 1 might result in test flakiness if there are other statements running.
+      verifyStatementMetricRows(
           stmt,
           query,
           AGGREGATE_PUSHDOWNS_METRIC,
-          1 /* queryMetricDelta */,
-          0 /* singleShardTxnMetricDelta */,
-          1 /* txnMetricDelta */,
-          true /* validStmt */
+          1 /* countDelta */,
+          1 /* rowsDelta */
       );
     }
   }

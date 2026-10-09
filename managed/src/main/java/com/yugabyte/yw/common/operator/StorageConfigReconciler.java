@@ -46,10 +46,6 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
 
   private final ResourceTracker resourceTracker = new ResourceTracker();
 
-  // The current storage config resource being reconciled, used for associating secret dependencies.
-  private KubernetesResourceDetails currentReconcileResource;
-  private UUID currentLocalInstanceUuid;
-
   public Set<KubernetesResourceDetails> getTrackedResources() {
     return resourceTracker.getTrackedResources();
   }
@@ -73,7 +69,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     this.operatorUtils = operatorUtils;
   }
 
-  public JsonNode getConfigPayloadFromCRD(StorageConfig sc) {
+  public JsonNode getConfigPayloadFromCRD(StorageConfig sc, UUID localInstanceUuid) {
     ObjectMapper objectMapper = new ObjectMapper();
     objectMapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
 
@@ -106,7 +102,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       }
       object.put(iamFieldName, useIAM);
     }
-    parseSecrets(object, sc);
+    parseSecrets(object, sc, localInstanceUuid);
 
     return dataJson;
   }
@@ -135,16 +131,13 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     resourceClient.inNamespace(namespace).resource(sc).replaceStatus();
   }
 
-  private void parseSecrets(ObjectNode configObject, StorageConfig sc) {
+  private void parseSecrets(ObjectNode configObject, StorageConfig sc, UUID localInstanceUuid) {
+    KubernetesResourceDetails owner = KubernetesResourceDetails.fromResource(sc);
     AwsSecretAccessKeySecret awsSecret = sc.getSpec().getAwsSecretAccessKeySecret();
     if (awsSecret != null) {
       Secret secret = operatorUtils.getSecret(awsSecret.getName(), awsSecret.getNamespace());
       if (secret != null) {
-        resourceTracker.trackDependency(currentReconcileResource, secret, currentLocalInstanceUuid);
-        log.trace(
-            "Tracking AWS secret {} as dependency of {}",
-            secret.getMetadata().getName(),
-            currentReconcileResource);
+        resourceTracker.trackDependency(owner, secret, localInstanceUuid);
         String awsSecretKey =
             operatorUtils.parseSecretForKey(secret, AWS_SECRET_ACCESS_KEY_SECRET_KEY);
         configObject.put("AWS_SECRET_ACCESS_KEY", awsSecretKey);
@@ -157,11 +150,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     if (gcsSecret != null) {
       Secret secret = operatorUtils.getSecret(gcsSecret.getName(), gcsSecret.getNamespace());
       if (secret != null) {
-        resourceTracker.trackDependency(currentReconcileResource, secret, currentLocalInstanceUuid);
-        log.trace(
-            "Tracking GCS secret {} as dependency of {}",
-            secret.getMetadata().getName(),
-            currentReconcileResource);
+        resourceTracker.trackDependency(owner, secret, localInstanceUuid);
         String gcsSecretKey =
             operatorUtils.parseSecretForKey(secret, GCS_CREDENTIALS_JSON_SECRET_KEY);
         configObject.put("GCS_CREDENTIALS_JSON", gcsSecretKey);
@@ -174,11 +163,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     if (azureSecret != null) {
       Secret secret = operatorUtils.getSecret(azureSecret.getName(), azureSecret.getNamespace());
       if (secret != null) {
-        resourceTracker.trackDependency(currentReconcileResource, secret, currentLocalInstanceUuid);
-        log.trace(
-            "Tracking Azure secret {} as dependency of {}",
-            secret.getMetadata().getName(),
-            currentReconcileResource);
+        resourceTracker.trackDependency(owner, secret, localInstanceUuid);
         String azureSecretKey =
             operatorUtils.parseSecretForKey(secret, AZURE_STORAGE_SAS_TOKEN_SECRET_KEY);
         configObject.put("AZURE_STORAGE_SAS_TOKEN", azureSecretKey);
@@ -200,9 +185,8 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     }
 
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(sc);
-    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
-    resourceTracker.trackResource(sc, currentLocalInstanceUuid);
-    currentReconcileResource = resourceDetails;
+    UUID localInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(sc, localInstanceUuid);
     log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
 
     String cuuid;
@@ -218,7 +202,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     }
     String configUUID;
     try {
-      JsonNode payload = getConfigPayloadFromCRD(sc);
+      JsonNode payload = getConfigPayloadFromCRD(sc, localInstanceUuid);
       String configName = sc.getMetadata().getName();
       if (sc.getSpec().getName() != null) {
         configName = OperatorUtils.kubernetesCompatName(sc.getSpec().getName());
@@ -270,8 +254,8 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
   public void onUpdate(StorageConfig oldSc, StorageConfig newSc) {
     log.info("Updating a storage config");
     // Persist the latest resource YAML so the OperatorResource table stays current.
-    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
-    resourceTracker.trackResource(newSc, currentLocalInstanceUuid);
+    UUID localInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(newSc, localInstanceUuid);
     ObjectMapper objectMapper = new ObjectMapper();
     String cuuid;
     String configUUID = null;
@@ -302,7 +286,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     }
 
     try {
-      JsonNode payload = getConfigPayloadFromCRD(newSc);
+      JsonNode payload = getConfigPayloadFromCRD(newSc, localInstanceUuid);
       CustomerConfig cc = ccs.getOrBadRequest(UUID.fromString(cuuid), UUID.fromString(configUUID));
       cc.setData((ObjectNode) payload);
       this.ccs.edit(cc);

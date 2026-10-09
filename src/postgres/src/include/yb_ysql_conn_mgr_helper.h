@@ -51,8 +51,8 @@ extern bool yb_is_parallel_worker;
 /*
  * YB: GUC storage variables for CM logical-client metadata (defined in guc.c).
  */
-extern char *yb_conn_mgr_client_addr;
-extern int	yb_conn_mgr_client_port;
+extern char *yb_ycm_internal_client_addr;
+extern int	yb_ycm_internal_client_port;
 extern char *yb_conn_mgr_client_hostname;
 
 /* TODO (janand): Write a function to read/change yb_logical_client_shmem_key */

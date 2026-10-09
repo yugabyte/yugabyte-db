@@ -86,7 +86,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Before
   public void setup() {
-    awsCloudImpl = spy(new AWSCloudImpl(null));
+    awsCloudImpl = spy(new AWSCloudImpl(null, null));
     mockEC2Client = mock(Ec2Client.class);
     mockElbClient = mock(ElasticLoadBalancingV2Client.class);
     mockRoute53Client = mock(Route53Client.class);

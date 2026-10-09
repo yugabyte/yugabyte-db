@@ -1,6 +1,7 @@
 import { FC, RefObject, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mui, TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import { TourStep, dismissTourStep, isTourStepDismissed } from '../tour-progress';
 import { requestOpenUniverseCreationPopover } from './UniverseCreationPopover';
 import { OnboardingTourPopper } from './OnboardingTourPopper';
 
@@ -11,14 +12,12 @@ const POPOVER_OFFSET: [number, number] = [0, 12];
 /** Figma PLG/Purple 300 — primary CTA on this spotlight. */
 const SEE_WHATS_CHANGED_BUTTON_BG = '#7879F1';
 
-export const AFTER_NEW_EXPERIENCE_POPOVER_DISMISS_KEY = 'yb_after_new_experience_popover_dismissed';
-
 interface AfterNewExperiencePopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
   /** Permanent Hide Tip. */
   onClose: () => void;
-  /** Transient click-away close (no localStorage). */
+  /** Transient click-away close. */
   onClickAway: () => void;
   onSeeWhatsChanged: () => void;
 }
@@ -54,10 +53,10 @@ const WideSpotlight = styled(YBTourSpotlight)(() => ({
 }));
 
 export const isAfterNewExperiencePopoverDismissed = (): boolean =>
-  localStorage.getItem(AFTER_NEW_EXPERIENCE_POPOVER_DISMISS_KEY) === 'true';
+  isTourStepDismissed(TourStep.AfterExp);
 
 export const dismissAfterNewExperiencePopover = (): void => {
-  localStorage.setItem(AFTER_NEW_EXPERIENCE_POPOVER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.AfterExp);
 };
 
 export const useAfterNewExperiencePopover = () => {
@@ -76,19 +75,13 @@ export const useAfterNewExperiencePopover = () => {
     requestOpenUniverseCreationPopover();
   }, []);
 
-  const handleClickAway = useCallback(() => {
-    setOpen(false);
-    // Same next-tip handoff as Hide Tip; click-away stays transient (no dismiss key).
-    requestOpenUniverseCreationPopover();
-  }, []);
-
   return {
     open,
     setOpen,
     anchorRef,
     openPopover,
     handleClose,
-    handleClickAway
+    handleClickAway: handleClose
   };
 };
 

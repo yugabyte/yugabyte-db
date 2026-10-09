@@ -133,6 +133,7 @@
 #include "access/xact.h"
 #include "commands/async.h"
 #include "common/pg_yb_common.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
 #include "replication/syncrep.h"

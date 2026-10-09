@@ -38,6 +38,7 @@ DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(TEST_fatal_on_transaction_status_request_failure);
 DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 
@@ -341,6 +342,8 @@ class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
     GeoTransactionsTest::SetUp();
   }
 };

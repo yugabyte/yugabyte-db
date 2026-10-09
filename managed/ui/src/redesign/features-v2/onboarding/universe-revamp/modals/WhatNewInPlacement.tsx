@@ -18,8 +18,6 @@ import {
 
 const { Box, Typography, styled } = mui;
 
-export const WHAT_NEW_IN_PLACEMENT_MODAL_DISMISS_KEY = 'yb_what_new_in_placement_modal_dismissed';
-
 interface WhatNewInPlacementProps {
   open: boolean;
   onClose: () => void;

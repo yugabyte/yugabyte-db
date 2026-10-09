@@ -1,0 +1,6 @@
+title: SupportBundlePagedResp
+description: Paged list response for support bundles.
+type: object
+x-data-container: PaginationResp
+x-data-item: SupportBundle
+x-data-entities-description: Support bundles for this page.

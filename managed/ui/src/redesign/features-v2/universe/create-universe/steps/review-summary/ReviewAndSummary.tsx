@@ -268,6 +268,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
           zoom: 1,
           center: [0, 0]
         }}
+        showBoundaries={false}
       >
         {
           resilienceAndRegionsSettings?.regions?.map((region: Region) => {

@@ -19,6 +19,7 @@ import {
   AZURE_CLOUD_OPTION,
   GCP_CLOUD_OPTION,
   K8S_CLOUD_OPTION,
+  OCI_CLOUD_OPTION,
   ON_PREM_CLOUD_OPTION
 } from '@yugabyte-ui-library/core';
 import { EditUniverseContext } from './EditUniverseContext';
@@ -53,6 +54,8 @@ export const getProviderIcon = (providerCode?: string) => {
       return ON_PREM_CLOUD_OPTION.icon;
     case CloudType.kubernetes:
       return K8S_CLOUD_OPTION.icon;
+    case CloudType.oci:
+      return OCI_CLOUD_OPTION.icon;
     default:
       return null;
   }
@@ -372,8 +375,19 @@ export const convertProxySettingsToFormValues = (
   };
 };
 
-export const hasDedicatedNodes = (universeData: Universe): boolean => {
-  return some(universeData?.info?.node_details_set, (node) => node.dedicated_to);
+/** Whether a cluster uses dedicated master/t-server nodes (spec flag or live node details). */
+export const hasDedicatedNodesForCluster = (
+  universeData: Universe,
+  cluster?: ClusterSpec
+): boolean => {
+  if (!cluster) return false;
+  if (cluster.node_spec?.dedicated_nodes) return true;
+  return some(universeData?.info?.node_details_set, (node) => {
+    if (!node.dedicated_to) return false;
+    if (node.placement_uuid) return node.placement_uuid === cluster.uuid;
+    // Legacy universes may omit placement_uuid on primary-cluster nodes.
+    return cluster.cluster_type === ClusterSpecClusterType.PRIMARY;
+  });
 };
 
 export const countMasterAndTServerNodesByPlacementRegion = (
@@ -460,6 +474,81 @@ export const countMasterAndTServerNodes = (
   });
   return dedicatedNodesCount;
 };
+
+/** Count dedicated nodes when node_details omit placement_uuid (legacy primary clusters). */
+function countLegacyDedicatedNodes(
+  universeData: Universe,
+  cluster: ClusterSpec
+): { tserver: number; master: number } {
+  let tserver = 0;
+  let master = 0;
+  universeData.info?.node_details_set?.forEach((node) => {
+    if (!node.dedicated_to) return;
+    const matchesCluster = node.placement_uuid
+      ? node.placement_uuid === cluster.uuid
+      : cluster.cluster_type === ClusterSpecClusterType.PRIMARY;
+    if (!matchesCluster) return;
+    if (node.dedicated_to === NodeDetailsDedicatedTo.MASTER) {
+      master += 1;
+    } else {
+      tserver += 1;
+    }
+  });
+  return { tserver, master };
+}
+
+/**
+ * Total display node count when dedicated masters are enabled (tservers + masters).
+ * Returns undefined for colocated-master clusters — callers should use pricing/spec `num_nodes`.
+ */
+export function getDedicatedClusterDisplayNodeTotal(
+  universeData: Universe | undefined,
+  cluster: ClusterSpec | undefined,
+  apiNumNodes?: number
+): number | undefined {
+  if (!universeData || !cluster || !hasDedicatedNodesForCluster(universeData, cluster)) {
+    return undefined;
+  }
+
+  let tserver = 0;
+  let master = 0;
+
+  const legacy = countLegacyDedicatedNodes(universeData, cluster);
+  if (legacy.tserver > 0 || legacy.master > 0) {
+    tserver = legacy.tserver;
+    master = legacy.master;
+  } else if (cluster.partitions_spec?.length) {
+    cluster.partitions_spec.forEach((partition) => {
+      if (!partition.placement) return;
+      const counts = getDedicatedTserverMasterDisplayCounts(
+        universeData,
+        cluster,
+        partition.placement
+      );
+      tserver += counts.tserver;
+      master += counts.master;
+    });
+  } else {
+    const placement = getPlacementSpecFromCluster(cluster);
+    if (placement) {
+      ({ tserver, master } = getDedicatedTserverMasterDisplayCounts(universeData, cluster, placement));
+    } else {
+      const fromDetails = countMasterAndTServerNodes(universeData, cluster);
+      tserver = fromDetails[NodeDetailsDedicatedTo.TSERVER] ?? 0;
+      master = fromDetails[NodeDetailsDedicatedTo.MASTER] ?? 0;
+    }
+  }
+
+  if (tserver <= 0) {
+    tserver = apiNumNodes ?? cluster.num_nodes ?? 0;
+  }
+  if (master <= 0) {
+    master = cluster.replication_factor ?? 0;
+  }
+
+  const total = tserver + master;
+  return total > 0 ? total : undefined;
+}
 
 export function useIsUniverseReady() {
   const { universeData } = useEditUniverseContext();

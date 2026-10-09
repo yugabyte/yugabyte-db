@@ -139,8 +139,9 @@ func init() {
 			"Optional for Grafana Cloud since the authentication reroutes requests according to scope.")
 
 	createLokiTelemetryProviderCmd.Flags().
-		String("auth-type", "none", "[Optional] Authentication type to be used for Loki telemetry provider. "+
-			"Allowed values: none, basic.")
+		String("auth-type", "none",
+			"[Optional] Authentication type to be used for Loki telemetry provider. "+
+				"Allowed values (case insensitive): none, basic.")
 
 	createLokiTelemetryProviderCmd.Flags().
 		String("username", "", "[Optional] Username for basic authentication. "+

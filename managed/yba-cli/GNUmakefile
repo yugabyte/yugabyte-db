@@ -72,6 +72,12 @@ clean-package:
 	rm -rf ${PACKAGE_DIR}
 	rm -rf ${PACKAGE_NAME}
 
+# Not part of `clean`: wiping the module cache forces every dependency to be
+# re-downloaded from the proxy (~650MB) on the next build.
+.PHONY: clean-modcache
+clean-modcache:
+	go clean -modcache
+
 
 .PHONY: updateclient
 updateclient: updatev1client updatev2client
@@ -94,6 +100,5 @@ license:
 
 .PHONY: fmt
 fmt:
-	go clean -modcache
 	GOBIN=$(PWD)/bin go install github.com/segmentio/golines@latest
 	$(GOLINES) --max-len=100 -w .

@@ -923,7 +923,10 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
   bool reached_split_limit = false;
 
   for (int i = 0; i < kSplitDepth; ++i) {
-    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+    // A load balancer leader move can transiently leave a tablet without a leader, so wait until
+    // every active tablet has one, otherwise fewer tablets than expected would be split.
+    auto peers = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+        cluster_.get(), table_->id(), 1 << i));
     bool expect_split = false;
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet_maybe_null();

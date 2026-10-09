@@ -994,6 +994,22 @@ public class CertificateHelper {
     }
   }
 
+  /**
+   * Returns the first certificate in the file. A CA file can hold a bundle. Callers that need to
+   * sign with it rely on the signer being the leading entry.
+   */
+  public static X509Certificate getCertificateFromFile(String path) {
+    Collection<X509Certificate> certs = getCertsFromFile(path);
+    if (certs.isEmpty()) {
+      throw new RuntimeException("No certificate found in file " + path);
+    }
+    return certs.iterator().next();
+  }
+
+  public static PrivateKey getPrivateKeyFromFile(String path) {
+    return getPrivateKey(FileUtils.readFileToString(new File(path)));
+  }
+
   private static boolean verifySignature(X509Certificate cert, String key) {
     try {
       // Add the security provider in case verifySignature was never called.

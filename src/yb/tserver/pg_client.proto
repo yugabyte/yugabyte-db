@@ -1445,10 +1445,10 @@ enum ObjectLockMode {
 }
 
 message ObjectLockOid {
-  uint64 database_oid = 1;
-  uint64 relation_oid = 2;
-  uint64 object_oid = 3;
-  uint64 object_sub_oid = 4;
+  uint32 database_oid = 1;
+  uint32 relation_oid = 2;
+  uint32 object_oid = 3;
+  uint32 object_sub_oid = 4;
   uint32 tablespace_oid = 5;
 }
 

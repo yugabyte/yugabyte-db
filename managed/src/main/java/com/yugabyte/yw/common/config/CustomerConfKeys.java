@@ -187,6 +187,16 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enables PA Collector configuration",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enablePaOnlineMode =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_pa_online_mode",
+          ScopeType.CUSTOMER,
+          "Enable PA online mode",
+          "Enables managing external Perf Advisor destinations and registering universes in"
+              + " online mode, where the local collector scrapes the universe and forwards"
+              + " everything it collects to an external Perf Advisor",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Integer> backupGcNumberOfRetries =
       new ConfKeyInfo<>(
           "yb.backupGC.number_of_retries",

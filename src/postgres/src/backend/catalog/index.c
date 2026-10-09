@@ -3437,7 +3437,8 @@ yb_index_backfill(Relation heapRelation,
 				  IndexInfo *indexInfo,
 				  bool isprimary,
 				  YbBackfillInfo *bfinfo,
-				  YbPgExecOutParam *bfresult)
+				  YbPgExecOutParam *bfresult,
+				  double *num_rows_scanned)
 {
 	Oid			save_userid;
 	int			save_sec_context;
@@ -3486,6 +3487,7 @@ yb_index_backfill(Relation heapRelation,
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
+	*num_rows_scanned = result->heap_tuples;
 	return result->index_tuples;
 }
 

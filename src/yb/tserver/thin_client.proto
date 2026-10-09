@@ -1,0 +1,90 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+syntax = "proto3";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/common/common.proto";
+import "yb/common/pgsql_protocol.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/master/master_ddl.proto";
+import "yb/rpc/lightweight_message.proto";
+import "yb/rpc/service.proto";
+
+// Minimal service for thin Perform-based clients (see src/yb/thin_client). Thin clients are
+// upgraded independently of the cluster, so this service's messages and semantics must stay
+// backward compatible and evolve additively.
+service ThinClientService {
+  option (yb.rpc.service_send_metadata) = true;
+
+  rpc Heartbeat(ThinHeartbeatRequestPB) returns (ThinHeartbeatResponsePB) {
+    option (yb.rpc.exclude_metadata) = true;
+  }
+
+  rpc OpenTable(ThinOpenTableRequestPB) returns (ThinOpenTableResponsePB);
+
+  rpc Perform(ThinPerformRequestPB) returns (ThinPerformResponsePB) {
+    option (yb.rpc.lightweight_method).sides = BOTH;
+  };
+}
+
+message ThinHeartbeatRequestPB {
+  // 0 to open a new session, otherwise the session to keep alive.
+  uint64 session_id = 1;
+}
+
+message ThinHeartbeatResponsePB {
+  AppStatusPB status = 1;
+  uint64 session_id = 2;
+}
+
+message ThinOpenTableRequestPB {
+  string table_id = 1;
+}
+
+message ThinOpenTableResponsePB {
+  AppStatusPB status = 1;
+  master.GetTableSchemaResponsePB info = 2;
+}
+
+message ThinPerformOpPB {
+  oneof op {
+    PgsqlWriteRequestPB write = 1;
+    PgsqlReadRequestPB read = 2;
+  }
+}
+
+message ThinReadTimeOptionsPB {
+  // When set, the batch reads at this time; otherwise the server picks one and reports it back in
+  // the paging state. The client owns the read point of a paged scan: it echoes the time its first
+  // page was served at on every continuation, so all pages observe one snapshot without the server
+  // keeping any per-session read state.
+  ReadHybridTimePB read_time = 1;
+}
+
+message ThinPerformRequestPB {
+  // A session carries no per-request state, so batches are applied as they arrive and several
+  // clients may share a session id.
+  uint64 session_id = 1;
+  ThinReadTimeOptionsPB read_time_options = 2;
+  // All ops of a batch must be of the same kind: either all reads or all writes.
+  repeated ThinPerformOpPB ops = 3;
+}
+
+message ThinPerformResponsePB {
+  AppStatusPB status = 1;
+  repeated PgsqlResponsePB responses = 2;
+}

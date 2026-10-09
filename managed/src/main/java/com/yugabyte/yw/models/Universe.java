@@ -974,18 +974,22 @@ public class Universe extends Model {
     return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
   }
 
+  public CertificateInfo getCertificateInfoNodeToNode() {
+    UniverseDefinitionTaskParams details = this.getUniverseDetails();
+    if (details.rootCA != null && details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
+      return CertificateInfo.getOrBadRequest(details.rootCA);
+    }
+    return null;
+  }
+
   /**
    * Returns the certificate path in case node to node TLS is enabled.
    *
    * @return path to the certfile.
    */
   public String getCertificateNodetoNode() {
-    UniverseDefinitionTaskParams details = this.getUniverseDetails();
-    if (details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
-      // This means there must be a root CA associated with it.
-      return CertificateInfo.get(details.rootCA).getCertificate();
-    }
-    return null;
+    CertificateInfo certInfo = getCertificateInfoNodeToNode();
+    return certInfo != null ? certInfo.getCertificate() : null;
   }
 
   /**

@@ -181,6 +181,7 @@ export const StorageOverrides: FC<StorageOverridesProps> = ({ cluster, hasReadRe
           azList={modalProps.azList}
           initialRows={modalProps.initialRows}
           cluster={cluster}
+          hasReadReplica={hasReadReplica}
         />
       )}
     </Root>

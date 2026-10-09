@@ -8,26 +8,33 @@ import { YBTabsPanel } from '../../../components/panels';
 import { PerfAdvisorUniverseConfig } from './PerfAdvisorUniverseConfig';
 import { PerfAdvisorRegistration } from './PerfAdvisorRegistration';
 import { PerfAdvisorUniverseList } from './PerfAdvisorUniverseList';
+import { EndpointList } from './Endpoint/EndpointList';
 import { QUERY_KEY, PerfAdvisorAPI } from './api';
 
 interface PerfAdvisorOverviewProps {
   activeTab: string | undefined;
   isEmbeddedPAEnabled: boolean;
+  isPaOnlineModeEnabled: boolean;
 }
 
 export const ROUTE_PREFIX = 'troubleshoot';
 
 export const ConfigTabKey = {
-  REGISTER: 'register',
-  UNIVERSES: 'universes'
+  COLLECTOR: 'collector',
+  UNIVERSES: 'universes',
+  ENDPOINTS: 'endpoints'
 } as const;
-export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
+export type ConfigTabKey = (typeof ConfigTabKey)[keyof typeof ConfigTabKey];
 
-export const PerfAdvisorOverview = ({ activeTab, isEmbeddedPAEnabled }: PerfAdvisorOverviewProps) => {
+export const PerfAdvisorOverview = ({
+  activeTab,
+  isEmbeddedPAEnabled,
+  isPaOnlineModeEnabled
+}: PerfAdvisorOverviewProps) => {
   const { t } = useTranslation();
 
   const [paData, setPaData] = useState<any>([]);
-  const tabToDisplay = activeTab ?? ConfigTabKey.REGISTER;
+  const tabToDisplay = activeTab ?? ConfigTabKey.COLLECTOR;
 
   const perfAdvisorUniverseList = useQuery(
     QUERY_KEY.fetchPerfAdvisorList,
@@ -64,9 +71,9 @@ export const PerfAdvisorOverview = ({ activeTab, isEmbeddedPAEnabled }: PerfAdvi
         routePrefix="/config/perfAdvisor/"
       >
         <Tab
-          eventKey={ConfigTabKey.REGISTER}
-          title={t('clusterDetail.troubleshoot.configTabTitle')}
-          key={ConfigTabKey.REGISTER}
+          eventKey={ConfigTabKey.COLLECTOR}
+          title={t('clusterDetail.troubleshoot.collectorTabTitle')}
+          key={ConfigTabKey.COLLECTOR}
           unmountOnExit={true}
         >
           {paData?.length > 0 ? (
@@ -89,6 +96,18 @@ export const PerfAdvisorOverview = ({ activeTab, isEmbeddedPAEnabled }: PerfAdvi
             <PerfAdvisorRegistration onRefetchConfig={onRefetchConfig} />
           )}
         </Tab>
+        {isPaOnlineModeEnabled && (
+          <Tab
+            eventKey={ConfigTabKey.ENDPOINTS}
+            title={t('clusterDetail.perfAdvisorEndpoint.tabTitle')}
+            key={ConfigTabKey.ENDPOINTS}
+            unmountOnExit={true}
+          >
+            {/* Not gated on a collector existing: an endpoint is a customer-level record, and
+                configuring one before the collector is up is a reasonable order to work in. */}
+            <EndpointList />
+          </Tab>
+        )}
         {paData?.length > 0 && (
           <Tab
             eventKey={ConfigTabKey.UNIVERSES}

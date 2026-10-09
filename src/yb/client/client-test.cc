@@ -695,8 +695,13 @@ TEST_F(ClientTest, TestPointThenRangeLookup) {
   ASSERT_EQ(tablets.size(), kNumTabletsPerTable);
 }
 
+// FindPartitionStartIndex is a free function, so this test needs no cluster. ASSERT_DEATH forks,
+// and forking a process with the mini cluster's hundreds of threads deadlocks the child under
+// TSAN, so run it on a fixture that starts nothing.
+class ClientTestNoCluster : public YBTest {};
+
 // Test sanity checks in FindPartitionStartIndex
-TEST_F(ClientTest, TestBadKeyRanges) {
+TEST_F_EX(ClientTest, TestBadKeyRanges, ClientTestNoCluster) {
   std::vector<std::string> partition_starts;
   const std::string low_key = "1111";
   const std::string high_key = "9999";

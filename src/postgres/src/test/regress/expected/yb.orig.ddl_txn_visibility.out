@@ -369,3 +369,149 @@ SELECT i, seen FROM probe_log ORDER BY i;
 
 DROP TABLE ctas_target;
 DROP TABLE probe_log;
+-- -----------------------------------------------------------------------------
+-- TEST 13: Cursor visibility over a relation created in the transaction
+-- (GHI #32221)
+-- -----------------------------------------------------------------------------
+SET default_transaction_isolation TO 'read committed';
+-- Case 1: the cursor is declared before the rows are written. A FETCH reads at the
+-- in_txn_limit picked by the portal's first read rather than at the snapshot taken by
+-- DECLARE, so rows written between DECLARE and the first FETCH are visible. PostgreSQL
+-- would return no rows here because same-transaction visibility is based on CommandId
+-- (GHI #10142). The output is the same irrespective of whether the skip-intents
+-- optimization is used, because fastpath rows and intents obey the same in_txn_limit
+-- based visibility rule.
+BEGIN;
+CREATE TABLE cursor_new_rel (id INT PRIMARY KEY);
+DECLARE cur_before CURSOR FOR SELECT id FROM cursor_new_rel ORDER BY id;
+INSERT INTO cursor_new_rel SELECT generate_series(1, 5);
+FETCH ALL FROM cur_before;
+ id 
+----
+  1
+  2
+  3
+  4
+  5
+(5 rows)
+
+COMMIT;
+-- Case 2: cursor stability. The portal's in_txn_limit is fixed by its first read, so
+-- the rows written after the first FETCH are not visible to the remaining FETCHes,
+-- while a new statement picks a fresh in_txn_limit and sees all of them.
+BEGIN;
+CREATE TABLE cursor_stability (id INT PRIMARY KEY);
+INSERT INTO cursor_stability SELECT generate_series(1, 3);
+DECLARE cur_stable CURSOR FOR SELECT id FROM cursor_stability ORDER BY id;
+FETCH 1 FROM cur_stable;
+ id 
+----
+  1
+(1 row)
+
+INSERT INTO cursor_stability SELECT generate_series(4, 6);
+-- Only the rows that existed as of the first FETCH.
+FETCH ALL FROM cur_stable;
+ id 
+----
+  2
+  3
+(2 rows)
+
+-- A new statement sees all six rows.
+SELECT count(*) FROM cursor_stability;
+ count 
+-------
+     6
+(1 row)
+
+COMMIT;
+-- Case 3: FOR UPDATE. Explicit row locks are skipped for a relation created in the
+-- current transaction when the skip-intents optimization applies, since no other
+-- transaction can see that relation. The rows must still be returned and remain
+-- updatable by the same transaction.
+BEGIN;
+CREATE TABLE cursor_for_update (id INT PRIMARY KEY, val INT);
+INSERT INTO cursor_for_update SELECT g, g FROM generate_series(1, 3) g;
+DECLARE cur_lock CURSOR FOR
+  SELECT id, val FROM cursor_for_update ORDER BY id FOR UPDATE;
+FETCH ALL FROM cur_lock;
+ id | val 
+----+-----
+  1 |   1
+  2 |   2
+  3 |   3
+(3 rows)
+
+UPDATE cursor_for_update SET val = val * 10 WHERE id = 1;
+SELECT id, val FROM cursor_for_update ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |   2
+  3 |   3
+(3 rows)
+
+COMMIT;
+-- Case 4: WITH HOLD. COMMIT runs the cursor's query and drains its rows into the portal's
+-- tuplestore, and that run happens while the transaction that created the relation is
+-- still open, so it reads the rows written via the fastpath. The FETCH after COMMIT only
+-- reads back the tuplestore.
+BEGIN;
+CREATE TABLE cursor_with_hold (id INT PRIMARY KEY);
+INSERT INTO cursor_with_hold SELECT generate_series(1, 5);
+DECLARE cur_hold CURSOR WITH HOLD FOR SELECT id FROM cursor_with_hold ORDER BY id;
+COMMIT;
+FETCH ALL FROM cur_hold;
+ id 
+----
+  1
+  2
+  3
+  4
+  5
+(5 rows)
+
+CLOSE cur_hold;
+-- Case 5: a cursor over a relation whose relfilenode was swapped by an ALTER TABLE
+-- rewrite in this transaction. The rewrite writes the new relfilenode via the
+-- fastpath, and the cursor must see the rewritten rows.
+BEGIN;
+CREATE TABLE cursor_rewrite (id INT PRIMARY KEY, val INT);
+INSERT INTO cursor_rewrite SELECT g, g FROM generate_series(1, 3) g;
+ALTER TABLE cursor_rewrite ADD COLUMN gen_val INT GENERATED ALWAYS AS (val * 2) STORED;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+DECLARE cur_rewrite CURSOR FOR
+  SELECT id, val, gen_val FROM cursor_rewrite ORDER BY id;
+FETCH ALL FROM cur_rewrite;
+ id | val | gen_val 
+----+-----+---------
+  1 |   1 |       2
+  2 |   2 |       4
+  3 |   3 |       6
+(3 rows)
+
+COMMIT;
+-- Case 6: the cursor is declared before the ALTER TABLE rewrite of the relation it
+-- reads. The open portal still holds a reference to the relation, so PostgreSQL's
+-- CheckTableNotInUse guard rejects the ALTER before any rewrite is attempted and the
+-- FETCH never runs. This is a plain PostgreSQL restriction that applies to any ALTER
+-- TABLE on a relation with an open cursor in the same session, whether or not the ALTER
+-- rewrites the table and whether or not the relation was created in this transaction,
+-- so it is unrelated to the skip-intents optimization.
+BEGIN;
+CREATE TABLE cursor_rewrite_open (id INT PRIMARY KEY, val INT);
+INSERT INTO cursor_rewrite_open SELECT g, g FROM generate_series(1, 3) g;
+DECLARE cur_rewrite_open CURSOR FOR
+  SELECT id, val FROM cursor_rewrite_open ORDER BY id;
+ALTER TABLE cursor_rewrite_open
+  ADD COLUMN gen_val INT GENERATED ALWAYS AS (val * 2) STORED;
+ERROR:  cannot ALTER TABLE "cursor_rewrite_open" because it is being used by active queries in this session
+FETCH ALL FROM cur_rewrite_open;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK;
+DROP TABLE cursor_new_rel, cursor_stability, cursor_for_update, cursor_with_hold,
+           cursor_rewrite;
+SET default_transaction_isolation TO :'default_transaction_isolation';

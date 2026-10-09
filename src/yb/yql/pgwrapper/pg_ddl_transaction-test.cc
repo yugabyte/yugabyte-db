@@ -32,7 +32,6 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
@@ -93,14 +92,11 @@ class PgDdlTransactionTest : public LibPqTestBase {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
     opts->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
-    opts->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
     opts->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
     opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
     opts->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled,"
-        "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
+        "--allowed_preview_flags_csv=ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
     opts->extra_tserver_flags.push_back(
         Format("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0",
                (RandomUniformBool() ? "true" : "false")));
@@ -497,8 +493,6 @@ class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
                                       public ::testing::WithParamInterface<TestCommit> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
-        "ysql_yb_enable_ddl_savepoint_support";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
 
@@ -1078,6 +1072,9 @@ class PgMasterDDLReadRestartProbeTest : public LibPqTestBase {
         "--ysql_yb_ddl_transaction_block_enabled=false");
     options->extra_tserver_flags.push_back(
         "--ysql_yb_ddl_transaction_block_enabled=false");
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=false"));
     options->extra_master_flags.push_back(

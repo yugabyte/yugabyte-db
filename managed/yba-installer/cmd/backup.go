@@ -35,7 +35,7 @@ func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump stri
 	excludePrometheus, excludeReleases, restart, disableVersion, verbose, usePromProtocol,
 	excludePADatabase, excludePAFiles bool) error {
 
-	err := os.Chmod(script, 0777)
+	err := os.Chmod(script, 0750)
 	if err != nil {
 		log.Error(fmt.Sprintf("failed to give create backup script executable permissions: %s", err.Error()))
 		return err
@@ -106,7 +106,7 @@ func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump stri
 func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbose bool,
 	plat Platform) {
 	fileName := plat.backupScript()
-	err := os.Chmod(fileName, 0777)
+	err := os.Chmod(fileName, 0750)
 	if err != nil {
 		log.Fatal(err.Error())
 	} else {
@@ -162,7 +162,7 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 	verbose bool, migration bool, useSystemPostgres bool, disableVersion bool,
 	script, dataDir, ysqlBin, pgRestore string, excludePADatabase, excludePAFiles bool) error {
 	userName := viper.GetString("service_username")
-	err := os.Chmod(script, 0777)
+	err := os.Chmod(script, 0750)
 	if err != nil {
 		log.Error(fmt.Sprintf("failed to give restore backup script executable permissions: %s", err.Error()))
 		return err

@@ -32,8 +32,6 @@ public class TestPgRegressPgTypesUDT extends BasePgRegressTestPorted {
     super.customizeMiniClusterBuilder(builder);
     // TODO(28543): Remove once transactional ddl is enabled by default.
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
-    builder.addCommonTServerFlag(
-        "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
   }
 
   @Test

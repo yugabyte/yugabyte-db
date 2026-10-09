@@ -23,6 +23,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
+import com.yugabyte.yw.cloud.oci.OCIPriceUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -577,5 +578,71 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     assertThat(type1, notNullValue());
     assertThat(type2, notNullValue());
     assertThat(type1, CoreMatchers.not(equalTo(type2)));
+  }
+
+  @Test
+  public void testAddPriceToDetailsOciComputeAndBlockVolume() {
+    provider =
+        ModelFactory.newProvider(customer, com.yugabyte.yw.commissioner.Common.CloudType.oci);
+    region = Region.create(provider, "us-ashburn-1", "US Ashburn", "yb-image");
+    az = AvailabilityZone.createOrThrow(region, "ashburn-ad-1", "Ashburn AD-1", "subnet-1");
+    String ociShape = "VM.Standard.E4.Flex";
+    double ocpuPerHour = 0.025;
+    double memoryGbPerHour = 0.0015;
+    double storagePerHour = OCIPriceUtil.monthlyToHourly(0.0255);
+    double vpuPerHour = OCIPriceUtil.monthlyToHourly(0.0017);
+    int ocpus = 2;
+    double memGb = 32.0;
+
+    InstanceType.upsert(provider.getUuid(), ociShape, ocpus, memGb, null);
+    PriceComponent.PriceDetails ocpuDetails = new PriceComponent.PriceDetails();
+    ocpuDetails.pricePerHour = ocpuPerHour;
+    PriceComponent.upsert(
+        provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("E4"), ocpuDetails);
+    PriceComponent.PriceDetails memDetails = new PriceComponent.PriceDetails();
+    memDetails.pricePerHour = memoryGbPerHour;
+    PriceComponent.upsert(
+        provider.getUuid(), region.getCode(), OCIPriceUtil.memoryComponentCode("E4"), memDetails);
+    PriceComponent.PriceDetails storageDetails = new PriceComponent.PriceDetails();
+    storageDetails.pricePerHour = storagePerHour;
+    PriceComponent.upsert(
+        provider.getUuid(),
+        region.getCode(),
+        OCIPriceUtil.blockStorageComponentCode(),
+        storageDetails);
+    PriceComponent.PriceDetails vpuDetails = new PriceComponent.PriceDetails();
+    vpuDetails.pricePerHour = vpuPerHour;
+    PriceComponent.upsert(
+        provider.getUuid(), region.getCode(), OCIPriceUtil.blockVpuComponentCode(), vpuDetails);
+
+    DeviceInfo deviceInfo = getDummyDeviceInfo(numVolumes, volumeSize);
+    deviceInfo.storageType = StorageType.OCI_Balanced;
+    UserIntent userIntent = getDummyUserIntent(deviceInfo, provider, ociShape);
+
+    sampleNodeDetails.cloudInfo.cloud = provider.getCode();
+    sampleNodeDetails.cloudInfo.instance_type = ociShape;
+    sampleNodeDetails.cloudInfo.region = region.getCode();
+    sampleNodeDetails.cloudInfo.az = az.getCode();
+    sampleNodeDetails.azUuid = az.getUuid();
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, null, setupPlacement());
+    sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
+    params.nodeDetailsSet = setUpNodeDetailsSet();
+    context = new Context(null, customer, params);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.addPrice(params, context);
+
+    int vpusPerGb = OCIPriceUtil.vpusPerGb(StorageType.OCI_Balanced);
+    double expectedInstance = ocpus * ocpuPerHour + memGb * memoryGbPerHour;
+    double expectedStorage =
+        numVolumes * volumeSize * storagePerHour + numVolumes * volumeSize * vpusPerGb * vpuPerHour;
+    double expectedEbs = Double.parseDouble(String.format("%.4f", NUM_NODES * expectedStorage));
+    double expectedTotal =
+        Double.parseDouble(String.format("%.4f", NUM_NODES * (expectedInstance + expectedStorage)));
+    assertThat(details.ebsPricePerHour, equalTo(expectedEbs));
+    assertThat(details.pricePerHour, equalTo(expectedTotal));
+    assertThat(details.pricingKnown, equalTo(true));
   }
 }

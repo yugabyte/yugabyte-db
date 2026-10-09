@@ -21,8 +21,8 @@ var createGCPCloudMonitoringTelemetryProviderCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider",
 	Long:    "Create a GCP Cloud Monitoring telemetry provider in YugabyteDB Anywhere",
-	Example: `yba telemetryprovider gcpcloudmonitoring create --name <name> \
-     --credentials <path-to-credentials-file>`,
+	Example: `yba telemetry-provider gcpcloudmonitoring create --name <name> \
+     --credentials-file-path <path-to-credentials-file>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		telemetryproviderutil.CreateTelemetryProviderValidation(cmd)
 	},
@@ -46,23 +46,21 @@ var createGCPCloudMonitoringTelemetryProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		gcpCreds := make(map[string]interface{}, 0)
+		var gcpCreds string
 		if !util.IsEmptyString(credentialsFilePath) {
-			gcpCreds, err = util.GcpGetCredentialsAsMap()
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
+			gcpCreds, err = util.GcpGetCredentialsAsStringFromFilePath(credentialsFilePath)
 		} else {
-			gcpCreds, err = util.GcpGetCredentialsAsMapFromFilePath(credentialsFilePath)
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
+			gcpCreds, err = util.GcpGetCredentialsAsString()
 		}
-		if len(gcpCreds) == 0 {
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if util.IsEmptyString(gcpCreds) {
 			logrus.Fatalf(formatter.Colorize("Credentials cannot be empty.\n", formatter.RedColor))
 		}
-
-		// config.SetCredentials(gcpCreds)
+		// Not "credentials": that JsonNode field is deprecated since 2026.1.0 because
+		// generated clients cannot express it.
+		config.SetCredentialsString(gcpCreds)
 
 		projectID, err := cmd.Flags().GetString("project-id")
 		if err != nil {
@@ -90,11 +88,11 @@ func init() {
 	createGCPCloudMonitoringTelemetryProviderCmd.Flags().SortFlags = false
 
 	createGCPCloudMonitoringTelemetryProviderCmd.Flags().String("credentials-file-path", "",
-		fmt.Sprintf("GCP Service Account credentials file path. "+
-			"Can also be set using environment variable %s.",
+		fmt.Sprintf("[Optional] GCP Service Account credentials file path. "+
+			"Can also be set using the environment variable %s.",
 			util.GCPCredentialsEnv))
 	createGCPCloudMonitoringTelemetryProviderCmd.Flags().String("project-id", "",
-		"[Optional] GCP Project ID. ")
+		"[Optional] GCP Project ID. Defaults to the project_id in the credentials.")
 	createGCPCloudMonitoringTelemetryProviderCmd.Flags().StringToString("tags",
 		map[string]string{}, "[Optional] Tags to be applied to the exporter config. Provide "+
 			"as key-value pairs per flag. Example \"--tags "+

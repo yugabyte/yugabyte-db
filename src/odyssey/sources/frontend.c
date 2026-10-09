@@ -166,6 +166,81 @@ yb_frontend_error_is_role_does_not_exist(od_client_t *client)
 	return strcmp(error.code, KIWI_INVALID_AUTHORIZATION_SPECIFICATION) == 0;
 }
 
+/*
+ * Startup parameters starting with YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX 
+ * name as prefix are reserved to be used by conn mgr. External clients are
+ * not allowed to supply them because Postgres uses them to decide whether 
+ * authentication metadata came from a trusted connection manager.
+ */
+static inline bool
+yb_is_conn_mgr_reserved_startup_parameter(const char *name)
+{
+	/*
+	 * YB: The legacy guc names as well as reserved prefix names can't
+	 * be set by external clients.
+	 */
+	return strncasecmp(name, YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX,
+			   sizeof(YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX) - 1) == 0 ||
+		   strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
+		   strcasecmp(name, "yb_use_tserver_key_auth") == 0;
+}
+
+static inline int
+yb_frontend_validate_startup_parameters(od_client_t *client)
+{
+	kiwi_vars_t *startup_settings = &client->yb_startup_settings;
+
+	for (int i = 0; i < startup_settings->size; ++i) {
+		kiwi_var_t *startup_parameter = &startup_settings->vars[i];
+		const char *name = startup_parameter->name;
+
+		if (yb_is_conn_mgr_reserved_startup_parameter(name)) {
+			od_frontend_fatal(client, KIWI_PROTOCOL_VIOLATION,
+					  "startup parameter \"%s\" is reserved for "
+					  "the connection manager",
+					  name);
+			return -1;
+		}
+
+		/*
+		 * YB: The options could also contain startup parameters that are
+		 * reserved for the connection manager. So parse --options string
+		 * and validate the startup parameters.
+		 */
+		if (strcmp(name, "options") == 0) {
+			char *options = malloc(startup_parameter->value_len);
+			kiwi_vars_t option_vars;
+
+			if (options == NULL)
+				return -1;
+			memcpy(options, startup_parameter->value,
+			       startup_parameter->value_len);
+			kiwi_vars_init(&option_vars, false);
+			kiwi_parse_options_and_update_vars(
+				&option_vars, options, startup_parameter->value_len);
+			free(options);
+
+			for (int j = 0; j < option_vars.size; ++j) {
+				name = option_vars.vars[j].name;
+				if (yb_is_conn_mgr_reserved_startup_parameter(
+					    name)) {
+					od_frontend_fatal(
+						client, KIWI_PROTOCOL_VIOLATION,
+						"startup parameter \"%s\" is "
+						"reserved for the connection "
+						"manager",
+						name);
+					yb_kiwi_vars_free(&option_vars);
+					return -1;
+				}
+			}
+			yb_kiwi_vars_free(&option_vars);
+		}
+	}
+
+	return 0;
+}
+
 static int od_frontend_startup(od_client_t *client)
 {
 	od_instance_t *instance = client->global->instance;
@@ -184,6 +259,8 @@ static int od_frontend_startup(od_client_t *client)
 			&client->startup, &client->yb_startup_settings);
 		machine_msg_free(msg);
 		if (rc == -1)
+			goto error;
+		if (yb_frontend_validate_startup_parameters(client) == -1)
 			goto error;
 
 		if (!client->startup.unsupported_request)
@@ -231,6 +308,8 @@ static int od_frontend_startup(od_client_t *client)
 				  &client->yb_startup_settings);
 	machine_msg_free(msg);
 	if (rc == -1)
+		goto error;
+	if (yb_frontend_validate_startup_parameters(client) == -1)
 		goto error;
 
 	rc = od_compression_frontend_setup(client, client->config_listen,
@@ -3080,18 +3159,18 @@ void od_frontend(void *arg)
 			       sizeof(client_port), 0, 1);
 
 		kiwi_vars_update(&client->yb_startup_settings,
-				 "yb_conn_mgr_client_addr",
-				 sizeof("yb_conn_mgr_client_addr"),
+				 YB_YCM_CLIENT_ADDR,
+				 sizeof(YB_YCM_CLIENT_ADDR),
 				 client_ip,
 				 strlen(client_ip) + 1);
 
 		kiwi_vars_update(&client->yb_startup_settings,
-				 "yb_conn_mgr_client_port",
-				 sizeof("yb_conn_mgr_client_port"),
+				 YB_YCM_CLIENT_PORT,
+				 sizeof(YB_YCM_CLIENT_PORT),
 				 client_port,
 				 strlen(client_port) + 1);
 		od_debug(&instance->logger, "startup", client, NULL,
-				 "injected yb_conn_mgr_client_addr = %s, yb_conn_mgr_client_port = %s",
+				 "injected " YB_YCM_CLIENT_ADDR " = %s, " YB_YCM_CLIENT_PORT " = %s",
 				 client_ip, client_port);
 	}
 

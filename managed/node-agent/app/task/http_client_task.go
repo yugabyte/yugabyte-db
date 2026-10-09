@@ -23,12 +23,13 @@ func httpClient() *util.HttpClient {
 }
 
 type AgentRegistrationHandler struct {
-	apiToken string
-	result   *model.RegisterResponseSuccess
+	apiToken        string
+	certificateName string
+	result          *model.RegisterResponseSuccess
 }
 
-func NewAgentRegistrationHandler(apiToken string) *AgentRegistrationHandler {
-	return &AgentRegistrationHandler{apiToken: apiToken}
+func NewAgentRegistrationHandler(apiToken, certificateName string) *AgentRegistrationHandler {
+	return &AgentRegistrationHandler{apiToken: apiToken, certificateName: certificateName}
 }
 
 func (handler *AgentRegistrationHandler) Handle(ctx context.Context) (any, error) {
@@ -40,7 +41,7 @@ func (handler *AgentRegistrationHandler) Handle(ctx context.Context) (any, error
 		util.PlatformRegisterAgentEndpoint(config.String(util.CustomerIdKey)),
 		platformHeadersWithAPIToken(handler.apiToken),
 		nil,
-		createRegisterAgentRequest(config),
+		createRegisterAgentRequest(config, handler.certificateName),
 	)
 	if err != nil {
 		return nil, err
@@ -591,12 +592,14 @@ func platformHeadersWithAPIToken(apiToken string) map[string]string {
 	return m
 }
 
-func createRegisterAgentRequest(config *util.Config) model.RegisterRequest {
+func createRegisterAgentRequest(config *util.Config, certificateName string) model.RegisterRequest {
+	info := createNodeAgentCommonInfo(
+		config, model.Registering,
+		config.String(util.PlatformVersionKey),
+	)
+	info.CertificateName = certificateName
 	return model.RegisterRequest{
-		CommonInfo: createNodeAgentCommonInfo(
-			config, model.Registering,
-			config.String(util.PlatformVersionKey),
-		),
+		CommonInfo: info,
 	}
 }
 

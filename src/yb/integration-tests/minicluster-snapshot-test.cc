@@ -80,6 +80,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -119,6 +120,8 @@ DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_enable_write_pipelining);
 
 namespace yb {
 namespace tserver {
@@ -2203,6 +2206,59 @@ TEST_F(PgCloneTest, CloneAfterPitrRemovedTableFromSnapshot) {
   auto t1_count = ASSERT_RESULT(
       target_conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
   ASSERT_EQ(t1_count, 0);
+}
+
+class SysCatalogRestoreWithWritePipeliningTest : public PgCloneInitiallyEmptyDBTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+    // Run both DDLs in one multi-statement transaction so its writes span the restore.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgCloneInitiallyEmptyDBTest::SetUp();
+  }
+};
+
+// Run a DDL with write pipelining across a restore. Since write pipelining attaches metadata to its
+// writes, we need to ensure that writes after the restore don't try to recreate the txn, and
+// abort instead.
+TEST_F(SysCatalogRestoreWithWritePipeliningTest, YB_DEBUG_ONLY_TEST(DdlTransactionAcrossRestore)) {
+  // Snapshot isolation would cause the post-restore write to conflict with the restore's catalog
+  // version write, so use read committed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+
+  // Hold the first async write confirmation until after the restore. This causes the next write to
+  // also include metadata (which previously would cause a recreated txn + fatal).
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency(
+      {{"DdlTransactionAcrossRestore::ReleaseAsyncWrites",
+        "TabletServiceImpl::WaitForAsyncWrite::BeforeRegister"}});
+  sync_point->EnableProcessing();
+
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  HybridTime restore_ht = ASSERT_RESULT(HybridTime::ParseHybridTime(restore_time.ToString()));
+  // Sleep a bit before we start the txn.
+  SleepFor(500ms);
+
+  ASSERT_OK(source_conn_->Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE table1 (i int)"));
+
+  auto restoration_id = ASSERT_RESULT(
+      RestoreSnapshotSchedule(master_backup_proxy_.get(), schedule_id_, restore_ht, kTimeout));
+  ASSERT_OK(WaitForRestoration(master_backup_proxy_.get(), restoration_id, kTimeout));
+
+  auto ddl_after_restore = source_conn_->Execute("CREATE TABLE table2 (i int)");
+
+  // Unblock the writes. The txn should abort and roll back cleanly.
+  TEST_SYNC_POINT("DdlTransactionAcrossRestore::ReleaseAsyncWrites");
+  ASSERT_OK(source_conn_->Execute("COMMIT"));
+
+  ASSERT_FALSE(ddl_after_restore.ok())
+      << "post-restore DDL write across a sys-catalog restore unexpectedly succeeded";
+
+  // Ensure that the txn was rolled back.
+  auto table2_exists =
+      ASSERT_RESULT(source_conn_->FetchRow<bool>("SELECT to_regclass('table2') IS NOT NULL"));
+  ASSERT_FALSE(table2_exists) << "table2 from the aborted transaction unexpectedly persisted";
 }
 
 }  // namespace master

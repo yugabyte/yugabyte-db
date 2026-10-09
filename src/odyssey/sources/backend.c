@@ -709,16 +709,18 @@ static inline int od_backend_startup(od_server_t *server,
 	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("database"));
 	yb_kiwi_set_fe_arg(&argv[argc++], db_name, db_name_len);
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   YB_NAME_AND_SIZEOF("yb_use_tserver_key_auth"));
+		YB_NAME_AND_SIZEOF(YB_YCM_USE_TSERVER_KEY_AUTH));
 	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "0" : "1", 2);
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   YB_NAME_AND_SIZEOF("yb_is_client_ysqlconnmgr"));
+			YB_NAME_AND_SIZEOF(YB_YCM_IS_CLIENT_YSQLCONNMGR));
 	yb_kiwi_set_fe_arg(&argv[argc++], "1", 2);
-	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("yb_authonly"));
-	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "1" : "0", 2);
-	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("yb_is_control_conn"));
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   yb_is_control_pool(server->route) ? "1" : "0", 2);
+			   YB_NAME_AND_SIZEOF(YB_YCM_AUTHONLY));
+	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "1" : "0", 2);
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			   YB_NAME_AND_SIZEOF(YB_YCM_IS_CONTROL_CONN));
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			yb_is_control_pool(server->route) ? "1" : "0", 2);
 
 	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],
@@ -735,13 +737,13 @@ static inline int od_backend_startup(od_server_t *server,
 	if (is_authenticating) {
 		/* override the remote host sent to the auth backend. */
 		yb_kiwi_set_fe_arg(&argv[argc++],
-				   YB_NAME_AND_SIZEOF("yb_auth_remote_host"));
+				   YB_NAME_AND_SIZEOF(YB_YCM_AUTH_REMOTE_HOST));
 		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_client_address,
 				   strlen(client->yb_client_address) + 1);
 
 		/* send the connection type to the auth backend. */
 		yb_kiwi_set_fe_arg(&argv[argc++],
-				   YB_NAME_AND_SIZEOF("yb_logical_conn_type"));
+				   YB_NAME_AND_SIZEOF(YB_YCM_LOGICAL_CONN_TYPE));
 		yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
 	}
 
@@ -877,10 +879,10 @@ static inline int od_backend_startup(od_server_t *server,
 			}
 
 			/* Explicitly ignoring these variables. We don't want to replay these */
-			if ((name_len == sizeof("yb_is_client_ysqlconnmgr") &&
-			     strcmp(name, "yb_is_client_ysqlconnmgr") == 0) ||
-			    (name_len == sizeof("yb_use_tserver_key_auth") &&
-			     strcmp(name, "yb_use_tserver_key_auth") == 0)) {
+			if ((name_len == sizeof(YB_YCM_IS_CLIENT_YSQLCONNMGR) &&
+			     strcmp(name, YB_YCM_IS_CLIENT_YSQLCONNMGR) == 0) ||
+			    (name_len == sizeof(YB_YCM_USE_TSERVER_KEY_AUTH) &&
+			     strcmp(name, YB_YCM_USE_TSERVER_KEY_AUTH) == 0)) {
 				machine_msg_free(msg);
 				break;
 			}

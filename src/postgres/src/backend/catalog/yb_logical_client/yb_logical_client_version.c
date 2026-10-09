@@ -87,7 +87,7 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 								  YBLogicalClientVersionRelationId,
 								  NULL /* prepare_params */ ,
 								  YbBuildSystemTableLocalityInfo(YBLogicalClientVersionRelationId),
-								  false /* skip_intents_read */ ,
+								  YB_SKIP_INTENTS_OPTIMIZATION_INFO_NONE,
 								  &ybc_stmt));
 
 	Datum		oid_datum = Int32GetDatum(db_oid);

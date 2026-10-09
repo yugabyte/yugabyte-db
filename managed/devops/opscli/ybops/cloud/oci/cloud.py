@@ -133,7 +133,8 @@ class OciCloud(AbstractCloud):
                         "isShared": info["isShared"],
                         "prices": {}
                     }
-                result[name]["prices"][region] = [{"os": "Linux", "price": 0.0}]
+                # Prices come from bundled oci_pricing/pricelist.json via OCIInitializer.
+                result[name]["prices"][region] = 0.0
         return result
 
     def create_instance(self, args, server_type, ssh_keys):
@@ -220,7 +221,7 @@ class OciCloud(AbstractCloud):
         return ["sd{}".format(chr(ord('b') + i))
                 for i in range(args.num_volumes)]
 
-    def start_instance(self, host_info, server_ports):
+    def start_instance(self, host_info, server_ports, capacity_reservation=None):
         instance_id = host_info['id']
         instance = self.get_admin().get_instance(instance_id)
 

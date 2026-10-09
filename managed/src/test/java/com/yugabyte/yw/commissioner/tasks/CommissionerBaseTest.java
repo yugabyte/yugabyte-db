@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.LdapUtil;
@@ -131,6 +132,7 @@ import io.prometheus.metrics.model.snapshots.HistogramSnapshot;
 import io.prometheus.metrics.model.snapshots.HistogramSnapshot.HistogramDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.Label;
 import io.prometheus.metrics.model.snapshots.Labels;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -232,6 +234,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
   protected GFlagsAuditHandler mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
   protected RestoreManagerYb restoreManagerYb = mock(RestoreManagerYb.class);
+  protected FileHelperService mockFileHelperService = mock(FileHelperService.class);
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -409,11 +412,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     builder.packagePath(Paths.get("/opt/yugabyte"));
     builder.certDir("/opt/yugabyte/certs");
     lenient()
-        .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
+        .when(mockNodeAgentManager.getInstallerFiles(any(), any()))
         .thenReturn(builder.build());
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
+    lenient()
+        .when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            inv ->
+                Files.createTempFile(
+                    inv.getArgument(0, String.class), inv.getArgument(1, String.class)));
     lenient().when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn("/home/yugabyte");
     lenient()
         .doAnswer(
@@ -446,10 +455,20 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                       })
                   .when(nodeAgent)
                   .saveState(any());
+              lenient()
+                  .doAnswer(
+                      inv1 -> {
+                        NodeAgent.DeployContext ctx = inv1.getArgument(0);
+                        nodeAgent.setState(NodeAgent.State.REGISTERED);
+                        nodeAgent.setCertificateUuid(ctx.getCertificateUuid());
+                        return null;
+                      })
+                  .when(nodeAgent)
+                  .finalizeRegistration(any());
               return nodeAgent;
             })
         .when(mockNodeAgentManager)
-        .create(any(), anyBoolean());
+        .create(any(), any(), anyBoolean());
     Map<String, Set<String>> reservationsByGroup = new HashMap<>();
     lenient()
         .when(
@@ -575,6 +594,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
                 .overrides(
                     bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
+        .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .overrides(bind(GCPProjectApiClientFactory.class).toInstance(gcpClientFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))

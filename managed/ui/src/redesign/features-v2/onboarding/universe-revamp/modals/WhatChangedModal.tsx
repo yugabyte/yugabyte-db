@@ -17,6 +17,7 @@ import {
   BoltWrap,
   BulletWrap,
   DEFAULT_RELEASE_NOTES_URL,
+  NEW_EXPERIENCE_DOCS_URL,
   FeatureList,
   FeatureRow,
   FooterActions,
@@ -43,8 +44,6 @@ const MODAL_HEIGHT_PX = 'auto';
 const SECTION_CARD_GAP_PX = 24;
 const FIND_OUT_MORE_BG = '#7879F1';
 const GLOBAL_RUNTIME_CONFIG_PATH = '/admin/advanced/global-config';
-
-export const WHAT_CHANGED_MODAL_DISMISS_KEY = 'yb_what_changed_modal_dismissed';
 
 interface WhatChangedModalProps {
   open: boolean;
@@ -121,7 +120,7 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
       onFindOutMore();
       return;
     }
-    window.open(releaseNotesUrl, '_blank', 'noopener,noreferrer');
+    window.open(NEW_EXPERIENCE_DOCS_URL, '_blank', 'noopener,noreferrer');
     onClose();
   };
 
@@ -372,15 +371,15 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
                 i18nKey="rolloutBody"
                 values={{ runtimeConfig: RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI }}
                 components={{
-                  configTag: <RuntimeConfigTag component="span" />,
-                  globalConfigLink: (
-                    <LearnMoreLink
-                      href={`${GLOBAL_RUNTIME_CONFIG_PATH}?${EDIT_RUNTIME_CONFIG_QUERY_PARAM}=${encodeURIComponent(
-                        RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
-                      )}`}
-                      onClick={handleOpenGlobalRuntimeConfig}
-                    />
-                  )
+                  configTag: <RuntimeConfigTag component="span" />
+                  // globalConfigLink: (
+                  //   <LearnMoreLink
+                  //     href={`${GLOBAL_RUNTIME_CONFIG_PATH}?${EDIT_RUNTIME_CONFIG_QUERY_PARAM}=${encodeURIComponent(
+                  //       RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
+                  //     )}`}
+                  //     onClick={handleOpenGlobalRuntimeConfig}
+                  //   />
+                  // )
                 }}
               />
             </Typography>

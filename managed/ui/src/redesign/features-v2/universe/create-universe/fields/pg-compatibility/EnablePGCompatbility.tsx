@@ -80,7 +80,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
                     {t('tooltip')}
                     <StyledLinkText
                       underline="always"
-                      href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                      href="https://docs.yugabyte.com/stable/reference/configuration/postgresql-compatibility/"
                       target="_blank"
                     ></StyledLinkText>
                   </Trans>

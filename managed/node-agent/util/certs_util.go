@@ -39,18 +39,39 @@ func SaveCerts(
 		FileLogger().Errorf(ctx, "Error while creating current certs dir %s", certsDir)
 		return err
 	}
-	// File name to content mappings to save into files.
-	mappings := map[string]string{
-		NodeAgentCertFile:    nodeAgentConfig.ServerCert,
-		NodeAgentKeyFile:     nodeAgentConfig.ServerKey,
-		SignerPublicKeyFile:  nodeAgentConfig.SignerPublicKey,
-		SignerPrivateKeyFile: nodeAgentConfig.SignerPrivateKey,
+	// List of sources to save the certs to the certs directory.
+	sources := []struct {
+		localFilename string
+		responseValue string
+		isPath        bool
+	}{
+		{NodeAgentCertFile, nodeAgentConfig.ServerCert, false},
+		{NodeAgentKeyFile, nodeAgentConfig.ServerKey, false},
+		{SignerPublicKeyFile, nodeAgentConfig.SignerPublicKey, false},
+		{SignerPrivateKeyFile, nodeAgentConfig.SignerPrivateKey, false},
+		{NodeAgentCertFile, nodeAgentConfig.ServerCertLocalPath, true},
+		{NodeAgentKeyFile, nodeAgentConfig.ServerKeyLocalPath, true},
 	}
-	for filename, content := range mappings {
-		fileFilepath := filepath.Join(certsDir, filename)
-		err = os.WriteFile(fileFilepath, []byte(content), 0644)
+	for _, src := range sources {
+		if src.responseValue == "" {
+			continue
+		}
+		var content []byte
+		if src.isPath {
+			// This is a local path to a file.
+			content, err = os.ReadFile(src.responseValue)
+			if err != nil {
+				FileLogger().Errorf(ctx, "Error while reading %s from %s", src.localFilename, src.responseValue)
+				return err
+			}
+			FileLogger().Infof(ctx, "Read %s from %s", src.localFilename, src.responseValue)
+		} else {
+			content = []byte(src.responseValue)
+		}
+		fileFilepath := filepath.Join(certsDir, src.localFilename)
+		err = os.WriteFile(fileFilepath, content, 0644)
 		if err != nil {
-			FileLogger().Errorf(ctx, "Error while saving %s to %s", filename, fileFilepath)
+			FileLogger().Errorf(ctx, "Error while saving %s to %s", src.localFilename, fileFilepath)
 			return err
 		}
 	}

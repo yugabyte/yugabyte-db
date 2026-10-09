@@ -1,0 +1,5 @@
+description: Support bundle details
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/SupportBundle.yaml"

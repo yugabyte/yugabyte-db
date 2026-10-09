@@ -40,3 +40,33 @@ typedef enum YbParseType
 	YB_PARSE_FORCE,
 	YB_PARSE_REDEPLOY,
 } YbParseType;
+
+/*
+ * Startup parameters in this namespace are set by YSQL Connection Manager.
+ * External clients connecting through the connection manager must not be
+ * allowed to provide them.
+ */
+#define YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "yb_ycm_internal_"
+
+#define YB_YCM_USE_TSERVER_KEY_AUTH \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "use_tserver_key_auth"
+#define YB_YCM_IS_CLIENT_YSQLCONNMGR \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "is_client_ysqlconnmgr"
+#define YB_YCM_AUTHONLY \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "authonly"
+#define YB_YCM_IS_CONTROL_CONN \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "is_control_conn"
+#define YB_YCM_AUTH_REMOTE_HOST \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "auth_remote_host"
+#define YB_YCM_LOGICAL_CONN_TYPE \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "logical_conn_type"
+
+/*
+ * YB: These GUCs are written by YSQL Connection Manager on every logical
+ * client attach, to update pg_stat_activity with the logical client's
+ * address/port.
+ */
+#define YB_YCM_CLIENT_ADDR \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "client_addr"
+#define YB_YCM_CLIENT_PORT \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "client_port"

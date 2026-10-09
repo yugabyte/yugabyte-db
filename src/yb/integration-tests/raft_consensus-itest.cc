@@ -160,6 +160,27 @@ static const int kConsensusRpcTimeoutForTests = 50;
 static const int kTestRowKey = 1234;
 static const int kTestRowIntVal = 5678;
 
+// Observations collected by RunPhantomAckScenario(). See its definition for the sequence.
+struct PhantomAckScenarioResult {
+  // Status of the client write that only a phantom acknowledgement could have committed.
+  Status victim_write_status;
+
+  // Markers (the rows' string_val) whose client write returned success.
+  std::vector<std::string> acked_markers;
+
+  // Rows read back from each surviving replica after the kills and the election.
+  std::vector<std::string> rows_after_recovery;
+
+  bool Survived(const std::string& marker) const {
+    for (const auto& row : rows_after_recovery) {
+      if (row.find(marker) != std::string::npos) {
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
 // Integration test for the raft consensus implementation.
 // Uses the whole tablet server stack with ExternalMiniCluster.
 class RaftConsensusITest : public TabletServerIntegrationTestBase {
@@ -475,6 +496,10 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   void TestAddRemoveServer(PeerMemberType member_type);
   void TestRemoveTserverSucceedsWhenServerInTransition(PeerMemberType member_type);
   void TestRemoveTserverInTransitionSucceeds(PeerMemberType member_type);
+
+  // Drives the phantom-acknowledgement scenario end to end. Defined near the test that uses it,
+  // at the bottom of this file.
+  void RunPhantomAckScenario(PhantomAckScenarioResult* result);
 
   std::vector<scoped_refptr<yb::Thread> > threads_;
   CountDownLatch inserters_;
@@ -3867,6 +3892,154 @@ TEST_F(RaftConsensusITest, UpdateConsensusFollowerFailedAfterStartReplicaOperati
 
   // assert the follower should not crash.
   ASSERT_TRUE(follower->IsProcessAlive()) << "Tablet server " << follower_idx << " crashed";
+}
+
+// A follower can acknowledge ops that are still only in its own process memory, because the
+// durability wait in UpdateReplica() is armed on "did this request carry new messages" instead of
+// "is the watermark I am about to report already written". Killing it ungracefully before its
+// appender catches up leaves the entry on no follower, and an election won by the replicas that
+// never had it makes the loss permanent.
+//
+// Real leader, real heartbeats and retransmissions, real client write, SIGKILL, real election;
+// nothing is injected into consensus by hand.
+//
+// Freeze the victim's appender, write a few rows so it parks inside Log::Sync(), make the other
+// follower reject UpdateConsensus so the victim is the only possible second acknowledgement, write
+// one more row, SIGKILL the victim and then the leader, restart the victim and let the survivors
+// elect so the new term overwrites that index.
+//
+// The park writes come first on purpose. ProcessBatch() does the writev per batch and only reaches
+// Sync() on the nullptr sentinel, so the pause point is after the writev: a victim row written
+// while the appender was still idle would reach the page cache and survive the kill.
+//
+// The caller asserts a mechanism-agnostic invariant: every write that returned success to the
+// client must be readable afterwards.
+void RaftConsensusITest::RunPhantomAckScenario(PhantomAckScenarioResult* result) {
+  const auto kTimeout = 30s * kTimeMultiplier;
+  const auto kWriteTimeout = 10s * kTimeMultiplier;
+  const std::string kBaselineMarker = "phantom_ack_baseline";
+  const std::string kParkMarker = "phantom_ack_park";
+  const std::string kVictimMarker = "phantom_ack_victim";
+
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(WaitForServersToAgree(kTimeout, tablet_servers_, tablet_id_, 1));
+
+  const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto victim_idx = (leader_idx + 1) % FLAGS_num_replicas;
+  const auto other_idx = (leader_idx + 2) % FLAGS_num_replicas;
+
+  ExternalTabletServer* const leader_ets = cluster_->tablet_server(leader_idx);
+  ExternalTabletServer* const victim_ets = cluster_->tablet_server(victim_idx);
+  ExternalTabletServer* const other_ets = cluster_->tablet_server(other_idx);
+
+  TServerDetails* const leader = tablet_servers_[leader_ets->uuid()].get();
+  TServerDetails* const victim = tablet_servers_[victim_ets->uuid()].get();
+  TServerDetails* const other = tablet_servers_[other_ets->uuid()].get();
+  ASSERT_TRUE(leader != nullptr && victim != nullptr && other != nullptr);
+  LOG(INFO) << "Phantom-ack scenario: leader=" << leader->uuid()
+            << " victim=" << victim->uuid() << " other=" << other->uuid();
+
+  // The victim keeps processing heartbeats throughout (with the fix on, some fail while its
+  // appender is parked), and each processed request snoozes its own failure detector on arrival.
+  // Suppressing failure-detector elections keeps the term stable anyway, since the rejecting
+  // follower returns before it would snooze its own detector. The election in step 5 is
+  // requested explicitly instead.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_election_when_fail_detected", "true"));
+
+  // 1. Baseline row.
+  ASSERT_OK(WriteSimpleTestRow(leader, tablet_id_, 0, 0, kBaselineMarker, kWriteTimeout));
+  result->acked_markers.push_back(kBaselineMarker);
+  ASSERT_OK(WaitForServersToAgree(kTimeout, tablet_servers_, tablet_id_, 2));
+
+  // 2. Freeze the victim's appender. Log::Sync() spins at its very first statement, so the writes
+  // that follow drive the appender thread into that spin and it stops draining its queue.
+  //
+  // The pause flag is process-wide while Log::Sync() is per tablet, and the log line it emits
+  // carries no tablet id, so seeing the line proves some appender on the victim has parked but not
+  // that this tablet's has. A few writes make it very likely, and a mis-sequenced run cannot pass
+  // silently: if this tablet's appender had not parked yet, the victim's WAL would not be
+  // stalled, the write below would be acknowledged through an honest majority, and the
+  // ASSERT_NOK in the test would fail.
+  {
+    LogWaiter log_waiter(victim_ets, "Pausing due to flag TEST_pause_before_wal_sync");
+    ASSERT_OK(cluster_->SetFlag(victim_ets, "TEST_pause_before_wal_sync", "true"));
+    for (int32_t key = 1; key <= 3; ++key) {
+      ASSERT_OK(WriteSimpleTestRow(leader, tablet_id_, key, key, kParkMarker, kWriteTimeout));
+    }
+    result->acked_markers.push_back(kParkMarker);
+    ASSERT_OK(log_waiter.WaitFor(kTimeout));
+  }
+  // Settle: the writes above return once the leader has a majority, which it gets from itself and
+  // the other follower, so the victim may still be a moment behind them.
+  SleepFor(2s * kTimeMultiplier);
+  LOG(INFO) << "Victim " << victim->uuid() << " appender is parked in Log::Sync()";
+
+  // 3. Take the other follower out of the majority.
+  ASSERT_OK(
+      cluster_->SetFlag(other_ets, "TEST_follower_reject_update_consensus_requests", "true"));
+
+  // 4. The write that only a phantom acknowledgement can commit.
+  result->victim_write_status =
+      WriteSimpleTestRow(leader, tablet_id_, 4, 4, kVictimMarker, kWriteTimeout);
+  LOG(INFO) << "Victim-row write returned: " << result->victim_write_status;
+  if (result->victim_write_status.ok()) {
+    result->acked_markers.push_back(kVictimMarker);
+  }
+
+  // 5. Kill the victim while its appender is still parked, then the leader. The victim loses
+  // everything that was still queued; the leader is the only replica that ever had the victim row.
+  victim_ets->Shutdown();
+  leader_ets->Shutdown();
+  ASSERT_FALSE(victim_ets->IsProcessAlive());
+  ASSERT_FALSE(leader_ets->IsProcessAlive());
+
+  ASSERT_OK(
+      cluster_->SetFlag(other_ets, "TEST_follower_reject_update_consensus_requests", "false"));
+  ASSERT_OK(victim_ets->Restart());
+  ASSERT_OK(cluster_->SetFlag(victim_ets, "TEST_skip_election_when_fail_detected", "true"));
+  ASSERT_OK(cluster_->WaitForTabletsRunning(victim_ets, kTimeout));
+
+  // The two survivors are a majority of the original three, so they can elect between themselves.
+  // Neither has the victim row, so the new leader's NO_OP overwrites that index.
+  TabletServerMapUnowned survivors;
+  survivors[victim->uuid()] = victim;
+  survivors[other->uuid()] = other;
+  ASSERT_OK(StartElection(other, tablet_id_, kTimeout));
+  ASSERT_OK(WaitUntilLeader(other, tablet_id_, kTimeout));
+  ASSERT_OK(WaitForServersToAgree(kTimeout, survivors, tablet_id_, 2));
+
+  // 6. Read both survivors. The rows are collected from every survivor, so a marker counts as
+  // having survived if any of them still holds it.
+  for (auto* replica : {other, victim}) {
+    std::vector<std::string> rows;
+    ASSERT_NO_FATALS(ScanReplica(replica->tserver_proxy.get(), &rows));
+    LOG(INFO) << "Rows on survivor " << replica->uuid() << ": " << AsString(rows);
+    result->rows_after_recovery.insert(result->rows_after_recovery.end(), rows.begin(), rows.end());
+  }
+
+  // The dead leader is deliberately left down. Its own copy of the victim row was applied and is
+  // never rolled back, so it would show the divergence from the other side; this test is about what
+  // the surviving quorum, and therefore the client, can still read.
+}
+
+// Nothing that was acknowledged to the client may be lost.
+TEST_F(RaftConsensusITest, PhantomAckFixPreventsCommittedDataLoss) {
+  PhantomAckScenarioResult result;
+  ASSERT_NO_FATALS(RunPhantomAckScenario(&result));
+
+  // Guard against a vacuous pass: with the fix on, the victim never acknowledges beyond its
+  // written watermark (its empty-dedup responses fail at the wait bound), so no majority is
+  // reachable and the write must not be acknowledged. If this succeeds, the scenario did not
+  // exercise the phantom-ack path.
+  ASSERT_NOK(result.victim_write_status)
+      << "Write was acknowledged with only the leader and a follower that had not written the op; "
+      << "the fix did not take effect, so the rest of this test would prove nothing";
+
+  for (const auto& marker : result.acked_markers) {
+    ASSERT_TRUE(result.Survived(marker))
+        << "Row '" << marker << "' was acknowledged to the client but is gone after the failure "
+        << "sequence. Rows found: " << AsString(result.rows_after_recovery);
+  }
 }
 
 }  // namespace tserver

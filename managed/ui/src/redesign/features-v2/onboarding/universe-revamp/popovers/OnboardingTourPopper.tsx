@@ -16,7 +16,7 @@ interface OnboardingTourPopperProps {
    * via preventOverflow / flip (used by Advanced Placement inside Edit Universe).
    */
   boundaryEl?: HTMLElement | null;
-  /** Transient close only — must not persist a dismissal key. */
+  /** Close / click-away — both persist dismissal. */
   onClickAway?: () => void;
   children: ReactNode;
 }
@@ -41,53 +41,62 @@ export const OnboardingTourPopper: FC<OnboardingTourPopperProps> = ({
   boundaryEl,
   onClickAway,
   children
-}) => (
-  <Popper
-    open={open}
-    anchorEl={anchorEl}
-    placement={placement}
-    transition
-    container={boundaryEl ?? undefined}
-    modifiers={[
-      {
-        name: 'offset',
-        options: {
-          offset
-        }
-      },
-      ...(boundaryEl
-        ? [
-            {
-              name: 'preventOverflow' as const,
-              options: {
-                boundary: boundaryEl,
-                padding: 8
-              }
-            },
-            // Flipping would leave the card's arrow pointing away from the anchor,
-            // since the tour card renders a fixed arrow side.
-            { name: 'flip' as const, enabled: false }
-          ]
-        : [])
-    ]}
-    sx={{ zIndex }}
-  >
-    {({ TransitionProps, placement: popperPlacement }) => (
-      <Grow
-        {...TransitionProps}
-        timeout={OPEN_TRANSITION_MS}
-        style={{ transformOrigin: getTransformOrigin(popperPlacement) }}
-      >
-        <div>
-          {onClickAway ? (
-            <ClickAwayListener onClickAway={onClickAway} mouseEvent="onMouseDown">
-              <div>{children}</div>
-            </ClickAwayListener>
-          ) : (
-            children
-          )}
-        </div>
-      </Grow>
-    )}
-  </Popper>
-);
+}) => {
+  const handleClickAway = (event: MouseEvent | TouchEvent) => {
+    const el = event.target as Element | null;
+    // Clicks inside modals (e.g. BeforeProceed) must not dismiss the tip.
+    if (el?.closest?.('.MuiModal-root, [role="dialog"]')) return;
+    onClickAway?.();
+  };
+
+  return (
+    <Popper
+      open={open}
+      anchorEl={anchorEl}
+      placement={placement}
+      transition
+      container={boundaryEl ?? undefined}
+      modifiers={[
+        {
+          name: 'offset',
+          options: {
+            offset
+          }
+        },
+        ...(boundaryEl
+          ? [
+              {
+                name: 'preventOverflow' as const,
+                options: {
+                  boundary: boundaryEl,
+                  padding: 8
+                }
+              },
+              // Flipping would leave the card's arrow pointing away from the anchor,
+              // since the tour card renders a fixed arrow side.
+              { name: 'flip' as const, enabled: false }
+            ]
+          : [])
+      ]}
+      sx={{ zIndex }}
+    >
+      {({ TransitionProps, placement: popperPlacement }) => (
+        <Grow
+          {...TransitionProps}
+          timeout={OPEN_TRANSITION_MS}
+          style={{ transformOrigin: getTransformOrigin(popperPlacement) }}
+        >
+          <div>
+            {onClickAway ? (
+              <ClickAwayListener onClickAway={handleClickAway} mouseEvent="onMouseDown">
+                <div>{children}</div>
+              </ClickAwayListener>
+            ) : (
+              children
+            )}
+          </div>
+        </Grow>
+      )}
+    </Popper>
+  );
+};

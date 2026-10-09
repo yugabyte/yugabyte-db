@@ -135,6 +135,11 @@ message TabletServerErrorPB {
     // This replica's safe time has not reached the requested read time. Retryable; the status
     // message reports the gap.
     READ_TIME_NOT_REACHED = 33;
+
+    // The write's ignore_after_hybrid_time had already passed when the leader was about to append
+    // it. Distinct from a bare Expired, which also covers causes that may have replicated: a
+    // fenced write definitively did not take effect.
+    WRITE_FENCE_EXPIRED = 34;
   }
 
   // The error code.

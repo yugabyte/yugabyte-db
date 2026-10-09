@@ -1523,7 +1523,6 @@ SELECT (string_to_array(polqual, ':'))[7] AS inputcollid FROM pg_policy WHERE po
 SET SESSION AUTHORIZATION regress_rls_alice;
 SELECT * FROM coll_t;
 ROLLBACK;
-DROP TABLE coll_t; -- YB: workaround for lack of transaction DDL
 
 --
 -- Shared Object Dependencies
@@ -1568,7 +1567,6 @@ DROP ROLE regress_rls_frank; -- succeeds
 ROLLBACK TO q;
 
 ROLLBACK; -- cleanup
-DROP TABLE tbl1; -- YB: workaround for lack of transactional DDL
 
 --
 -- Converting table to view
@@ -1593,7 +1591,6 @@ DROP POLICY p ON t;
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
   SELECT * FROM generate_series(1,5) t0(c); -- succeeds
 ROLLBACK;
-DROP VIEW t; -- YB: manually ROLLBACK and DROP the VIEW conversion above to prevent conflict with CREATE TABLE below (see #1404)
 
 --
 -- Policy expression handling
@@ -1602,7 +1599,6 @@ BEGIN;
 CREATE TABLE t (c) AS VALUES ('bar'::text);
 CREATE POLICY p ON t USING (max(c)); -- fails: aggregate functions are not allowed in policy expressions
 ROLLBACK;
-DROP TABLE t; -- YB: workaround for lack of transactional DDL
 
 --
 -- Non-target relations are only subject to SELECT policies

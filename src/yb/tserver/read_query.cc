@@ -863,6 +863,11 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
         // backfill is replicated from the source).
         auto birth_time = table_info->index_info->birth_time();
         auto birth_ht = HybridTime(birth_time);
+        VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
+                << " birth_time=" << birth_time << " (" << birth_ht << ")"
+                << " retain_delete_markers="
+                << table_info->schema().table_properties().retain_delete_markers()
+                << " read_time=" << read_time_.read;
         if (birth_time != 0 && !birth_ht.is_special() && read_time_.read < birth_ht) {
           return STATUS(
               SnapshotTooOld,
