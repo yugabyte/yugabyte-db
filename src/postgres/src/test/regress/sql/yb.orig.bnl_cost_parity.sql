@@ -208,11 +208,6 @@ base(qid, descr, tmpl) as (
     (232, 'x >= 1500',
         'select s.x from ce.s s join @R@ r on s.x = r.pk where s.x >= 1500 order by s.x desc'),
     --   >= on inner
-    -- TODO(#34905): 240 and 242 (and their ce.rC twins 1240 and 1242) cost HJ
-    -- below MJ although MJ does less work: mergejoinscansel() clamps by the
-    -- join key bounds for ascending orders only, so the descending merge's
-    -- early stop at the lower bound is not costed. Exposed by #33145, whose
-    -- higher prev cost pushed the inflated MJ cost above HJ.
     (240, '1500 <= pk <= 5120',
         'select r.pk from ce.s s join @R@ r on s.x = r.pk where r.pk >= 1500 and r.pk <= 5120 order by r.pk desc'),
     (241, 'a >= 4800',
@@ -382,10 +377,13 @@ order by qid;
 -- the bounded outer in a single batch.
 --
 -- ...230-...242 are the descending companions ("order by ... desc", planned as
--- backward index scans on both inputs).  mergejoinscansel() folds the bounds in
--- for ascending orders only, so these rows pin the unclamped estimate: they are
--- the control for ...210-...222, not coverage of the bound handling.  On ...230
--- and ...232 BNL leads both rankings.
+-- backward index scans on both inputs).  Read descending, the bounds swap
+-- roles: a lower bound stops the merge early and an upper bound moves its
+-- start, and mergejoinscansel() folds them in the same way.  On ...240 and
+-- ...242 the lower bound stops the merge early, so MJ scans 7717 rows to
+-- HJ's 8741; counting that puts MJ ahead of HJ by cost, as by the work.
+-- Costed as reading to the statistical extreme, the backward scans would
+-- rank HJ first.  On ...230 and ...232 BNL leads both rankings.
 --
 -- ...250-...252 read the ...240-...242 bounds forward.  Ascending, a lower
 -- bound moves the merge's start, not its end: the outer rows below it are read
