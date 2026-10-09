@@ -811,6 +811,13 @@ TEST_F_EX(ClientTest, FindPartitionsForRangeKeyPrefixes, ClientTestNoCluster) {
   ASSERT_EQ(
       SelectedPartitions(partitions, false, {RangeKeyPrefix({5}), RangeKeyPrefix({40})}),
       (Partitions{0, 3}));
+
+  // Prefixes ending in 0xff bytes, where the end of the prefix range has to carry. A prefix of only
+  // 0xff bytes has no end.
+  const std::vector<std::string> raw_partitions = {"", "a\xff", "a\xff\x01", "b", "\xff\xff\x01"};
+  ASSERT_EQ(SelectedPartitions(raw_partitions, false, {"a\xff"}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(raw_partitions, false, {"a"}), (Partitions{0, 1, 2}));
+  ASSERT_EQ(SelectedPartitions(raw_partitions, false, {"\xff\xff"}), (Partitions{3, 4}));
 }
 
 TEST_F(ClientTest, TestKeyRangeFiltering) {

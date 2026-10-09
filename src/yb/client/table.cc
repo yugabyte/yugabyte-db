@@ -359,6 +359,23 @@ PartitionKeyPtr FindPartitionStart(
   return PartitionKeyPtr(versioned_partitions, &versioned_partitions->keys[idx]);
 }
 
+namespace {
+
+// Returns the smallest key that is greater than every key starting with prefix, or an empty string
+// (no bound) when there is none.
+std::string PrefixEnd(Slice prefix) {
+  std::string end = prefix.ToBuffer();
+  while (!end.empty() && static_cast<uint8_t>(end.back()) == 0xff) {
+    end.pop_back();
+  }
+  if (!end.empty()) {
+    end.back() = static_cast<char>(static_cast<uint8_t>(end.back()) + 1);
+  }
+  return end;
+}
+
+} // namespace
+
 Result<std::vector<bool>> FindPartitionsForKeyPrefixes(
     const TablePartitionList& partitions, bool is_hash_partitioned,
     std::span<const Slice> key_prefixes) {
@@ -374,12 +391,18 @@ Result<std::vector<bool>> FindPartitionsForKeyPrefixes(
       continue;
     }
     SCHECK(!prefix.empty(), InvalidArgument, "Empty key prefix");
-    // Partition keys are sorted, so after the partition holding the prefix itself, only the
-    // partitions whose start keys begin with the prefix can hold keys that begin with it: a start
-    // key that is greater than the prefix and does not begin with it is greater than all of them.
-    auto idx = FindPartitionStartIndex(partitions, prefix.AsStringView());
-    result[idx] = true;
-    for (++idx; idx < partitions.size() && Slice(partitions[idx]).starts_with(prefix); ++idx) {
+    // The keys starting with the prefix form the range [prefix, PrefixEnd(prefix)). Partitions are
+    // sorted, so the overlapping ones are consecutive, starting with the one holding the prefix.
+    const auto range_start = prefix.ToBuffer();
+    const auto range_end = PrefixEnd(prefix);
+    for (auto idx = FindPartitionStartIndex(partitions, range_start); idx < partitions.size();
+         ++idx) {
+      const auto& partition_end =
+          idx + 1 < partitions.size() ? partitions[idx + 1] : PartitionKey();
+      if (!dockv::PartitionSchema::HasOverlap(
+              partitions[idx], partition_end, range_start, range_end)) {
+        break;
+      }
       result[idx] = true;
     }
   }
