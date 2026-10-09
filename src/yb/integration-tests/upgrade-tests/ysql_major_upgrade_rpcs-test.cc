@@ -557,6 +557,8 @@ TEST_F(YsqlMajorUpgradeRpcsTest, TestTableIds) {
   ASSERT_NO_FATALS(validate_catalog_table_id({kUnversioned, kPg15Version}));
 
   ASSERT_OK(CompleteUpgradeAndValidate());
+  // The master deletes the previous version's catalog tables in the background after finalize.
+  ASSERT_OK(WaitForPreviousVersionCatalogDeletion());
   ASSERT_NO_FATALS(validate_simple_table_id());
   ASSERT_NO_FATALS(validate_catalog_table_id({kPg15Version}));
 }
