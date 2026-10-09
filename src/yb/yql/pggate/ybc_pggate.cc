@@ -3352,6 +3352,8 @@ YbcStatus YBCResetAutoAnalyzeMutationCounters(
 
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
 
+bool YBCIsCronLeaderActive() { return pgapi->IsCronLeaderActive(); }
+
 int YBCGetXClusterRole(uint32_t db_oid) {
   auto result = pgapi->GetXClusterRole(db_oid);
   if (result.ok()) {

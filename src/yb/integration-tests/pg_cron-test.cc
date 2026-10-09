@@ -41,12 +41,14 @@ namespace yb {
 constexpr auto kTableName = "tbl1";
 constexpr auto kDefaultJobName = "Job1";
 constexpr auto kJobListRefreshInterval = 10;
-// pg_cron_leader_lease_sec for the fixture. A new leader starts running jobs one lease after it
-// became leader.
+// pg_cron_leader_lease_sec for the fixture. A new leader activates one lease after the old
+// leader stepped down, and a stepped-down leader drains in-flight jobs for at most one lease.
 constexpr auto kLeaderLeaseSec = kJobListRefreshInterval;
 constexpr auto kServerRestartedMessage = "server restarted";
 constexpr auto kFailedJobStatus = "failed";
 constexpr auto kRunningJobStatus = "running";
+constexpr auto kSucceededJobStatus = "succeeded";
+constexpr auto kLeaderChangedMessage = "pg_cron leader changed";
 const client::YBTableName service_table_name =
     stateful_service::GetStatefulServiceTableName(StatefulServiceKind::PG_CRON_LEADER);
 const auto kTimeout = 60s * kTimeMultiplier;
@@ -256,6 +258,16 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
         "SELECT return_message FROM cron.job_run_details WHERE runid = $0", runid));
   }
 
+  // A run that a leader change aborts is marked failed either by the old leader at lease expiry
+  // ("pg_cron leader changed") or by the new leader's sweep ("server restarted"), whichever
+  // writes first.
+  void CheckAbortedByLeaderChange(int64 runid) {
+    ASSERT_OK(WaitForRunStatus(runid, kFailedJobStatus));
+    const auto message = ASSERT_RESULT(GetRunMessage(runid));
+    LOG(INFO) << "Run " << runid << " message: " << message;
+    ASSERT_TRUE(message == kLeaderChangedMessage || message == kServerRestartedMessage) << message;
+  }
+
   // Number of runs of the job that started after the given run.
   Result<int64_t> CountRunsAfter(int64 job_id, int64 runid) {
     return conn_->FetchRow<pgwrapper::PGUint64>(Format(
@@ -328,6 +340,23 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     ASSERT_EQ(ASSERT_RESULT(NodesRunningQuery(job_command)), std::set<size_t>{to_idx});
     ASSERT_EQ(ASSERT_RESULT(LauncherPid(to_idx)), launcher_pid)
         << "pg_cron launcher on the new leader restarted";
+  }
+
+  // Schedules a "1 second" job that inserts the address of the node that runs it into the `node`
+  // column. inet_server_addr() is NULL in a background worker, so use listen_addresses.
+  Result<int64_t> Schedule1SecInsertNodeJob() {
+    return ScheduleJob(
+        "Insert Node", "1 second",
+        Format(
+            "INSERT INTO $0(a, node) VALUES (1, current_setting(''listen_addresses''))",
+            kTableName));
+  }
+
+  // The `node` value that Schedule1SecInsertNodeJob stores on the given tserver.
+  std::string NodeHost(size_t idx) { return cluster_->tablet_server(idx)->bind_host(); }
+
+  Result<std::string> CurrentDbTimestamp() {
+    return conn_->FetchRow<std::string>("SELECT clock_timestamp()::text");
   }
 
   Status ReconnectToNode(size_t idx) {
@@ -615,51 +644,6 @@ TEST_F(PgCronTest, LeaderCrash1) {
   cluster_->Shutdown();
 }
 
-// Make sure pg_cron handles graceful leader movement of the Stateful service.
-TEST_F(PgCronTest, GracefulLeaderMove) {
-  // Schedule a 1sec job.
-  const auto job_id = ASSERT_RESULT(Schedule1SecInsertJob());
-
-  // Wait for the job to get picked up and run for a while.
-  const auto default_sleep_sec = 10;
-  const auto kSleepBuffer = 3s;
-  const auto sleep_time = (kJobListRefreshInterval + default_sleep_sec) * 1s + kSleepBuffer;
-  SleepFor(sleep_time);
-
-  ASSERT_OK(WaitForDataInPgCronLeaderTable());
-  const auto start_last_minute = ASSERT_RESULT(GetPersistedLastMinute());
-
-  ASSERT_OK(cluster_->MoveTabletLeader(tablet_id_));
-  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client_, kTimeout));
-
-  // Make sure new leader is running jobs.
-  auto row_count = ASSERT_RESULT(GetRowCount());
-  SleepFor(sleep_time);
-  auto row_count2 = ASSERT_RESULT(GetRowCount());
-  ASSERT_GT(row_count2, row_count);
-  auto last_minute = ASSERT_RESULT(GetPersistedLastMinute());
-  ASSERT_GE(last_minute, start_last_minute);
-
-  // Stop the job.
-  ASSERT_OK(UnscheduleJob(job_id));
-  SleepFor(kJobListRefreshInterval * 1s);
-
-  // Make sure we inserted the minumum number of rows.
-  auto row_count3 = ASSERT_RESULT(GetRowCount());
-  ASSERT_GE(row_count3, 2 * default_sleep_sec);
-
-  // Wait a little bit longer to make sure job is not running.
-  SleepFor(default_sleep_sec * 1s);
-  auto row_count4 = ASSERT_RESULT(GetRowCount());
-  ASSERT_EQ(row_count3, row_count4);
-
-  // Make it was cron that inserted all the rows inserted rows.
-  auto job_run_count = ASSERT_RESULT(
-      conn_->FetchRow<pgwrapper::PGUint64>("SELECT COUNT(*) FROM cron.job_run_details"));
-  // May not be equal as some run might have failed midway.
-  ASSERT_LE(row_count3, job_run_count);
-}
-
 // Verify the ysql_cron_database_name flag works as expected.
 TEST_F(PgCronTest, ChangeCronDB) {
   constexpr auto db_name = "db1";
@@ -875,50 +859,110 @@ TEST_F(PgCronTest, KillRunningJob) {
   }
 }
 
-TEST_F(PgCronTest, CancelJobOnLeaderChange) {
-  // Disable load balancing to prevent interference from new system tablets.
-  // When additional system tablets are added, the load balancer may move
-  // the tablet leader back to the original node after an explicit leader move,
-  // causing unexpected test failures.
+// Graceful leader move with jobs in flight on the old leader A.
+//
+//   test driver                        A (leader)                       B
+//   schedule Insert "1 second"
+//   schedule Short  "1 second" sleep 5
+//   schedule Long   "1 second" sleep 1000
+//   wait Short, Long running on A
+//   t0: MoveTabletLeader(A -> B) ----> Deactivate: stop starting runs  Activate: wait one lease
+//                                      Short finishes: 'succeeded'
+//                                      lease expires: Long aborted
+//                                                                      active: sweep, start runs
+//
+// Checks:
+//  - Short drains to 'succeeded' and keeps that status after B's sweep.
+//  - Long is aborted, and A stops running it before B starts it.
+//  - No job runs on two nodes at once. B starts no run before one lease after t0.
+//  - A starts no run after t0.
+TEST_F(PgCronTest, GracefulLeaderMove) {
+  // Prevent the load balancer from moving the leader back.
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
-  // Start a job that will run for a long time.
-  ASSERT_OK(ScheduleJob("Sleep Job", "1 second", "SELECT pg_sleep(1000)"));
-  ASSERT_OK(Schedule1SecInsertJob());
 
-  ASSERT_OK(WaitForRowCountAbove(0));
+  ASSERT_OK(Schedule1SecInsertNodeJob());
+  const std::string short_query = "SELECT pg_sleep(5)";
+  const auto short_job_name = "Short Sleep";
+  const auto short_job_id = ASSERT_RESULT(ScheduleJob(short_job_name, "1 second", short_query));
+  const std::string long_query = "SELECT pg_sleep(1000)";
+  const auto long_job_name = "Long Sleep";
+  const auto long_job_id = ASSERT_RESULT(ScheduleJob(long_job_name, "1 second", long_query));
+  ASSERT_OK(WaitForJobStatus(short_job_id, short_job_name, kRunningJobStatus));
+  ASSERT_OK(WaitForJobStatus(long_job_id, long_job_name, kRunningJobStatus));
 
-  auto nodes_running_sleep_jobs = [this]() -> Result<std::set<size_t>> {
-    std::set<size_t> nodes_running_job;
-    for (size_t idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
-      auto conn = VERIFY_RESULT(cluster_->ConnectToDB("yugabyte", idx));
-      if (VERIFY_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
-              "SELECT COUNT(*) FROM pg_stat_activity WHERE query = 'SELECT pg_sleep(1000)'")) > 0) {
-        nodes_running_job.insert(idx);
-      }
-    }
-    return nodes_running_job;
-  };
+  const auto old_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto short_runid = std::get<0>(ASSERT_RESULT(GetRunningRun(short_job_id)));
+  const auto long_runid = std::get<0>(ASSERT_RESULT(GetRunningRun(long_job_id)));
 
-  const auto initial_nodes_running_job = ASSERT_RESULT(nodes_running_sleep_jobs());
-  ASSERT_EQ(initial_nodes_running_job.size(), 1);
-
+  const auto t0_db = ASSERT_RESULT(CurrentDbTimestamp());
+  const auto t0 = CoarseMonoClock::Now();
   ASSERT_OK(cluster_->MoveTabletLeader(tablet_id_));
+  const auto new_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  ASSERT_NE(new_leader_idx, old_leader_idx);
 
-  // Wait for the jobs to get killed.
-  SleepFor(kJobListRefreshInterval * 1s);
+  const auto samples = ASSERT_RESULT(SampleNodesRunningQueries(
+      {short_query, long_query}, old_leader_idx,
+      t0 + std::chrono::seconds(kLeaderLeaseSec) + 8s));
+  ASSERT_NO_FATALS(CheckHandOver(samples[0], t0, new_leader_idx));
+  ASSERT_NO_FATALS(CheckHandOver(samples[1], t0, new_leader_idx));
 
-  // Wait for the new leader to start running.
-  const auto initial_row_count = ASSERT_RESULT(GetRowCount());
-  ASSERT_OK(WaitForRowCountAbove(initial_row_count));
+  ASSERT_OK(WaitForRunStatus(short_runid, kSucceededJobStatus));
+  ASSERT_NO_FATALS(CheckAbortedByLeaderChange(long_runid));
 
-  const auto final_nodes_running_job = ASSERT_RESULT(nodes_running_sleep_jobs());
-  ASSERT_EQ(final_nodes_running_job.size(), 1);
-  ASSERT_NE(*final_nodes_running_job.begin(), *initial_nodes_running_job.begin());
+  // A inserted nothing after the move (2 s slack for a run in flight at t0). B inserted nothing
+  // within one lease of the move, and has inserted since.
+  const auto old_host = NodeHost(old_leader_idx);
+  const auto count_rows = [&](const std::string& condition) -> Result<int64_t> {
+    return conn_->FetchRow<pgwrapper::PGUint64>(
+        Format("SELECT COUNT(*) FROM $0 WHERE $1", kTableName, condition));
+  };
+  ASSERT_GT(ASSERT_RESULT(count_rows(Format("node = '$0'", old_host))), 0);
+  ASSERT_EQ(ASSERT_RESULT(count_rows(Format(
+                "node = '$0' AND insert_time > TIMESTAMPTZ '$1' + INTERVAL '2 seconds'", old_host,
+                t0_db))),
+            0);
+  ASSERT_EQ(ASSERT_RESULT(count_rows(Format(
+                "node <> '$0' AND insert_time > TIMESTAMPTZ '$1' AND "
+                "insert_time < TIMESTAMPTZ '$1' + INTERVAL '$2 seconds'",
+                old_host, t0_db, kLeaderLeaseSec - 1))),
+            0);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(count_rows(Format(
+                   "node = '$0' AND insert_time > TIMESTAMPTZ '$1'",
+                   NodeHost(new_leader_idx), t0_db))) > 0;
+      },
+      kTimeout, "Wait for the new leader to insert"));
+}
 
-  const auto count_killed = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(
-      "SELECT COUNT(*) FROM cron.job_run_details WHERE return_message = 'pg_cron leader changed'"));
-  ASSERT_TRUE(count_killed == 1 || count_killed == 2)
-      << count_killed << " rows found when only 1 or 2 is expected";
+// Leadership moves A -> B -> C before A's lease expires. B loses leadership while it waits for
+// A's lease and never runs a job. C waits a full lease. A aborts its run when its lease expires.
+TEST_F(PgCronTest, SecondLeaderMoveDuringDrain) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
+
+  const std::string long_query = "SELECT pg_sleep(1000)";
+  const auto long_job_name = "Long Sleep";
+  const auto long_job_id = ASSERT_RESULT(ScheduleJob(long_job_name, "1 second", long_query));
+  ASSERT_OK(WaitForJobStatus(long_job_id, long_job_name, kRunningJobStatus));
+  const auto long_runid = std::get<0>(ASSERT_RESULT(GetRunningRun(long_job_id)));
+
+  const auto num_tservers = cluster_->num_tablet_servers();
+  const auto a_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto b_idx = (a_idx + 1) % num_tservers;
+  const auto c_idx = (a_idx + 2) % num_tservers;
+
+  const auto t0 = CoarseMonoClock::Now();
+  ASSERT_OK(cluster_->MoveTabletLeader(tablet_id_, b_idx));
+  ASSERT_OK(cluster_->MoveTabletLeader(tablet_id_, c_idx));
+  ASSERT_EQ(ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_)), c_idx);
+
+  const auto sample = ASSERT_RESULT(SampleNodesRunningQuery(
+      long_query, a_idx, t0 + std::chrono::seconds(kLeaderLeaseSec) + 10s));
+  ASSERT_NO_FATALS(CheckHandOver(sample, t0, c_idx));
+
+  ASSERT_NO_FATALS(CheckAbortedByLeaderChange(long_runid));
+  ASSERT_EQ(ASSERT_RESULT(CountRunsAfter(long_job_id, long_runid)), 1);
+  ASSERT_EQ(ASSERT_RESULT(NodesRunningQuery(long_query)), std::set<size_t>{c_idx});
 }
 
 // Ungraceful leader change: the leader tserver is killed. The new leader starts one lease after

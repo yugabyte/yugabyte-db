@@ -166,8 +166,11 @@ void YBCDumpTcMallocHeapProfile(bool peak_heap, size_t max_call_stacks);
 YbcStatus YBCValidateJWT(const char *token, const YbcPgJwtAuthOptions *options);
 YbcStatus YBCFetchFromUrl(const char *url, char **buf);
 
-// Is this node acting as the pg_cron leader?
+// Does this node hold a valid pg_cron leader lease (true while draining after a step down)?
 bool YBCIsCronLeader();
+
+// Is this node the active pg_cron leader (holds a lease and has not stepped down)?
+bool YBCIsCronLeaderActive();
 YbcStatus YBCSetCronLastMinute(int64_t last_minute);
 YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
 
