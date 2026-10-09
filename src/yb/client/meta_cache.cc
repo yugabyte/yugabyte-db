@@ -848,7 +848,9 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
   }
 
   VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Master TSInfo " << permanent_uuid;
-  CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
+  auto ts = std::make_unique<RemoteTabletServer>(pb);
+  ts->set_drained(drained_tserver_uuids_.contains(permanent_uuid));
+  CHECK(ts_cache_.emplace(permanent_uuid, std::move(ts)).second);
 }
 
 template <class RaftPB>
@@ -865,9 +867,13 @@ template <class RaftPB>
 Status MetaCache::InsertMissingTabletServersFromRaftPeersUnlocked(const RaftPB& raft_config) {
   for (const auto& peer : raft_config.peers()) {
     std::string_view permanent_uuid(peer.permanent_uuid());
-    if (ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(peer)).second) {
-      VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Raft Peer " << permanent_uuid;
+    if (ts_cache_.contains(permanent_uuid)) {
+      continue;
     }
+    auto ts = std::make_unique<RemoteTabletServer>(peer);
+    ts->set_drained(drained_tserver_uuids_.contains(std::string(permanent_uuid)));
+    CHECK(ts_cache_.emplace(permanent_uuid, std::move(ts)).second);
+    VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Raft Peer " << permanent_uuid;
   }
   return Status::OK();
 }
@@ -2546,20 +2552,40 @@ void MetaCache::MarkTSFailed(
   }
 }
 
-void MetaCache::MarkTServersAsFailed(const std::vector<std::string>& ts_uuids) {
-  const auto status =
-      STATUS(ServiceUnavailable, "Tablet server is blacklisted and hosts no tablets");
-  for (const auto& uuid : ts_uuids) {
-    RemoteTabletServer* ts = nullptr;
-    {
-      SharedLock<decltype(mutex_)> lock(mutex_);
+void MetaCache::UpdateDrainedTServers(
+    const std::vector<std::string>& drained, const std::vector<std::string>& live) {
+  // Entries are never removed from ts_cache_, so these pointers stay valid after unlocking.
+  std::vector<RemoteTabletServer*> newly_drained;
+  {
+    std::lock_guard lock(mutex_);
+    for (const auto& uuid : drained) {
       auto it = ts_cache_.find(uuid);
-      if (it == ts_cache_.end() || it->second.get() == local_tserver_) {
+      if (it != ts_cache_.end() && it->second.get() == local_tserver_) {
         continue;
       }
-      // Entries are never removed from ts_cache_, so the pointer stays valid after unlocking.
-      ts = it->second.get();
+      if (!drained_tserver_uuids_.insert(uuid).second) {
+        continue;
+      }
+      if (it != ts_cache_.end()) {
+        it->second->set_drained(true);
+        newly_drained.push_back(it->second.get());
+      }
     }
+    const std::unordered_set<std::string_view> drained_set(drained.begin(), drained.end());
+    const std::unordered_set<std::string_view> live_set(live.begin(), live.end());
+    std::erase_if(drained_tserver_uuids_, [&](const std::string& uuid) REQUIRES(mutex_) {
+      if (drained_set.contains(uuid) || !live_set.contains(uuid)) {
+        return false;
+      }
+      if (auto it = ts_cache_.find(uuid); it != ts_cache_.end()) {
+        it->second->set_drained(false);
+      }
+      return true;
+    });
+  }
+  const auto status =
+      STATUS(ServiceUnavailable, "Tablet server is blacklisted and hosts no tablets");
+  for (auto* ts : newly_drained) {
     MarkTSFailed(ts, status, PermanentFailure::kTrue);
   }
 }

@@ -1049,84 +1049,6 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   }
 }
 
-// A replica marked failed by MarkTServersAsFailed must stay failed past retry_failed_replica_ms,
-// unlike an ordinary failed mark, and a full refresh from the master must clear it.
-TEST_F(ClientTest, TestMarkTServersAsFailedIsPermanent) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_replica_ms) = 0;
-  TableHandle table;
-  ASSERT_NO_FATALS(
-      CreateTable(YBTableName(YQL_DATABASE_CQL, "permanent_failure"), kNumTablets, &table));
-  InsertTestRows(table, 1, 0);
-
-  scoped_refptr<internal::RemoteTablet> rt;
-  std::vector<internal::RemoteTabletServer*> tservers;
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    rt = VERIFY_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
-    tservers.clear();
-    rt->GetRemoteTabletServers(&tservers);
-    if (tservers.size() == 3) {
-      return true;
-    }
-    rt->MarkStale();
-    return false;
-  }, 30s, "Wait for all replicas to be cached"));
-
-  auto& meta_cache = *client_->data_->meta_cache_;
-  internal::RemoteTabletServer* transient = tservers[0];
-  internal::RemoteTabletServer* permanent = tservers[1];
-
-  // With retry_failed_replica_ms = 0 an ordinary failed mark is retried on the next selection.
-  meta_cache.MarkTSFailed(transient, STATUS(NetworkError, "test"));
-  tservers.clear();
-  rt->GetRemoteTabletServers(&tservers);
-  ASSERT_EQ(tservers.size(), 3);
-
-  // A permanent mark is not.
-  meta_cache.MarkTServersAsFailed({permanent->permanent_uuid()});
-  for (int i = 0; i != 3; ++i) {
-    tservers.clear();
-    rt->GetRemoteTabletServers(&tservers);
-    ASSERT_EQ(tservers.size(), 2);
-    ASSERT_EQ(std::find(tservers.begin(), tservers.end(), permanent), tservers.end());
-  }
-  ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
-
-  // Unknown UUIDs are ignored.
-  meta_cache.MarkTServersAsFailed({"not-a-tserver"});
-  ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
-
-  // The deferred clear that an expired ordinary mark gets must not undo a permanent one that
-  // was applied in between.
-  {
-    internal::RemoteReplica replica(permanent, PeerRole::FOLLOWER);
-    replica.MarkFailed();
-    replica.MarkFailed(internal::PermanentFailure::kTrue);
-    replica.ClearFailed();
-    ASSERT_TRUE(replica.Failed());
-    ASSERT_TRUE(replica.permanent_failure);
-    internal::RemoteReplica transient_replica(transient, PeerRole::FOLLOWER);
-    transient_replica.MarkFailed();
-    transient_replica.ClearFailed();
-    ASSERT_FALSE(transient_replica.Failed());
-  }
-
-  // A full refresh from the master replaces the replica list and clears the mark: the master
-  // still lists this tserver, so the cache must trust it again.
-  std::promise<Result<internal::RemoteTabletPtr>> refreshed_promise;
-  client_->LookupTabletById(
-      rt->tablet_id(), table.table(), master::IncludeHidden::kFalse,
-      master::IncludeDeleted::kFalse, CoarseMonoClock::Now() + 30s,
-      [&refreshed_promise](const Result<internal::RemoteTabletPtr>& result) {
-        refreshed_promise.set_value(result);
-      },
-      UseCache::kFalse);
-  rt = ASSERT_RESULT(refreshed_promise.get_future().get());
-  tservers.clear();
-  rt->GetRemoteTabletServers(&tservers);
-  ASSERT_EQ(tservers.size(), 3);
-  ASSERT_EQ(rt->GetNumFailedReplicas(), 0);
-}
-
 TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "split-table"),
@@ -2994,6 +2916,129 @@ RefreshBurstResult ApplyConsensusInfoConcurrently(
 }
 
 }  // namespace
+
+// The master's drained hint marks a tserver's replicas permanently failed, i.e. not retried after
+// retry_failed_replica_ms. Metadata built before the drain finished can arrive after that mark, so
+// a replica rebuilt by a master lookup or a Raft config refresh must come back failed while the
+// hint holds, and routable again only once the hint drops the tserver and the master reports it
+// live.
+TEST_F(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_replica_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) = true;
+  TableHandle table;
+  ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "drained"), kNumTablets, &table));
+  InsertTestRows(table, 1, 0);
+
+  scoped_refptr<internal::RemoteTablet> rt;
+  std::vector<internal::RemoteTabletServer*> tservers;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    rt = VERIFY_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
+    tservers.clear();
+    rt->GetRemoteTabletServers(&tservers);
+    if (tservers.size() == 3) {
+      return true;
+    }
+    rt->MarkStale();
+    return false;
+  }, 30s, "Wait for all replicas to be cached"));
+  const auto tablet_id = rt->tablet_id();
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  internal::RemoteTabletServer* transient = tservers[0];
+  internal::RemoteTabletServer* drained = tservers[1];
+  std::vector<std::string> all_uuids;
+  std::vector<std::string> live_without_drained;
+  for (const auto* ts : tservers) {
+    all_uuids.push_back(ts->permanent_uuid());
+    if (ts != drained) {
+      live_without_drained.push_back(ts->permanent_uuid());
+    }
+  }
+
+  // With retry_failed_replica_ms = 0 an ordinary failed mark is retried on the next selection.
+  meta_cache.MarkTSFailed(transient, STATUS(NetworkError, "test"));
+  tservers.clear();
+  rt->GetRemoteTabletServers(&tservers);
+  ASSERT_EQ(tservers.size(), 3);
+
+  // A drained mark is not.
+  meta_cache.UpdateDrainedTServers({drained->permanent_uuid()}, all_uuids);
+  ASSERT_TRUE(drained->drained());
+  auto assert_drained_excluded = [&]() {
+    for (int i = 0; i != 3; ++i) {
+      tservers.clear();
+      rt->GetRemoteTabletServers(&tservers);
+      ASSERT_EQ(tservers.size(), 2);
+      ASSERT_EQ(std::find(tservers.begin(), tservers.end(), drained), tservers.end());
+    }
+    ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
+  };
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // UUIDs not in the cache are remembered, in case a refresh introduces them, and change nothing
+  // until then.
+  meta_cache.UpdateDrainedTServers({drained->permanent_uuid(), "not-a-tserver"}, all_uuids);
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // The deferred clear that an expired ordinary mark gets must not undo a permanent one that
+  // was applied in between.
+  {
+    internal::RemoteReplica replica(transient, PeerRole::FOLLOWER);
+    replica.MarkFailed();
+    replica.MarkFailed(internal::PermanentFailure::kTrue);
+    replica.ClearFailed();
+    ASSERT_TRUE(replica.Failed());
+    ASSERT_TRUE(replica.permanent_failure);
+    internal::RemoteReplica transient_replica(transient, PeerRole::FOLLOWER);
+    transient_replica.MarkFailed();
+    transient_replica.ClearFailed();
+    ASSERT_FALSE(transient_replica.Failed());
+  }
+
+  // The master still lists the drained tserver, as a response built before the drain finished
+  // would: the replica a full refresh rebuilds for it is born failed.
+  auto refresh_from_master = [&]() -> Result<internal::RemoteTabletPtr> {
+    std::promise<Result<internal::RemoteTabletPtr>> promise;
+    client_->LookupTabletById(
+        tablet_id, table.table(), master::IncludeHidden::kFalse, master::IncludeDeleted::kFalse,
+        CoarseMonoClock::Now() + 30s,
+        [&promise](const Result<internal::RemoteTabletPtr>& result) { promise.set_value(result); },
+        UseCache::kFalse);
+    return promise.get_future().get();
+  };
+  rt = ASSERT_RESULT(refresh_from_master());
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // Same for a replica rebuilt from a newer Raft config that still has the drained tserver, as a
+  // lagging peer's intermediate config would.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(table.table()->id(), 0, &tablets));
+  const auto locations = std::find_if(
+      tablets.begin(), tablets.end(),
+      [&tablet_id](const auto& location) { return location.tablet_id() == tablet_id; });
+  ASSERT_TRUE(locations != tablets.end());
+  ASSERT_TRUE(client_->RefreshTabletInfoWithConsensusInfo(MakeTabletConsensusInfo(
+      *locations, transient->permanent_uuid(), rt->raft_config_opid_index() + 1)));
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // The hint dropping the tserver while the master does not report it live, as it does for a
+  // removed tserver and for every tserver during its post-failover grace period, changes nothing.
+  meta_cache.UpdateDrainedTServers({}, live_without_drained);
+  ASSERT_TRUE(drained->drained());
+  rt = ASSERT_RESULT(refresh_from_master());
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // Dropped from the hint and live again: the mark on the existing replica stays until the next
+  // refresh rebuilds it.
+  meta_cache.UpdateDrainedTServers({}, all_uuids);
+  ASSERT_FALSE(drained->drained());
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
+  rt = ASSERT_RESULT(refresh_from_master());
+  tservers.clear();
+  rt->GetRemoteTabletServers(&tservers);
+  ASSERT_EQ(tservers.size(), 3);
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 0);
+}
 
 // A burst of identical consensus info refreshes should apply exactly once, with the rest
 // discarded without taking the exclusive lock.
