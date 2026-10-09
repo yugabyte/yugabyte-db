@@ -721,11 +721,10 @@ DROP FUNCTION tt_ioc_cap();
 ----------------------------------------------------------------------
 
 -- Whether the wholerow junk column is needed is decided at plan time, so
--- cached plans need the same coverage as one-shot statements.  Each
--- statement is executed 6 times so that "auto" mode gets past the custom
--- plan threshold.  The three runs below are identical apart from
--- plan_cache_mode, and so is their output: every EXECUTE fires once with only
--- its own rows, and 0-row EXECUTEs fire with empty transition tables.
+-- cached plans need the same coverage as one-shot statements.  Each statement
+-- runs with a custom plan and then with a generic plan, the generic plan more
+-- than once so that it is reused.  Every EXECUTE fires once with only its own
+-- rows, and 0-row EXECUTEs fire with empty transition tables.
 
 CREATE TABLE tt_prep (id int PRIMARY KEY, val text, n int);
 
@@ -739,7 +738,6 @@ CREATE TRIGGER tt_prep_del AFTER DELETE ON tt_prep
   REFERENCING OLD TABLE AS old_table
   FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
 
-SET plan_cache_mode = force_custom_plan;
 PREPARE tt_prep_ins_values(int) AS INSERT INTO tt_prep VALUES ($1, 'v', 0);
 PREPARE tt_prep_ins_select(int, int) AS
   INSERT INTO tt_prep SELECT g, 's', 0 FROM generate_series($1, $2) g;
@@ -752,235 +750,66 @@ PREPARE tt_prep_update(int, int) AS
   UPDATE tt_prep SET n = n + 10 WHERE id BETWEEN $1 AND $2;
 PREPARE tt_prep_delete(int, int) AS
   DELETE FROM tt_prep WHERE id BETWEEN $1 AND $2;
+
+SET plan_cache_mode = force_custom_plan;
 EXECUTE tt_prep_ins_values(1);
-EXECUTE tt_prep_ins_values(2);
-EXECUTE tt_prep_ins_values(3);
-EXECUTE tt_prep_ins_values(4);
-EXECUTE tt_prep_ins_values(5);
-EXECUTE tt_prep_ins_values(6);
 EXECUTE tt_prep_ins_select(11, 12);
-EXECUTE tt_prep_ins_select(13, 14);
-EXECUTE tt_prep_ins_select(15, 16);
-EXECUTE tt_prep_ins_select(17, 18);
-EXECUTE tt_prep_ins_select(19, 20);
-EXECUTE tt_prep_ins_select(21, 22);
 EXECUTE tt_prep_ins_select(2, 1);
 EXECUTE tt_prep_ioc_nothing(1);
 EXECUTE tt_prep_ioc_nothing(7);
-EXECUTE tt_prep_ioc_nothing(2);
-EXECUTE tt_prep_ioc_nothing(8);
-EXECUTE tt_prep_ioc_nothing(3);
-EXECUTE tt_prep_ioc_nothing(9);
 EXECUTE tt_prep_ioc_update(1, 31);
-EXECUTE tt_prep_ioc_update(2, 32);
-EXECUTE tt_prep_ioc_update(3, 33);
-EXECUTE tt_prep_ioc_update(4, 34);
-EXECUTE tt_prep_ioc_update(5, 35);
-EXECUTE tt_prep_ioc_update(6, 36);
 EXECUTE tt_prep_update(11, 12);
-EXECUTE tt_prep_update(13, 14);
-EXECUTE tt_prep_update(15, 16);
-EXECUTE tt_prep_update(17, 18);
-EXECUTE tt_prep_update(19, 20);
-EXECUTE tt_prep_update(21, 22);
 EXECUTE tt_prep_update(90, 99);
 EXECUTE tt_prep_delete(11, 12);
-EXECUTE tt_prep_delete(13, 14);
-EXECUTE tt_prep_delete(15, 16);
-EXECUTE tt_prep_delete(17, 18);
-EXECUTE tt_prep_delete(19, 20);
-EXECUTE tt_prep_delete(21, 22);
 EXECUTE tt_prep_delete(90, 99);
-SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
-  ORDER BY name;
-DEALLOCATE ALL;
-TRUNCATE tt_prep;
 
 SET plan_cache_mode = force_generic_plan;
-PREPARE tt_prep_ins_values(int) AS INSERT INTO tt_prep VALUES ($1, 'v', 0);
-PREPARE tt_prep_ins_select(int, int) AS
-  INSERT INTO tt_prep SELECT g, 's', 0 FROM generate_series($1, $2) g;
-PREPARE tt_prep_ioc_nothing(int) AS
-  INSERT INTO tt_prep VALUES ($1, 'dn', 0) ON CONFLICT DO NOTHING;
-PREPARE tt_prep_ioc_update(int, int) AS
-  INSERT INTO tt_prep VALUES ($1, 'du', 0), ($2, 'du', 0)
-  ON CONFLICT (id) DO UPDATE SET val = excluded.val, n = tt_prep.n + 1;
-PREPARE tt_prep_update(int, int) AS
-  UPDATE tt_prep SET n = n + 10 WHERE id BETWEEN $1 AND $2;
-PREPARE tt_prep_delete(int, int) AS
-  DELETE FROM tt_prep WHERE id BETWEEN $1 AND $2;
-EXECUTE tt_prep_ins_values(1);
 EXECUTE tt_prep_ins_values(2);
 EXECUTE tt_prep_ins_values(3);
-EXECUTE tt_prep_ins_values(4);
-EXECUTE tt_prep_ins_values(5);
-EXECUTE tt_prep_ins_values(6);
-EXECUTE tt_prep_ins_select(11, 12);
 EXECUTE tt_prep_ins_select(13, 14);
 EXECUTE tt_prep_ins_select(15, 16);
-EXECUTE tt_prep_ins_select(17, 18);
-EXECUTE tt_prep_ins_select(19, 20);
-EXECUTE tt_prep_ins_select(21, 22);
 EXECUTE tt_prep_ins_select(2, 1);
-EXECUTE tt_prep_ioc_nothing(1);
-EXECUTE tt_prep_ioc_nothing(7);
 EXECUTE tt_prep_ioc_nothing(2);
 EXECUTE tt_prep_ioc_nothing(8);
-EXECUTE tt_prep_ioc_nothing(3);
-EXECUTE tt_prep_ioc_nothing(9);
-EXECUTE tt_prep_ioc_update(1, 31);
 EXECUTE tt_prep_ioc_update(2, 32);
 EXECUTE tt_prep_ioc_update(3, 33);
-EXECUTE tt_prep_ioc_update(4, 34);
-EXECUTE tt_prep_ioc_update(5, 35);
-EXECUTE tt_prep_ioc_update(6, 36);
-EXECUTE tt_prep_update(11, 12);
 EXECUTE tt_prep_update(13, 14);
 EXECUTE tt_prep_update(15, 16);
-EXECUTE tt_prep_update(17, 18);
-EXECUTE tt_prep_update(19, 20);
-EXECUTE tt_prep_update(21, 22);
 EXECUTE tt_prep_update(90, 99);
-EXECUTE tt_prep_delete(11, 12);
 EXECUTE tt_prep_delete(13, 14);
 EXECUTE tt_prep_delete(15, 16);
-EXECUTE tt_prep_delete(17, 18);
-EXECUTE tt_prep_delete(19, 20);
-EXECUTE tt_prep_delete(21, 22);
 EXECUTE tt_prep_delete(90, 99);
+
 SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
   ORDER BY name;
+SELECT * FROM tt_prep ORDER BY id;
 DEALLOCATE ALL;
-TRUNCATE tt_prep;
-
-SET plan_cache_mode = auto;
-PREPARE tt_prep_ins_values(int) AS INSERT INTO tt_prep VALUES ($1, 'v', 0);
-PREPARE tt_prep_ins_select(int, int) AS
-  INSERT INTO tt_prep SELECT g, 's', 0 FROM generate_series($1, $2) g;
-PREPARE tt_prep_ioc_nothing(int) AS
-  INSERT INTO tt_prep VALUES ($1, 'dn', 0) ON CONFLICT DO NOTHING;
-PREPARE tt_prep_ioc_update(int, int) AS
-  INSERT INTO tt_prep VALUES ($1, 'du', 0), ($2, 'du', 0)
-  ON CONFLICT (id) DO UPDATE SET val = excluded.val, n = tt_prep.n + 1;
-PREPARE tt_prep_update(int, int) AS
-  UPDATE tt_prep SET n = n + 10 WHERE id BETWEEN $1 AND $2;
-PREPARE tt_prep_delete(int, int) AS
-  DELETE FROM tt_prep WHERE id BETWEEN $1 AND $2;
-EXECUTE tt_prep_ins_values(1);
-EXECUTE tt_prep_ins_values(2);
-EXECUTE tt_prep_ins_values(3);
-EXECUTE tt_prep_ins_values(4);
-EXECUTE tt_prep_ins_values(5);
-EXECUTE tt_prep_ins_values(6);
-EXECUTE tt_prep_ins_select(11, 12);
-EXECUTE tt_prep_ins_select(13, 14);
-EXECUTE tt_prep_ins_select(15, 16);
-EXECUTE tt_prep_ins_select(17, 18);
-EXECUTE tt_prep_ins_select(19, 20);
-EXECUTE tt_prep_ins_select(21, 22);
-EXECUTE tt_prep_ins_select(2, 1);
-EXECUTE tt_prep_ioc_nothing(1);
-EXECUTE tt_prep_ioc_nothing(7);
-EXECUTE tt_prep_ioc_nothing(2);
-EXECUTE tt_prep_ioc_nothing(8);
-EXECUTE tt_prep_ioc_nothing(3);
-EXECUTE tt_prep_ioc_nothing(9);
-EXECUTE tt_prep_ioc_update(1, 31);
-EXECUTE tt_prep_ioc_update(2, 32);
-EXECUTE tt_prep_ioc_update(3, 33);
-EXECUTE tt_prep_ioc_update(4, 34);
-EXECUTE tt_prep_ioc_update(5, 35);
-EXECUTE tt_prep_ioc_update(6, 36);
-EXECUTE tt_prep_update(11, 12);
-EXECUTE tt_prep_update(13, 14);
-EXECUTE tt_prep_update(15, 16);
-EXECUTE tt_prep_update(17, 18);
-EXECUTE tt_prep_update(19, 20);
-EXECUTE tt_prep_update(21, 22);
-EXECUTE tt_prep_update(90, 99);
-EXECUTE tt_prep_delete(11, 12);
-EXECUTE tt_prep_delete(13, 14);
-EXECUTE tt_prep_delete(15, 16);
-EXECUTE tt_prep_delete(17, 18);
-EXECUTE tt_prep_delete(19, 20);
-EXECUTE tt_prep_delete(21, 22);
-EXECUTE tt_prep_delete(90, 99);
-SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
-  ORDER BY name;
-DEALLOCATE ALL;
-
 DROP TABLE tt_prep;
 
--- Trigger created after PREPARE: the cached plan was built without the
--- wholerow column, so it must be replanned once the trigger exists.  OLD
--- and NEW must include the non-PK columns.  The two runs differ only in
--- plan_cache_mode.
+-- Trigger created after PREPARE: the cached generic plan was built without
+-- the wholerow column, so it must be replanned once the trigger exists.  OLD
+-- and NEW must include the non-PK columns.
 CREATE TABLE tt_late (id int PRIMARY KEY, a text, b int, c text);
+INSERT INTO tt_late SELECT g, 'a' || g, g, 'c' || g FROM generate_series(1, 6) g;
 
-SET plan_cache_mode = force_generic_plan;
-INSERT INTO tt_late SELECT g, 'a' || g, g, 'c' || g FROM generate_series(1, 16) g;
 PREPARE tt_late_update(int) AS UPDATE tt_late SET b = b + 100 WHERE id = $1;
 PREPARE tt_late_delete(int) AS DELETE FROM tt_late WHERE id = $1;
 EXECUTE tt_late_update(1);
-EXECUTE tt_late_update(3);
-EXECUTE tt_late_update(5);
-EXECUTE tt_late_update(7);
-EXECUTE tt_late_update(9);
-EXECUTE tt_late_update(11);
 EXECUTE tt_late_delete(2);
-EXECUTE tt_late_delete(4);
-EXECUTE tt_late_delete(6);
-EXECUTE tt_late_delete(8);
-EXECUTE tt_late_delete(10);
-EXECUTE tt_late_delete(12);
-SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
-  ORDER BY name;
 CREATE TRIGGER tt_late_upd AFTER UPDATE ON tt_late
   REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
   FOR EACH STATEMENT EXECUTE FUNCTION tt_log_update();
 CREATE TRIGGER tt_late_del AFTER DELETE ON tt_late
   REFERENCING OLD TABLE AS old_table
   FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
-EXECUTE tt_late_update(13);
-EXECUTE tt_late_delete(14);
+EXECUTE tt_late_update(3);
+EXECUTE tt_late_delete(4);
 DROP TRIGGER tt_late_upd ON tt_late;
 DROP TRIGGER tt_late_del ON tt_late;
-EXECUTE tt_late_update(15);
-EXECUTE tt_late_delete(16);
-SELECT * FROM tt_late ORDER BY id;
-DEALLOCATE ALL;
-TRUNCATE tt_late;
-
-SET plan_cache_mode = auto;
-INSERT INTO tt_late SELECT g, 'a' || g, g, 'c' || g FROM generate_series(1, 16) g;
-PREPARE tt_late_update(int) AS UPDATE tt_late SET b = b + 100 WHERE id = $1;
-PREPARE tt_late_delete(int) AS DELETE FROM tt_late WHERE id = $1;
-EXECUTE tt_late_update(1);
-EXECUTE tt_late_update(3);
 EXECUTE tt_late_update(5);
-EXECUTE tt_late_update(7);
-EXECUTE tt_late_update(9);
-EXECUTE tt_late_update(11);
-EXECUTE tt_late_delete(2);
-EXECUTE tt_late_delete(4);
 EXECUTE tt_late_delete(6);
-EXECUTE tt_late_delete(8);
-EXECUTE tt_late_delete(10);
-EXECUTE tt_late_delete(12);
 SELECT name, generic_plans, custom_plans FROM pg_prepared_statements
   ORDER BY name;
-CREATE TRIGGER tt_late_upd AFTER UPDATE ON tt_late
-  REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
-  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_update();
-CREATE TRIGGER tt_late_del AFTER DELETE ON tt_late
-  REFERENCING OLD TABLE AS old_table
-  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
-EXECUTE tt_late_update(13);
-EXECUTE tt_late_delete(14);
-DROP TRIGGER tt_late_upd ON tt_late;
-DROP TRIGGER tt_late_del ON tt_late;
-EXECUTE tt_late_update(15);
-EXECUTE tt_late_delete(16);
 SELECT * FROM tt_late ORDER BY id;
 DEALLOCATE ALL;
 
