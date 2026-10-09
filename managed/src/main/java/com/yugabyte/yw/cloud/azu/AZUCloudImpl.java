@@ -21,8 +21,14 @@ import com.azure.resourcemanager.network.fluent.models.LoadBalancingRuleInner;
 import com.azure.resourcemanager.network.fluent.models.NetworkInterfaceInner;
 import com.azure.resourcemanager.network.fluent.models.NetworkInterfaceIpConfigurationInner;
 import com.azure.resourcemanager.network.fluent.models.ProbeInner;
+import com.azure.resourcemanager.network.fluent.models.SubnetInner;
+import com.azure.resourcemanager.network.models.IpAllocationMethod;
+import com.azure.resourcemanager.network.models.LoadBalancerSku;
+import com.azure.resourcemanager.network.models.LoadBalancerSkuName;
+import com.azure.resourcemanager.network.models.LoadBalancerSkuTier;
 import com.azure.resourcemanager.network.models.ProbeProtocol;
 import com.azure.resourcemanager.network.models.TransportProtocol;
+import com.azure.resourcemanager.resources.fluentcore.arm.ResourceUtils;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.cloud.CloudAPI;
@@ -36,8 +42,8 @@ import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -50,6 +56,8 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.collections4.SetUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -289,47 +297,55 @@ public class AZUCloudImpl implements CloudAPI {
       AZUResourceGroupApiClient apiClient, List<VirtualMachineInner> nodes) {
     Map<NetworkInterfaceIpConfigurationInner, VirtualMachineInner> ipToVm = new HashMap();
     for (VirtualMachineInner node : nodes) {
-      List<NetworkInterfaceReference> networkInterfaces = node.networkProfile().networkInterfaces();
-      NetworkInterfaceReference primaryNetworkInterface;
-      try {
-        primaryNetworkInterface =
-            networkInterfaces.stream()
-                .filter(nic -> nic.primary() != Boolean.FALSE)
-                .collect(onlyElement());
-      } catch (IllegalStateException exception) {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Multiple primary network interfaces found for node: " + node);
-      } catch (NoSuchElementException exception) {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "No Primary network interface found for node: " + node);
-      }
-      String networkInterfaceUrl = primaryNetworkInterface.id();
-      String networkInterfaceName = CloudAPI.getResourceNameFromResourceUrl(networkInterfaceUrl);
-      NetworkInterfaceInner networkInterface =
-          apiClient.getNetworkInterfaceByName(networkInterfaceName);
-      try {
-        NetworkInterfaceIpConfigurationInner primaryIpConfig =
-            networkInterface.ipConfigurations().stream()
-                .filter(config -> config.primary())
-                .collect(onlyElement());
-        ipToVm.put(primaryIpConfig, node);
-      } catch (IllegalStateException exception) {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Multiple primary IP configurations found for node: " + node);
-      } catch (NoSuchElementException exception) {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "No Primary IP configuration found for node: " + node);
-      }
+      ipToVm.put(getPrimaryIpConfig(getPrimaryNic(apiClient, node)), node);
     }
     return ipToVm;
   }
 
+  private static NetworkInterfaceInner getPrimaryNic(
+      AZUResourceGroupApiClient apiClient, VirtualMachineInner node) {
+    List<NetworkInterfaceReference> networkInterfaces = node.networkProfile().networkInterfaces();
+    NetworkInterfaceReference primaryNetworkInterface;
+    try {
+      primaryNetworkInterface =
+          networkInterfaces.stream()
+              .filter(nic -> nic.primary() != Boolean.FALSE)
+              .collect(onlyElement());
+    } catch (IllegalStateException exception) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Multiple primary network interfaces found for node: " + node);
+    } catch (NoSuchElementException exception) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "No Primary network interface found for node: " + node);
+    }
+    return apiClient.getNetworkInterface(primaryNetworkInterface.id());
+  }
+
+  private static NetworkInterfaceIpConfigurationInner getPrimaryIpConfig(
+      NetworkInterfaceInner networkInterface) {
+    try {
+      return networkInterface.ipConfigurations().stream()
+          .filter(config -> config.primary())
+          .collect(onlyElement());
+    } catch (IllegalStateException exception) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Multiple primary IP configurations found for network interface: "
+              + networkInterface.name());
+    } catch (NoSuchElementException exception) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "No Primary IP configuration found for network interface: " + networkInterface.name());
+    }
+  }
+
   /**
-   * Method to update existing backend pools, as well as create the missing backend pools. This
-   * methods leads to the creation of the pools on Azure cloud as well The vms that are a part of
-   * the backend pool, all need to be a part of the same virtual network in which the existing
-   * backend pool is already a part of. An empty node list empties the primary backend pool
-   * (detach).
+   * Makes the primary backend pool, at index 0, hold exactly the nodes, and creates it if the load
+   * balancer has none. An empty node list empties the pool (detach). A pool holds either IP
+   * addresses or network interfaces. A pool that holds IP addresses stays that way, so that load
+   * balancers that YBA set up before it used network interfaces keep working; all its VMs must be
+   * in one virtual network. A new or empty pool takes network interfaces, because an Azure Private
+   * Link service cannot use a load balancer with an IP-based pool.
    *
    * @param apiClient Azure API client to communicate with the Azure cloud
    * @param lbName Name of the load balancer to which the backend pools belong
@@ -344,6 +360,9 @@ public class AZUCloudImpl implements CloudAPI {
       List<BackendAddressPoolInner> backends,
       List<NodeID> nodeIDs) {
     List<VirtualMachineInner> nodes = getVirtualMachinesByNodeIDs(apiClient, nodeIDs);
+    if (backends == null || backends.isEmpty() || !hasIpAddresses(backends.get(0))) {
+      return ensureNicBackends(apiClient, lbName, backends, nodes);
+    }
     Map<NetworkInterfaceIpConfigurationInner, VirtualMachineInner> ipToVm =
         mapIpToNodes(apiClient, nodes);
     // Load balancing traffic should be forwarded over the private network. Hence private IP is used
@@ -354,14 +373,9 @@ public class AZUCloudImpl implements CloudAPI {
                     entry -> entry.getKey().privateIpAddress(),
                     entry -> CloudAPI.getResourceNameFromResourceUrl(entry.getValue().id())));
     try {
-      // Assumption: The backend pool at 0th index is primary backend pool, and we only change this
-      // pool
       if (ipToVmName.isEmpty()) {
         // Detach: no member subnets to derive vnet from (onlyElement() below throws on empty
         // set); vnet unused when writing an empty address list.
-        if (backends == null || backends.isEmpty()) {
-          return backends == null ? new ArrayList<>() : backends;
-        }
         backends.set(
             0, apiClient.updateIPsInBackendPool(lbName, ipToVmName, backends.get(0), null));
         return backends;
@@ -376,16 +390,9 @@ public class AZUCloudImpl implements CloudAPI {
                   subnetIds.stream()
                       .map(subnet -> subnet.split("/subnets")[0])
                       .collect(onlyElement()));
-      if (backends == null || backends.size() == 0) {
-        return Arrays.asList(
-            apiClient.createNewBackendPoolForIPs(lbName, ipToVmName, virtualNetwork));
-      } else {
-        BackendAddressPoolInner backendAddressPool = backends.get(0);
-        backendAddressPool =
-            apiClient.updateIPsInBackendPool(
-                lbName, ipToVmName, backendAddressPool, virtualNetwork);
-        backends.set(0, backendAddressPool);
-      }
+      backends.set(
+          0,
+          apiClient.updateIPsInBackendPool(lbName, ipToVmName, backends.get(0), virtualNetwork));
       return backends;
     } catch (Exception exception) {
       log.error("Error updating backend pools for load balancer {}", lbName, exception);
@@ -398,6 +405,79 @@ public class AZUCloudImpl implements CloudAPI {
       throw new PlatformServiceException(
           BAD_REQUEST, "Error updating backend pools: " + errorDetail);
     }
+  }
+
+  // Azure reports an IP address only for the members of an IP-based pool.
+  private static boolean hasIpAddresses(BackendAddressPoolInner pool) {
+    return CollectionUtils.emptyIfNull(pool.loadBalancerBackendAddresses()).stream()
+        .anyMatch(address -> StringUtils.isNotBlank(address.ipAddress()));
+  }
+
+  // A network interface joins a pool through its IP configuration, not through the pool.
+  private List<BackendAddressPoolInner> ensureNicBackends(
+      AZUResourceGroupApiClient apiClient,
+      String lbName,
+      List<BackendAddressPoolInner> backends,
+      List<VirtualMachineInner> nodes) {
+    if (backends == null || backends.isEmpty()) {
+      if (nodes.isEmpty()) {
+        return new ArrayList<>();
+      }
+      backends =
+          new ArrayList<>(
+              List.of(apiClient.createBackendPool(lbName, "bp-" + UUID.randomUUID().toString())));
+    }
+    BackendAddressPoolInner pool = backends.get(0);
+    Map<String, NetworkInterfaceInner> nicsById = new HashMap<>();
+    for (VirtualMachineInner node : nodes) {
+      NetworkInterfaceInner nic = getPrimaryNic(apiClient, node);
+      nicsById.put(nic.id().toLowerCase(), nic);
+    }
+    removeNicsFromPool(apiClient, pool, nicsById.keySet());
+    for (NetworkInterfaceInner nic : nicsById.values()) {
+      setPoolMembership(apiClient, nic, getPrimaryIpConfig(nic), pool.id(), true);
+    }
+    backends.set(0, apiClient.getBackendPool(lbName, pool.name()));
+    return backends;
+  }
+
+  /** Removes from the pool the network interfaces whose lowercase IDs are not in keepNicIds. */
+  private static void removeNicsFromPool(
+      AZUResourceGroupApiClient apiClient,
+      BackendAddressPoolInner pool,
+      Set<String> keepNicIds) {
+    for (NetworkInterfaceIpConfigurationInner member :
+        CollectionUtils.emptyIfNull(pool.backendIpConfigurations())) {
+      String nicId = ResourceUtils.parentResourceIdFromResourceId(member.id());
+      if (keepNicIds.contains(nicId.toLowerCase())) {
+        continue;
+      }
+      NetworkInterfaceInner nic = apiClient.getNetworkInterface(nicId);
+      nic.ipConfigurations().stream()
+          .filter(ipConfig -> ipConfig.id().equalsIgnoreCase(member.id()))
+          .findFirst()
+          .ifPresent(ipConfig -> setPoolMembership(apiClient, nic, ipConfig, pool.id(), false));
+    }
+  }
+
+  // Updates the network interface only when its membership changes.
+  private static void setPoolMembership(
+      AZUResourceGroupApiClient apiClient,
+      NetworkInterfaceInner nic,
+      NetworkInterfaceIpConfigurationInner ipConfig,
+      String poolId,
+      boolean member) {
+    List<BackendAddressPoolInner> pools =
+        new ArrayList<>(CollectionUtils.emptyIfNull(ipConfig.loadBalancerBackendAddressPools()));
+    boolean wasMember = pools.removeIf(pool -> pool.id().equalsIgnoreCase(poolId));
+    if (wasMember == member) {
+      return;
+    }
+    if (member) {
+      pools.add(new BackendAddressPoolInner().withId(poolId));
+    }
+    ipConfig.withLoadBalancerBackendAddressPools(pools);
+    apiClient.updateNetworkInterface(nic);
   }
 
   /**
@@ -509,6 +589,145 @@ public class AZUCloudImpl implements CloudAPI {
     // with health probes.
     loadBalancer = associateProbesWithLbRules(loadBalancer, healthCheckConfiguration);
     apiClient.updateLoadBalancer(lbName, loadBalancer);
+  }
+
+  @VisibleForTesting
+  protected AZUResourceGroupApiClient getApiClient(Provider provider) {
+    return new AZUResourceGroupApiClient(CloudInfoInterface.get(provider));
+  }
+
+  // Managed load balancer methods
+
+  @Override
+  public boolean supportsManagedLoadBalancer() {
+    return true;
+  }
+
+  /**
+   * Creates the internal Standard load balancer with one frontend in the subnet of the first zone,
+   * or reuses the one with the same name. It goes in the provider resource group, where
+   * manageNodeGroup looks for it and adds the backend pool, rules and probes. The ports are not
+   * needed here.
+   *
+   * @return the private IP of the frontend.
+   */
+  @Override
+  public String ensureManagedLoadBalancer(
+      Provider provider,
+      String regionCode,
+      String name,
+      List<AvailabilityZone> zones,
+      List<Integer> ports,
+      Map<String, String> tags) {
+    AZUResourceGroupApiClient apiClient = getApiClient(provider);
+    LoadBalancerInner lb = apiClient.getLoadBalancerIfExists(name);
+    if (lb == null) {
+      FrontendIpConfigurationInner frontend =
+          new FrontendIpConfigurationInner()
+              .withName("frontend")
+              .withPrivateIpAllocationMethod(IpAllocationMethod.DYNAMIC)
+              .withSubnet(new SubnetInner().withId(getSubnetId(provider, zones, regionCode, name)));
+      lb =
+          apiClient.updateLoadBalancer(
+              name,
+              new LoadBalancerInner()
+                  .withLocation(regionCode)
+                  .withTags(tags)
+                  .withSku(
+                      new LoadBalancerSku()
+                          .withName(LoadBalancerSkuName.STANDARD)
+                          .withTier(LoadBalancerSkuTier.REGIONAL))
+                  .withFrontendIpConfigurations(List.of(frontend)));
+      log.info("Created load balancer {} in {}", name, regionCode);
+    } else {
+      addTags(apiClient, name, lb, tags);
+    }
+    return lb.frontendIpConfigurations().get(0).privateIpAddress();
+  }
+
+  /**
+   * Deletes the load balancer with its pools, rules and probes. A load balancer that does not exist
+   * counts as deleted.
+   */
+  @Override
+  public void deleteManagedLoadBalancer(Provider provider, String regionCode, String name) {
+    AZUResourceGroupApiClient apiClient = getApiClient(provider);
+    LoadBalancerInner lb = apiClient.getLoadBalancerIfExists(name);
+    if (lb == null) {
+      log.info("Load balancer {} does not exist", name);
+      return;
+    }
+    // A network interface that still uses a pool can block the delete. Only a destroy that ignored
+    // errors leaves one behind: a destroy deletes the VMs and their interfaces first.
+    for (BackendAddressPoolInner pool : CollectionUtils.emptyIfNull(lb.backendAddressPools())) {
+      removeNicsFromPool(apiClient, pool, Set.of());
+    }
+    apiClient.deleteLoadBalancer(name);
+    log.info("Deleted load balancer {} in {}", name, regionCode);
+  }
+
+  // Adds new tags and changes the values of existing ones. It never removes a tag, and a tag error
+  // is not worth failing the task.
+  private static void addTags(
+      AZUResourceGroupApiClient apiClient,
+      String name,
+      LoadBalancerInner lb,
+      Map<String, String> tags) {
+    Map<String, String> merged = new HashMap<>(MapUtils.emptyIfNull(lb.tags()));
+    merged.putAll(tags);
+    if (merged.equals(MapUtils.emptyIfNull(lb.tags()))) {
+      return;
+    }
+    try {
+      apiClient.updateLoadBalancerTags(name, merged);
+    } catch (RuntimeException e) {
+      log.warn("Could not update the tags of load balancer {}: {}", name, e.getMessage());
+    }
+  }
+
+  /**
+   * The subnet ID of the first zone that has a subnet, so that a retry picks the same one. A subnet
+   * name resolves as get_subnet_id in devops azure/utils.py resolves it for the VMs.
+   */
+  private static String getSubnetId(
+      Provider provider, List<AvailabilityZone> zones, String regionCode, String lbName) {
+    AvailabilityZone zone =
+        zones.stream()
+            .filter(az -> StringUtils.isNotBlank(az.getSubnet()))
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST,
+                        "No zone of region "
+                            + regionCode
+                            + " has a subnet for load balancer "
+                            + lbName));
+    String subnet = zone.getSubnet();
+    if (subnet.startsWith("/subscriptions/")) {
+      return subnet;
+    }
+    AzureRegionCloudInfo regionInfo = CloudInfoInterface.get(zone.getRegion());
+    String vnet = regionInfo.getVnet();
+    if (StringUtils.isBlank(vnet)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Region " + regionCode + " has no virtual network");
+    }
+    if (!vnet.startsWith("/subscriptions/")) {
+      AzureCloudInfo cloudInfo = CloudInfoInterface.get(provider);
+      vnet =
+          String.format(
+              "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s",
+              StringUtils.firstNonBlank(
+                  cloudInfo.getAzuNetworkSubscriptionId(), cloudInfo.getAzuSubscriptionId()),
+              StringUtils.firstNonBlank(
+                  regionInfo.getAzuNetworkRGOverride(),
+                  regionInfo.getAzuRGOverride(),
+                  cloudInfo.getAzuNetworkRG(),
+                  cloudInfo.getAzuRG()),
+              vnet);
+    }
+    return vnet + "/subnets/" + subnet;
   }
 
   public static TokenCredential getCredsOrFallbackToDefault(

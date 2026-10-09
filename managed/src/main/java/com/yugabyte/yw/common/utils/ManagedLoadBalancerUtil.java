@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.utils;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -61,6 +62,15 @@ public class ManagedLoadBalancerUtil {
     return PRIVATE_NAME_PREFIX + base32Id(clusterUUID);
   }
 
+  /**
+   * {@link #getPrivateName(UUID)}, with the region code added on Azure. Azure scopes names to a
+   * resource group, and one resource group can hold every region of the cluster.
+   */
+  public static String getPrivateName(UUID clusterUUID, Region region) {
+    String name = getPrivateName(clusterUUID);
+    return region.getProviderCloudCode() == CloudType.azu ? name + "-" + region.getCode() : name;
+  }
+
   /** Whether the cluster asks for any load balancer that YBA manages. */
   public static boolean isEnabled(Cluster cluster) {
     return cluster.userIntent.isManagedLoadBalancerEnabled();
@@ -99,9 +109,10 @@ public class ManagedLoadBalancerUtil {
         if (!regionUuids.add(region.uuid)) {
           continue;
         }
+        Region regionModel = Region.getOrBadRequest(region.uuid);
         // getZones() leaves out inactive zones. Sorted, so that the saved state is stable.
         List<UUID> azUuids =
-            Region.getOrBadRequest(region.uuid).getZones().stream()
+            regionModel.getZones().stream()
                 .sorted(Comparator.comparing(AvailabilityZone::getCode))
                 .map(AvailabilityZone::getUuid)
                 .collect(Collectors.toList());
@@ -111,7 +122,7 @@ public class ManagedLoadBalancerUtil {
                 region.uuid,
                 ManagedLoadBalancer.Scheme.PRIVATE,
                 azUuids,
-                getPrivateName(cluster.uuid),
+                getPrivateName(cluster.uuid, regionModel),
                 null));
       }
     }

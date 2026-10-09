@@ -2,9 +2,12 @@ package com.yugabyte.yw.cloud.azu;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -13,8 +16,12 @@ import static org.mockito.Mockito.when;
 import com.azure.core.management.SubResource;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.FrontendIpConfigurationInner;
+import com.azure.resourcemanager.network.fluent.models.LoadBalancerInner;
 import com.azure.resourcemanager.network.fluent.models.LoadBalancingRuleInner;
 import com.azure.resourcemanager.network.fluent.models.ProbeInner;
+import com.azure.resourcemanager.network.models.IpAllocationMethod;
+import com.azure.resourcemanager.network.models.LoadBalancerBackendAddress;
+import com.azure.resourcemanager.network.models.LoadBalancerSkuName;
 import com.azure.resourcemanager.network.models.ProbeProtocol;
 import com.azure.resourcemanager.network.models.TransportProtocol;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
@@ -27,14 +34,19 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
+import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 
 public class AZUCloudImplTest extends FakeDBApplication {
@@ -116,7 +128,11 @@ public class AZUCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testEnsureBackendsDetachEmptiesExistingPool() {
-    BackendAddressPoolInner existingPool = (new BackendAddressPoolInner()).withId("Backend1");
+    BackendAddressPoolInner existingPool =
+        (new BackendAddressPoolInner())
+            .withId("Backend1")
+            .withLoadBalancerBackendAddresses(
+                List.of(new LoadBalancerBackendAddress().withIpAddress("10.0.0.4")));
     List<BackendAddressPoolInner> backends = new ArrayList<>(Arrays.asList(existingPool));
     BackendAddressPoolInner emptiedPool = (new BackendAddressPoolInner()).withId("Backend1");
     when(mockApiClient.updateIPsInBackendPool(
@@ -147,5 +163,87 @@ public class AZUCloudImplTest extends FakeDBApplication {
     List<ProbeInner> newProbes =
         azuCloudImpl.ensureProbesForPorts(healthCheckConfiguration, new ArrayList<ProbeInner>());
     assertEquals(1, newProbes.size());
+  }
+
+  private static final String LB_NAME = "lbi-h6uf6zcxc5cwfm74fsld6zvpuy-westus2";
+  private static final String LB_REGION = "westus2";
+  private Provider azuProvider;
+  private List<AvailabilityZone> lbZones;
+
+  private void setupLbProvider() {
+    azuProvider = ModelFactory.azuProvider(customer);
+    AzureCloudInfo cloudInfo = CloudInfoInterface.get(azuProvider);
+    cloudInfo.setAzuSubscriptionId("sub");
+    cloudInfo.setAzuRG("yb-rg");
+    cloudInfo.setAzuNetworkSubscriptionId("net-sub");
+    cloudInfo.setAzuNetworkRG("provider-net-rg");
+    Region region = Region.create(azuProvider, LB_REGION, LB_REGION, "yb-image");
+    AzureRegionCloudInfo regionInfo = CloudInfoInterface.get(region);
+    regionInfo.setVnet("yb-vnet");
+    regionInfo.setAzuNetworkRGOverride("region-net-rg");
+    lbZones =
+        List.of(
+            AvailabilityZone.createOrThrow(region, "westus2-1", "westus2-1", "subnet-1"),
+            AvailabilityZone.createOrThrow(region, "westus2-2", "westus2-2", "subnet-2"));
+    doReturn(mockApiClient).when(azuCloudImpl).getApiClient(any());
+  }
+
+  private static LoadBalancerInner lb(String location, Map<String, String> tags) {
+    return new LoadBalancerInner()
+        .withLocation(location)
+        .withTags(tags)
+        .withFrontendIpConfigurations(
+            List.of(new FrontendIpConfigurationInner().withPrivateIpAddress("10.0.0.5")));
+  }
+
+  private String ensureLb(Map<String, String> tags) {
+    return azuCloudImpl.ensureManagedLoadBalancer(
+        azuProvider, LB_REGION, LB_NAME, lbZones, List.of(5433, 9042), tags);
+  }
+
+  @Test
+  public void testEnsureLbCreatesStandardLbInSubnetOfFirstZone() {
+    setupLbProvider();
+    when(mockApiClient.updateLoadBalancer(eq(LB_NAME), any()))
+        .thenReturn(lb(LB_REGION, Map.of()));
+
+    assertEquals("10.0.0.5", ensureLb(Map.of("universe-name", "u1")));
+
+    ArgumentCaptor<LoadBalancerInner> created = ArgumentCaptor.forClass(LoadBalancerInner.class);
+    verify(mockApiClient).updateLoadBalancer(eq(LB_NAME), created.capture());
+    assertEquals(LB_REGION, created.getValue().location());
+    assertEquals(Map.of("universe-name", "u1"), created.getValue().tags());
+    assertEquals(LoadBalancerSkuName.STANDARD, created.getValue().sku().name());
+    FrontendIpConfigurationInner frontend = created.getValue().frontendIpConfigurations().get(0);
+    assertEquals(IpAllocationMethod.DYNAMIC, frontend.privateIpAllocationMethod());
+    // The region override wins over the provider network resource group, as for the VMs.
+    assertEquals(
+        "/subscriptions/net-sub/resourceGroups/region-net-rg/providers/Microsoft.Network"
+            + "/virtualNetworks/yb-vnet/subnets/subnet-1",
+        frontend.subnet().id());
+  }
+
+  @Test
+  public void testEnsureLbReusesLbAndAddsTags() {
+    setupLbProvider();
+    when(mockApiClient.getLoadBalancerIfExists(LB_NAME))
+        .thenReturn(lb(LB_REGION, Map.of("owner", "dba")));
+
+    assertEquals("10.0.0.5", ensureLb(Map.of("universe-name", "u1")));
+
+    verify(mockApiClient, never()).updateLoadBalancer(any(), any());
+    verify(mockApiClient)
+        .updateLoadBalancerTags(LB_NAME, Map.of("owner", "dba", "universe-name", "u1"));
+  }
+
+  @Test
+  public void testDeleteLbSkipsMissingLb() {
+    setupLbProvider();
+    azuCloudImpl.deleteManagedLoadBalancer(azuProvider, LB_REGION, LB_NAME);
+    verify(mockApiClient, never()).deleteLoadBalancer(any());
+
+    when(mockApiClient.getLoadBalancerIfExists(LB_NAME)).thenReturn(lb(LB_REGION, Map.of()));
+    azuCloudImpl.deleteManagedLoadBalancer(azuProvider, LB_REGION, LB_NAME);
+    verify(mockApiClient).deleteLoadBalancer(LB_NAME);
   }
 }
