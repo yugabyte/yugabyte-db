@@ -526,6 +526,9 @@ Status HeartbeatPoller::TryHeartbeat() {
       if (!newly_drained_uuids.empty() && server_.MarkTServersAsFailed(newly_drained_uuids)) {
         applied_drained_tservers_.insert(newly_drained_uuids.begin(), newly_drained_uuids.end());
       }
+      // Forget UUIDs the master no longer names, so a tserver that is un-blacklisted and later
+      // drained again is re-applied. The master also sends an empty list for a grace period after
+      // a failover, so a failover costs one idempotent re-sweep per still-drained tserver.
       std::erase_if(applied_drained_tservers_, [&drained](const std::string& uuid) {
         return std::find(drained.begin(), drained.end(), uuid) == drained.end();
       });

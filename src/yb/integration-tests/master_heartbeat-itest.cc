@@ -64,6 +64,7 @@ using namespace std::literals;
 
 DECLARE_int32(blacklist_progress_initial_delay_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_uint32(drained_blacklisted_tservers_refresh_interval_ms);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(send_blacklisted_tservers_on_heartbeat);
 DECLARE_int32(heartbeat_interval_ms);
@@ -382,8 +383,10 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 2000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) = 2000;
-  // The master was just elected; do not sit out the post-failover grace period.
+  // The master was just elected; do not sit out the post-failover grace period, and recompute the
+  // drained set on every background tick so the hint tracks the replica maps closely.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drained_blacklisted_tservers_refresh_interval_ms) = 0;
   CreateTable();
   ASSERT_OK(mini_cluster_->AddTabletServer());
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));

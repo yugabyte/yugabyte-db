@@ -401,6 +401,12 @@ DEFINE_test_flag(bool, tablegroup_master_only, false,
 DEFINE_RUNTIME_bool(enable_register_ts_from_raft, true,
     "Whether to register a tserver from the consensus information of a reported tablet.");
 
+DEFINE_RUNTIME_uint32(drained_blacklisted_tservers_refresh_interval_ms, 5000,
+    "How often the master rescans the tablet replica maps for blacklisted tservers that host no "
+    "replicas, to name them in heartbeat responses. The scan runs only while at least one "
+    "blacklisted tserver is registered.");
+TAG_FLAG(drained_blacklisted_tservers_refresh_interval_ms, advanced);
+
 DECLARE_int32(blacklist_progress_initial_delay_secs);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
@@ -1661,6 +1667,9 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
     ts_desc->set_has_tablet_report(false);
     ts_desc->ResetYsqlDbPins();
   }
+  // Derived from replica maps that were just cleared; the background task rebuilds it once the
+  // post-election grace period has passed.
+  ResetDrainedBlacklistedTServers();
 
   {
     LockGuard lock(permissions_manager()->mutex());
@@ -13699,8 +13708,8 @@ void CatalogManager::RefreshDrainedBlacklistedTServers() {
   // Replica maps are rebuilt from tablet reports after a master failover, so until tservers have
   // had time to report every blacklisted tserver would look drained. Same grace period that keeps
   // GetLoadMoveCompletionPercent from reporting a premature 100%.
-  const bool past_failover_grace =
-      TimeSinceElectedLeader() > MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs);
+  const bool past_failover_grace = TimeSinceElectedLeader() >
+      MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs);
   auto blacklist = BlacklistSetFromPB();
   if (past_failover_grace && blacklist.ok() && !blacklist->empty()) {
     // Unresponsive descriptors stay candidates: a decommissioned tserver keeps being named after
@@ -13713,6 +13722,20 @@ void CatalogManager::RefreshDrainedBlacklistedTServers() {
       }
     }
     if (!candidates.empty()) {
+      // A candidate that is fully drained forces a scan of every tablet, and stays a candidate
+      // until it is removed from the registry, which can be hours after the drain. Bound that cost
+      // to one scan per interval; a hint that lags the replica maps by a few seconds is fine, and
+      // GetLoadMoveCompletionPercent waits for the derived set anyway.
+      const auto now = CoarseMonoClock::Now();
+      const auto interval = FLAGS_drained_blacklisted_tservers_refresh_interval_ms * 1ms;
+      {
+        std::lock_guard l(drained_blacklisted_tservers_lock_);
+        if (drained_blacklisted_tservers_refreshed_at_ != CoarseTimePoint() &&
+            now - drained_blacklisted_tservers_refreshed_at_ < interval) {
+          return;
+        }
+        drained_blacklisted_tservers_refreshed_at_ = now;
+      }
       SharedLock lock(mutex_);
       for (const auto& [_, tablet] : *tablet_map_) {
         if (!tablet->table() || PREDICT_FALSE(tablet->LockForRead()->is_deleted())) {
@@ -13735,6 +13758,12 @@ void CatalogManager::RefreshDrainedBlacklistedTServers() {
 std::vector<TabletServerId> CatalogManager::GetDrainedBlacklistedTServers() const {
   std::lock_guard l(drained_blacklisted_tservers_lock_);
   return drained_blacklisted_tservers_;
+}
+
+void CatalogManager::ResetDrainedBlacklistedTServers() {
+  std::lock_guard l(drained_blacklisted_tservers_lock_);
+  drained_blacklisted_tservers_.clear();
+  drained_blacklisted_tservers_refreshed_at_ = CoarseTimePoint();
 }
 
 void CatalogManager::ResetTasksTrackers() {
