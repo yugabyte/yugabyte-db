@@ -37,6 +37,7 @@
 #include <iosfwd>
 #include <memory>
 #include <ostream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -129,6 +130,11 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   // Full reports can take multiple heartbeats.
   // This field has value of the sequence number of the first heartbeat in this scenario.
   std::optional<int32> full_report_seq_no_;
+
+  // Drained blacklisted tservers the shared client has already been told about. The master resends
+  // the list on every heartbeat while it holds; a UUID is re-applied only after it leaves the list
+  // and comes back, or if the previous attempt was dropped because the client was not ready yet.
+  std::set<std::string> applied_drained_tservers_;
 
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
 };
@@ -504,21 +510,25 @@ Status HeartbeatPoller::TryHeartbeat() {
       server_.MarkTServersAsFollowers(blacklisted_uuids);
     }
 
-    if (resp.blacklisted_tservers_with_no_tablets_size() > 0) {
-      // The master resends this list on every heartbeat while the condition holds, so only act on
-      // UUIDs that were absent from the previous response. Marking is permanent until a master or
-      // Raft refresh rebuilds the tablet's replica list, which is also how a tserver that is taken
-      // off the blacklist and gains tablets again re-enters the meta cache.
-      const auto& previous = last_hb_response_.blacklisted_tservers_with_no_tablets();
+    // A response that asks us to re-register was built before the master knew this instance and
+    // carries none of the per-cluster lists, so it says nothing about who is drained.
+    if (!resp.needs_reregister()) {
+      // Marking is permanent until a master or Raft refresh rebuilds the tablet's replica list,
+      // which is also how a tserver that is taken off the blacklist and gains tablets again
+      // re-enters the meta cache.
+      const auto& drained = resp.blacklisted_tservers_with_no_tablets();
       std::vector<std::string> newly_drained_uuids;
-      for (const auto& uuid : resp.blacklisted_tservers_with_no_tablets()) {
-        if (std::find(previous.begin(), previous.end(), uuid) == previous.end()) {
+      for (const auto& uuid : drained) {
+        if (!applied_drained_tservers_.contains(uuid)) {
           newly_drained_uuids.push_back(uuid);
         }
       }
-      if (!newly_drained_uuids.empty()) {
-        server_.MarkTServersAsFailed(newly_drained_uuids);
+      if (!newly_drained_uuids.empty() && server_.MarkTServersAsFailed(newly_drained_uuids)) {
+        applied_drained_tservers_.insert(newly_drained_uuids.begin(), newly_drained_uuids.end());
       }
+      std::erase_if(applied_drained_tservers_, [&drained](const std::string& uuid) {
+        return std::find(drained.begin(), drained.end(), uuid) == drained.end();
+      });
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as

@@ -201,9 +201,15 @@ struct RemoteReplica {
     permanent_failure = permanent_failure || permanent;
   }
 
+  // A no-op for a permanent failure: GetRemoteTabletServers decides to clear an expired mark under
+  // the shared lock and applies it under the exclusive lock, so a permanent mark set in between
+  // must not be undone by that deferred clear. Permanent marks only go away when the replica
+  // object itself is replaced.
   void ClearFailed() {
+    if (permanent_failure) {
+      return;
+    }
     last_failed_time = MonoTime::kUninitialized;
-    permanent_failure = false;
   }
 
   bool Failed() const {

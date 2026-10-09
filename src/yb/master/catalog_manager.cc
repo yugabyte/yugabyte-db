@@ -401,6 +401,7 @@ DEFINE_test_flag(bool, tablegroup_master_only, false,
 DEFINE_RUNTIME_bool(enable_register_ts_from_raft, true,
     "Whether to register a tserver from the consensus information of a reported tablet.");
 
+DECLARE_int32(blacklist_progress_initial_delay_secs);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
@@ -13691,6 +13692,49 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistPB& blacklist, boo
   }
 
   return res;
+}
+
+void CatalogManager::RefreshDrainedBlacklistedTServers() {
+  std::vector<TabletServerId> drained;
+  // Replica maps are rebuilt from tablet reports after a master failover, so until tservers have
+  // had time to report every blacklisted tserver would look drained. Same grace period that keeps
+  // GetLoadMoveCompletionPercent from reporting a premature 100%.
+  const bool past_failover_grace =
+      TimeSinceElectedLeader() > MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs);
+  auto blacklist = BlacklistSetFromPB();
+  if (past_failover_grace && blacklist.ok() && !blacklist->empty()) {
+    // Unresponsive descriptors stay candidates: a decommissioned tserver keeps being named after
+    // it is shut down, until it is removed from the registry. The tserver's own last reported
+    // tablet count is deliberately not consulted; it is stale once the tserver is dead.
+    std::unordered_set<TabletServerId> candidates;
+    for (const auto& desc : master_->ts_manager()->GetAllDescriptors()) {
+      if (desc->IsBlacklisted(*blacklist)) {
+        candidates.insert(desc->permanent_uuid());
+      }
+    }
+    if (!candidates.empty()) {
+      SharedLock lock(mutex_);
+      for (const auto& [_, tablet] : *tablet_map_) {
+        if (!tablet->table() || PREDICT_FALSE(tablet->LockForRead()->is_deleted())) {
+          continue;
+        }
+        for (const auto& [ts_uuid, _replica] : *tablet->GetReplicaLocations()) {
+          candidates.erase(ts_uuid);
+        }
+        if (candidates.empty()) {
+          break;
+        }
+      }
+    }
+    drained.assign(candidates.begin(), candidates.end());
+  }
+  std::lock_guard l(drained_blacklisted_tservers_lock_);
+  drained_blacklisted_tservers_ = std::move(drained);
+}
+
+std::vector<TabletServerId> CatalogManager::GetDrainedBlacklistedTServers() const {
+  std::lock_guard l(drained_blacklisted_tservers_lock_);
+  return drained_blacklisted_tservers_;
 }
 
 void CatalogManager::ResetTasksTrackers() {

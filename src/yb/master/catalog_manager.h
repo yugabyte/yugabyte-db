@@ -1926,6 +1926,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Calculate the total number of replicas which are being handled by servers in state.
   int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
 
+  // Recomputes the blacklisted tservers that host no replica of any live tablet, as far as the
+  // replica maps know. Run from the background task; served to tservers in heartbeat responses so
+  // they can stop routing to cached replicas on those tservers.
+  void RefreshDrainedBlacklistedTServers();
+  std::vector<TabletServerId> GetDrainedBlacklistedTServers() const;
+
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
 
   Result<std::map<std::string, KeyRange>> GetTableKeyRanges(const TableId& table_id);
@@ -3490,6 +3496,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
+
+  mutable simple_spinlock drained_blacklisted_tservers_lock_;
+  std::vector<TabletServerId> drained_blacklisted_tservers_
+      GUARDED_BY(drained_blacklisted_tservers_lock_);
 
   std::unique_ptr<rpc::ScheduledTaskTracker> refresh_yql_partitions_task_;
 

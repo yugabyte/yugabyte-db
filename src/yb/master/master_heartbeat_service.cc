@@ -595,21 +595,15 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
         }
       }
 
-      // Unlike the leader-blacklist hint above, this is recomputed and sent on every heartbeat
-      // while the condition holds rather than once: a lost response, a master failover, or a
-      // recipient that was unresponsive at the time all self-heal on the next heartbeat, with no
-      // master-side state to persist. Unresponsive descriptors are included so the hint keeps
-      // flowing after the drained tserver is shut down, until it is removed from the registry.
-      if (FLAGS_send_blacklisted_tservers_on_heartbeat &&
-          cluster_config->server_blacklist().hosts_size() > 0) {
-        auto blacklist = ToBlacklistSet(GetBlacklist(*cluster_config, /*blacklist_leader=*/ false));
-        for (const auto& desc : server_->ts_manager()->GetAllDescriptors()) {
-          // A descriptor registered from a Raft config that never heartbeated has a default
-          // live-replica count of 0, which says nothing about what it hosts.
-          if (desc->LastHeartbeatTime() && desc->num_live_replicas() == 0 &&
-              IsBlacklisted(desc->GetRegistration(), blacklist)) {
-            resp->add_blacklisted_tservers_with_no_tablets(desc->permanent_uuid());
-          }
+      // Unlike the leader-blacklist hint above, this is sent on every heartbeat while the
+      // condition holds rather than once: a lost response, a master failover, or a recipient that
+      // was unresponsive at the time all self-heal on the next heartbeat, with no master-side
+      // state to persist. The set is derived from the replica maps by the background task, so a
+      // tserver that died mid-drain is named once the load balancer has moved its replicas, and
+      // keeps being named until it is removed from the registry.
+      if (FLAGS_send_blacklisted_tservers_on_heartbeat) {
+        for (const auto& uuid : catalog_manager_->GetDrainedBlacklistedTServers()) {
+          resp->add_blacklisted_tservers_with_no_tablets(uuid);
         }
       }
     } else {

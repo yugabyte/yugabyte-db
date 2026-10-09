@@ -13,6 +13,8 @@
 
 #include "yb/master/master_cluster_handler.h"
 
+#include <unordered_set>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.pb.h"
@@ -285,8 +287,27 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   if (blacklist_replicas == 0 && delay_until_heartbeat) {
     // Best effort wait to ensure all tservers have updated their meta-cache: marked the leader
     // blacklisted tservers with no leaders as followers, or the blacklisted tservers with no
-    // tablets as failed.
-    const auto start_time = MonoTime::Now();
+    // tablets as failed. A heartbeat only proves delivery of the hint if the response was built
+    // after the hint became true, so for the server blacklist first wait for the background task
+    // to have derived the drained set from the same replica maps this function just scanned.
+    auto start_time = MonoTime::Now();
+    if (!blacklist_leader) {
+      const auto blacklist_set = ToBlacklistSet(state);
+      WARN_NOT_OK(
+          WaitFor([&]() {
+            const auto drained_vector = catalog_manager_->GetDrainedBlacklistedTServers();
+            const std::unordered_set<TabletServerId> drained(
+                drained_vector.begin(), drained_vector.end());
+            for (const auto& desc : ts_manager_->GetAllDescriptors()) {
+              if (desc->IsBlacklisted(blacklist_set) && !drained.contains(desc->permanent_uuid())) {
+                return false;
+              }
+            }
+            return true;
+          }, 10s, "Wait for the drained tserver set to include all blacklisted tservers"),
+          "Timed out waiting for the master to derive the drained blacklisted tserver set.");
+      start_time = MonoTime::Now();
+    }
     WARN_NOT_OK(
         WaitFor([&]() {
           TSDescriptorVector descs;

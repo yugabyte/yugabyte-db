@@ -93,6 +93,7 @@ using yb::client::YBTableName;
 using yb::client::YBTableType;
 // DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
 DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_int32(blacklist_progress_initial_delay_secs);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_metacache_partial_refresh);
 DECLARE_bool(send_blacklisted_tservers_on_heartbeat);
@@ -288,12 +289,22 @@ TEST_F(MetacacheRefreshITest, TestMetacacheNoRefreshFromWrite) {
 // replicas on it as permanently failed, so no query is routed to it once it is taken down. This
 // drives the scenario end to end: follower reads from a gateway in the same region as the victim
 // warm the cache, the victim is blacklisted and drained, and reads of the untouched tablets must
-// stop dispatching to it before it is shut down.
+// stop dispatching to it before it is shut down. The victim is then brought back and its
+// decommission reverted; once it hosts replicas again the gateway must route to it once more, so
+// the permanent mark has to yield to the Raft config that a live replica piggybacks on a read.
 class BlacklistedTServerMetacacheITest : public pgwrapper::PgMiniTestBase {
  protected:
+  struct TestTable {
+    std::string name;
+    int value;
+    std::string table_id;
+  };
+
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
+    // The master was just elected; do not sit out the post-failover grace period.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
@@ -379,8 +390,26 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
                config.leader_blacklist(), true) == 0;
   }, timeout, "Drain gateway replicas and victim leaders"));
 
+  // True once the table's single tablet has exactly three replicas, one of them a follower on the
+  // victim. Sets *tablet_id whenever the victim is among the replicas.
+  auto victim_hosts_follower =
+      [&](const std::string& table_id, TabletId* tablet_id) -> Result<bool> {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+    RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, 0, &locations));
+    if (locations.size() != 1 || locations.Get(0).replicas_size() != 3) {
+      return false;
+    }
+    for (const auto& replica : locations.Get(0).replicas()) {
+      if (replica.ts_info().permanent_uuid() == victim_uuid) {
+        *tablet_id = locations.Get(0).tablet_id();
+        return replica.role() == PeerRole::FOLLOWER;
+      }
+    }
+    return false;
+  };
+
   auto conn = ASSERT_RESULT(Connect());
-  std::map<TabletId, std::pair<std::string, int>> test_tablets;
+  std::map<TabletId, TestTable> test_tablets;
   constexpr int kNumTables = 6;
   for (int i = 0; i != kNumTables; ++i) {
     const auto name = Format("drained_cache_$0", i);
@@ -388,26 +417,25 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
         "CREATE TABLE $0 (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS", name));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, $1)", name, i));
     const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(name));
-    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+    TabletId tablet_id;
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      locations.Clear();
-      RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, 0, &locations));
-      if (locations.size() != 1 || locations.Get(0).replicas_size() != 3) {
-        return false;
-      }
-      for (const auto& replica : locations.Get(0).replicas()) {
-        if (replica.ts_info().permanent_uuid() == victim_uuid) {
-          return replica.role() == PeerRole::FOLLOWER;
-        }
-      }
-      return false;
+      return victim_hosts_follower(table_id, &tablet_id);
     }, timeout, "Victim hosts a follower of the test tablet"));
-    test_tablets.emplace(locations.Get(0).tablet_id(), std::make_pair(name, i));
+    test_tablets.emplace(tablet_id, TestTable{name, i, table_id});
+  }
+  // Half of the tablets are read while the victim is drained. The other half are left alone until
+  // the victim is back, so their cached victim replica still carries the permanent mark by then.
+  std::set<TabletId> all_tablets;
+  std::set<TabletId> drained_phase_tablets;
+  std::set<TabletId> held_back_tablets;
+  for (const auto& [id, table] : test_tablets) {
+    all_tablets.insert(id);
+    (table.value < kNumTables / 2 ? drained_phase_tablets : held_back_tablets).insert(id);
   }
 
   std::mutex mutex;
   size_t victim_dispatches = 0;
-  std::set<TabletId> warmed_tablets;
+  std::set<TabletId> dispatched_tablets;
   auto* sync_point = SyncPoint::GetInstance();
   auto cleanup = ScopeExit([&] {
     sync_point->DisableProcessing();
@@ -421,7 +449,7 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
     }
     std::lock_guard lock(mutex);
     ++victim_dispatches;
-    warmed_tablets.insert(data.tablet_id);
+    dispatched_tablets.insert(data.tablet_id);
   });
   sync_point->EnableProcessing();
 
@@ -431,24 +459,20 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
     for (const auto& tablet_id : tablets) {
       const auto& table = test_tablets.at(tablet_id);
       auto value = VERIFY_RESULT(session.FetchRow<int32_t>(
-          Format("SELECT v FROM $0 WHERE k = 1", table.first)));
-      SCHECK_EQ(value, table.second, IllegalState, "Unexpected value");
+          Format("SELECT v FROM $0 WHERE k = 1", table.name)));
+      SCHECK_EQ(value, table.value, IllegalState, "Unexpected value");
     }
     return Status::OK();
   };
 
   // Warm the gateway's meta cache: each read goes to the victim, the closest follower. Wait out the
   // follower read staleness first so the stale snapshot includes the rows inserted above.
-  std::set<TabletId> all_tablets;
-  for (const auto& [id, _] : test_tablets) {
-    all_tablets.insert(id);
-  }
   SleepFor(3s * kTimeMultiplier);
   ASSERT_OK(read_all(all_tablets));
   size_t dispatches_before_drain;
   {
     std::lock_guard lock(mutex);
-    ASSERT_EQ(warmed_tablets.size(), kNumTables);
+    ASSERT_EQ(dispatched_tablets.size(), kNumTables);
     ASSERT_GE(victim_dispatches, kNumTables);
     dispatches_before_drain = victim_dispatches;
   }
@@ -470,7 +494,7 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
   // victim replica of every tablet the gateway has not touched since.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     const auto failed = VERIFY_RESULT(PermanentlyFailedReplicasOn(gateway_client, victim_uuid));
-    return std::all_of(warmed_tablets.begin(), warmed_tablets.end(), [&](const auto& tablet_id) {
+    return std::all_of(all_tablets.begin(), all_tablets.end(), [&](const auto& tablet_id) {
       auto it = failed.find(tablet_id);
       return it != failed.end() && it->second;
     });
@@ -478,7 +502,7 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
 
   // Reads of the untouched tablets no longer go to the victim, well past retry_failed_replica_ms.
   for (int i = 0; i != 3; ++i) {
-    ASSERT_OK(read_all(all_tablets));
+    ASSERT_OK(read_all(drained_phase_tablets));
     SleepFor(MonoDelta::FromMilliseconds(5 * FLAGS_retry_failed_replica_ms));
   }
   {
@@ -488,9 +512,59 @@ TEST_F(BlacklistedTServerMetacacheITest, DrainedTServerIsNotRoutedTo) {
 
   // Nor after it is gone.
   victim->Shutdown();
+  ASSERT_OK(read_all(drained_phase_tablets));
+  {
+    std::lock_guard lock(mutex);
+    ASSERT_EQ(victim_dispatches, dispatches_before_drain);
+  }
+
+  // Revert the decommission: bring the victim back at the same address, take it off the blacklist
+  // and blacklist the replacement instead. That leaves exactly three eligible tservers, so the load
+  // balancer has to put a replica of every tablet back on the victim. It stays leader-blacklisted,
+  // so those replicas are followers and the gateway's follower reads pick it as the closest one.
+  ASSERT_OK(victim->Start(tserver::WaitTabletsBootstrapped::kFalse));
+  ASSERT_OK(cluster_client.UnBlacklistHost(
+      HostPortPB(victim_desc->GetRegistration().private_rpc_addresses(0))));
+  auto* replacement = cluster_->mini_tablet_server(cluster_->num_tablet_servers() - 1);
+  auto replacement_desc = ASSERT_RESULT(
+      master->ts_manager().LookupTSByUUID(replacement->server()->permanent_uuid()));
+  ASSERT_OK(cluster_client.BlacklistHost(
+      HostPortPB(replacement_desc->GetRegistration().private_rpc_addresses(0))));
+  for (const auto& [tablet_id, table] : test_tablets) {
+    TabletId readded_tablet_id;
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      return victim_hosts_follower(table.table_id, &readded_tablet_id);
+    }, timeout, "Victim hosts a follower of the test tablet again"));
+    ASSERT_EQ(readded_tablet_id, tablet_id);
+  }
+
+  // The held-back tablets were not touched since the hint, so the gateway still has their victim
+  // replica cached as permanently failed. The first read of each tablet goes to another replica,
+  // whose response carries the Raft config that the gateway's cached config index predates; that
+  // rebuilds the replica list with the victim unmarked, and the second read is routed to it again.
+  {
+    const auto failed = ASSERT_RESULT(PermanentlyFailedReplicasOn(gateway_client, victim_uuid));
+    for (const auto& tablet_id : held_back_tablets) {
+      auto it = failed.find(tablet_id);
+      ASSERT_TRUE(it != failed.end() && it->second) << tablet_id;
+    }
+  }
+  {
+    std::lock_guard lock(mutex);
+    dispatched_tablets.clear();
+  }
   ASSERT_OK(read_all(all_tablets));
-  std::lock_guard lock(mutex);
-  ASSERT_EQ(victim_dispatches, dispatches_before_drain);
+  ASSERT_OK(read_all(all_tablets));
+  {
+    std::lock_guard lock(mutex);
+    ASSERT_EQ(dispatched_tablets, all_tablets);
+  }
+  const auto failed = ASSERT_RESULT(PermanentlyFailedReplicasOn(gateway_client, victim_uuid));
+  for (const auto& tablet_id : all_tablets) {
+    auto it = failed.find(tablet_id);
+    ASSERT_TRUE(it != failed.end()) << tablet_id;
+    ASSERT_FALSE(it->second) << tablet_id;
+  }
 }
 
 }  // namespace yb

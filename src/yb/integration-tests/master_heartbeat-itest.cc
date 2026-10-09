@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -61,6 +62,8 @@
 
 using namespace std::literals;
 
+DECLARE_int32(blacklist_progress_initial_delay_secs);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(send_blacklisted_tservers_on_heartbeat);
 DECLARE_int32(heartbeat_interval_ms);
@@ -133,9 +136,12 @@ master::TabletReportPB MakeTabletReportPBWithNewLeader(
   return report;
 }
 
+// With as_config_change the report advances the committed config index, so the master persists
+// the new config instead of only patching its in-memory replica map.
 master::TabletReportPB MakeTabletReportPBWithNewPeer(
     const std::string& uuid_to_add, const master::TSInformationPB& ts_info_to_add,
-    master::TabletInfo* tablet, bool incremental, int32_t report_seqno) {
+    master::TabletInfo* tablet, bool incremental, int32_t report_seqno,
+    bool as_config_change = false) {
   master::TabletReportPB report;
   report.set_is_incremental(incremental);
   report.set_sequence_number(report_seqno);
@@ -143,6 +149,10 @@ master::TabletReportPB MakeTabletReportPBWithNewPeer(
   tablet_report->set_tablet_id(tablet->id());
   auto* consensus = tablet_report->mutable_committed_consensus_state();
   *consensus = tablet->LockForRead()->pb.committed_consensus_state();
+  if (as_config_change) {
+    consensus->mutable_config()->set_committed_op_index(
+        consensus->config().committed_op_index() + 1);
+  }
   auto* new_peer = consensus->mutable_config()->add_peers();
   new_peer->set_permanent_uuid(uuid_to_add);
   new_peer->set_member_type(consensus::PeerMemberType::VOTER);
@@ -151,6 +161,34 @@ master::TabletReportPB MakeTabletReportPBWithNewPeer(
   *new_peer->mutable_last_known_broadcast_addr() =
       ts_info_to_add.registration().common().broadcast_addresses();
   *new_peer->mutable_cloud_info() = ts_info_to_add.registration().common().cloud_info();
+  tablet_report->set_state(tablet::RaftGroupStatePB::RUNNING);
+  tablet_report->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  return report;
+}
+
+// Reports a committed config change that evicts uuid_to_remove, with reporter_uuid as the leader
+// of a new term so the master accepts the new leader alongside the new config index.
+master::TabletReportPB MakeTabletReportPBWithoutPeer(
+    const std::string& uuid_to_remove, const std::string& reporter_uuid,
+    master::TabletInfo* tablet, bool incremental, int32_t report_seqno) {
+  master::TabletReportPB report;
+  report.set_is_incremental(incremental);
+  report.set_sequence_number(report_seqno);
+  auto* tablet_report = report.add_updated_tablets();
+  tablet_report->set_tablet_id(tablet->id());
+  auto* consensus = tablet_report->mutable_committed_consensus_state();
+  *consensus = tablet->LockForRead()->pb.committed_consensus_state();
+  consensus->set_leader_uuid(reporter_uuid);
+  consensus->set_current_term(consensus->current_term() + 1);
+  auto& raft_config = *consensus->mutable_config();
+  raft_config.set_committed_op_index(raft_config.committed_op_index() + 1);
+  auto* peers = raft_config.mutable_peers();
+  for (int i = 0; i < peers->size(); ++i) {
+    if (peers->Get(i).permanent_uuid() == uuid_to_remove) {
+      peers->DeleteSubrange(i, 1);
+      break;
+    }
+  }
   tablet_report->set_state(tablet::RaftGroupStatePB::RUNNING);
   tablet_report->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
   return report;
@@ -334,16 +372,18 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
   }
 }
 
-// The heartbeat response names blacklisted tservers that host no tablets, so other tservers can
-// mark their cached replicas failed before the node is taken down. The hint must follow the
-// master's current view (blacklist membership and the tserver's own live-tablet count), persist
-// while the tserver is unresponsive, ignore descriptors that never heartbeated, and stop once the
-// tserver is removed from the registry.
+// The heartbeat response names blacklisted tservers that, as far as the master's replica maps know,
+// host no replica of any live tablet, so other tservers can mark their cached replicas failed
+// before the node is taken down. The hint must follow the master's current view (blacklist and
+// replica-map membership, not the tserver's own last reported tablet count), persist while the
+// tserver is unresponsive, and stop once the tserver is removed from the registry.
 TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   // Disable load balancer so the tserver we add doesn't get any tablet replicas.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 2000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) = 2000;
+  // The master was just elected; do not sit out the post-failover grace period.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 0;
   CreateTable();
   ASSERT_OK(mini_cluster_->AddTabletServer());
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
@@ -358,23 +398,28 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   }
   master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
   ASSERT_EQ(ts_descs.size(), 4);
+  // hosting_ts stays "alive" through fake heartbeats and reports the config changes below; dead_ts
+  // hosts replicas, stops heartbeating, and is later evicted from its tablets without ever
+  // reporting a lower tablet count; drained_ts hosts nothing.
   master::TSDescriptorPtr drained_ts;
   master::TSDescriptorPtr hosting_ts;
+  master::TSDescriptorPtr dead_ts;
   for (const auto& ts : ts_descs) {
-    if (tservers_hosting_tablet.contains(ts->permanent_uuid())) {
-      hosting_ts = ts;
-    } else {
+    if (!tservers_hosting_tablet.contains(ts->permanent_uuid())) {
       drained_ts = ts;
+    } else if (!hosting_ts) {
+      hosting_ts = ts;
+    } else if (!dead_ts) {
+      dead_ts = ts;
     }
   }
   ASSERT_NE(drained_ts, nullptr);
   ASSERT_NE(hosting_ts, nullptr);
-  // The drained tserver has heartbeated with zero live tablets.
-  ASSERT_TRUE(drained_ts->LastHeartbeatTime());
-  ASSERT_EQ(drained_ts->num_live_replicas(), 0);
+  ASSERT_NE(dead_ts, nullptr);
+  ASSERT_GT(dead_ts->num_live_replicas(), 0);
 
-  // Also register a descriptor from a Raft config that never heartbeats; its live-tablet count is
-  // the default 0 and must not make it look drained once blacklisted.
+  // Also register a descriptor from a Raft config that never heartbeats. It is a member of the
+  // tablet's config, so it hosts a replica as far as the master knows.
   const std::string kRaftOnlyUUID = "raft_only_uuid";
   const auto kRaftOnlyAddr = MakeHostPortPB("localhost", 1000);
   {
@@ -388,7 +433,7 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
     req.set_universe_uuid(ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid());
     *req.mutable_tablet_report() = MakeTabletReportPBWithNewPeer(
         kRaftOnlyUUID, ts_info, tablet.get(), /* incremental */ true,
-        hosting_ts->latest_report_seqno() + 1);
+        hosting_ts->latest_report_seqno() + 1, /* as_config_change */ true);
     master::TSHeartbeatResponsePB resp;
     rpc::RpcController rpc;
     master::MasterHeartbeatProxy master_proxy(
@@ -398,7 +443,7 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
     auto raft_only_desc = ASSERT_RESULT(
         mini_cluster_->mini_master()->master()->ts_manager()->LookupTSByUUID(kRaftOnlyUUID));
     ASSERT_FALSE(raft_only_desc->LastHeartbeatTime());
-    ASSERT_EQ(raft_only_desc->num_live_replicas(), 0);
+    ASSERT_TRUE(tablet->GetReplicaLocations()->contains(kRaftOnlyUUID));
   }
 
   // Now stop all tservers so real heartbeats don't interfere with our fake ones.
@@ -407,12 +452,17 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   master::MasterHeartbeatProxy master_proxy(
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
   const auto universe_uuid = ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid();
-  // Heartbeat on behalf of the hosting tserver and return the hint from the response.
-  auto heartbeat_hint = [&]() -> Result<std::set<std::string>> {
+  // Heartbeat on behalf of the hosting tserver, optionally carrying a tablet report, and return
+  // the hint from the response.
+  auto heartbeat = [&](std::optional<master::TabletReportPB> report = std::nullopt)
+      -> Result<std::set<std::string>> {
     master::TSHeartbeatRequestPB req;
     *req.mutable_common() = MakeTSToMasterCommonPB(*hosting_ts, hosting_ts->latest_seqno());
     req.set_universe_uuid(universe_uuid);
     req.set_num_live_tablets(1);
+    if (report) {
+      *req.mutable_tablet_report() = std::move(*report);
+    }
     master::TSHeartbeatResponsePB resp;
     rpc::RpcController rpc;
     RETURN_NOT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
@@ -421,21 +471,32 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
         resp.blacklisted_tservers_with_no_tablets().begin(),
         resp.blacklisted_tservers_with_no_tablets().end());
   };
-  // Heartbeat on behalf of the drained tserver, reporting the given live-tablet count.
-  auto heartbeat_drained = [&](int num_live_tablets) -> Status {
-    master::TSHeartbeatRequestPB req;
-    *req.mutable_common() = MakeTSToMasterCommonPB(*drained_ts, drained_ts->latest_seqno());
-    req.set_universe_uuid(universe_uuid);
-    req.set_num_live_tablets(num_live_tablets);
-    master::TSHeartbeatResponsePB resp;
-    rpc::RpcController rpc;
-    RETURN_NOT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
-    SCHECK(!resp.has_error(), IllegalState, "Heartbeat failed: $0", resp.error().DebugString());
+  // The hint lags the replica maps by one background-task tick.
+  auto wait_for_hint = [&](const std::set<std::string>& expected) -> Status {
+    return LoggedWaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(heartbeat()) == expected;
+    }, 10s * kTimeMultiplier, Format("Hint becomes $0", expected));
+  };
+  // Evicts uuid from every tablet whose replica map lists it, as the load balancer does once it
+  // has placed replacements elsewhere.
+  auto evict_from_all_tablets = [&](const std::string& uuid) -> Status {
+    for (const auto& table : catalog_mgr.GetTables(master::GetTablesMode::kAll)) {
+      for (const auto& tablet_info : VERIFY_RESULT(table->GetTablets())) {
+        if (!tablet_info->GetReplicaLocations()->contains(uuid)) {
+          continue;
+        }
+        RETURN_NOT_OK(heartbeat(MakeTabletReportPBWithoutPeer(
+            uuid, hosting_ts->permanent_uuid(), tablet_info.get(), /* incremental */ true,
+            hosting_ts->latest_report_seqno() + 1)));
+        SCHECK(!tablet_info->GetReplicaLocations()->contains(uuid), IllegalState,
+               "$0 still listed for tablet $1", uuid, tablet_info->id());
+      }
+    }
     return Status::OK();
   };
 
   // Nothing is blacklisted yet.
-  ASSERT_TRUE(ASSERT_RESULT(heartbeat_hint()).empty());
+  ASSERT_TRUE(ASSERT_RESULT(heartbeat()).empty());
 
   master::MasterClusterClient cluster_client(master::MasterClusterProxy(
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr()));
@@ -443,23 +504,27 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
       HostPortPB(drained_ts->GetRegistration().private_rpc_addresses(0))));
   ASSERT_OK(cluster_client.BlacklistHost(HostPortPB(kRaftOnlyAddr)));
 
-  // Blacklisted with no tablets: named. The Raft-only descriptor is blacklisted too but never
-  // heartbeated, so it is not.
-  const std::set<std::string> expected{drained_ts->permanent_uuid()};
-  ASSERT_EQ(ASSERT_RESULT(heartbeat_hint()), expected);
+  // Blacklisted with no replicas: named. The Raft-only descriptor is blacklisted too but is a
+  // member of the tablet's config, so it is not.
+  const std::set<std::string> drained_only{drained_ts->permanent_uuid()};
+  ASSERT_OK(wait_for_hint(drained_only));
   // Sent again on the next heartbeat, not just once.
-  ASSERT_EQ(ASSERT_RESULT(heartbeat_hint()), expected);
+  ASSERT_EQ(ASSERT_RESULT(heartbeat()), drained_only);
 
-  // Hosting tablets again (e.g. taken off the blacklist and re-added, or not yet drained): not
-  // named until its count drops back to zero.
-  ASSERT_OK(heartbeat_drained(1));
-  ASSERT_TRUE(ASSERT_RESULT(heartbeat_hint()).empty());
-  ASSERT_OK(heartbeat_drained(0));
-  ASSERT_EQ(ASSERT_RESULT(heartbeat_hint()), expected);
+  // Hosting a replica again (e.g. taken off the blacklist and re-added, then blacklisted again):
+  // not named until the replica maps drop it again.
+  ASSERT_OK(heartbeat(MakeTabletReportPBWithNewPeer(
+      drained_ts->permanent_uuid(), drained_ts->GetTSInformationPB(), tablet.get(),
+      /* incremental */ true, hosting_ts->latest_report_seqno() + 1,
+      /* as_config_change */ true)));
+  ASSERT_TRUE(tablet->GetReplicaLocations()->contains(drained_ts->permanent_uuid()));
+  ASSERT_OK(wait_for_hint({}));
+  ASSERT_OK(evict_from_all_tablets(drained_ts->permanent_uuid()));
+  ASSERT_OK(wait_for_hint(drained_only));
 
   // The flag turns it off.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = false;
-  ASSERT_TRUE(ASSERT_RESULT(heartbeat_hint()).empty());
+  ASSERT_TRUE(ASSERT_RESULT(heartbeat()).empty());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
 
   // Still named after the drained tserver stops heartbeating and becomes unresponsive: this is the
@@ -467,11 +532,24 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   ASSERT_OK(WaitFor(
       [&] { return !drained_ts->IsLive() && !drained_ts->MaybeHasXClusterGuardedLease(); },
       30s * kTimeMultiplier, "Drained tserver is unresponsive with no guarded lease"));
-  ASSERT_EQ(ASSERT_RESULT(heartbeat_hint()), expected);
+  ASSERT_EQ(ASSERT_RESULT(heartbeat()), drained_only);
 
-  // Removal takes it out of the registry, and out of the hint.
+  // A tserver that dies mid-drain never reports a lower tablet count. It is named once the
+  // replica maps no longer list it, which is what the load balancer achieves by moving its
+  // replicas elsewhere.
+  ASSERT_OK(WaitFor([&] { return !dead_ts->IsLive(); }, 30s * kTimeMultiplier,
+                    "Dead tserver is unresponsive"));
+  ASSERT_GT(dead_ts->num_live_replicas(), 0);
+  ASSERT_OK(cluster_client.BlacklistHost(
+      HostPortPB(dead_ts->GetRegistration().private_rpc_addresses(0))));
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_bg_task_wait_ms));
+  ASSERT_EQ(ASSERT_RESULT(heartbeat()), drained_only);
+  ASSERT_OK(evict_from_all_tablets(dead_ts->permanent_uuid()));
+  ASSERT_OK(wait_for_hint({drained_ts->permanent_uuid(), dead_ts->permanent_uuid()}));
+
+  // Removal takes a tserver out of the registry, and out of the hint.
   ASSERT_OK(cluster_client.RemoveTabletServer(std::string(drained_ts->permanent_uuid())));
-  ASSERT_TRUE(ASSERT_RESULT(heartbeat_hint()).empty());
+  ASSERT_OK(wait_for_hint({dead_ts->permanent_uuid()}));
 }
 
 // Verifies the timed-lock heartbeat path (ProcessTabletReportBatch, #10304). When the master cannot
