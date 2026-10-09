@@ -34,6 +34,32 @@ Default comment severity threshold: **MEDIUM**. Suppress LOW-severity nits unles
 - If your prior comment matches a hunk that is **byte-identical** to the version you reviewed before, skip it. The fact that the diff is unchanged means the author is keeping that hunk; re-flagging won't change anything.
 - New issues on lines you didn't review before are fine to raise.
 
+## Metric naming (blocking)
+
+Applies to any diff that adds, renames, or restructures a metric: `METRIC_DEFINE_*` and metric prototypes in `src/`, RPC/codegen templates that emit metric names (`gen_yrpc`), and YBA `PlatformMetrics` / Prometheus collectors in `managed/`. Rule IDs match the *Metric naming gate* section of `AGENTS.md`; the full guide is `src/yb/util/METRIC_NAMING.md`.
+
+This is **not** a naming-style nit, so the "do not flag naming-style nits" rule above does not apply. These findings are **blocking (HIGH)**: a name that encodes a dimension costs one stream per value in name-keyed backends (OpenObserve), forces every consumer to regex-parse `__name__`, and turns later refactors into dashboard-breaking renames.
+
+For every metric name the diff adds or changes, ask: *does this token name a value of a shared dimension (-> label) or a different quantity (-> separate metric)?* Then block if:
+
+- **MN1** -- The name is built from a variable: `Format()`, `+`, `StrCat`, token pasting / `BOOST_PP_CAT`, `Owning*Prototype(prefix + "_" + value)`, or a macro/codegen that stamps one `METRIC_DEFINE` per method, command, statement, or pool. **A metric name built from a variable is always a blocking comment.**
+- **MN2** -- The name contains a value: an RPC service or method, statement type, task type, thread pool, mem-tracker path, enum number, server type, or a table/tablet/namespace ID (e.g. `ycql_queries_system_peers`, `num_entries_with_type_3_loaded`). This includes adding a member to an existing name-encoded family (`handler_latency_yb_*`, `rpcs_in_queue_*`, `threads_started_*`, `<Task>_Task`/`_Attempt`, `mem_tracker_*` paths, `ybp_health_check_*`), or adding 2+ static names that differ only by a value-like suffix. Existing debt is not a precedent.
+- **MN3** -- A per-value dimension is not implemented as a `MetricEntity` carrying the value in its attributes, with one shared prototype. Point the author at the precedents: table/tablet entities and `METRIC_ENTITY_cgroup` (`tserver_cgroup_manager.cc`). Also block a new entity type that has no branch in `MetricEntity::ReconstructPrometheusAttributesUnlocked` (`metric_entity.cc`): its metrics are silently dropped from `/prometheus-metrics`.
+- **MN4** -- YBA adds one `PlatformMetrics` constant per server type, check, or task instead of one constant plus a label.
+- **MN5** -- The prefix lies about the metric type, e.g. a counter under `handler_latency_`.
+- **MN6** -- An unbounded value (table, tablet, user, query) becomes a label and the diff summary does not justify why the metric needs that dimension.
+- **MN7** -- The name hand-adds `_sum`, `_count`, or `_total`.
+- **MN8** -- An existing metric is renamed or moved (including an RPC moving to another service, or a mem-tracker hierarchy change) and the diff summary does not list old -> new names and the consumers checked (YBA, YBM, Perf Advisor). Ask for the fold-into-labels fix rather than another one-off rename.
+
+Do not block:
+
+- **Backport PRs.** In backport mode (see *Backport PRs* below), apply MN1-MN8 only to hunks that diverge from the originating commit. A byte-identical hunk was accepted on `master`, even if it predates this gate.
+- Separate names for genuinely different quantities (`rocksdb_block_cache_add` vs `rocksdb_block_cache_add_failures`).
+- Hunks that touch existing name-encoded debt without adding new names. Suggest migration as a non-blocking comment at most.
+- A `metric-name-lint: allow(<reason>)` suppression whose reason names a migration issue. Do flag a suppression with no reason, and any growth of `build-support/metric_name_lint_baseline.json`.
+
+Suggested wording: `Blocking (MN1): metric name built from <var>. Keep one static name and put <var> in a label via a MetricEntity attribute -- see src/yb/util/METRIC_NAMING.md.`
+
 ## Backport PRs (different review rules)
 
 A **backport** is a PR whose title starts with `[BACKPORT <release-branch>]`, e.g. `[BACKPORT 2024.2][#31358] YSQL: Add yb_enable_mage gFlag`. Its body always contains a footer line of the form:
