@@ -14,9 +14,11 @@
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
 #include <dirent.h>
+#include <limits.h>
 #include <unistd.h>
 
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <sstream>
 
@@ -360,13 +362,52 @@ UpgradeTestBase::DiagScope::~DiagScope() {
             << " cgroup_v1_quota=" << DiagReadFirstLine("/sys/fs/cgroup/cpu/cpu.cfs_quota_us");
 }
 
+// The harness deletes the logs of passing (and skipped) tests, but uploads the JUnit XML. Collect
+// the interesting lines of this test's log (stdout is redirected to it) for the skip message.
+static std::string DiagCollectLogLines() {
+  std::cout.flush();
+  fflush(stdout);
+  fflush(stderr);
+  char path[PATH_MAX];
+  const auto len = readlink("/proc/self/fd/1", path, sizeof(path) - 1);
+  if (len <= 0) {
+    return "DIAG: cannot resolve stdout";
+  }
+  path[len] = '\0';
+  std::ifstream f(path);
+  if (!f) {
+    return Format("DIAG: cannot read stdout $0", path);
+  }
+  static const std::vector<std::string> kPatterns = {
+    "DIAG end", "initdb took", "Launching pg_upgrade", "pg_upgrade completed",
+    "Deleting previous ysql major catalog", "Transitioned major upgrade state",
+    "[pg_upgrade] Performing", "[pg_upgrade] Creating dump", "[pg_upgrade] Restoring",
+    "[pg_upgrade] Executing", "Clusters are compatible", "already downloaded", "Extracting ",
+    "Running ysql major catalog version upgrade", "Promoted AutoFlags",
+    "master indicated that initdb is done", "Restarting yb-",
+  };
+  std::string result;
+  std::string line;
+  while (std::getline(f, line)) {
+    for (const auto& pattern : kPatterns) {
+      if (line.find(pattern) != std::string::npos) {
+        result += line.substr(0, 400);
+        result += "\n";
+        break;
+      }
+    }
+  }
+  return result;
+}
+
 void UpgradeTestBase::TearDown() {
   {
     DiagScope diag(this, "TearDown");
     ExternalMiniClusterITestBase::TearDown();
   }
   if (!HasFailure()) {
-    GTEST_SKIP() << "DIAG: reported as skipped so that CI uploads the logs";
+    GTEST_SKIP() << "DIAG: reported as skipped so that CI uploads the logs\n"
+                 << DiagCollectLogLines();
   }
 }
 
