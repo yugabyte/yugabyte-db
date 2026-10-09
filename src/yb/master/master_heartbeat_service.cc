@@ -584,7 +584,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
         // ones: a blacklisted tserver that is already down for maintenance must stay excluded
         // until it is taken off the blacklist, not until the master declares it dead.
         for (const auto& desc : server_->ts_manager()->GetAllDescriptors()) {
-          if (IsBlacklisted(desc->GetRegistration(), leader_blacklist)) {
+          if (desc->IsBlacklisted(leader_blacklist)) {
             resp->add_leader_blacklisted_tservers(desc->permanent_uuid());
           }
         }
