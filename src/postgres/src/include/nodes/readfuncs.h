@@ -16,11 +16,18 @@
 
 #include "nodes/nodes.h"
 
+/* YB includes */
+#ifdef DEBUG_NODE_TESTS_ENABLED
+#include "pg_yb_utils.h"
+
 /*
  * variable in read.c that needs to be accessible to readfuncs.c
  */
-#ifdef DEBUG_NODE_TESTS_ENABLED
-extern PGDLLIMPORT bool restore_location_fields;
+/*
+ * YB: per-thread. ybDeserializeNode runs on concurrent tserver threads, and
+ * pg_strtok's pointer is already per-thread.
+ */
+extern PGDLLIMPORT YB_THREAD_LOCAL bool restore_location_fields;
 #endif
 
 /*
