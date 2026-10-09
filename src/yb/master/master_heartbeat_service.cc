@@ -131,9 +131,11 @@ DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
     "on the heartbeat response.");
 TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
 
-DEFINE_RUNTIME_bool(send_blacklisted_tservers_on_heartbeat, true,
+DEFINE_RUNTIME_bool(send_blacklisted_tservers_on_heartbeat, false,
     "When set, the master will send the list of blacklisted tservers that host no tablets "
-    "on the heartbeat response, so tservers can stop routing to their stale cached replicas.");
+    "on the heartbeat response, so tservers can stop routing to their stale cached replicas. "
+    "Off by default; tservers that do not understand the field ignore it, so it can be enabled "
+    "once the tservers that should act on it are upgraded.");
 TAG_FLAG(send_blacklisted_tservers_on_heartbeat, advanced);
 
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
