@@ -1095,6 +1095,21 @@ TEST_F(ClientTest, TestMarkTServersAsFailedIsPermanent) {
   meta_cache.MarkTServersAsFailed({"not-a-tserver"});
   ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
 
+  // The deferred clear that an expired ordinary mark gets must not undo a permanent one that
+  // was applied in between.
+  {
+    internal::RemoteReplica replica(permanent, PeerRole::FOLLOWER);
+    replica.MarkFailed();
+    replica.MarkFailed(internal::PermanentFailure::kTrue);
+    replica.ClearFailed();
+    ASSERT_TRUE(replica.Failed());
+    ASSERT_TRUE(replica.permanent_failure);
+    internal::RemoteReplica transient_replica(transient, PeerRole::FOLLOWER);
+    transient_replica.MarkFailed();
+    transient_replica.ClearFailed();
+    ASSERT_FALSE(transient_replica.Failed());
+  }
+
   // A full refresh from the master replaces the replica list and clears the mark: the master
   // still lists this tserver, so the cache must trust it again.
   std::promise<Result<internal::RemoteTabletPtr>> refreshed_promise;
