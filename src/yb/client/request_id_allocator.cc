@@ -14,7 +14,6 @@
 #include "yb/client/request_id_allocator.h"
 
 #include <algorithm>
-#include <atomic>
 #include <mutex>
 #include <set>
 #include <vector>
@@ -26,6 +25,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/thread.h"
 
 DEFINE_NON_RUNTIME_string(client_request_id_allocator, "sharded-queue",
     "Allocator of the retryable request ids of a client. spinlock: the set of the running ids "
@@ -55,13 +55,6 @@ size_t NumRequestIdShards() {
     return FLAGS_client_request_id_shards;
   }
   return std::clamp<size_t>(NumEffectiveCPUs() / 8, 1, 64);
-}
-
-// Index of the calling thread, so that a thread always uses the same shard.
-size_t RequestIdThreadIndex() {
-  static std::atomic<size_t> sequence{0};
-  thread_local size_t index = sequence.fetch_add(1);
-  return index;
 }
 
 // The allocator that the others replace: a set of the running ids under a spinlock.
@@ -97,10 +90,15 @@ class SpinlockRequestIdAllocator : public RequestIdAllocator {
   std::set<RetryableRequestId> running_ GUARDED_BY(mutex_);
 };
 
-// A queue per shard, each with its own client id. A thread always uses the same shard, so the
-// shards share no state: the ids of a shard are dense and independent, and a request that stays
-// unfinished holds back the min_running of its own shard only, instead of the one that the whole
-// client reports.
+// A queue per shard, each with its own client id. The shards share no state: the ids of a shard
+// are dense and independent, and a request that stays unfinished holds back the min_running of
+// its own shard only, instead of the one that the whole client reports.
+//
+// Each thread walks the shards round-robin from a thread local counter, so the pick is not a
+// contended atomic. A thread bound to a shard would be cheaper, but a shard whose threads stopped
+// writing to a tablet would never send it a newer min_running, and the server would keep that
+// shard's state until it expires. Round-robin reaches every shard within a few writes to the
+// tablet, so the state of every client id is trimmed at the usual rate.
 //
 // The price is paid by the server, which keeps the deduplication state per client id, see
 // consensus/retryable_requests.cc. It tracks the same number of requests either way, but the per
@@ -123,7 +121,12 @@ class ShardedRequestIdAllocator : public RequestIdAllocator {
 
   // The request is finished through the shard of the allocation.
   RequestIdAllocation Next() override {
-    return shards_[RequestIdThreadIndex() % shards_.size()]->Next();
+    // Seeded by the thread id, so that threads in lockstep start on different shards.
+    thread_local size_t next_shard = Thread::CurrentThreadId() % shards_.size();
+    if (next_shard >= shards_.size()) {
+      next_shard = 0;
+    }
+    return shards_[next_shard++]->Next();
   }
 
   void Finish(RetryableRequestId id) override {
