@@ -36,6 +36,21 @@ YB_DEFINE_ENUM(MajorUpgradeCompatibilityType, (kNone)(kBackwardsCompatible));
 // current version, and rollback to the older version.
 class UpgradeTestBase : public ExternalMiniClusterITestBase {
  public:
+  // DIAG (do not merge): logs wall time, CPU of this test's process tree and machine CPU use of
+  // a phase, so that CI logs show where upgrade tests spend their time.
+  class DiagScope {
+   public:
+    DiagScope(UpgradeTestBase* test, const char* name);
+    ~DiagScope();
+   private:
+    const char* name_;
+    MonoTime start_;
+    double tree_cpu_s_;
+    uint64_t machine_busy_;
+    uint64_t machine_total_;
+  };
+
+  void TearDown() override;
   explicit UpgradeTestBase(const std::string& from_version);
   virtual ~UpgradeTestBase() = default;
 

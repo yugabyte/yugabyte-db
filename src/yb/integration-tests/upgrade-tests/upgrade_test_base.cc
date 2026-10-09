@@ -13,6 +13,13 @@
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
+#include <dirent.h>
+#include <unistd.h>
+
+#include <fstream>
+#include <map>
+#include <sstream>
+
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
@@ -254,6 +261,116 @@ Status ValidateYsqlMigrationCompatibility(const std::string& old_version_base_pa
   return Status::OK();
 }
 
+// DIAG (do not merge) helpers.
+std::pair<uint64_t, uint64_t> DiagMachineCpu() {
+  std::ifstream f("/proc/stat");
+  std::string cpu;
+  f >> cpu;
+  uint64_t busy = 0, total = 0;
+  for (int i = 0; i < 10; ++i) {
+    uint64_t v = 0;
+    if (!(f >> v)) {
+      break;
+    }
+    total += v;
+    if (i != 3 && i != 4) {
+      busy += v;
+    }
+  }
+  return {busy, total};
+}
+
+// utime + stime + cutime + cstime of `root` and all its live descendants, in seconds.
+double DiagTreeCpuSeconds(pid_t root) {
+  std::map<pid_t, std::vector<pid_t>> children;
+  std::map<pid_t, uint64_t> ticks;
+  DIR* proc = opendir("/proc");
+  if (!proc) {
+    return -1;
+  }
+  while (auto* entry = readdir(proc)) {
+    char* end = nullptr;
+    const auto pid = static_cast<pid_t>(strtol(entry->d_name, &end, 10));
+    if (*end != '\0' || pid <= 0) {
+      continue;
+    }
+    std::ifstream f(Format("/proc/$0/stat", pid));
+    std::string stat((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    const auto close_paren = stat.rfind(')');
+    if (close_paren == std::string::npos) {
+      continue;
+    }
+    std::istringstream fields(stat.substr(close_paren + 2));
+    std::vector<std::string> v;
+    std::string field;
+    while (fields >> field && v.size() < 16) {
+      v.push_back(field);
+    }
+    if (v.size() < 16) {
+      continue;
+    }
+    // Fields after the command: state(0) ppid(1) ... utime(11) stime(12) cutime(13) cstime(14).
+    children[static_cast<pid_t>(std::stol(v[1]))].push_back(pid);
+    ticks[pid] = std::stoull(v[11]) + std::stoull(v[12]) + std::stoull(v[13]) + std::stoull(v[14]);
+  }
+  closedir(proc);
+  uint64_t sum = 0;
+  std::vector<pid_t> stack = {root};
+  while (!stack.empty()) {
+    const auto pid = stack.back();
+    stack.pop_back();
+    sum += ticks[pid];
+    for (auto child : children[pid]) {
+      stack.push_back(child);
+    }
+  }
+  return static_cast<double>(sum) / static_cast<double>(sysconf(_SC_CLK_TCK));
+}
+
+std::string DiagReadFirstLine(const std::string& path) {
+  std::ifstream f(path);
+  std::string line;
+  std::getline(f, line);
+  return line;
+}
+
+}  // namespace
+
+UpgradeTestBase::DiagScope::DiagScope(UpgradeTestBase*, const char* name)
+    : name_(name), start_(MonoTime::Now()),
+      tree_cpu_s_(DiagTreeCpuSeconds(getpid())) {
+  std::tie(machine_busy_, machine_total_) = DiagMachineCpu();
+  LOG(INFO) << "DIAG begin " << name_;
+}
+
+UpgradeTestBase::DiagScope::~DiagScope() {
+  const auto [busy, total] = DiagMachineCpu();
+  const auto busy_pct = total > machine_total_
+      ? 100.0 * static_cast<double>(busy - machine_busy_) /
+            static_cast<double>(total - machine_total_)
+      : 0.0;
+  LOG(INFO) << "DIAG end " << name_
+            << " wall_s=" << (MonoTime::Now() - start_).ToSeconds()
+            << " test_tree_cpu_s=" << DiagTreeCpuSeconds(getpid()) - tree_cpu_s_
+            << " machine_busy_pct=" << busy_pct
+            << " nproc=" << sysconf(_SC_NPROCESSORS_ONLN)
+            << " loadavg=" << DiagReadFirstLine("/proc/loadavg")
+            << " cgroup_cpu_max=" << DiagReadFirstLine("/sys/fs/cgroup/cpu.max")
+            << " cgroup_v1_quota=" << DiagReadFirstLine("/sys/fs/cgroup/cpu/cpu.cfs_quota_us");
+}
+
+void UpgradeTestBase::TearDown() {
+  {
+    DiagScope diag(this, "TearDown");
+    ExternalMiniClusterITestBase::TearDown();
+  }
+  if (!HasFailure()) {
+    GTEST_SKIP() << "DIAG: reported as skipped so that CI uploads the logs";
+  }
+}
+
+namespace {
+
 }  // namespace
 
 const MonoDelta UpgradeTestBase::kNoDelayBetweenNodes = 0s;
@@ -350,6 +467,7 @@ Status UpgradeTestBase::SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompati
 }
 
 Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOptions& options) {
+  DiagScope diag(this, "StartClusterInOldVersion");
   LOG(INFO) << "Starting cluster in version: " << old_version_info_.version;
 
   RETURN_NOT_OK(ExternalMiniClusterITestBase::StartCluster(options));
@@ -385,6 +503,7 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
 
 Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
     MonoDelta delay_between_nodes, bool auto_finalize) {
+  DiagScope diag(this, "UpgradeClusterToCurrentVersion");
   LOG(INFO) << "Upgrading cluster to current version";
 
   RETURN_NOT_OK_PREPEND(
@@ -412,6 +531,7 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
 }
 
 Status UpgradeTestBase::RestartAllMastersInCurrentVersion(MonoDelta delay_between_nodes) {
+  DiagScope diag(this, "RestartAllMastersInCurrentVersion");
   LOG(INFO) << "Restarting all yb-masters in current version";
 
   RETURN_NOT_OK(
@@ -446,6 +566,7 @@ Status UpgradeTestBase::RestartMasterInCurrentVersion(
 }
 
 Status UpgradeTestBase::RestartAllTServersInCurrentVersion(MonoDelta delay_between_nodes) {
+  DiagScope diag(this, "RestartAllTServersInCurrentVersion");
   LOG(INFO) << "Restarting all yb-tservers in current version";
 
   for (auto* tserver : cluster_->tserver_daemons()) {
@@ -472,6 +593,7 @@ Status UpgradeTestBase::RestartTServerInCurrentVersion(
 }
 
 Status UpgradeTestBase::PerformYsqlMajorCatalogUpgrade() {
+  DiagScope diag(this, "PerformYsqlMajorCatalogUpgrade");
   if (!is_ysql_major_version_upgrade_) {
     return Status::OK();
   }
@@ -520,6 +642,7 @@ Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
+  DiagScope diag(this, "PromoteAutoFlags");
   LOG(INFO) << "Promoting AutoFlags " << flag_class;
 
   master::PromoteAutoFlagsRequestPB req;
@@ -575,6 +698,7 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
 }
 
 Status UpgradeTestBase::PerformYsqlUpgrade() {
+  DiagScope diag(this, "PerformYsqlUpgrade");
   if (!cluster_->opts_.enable_ysql) {
     return Status::OK();
   }
@@ -597,6 +721,7 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
 }
 
 Status UpgradeTestBase::FinalizeUpgrade() {
+  DiagScope diag(this, "FinalizeUpgrade");
   LOG(INFO) << "Finalizing upgrade";
 
   RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
@@ -638,6 +763,7 @@ Status UpgradeTestBase::RollbackYsqlMajorCatalogVersion() {
 }
 
 Status UpgradeTestBase::RollbackVolatileAutoFlags() {
+  DiagScope diag(this, "RollbackVolatileAutoFlags");
   if (!auto_flags_rollback_version_) {
     return Status::OK();
   }
@@ -664,6 +790,7 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
 }
 
 Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_nodes) {
+  DiagScope diag(this, "RollbackClusterToOldVersion");
   LOG(INFO) << "Rolling back upgrade";
 
   RETURN_NOT_OK(
@@ -687,6 +814,7 @@ Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_node
 }
 
 Status UpgradeTestBase::RestartAllMastersInOldVersion(MonoDelta delay_between_nodes) {
+  DiagScope diag(this, "RestartAllMastersInOldVersion");
   LOG(INFO) << "Restarting all yb-masters in old version";
 
   for (auto* master : cluster_->master_daemons()) {
@@ -718,6 +846,7 @@ Status UpgradeTestBase::RestartMasterInOldVersion(
 }
 
 Status UpgradeTestBase::RestartAllTServersInOldVersion(MonoDelta delay_between_nodes) {
+  DiagScope diag(this, "RestartAllTServersInOldVersion");
   LOG(INFO) << "Restarting all yb-tservers in old version";
 
   for (auto* tserver : cluster_->tserver_daemons()) {

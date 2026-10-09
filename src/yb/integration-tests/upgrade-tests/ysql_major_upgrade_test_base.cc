@@ -48,6 +48,7 @@ Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibility(const std::string&
 
 Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibilityWithArgs(
     const std::vector<std::string>& extra_args, const std::string& user_name) {
+  DiagScope diag(this, "ValidateUpgradeCompatibilityWithArgs");
   const auto tserver = cluster_->tablet_server(0);
   const auto data_path = JoinPathSegments(tserver->GetDataDirs().front(), "../../pg_data");
 
@@ -95,6 +96,7 @@ Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibilityFailure(
 }
 
 Status YsqlMajorUpgradeTestBase::UpgradeClusterToMixedMode() {
+  DiagScope diag(this, "UpgradeClusterToMixedMode");
   RETURN_NOT_OK(ValidateUpgradeCompatibility());
 
   LOG(INFO) << "Upgrading cluster to mixed mode";
@@ -114,6 +116,7 @@ Status YsqlMajorUpgradeTestBase::UpgradeClusterToMixedMode() {
 }
 
 Status YsqlMajorUpgradeTestBase::UpgradeAllTserversFromMixedMode() {
+  DiagScope diag(this, "UpgradeAllTserversFromMixedMode");
   LOG(INFO) << "Restarting all other yb-tservers in current version";
 
   auto mixed_mode_pg15_tserver = cluster_->tablet_server(kMixedModeTserverPg15);
@@ -133,6 +136,7 @@ Status YsqlMajorUpgradeTestBase::UpgradeAllTserversFromMixedMode() {
 }
 
 Status YsqlMajorUpgradeTestBase::FinalizeUpgradeFromMixedMode() {
+  DiagScope diag(this, "FinalizeUpgradeFromMixedMode");
   RETURN_NOT_OK(UpgradeAllTserversFromMixedMode());
 
   RETURN_NOT_OK(UpgradeTestBase::FinalizeUpgrade());
@@ -141,6 +145,7 @@ Status YsqlMajorUpgradeTestBase::FinalizeUpgradeFromMixedMode() {
 }
 
 Status YsqlMajorUpgradeTestBase::RollbackUpgradeFromMixedMode() {
+  DiagScope diag(this, "RollbackUpgradeFromMixedMode");
   RETURN_NOT_OK_PREPEND(RollbackVolatileAutoFlags(), "Failed to rollback Volatile AutoFlags");
 
   LOG(INFO) << "Restarting yb-tserver " << kMixedModeTserverPg15 << " in old version";
