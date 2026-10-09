@@ -25,7 +25,7 @@ class AtomicRequestIdAllocatorImpl;
 
 /// Allocates retryable request ids, without a lock, unlike the spinlock guarded set of running
 /// ids that it replaces. Meant to be sharded, see request_id_allocator.cc, so that a single
-/// instance only sees the requests of a few threads.
+/// instance only sees a fraction of the requests.
 ///
 /// Next() increments an atomic counter. Finish() pushes the id to a lock free queue, and the
 /// thread that wins a CAS folds the queued ids into min_running, in place, as in

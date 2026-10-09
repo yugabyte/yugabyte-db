@@ -18,6 +18,8 @@
 #include <queue>
 #include <vector>
 
+#include "yb/gutil/port.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
@@ -111,7 +113,7 @@ class AtomicRequestIdAllocatorImpl {
     auto min_running = min_running_id_.load();
     if (id != min_running) {
       if (PREDICT_FALSE(id < min_running)) {
-        LOG(DFATAL) << "Finished request id " << id << " is below min running id " << min_running;
+        DropDuplicate(id);
         return;
       }
       // Finished out of order, so min_running stays below it until the ids before it finish.
@@ -123,7 +125,7 @@ class AtomicRequestIdAllocatorImpl {
       // A second copy of a finished id. Left in the queue, it would never match min_running
       // again and would stall it for good.
       if (PREDICT_FALSE(processed_queue_.top() < min_running)) {
-        LOG(DFATAL) << "Request id " << processed_queue_.top() << " finished twice";
+        DropDuplicate(processed_queue_.top());
       } else {
         ++min_running;
       }
@@ -132,11 +134,20 @@ class AtomicRequestIdAllocatorImpl {
     min_running_id_.store(min_running);
   }
 
-  std::atomic<RetryableRequestId> next_id_{0};
+  // Counted as finished when pushed, so the count has to forget the copy that is dropped, or
+  // the all finished check in Process() never holds again.
+  void DropDuplicate(RetryableRequestId id) {
+    LOG(DFATAL) << "Request id " << id << " finished twice, min running id is "
+                << min_running_id_.load();
+    finished_count_.fetch_sub(1);
+  }
+
+  // What Next() touches, apart from the fields that Finish() writes.
+  alignas(CACHELINE_SIZE) std::atomic<RetryableRequestId> next_id_{0};
   std::atomic<RetryableRequestId> min_running_id_{0};
 
   // Finished requests, to tell whether any request is still running.
-  std::atomic<RetryableRequestId> finished_count_{0};
+  alignas(CACHELINE_SIZE) std::atomic<RetryableRequestId> finished_count_{0};
 
   MPSCQueue<FinishedRequest> finished_queue_;
 

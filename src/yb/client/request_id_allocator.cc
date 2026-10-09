@@ -30,18 +30,19 @@
 DEFINE_NON_RUNTIME_string(client_request_id_allocator, "sharded-queue",
     "Allocator of the retryable request ids of a client. spinlock: the set of the running ids "
     "under a spinlock that the others replace. queue: lock free, with the finished ids folded "
-    "from a queue. sharded-queue: a queue per shard, each with its own client id, see "
-    "client_request_id_shards.");
+    "from a queue. sharded-queue: a queue per shard, each with its own client id, walked "
+    "round-robin by each thread, see client_request_id_shards.");
 DEFINE_validator(client_request_id_allocator,
     FLAG_IN_SET_VALIDATOR("spinlock", "queue", "sharded-queue"));
 
-DEFINE_RUNTIME_uint32(client_request_id_shards, 0,
-    "Number of shards that the retryable request ids of a client are split into. Each shard has "
-    "its own client id and its own min_running_request_id, so more shards mean less contention "
-    "between the threads and a smaller blast radius of a request that stays unfinished, but also "
-    "more per client state on the server. Zero picks an eighth of the CPUs, at least 1 and at "
-    "most 64, which keeps the threads that share a shard well below the number where it "
-    "degrades.");
+DEFINE_NON_RUNTIME_uint32(client_request_id_shards, 0,
+    "Number of shards that the retryable request ids of a client are split into, read when the "
+    "client is created. Each shard has its own client id and its own min_running_request_id, so "
+    "more shards mean less contention between the threads and a smaller blast radius of a "
+    "request that stays unfinished, but also more per client state on the server. Zero picks an "
+    "eighth of the CPUs, at least 1 and at most 64, which keeps the threads that share a shard "
+    "well below the number where it degrades.");
+DEFINE_validator(client_request_id_shards, FLAG_RANGE_VALIDATOR(0, 64));
 
 namespace yb::client::internal {
 

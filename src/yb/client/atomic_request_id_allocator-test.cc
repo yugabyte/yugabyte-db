@@ -17,6 +17,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -169,7 +170,9 @@ TEST_F(AtomicRequestIdAllocatorTest, Concurrent) {
 // still running, otherwise a retry of that request is rejected as expired. Next() runs under the
 // mutex, so that it is atomic with the update of the running set, while Finish() does not.
 // Removing an id from the set before finishing it only makes the check weaker, never wrong.
-// The set is per client id, since the sharded allocator has an id space per shard.
+// The sets are per client id, since the sharded allocator has an id space per shard.
+// Each thread finishes the requests of the previous one, as the client finishes on a reactor
+// thread rather than on the one that allocated.
 void CheckMinRunningInvariant(const std::string& name) {
   const auto num_threads = FLAGS_request_id_invariant_threads;
   const auto requests_per_thread = FLAGS_request_id_invariant_requests_per_thread;
@@ -178,11 +181,20 @@ void CheckMinRunningInvariant(const std::string& name) {
   auto allocator = CreateRequestIdAllocator(name);
   std::mutex mutex;
   std::unordered_map<const ClientId*, std::set<RetryableRequestId>> running;
+  std::unordered_map<const ClientId*, std::unordered_set<RetryableRequestId>> all_ids;
+
+  struct Mailbox {
+    std::mutex mutex;
+    std::deque<RequestIdAllocation> items;
+    bool closed = false;
+  };
+  std::vector<Mailbox> mailboxes(num_threads);
 
   TestThreadHolder threads;
   for (int i = 0; i != num_threads; ++i) {
-    threads.AddThreadFunctor([&allocator, &mutex, &running, requests_per_thread] {
-      std::deque<RequestIdAllocation> outstanding;
+    threads.AddThreadFunctor([&, i] {
+      auto& outbox = mailboxes[i];
+      auto& inbox = mailboxes[(i + num_threads - 1) % num_threads];
       auto finish = [&mutex, &running](const RequestIdAllocation& allocation) {
         {
           std::lock_guard lock(mutex);
@@ -190,10 +202,27 @@ void CheckMinRunningInvariant(const std::string& name) {
         }
         allocation.allocator->Finish(allocation.id);
       };
+      // Returns true once the previous thread has closed its outbox and everything is finished.
+      auto drain_inbox = [&inbox, &finish] {
+        std::deque<RequestIdAllocation> items;
+        bool closed;
+        {
+          std::lock_guard lock(inbox.mutex);
+          items.swap(inbox.items);
+          closed = inbox.closed;
+        }
+        for (const auto& allocation : items) {
+          finish(allocation);
+        }
+        return closed && items.empty();
+      };
+      std::deque<RequestIdAllocation> outstanding;
       for (int j = 0; j != requests_per_thread; ++j) {
         {
           std::lock_guard lock(mutex);
           auto allocation = allocator->Next();
+          ASSERT_TRUE(all_ids[allocation.client_id].insert(allocation.id).second)
+              << "Duplicate id " << allocation.id << " of client " << *allocation.client_id;
           auto& client_running = running[allocation.client_id];
           client_running.insert(allocation.id);
           ASSERT_LE(allocation.min_running, *client_running.begin())
@@ -201,12 +230,19 @@ void CheckMinRunningInvariant(const std::string& name) {
           outstanding.push_back(allocation);
         }
         if (outstanding.size() > kOutstanding) {
-          finish(outstanding.front());
+          std::lock_guard lock(outbox.mutex);
+          outbox.items.push_back(outstanding.front());
           outstanding.pop_front();
         }
+        drain_inbox();
       }
-      for (const auto& allocation : outstanding) {
-        finish(allocation);
+      {
+        std::lock_guard lock(outbox.mutex);
+        outbox.items.insert(outbox.items.end(), outstanding.begin(), outstanding.end());
+        outbox.closed = true;
+      }
+      while (!drain_inbox()) {
+        std::this_thread::yield();
       }
     });
   }
