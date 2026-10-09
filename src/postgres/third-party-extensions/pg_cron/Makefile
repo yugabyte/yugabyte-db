@@ -12,9 +12,12 @@ REGRESS = pg_cron-test
 MODULE_big = $(EXTENSION)
 OBJS = $(patsubst %.c,%.o,$(wildcard src/*.c))
 ifeq ($(CC),gcc)
-    PG_CPPFLAGS = -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-uninitialized -Wno-implicit-fallthrough -Wno-unused-function -Iinclude -I$(libpq_srcdir)
+    PG_CPPFLAGS = -std=gnu11 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-uninitialized -Wno-implicit-fallthrough -Wno-unused-function -Iinclude -I$(libpq_srcdir)
 else
-    PG_CPPFLAGS = -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -Wno-unused-function -Iinclude -I$(libpq_srcdir)
+    PG_CPPFLAGS = -std=gnu11 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -Wno-unused-function -Iinclude -I$(libpq_srcdir)
+endif
+ifeq ($(shell uname -s),SunOS)
+    PG_CPPFLAGS += -Wno-sign-compare -D__EXTENSIONS__
 endif
 SHLIB_LINK = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate -lyb_pggate_util $(filter -lintl,$(LIBS))
 EXTRA_CLEAN += $(addprefix src/,*.gcno *.gcda) # clean up after profiling runs

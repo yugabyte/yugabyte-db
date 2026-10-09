@@ -30,6 +30,25 @@
 #include "cron.h"
 
 
+char	*MonthNames[] = {
+		"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+		NULL
+	};
+
+char	*DowNames[] = {
+		"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun",
+		NULL
+	};
+
+# if DEBUGGING
+int	DebugFlags;
+char	*DebugFlagNames[] = {	/* sync with #defines */
+		"ext", "sch", "proc", "pars", "load", "misc", "test", "bit",
+		NULL		/* NULL must be last element */
+	};
+# endif /* DEBUGGING */
+
 typedef	enum ecode {
 	e_none, e_minute, e_hour, e_dom, e_month, e_dow,
 	e_cmd, e_timespec, e_username, e_cmd_len
@@ -409,7 +428,8 @@ get_range(bitstr_t *bits, int low, int high, char *names[], int ch, FILE *file)
 	 * Code adapted from set_elements() where this error was probably intended
 	 * to be catched.
 	 */
-	if (num1 < low || num1 > high || num2 < low || num2 > high)
+	if (num1 < low || num1 > high || num2 < low || num2 > high ||
+		num3 < 0 || num3 > high)
 		return EOF;
 
 	/* range. set all elements from num1 to num2, stepping
@@ -441,6 +461,8 @@ get_number(int *numptr, int low, char *names[], int ch, FILE *file)
 	 */
 	pc = temp;
 	len = 0;
+	/* keep compiler quiet */
+	*numptr = 0;
 	all_digits = TRUE;
 	while (isalnum(ch)) {
 		if (++len >= MAX_TEMPSTR)
@@ -508,7 +530,7 @@ set_range(bitstr_t *bits, int low, int high, int start, int stop, int step) {
 	Debug(DPARS|DEXT, ("set_range(?,%d,%d,%d,%d,%d)\n",
 			   low, high, start, stop, step))
 
-	if (start < low || stop > high)
+	if (start < low || stop > high || step <= 0)
 		return EOF;
 	start -= low;
 	stop -= low;

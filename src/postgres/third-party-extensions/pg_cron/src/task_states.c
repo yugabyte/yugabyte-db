@@ -22,8 +22,8 @@
 #include "utils/memutils.h"
 
 /* YB includes */
-#include "pg_yb_utils.h"
 #include "catalog/yb_catalog_version.h"
+#include "pg_yb_utils.h"
 
 /* forward declarations */
 static HTAB * CreateCronTaskHash(void);
@@ -166,6 +166,8 @@ InitializeCronTask(CronTask *task, int64 jobId)
 	task->isActive = true;
 	task->errorMessage = NULL;
 	task->freeErrorMessage = false;
+	task->seg = NULL;
+	task->sharedMemoryQueue = NULL;
 }
 
 

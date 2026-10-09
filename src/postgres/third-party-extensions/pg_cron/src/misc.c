@@ -29,6 +29,8 @@
 #include <string.h>
 #include "cron.h"
 
+int	LineNumber;
+
 
 /* get_char(file) : like getc() but increment LineNumber on newlines
  */
@@ -85,7 +87,7 @@ unget_char(int ch, FILE *file)
 	 */
 	file_buffer *buffer = (file_buffer *) file;
 
-	if (buffer->unget_count >= 1024)
+	if (buffer->unget_count >= 1000)
 	{	
 		perror("ungetc limit exceeded");
 		exit(ERROR_EXIT);

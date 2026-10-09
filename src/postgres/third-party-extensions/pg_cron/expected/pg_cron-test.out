@@ -5,10 +5,36 @@ SELECT extversion FROM pg_extension WHERE extname='pg_cron';
  1.0
 (1 row)
 
+-- Test binary compatibility with v1.3 function signature.
+ALTER EXTENSION pg_cron UPDATE TO '1.3';
+SELECT cron.schedule('test', '* * * * *', 'SELECT 1');
+ schedule 
+----------
+        1
+(1 row)
+
+SELECT cron.unschedule('test');
+ unschedule 
+------------
+ t
+(1 row)
+
 -- Test binary compatibility with v1.4 function signature.
 ALTER EXTENSION pg_cron UPDATE TO '1.4';
 SELECT cron.unschedule(job_name := 'no_such_job');
 ERROR:  could not find valid entry for job 'no_such_job'
+SELECT cron.schedule('testjob', '* * * * *', 'SELECT 1');
+ schedule 
+----------
+        2
+(1 row)
+
+SELECT cron.unschedule('testjob');
+ unschedule 
+------------
+ t
+(1 row)
+
 -- Test cache invalidation
 DROP EXTENSION pg_cron;
 CREATE EXTENSION pg_cron VERSION '1.4';
@@ -32,27 +58,49 @@ SELECT cron.schedule(repeat('a', 1000), '');
 ERROR:  invalid schedule: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Invalid input: missing parts
-SELECT cron.schedule('* * * *', 'SELECT 1');
+SELECT cron.schedule('* * * *', 'SELECT 1'); 
 ERROR:  invalid schedule: * * * *
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Invalid input: trailing characters
-SELECT cron.schedule('5 secondc', 'SELECT 1');
+SELECT cron.schedule('5 secondc', 'SELECT 1'); 
 ERROR:  invalid schedule: 5 secondc
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
-SELECT cron.schedule('50 seconds c', 'SELECT 1');
+SELECT cron.schedule('50 seconds c', 'SELECT 1'); 
 ERROR:  invalid schedule: 50 seconds c
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+-- Invalid input: step out of range
+SELECT cron.schedule('*/0 10 * * *', 'SELECT 1');
+ERROR:  invalid schedule: */0 10 * * *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('-1 * * * *', 'SELECT 1');
+ERROR:  invalid schedule: -1 * * * *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('*/-1 10 * * *', 'SELECT 1');
+ERROR:  invalid schedule: */-1 10 * * *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('*/60 10 * * *', 'SELECT 1');
+ERROR:  invalid schedule: */60 10 * * *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('* * * 13 *', 'SELECT 1');
+ERROR:  invalid schedule: * * * 13 *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('* * * 0 *', 'SELECT 1');
+ERROR:  invalid schedule: * * * 0 *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('*/5000000000 10 * * *', 'SELECT 1');
+ERROR:  invalid schedule: */5000000000 10 * * *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Invalid input: seconds out of range
-SELECT cron.schedule('-1 seconds', 'SELECT 1');
+SELECT cron.schedule('-1 seconds', 'SELECT 1'); 
 ERROR:  invalid schedule: -1 seconds
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
-SELECT cron.schedule('0 seconds', 'SELECT 1');
+SELECT cron.schedule('0 seconds', 'SELECT 1'); 
 ERROR:  invalid schedule: 0 seconds
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
-SELECT cron.schedule('60 seconds', 'SELECT 1');
+SELECT cron.schedule('60 seconds', 'SELECT 1'); 
 ERROR:  invalid schedule: 60 seconds
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
-SELECT cron.schedule('10000000000 seconds', 'SELECT 1');
+SELECT cron.schedule('10000000000 seconds', 'SELECT 1'); 
 ERROR:  invalid schedule: 10000000000 seconds
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Try to update pg_cron on restart
@@ -216,6 +264,20 @@ SELECT username FROM cron.job where jobid=7;
  pgcron_cront
 (1 row)
 
+-- Make sure ownership checks remain case-sensitive for quoted role names
+CREATE USER "CaseOwner";
+CREATE USER caseowner;
+GRANT USAGE ON SCHEMA cron TO "CaseOwner", caseowner;
+SELECT cron.schedule_in_database(job_name:='mixed case owner', schedule:='0 11 * * *', command:='VACUUM',database:=current_database(), username:='CaseOwner');
+ schedule_in_database 
+----------------------
+                    8
+(1 row)
+
+SET SESSION AUTHORIZATION caseowner;
+SELECT cron.unschedule(8);
+ERROR:  permission denied for table job
+RESET SESSION AUTHORIZATION;
 -- Override function
 DROP EXTENSION IF EXISTS pg_cron cascade;
 CREATE TABLE test (data text);
@@ -234,25 +296,25 @@ select * from public.test;
 (0 rows)
 
 -- valid interval jobs
-SELECT cron.schedule('1 second', 'SELECT 1');
+SELECT cron.schedule('1 second', 'SELECT 1'); 
  schedule 
 ----------
         1
 (1 row)
 
-SELECT cron.schedule(' 30 sEcOnDs ', 'SELECT 1');
+SELECT cron.schedule(' 30 sEcOnDs ', 'SELECT 1'); 
  schedule 
 ----------
         2
 (1 row)
 
-SELECT cron.schedule('59 seconds', 'SELECT 1');
+SELECT cron.schedule('59 seconds', 'SELECT 1'); 
  schedule 
 ----------
         3
 (1 row)
 
-SELECT cron.schedule('17  seconds ', 'SELECT 1');
+SELECT cron.schedule('17  seconds ', 'SELECT 1'); 
  schedule 
 ----------
         4
@@ -291,5 +353,7 @@ HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- cleaning
 DROP EXTENSION pg_cron;
 drop user pgcron_cront;
+drop user "CaseOwner";
+drop user caseowner;
 drop database pgcron_dbno;
 drop database pgcron_dbyes;
