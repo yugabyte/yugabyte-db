@@ -103,3 +103,25 @@ After the upgrade is finalized and complete, do the following:
     This marks the successful upgrade of the logical replication streams.
 
 1. Resume the DDLs and make changes to the publications as desired.
+
+## Verify the upgrade
+
+After any upgrade, confirm the stream is healthy as follows:
+
+- Connector status: `GET /connectors/<name>/status` returns `RUNNING` for the connector and its tasks, with no failures.
+- Slot progressing: `restart_lsn` / `confirmed_flush_lsn` advance and lag drains.
+
+  ```plpgsql
+  SELECT slot_name, confirmed_flush_lsn,
+         to_timestamp((yb_restart_commit_ht / 4096) / 1000000) AS yb_restart_time
+  FROM pg_replication_slots;
+  ```
+
+- Events flowing: New changes appear on the expected Kafka topics; sink lag returns to normal.
+
+## Rollback
+
+Downgrade isn't supported. If a new version misbehaves:
+
+- Prefer fixing forward to a later patch on the same line.
+- If you must return to a previous version, [re-snapshot](../../additional-features/change-data-capture/using-logical-replication/upgrade-connector/#when-a-re-snapshot-is-required) on that version (new slot, fresh snapshot) rather than pointing the previous connector at the existing slot.

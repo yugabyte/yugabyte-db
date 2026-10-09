@@ -865,7 +865,7 @@ describe('NodesAvailability', () => {
         })
       );
 
-      const azSelects = screen.getAllByLabelText('Availability Zone');
+      const azSelects = screen.getAllByLabelText('availabilityZone');
       fireEvent.mouseDown(azSelects[1]);
 
       const listbox = await screen.findByRole('listbox');

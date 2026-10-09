@@ -3,9 +3,11 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -15,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 
 /** Kubernetes counterpart of {@link ConfigureExportTelemetryConfig}. */
 @Slf4j
+@ITask.Retryable
 public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeTaskBase {
 
   @Inject
@@ -27,6 +30,12 @@ public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeT
   @Override
   protected ExportTelemetryConfigParams taskParams() {
     return (ExportTelemetryConfigParams) taskParams;
+  }
+
+  @Override
+  protected TelemetryConfig getDesiredTelemetryConfig() {
+    // Return the telemetryConfig form taskParams instead of the one from the db
+    return taskParams().getTelemetryConfig();
   }
 
   @Override
@@ -52,9 +61,9 @@ public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeT
         () -> {
           Universe universe = getUniverse();
           Cluster cluster = taskParams().getPrimaryCluster();
-          cluster.userIntent.auditLogConfig = taskParams().getAuditLogConfig();
-          cluster.userIntent.queryLogConfig = taskParams().getQueryLogConfig();
 
+          // The desired telemetry config reaches the helm-upgrade subtasks explicitly via
+          // getDesiredTelemetryConfig; no need to smuggle it through the userIntent copies.
           createUpgradeTask(
               universe,
               cluster.userIntent.ybSoftwareVersion,
@@ -64,6 +73,10 @@ public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeT
               universe.getUniverseDetails().getYbcSoftwareVersion());
 
           updateAndPersistExportTelemetryConfigTask();
+
+          // Update the swamper target file. Must run after the persist task above, since the
+          // otel targets are gated on universeDetails.otelCollectorEnabled which it sets.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 }

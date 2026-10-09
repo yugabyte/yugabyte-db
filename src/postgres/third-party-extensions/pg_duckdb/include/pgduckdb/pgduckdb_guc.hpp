@@ -28,4 +28,30 @@ extern char *duckdb_max_temp_directory_size;
 extern char *duckdb_default_collation;
 extern char *duckdb_azure_transport_option_type;
 extern char *duckdb_custom_user_agent;
+
+/*
+ * YB: Pinned pg_duckdb execution mode:
+ *
+ * YB_DUCKDB_EXECUTION_LAKE_IO (lake_io): In this mode pg_duckdb supports only data-lake I/O:
+ * reading and writing parquet / CSV / JSON on object stores or the local filesystem -- import via
+ * CREATE TABLE AS / INSERT ... SELECT from the lake read functions (read_parquet / read_csv / read_json)
+ * and export via COPY (SELECT ... FROM yb_table) TO.
+ * Everything else pg_duckdb / DuckDB offers is disabled: DuckDB execution over YugabyteDB tables,
+ * USING duckdb tables, MotherDuck, extension install/load, force_execution, etc.
+ *
+ * The duckdb.execution_mode GUC is defined PGC_INTERNAL and pinned to lake_io.
+ * YbIsLakeIoMode() is the single predicate every gating site checks. lake_io is currently the only
+ * mode; if support ever expands beyond lake I/O, the new behavior can be added as another enum
+ * value.
+ */
+enum YbDuckdbExecutionMode {
+	YB_DUCKDB_EXECUTION_LAKE_IO = 0,
+};
+extern int yb_duckdb_execution_mode;
+
+/* True when the execution mode is YB_DUCKDB_EXECUTION_LAKE_IO (lake_io)*/
+inline bool
+YbIsLakeIoMode() {
+	return yb_duckdb_execution_mode == YB_DUCKDB_EXECUTION_LAKE_IO;
+}
 } // namespace pgduckdb

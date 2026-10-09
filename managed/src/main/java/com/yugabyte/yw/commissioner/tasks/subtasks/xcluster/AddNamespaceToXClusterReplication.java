@@ -24,7 +24,7 @@ import org.yb.CommonNet;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.AddNamespaceToXClusterReplicationResponse;
 import org.yb.client.IsAlterXClusterReplicationDoneResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.NetUtil;
 
 @Slf4j
@@ -66,7 +66,7 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
     }
     String dbId = taskParams().getDbToAdd();
 
-    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(sourceUniverse)) {
       Set<CommonNet.HostPortPB> targetMasterAddresses =
           new HashSet<>(
               NetUtil.parseStringsAsPB(
@@ -119,7 +119,7 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
   }
 
   protected void waitForAlterReplicationDone(
-      YBClient client,
+      YBClientApi client,
       String replicationGroupName,
       Set<CommonNet.HostPortPB> targetMasterAddresses,
       long xClusterWaitTimeoutMs) {

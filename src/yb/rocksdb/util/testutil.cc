@@ -35,6 +35,7 @@
 
 #include "yb/storage/storage_test_util.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 
 using std::unique_ptr;
@@ -428,6 +429,10 @@ void BoundaryTestValues::Check(const FileBoundaryValues<InternalKey>& smallest,
   AssertSlicesEq(max_left.AsSlice(), GetBoundaryLeft(largest.user_values));
   AssertSlicesEq(min_right.AsSlice(), GetBoundaryRight(smallest.user_values));
   AssertSlicesEq(max_right.AsSlice(), GetBoundaryRight(largest.user_values));
+}
+
+size_t StringSource::memory_footprint() const {
+  LOG(FATAL) << "Not supported";
 }
 
 }  // namespace test

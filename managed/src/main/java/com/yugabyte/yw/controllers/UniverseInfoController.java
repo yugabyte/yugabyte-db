@@ -50,6 +50,7 @@ import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.InputStream;
@@ -336,11 +337,21 @@ public class UniverseInfoController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
-  public Result healthCheck(UUID customerUUID, UUID universeUUID) {
+  public Result healthCheck(
+      UUID customerUUID,
+      UUID universeUUID,
+      @ApiParam(
+              value =
+                  "Maximum number of most recent health check entries to return. Defaults to 10.")
+          Integer limit) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
 
-    List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
+    if (limit != null && limit <= 0) {
+      throw new PlatformServiceException(BAD_REQUEST, "limit must be a positive integer");
+    }
+
+    List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID, limit);
     return PlatformResults.withData(convertDetails(detailsList));
   }
 
@@ -441,6 +452,25 @@ public class UniverseInfoController extends AuthenticatedController {
 
     List<MasterInfo> masterInfos = universeInfoHandler.getMasterInfos(universe);
     return PlatformResults.withData(masterInfos);
+  }
+
+  @ApiOperation(
+      notes = "YbaApi Internal. Returns the in-flight state transition details for a universe.",
+      value = "Get universe state transition details",
+      nickname = "getStateTransition",
+      hidden = true,
+      response = JsonNode.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  // Optional state can be one of "source", "target" or "delta".
+  public Result getStateTransition(UUID customerUUID, UUID universeUUID, String state) {
+    return PlatformResults.withData(
+        universeInfoHandler.getStateTransition(customerUUID, universeUUID, state));
   }
 
   private List<DetailsExt> convertDetails(List<Details> details) {

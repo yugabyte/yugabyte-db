@@ -222,7 +222,7 @@ extern Path *get_cheapest_fractional_path_for_pathkeys(List *paths,
 extern Path *get_cheapest_parallel_safe_total_inner(List *paths);
 extern List *build_index_pathkeys(PlannerInfo *root, IndexOptInfo *index,
 								  ScanDirection scandir, int *yb_distinct_nkeys,
-								  List **yb_merge_scan_saop_cols);
+								  List **yb_merge_scan_stream_cols);
 extern List *build_partition_pathkeys(PlannerInfo *root, RelOptInfo *partrel,
 									  ScanDirection scandir, bool *partialkeys);
 extern List *build_expression_pathkey(PlannerInfo *root, Expr *expr,
@@ -290,5 +290,8 @@ extern int	yb_calculate_distinct_prefixlen(PlannerInfo *root,
 extern bool yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode);
 extern List *yb_get_ecs_for_query_uniqkeys(PlannerInfo *root);
 extern Path *get_singleton_append_subpath(Path *path);
+extern List *yb_convert_subquery_uniqkeys(RelOptInfo *rel,
+										  List *subquery_uniqkeys,
+										  List *subquery_tlist);
 
 #endif							/* PATHS_H */

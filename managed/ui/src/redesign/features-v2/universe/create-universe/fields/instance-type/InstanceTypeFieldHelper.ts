@@ -1,13 +1,14 @@
 import _ from 'lodash';
 import {
   CloudType,
+  DeviceInfo,
   InstanceType,
   InstanceTypeWithGroup,
   Placement,
   RunTimeConfigEntry,
   Region
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from 'react-query';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { ProviderType } from '../../steps/general-settings/dtos';
@@ -96,6 +97,25 @@ export const isEphemeralAwsStorageInstance = (instance: InstanceType) => {
   );
 };
 
+// Edit universe: keep the current storage config when only the instance type changes.
+export const mergeDeviceInfoPreservingStorage = (
+  fromInstance: DeviceInfo | null,
+  current: DeviceInfo | null | undefined,
+  instance: InstanceType
+): DeviceInfo | null => {
+  if (!fromInstance) return null;
+  if (!current?.storageType || isEphemeralAwsStorageInstance(instance)) return fromInstance;
+  return {
+    ...fromInstance,
+    storageType: current.storageType,
+    volumeSize: current.volumeSize,
+    numVolumes: current.numVolumes,
+    diskIops: current.diskIops,
+    throughput: current.throughput,
+    storageClass: current.storageClass ?? fromInstance.storageClass
+  };
+};
+
 export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): InstanceTypeWithGroup[] => {
   if (!data) return [];
 
@@ -134,20 +154,18 @@ export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): Instance
 };
 
 export const useGetZones = (provider?: Partial<ProviderType>, regionList?: Region[]) => {
-  const [zones, setZones] = useState<Placement[]>([]);
-
   const { data: allRegions, isLoading: isLoadingZones } = useQuery(
     [QUERY_KEY.getRegionsList, provider?.uuid],
     () => api.getRegionsList(provider?.uuid),
     { enabled: !!provider?.uuid } // make sure query won't run when there's no provider defined
   );
-  useEffect(() => {
+
+  const zones = useMemo(() => {
     const selectedRegionUUIDs = new Set((regionList ?? []).map((r: Region) => r.uuid ?? r));
 
-    const zones = (allRegions || [])
+    const next = (allRegions || [])
       .filter((region) => selectedRegionUUIDs.has(region.uuid))
       .flatMap<Placement>((region: any) => {
-        // add extra fields with parent region data
         return region.zones.map((zone: any) => ({
           ...zone,
           parentRegionId: region.uuid,
@@ -156,7 +174,7 @@ export const useGetZones = (provider?: Partial<ProviderType>, regionList?: Regio
         }));
       });
 
-    setZones(_.sortBy(zones, 'name'));
+    return _.sortBy(next, 'name');
   }, [allRegions, regionList]);
 
   return { zones, isLoadingZones };

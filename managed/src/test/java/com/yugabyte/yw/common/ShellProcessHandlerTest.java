@@ -143,7 +143,39 @@ public class ShellProcessHandlerTest extends TestCase {
     long durationMs = System.currentTimeMillis() - startMs;
     assert (durationMs < 7000); // allow for some slack on loaded Jenkins servers
     assertNotEquals(0, response.code);
-    assertThat(response.message.trim(), allOf(notNullValue(), equalTo("error")));
+    // A timed-out command is SIGKILLed, so its exit code says nothing about why it was stuck. The
+    // response must name the timeout and still carry the captured output.
+    assertThat(
+        response.message,
+        allOf(
+            notNullValue(), containsString("timed out after 5 seconds"), containsString("error")));
+  }
+
+  @Test
+  public void testTimeoutKillsForkedChildren() throws IOException, InterruptedException {
+    // The timeout path relies on destroyForcibly() reaping the whole tree: a child that outlives
+    // the aborted parent keeps holding its resources - for YNP provisioning that is an ssh client
+    // keeping the remote session open. Pin that, since nothing covered it before.
+    Path pidFile = Paths.get(TMP_STORAGE_PATH, "child.pid");
+    String testCmd = String.format("sleep 300 & echo -n $! > %s; wait", pidFile);
+    List<String> command = new ArrayList<>();
+    command.add(createTestShellScript(testCmd));
+
+    ShellResponse response =
+        shellProcessHandler.run(
+            command, ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(2).build());
+    assertNotEquals(0, response.code);
+
+    long childPid = Long.parseLong(new String(Files.readAllBytes(pidFile)).trim());
+    // destroyForcibly is asynchronous at the OS level; give the kill a moment to land.
+    for (int i = 0;
+        i < 50 && ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false);
+        i++) {
+      Thread.sleep(100);
+    }
+    assertFalse(
+        "forked child " + childPid + " outlived the timed-out parent",
+        ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false));
   }
 
   @Test

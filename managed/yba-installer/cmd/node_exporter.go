@@ -29,23 +29,54 @@ type nodeExporterDirectories struct {
 	templateFileName    string
 	BinDir              string
 	LogDir              string
-	HttpsCertPath       string
-	HttpsKeyPath        string
+	HttpsCertPath string
+	HttpsKeyPath  string
+	SrcCertPath string
+	SrcKeyPath  string
 }
 
 func newNodeExporterDirectories() nodeExporterDirectories {
-	certPath := common.GetSelfSignedServerCertPath()
-	keyPath := common.GetSelfSignedServerKeyPath()
+	confDir := common.GetSoftwareRoot() + "/node-exporter/conf"
+	srcCertPath, srcKeyPath := common.GetPlatformServerCertPaths()
 	return nodeExporterDirectories{
 		SystemdFileLocation: common.SystemdDir + "/node-exporter.service",
-		ConfDir:             common.GetSoftwareRoot() + "/node-exporter/conf",
-		WebConfFile:         common.GetSoftwareRoot() + "/node-exporter/conf/web.yml",
+		ConfDir:             confDir,
+		WebConfFile:         confDir + "/web.yml",
 		templateFileName:    "yba-installer-node-exporter.yml",
 		BinDir:              common.GetSoftwareRoot() + "/node-exporter",
 		LogDir:              common.GetBaseInstall() + "/data/logs",
-		HttpsCertPath:       certPath,
-		HttpsKeyPath:        keyPath,
+		HttpsCertPath:       filepath.Join(confDir, common.ServerCertPath),
+		HttpsKeyPath:        filepath.Join(confDir, common.ServerKeyPath),
+		SrcCertPath:         srcCertPath,
+		SrcKeyPath:          srcKeyPath,
 	}
+}
+
+func (ne NodeExporter) syncCerts() error {
+	if viper.GetString("nodeExporter.scheme") != "https" {
+		return nil
+	}
+	if err := common.MkdirAll(ne.ConfDir, common.DirMode); err != nil {
+		return fmt.Errorf("failed to create %s: %w", ne.ConfDir, err)
+	}
+	if err := common.CopyFileError(ne.SrcCertPath, ne.HttpsCertPath); err != nil {
+		return fmt.Errorf("failed to copy node-exporter cert from %s to %s: %w",
+			ne.SrcCertPath, ne.HttpsCertPath, err)
+	}
+	if err := common.CopyFileError(ne.SrcKeyPath, ne.HttpsKeyPath); err != nil {
+		return fmt.Errorf("failed to copy node-exporter key from %s to %s: %w",
+			ne.SrcKeyPath, ne.HttpsKeyPath, err)
+	}
+	if err := os.Chmod(ne.HttpsKeyPath, 0600); err != nil {
+		return fmt.Errorf("failed to set permissions on %s: %w", ne.HttpsKeyPath, err)
+	}
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		if err := common.Chown(ne.ConfDir, userName, userName, true); err != nil {
+			return fmt.Errorf("failed to change ownership of %s: %w", ne.ConfDir, err)
+		}
+	}
+	return nil
 }
 
 // NodeExporter is the co-located node_exporter service.
@@ -108,6 +139,9 @@ func (ne NodeExporter) Install() error {
 
 func (ne NodeExporter) Initialize() error {
 	log.Info("Starting node-exporter initialize")
+	if err := ne.syncCerts(); err != nil {
+		return err
+	}
 	if err := ne.Start(); err != nil {
 		return err
 	}
@@ -230,6 +264,9 @@ func (ne NodeExporter) Upgrade() error {
 			return err
 		}
 	}
+	if err := ne.syncCerts(); err != nil {
+		return err
+	}
 	return ne.Start()
 }
 
@@ -240,6 +277,9 @@ func (ne NodeExporter) Reconfigure() error {
 	}
 	if err := ne.FixBasicAuth(); err != nil {
 		return fmt.Errorf("failed to fix node-exporter basic auth: %w", err)
+	}
+	if err := ne.syncCerts(); err != nil {
+		return fmt.Errorf("failed to sync node-exporter certs: %w", err)
 	}
 	log.Info("node-exporter reconfigured")
 	return nil

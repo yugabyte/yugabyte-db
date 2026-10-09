@@ -35,6 +35,10 @@ YB_DEFINE_ENUM(RemoveReason,
 // Interface to object that should apply intents in RocksDB when transaction is applying.
 class TransactionIntentApplier {
  public:
+  virtual Status WriteTransactionMetadataUpdate(
+      OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+      const LWTransactionMetadataPB& metadata_update) = 0;
+
   virtual docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) = 0;
   virtual Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason,

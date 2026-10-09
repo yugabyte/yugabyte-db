@@ -1,8 +1,11 @@
+import { useContext } from 'react';
 import { mui } from '@yugabyte-ui-library/core';
 import { useFormContext } from 'react-hook-form';
 import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { useTranslation } from 'react-i18next';
+import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 const { styled } = mui;
 
@@ -24,13 +27,20 @@ export const TotalNodeCount = () => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.guidedMode'
   });
-
+  const [{ generalSettings }] = (useContext(
+    CreateUniverseContext
+  ) as unknown) as CreateUniverseContextMethods;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
 
   const { watch } = useFormContext<NodeAvailabilityProps>();
   const az = watch('availabilityZones');
   const useDedicatedNodes = watch('useDedicatedNodes');
   const totalNodeCount = getNodeCount(az);
-  const totalNodesLabel = useDedicatedNodes ? t('totalNodesTserver') : t('totalNodes');
+  const totalNodesLabel = useDedicatedNodes
+    ? t(isK8s ? 'totalPodsTserver' : 'totalNodesTserver')
+    : t(isK8s ? 'totalPods' : 'totalNodes');
 
   return (
     <NodesCount>

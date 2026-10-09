@@ -182,14 +182,16 @@ class XClusterFailoverWithDDLTest : public XClusterDDLReplicationTestBase {
   }
 
   // Used to verify partial replication state when tablets have different lag levels.
+  // The optional filter (e.g. "WHERE key > 300") restricts the counted rows.
   Status WaitForTabletLevelRowCount(
       const std::string& table_name, std::function<bool(int64_t)> predicate,
-      const std::string& description) {
+      const std::string& description, const std::string& filter = "") {
     return WaitFor(
         [&]() -> Result<bool> {
           auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
           RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet"));
-          auto count = VERIFY_RESULT(FetchRowCount(&conn, table_name));
+          auto count = VERIFY_RESULT(conn.FetchRow<int64_t>(
+              Format("SELECT COUNT(*) FROM $0 $1", table_name, filter)));
           return predicate(count);
         },
         kTimeout, description);
@@ -435,8 +437,8 @@ TEST_F(XClusterFailoverWithDDLTest, DifferentialLagRestoresToMinSafeTime) {
 
   // Wait for un-paused tablets to replicate some new rows.
   ASSERT_OK(WaitForTabletLevelRowCount(
-      "test_table", [](int64_t count) { return count > 100; },
-      "Wait for un-paused tablets to replicate rows 101-300"));
+      "test_table", [](int64_t count) { return count > 0; },
+      "Wait for un-paused tablets to advance", "WHERE key > 100"));
 
   // Pause tablet 1 (freezes its safe time somewhere between T_100 and T_300).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
@@ -448,8 +450,8 @@ TEST_F(XClusterFailoverWithDDLTest, DifferentialLagRestoresToMinSafeTime) {
 
   // Wait for tablet 2 (the only un-paused tablet) to replicate some rows beyond 300.
   ASSERT_OK(WaitForTabletLevelRowCount(
-      "test_table", [](int64_t count) { return count > 300; },
-      "Wait for tablet 2 to replicate rows 301-500"));
+      "test_table", [](int64_t count) { return count > 0; },
+      "Wait for un-paused tablet 2 to advance", "WHERE key > 300"));
 
   // State:
   //   Tablet 0 safe time: T_100  (paused since 100 rows)

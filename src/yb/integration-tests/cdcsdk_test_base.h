@@ -58,7 +58,6 @@ DECLARE_bool(cdc_send_null_before_image_if_not_exists);
 DECLARE_bool(cdc_enable_savepoint_rollback_filtering);
 DECLARE_bool(enable_tablet_split_of_replication_slot_streamed_tables);
 DECLARE_bool(TEST_simulate_load_txn_for_cdc);
-DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_cdc_hit_deadline_on_wal_read);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 DECLARE_uint64(initial_log_segment_size_bytes);
@@ -156,8 +155,6 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   }
 
   void TearDown() override;
@@ -269,7 +266,8 @@ class CDCSDKTestBase : public YBTest {
       const std::string& replication_slot_name,
       CDCSDKSnapshotOption snapshot_option,
       bool verify_snapshot_name,
-      std::string namespace_name);
+      std::string namespace_name,
+      const std::string& output_plugin_name = "pgoutput");
 
   // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(

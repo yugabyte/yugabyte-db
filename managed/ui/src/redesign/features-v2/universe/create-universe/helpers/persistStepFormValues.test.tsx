@@ -29,6 +29,21 @@ function PersistHarness({
 }
 
 describe('usePersistStepFormValues', () => {
+  it('persists default values on mount', () => {
+    const save = vi.fn();
+
+    render(
+      <PersistHarness
+        save={save}
+        onReady={() => {
+          /* unused */
+        }}
+      />
+    );
+
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: 'initial' }));
+  });
+
   it('persists form values when a field changes', () => {
     const save = vi.fn();
     let api: { setName: (name: string) => void } | undefined;

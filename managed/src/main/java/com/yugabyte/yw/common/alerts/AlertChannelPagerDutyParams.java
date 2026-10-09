@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.alerts;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import io.swagger.annotations.ApiModel;
@@ -16,13 +17,9 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @JsonTypeName("PagerDuty")
+@JsonIgnoreProperties(ignoreUnknown = true)
 @ApiModel(parent = AlertChannelParams.class)
 public class AlertChannelPagerDutyParams extends AlertChannelParams {
-  @NotNull
-  @Size(min = 1)
-  @ApiModelProperty(value = "API key", accessMode = READ_WRITE)
-  private String apiKey;
-
   @NotNull
   @Size(min = 1)
   @ApiModelProperty(value = "Routing key", accessMode = READ_WRITE)

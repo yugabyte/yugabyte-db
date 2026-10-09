@@ -137,11 +137,13 @@ SELECT pctest1.* FROM pctest1, pctest2
 */
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
+-- Keep Gather Merge over a sorted BNL on record; the copy in the parallel
+-- hints section shows the Sort variant.
 EXPLAIN (costs off)
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
 
@@ -383,6 +385,32 @@ EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 /*+ Parallel(pctest3 3 hard) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 
+-- #32778: parallel scan rescan with leader participation disabled
+set enable_material = off;
+set parallel_leader_participation = off;
+-- The cpu_operator_cost bump up below is to increase the cost of the regular scan and make the parallel scan more attractive.
+-- Without it optimizer sticks to the regular scan, despite the Parallel hint.
+EXPLAIN (costs off)
+/*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+/*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+EXPLAIN (costs off)
+/*+ SeqScan(pctest1) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+/*+ SeqScan(pctest1) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+reset enable_material;
+reset parallel_leader_participation;
+
 DROP TABLE pctest1;
 DROP TABLE pctest2;
 DROP TABLE pctest3;
+
+-- #32676: Parallel scan with a row condition including the split point
+CREATE TABLE t32676 (a int, b int, v int, PRIMARY KEY (a ASC, b ASC)) SPLIT AT VALUES ((500,500));
+INSERT INTO t32676 SELECT i/1000, i%1000, i FROM generate_series(1, 1000000) i;
+EXPLAIN (costs off)
+SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+set yb_test_force_parallel=force;
+EXPLAIN (costs off)
+SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+DROP TABLE t32676;

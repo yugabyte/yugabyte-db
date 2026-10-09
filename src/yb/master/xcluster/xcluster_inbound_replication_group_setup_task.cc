@@ -525,8 +525,6 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   LOG_WITH_PREFIX(INFO) << "Replication Map: "
                         << cluster_config_producer_map.at(original_id.ToString()).DebugString();
 
-  cluster_config_l.Commit();
-
   if (universe_lock) {
     universe_lock->Commit();
   } else {
@@ -545,6 +543,8 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   }
 
   xcluster_manager_.SyncConsumerReplicationStatusMap(original_id, cluster_config_producer_map);
+
+  cluster_config_l.Commit();
 
   xcluster_manager_.CreateXClusterSafeTimeTableAndStartService();
 
@@ -1078,27 +1078,32 @@ void XClusterTableSetupTask::SetupStreams() {
 
   auto received_table_id = std::make_shared<TableId>();
   auto stream_options = std::make_shared<std::unordered_map<std::string, std::string>>();
+  auto use_target_applied_filter = std::make_shared<bool>(false);
   parent_task_->GetYbClient().GetCDCStream(
       table_setup_info_.stream_id, received_table_id, stream_options,
       std::bind(
           &XClusterTableSetupTask::GetStreamCallback, shared_from(this), received_table_id,
-          stream_options, _1));
+          stream_options, use_target_applied_filter, _1),
+      use_target_applied_filter);
 }
 
 void XClusterTableSetupTask::GetStreamCallback(
     std::shared_ptr<TableId> received_table_id,
-    std::shared_ptr<std::unordered_map<std::string, std::string>> options, const Status& s) {
-  VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(received_table_id, options, s);
+    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+    std::shared_ptr<bool> xcluster_use_target_applied_filter, const Status& s) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(
+      received_table_id, options, xcluster_use_target_applied_filter, s);
   ScheduleNextStep(
       std::bind(
           &XClusterTableSetupTask::ProcessStreamOptions, shared_from(this), received_table_id,
-          options, s),
+          options, xcluster_use_target_applied_filter, s),
       "Processing stream options");
 }
 
 Status XClusterTableSetupTask::ProcessStreamOptions(
     std::shared_ptr<TableId> received_table_id,
-    std::shared_ptr<std::unordered_map<std::string, std::string>> options, const Status& s) {
+    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+    std::shared_ptr<bool> xcluster_use_target_applied_filter, const Status& s) {
   RETURN_NOT_OK_PREPEND(s, "Error from source universe");
   SCHECK(
       received_table_id != nullptr, InvalidArgument, "Received null table id from source universe");
@@ -1112,6 +1117,11 @@ Status XClusterTableSetupTask::ProcessStreamOptions(
   // Store the stream options for later use. XClusterInboundReplicationGroupSetupTask::
   // UpdateSourceStreamOptions will process options of tables in one batch.
   table_setup_info_.stream_options.swap(*options);
+  SCHECK(
+      xcluster_use_target_applied_filter != nullptr, InvalidArgument,
+      "Received null xcluster_use_target_applied_filter from source universe");
+  table_setup_info_.stream_entry.set_xcluster_use_target_applied_filter(
+      *xcluster_use_target_applied_filter);
 
   PopulateTabletMapping();
 

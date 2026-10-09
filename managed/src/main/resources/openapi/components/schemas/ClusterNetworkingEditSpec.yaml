@@ -1,0 +1,7 @@
+title: ClusterNetworkingEditSpec
+description: Edit network settings for the cluster. Part of ClusterEditSpec.
+type: object
+properties:
+  enable_exposing_service:
+    description: Whether to create a load balancer service for this cluster.
+    $ref: "./ExposingServiceState.yaml"

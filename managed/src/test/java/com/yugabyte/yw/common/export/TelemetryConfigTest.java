@@ -10,7 +10,12 @@ import static org.junit.Assert.assertTrue;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.NodeAgentLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YnpLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -32,6 +37,11 @@ public class TelemetryConfigTest {
     cfg.setQueryLogConfig(new QueryLogConfig());
     cfg.setMetricsExportConfig(new MetricsExportConfig());
     cfg.setMasterLogConfig(new MasterLogConfig());
+    cfg.setTserverLogConfig(new TServerLogConfig());
+    cfg.setYsqlConnMgrLogConfig(new YsqlConnMgrLogConfig());
+    cfg.setNodeAgentLogConfig(new NodeAgentLogConfig());
+    cfg.setYnpLogConfig(new YnpLogConfig());
+    cfg.setControllerLogConfig(new ControllerLogConfig());
     return cfg;
   }
 
@@ -93,6 +103,21 @@ public class TelemetryConfigTest {
         break;
       case MASTER_LOGS:
         cfg.setMasterLogConfig(null);
+        break;
+      case TSERVER_LOGS:
+        cfg.setTserverLogConfig(null);
+        break;
+      case YSQL_CONN_MGR_LOGS:
+        cfg.setYsqlConnMgrLogConfig(null);
+        break;
+      case NODE_AGENT_LOGS:
+        cfg.setNodeAgentLogConfig(null);
+        break;
+      case YNP_LOGS:
+        cfg.setYnpLogConfig(null);
+        break;
+      case CONTROLLER_LOGS:
+        cfg.setControllerLogConfig(null);
         break;
       default:
         throw new IllegalArgumentException("Unhandled export type: " + type);

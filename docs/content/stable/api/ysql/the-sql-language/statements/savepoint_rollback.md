@@ -98,5 +98,5 @@ SELECT * FROM sample;
 
 ## See also
 
-- [`SAVEPOINT`](../savepoint_create)
-- [`RELEASE`](../savepoint_release)
+- [SAVEPOINT](../savepoint_create)
+- [RELEASE](../savepoint_release)

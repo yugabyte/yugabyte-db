@@ -17,7 +17,7 @@
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/common/common_flags.h"
-#include "yb/common/common_util.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
 #include "yb/consensus/metadata.pb.h"
@@ -28,26 +28,27 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_util.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_heartbeat.service.h"
 #include "yb/master/master_service_base.h"
-#include "yb/master/master_service_base-internal.h"
+#include "yb/master/master_util.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/service_util.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
-
-#include "yb/rpc/rpc_context.h"
+#include "yb/util/status_log.h"
 
 DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
@@ -74,6 +75,10 @@ DEFINE_RUNTIME_AUTO_bool(use_tablet_report_pending_config_op_id, kLocalVolatile,
 
 DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
                  "Whether to skip processing tablet metadata for TSHeartbeat.");
+
+DEFINE_NON_RUNTIME_uint32(xcluster_guarded_lease_duration_ms, 2 * 60 * 1000,
+    "Duration of xCluster-guarded information lease in milliseconds; not safe to lower.");
+TAG_FLAG(xcluster_guarded_lease_duration_ms, advanced);
 
 DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
@@ -133,10 +138,12 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
     "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
     "a corruption. ");
 
-DECLARE_bool(enable_register_ts_from_raft);
+DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
-DECLARE_int32(heartbeat_rpc_timeout_ms);
+DECLARE_bool(enable_register_ts_from_raft);
+DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
 DECLARE_bool(skip_tserver_version_checks);
+DECLARE_int32(heartbeat_rpc_timeout_ms);
 
 namespace yb::master {
 
@@ -202,6 +209,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       ReportedTablets::iterator begin,
       ReportedTablets::iterator end,
       const LeaderEpoch& epoch,
+      CoarseTimePoint deadline,
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
@@ -216,7 +224,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       bool is_incremental,
       const ReportedTabletPB& report,
       const LeaderEpoch& epoch,
-      std::map<TableId, TableInfo::WriteLock>* table_write_locks,
+      std::map<TableId, TableInfo::ReadLock>* table_read_locks,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
       std::map<TableId, scoped_refptr<TableInfo>>* tables,
@@ -270,6 +278,12 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   void PopulatePgCatalogVersionInfo(const TSHeartbeatRequestPB& req,
                                     TSHeartbeatResponsePB& resp);
+
+  // Populate global cluster-wide database pins in the tserver heartbeat response.
+  //
+  // Since there can be other ongoing sessions that involves DBs on a tserver but the tserver
+  // itself is unaware of, every global database pin need to be included in the response.
+  void PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp);
 };
 
 Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
@@ -324,9 +338,10 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
 
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint; // can only be used when versions is not empty.
+  HybridTime read_ht;
   auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
       FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
-      &versions, &fingerprint);
+      &versions, &fingerprint, &read_ht);
   if (!s.ok() || versions.empty()) {
     LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
                  << s.ToUserMessage();
@@ -347,6 +362,9 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
   }
 
   auto* const mutable_version_data = resp.mutable_db_catalog_version_data();
+  if (read_ht.is_valid()) {
+    mutable_version_data->set_catalog_versions_read_time(read_ht.ToUint64());
+  }
   for (const auto& it : versions) {
     auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
     catalog_version->set_db_oid(it.first);
@@ -397,6 +415,19 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     << resp.db_catalog_version_data().ShortDebugString()
     << ") db inval messages: "
     << tserver::CatalogInvalMessagesDataDebugString(resp);
+}
+
+void MasterHeartbeatServiceImpl::PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp) {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return;
+  }
+  auto cluster_pins = server_->ts_manager()->GetClusterYsqlDbPinsForPublishing(
+      catalog_manager_->TimeSinceElectedLeader());
+  resp.set_cluster_ysql_db_pins_ready(cluster_pins.ready);
+  for (const auto& [db_oid, pin] : cluster_pins.pins) {
+    (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
+      .set_db_level_oldest_read_time(pin.ToPB());
+  }
 }
 
 void MasterHeartbeatServiceImpl::TSHeartbeat(
@@ -460,7 +491,17 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
     TSDescriptorPtr& ts_desc = *desc_result;
 
+    // Correctness requires that this occur after UpdateAndReturnTSDescriptorOrRespond.
+    auto fill_status = catalog_manager_->GetXClusterManager()->FillXClusterGuardedInfo(
+        leader_term, *resp->mutable_xcluster_guarded_info());
+    if (!fill_status.ok()) {
+      rpc.RespondFailure(fill_status.CloneAndPrepend("Failed to fill xCluster-guarded info"));
+      return;
+    }
+
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
+
+    resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
 
     // Set the TServer metrics in TS Descriptor.
     if (req->has_metrics()) {
@@ -526,7 +567,10 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
     auto cluster_config = server_->catalog_manager()->GetClusterConfig();
     if (cluster_config) {
-      resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
+      if (!FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+        resp->set_deprecated_oid_cache_invalidations_count(
+            cluster_config->oid_cache_invalidations_count());
+      }
 
       uint32_t leader_drain_version = ts_desc->pending_leader_drain_notification();
       if (leader_drain_version && FLAGS_send_leader_blacklisted_tservers_on_heartbeat) {
@@ -546,7 +590,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
         }
       }
     } else {
-      LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
+      LOG(WARNING) << "Could not get cluster config for heartbeat response: "
                    << cluster_config.status().ToUserMessage();
     }
 
@@ -558,6 +602,8 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       *resp->mutable_auto_flags_config() = server_->GetAutoFlagsConfig();
     }
   }
+
+  PopulateYsqlDbOldestPinnedReadTimes(*resp);
 
   PopulatePgCatalogVersionInfo(*req, *resp);
 
@@ -707,8 +753,9 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
   });
 
   // Calculate the deadline for this expensive loop coming up.
-  const auto safe_deadline = rpc->GetClientDeadline() -
-    (FLAGS_heartbeat_rpc_timeout_ms * 1ms * FLAGS_heartbeat_safe_deadline_ratio);
+  CoarseTimePoint safe_deadline = rpc->GetClientDeadline() -
+      static_cast<int64_t>(FLAGS_heartbeat_rpc_timeout_ms * FLAGS_heartbeat_safe_deadline_ratio) *
+          1ms;
 
   // Process tablets by batches.
   for (auto tablet_iter = reported_tablets.begin(); tablet_iter != reported_tablets.end();) {
@@ -719,7 +766,8 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     // Keeps track of all RPCs that should be sent when we're done with a single batch.
     std::vector<RetryingTSRpcTaskWithTablePtr> rpcs;
     auto status = ProcessTabletReportBatch(
-        ts_desc, ts_instance, report, batch_begin, tablet_iter, epoch, report_update, &rpcs);
+        ts_desc, ts_instance, report, batch_begin, tablet_iter, epoch, safe_deadline, report_update,
+        &rpcs);
     if (!status.ok()) {
       for (auto& rpc : rpcs) {
         rpc->AbortAndReturnPrevState(status);
@@ -857,6 +905,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     ReportedTablets::iterator begin,
     ReportedTablets::iterator end,
     const LeaderEpoch& epoch,
+    CoarseTimePoint deadline,
     TabletReportUpdatesPB* full_report_update,
     std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs) {
   // First Pass. Iterate in TabletId Order to discover all Table locks we'll need.
@@ -864,7 +913,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
   // Maps a table ID to its corresponding TableInfo.
   std::map<TableId, TableInfoPtr> table_info_map;
 
-  std::map<TableId, TableInfo::WriteLock> table_write_locks;
+  std::map<TableId, TableInfo::ReadLock> table_read_locks;
   for (auto reported_tablet = begin; reported_tablet != end; ++reported_tablet) {
     auto table = reported_tablet->info->table();
     table_info_map[table->id()] = table;
@@ -875,15 +924,17 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     }
   }
 
-  // Need to acquire locks in Id order to prevent deadlock.
+  // Need to acquire locks in Id order to prevent deadlock. Use timed acquisition bounded by the
+  // heartbeat's RPC deadline: rather than block (and risk deadlock or long contention) we give up
+  // and let the tserver retry the report on a later heartbeat.
   for (auto& [table_id, table] : table_info_map) {
-    table_write_locks[table_id] = table->LockForWrite();
+    table_read_locks[table_id] = VERIFY_RESULT(table->TryLockForRead(deadline));
   }
 
   // Check whether this is the most recent report from this tserver before performing any
   // mutations. If not, we need to stop processing here to avoid overwriting the contents of the
-  // more recent report. If a more recent report comes after this check, it cannot concurrently
-  // modify the tables / tablets in this batch because we hold write locks on the tables.
+  // more recent report. Concurrent reports for the same tablet are serialized by the per-tablet
+  // write locks taken below.
   RETURN_NOT_OK(ts_desc->IsReportCurrent(ts_instance, full_report));
 
   std::map<TabletId, TabletInfo::WriteLock> tablet_write_locks;
@@ -904,8 +955,10 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     update->set_tablet_id(tablet_id);
 
     // Get tablet lock on demand.  This works in the batch case because the loop is ordered.
-    tablet_write_locks[tablet_id] = tablet->LockForWrite();
-    auto& table_lock = table_write_locks[table->id()];
+    // Timed acquisition bounded by the RPC deadline: give up (and let the tserver retry) rather
+    // than block on a contended/deadlocking tablet write lock.
+    tablet_write_locks[tablet_id] = VERIFY_RESULT(tablet->TryLockForWrite(deadline));
+    auto& table_lock = table_read_locks[table->id()];
     auto& tablet_lock = tablet_write_locks[tablet_id];
 
     TRACE_EVENT1("master", "HandleReportedTablet", "tablet_id", report.tablet_id());
@@ -989,7 +1042,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     if (report.has_committed_consensus_state()) {
       const bool tablet_was_running = tablet_lock->is_running();
       if (ProcessCommittedConsensusState(
-              ts_desc, full_report.is_incremental(), report, epoch, &table_write_locks, tablet,
+              ts_desc, full_report.is_incremental(), report, epoch, &table_read_locks, tablet,
               tablet_lock, &it->tables, rpcs)) {
         // If the tablet was mutated, add it to the tablets to be re-persisted.
         //
@@ -1031,14 +1084,23 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
   tablet_write_locks.clear();
 
   // Unlock the tables; we no longer need to access their state.
-  for (auto& l : table_write_locks) {
-    l.second.Commit();
-  }
-  table_write_locks.clear();
+  table_read_locks.clear();
 
   // Update the table state if all its tablets are now running.
   for (auto& [table_id, tablets] : new_running_tablets) {
-    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
+    const auto& table_info = table_info_map[table_id];
+    catalog_manager_->SchedulePostTabletCreationTasks(table_info, epoch, tablets);
+
+    // If this is a transaction status tablet, we need to bump the transaction table versions so
+    // that tservers update their cache of usable status tablets to include this tablet.
+    // We do one incrment per status tablet here for easier testing even though one increment total
+    // is sufficient. Transaction status creations are rare, so this should not be an issue.
+    if (table_info->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+      WARN_NOT_OK(
+          catalog_manager_->IncrementTransactionTablesVersion(),
+          "Failed to increment transaction status version, transaction status tablet may not be "
+          "usable until next increment");
+    }
   }
 
   // Update the relevant tablet entries in system.partitions.
@@ -1070,7 +1132,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
     bool is_incremental,
     const ReportedTabletPB& report,
     const LeaderEpoch& epoch,
-    std::map<TableId, TableInfo::WriteLock>* table_write_locks,
+    std::map<TableId, TableInfo::ReadLock>* table_read_locks,
     const TabletInfoPtr& tablet,
     const TabletInfo::WriteLock& tablet_lock,
     std::map<TableId, scoped_refptr<TableInfo>>* tables,
@@ -1236,9 +1298,14 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
     catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
   }
 
+  if (tablet_lock->pb.split_tablet_ids_size() > 0 && tablet_lock->is_hidden()) {
+    VLOG(1) << "Skipping AlterTable for hidden already-split tablet " << tablet->ToString();
+    return tablet_was_mutated;
+  }
+
   // 7. Send an AlterSchema RPC if the tablet has an old schema version.
-  if (table_write_locks->count(tablet->table()->id())) {
-    const TableInfo::WriteLock& table_lock = (*table_write_locks)[tablet->table()->id()];
+  if (table_read_locks->count(tablet->table()->id())) {
+    const TableInfo::ReadLock& table_lock = (*table_read_locks)[tablet->table()->id()];
     if (report.has_schema_version() &&
         report.schema_version() != table_lock->pb.version()) {
       if (report.schema_version() > table_lock->pb.version()) {
@@ -1292,7 +1359,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
       continue;
     }
     if (tables->count(id_to_version.first)) {
-      const auto& table_lock = (*table_write_locks)[id_to_version.first];
+      const auto& table_lock = (*table_read_locks)[id_to_version.first];
       // Ignore if same version.
       if (table_lock->pb.version() == id_to_version.second) {
         continue;
@@ -1587,9 +1654,12 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   }
   auto tserver_universe_uuid = *tserver_universe_uuid_res;
 
+  // Read a locked copy: tests may change this string flag concurrently.
+  std::string test_master_universe_uuid;
+  CHECK(google::GetCommandLineOption("TEST_master_universe_uuid", &test_master_universe_uuid));
   auto master_universe_uuid_res = UniverseUuid::FromString(
-      FLAGS_TEST_master_universe_uuid.empty() ? cluster_config.universe_uuid()
-                                              : FLAGS_TEST_master_universe_uuid);
+      test_master_universe_uuid.empty() ? cluster_config.universe_uuid()
+                                        : test_master_universe_uuid);
   if (!master_universe_uuid_res) {
     LOG(WARNING) << "Could not decode cluster config universe_uuid: "
                  << master_universe_uuid_res.status().ToString();

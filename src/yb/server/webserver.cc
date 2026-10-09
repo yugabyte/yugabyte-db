@@ -755,6 +755,10 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
       "HTTP/1.1 200 OK\r\n"
       "Content-Type: %s\r\n"
       "Content-Length: %zd\r\n"
+      // Squeasel is not configured for keep-alive and closes the socket once the handler
+      // returns. Without this header the response looks persistent (HTTP/1.1 default), so a
+      // client may reuse a connection that is already being closed and lose the next request.
+      "Connection: close\r\n"
       "X-Content-Type-Options: nosniff\r\n"
       "%s"
       "%s"

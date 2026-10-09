@@ -1,4 +1,4 @@
-import axios, { AxiosResponse, Canceler } from 'axios';
+import axios, { Canceler } from 'axios';
 import { ROOT_URL } from '../../config';
 import { KMSRotationHistory } from '../features/universe/universe-actions/encryption-at-rest/EncryptionAtRestUtils';
 import {
@@ -144,11 +144,6 @@ class ApiService {
   getFinalizeInfo = (universeId: string): Promise<any> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/finalize/info`;
     return axios.get<any>(requestUrl).then((resp) => resp.data);
-  };
-
-  retryCurrentTask = (taskUUID: string): Promise<AxiosResponse> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUUID}`;
-    return axios.post<AxiosResponse>(requestUrl).then((resp) => resp);
   };
 
   getReplicationSlots = (universeId: string): Promise<ReplicationSlotResponse> => {

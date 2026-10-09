@@ -35,20 +35,14 @@
 #include <cstdint>
 #include <iosfwd>
 #include <memory>
-#include <mutex>
 #include <ostream>
 #include <string>
 #include <vector>
 
 #include "yb/common/common_flags.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
-
-#include "yb/gutil/bind.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/thread_annotations.h"
 
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_rpc.h"
@@ -57,7 +51,6 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/server_base.proxy.h"
 
 #include "yb/tserver/master_leader_poller.h"
 #include "yb/tserver/service_util.h"
@@ -65,18 +58,13 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
 
-#include "yb/util/async_util.h"
-#include "yb/util/callsite_profiling.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
 #include "yb/util/status.h"
-#include "yb/util/thread.h"
-#include "yb/util/threadpool.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -98,6 +86,9 @@ DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be di
 DEFINE_test_flag(bool, tserver_disable_catalog_refresh_on_heartbeat, false,
     "When set, disable trigger of catalog cache refresh from tserver-master heartbeat path.");
 
+DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
+
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
 using std::shared_ptr;
@@ -110,7 +101,7 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   HeartbeatPoller(
       TabletServer& server, MasterLeaderFinder& finder,
       std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
-  ~HeartbeatPoller() = default;
+  ~HeartbeatPoller() override = default;
   Status Poll() override;
   MonoDelta IntervalToNextPoll(int32_t consecutive_failures) override;
   void Init() override;
@@ -356,6 +347,16 @@ Status HeartbeatPoller::TryHeartbeat() {
     }
   }
 
+  // Load local database history retention pins onto heartbeat for
+  // master to aggregate and calculate global history retention pins
+  if (FLAGS_enable_db_history_retention_pins) {
+    auto* pins = req.mutable_ts_ysql_db_oldest_pinned_read_times();
+    pins->clear();
+    for (const auto& [db_oid, pin] : server_.GetYsqlDbOldestPinnedReadTimes()) {
+      (*pins)[db_oid].set_db_level_oldest_read_time(pin.ToPB());
+    }
+  }
+
   RETURN_NOT_OK(server_.XClusterPopulateMasterHeartbeatRequest(
       req, last_hb_response_.needs_full_tablet_report()));
 
@@ -455,11 +456,41 @@ Status HeartbeatPoller::TryHeartbeat() {
       RETURN_NOT_OK(server_.SetUniverseKeyRegistry(resp.universe_key_registry()));
     }
 
-    server_.set_oid_cache_invalidations_count(resp.oid_cache_invalidations_count());
+    if (!resp.has_xcluster_guarded_info() && !FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+      // To handle upgrades promoting auto flag skip_fields_moved_to_xcluster_guarded_info, before
+      // the flag is promoted we apply (here and in XClusterHandleMasterHeartbeatResponse below) the
+      // now deprecated fields that were moved into XClusterGuardedInfoPB unless the new
+      // XClusterGuardedInfoPB structure is present.  That is, we never apply both a deprecated
+      // field and its replacement in xcluster_guarded_info from the same heartbeat response.
+      //
+      // Put another way, during the upgrade master may be sending both the deprecated fields and
+      // the xcluster_guarded_info or just the deprecated fields.  We want to apply only one of
+      // them, giving preference to the new xcluster_guarded_info if present.
+      server_.UpdateOidCacheInvalidationsCount(resp.deprecated_oid_cache_invalidations_count());
+    }
 
     RETURN_NOT_OK(server_.ClusterConfigHandleMasterHeartbeatResponse(resp));
 
-    RETURN_NOT_OK(server_.XClusterHandleMasterHeartbeatResponse(resp));
+    // Heartbeat responses requesting re-registration are sent before master fills in any
+    // xCluster-guarded information (or a lease), so keep our current copy and lease, if any.
+    if (!resp.needs_reregister()) {
+      // Compute the xCluster-guarded information lease expiration from the duration granted by the
+      // master, anchored to the MonoTime recorded when this heartbeat request was sent.
+      MonoTime lease_expiration_time;
+      if (resp.has_xcluster_guarded_lease_duration_ms()) {
+        lease_expiration_time =
+            start_time + MonoDelta::FromMilliseconds(resp.xcluster_guarded_lease_duration_ms());
+      }
+
+      // Update the xCluster-guarded information lease after updating our copy of the
+      // information with fresh info.  This ensures that when a TServer (re-)acquires a lease, it
+      // has xCluster-guarded information at least as current as when that lease was
+      // issued.
+      if (resp.has_xcluster_guarded_info()) {
+        server_.ApplyXClusterGuardedInfoIfNewer(resp.xcluster_guarded_info());
+      }
+      RETURN_NOT_OK(server_.XClusterHandleMasterHeartbeatResponse(resp, lease_expiration_time));
+    }
 
     if (resp.leader_blacklisted_tservers_with_no_leaders_size() > 0) {
       // Mark the tservers as followers if they are leader-blacklisted. When the tserver gets
@@ -567,6 +598,8 @@ Status HeartbeatPoller::TryHeartbeat() {
   }
 
   RETURN_NOT_OK(server_.tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
+
+  server_.UpdateClusterYsqlDbOldestPinnedReadTimes(last_hb_response_);
 
   if (last_hb_response_.has_transaction_tables_version()) {
     server_.UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());

@@ -85,6 +85,10 @@ class BlockHandle {
     return offset_ != kUint64FieldNotSet && size_ != kUint64FieldNotSet;
   }
 
+  bool operator==(const BlockHandle& other) const {
+    return offset_ == other.offset_ && size_ == other.size_;
+  }
+
   static const BlockHandle& NullBlockHandle() {
     return kNullBlockHandle;
   }

@@ -37,8 +37,11 @@
 #include <iomanip>
 #include <map>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <sstream>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -56,15 +59,14 @@
 #include "yb/common/tablet_limits.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rbs_info_task.h"
 #include "yb/master/catalog_entity_info.h"
@@ -97,11 +99,13 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/object_provider.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
@@ -126,6 +130,7 @@ DEFINE_test_flag(int32, sleep_before_reporting_lb_ui_ms, 0,
                  "Sleep before reporting tasks in the cluster balancer UI, to give tasks a chance "
                  "to complete.");
 
+DECLARE_bool(enable_ysql);
 DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_string(webserver_ca_certificate_file);
@@ -280,7 +285,6 @@ using std::string;
 using std::stringstream;
 using std::unique_ptr;
 using std::min;
-using strings::Substitute;
 using server::MonitoredTask;
 
 using namespace std::placeholders;
@@ -603,9 +607,9 @@ void MasterPathHandlers::TServerDisplay(
   auto html_table = html_print_helper.CreateTablePrinter(
       Format("$0_tserver", current_uuid),
       {"Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
-       "System Tablet-Peers / Leaders", "RAM Used", "Num SST Files", "Total SST Files Size",
-       "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec", "Placement",
-       "Active Tablet-Peers", "Lease Expiry", "Lease Epoch"});
+       "System Tablet-Peers / Leaders", "RAM Used", "Used / Total Disk Space", "Num SST Files",
+       "Total SST Files Size", "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec",
+       "Placement", "Active Tablet-Peers", "YSQL Lease Expiry & Epoch"});
 
   int max_peers = 0;
   for (const auto& desc : descs) {
@@ -630,7 +634,7 @@ void MasterPathHandlers::TServerDisplay(
       }
     }
     html_row.AddColumn(std::move(tserver_info.server_id));
-    html_row.AddColumn(StringPrintf("%.1fs", tserver_info.time_since_heartbeat.ToSeconds()));
+    html_row.AddColumn(FixedPoint(tserver_info.time_since_heartbeat.ToSeconds(), 1) + "s");
 
     if (desc->IsBlacklisted(blacklist)) {
       tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
@@ -662,28 +666,59 @@ void MasterPathHandlers::TServerDisplay(
     }
 
     html_row.AddColumn(HumanizeBytes(desc->total_memory_usage()));
+
+    {
+      uint64_t used_disk_space = 0;
+      uint64_t total_disk_space = 0;
+      for (const auto& path_metric : desc->path_metrics()) {
+        used_disk_space += path_metric.second.used_space;
+        total_disk_space += path_metric.second.total_space;
+      }
+      if (total_disk_space == 0) {
+        html_row.AddColumn("N/A");
+      } else {
+        html_row.AddColumn(
+            Format("$0 / $1", HumanizeBytes(used_disk_space), HumanizeBytes(total_disk_space)));
+      }
+    }
+
     html_row.AddColumn(desc->num_sst_files());
     html_row.AddColumn(HumanizeBytes(desc->total_sst_file_size()));
     html_row.AddColumn(HumanizeBytes(desc->uncompressed_sst_file_size()));
-    html_row.AddColumn(desc->read_ops_per_sec());
-    html_row.AddColumn(desc->write_ops_per_sec());
+    html_row.AddColumn(FixedPoint(desc->read_ops_per_sec(), 1));
+    html_row.AddColumn(FixedPoint(desc->write_ops_per_sec(), 1));
 
     html_row.AddColumn(tserver_info.placement);
 
     html_row.AddColumn(counts ? desc->num_live_replicas() : 0);
 
-    {
+    if (!FLAGS_enable_ysql || !IsYsqlLeaseEnabled()) {
+      html_row.AddColumn("N/A");
+    } else {
       auto lease_it = lease_infos.find(desc->permanent_uuid());
-      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1"};
-      if (lease_it != lease_infos.end() && lease_it->second.lease_info.live_lease()) {
-        html_row.AddColumn(
-            Format(kLeaseCellTemplate, "Green", lease_it->second.lease_expiry.ToString()));
+      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1</font>"};
+      if (lease_it == lease_infos.end() ||
+          lease_it->second.lease_info.instance_seqno() != desc->latest_seqno()) {
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+      } else if (lease_it->second.lease_info.lease_relinquished()) {
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Red",
+            Format("RELINQUISHED</br>$0", lease_it->second.lease_info.lease_epoch())));
+      } else if (!lease_it->second.lease_info.live_lease()) {
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Red",
+            Format(
+                "EXPIRED $0 ago</br>$1",
+                std::max(-lease_it->second.time_to_lease_deadline, MonoDelta::kZero).ToString(),
+                lease_it->second.lease_info.lease_epoch())));
+      } else {
         html_row.AddColumn(Format(
             kLeaseCellTemplate, "Green",
-            std::to_string(lease_it->second.lease_info.lease_epoch())));
-      } else {
-        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
-        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+            Format(
+                "$0</br>$1",
+                std::max(
+                    lease_it->second.time_to_lease_deadline, MonoDelta::kZero).ToString(),
+                lease_it->second.lease_info.lease_epoch())));
       }
     }
   }
@@ -707,7 +742,7 @@ void TServerClockDisplay(
     LocalTserverInfo tserver_info(*desc);
 
     html_row.AddColumn(std::move(tserver_info.server_id));
-    html_row.AddColumn(StringPrintf("%.1fs", tserver_info.time_since_heartbeat.ToSeconds()));
+    html_row.AddColumn(FixedPoint(tserver_info.time_since_heartbeat.ToSeconds(), 1) + "s");
     html_row.AddColumn(tserver_info.FormattedStatus());
 
     // Render physical time.
@@ -726,7 +761,7 @@ void TServerClockDisplay(
       html_row.AddColumn(std::move(uptime));
     }
 
-    html_row.AddColumn(StringPrintf("%.2fms", desc->heartbeat_rtt().ToMicroseconds() / 1000.0));
+    html_row.AddColumn(FixedPoint(desc->heartbeat_rtt().ToMicroseconds() / 1000.0, 2) + "ms");
 
     html_row.AddColumn(tserver_info.placement);
   }
@@ -753,7 +788,7 @@ void MasterPathHandlers::DisplayUniverseSummary(
        universe_counts.per_placement_cluster_counts) {
     auto placement_uuid_entry = Format(
         "$0 $1", placement_uuid == live_id ? "Primary Cluster" : "Read Replica", placement_uuid);
-    std::string limit_entry = "N/A";
+    std::string limit_entry = "limit undefined";
     if (cluster_counts.tablet_replica_limit.has_value()) {
       limit_entry = Format(
           cluster_counts.active_tablet_peer_count > *cluster_counts.tablet_replica_limit
@@ -1012,6 +1047,8 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     return;
   }
   auto descs = master_->ts_manager()->GetAllDescriptors();
+  const auto lease_infos =
+      master_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
   auto s = CalculateTabletMap(&tablet_map);
@@ -1042,7 +1079,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         // Some stats may be repeated as strings due to backwards compatability.
         jw.String("time_since_hb");
-        jw.String(StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds()));
+        jw.String(FixedPoint(desc->TimeSinceHeartbeat().ToSeconds(), 1) + "s");
         jw.String("time_since_hb_sec");
         jw.Double(desc->TimeSinceHeartbeat().ToSeconds());
 
@@ -1151,6 +1188,22 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.String("permanent_uuid");
         jw.String(desc->permanent_uuid());
+
+        if (FLAGS_enable_ysql && IsYsqlLeaseEnabled()) {
+          auto lease_it = lease_infos.find(desc->permanent_uuid());
+          if (lease_it != lease_infos.end() &&
+              lease_it->second.lease_info.instance_seqno() == desc->latest_seqno()) {
+            jw.String("lease_info");
+            jw.StartObject();
+            jw.String("is_live");
+            jw.Bool(lease_it->second.lease_info.live_lease());
+            jw.String("lease_expiry_sec");
+            jw.Double(std::max(lease_it->second.time_to_lease_deadline.ToSeconds(), 0.0));
+            jw.String("lease_epoch");
+            jw.Uint64(lease_it->second.lease_info.lease_epoch());
+            jw.EndObject();
+          }
+        }
 
         jw.EndObject();
       }
@@ -1318,17 +1371,17 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
                  << "<li>" << "Total: "
-                 << HumanReadableNumBytes::ToString(
+                 << HumanizeBytes(
                         info.sst_files_size + info.wal_files_size + info.vector_index_size)
                  << "<li>" << "WAL Files: "
-                 << HumanReadableNumBytes::ToString(info.wal_files_size)
+                 << HumanizeBytes(info.wal_files_size)
                  << "<li>" << "SST Files: "
-                 << HumanReadableNumBytes::ToString(info.sst_files_size)
+                 << HumanizeBytes(info.sst_files_size)
                  << "<li>" << "SST Files Uncompressed: "
-                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size);
+                 << HumanizeBytes(info.uncompressed_sst_file_size);
   if (info.vector_index_size > 0) {
     disk_size_html << "<li>" << "Vector Indexes: "
-                   << HumanReadableNumBytes::ToString(info.vector_index_size);
+                   << HumanizeBytes(info.vector_index_size);
   }
   disk_size_html << "</ul>";
 
@@ -1675,20 +1728,20 @@ void MasterPathHandlers::HandleAllTablesJSON(
         jw.String("on_disk_size");
         jw.StartObject();
         jw.String("wal_files_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.wal_files_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.wal_files_size));
         jw.String("wal_files_size_bytes");
         jw.Uint64(table.second.on_disk_size.wal_files_size);
         jw.String("sst_files_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.sst_files_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.sst_files_size));
         jw.String("sst_files_size_bytes");
         jw.Uint64(table.second.on_disk_size.sst_files_size);
         jw.String("uncompressed_sst_file_size");
         jw.String(
-            HumanReadableNumBytes::ToString(table.second.on_disk_size.uncompressed_sst_file_size));
+            HumanizeBytes(table.second.on_disk_size.uncompressed_sst_file_size));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(table.second.on_disk_size.uncompressed_sst_file_size);
         jw.String("vector_index_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.vector_index_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.vector_index_size));
         jw.String("vector_index_size_bytes");
         jw.Uint64(table.second.on_disk_size.vector_index_size);
         jw.String("has_missing_size");
@@ -1752,7 +1805,7 @@ void MasterPathHandlers::HandleNamespacesHTML(
                 << "  <th>Colocated</th>\n";
 
       for (const auto& namespace_row : *namespaces) {
-        (*output) << Substitute(
+        (*output) << Format(
             "<tr>"
             "<td>$0</td>"
             "<td>$1</td>"
@@ -1835,6 +1888,92 @@ TabletReplicaMapToSortedVector(const TabletReplicaMap& replicas) {
   }
   std::sort(sorted_replicas.begin(), sorted_replicas.end(), &CompareByHost);
   return sorted_replicas;
+}
+
+// A table-page row for a split parent that is no longer in memory.
+struct RemovedSplitParentRow {
+  TabletId tablet_id;
+  std::string partition;
+  uint64_t split_depth;
+  std::string state_msg;
+};
+
+// A removed split parent keeps only its children and state message, so its partition and split
+// depth are rebuilt from its children's: it covers the union of their ranges, one split level up.
+// Resolved bottom-up, since a child can itself be a removed parent.
+std::vector<RemovedSplitParentRow> RemovedSplitParentRows(
+    const TabletInfos& tablets,
+    const std::vector<std::pair<TabletId, DeletedSplitParent>>& removed_split_parents,
+    const dockv::PartitionSchema& partition_schema, const Schema& partition_keys_schema) {
+  struct TabletRange {
+    std::string start;
+    std::string end;  // Empty means unbounded.
+    uint64_t split_depth;
+  };
+  std::unordered_map<TabletId, TabletRange> known;
+  for (const auto& tablet : tablets) {
+    auto l = tablet->LockForRead();
+    known.emplace(
+        tablet->tablet_id(),
+        TabletRange{
+            l->pb.partition().partition_key_start(), l->pb.partition().partition_key_end(),
+            l->pb.split_depth()});
+  }
+  std::vector<std::tuple<TabletId, std::string, TabletRange>> resolved;
+  auto pending = removed_split_parents;
+  for (bool progress = true; progress;) {
+    progress = false;
+    for (auto it = pending.begin(); it != pending.end();) {
+      const auto& [parent_id, parent] = *it;
+      std::optional<TabletRange> range;
+      for (const auto& child_id : parent.child_ids) {
+        auto child_it = known.find(child_id);
+        if (child_it == known.end()) {
+          range.reset();
+          break;
+        }
+        const auto& child = child_it->second;
+        if (!range) {
+          range = TabletRange{
+              child.start, child.end, child.split_depth > 0 ? child.split_depth - 1 : 0};
+          continue;
+        }
+        range->start = std::min(range->start, child.start);
+        if (!range->end.empty() && (child.end.empty() || child.end > range->end)) {
+          range->end = child.end;
+        }
+      }
+      if (!range) {
+        ++it;
+        continue;
+      }
+      known.emplace(parent_id, *range);
+      resolved.emplace_back(parent_id, parent.state_msg, *range);
+      it = pending.erase(it);
+      progress = true;
+    }
+  }
+  std::ranges::sort(resolved, [](const auto& lhs, const auto& rhs) {
+    const auto& l = std::get<2>(lhs);
+    const auto& r = std::get<2>(rhs);
+    return l.start == r.start ? l.split_depth < r.split_depth : l.start < r.start;
+  });
+
+  std::vector<RemovedSplitParentRow> rows;
+  rows.reserve(resolved.size());
+  for (auto& [tablet_id, state_msg, range] : resolved) {
+    PartitionPB partition_pb;
+    partition_pb.set_partition_key_start(range.start);
+    partition_pb.set_partition_key_end(range.end);
+    dockv::Partition partition;
+    dockv::Partition::FromPB(partition_pb, &partition);
+    rows.push_back(RemovedSplitParentRow{
+        .tablet_id = std::move(tablet_id),
+        .partition = partition_schema.PartitionDebugString(partition, partition_keys_schema),
+        .split_depth = range.split_depth,
+        .state_msg = std::move(state_msg)});
+  }
+  return rows;
 }
 
 }  // anonymous namespace
@@ -2044,7 +2183,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
   server::HtmlOutputSchemaTable(schema, output);
 
-  bool has_deleted_tablets = false;
+  // Split parents already dropped from memory are no longer among the table's tablets, but can
+  // still be listed with their children.
+  const auto removed_split_parents =
+      master_->catalog_manager_impl()->GetDeletedSplitParents(table->id());
+
+  bool has_deleted_tablets = !removed_split_parents.empty();
   for (const auto& tablet : tablets) {
     if (tablet->LockForRead()->is_deleted()) {
       has_deleted_tablets = true;
@@ -2100,6 +2244,16 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
         state,
         l->is_hidden(),
         EscapeForHtmlToString(l->pb.state_msg()));
+  }
+  if (show_deleted_tablets) {
+    for (const auto& row : RemovedSplitParentRows(
+             tablets, removed_split_parents, partition_schema, *partition_keys_schema)) {
+      *output << Format(
+          "<tr><th>$0</th><td>$1</td><td>$2</td><td></td><td>Deleted</td><td>0</td><td>$3</td>"
+          "</tr>\n",
+          row.tablet_id, EscapeForHtmlToString(row.partition), row.split_depth,
+          EscapeForHtmlToString(row.state_msg));
+    }
   }
   *output << "</table>\n";
 
@@ -2435,6 +2589,25 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
     RaftConfigToJson(sorted_locations, tablet->tablet_id(), &jw);
     jw.EndObject();
   }
+  for (const auto& row : RemovedSplitParentRows(
+           tablets, master_->catalog_manager_impl()->GetDeletedSplitParents(table->id()),
+           partition_schema, *partition_keys_schema)) {
+    jw.StartObject();
+    jw.String("tablet_id");
+    jw.String(row.tablet_id);
+    jw.String("partition");
+    jw.String(row.partition);
+    jw.String("split_depth");
+    jw.Uint64(row.split_depth);
+    jw.String("state");
+    jw.String("Deleted");
+    jw.String("hidden");
+    jw.String("false");
+    jw.String("message");
+    jw.String(row.state_msg);
+    RaftConfigToJson({}, row.tablet_id, &jw);
+    jw.EndObject();
+  }
   jw.EndArray();
 
   JsonOutputTasks(table->GetTasks(), &jw);
@@ -2537,8 +2710,33 @@ MasterPathHandlers::GetLeaderlessTablets() {
   return leaderless_tablets;
 }
 
-// Returns the placement_uuids of any placement in which the given tablet is underreplicated.
-vector<string> GetTabletUnderReplicatedPlacements(
+namespace {
+
+struct PlacementMissingReplicas {
+  struct PlacementBlockMissingReplicas {
+    std::string cloud_info;
+    int missing_replicas = 0;
+  };
+
+  std::string placement_uuid;
+  bool is_live = false;
+  int missing_replicas = 0;
+  std::vector<PlacementBlockMissingReplicas> block_missing_replicas;
+};
+
+struct UnderReplicatedTabletInfo {
+  TabletInfoPtr tablet;
+  int expected_num_replicas = 0;
+  std::vector<PlacementMissingReplicas> missing_placements;
+};
+
+string FormatCloudInfoCompact(const CloudInfoPB& cloud_info) {
+  return Format("$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
+      cloud_info.placement_zone());
+}
+
+// Returns the placements in which the given tablet is underreplicated.
+vector<PlacementMissingReplicas> GetTabletUnderReplicatedPlacements(
     const TabletInfoPtr& tablet, const ReplicationInfoPB& replication_info) {
   VLOG_WITH_FUNC(1) << "Processing tablet " << tablet->id();
   // We will decrement the num_replicas and replication_factor counters in each placement as we find
@@ -2597,61 +2795,80 @@ vector<string> GetTabletUnderReplicatedPlacements(
   }
 
   // If the tablet is under-replicated, it will have some counter > 0.
-  vector<string> underreplicated_placements;
-  for (const auto* placement : placements) {
-    if (placement->num_replicas() > 0) {
-      VLOG_WITH_FUNC(1) << Format("Tablet $0 underreplicated in placement $1. Need $2 more "
-          "replicas.", tablet->id(), placement->placement_uuid(), placement->num_replicas());
-      underreplicated_placements.push_back(placement->placement_uuid());
-      continue;
-    }
+  vector<PlacementMissingReplicas> result;
+  for (size_t i = 0; i < placements.size(); ++i) {
+    const auto* placement = placements[i];
+    VLOG_IF_WITH_FUNC(1, placement->num_replicas() > 0)
+        << Format("Tablet $0 underreplicated in placement $1. Need $2 more replicas.",
+          tablet->id(), placement->placement_uuid(), placement->num_replicas());
 
     // Check placement blocks within this placement.
-    for (auto& placement_block : placement->placement_blocks()) {
+    std::vector<PlacementMissingReplicas::PlacementBlockMissingReplicas> missing_placement_blocks;
+    for (const auto& placement_block : placement->placement_blocks()) {
       if (placement_block.min_num_replicas() > 0) {
+        missing_placement_blocks.push_back(
+            {FormatCloudInfoCompact(placement_block.cloud_info()),
+             placement_block.min_num_replicas()});
         VLOG_WITH_FUNC(1) << Format("Tablet $0 underreplicated in placement block $1 for placement "
             "$2. Need $3 more replicas.", tablet->id(),
             placement_block.cloud_info().ShortDebugString(), placement->placement_uuid(),
             placement_block.min_num_replicas());
-        underreplicated_placements.push_back(placement->placement_uuid());
-        break;
       }
     }
+
+    if (placement->num_replicas() > 0 || !missing_placement_blocks.empty()) {
+      result.push_back(PlacementMissingReplicas{
+          .placement_uuid = placement->placement_uuid(),
+          .is_live = (i == 0),
+          .missing_replicas = placement->num_replicas(),
+          .block_missing_replicas = std::move(missing_placement_blocks)});
+    }
   }
-  return underreplicated_placements;
+  return result;
 }
 
-Result<vector<pair<TabletInfoPtr, vector<string>>>>
-    MasterPathHandlers::GetUnderReplicatedTablets() {
-  auto* catalog_mgr = master_->catalog_manager();
+Result<vector<UnderReplicatedTabletInfo>> GetUnderReplicatedTablets(Master* master) {
+  auto* catalog_mgr = master->catalog_manager();
 
   catalog_mgr->AssertLeaderLockAcquiredForReading();
-  auto tables = catalog_mgr->GetTables(GetTablesMode::kRunning);
+  // Skip colocated children: they share the parent tablegroup's tablets, and tablespace lookup
+  // always fails for those children so GetTableReplicationInfoWithDefault would use the cluster
+  // spec and report false under-replication for tablets that follow a custom tablespace.
+  auto tables = catalog_mgr->GetTables(GetTablesMode::kRunning, PrimaryTablesOnly::kTrue);
 
-  vector<pair<TabletInfoPtr, vector<string>>> underreplicated_tablets;
+  vector<UnderReplicatedTabletInfo> underreplicated_tablets;
   for (const auto& table : tables) {
     if (table->is_system()) {
       continue;
     }
     auto replication_info = catalog_mgr->GetTableReplicationInfoWithDefault(table);
+
+    int expected_num_replicas = replication_info.live_replicas().num_replicas();
+    for (int i = 0; i < replication_info.read_replicas_size(); ++i) {
+      expected_num_replicas += replication_info.read_replicas(i).num_replicas();
+    }
     for (TabletInfoPtr tablet : VERIFY_RESULT(table->GetTablets())) {
       auto underreplicated_placements =
           GetTabletUnderReplicatedPlacements(tablet, replication_info);
       if (!underreplicated_placements.empty()) {
-        underreplicated_tablets.emplace_back(
-            std::move(tablet), std::move(underreplicated_placements));
+        underreplicated_tablets.push_back(UnderReplicatedTabletInfo{
+            .tablet = std::move(tablet),
+            .expected_num_replicas = expected_num_replicas,
+            .missing_placements = std::move(underreplicated_placements)});
       }
     }
   }
   return underreplicated_tablets;
 }
 
+}  // anonymous namespace
+
 void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& req,
                                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
 
   auto leaderless_tablets = GetLeaderlessTablets();
-  auto underreplicated_tablets = GetUnderReplicatedTablets();
+  auto underreplicated_tablets = GetUnderReplicatedTablets(master_);
 
   if (!leaderless_tablets || !underreplicated_tablets) {
     *output << "<h2>Cannot calculate tablet replicas. Try again.</h2>\n";
@@ -2675,7 +2892,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   *output << "</table>\n";
 
   if (!underreplicated_tablets.ok()) {
-    LOG(WARNING) << underreplicated_tablets.ToString();
+    LOG(WARNING) << underreplicated_tablets.status().ToString();
     *output << "<h2>Call to GetUnderReplicatedTablets failed</h2>\n";
     return;
   }
@@ -2683,24 +2900,39 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   *output << "<h3>Underreplicated Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "<tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
-          << "<th>Tablet Replication Count</th><th>Underreplicated Placements</th></tr>\n";
+          << "<th>Tablet Replication Count</th><th>Expected Replica Count</th>"
+          << "<th>Missing Placements</th></tr>\n";
 
-  for (auto& [tablet, placement_uuids] : *underreplicated_tablets) {
+  for (auto& [tablet, expected_num_replicas, missing_placements] : *underreplicated_tablets) {
+
     auto rm = tablet.get()->GetReplicaLocations();
 
-    stringstream underreplicated_placements;
-    for (auto& uuid : placement_uuids) {
-      underreplicated_placements << (uuid == "" ? "Live (primary) cluster" : uuid) << "\n";
+    stringstream missing_replicas;
+    for (auto& placement : missing_placements) {
+      const string header = placement.is_live
+          ? "Primary cluster"
+          : Format("Read replica $0", EscapeForHtmlToString(placement.placement_uuid));
+      missing_replicas << "<b>" << header << "</b>\n";
+      if (placement.missing_replicas > 0) {
+        missing_replicas << "missing replicas: " << placement.missing_replicas << "\n";
+      }
+      for (auto& block : placement.block_missing_replicas) {
+        missing_replicas << "  " << EscapeForHtmlToString(block.cloud_info) << ": "
+                         << block.missing_replicas << "\n";
+      }
     }
     *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
-        "<td>$3</td><td>$4</td><td>$5</td></tr>\n",
+        "<td>$3</td><td>$4</td><td>$5</td>"
+        "<td><pre style=\"margin: 0; padding: 0; border: none; background: none; "
+        "font: inherit;\">$6</pre></td></tr>\n",
         UrlEncodeToString(tablet->table()->id()),
         EscapeForHtmlToString(tablet->table()->name()),
         EscapeForHtmlToString(tablet->table()->id()),
         EscapeForHtmlToString(tablet->tablet_id()),
         EscapeForHtmlToString(std::to_string(rm->size())),
-        EscapeForHtmlToString(underreplicated_placements.str()));
+        EscapeForHtmlToString(std::to_string(expected_num_replicas)),
+        missing_replicas.str());
   }
 
   *output << "</table>\n";
@@ -2744,7 +2976,7 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  auto underreplicated_tablets = GetUnderReplicatedTablets();
+  auto underreplicated_tablets = GetUnderReplicatedTablets(master_);
 
   if (!underreplicated_tablets.ok()) {
     jw.StartObject();
@@ -2758,16 +2990,42 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
   jw.String("underreplicated_tablets");
   jw.StartArray();
 
-  for (auto& [tablet, placement_uuids] : *underreplicated_tablets) {
+  for (auto& [tablet, expected_num_replicas, missing_placements] : *underreplicated_tablets) {
     jw.StartObject();
     jw.String("table_uuid");
     jw.String(tablet->table()->id());
     jw.String("tablet_uuid");
     jw.String(tablet.get()->tablet_id());
+    jw.String("expected_num_replicas");
+    jw.Int(expected_num_replicas);
     jw.String("underreplicated_placements");
     jw.StartArray();
-    for (auto& uuid : placement_uuids) {
-      jw.String(uuid);
+    for (auto& placement : missing_placements) {
+      jw.String(placement.placement_uuid);
+    }
+    jw.EndArray();
+    jw.String("missing_replicas");
+    jw.StartArray();
+    for (auto& placement : missing_placements) {
+      jw.StartObject();
+      jw.String("placement_uuid");
+      jw.String(placement.placement_uuid);
+      jw.String("is_live");
+      jw.Bool(placement.is_live);
+      jw.String("missing_replicas");
+      jw.Int(placement.missing_replicas);
+      jw.String("placement_blocks");
+      jw.StartArray();
+      for (auto& block : placement.block_missing_replicas) {
+        jw.StartObject();
+        jw.String("cloud_info");
+        jw.String(block.cloud_info);
+        jw.String("missing_replicas");
+        jw.Int(block.missing_replicas);
+        jw.EndObject();
+      }
+      jw.EndArray();
+      jw.EndObject();
     }
     jw.EndArray();
     jw.EndObject();
@@ -3378,7 +3636,10 @@ void MasterPathHandlers::HandleXCluster(
 
         for (const auto& table_status : namespace_status.table_statuses) {
           auto color = HtmlTableRowColor::Default;
-          if (table_status.state.contains("PAUSED") || table_status.state.contains("INITIATED")) {
+          if (table_status.is_wal_anchor) {
+            // A WAL anchor is expected to sit unconsumed, so leave it uncolored.
+          } else if (table_status.state.contains("PAUSED") ||
+                     table_status.state.contains("INITIATED")) {
             color = HtmlTableRowColor::Yellow;
           } else if (table_status.state != "ACTIVE") {
             color = HtmlTableRowColor::Red;
@@ -3816,9 +4077,9 @@ string MasterPathHandlers::ReplicaInfoToHtml(
     html << Format("UUID: $0<br/>", ts_uuid);
     html << Format(
         "Active SSTs size: $0<br/>",
-        HumanReadableNumBytes::ToString(replica.drive_info.sst_files_size));
+        HumanizeBytes(replica.drive_info.sst_files_size));
     html << Format(
-        "WALs size: $0\n", HumanReadableNumBytes::ToString(replica.drive_info.wal_files_size));
+        "WALs size: $0\n", HumanizeBytes(replica.drive_info.wal_files_size));
   }
   html << "</ul>\n";
   return html.str();
@@ -3953,10 +4214,12 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
 
     std::unordered_set<TabletId> tablet_ids;
     for (const auto& [_, table_tree] : tserver_tree) {
-      for (const auto& [_, replicas] : table_tree) {
-        for (const auto& replica : replicas) {
-          tablet_ids.insert(replica.tablet_id);
-        }
+      const auto* replicas = FindOrNull(table_tree, table_id);
+      if (replicas == nullptr) {
+        continue;
+      }
+      for (const auto& replica : *replicas) {
+        tablet_ids.insert(replica.tablet_id);
       }
     }
     auto tablet_count = tablet_ids.size();

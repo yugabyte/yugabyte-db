@@ -34,6 +34,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/uuid.h"
@@ -422,6 +423,8 @@ class PGConn {
         }));
   }
 
+  [[nodiscard]] int BackendPID() const;
+
  private:
   using ControllerReceiver = LWFunction<void(CopyController&)>;
 
@@ -449,6 +452,8 @@ namespace YbInternalConnKindWireName {
 inline constexpr std::string_view kRelcacheInit = "relcache_init";
 inline constexpr std::string_view kGlobalView = "global_view";
 inline constexpr std::string_view kAutoAnalyze = "auto_analyze";
+inline constexpr std::string_view kXClusterDdlQueue = "xcluster_ddl_queue";
+inline constexpr std::string_view kXClusterSetup = "xcluster_setup";
 }  // namespace YbInternalConnKindWireName
 
 struct PGConnSettings {
@@ -510,5 +515,8 @@ PGConnBuilder CreateInternalPGConnBuilder(
 Result<std::string> ResultAsString(
     PGresult* res, const std::string& column_sep = DefaultColumnSeparator(),
     const std::string& row_sep = DefaultRowSeparator());
+
+Result<bool> TryTerminateBackendWithRunningQuery(
+    PGConn& conn, int backend_pid, uint32_t min_query_running_time_msecs);
 
 } // namespace yb::pgwrapper

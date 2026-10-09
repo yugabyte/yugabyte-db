@@ -230,3 +230,41 @@ insert into test_29041 select 'first_col_filler' || i::varchar, 'second_col_fill
 SET work_mem = '256MB';
 explain (analyze, dist) select * from test_29041 where id = ANY (array(select 'first_col_filler' || i::varchar from generate_series(1, 10000) i)) and yb_hash_code(id) >= 0 and yb_hash_code(id) < 8192;
 drop table test_29041;
+
+-- Condition on a hash column h=<v> makes derived condition on the hash code yb_hash_code(h) = yb_hash_code(<v>)
+-- We have a number of test cases with arbitrary filter values, but apparently we don't have coverage for
+-- the age cases where yb_hash_code(<v>) is 0 or 65535.
+-- While working on GHI #31027 we nearly missed a regression in these cases, so we are explicitly adding coverage.
+CREATE TABLE test_31027(h int, r int, v int, primary key (h HASH, r asc)) SPLIT INTO 3 TABLETS;
+-- yb_hash_code(110359) = 0, yb_hash_code(262095) = 65535
+SELECT yb_hash_code(110359), yb_hash_code(262095);
+INSERT INTO test_31027 VALUES (110359, 1, 10), (110359, 2, 20), (262095, 1, 11), (262095, 2, 21);
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 110359 ORDER BY r;
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 110359 ORDER BY r;
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 262095 ORDER BY r;
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 262095 ORDER BY r;
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h IN (110359, 262095);
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h IN (110359, 262095);
+
+set yb_allow_dockey_bounds to false;
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 110359 ORDER BY r;
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 110359 ORDER BY r;
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 262095 ORDER BY r;
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h = 262095 ORDER BY r;
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h IN (110359, 262095);
+SELECT yb_hash_code(h), * FROM test_31027 WHERE h IN (110359, 262095);
+
+reset yb_allow_dockey_bounds;
+DROP TABLE test_31027;

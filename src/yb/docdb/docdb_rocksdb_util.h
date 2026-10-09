@@ -15,6 +15,7 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_types.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -90,8 +91,8 @@ BoundedRocksDbIterator CreateRocksDBIterator(
 
 // Values and transactions committed later than high_ht can be skipped, so we won't spend time
 // for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
-// Set `use_fast_backward_scan` to true only if an iterator will be used for a backward scan. In
-// this case the iterator would use an optimized version of backward scan. Tested for YSQL only.
+// Set `kFastBackwardScan` flag only if an iterator will be used for a backward scan. In this
+// case the iterator would use an optimized version of backward scan. Tested for YSQL only.
 IntentAwareIteratorPtr CreateIntentAwareIterator(
     const DocDB& doc_db,
     const BloomFilterOptions& bloom_filter,
@@ -100,9 +101,7 @@ IntentAwareIteratorPtr CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr,
-    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
-    AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek =
-        AvoidUselessNextInsteadOfSeek::kFalse);
+    IntentAwareIteratorFlags flags = {});
 
 // Set `cache_restart_block_keys` to kTrue to allow underlying block iterator to cache block
 // entries per restart block. This could be useful for a backward scan, but should not be used for
@@ -151,15 +150,28 @@ void InitRocksDBBaseOptions(
     const tablet::TabletOptions& tablet_options,
     const uint64_t group_no = kDefaultGroupNo);
 
-void InitRocksDBOptionsTableFactory(
-    rocksdb::Options* options, const tablet::TabletOptions& tablet_options,
+// Table factory for a docdb RocksDB instance: tablet block cache, table options from flags, and
+// the docdb-aware bloom filter policy, which is only installed for the regular DB.
+std::shared_ptr<rocksdb::TableFactory> CreateRocksDBTableFactory(
+    const tablet::TabletOptions& tablet_options, StorageDbType db_type, rocksdb::Logger* info_log,
     rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
+
+// Base options plus log prefix and statistics, with options->table_factory left at the RocksDB
+// default. Only for callers that cannot name the DB type: DestroyDB over both DBs, or a tool given
+// an arbitrary path. Everything that opens a known DB uses InitRocksDBOptions.
+void InitRocksDBOptionsWithoutTableFactory(
+    rocksdb::Options* options, const std::string& log_prefix,
+    const TabletId& tablet_id,
+    const std::shared_ptr<rocksdb::Statistics>& statistics,
+    const tablet::TabletOptions& tablet_options,
+    const uint64_t group_no = kDefaultGroupNo);
 
 void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     const TabletId& tablet_id,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
+    StorageDbType db_type,
     rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions(),
     const uint64_t group_no = kDefaultGroupNo);
 

@@ -160,7 +160,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2024.2" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
@@ -168,7 +168,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
     ```sh
     # Modify the fields kubernetesOperatorNamespace and defaultUser username, email and password fields as required
     helm install yba yugabytedb/yugaware \
-      --version {{< yb-version version="stable" format="short">}} \
+      --version {{< yb-version version="v2024.2" format="short">}} \
       --namespace yb-platform \
       --set yugaware.kubernetesOperatorEnabled=true \
       --set yugaware.kubernetesOperatorNamespace='yb-platform-test' \
@@ -199,7 +199,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
       enableNodeToNodeEncrypt: true
       enableClientToNodeEncrypt: true
       enableLoadBalancer: true
-      ybSoftwareVersion: "{{< yb-version version="stable" format="build">}}" <- This will be the YBA  version
+      ybSoftwareVersion: "{{< yb-version version="v2024.2" format="build">}}" <- This will be the YBA  version
       enableYSQLAuth: false
       enableYCQL: true
       enableYCQLAuth: false
@@ -226,7 +226,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
 
     ```output
     NAME        STATE   SOFTWARE VERSION
-    demo-test   Ready   {{< yb-version version="stable" format="build">}}
+    demo-test   Ready   {{< yb-version version="v2024.2" format="build">}}
     ```
 
 For more details, see [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
@@ -377,6 +377,60 @@ tls:
   certificate: "LS0tLS1CRUdJTiBDRVJUSUZJQ..."
   key: "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0t..."
 ```
+
+#### Use cert-manager
+
+You can use [cert-manager](https://cert-manager.io/) to issue and renew the TLS certificate for the YugabyteDB Anywhere UI. Before enabling this option, ensure that cert-manager is installed and running on your Kubernetes cluster. For more information, refer to [Install cert-manager](../../../prepare/server-nodes-software/software-kubernetes/#install-cert-manager).
+
+Set `tls.hostname` to the DNS name you use to access YugabyteDB Anywhere. The Helm chart uses this value as the certificate common name.
+
+To have the Helm chart create a self-signed Issuer and issue a certificate with cert-manager, add the following to your values file:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: true
+```
+
+To use an existing ClusterIssuer, set `genSelfsigned` to `false`, enable `useClusterIssuer`, and provide the ClusterIssuer name:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: false
+    useClusterIssuer: true
+    clusterIssuer: "cluster-ca"
+```
+
+To use an existing namespace-scoped Issuer, set `genSelfsigned` to `false`, leave `useClusterIssuer` as `false`, and provide the Issuer name:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: false
+    useClusterIssuer: false
+    issuer: "yugaware-ca"
+```
+
+You can optionally customize certificate duration, renewal window, and key settings under `tls.certManager.configuration`.
+
+{{< note title="Note" >}}
+
+This configuration manages the TLS certificate for the YugabyteDB Anywhere UI. To use cert-manager for universe (node) certificates, refer to [Add cert-manager certificates](../../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
+
+{{< /note >}}
 
 #### Change TLS versions
 

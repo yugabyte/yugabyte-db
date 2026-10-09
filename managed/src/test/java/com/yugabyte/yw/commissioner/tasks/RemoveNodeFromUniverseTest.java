@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -54,7 +55,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Slf4j
@@ -63,7 +64,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   public void setUp(boolean withMaster, int numNodes, int replicationFactor, boolean multiZone) {
     super.setUpBase();
@@ -77,12 +78,16 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = numNodes;
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "2.8.1.0-b1";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -111,7 +116,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
             invocation -> {

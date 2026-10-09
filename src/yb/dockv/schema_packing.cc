@@ -32,6 +32,8 @@
 #include "yb/util/coding_consts.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_test_flag(bool, dcheck_for_missing_schema_packing, true,
                  "Whether we use check failure for missing schema packing in debug builds");

@@ -23,7 +23,11 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -39,6 +43,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
@@ -53,6 +58,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -83,7 +89,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -93,7 +99,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private EditKubernetesUniverse editUniverse;
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final String NODE_PREFIX = "demo-universe";
   private static final String YB_SOFTWARE_VERSION = "1.0.0";
@@ -119,7 +125,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
     } catch (Exception e) {
     }
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     try {
@@ -226,6 +232,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.HandleKubernetesNamespacedServices,
           TaskType.KubernetesCommandExecutor,
@@ -246,6 +253,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -258,6 +266,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.HandleKubernetesNamespacedServices,
@@ -281,6 +290,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of()),
@@ -297,6 +307,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.HandleKubernetesNamespacedServices,
           TaskType.CheckUnderReplicatedTablets,
@@ -330,6 +341,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -498,7 +510,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -582,7 +595,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(2))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -657,7 +671,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         kubernetesProvider.getUuid(), "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    newUserIntent.instanceType = "c5.xlarge";
+    TestUtils.updateInstanceType(newUserIntent, "c5.xlarge");
     newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
     newUserIntent.tserverK8SNodeResourceSpec.cpuCoreCount = 4.0;
     newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
@@ -672,7 +686,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -768,8 +783,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams taskParams =
         mapper.readValue(
             defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
-    taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize =
-        150; /* Changed volume size 100 -> 150 */
+    TestUtils.existingProviderInitializer(taskParams.clusters.get(0).userIntent)
+        .updateDeviceInfo(
+            deviceInfo -> deviceInfo.volumeSize = 150); /* Changed volume size 100 -> 150 */
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
     taskInfo.setTaskParams(Json.toJson(taskParams));
@@ -972,11 +988,15 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+    ProviderInitializer providerInitializer =
+        TestUtils.getProviderInitializerForTests(userIntent, kubernetesProvider.getUuid());
+    providerInitializer.setProviderType(Common.CloudType.kubernetes);
+    providerInitializer.setAccessCode("demo-access");
+    providerInitializer.setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
+
     userIntent.ybSoftwareVersion = "2.28.0.0";
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    userIntent.provider = kubernetesProvider.getUuid().toString();
-    userIntent.providerType = Common.CloudType.kubernetes;
     userIntent.regionList =
         Collections.singletonList(Region.getByCode(kubernetesProvider, "region-1").getUuid());
     PlacementInfo pi = new PlacementInfo();
@@ -994,7 +1014,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.clusters =
         Collections.singletonList(
             defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0));
-    taskParams.getReadOnlyClusters().get(0).userIntent.deviceInfo.volumeSize--;
+    TestUtils.updateDeviceInfo(
+        taskParams.getReadOnlyClusters().get(0).userIntent,
+        ServerType.TSERVER,
+        deviceInfo -> deviceInfo.volumeSize--);
+
     taskParams.nodePrefix = NODE_PREFIX;
     Exception expected = null;
     try {
@@ -1029,7 +1053,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
     // Change storage class to trigger full move (not just volume size change)
-    newUserIntent.deviceInfo.storageClass = "fast";
+    TestUtils.updateDeviceInfo(
+        newUserIntent, ServerType.TSERVER, deviceInfo -> deviceInfo.storageClass = "fast");
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
     taskParams.getPrimaryCluster().uuid = primaryCluster.uuid;
@@ -1068,12 +1093,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
+    DeviceInfo deviceInfo =
+        newUserIntent.getBaseDeviceInfo(newUserIntent.maybeGetSingleProviderUUID().get());
     // Only increase volume size - does not need full move
-    if (newUserIntent.deviceInfo.volumeSize != null) {
-      newUserIntent.deviceInfo.volumeSize = newUserIntent.deviceInfo.volumeSize + 10;
+    if (deviceInfo.volumeSize != null) {
+      deviceInfo.volumeSize = deviceInfo.volumeSize + 10;
     } else {
-      newUserIntent.deviceInfo.volumeSize = 100;
-      newUserIntent.deviceInfo.numVolumes = 1;
+      deviceInfo.volumeSize = 100;
+      deviceInfo.numVolumes = 1;
     }
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
@@ -1115,7 +1142,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    newUserIntent.deviceInfo.storageClass = "standard";
+    TestUtils.updateDeviceInfo(
+        newUserIntent, ServerType.TSERVER, deviceInfo -> deviceInfo.storageClass = "standard");
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
     taskParams.getPrimaryCluster().uuid =
@@ -1136,7 +1164,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    newUserIntent.deviceInfo.storageClass = "nonexistent-sc";
+    TestUtils.updateDeviceInfo(
+        newUserIntent,
+        ServerType.TSERVER,
+        deviceInfo -> deviceInfo.storageClass = "nonexistent-sc");
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
     taskParams.getPrimaryCluster().uuid =
@@ -1156,5 +1187,115 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(thrown.getMessage().contains("does not exist"));
     assertTrue(thrown.getMessage().contains("nonexistent-sc"));
     assertTrue(thrown.getMessage().contains("tserver"));
+  }
+
+  @Test
+  public void testEditKubernetesUniverseIsRollbackable() {
+    // @CanRollback wiring: the K8s edit is rollbackable, the rollback task itself is not.
+    assertTrue(
+        com.yugabyte.yw.commissioner.Commissioner.canTaskTypeRollback(
+            TaskType.EditKubernetesUniverse));
+    assertFalse(
+        com.yugabyte.yw.commissioner.Commissioner.canTaskTypeRollback(
+            TaskType.RollbackEditKubernetesUniverse));
+  }
+
+  // Builds a pod list of 1 master + numTservers tservers in the single-AZ namespace.
+  private List<Pod> rollbackPods(int numTservers) {
+    StringBuilder sb = new StringBuilder("{\"items\": [");
+    sb.append(rollbackPodJson("yb-master-0", "1.2.3.0"));
+    for (int i = 0; i < numTservers; i++) {
+      sb.append(",").append(rollbackPodJson("yb-tserver-" + i, "1.2.3." + (i + 1)));
+    }
+    sb.append("]}");
+    return TestUtils.deserialize(sb.toString(), PodList.class).getItems();
+  }
+
+  private String rollbackPodJson(String hostname, String ip) {
+    return "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", \"podIP\": \""
+        + ip
+        + "\"}, \"spec\": {\"hostname\": \""
+        + hostname
+        + "\"}, \"metadata\": {\"namespace\": \""
+        + NODE_PREFIX
+        + "\"}}";
+  }
+
+  @Test
+  public void testRollbackEditKubernetesUniverseHappyPathAfterFailedExpand()
+      throws InterruptedException {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+
+    Universe universe = defaultUniverse;
+    int tserversBefore = universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes;
+
+    // Report the target (5-tserver) pod set for the expand attempt.
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(rollbackPods(5));
+    // Fail the edit in the safe window (scale-up helm upgrade, before the MarkRollbackUnsafe
+    // checkpoint). The freeze already captured the delta with rollbackSafe=true.
+    doThrow(new RuntimeException("helm boom"))
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 2;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.numNodes = 5;
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 5;
+    TaskInfo failedEdit = submitTask(taskParams, newUserIntent, pi);
+    assertEquals(Failure, failedEdit.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotNull(universe.getStateTransitionDetails());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertTrue(commissioner.canTaskRollbackDetailed(failedEdit));
+
+    // Scale-back-down rollback: helm succeeds, pods report the restored pre-edit set.
+    doNothing()
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
+    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
+        .thenReturn(rollbackPods(tserversBefore));
+
+    UniverseDefinitionTaskParams rollbackParams =
+        Json.fromJson(failedEdit.getTaskParams(), UniverseDefinitionTaskParams.class);
+    rollbackParams.setUniverseUUID(universe.getUniverseUUID());
+    rollbackParams.expectedUniverseVersion = -1;
+    UUID rollbackUuid =
+        commissioner.submit(TaskType.RollbackEditKubernetesUniverse, rollbackParams);
+    TaskInfo rollbackInfo = waitForTask(rollbackUuid);
+    assertEquals(Success, rollbackInfo.getTaskState());
+
+    // Rollback scales the StatefulSet back down (helm) then restores details, in that order.
+    List<TaskType> rollbackTypes =
+        rollbackInfo.getSubTasks().stream().map(TaskInfo::getTaskType).collect(Collectors.toList());
+    int helmIdx = rollbackTypes.indexOf(TaskType.KubernetesCommandExecutor);
+    int restoreIdx = rollbackTypes.indexOf(TaskType.RestoreUniverseDetailsFromDelta);
+    int successIdx = rollbackTypes.indexOf(TaskType.UniverseUpdateSucceeded);
+    assertTrue("expected a helm/kubernetes command", helmIdx >= 0);
+    assertTrue("details restored after scale-down", restoreIdx > helmIdx);
+    assertTrue("update marked successful last", successIdx > restoreIdx);
+
+    // A scale-down helm upgrade was issued to shrink the StatefulSet back to the pre-edit size.
+    verify(mockKubernetesManager, atLeastOnce())
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        tserversBefore, universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes);
+    assertTrue(universe.getUniverseDetails().updateSucceeded);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    assertNull(universe.getStateTransitionDetails());
   }
 }

@@ -34,6 +34,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/util/flags/flag_tags.h"
@@ -632,7 +633,6 @@ Status PollTransactionStatusBase::VerifyTransaction() {
   }
 
   RETURN_NOT_OK(sync_.Wait());
-  sync_.Reset();
 
   std::lock_guard l(rpc_mutex_);
   SCHECK(
@@ -648,6 +648,9 @@ Status PollTransactionStatusBase::VerifyTransaction() {
   }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
   // TransactionParticipant since this TransactionMetadata may not have any actual data flushed yet.
+  // Clear sync_ only once this rpc is certain to be sent, so that every path returning above leaves
+  // it signaled and a concurrent Shutdown() is not left waiting for a callback that never runs.
+  sync_.Reset();
   auto sync_cb = sync_.AsStdStatusCallback();
   auto callback = [this, rpc_handle, user_cb = std::move(sync_cb)](
                       Status status, const tserver::GetTransactionStatusResponsePB& resp) {

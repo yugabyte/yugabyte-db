@@ -20,6 +20,7 @@ Generative AI has transformed how applications interact with data. While early a
 
 YugabyteDB provides the scalable, distributed data foundation required to run modern AI workloads, from simple chatbots to complex agentic workflows. By combining the familiarity of PostgreSQL with distributed scalability, you can store and query billions of vector embeddings without managing complex, separate infrastructure.
 
+
 {{<lead link="(https://www.yugabyte.com/blog/benchmarking-1-billion-vectors-in-yugabytedb/)">}}
 Learn how to [power AI at scale using YugabyteDB](https://www.yugabyte.com/blog/benchmarking-1-billion-vectors-in-yugabytedb/).
 {{</lead>}}
@@ -55,6 +56,8 @@ Using the [YugabyteDB MCP Server](/stable/develop/ai/mcp-server/), you can:
 1. Explore: Enable LLMs to automatically discover your database schema, table structures, and relationships.
 1. Query: Ask questions in natural language. The LLM generates and executes safe, read-only SQL queries to fetch precise answers.
 1. Analyze: Generate insights, visualizations, and summaries directly from your data without writing custom code.
+
+Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These structured skill packages give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows.
 
 #### MCP and RAG: Better together
 

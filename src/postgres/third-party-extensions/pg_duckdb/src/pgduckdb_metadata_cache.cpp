@@ -95,6 +95,7 @@ struct {
 	 * instead (e.g. a hash table). For now using a list is fine though.
 	 */
 	List *duckdb_only_functions;
+	List *yb_lake_io_only_functions;
 } cache = {};
 
 bool callback_is_configured = false;
@@ -122,6 +123,8 @@ InvalidateCaches(Datum /*arg*/, int /*cache_id*/, uint32 hash_value) {
 	if (cache.installed) {
 		list_free(cache.duckdb_only_functions);
 		cache.duckdb_only_functions = NIL;
+		list_free(cache.yb_lake_io_only_functions);
+		cache.yb_lake_io_only_functions = NIL;
 		cache.extension_oid = InvalidOid;
 		cache.table_am_oid = InvalidOid;
 		cache.postgres_role_oid = InvalidOid;
@@ -137,6 +140,7 @@ BuildDuckdbOnlyFunctions() {
 	/* This function should only be called during cache initialization */
 	Assert(!cache.valid);
 	Assert(!cache.duckdb_only_functions);
+	Assert(!cache.yb_lake_io_only_functions);
 	Assert(cache.extension_oid != InvalidOid);
 
 	/*
@@ -145,6 +149,8 @@ BuildDuckdbOnlyFunctions() {
 	 * each of the found functions is actually part of our extension before
 	 * caching its OID as a DuckDB-only function.
 	 */
+	static const char *yb_lake_io_function_names[] = {"read_parquet", "read_csv", "read_json"};
+
 	const char *function_names[] = {"read_parquet",
 	                                "read_csv",
 	                                "iceberg_scan",
@@ -198,6 +204,14 @@ BuildDuckdbOnlyFunctions() {
 	                                "map_values"};
 
 	for (uint32_t i = 0; i < lengthof(function_names); i++) {
+		bool yb_is_lake_io = false;
+		for (uint32_t k = 0; k < lengthof(yb_lake_io_function_names); k++) {
+			if (strcmp(function_names[i], yb_lake_io_function_names[k]) == 0) {
+				yb_is_lake_io = true;
+				break;
+			}
+		}
+
 		CatCList *catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(function_names[i]));
 
 		for (int j = 0; j < catlist->n_members; j++) {
@@ -210,6 +224,9 @@ BuildDuckdbOnlyFunctions() {
 			/* The cache needs to outlive the current transaction so store the list in TopMemoryContext */
 			MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 			cache.duckdb_only_functions = lappend_oid(cache.duckdb_only_functions, function->oid);
+			if (yb_is_lake_io) {
+				cache.yb_lake_io_only_functions = lappend_oid(cache.yb_lake_io_only_functions, function->oid);
+			}
 			MemoryContextSwitchTo(oldcontext);
 		}
 
@@ -324,12 +341,26 @@ bool
 IsDuckdbOnlyFunction(Oid function_oid) {
 	Assert(cache.valid);
 
+	if (YbIsLakeIoMode()) {
+		return list_member_oid(cache.yb_lake_io_only_functions, function_oid);
+	}
+
 	foreach_oid(duckdb_only_oid, cache.duckdb_only_functions) {
 		if (duckdb_only_oid == function_oid) {
 			return true;
 		}
 	}
 	return false;
+}
+
+/*
+ * YB: True if function_oid is one of the lake read functions (read_parquet / read_csv / read_json),
+ * cached in yb_lake_io_only_functions. See pgduckdb_guc.hpp for the lake_io mode definition.
+ */
+bool
+YbIsLakeIoFunction(Oid function_oid) {
+	Assert(cache.valid);
+	return list_member_oid(cache.yb_lake_io_only_functions, function_oid);
 }
 
 uint64_t

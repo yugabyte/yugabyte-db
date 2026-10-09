@@ -49,17 +49,33 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ## Connector compatibility
 
-The connector uses the following naming convention:
+Connector versions follow one of these schemes.
+
+Before `dz.2.5.2.yb.2026.1.2.0.1`:
 
 ```output
-dz.<Debezium Release>.yb.<YugabyteDB Version>.<Patch>
+dz.<debezium-base>.yb.<yugabytedb-series>[.<connector-patch>]
 ```
 
-* *Debezium Release*: Debezium release the connector is based on
-* *YugabyteDB Version*: Version of YugabyteDB the connector is built for
-* *Patch*:patch release version, if applicable
+Starting with `dz.2.5.2.yb.2026.1.2.0.1`:
 
-The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (that is, forward compatibility is not supported). For example, connector release `dz.2.5.2.yb.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
+```output
+dz.<debezium-base>.yb.<yugabytedb-version>.<connector-patch>
+```
+
+| Component | Example | Description |
+| :---- | :------ | :------ |
+| `dz.<debezium-base>` | `dz.2.5.2` | Upstream Debezium release the connector is built on. |
+| `yb.<yugabytedb-series>` | `yb.2025.2` | YugabyteDB release series. Used before `dz.2.5.2.yb.2026.1.2.0.1`. |
+| `yb.<yugabytedb-version>` | `yb.2026.1.2.0` | Full four-part YugabyteDB release. Used starting with `dz.2.5.2.yb.2026.1.2.0.1`. |
+| `<connector-patch>` | `.3` | Connector patch for that series or database version. Higher is more recent. |
+| `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release, appended to the release series in both schemes (for example, `dz.2.5.2.yb.2026.1.SNAPSHOT.3`). Don't use in production. |
+
+For example, `dz.2.5.2.yb.2025.2.3` is connector patch 3 for the v2025.2 series, and `dz.2.5.2.yb.2026.1.2.0.1` is connector patch 1 for YugabyteDB v2026.1.2.0. In the earlier scheme, the first release in a series has no connector patch; for example, `dz.2.5.2.yb.2025.2` was followed by `dz.2.5.2.yb.2025.2.2`.
+
+The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not later releases* (that is, forward compatibility is not supported). For example, connector release `dz.2.5.2.yb.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
+
+Because connectors are backward compatible with YugabyteDB releases, you don't need to match the connector to the database release; use the latest stable connector release regardless of the YugabyteDB version you are running. If a connector release for a particular YugabyteDB version is not available, use the latest released connector.
 
 ## How the connector works
 

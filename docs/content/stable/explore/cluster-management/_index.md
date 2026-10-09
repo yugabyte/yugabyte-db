@@ -19,7 +19,7 @@ type: indexpage
 {{<index/block>}}
   {{<index/item
       title="Point-in-time recovery"
-      body="Restore the state of a cluster's data from a specific point in time."
+      body="Recover from logical errors using Inspect, Clone, Rewind, or Restore to a point in time."
       href="./point-in-time-recovery-ysql/"
       icon="fa-thin fa-timer">}}
 

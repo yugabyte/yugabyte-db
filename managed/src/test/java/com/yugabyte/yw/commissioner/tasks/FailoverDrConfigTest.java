@@ -58,7 +58,7 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsXClusterFailoverDoneResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.XClusterFailoverResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import play.libs.Json;
@@ -69,7 +69,7 @@ public class FailoverDrConfigTest extends CommissionerBaseTest {
   private Universe sourceUniverse;
   private Universe targetUniverse;
   private Users defaultUser;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private String namespace1Id;
   private UUID storageConfigUUID;
 
@@ -96,7 +96,7 @@ public class FailoverDrConfigTest extends CommissionerBaseTest {
 
     namespace1Id = UUID.randomUUID().toString().replace("-", "");
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
 

@@ -32,7 +32,7 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ConnectivityStateResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.tserver.TserverService.ConnectivityEntryPB;
 
 @Slf4j
@@ -135,7 +135,7 @@ public class ConnectivityChecker {
       String nodePrefix = universe.getUniverseDetails().nodePrefix;
       List<Metric> nodeMetrics = new ArrayList<>();
 
-      try (YBClient client = ybClientService.getUniverseClient(universe)) {
+      try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
         for (NodeDetails node : tservers) {
           if (node.cloudInfo == null || node.nodeUuid == null) {
             continue;

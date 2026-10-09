@@ -30,7 +30,7 @@ SELECT * FROM xacttest;
 ABORT;
 
 -- should not exist
-SELECT count(oid) FROM pg_class WHERE relname = 'disappear'; -- YB: change to count, TODO: transactional DDL
+SELECT oid FROM pg_class WHERE relname = 'disappear';
 
 -- should have members again
 SELECT * FROM xacttest;
@@ -101,12 +101,9 @@ CREATE TABLE trans_foobar (a int);
 BEGIN;
 	CREATE TABLE trans_foo (a int);
 	SAVEPOINT one;
-/* YB: avoid DROP TABLE since it is not rolled back due to lack of transactional DDL
 		DROP TABLE trans_foo;
-*/ -- YB
 		CREATE TABLE trans_bar (a int);
 	ROLLBACK TO SAVEPOINT one;
-	DROP TABLE trans_bar; -- YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 	RELEASE SAVEPOINT one;
 	SAVEPOINT two;
 		CREATE TABLE trans_baz (a int);
@@ -329,9 +326,7 @@ BEGIN;
 		INSERT INTO koju VALUES (1);
 	rollback to x;
 
-	/* YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 	CREATE TABLE koju (a INT UNIQUE);
-	*/ -- YB
 	INSERT INTO koju VALUES (1);
 	INSERT INTO koju VALUES (1);
 ROLLBACK;
@@ -375,7 +370,6 @@ rollback to x;
 -- should fail
 fetch from foo;
 commit;
-drop table abc; -- YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 
 begin;
 
@@ -394,7 +388,6 @@ rollback to x;
 fetch from foo;
 
 abort;
-drop table abc; -- YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 
 
 -- Test for proper cleanup after a failure in a cursor portal

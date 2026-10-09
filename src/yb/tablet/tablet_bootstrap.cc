@@ -63,7 +63,6 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -180,7 +179,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
 using consensus::MakeOpIdPB;
-using strings::Substitute;
 
 static string DebugInfo(const string& tablet_id,
                         uint64_t segment_seqno,
@@ -194,9 +192,9 @@ static string DebugInfo(const string& tablet_id,
     debug_str.resize(500);
     debug_str.append("...");
   }
-  return Substitute("Debug Info: Error playing entry $0 of segment $1 of tablet $2. "
-                    "Segment path: $3. Entry: $4", entry_idx, segment_seqno, tablet_id,
-                    segment_path, debug_str);
+  return Format("Debug Info: Error playing entry $0 of segment $1 of tablet $2. "
+                "Segment path: $3. Entry: $4", entry_idx, segment_seqno, tablet_id,
+                segment_path, debug_str);
 }
 
 // ================================================================================================
@@ -367,18 +365,20 @@ void ReplayState::DumpReplayStateToStrings(
       "Committed OpId: $1, "
       "Pending Replicates: $2, "
       "Flushed Regular: $3, "
-      "Flushed Intents: $4",
+      "Flushed Intents: $4, "
+      "Flushed Vector Indexes: $5",
       prev_op_id,
       committed_op_id,
       pending_replicates.size(),
       stored_op_ids.regular,
-      stored_op_ids.intents));
+      stored_op_ids.intents,
+      stored_op_ids.vector_indexes));
   if (num_entries_applied_to_rocksdb > 0) {
-    strings->push_back(Substitute("Log entries applied to RocksDB: $0",
-                                  num_entries_applied_to_rocksdb));
+    strings->push_back(Format("Log entries applied to RocksDB: $0",
+                              num_entries_applied_to_rocksdb));
   }
   if (!pending_replicates.empty()) {
-    strings->push_back(Substitute("Dumping REPLICATES ($0 items):", pending_replicates.size()));
+    strings->push_back(Format("Dumping REPLICATES ($0 items):", pending_replicates.size()));
     AddEntriesToStrings(pending_replicates, strings, half_limit);
   }
 }
@@ -388,14 +388,21 @@ bool ReplayState::CanApply(const log::LWLogEntryPB& entry) {
 }
 
 OpId ReplayState::GetLowestOpIdToReplay(bool has_intents_db, const char* extra_log_prefix) const {
-  const auto op_id_replay_lowest =
+  auto op_id_replay_lowest =
       has_intents_db ? std::min(stored_op_ids.regular, stored_op_ids.intents)
                      : stored_op_ids.regular;
+  // A vector index flushes independently of the regular and intents DBs, and the intents flushed
+  // OpId may be advanced to match the regular one without waiting for vector indexes, so it
+  // could lag behind both of them. Replay from the lowest storage.
+  for (const auto& op_id : stored_op_ids.vector_indexes) {
+    op_id_replay_lowest = std::min(op_id_replay_lowest, op_id);
+  }
   LOG_WITH_PREFIX(INFO)
       << extra_log_prefix
       << "op_id_replay_lowest=" << op_id_replay_lowest
       << " (regular_op_id=" << stored_op_ids.regular
       << ", intents_op_id=" << stored_op_ids.intents
+      << ", vector_indexes_op_ids=" << AsString(stored_op_ids.vector_indexes)
       << ", has_intents_db=" << has_intents_db << ")";
   return op_id_replay_lowest;
 }
@@ -411,9 +418,10 @@ struct ReplayDecision {
 
   // Which storages a replayed op still applies to. Restricted below All() when the op's effect is
   // already durable in some storages but not others: an APPLYING transaction-update op already in
-  // the regular RocksDB but not the intents RocksDB; and (GH#31899) a fused xCluster external
+  // the regular RocksDB but not the intents RocksDB; (GH#31899) a fused xCluster external
   // WRITE_OP, which is intents-gated on replay but writes the regular RocksDB, so its regular bit
-  // is cleared once the regular RocksDB already has it.
+  // is cleared once the regular RocksDB already has it; and (GH#32797) a plain non-transactional
+  // WRITE_OP already in the regular RocksDB but not in a vector index.
   docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
 
   std::string ToString() const {
@@ -488,6 +496,7 @@ class TabletBootstrap {
                             "Unable to load Consensus metadata");
       cmeta_ = cmeta_holder_.get();
     }
+    const auto cmeta_before_replay = cmeta_->GetConsensusMetadataPB();
 
     // Make sure we don't try to locally bootstrap a tablet that was in the middle of a remote
     // bootstrap. It's likely that not all files were copied over successfully.
@@ -576,7 +585,7 @@ class TabletBootstrap {
     // always need to know the term and index of the last logged op in order to vote, know how to
     // respond to AppendEntries(), etc.
     if (has_blocks && !needs_recovery) {
-      return STATUS(IllegalState, Substitute("Tablet $0: Found rowsets but no log "
+      return STATUS(IllegalState, Format("Tablet $0: Found rowsets but no log "
                                             "segments could be found.",
                                             tablet_id));
     }
@@ -587,8 +596,8 @@ class TabletBootstrap {
       cmeta_->set_current_term(consensus_info->last_id.term);
     }
 
-    // Flush the consensus metadata once at the end to persist our changes, if any.
-    RETURN_NOT_OK(cmeta_->Flush());
+    // Replay may have advanced the term or the committed config.
+    RETURN_NOT_OK(cmeta_->FlushIfChanged(cmeta_before_replay));
 
     RETURN_NOT_OK(RemoveRecoveryDir());
 
@@ -669,18 +678,32 @@ class TabletBootstrap {
 
   // Makes updates to tablet meta if required.
   Status MaybeUpdateMetaAfterTabletHasBeenOpened(const Tablet& tablet) {
+    bool updated = false;
+
     // For backward compatibility: allow old tablets to use benefits of one-file-at-a-time
     // post split compaction algorithm by explicitly setting the value for
     // post_split_compaction_file_number_upper_bound.
     if (tablet.regular_db() && tablet.key_bounds().IsInitialized() &&
-        !meta_->parent_data_compacted() &&
+        !meta_->rocksdb_parent_data_compacted() &&
         !meta_->post_split_compaction_file_number_upper_bound().has_value()) {
       meta_->set_post_split_compaction_file_number_upper_bound(
           tablet.regular_db()->GetNextFileNumber());
-      RETURN_NOT_OK(meta_->Flush());
+      updated = true;
     }
 
-    return Status::OK();
+    // A binary rollback drops KvStoreInfo.split_generation, while the vector index manifests keep
+    // it. Restore the superblock so the next split increments past the persisted generation.
+    if (meta_->split_generation() == 0) {
+      const auto persisted = tablet.vector_indexes().MaxPersistedSplitGeneration();
+      if (persisted != 0) {
+        LOG_WITH_PREFIX(INFO)
+            << "Restoring split_generation to " << persisted << " from vector index manifest";
+        meta_->set_split_generation(persisted);
+        updated = true;
+      }
+    }
+
+    return updated ? meta_->Flush() : Status::OK();
   }
 
   // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir
@@ -762,7 +785,7 @@ class TabletBootstrap {
       LOG_WITH_PREFIX(INFO) << "Moving log directory " << log_dir << " to recovery directory "
                             << recovery_path << " in preparation for log replay";
       RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(log_dir, recovery_path),
-                            Substitute("Could not move log directory $0 to recovery dir $1",
+                            Format("Could not move log directory $0 to recovery dir $1",
                                       log_dir, recovery_path));
       RETURN_NOT_OK_PREPEND(GetEnv()->CreateDir(log_dir),
                             "Failed to recreate log directory " + log_dir);
@@ -785,7 +808,7 @@ class TabletBootstrap {
     VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir " << wal_path;
     // Open the reader.
     scoped_refptr<LogIndex> index(nullptr);
-    RETURN_NOT_OK_PREPEND(
+    log_reader_ = VERIFY_RESULT_PREPEND(
         LogReader::Open(
             GetEnv(),
             index,
@@ -793,8 +816,7 @@ class TabletBootstrap {
             wal_path,
             tablet_->GetTableMetricsEntity().get(),
             tablet_->GetTabletMetricsEntity().get(),
-            data_.tablet_init_data.read_wal_mem_tracker,
-            &log_reader_),
+            data_.tablet_init_data.read_wal_mem_tracker),
         "Could not open LogReader. Reason");
     return Status::OK();
   }
@@ -814,11 +836,11 @@ class TabletBootstrap {
     LOG_WITH_PREFIX(INFO) << "Preparing to delete log recovery files and directory "
                           << recovery_path;
 
-    string tmp_path = Substitute("$0-$1", recovery_path, GetCurrentTimeMicros());
+    string tmp_path = Format("$0-$1", recovery_path, GetCurrentTimeMicros());
     LOG_WITH_PREFIX(INFO) << "Renaming log recovery dir from "  << recovery_path
                           << " to " << tmp_path;
     RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(recovery_path, tmp_path),
-                          Substitute("Could not rename old recovery dir from: $0 to: $1",
+                          Format("Could not rename old recovery dir from: $0 to: $1",
                                     recovery_path, tmp_path));
 
     if (FLAGS_skip_remove_old_recovery_dir) {
@@ -893,7 +915,7 @@ class TabletBootstrap {
         RETURN_NOT_OK(HandleReplicateMessage(entry_metadata, entry_ptr));
         break;
       default:
-        return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
+        return STATUS(Corruption, Format("Unexpected log entry type: $0", entry.type()));
     }
     MAYBE_FAULT(FLAGS_TEST_fault_crash_during_log_replay);
     return Status::OK();
@@ -994,13 +1016,13 @@ class TabletBootstrap {
         return PlayWriteRequest(replicate, apply_to_storages);
 
       case consensus::CHANGE_METADATA_OP:
-        return PlayChangeMetadataRequest(replicate);
+        return RefreshVectorIndexOpIds(PlayChangeMetadataRequest(replicate));
 
       case consensus::CHANGE_CONFIG_OP:
         return PlayChangeConfigRequest(replicate);
 
       case consensus::TRUNCATE_OP:
-        return PlayTruncateRequest(replicate);
+        return RefreshVectorIndexOpIds(PlayTruncateRequest(replicate));
 
       case consensus::NO_OP:
         return Status::OK();  // This is why it is a no-op!
@@ -1009,7 +1031,7 @@ class TabletBootstrap {
         return PlayUpdateTransactionRequest(replicate, apply_to_storages);
 
       case consensus::SNAPSHOT_OP:
-        return PlayTabletSnapshotRequest(replicate);
+        return RefreshVectorIndexOpIds(PlayTabletSnapshotRequest(replicate));
 
       case consensus::HISTORY_CUTOFF_OP:
         return PlayHistoryCutoffRequest(replicate);
@@ -1025,7 +1047,7 @@ class TabletBootstrap {
 
       // Unexpected cases:
       case consensus::UNKNOWN_OP:
-        return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
+        return STATUS(IllegalState, Format("Unsupported operation type: $0", op_type));
     }
 
     LOG_WITH_PREFIX(DFATAL) << "Invalid operation type " << op_type
@@ -1156,6 +1178,12 @@ class TabletBootstrap {
             << ", apply_to_storages: " << apply_to_storages.ToString();
         return {true, apply_to_storages};
       }
+      // We need promotions to persist to intents RocksDB before we can skip it.
+      if (txn_status == TransactionStatus::PROMOTING) {
+        VLOG_WITH_PREFIX_AND_FUNC(3)
+            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+        return {index > flushed_op_ids.intents.index};
+      }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
       VLOG_WITH_PREFIX_AND_FUNC(3)
@@ -1169,6 +1197,19 @@ class TabletBootstrap {
       return {index > metadata_flushed_index};
     }
     // For upgrade scenarios where metadata_flushed_index < 0, follow the pre-existing logic.
+
+    if (op_type == consensus::WRITE_OP && !write_op_has_transaction) {
+      // A plain non-transactional WRITE_OP is applied to the regular DB and vector indexes at once
+      // (see NonTransactionalBatchWriter), and each of them flushes on its own. Replay it into
+      // exactly the storages that have not flushed it yet. Gating on the regular DB alone lost
+      // vectors after an ungraceful restart once the regular DB flushed past the op while a vector
+      // index had not (GH#32797).
+      auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+          << ", apply_to_storages: " << apply_to_storages.ToString();
+      return {apply_to_storages.Any(), apply_to_storages};
+    }
 
     // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
     // trying to be resilient to violations of that assumption.
@@ -1257,7 +1298,12 @@ class TabletBootstrap {
       LOG_WITH_PREFIX(WARNING)
           << "--force_recover_flushed_frontier specified, ignoring existing flushed frontiers "
           << "from RocksDB metadata (will replay all log records): " << flushed_op_ids.ToString();
-      return DocDbOpIds();
+      // Keep one reset entry per vector index. An empty list reads as "this tablet has no vector
+      // indexes" in ComputeApplyToStorages, which would replay every operation into the regular
+      // DB only and leave the indexes without the data this flag exists to recover.
+      DocDbOpIds result;
+      result.vector_indexes.assign(flushed_op_ids.vector_indexes.size(), OpId());
+      return result;
     }
 
     if (test_hooks_) {
@@ -1862,9 +1908,23 @@ class TabletBootstrap {
 
     Status s;
     RETURN_NOT_OK(operation.Apply(OpId::kUnknownTerm, &s));
-    tablet_->vector_indexes().FillMaxPersistentOpIds(
-        replay_state_->stored_op_ids.vector_indexes, false);
     return s;
+  }
+
+  // ComputeApplyToStorages maps the stored vector index OpIds onto the index list positionally, so
+  // they are refreshed after every op that can add an index, or reopen the storages and rebuild
+  // the list: a metadata change, a truncate or a snapshot restore. A test override of the flushed
+  // OpIds stays in effect, and --force_recover_flushed_frontier keeps replaying every op into
+  // every index, as in GetFlushedOpIds.
+  Status RefreshVectorIndexOpIds(const Status& play_status) {
+    auto& op_ids = replay_state_->stored_op_ids.vector_indexes;
+    if (FLAGS_force_recover_flushed_frontier) {
+      tablet_->vector_indexes().FillMaxPersistentOpIds(op_ids, false);
+      std::fill(op_ids.begin(), op_ids.end(), OpId());
+    } else if (!test_hooks_ || !test_hooks_->GetFlushedOpIdsOverride()) {
+      tablet_->vector_indexes().FillMaxPersistentOpIds(op_ids, false);
+    }
+    return play_status;
   }
 
   Status PlayChangeConfigRequest(consensus::LWReplicateMsg* replicate_msg) {
@@ -1992,12 +2052,15 @@ class TabletBootstrap {
           const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
 
           if (TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
-            LOG_WITH_PREFIX(INFO) << "Deleting old temporary snapshot directory " << snapshot_dir;
+            const auto snapshot_dir_type =
+                TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir) ? "tombstoned" : "temporary";
+            LOG_WITH_PREFIX(INFO) << "Deleting old " << snapshot_dir_type
+                                  << " snapshot directory " << snapshot_dir;
 
             s = meta_->fs_manager()->env()->DeleteRecursively(snapshot_dir);
             if (!s.ok()) {
-              LOG_WITH_PREFIX(WARNING) << "Cannot delete old temporary snapshot directory "
-                                       << snapshot_dir << ": " << s;
+              LOG_WITH_PREFIX(WARNING) << "Cannot delete old " << snapshot_dir_type
+                                       << " snapshot directory " << snapshot_dir << ": " << s;
             }
 
             s = meta_->fs_manager()->env()->SyncDir(top_snapshots_dir);
@@ -2036,7 +2099,7 @@ class TabletBootstrap {
   TabletStatusListener* listener_;
   TabletPtr tablet_;
   scoped_refptr<log::Log> log_;
-  std::unique_ptr<log::LogReader> log_reader_;
+  log::LogReaderPtr log_reader_;
   std::unique_ptr<ReplayState> replay_state_;
 
   consensus::ConsensusMetadata* cmeta_;

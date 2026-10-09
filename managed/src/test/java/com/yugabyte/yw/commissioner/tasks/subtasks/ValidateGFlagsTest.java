@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
@@ -38,18 +39,18 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ValidateGFlagsTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private AvailabilityZone az1;
   private AvailabilityZone az2;
 
   @Before
-  public void setUp() {
+  public void setUp() throws Exception {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
 
@@ -67,12 +68,12 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
     userIntent.deviceInfo = deviceInfo;
     defaultUniverse.save();
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     lenient().when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     lenient()
         .when(
-            mockGFlagsValidation.validateGFlags(
-                any(YBClient.class), anyMap(), any(ServerType.class)))
+            mockGFlagsValidation.validateGFlagsViaRpc(
+                any(YBClientApi.class), any(HostAndPort.class), anyMap(), any(ServerType.class)))
         .thenReturn(new HashMap<>());
   }
 
@@ -98,7 +99,8 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
 
     verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any(), eq(false));
     verify(mockGFlagsValidation, never())
-        .validateGFlags(any(YBClient.class), anyMap(), any(ServerType.class));
+        .validateGFlagsViaRpc(
+            any(YBClientApi.class), any(HostAndPort.class), anyMap(), any(ServerType.class));
   }
 
   // Test that nodes with null cloudInfo and null cloudInfo.private_ip are skipped during gflags
@@ -143,7 +145,8 @@ public class ValidateGFlagsTest extends CommissionerBaseTest {
 
     verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any(), eq(false));
     verify(mockGFlagsValidation, never())
-        .validateGFlags(any(YBClient.class), anyMap(), any(ServerType.class));
+        .validateGFlagsViaRpc(
+            any(YBClientApi.class), any(HostAndPort.class), anyMap(), any(ServerType.class));
   }
 
   // Sample negative case - exception should be thrown by subtask if invalid gflag was given.

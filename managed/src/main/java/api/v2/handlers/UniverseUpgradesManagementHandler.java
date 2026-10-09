@@ -20,6 +20,7 @@ import api.v2.mappers.UniverseSystemdUpgradeMapper;
 import api.v2.mappers.UniverseThirdPartySoftwareUpgradeMapper;
 import api.v2.mappers.UniverseTlsToggleParamsMapper;
 import api.v2.mappers.UniverseUpdateProxyConfigParamsMapper;
+import api.v2.mappers.UniverseVMImageUpgradeMapper;
 import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.ExportTelemetryConfigSpec;
 import api.v2.models.UniverseCertRotateSpec;
@@ -39,15 +40,15 @@ import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.UniverseUpdateProxyConfig;
+import api.v2.models.UniverseVMImageUpgradeSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -71,6 +72,7 @@ import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Release;
@@ -94,11 +96,21 @@ import play.mvc.Http.Request;
 @Singleton
 @Slf4j
 public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
-  @Inject public UpgradeUniverseHandler v1Handler;
-  @Inject public Commissioner commissioner;
-  @Inject private RuntimeConfGetter confGetter;
-  @Inject private TelemetryProviderService telemetryProviderService;
-  @Inject private SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final UpgradeUniverseHandler v1Handler;
+  private final RuntimeConfGetter confGetter;
+  private final TelemetryProviderService telemetryProviderService;
+
+  @Inject
+  public UniverseUpgradesManagementHandler(
+      AuditService auditService,
+      UpgradeUniverseHandler v1Handler,
+      RuntimeConfGetter confGetter,
+      TelemetryProviderService telemetryProviderService) {
+    super(auditService);
+    this.v1Handler = v1Handler;
+    this.confGetter = confGetter;
+    this.telemetryProviderService = telemetryProviderService;
+  }
 
   public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
@@ -108,7 +120,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     // get universe from db
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    GFlagsUpgradeParams v1Params = null;
+    GFlagsUpgradeParams v1Params;
     if (Util.isKubernetesBasedUniverse(universe)) {
       v1Params =
           UniverseDefinitionTaskParamsMapper.INSTANCE.toKubernetesGFlagsUpgradeParams(
@@ -142,7 +154,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     UniverseSoftwareUpgradeStartMapper.INSTANCE.copyToV1SoftwareUpgradeParams(
         upgradeStart, v1Params);
 
-    UUID taskUuid = null;
+    UUID taskUuid;
     if (upgradeStart.getAllowRollback()) {
       taskUuid = v1Handler.upgradeDBVersion(v1Params, customer, universe);
     } else {
@@ -180,10 +192,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Universe.getOrBadRequest(uniUUID, customer);
 
     FinalizeUpgradeInfoResponse v1Resp = v1Handler.finalizeUpgradeInfo(cUUID, uniUUID);
-    UniverseSoftwareUpgradeFinalizeInfo info =
-        UniverseSoftwareFinalizeRespMapper.INSTANCE.toV2UniverseSoftwareFinalizeInfo(v1Resp);
 
-    return info;
+    return UniverseSoftwareFinalizeRespMapper.INSTANCE.toV2UniverseSoftwareFinalizeInfo(v1Resp);
   }
 
   public YBATask startThirdPartySoftwareUpgrade(
@@ -232,8 +242,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     UUID taskUuid = v1Handler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req.getTaskUuid());
-    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
-    return ybaTask;
+    return new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
   }
 
   public UniverseSoftwareUpgradePrecheckResp precheckSoftwareUpgrade(
@@ -253,7 +262,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    UUID taskUuid = null;
+    UUID taskUuid;
     if (uniRestart == null) {
       uniRestart = new UniverseRestart();
     }
@@ -409,13 +418,6 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     }
 
-    // Block k8s universes from configuring metrics export for now.
-    if (Util.isKubernetesBasedUniverse(universe)) {
-      String errorMessage = "Metrics export is not supported for kubernetes based universes.";
-      log.error(errorMessage);
-      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-    }
-
     if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(v1Params.getMetricsExportConfig())) {
       for (UniverseMetricsExporterConfig exporterConfig :
           v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig()) {
@@ -507,6 +509,16 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
             universe.getUniverseDetails(), request);
     ExportTelemetryConfigMapper.fillParams(telemetryConfig, params);
     ExportTelemetryConfigMapper.applyUpgradeOptions(reqBody.getUpgradeOptions(), params);
+
+    TelemetryConfig currentTelemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    if (TelemetryConfig.diff(params.getTelemetryConfig(), currentTelemetryConfig).isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Telemetry export config is same as existing config on universe '%s'. No changes to"
+                  + " apply.",
+              universe.getUniverseUUID()));
+    }
 
     // Verify if the exporter credentials are consistent on the universe.
     Set<UUID> auditUuids = extractAuditLogExporterUuids(params);
@@ -608,5 +620,26 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
     log.info("Started update proxy config task {}", mapper.writeValueAsString(ybaTask));
     return ybaTask;
+  }
+
+  public YBATask vmImageUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseVMImageUpgradeSpec vmImageUpgradeSpec)
+      throws JsonProcessingException {
+    log.info("Starting v2 upgrade VM Image with {}", vmImageUpgradeSpec);
+
+    // get universe from db
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    VMImageUpgradeParams v1Params = new VMImageUpgradeParams();
+    UniverseVMImageUpgradeMapper.INSTANCE.copyToV1VMImageUpgradeParams(
+        vmImageUpgradeSpec, v1Params);
+
+    // invoke v1 upgrade api UpgradeUniverseHandler.upgradeGFlags
+    UUID taskUuid = v1Handler.upgradeVMImage(v1Params, customer, universe);
+    // construct a v2 Task to return from here
+    YBATask YBATask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started vm image upgrade task {}", mapper.writeValueAsString(YBATask));
+    return YBATask;
   }
 }

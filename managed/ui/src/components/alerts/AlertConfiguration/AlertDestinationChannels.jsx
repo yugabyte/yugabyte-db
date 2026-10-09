@@ -62,7 +62,6 @@ const prepareInitialValues = (values) => {
       }
       break;
     case 'PagerDuty':
-      initialValues['apiKey'] = values.params.apiKey;
       initialValues['routingKey'] = values.params.routingKey;
       break;
     case 'WebHook':

@@ -25,6 +25,8 @@
 #include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -32,11 +34,10 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
-#include "yb/master/master.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
@@ -51,8 +52,8 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -62,16 +63,23 @@ using namespace std::literals;
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_pause_before_remote_bootstrap);
+DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int32(committed_config_change_role_timeout_sec);
 DECLARE_string(TEST_master_universe_uuid);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_uint32(xcluster_guarded_lease_duration_ms);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_int32(data_size_metric_updater_interval_sec);
+DECLARE_double(heartbeat_safe_deadline_ratio);
+DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
+
+METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
 namespace yb::integration_tests {
 
@@ -152,17 +160,17 @@ TEST_F(MasterHeartbeatITest, PreventHeartbeatWrongCluster) {
   // TEST_master_universe_uuid.
   const auto unresponsive_log_waiter_timeout = 20s * kTimeMultiplier;
   StringWaiterLogSink unresponsive_log_waiter("as UNRESPONSIVE: no heartbeat received for");
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
+  ASSERT_OK(SET_FLAG(TEST_master_universe_uuid, Uuid::Generate().ToString()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
   ASSERT_OK(unresponsive_log_waiter.WaitFor(unresponsive_log_waiter_timeout));
 
   // When the flag is unset, ensure that master leader can register tservers.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = "";
+  ASSERT_OK(SET_FLAG(TEST_master_universe_uuid, ""));
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true /* live_only */));
 
   // Ensure that state for universe_uuid is persisted across restarts.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
+  ASSERT_OK(SET_FLAG(TEST_master_universe_uuid, Uuid::Generate().ToString()));
   for (int i = 0; i < 3; i++) {
     ASSERT_OK(mini_cluster_->mini_tablet_server(i)->Restart());
   }
@@ -322,6 +330,93 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
     // heartbeat.
     ASSERT_EQ(ts->num_live_replicas(), 1);
   }
+}
+
+// Verifies the timed-lock heartbeat path (ProcessTabletReportBatch, #10304). When the master cannot
+// acquire a tablet's write lock within the heartbeat's deadline, it returns TryAgain without
+// applying the report. The test verifies that the tserver retries this heartbeat and it is
+// eventually applied.
+TEST_F(MasterHeartbeatITest, TimedLockTimeoutRetriesAndConverges) {
+  // TSAN does not support TryLock as we don't use a timed_mutex there.
+  YB_SKIP_TEST_IN_TSAN();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+
+  // Set FLAGS_heartbeat_safe_deadline_ratio higher
+  // so that lock acquisition times out sooner.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) =
+      static_cast<int32_t>(MonoDelta::FromSeconds(3 * kTimeMultiplier).ToMilliseconds());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_safe_deadline_ratio) = 0.8;
+  // A lock timeout routes through the normal (paced) retry, so poll frequently to keep the test
+  // brisk.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
+
+  const auto kTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  auto table = table_name();
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  auto& catalog_mgr = mini_master->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+
+  // Find the current tablet leader and pick a follower to promote, so the leader change is
+  // deterministic.
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(mini_cluster_.get()));
+  itest::TServerDetails* old_leader = nullptr;
+  ASSERT_OK(itest::FindTabletLeader(ts_map, tablet->id(), kTimeout, &old_leader));
+  itest::TServerDetails* new_leader = nullptr;
+  for (const auto& [uuid, ts] : ts_map) {
+    if (uuid != old_leader->uuid()) {
+      new_leader = ts.get();
+      break;
+    }
+  }
+  ASSERT_TRUE(new_leader != nullptr);
+
+  // Wait for all replicas to catch up so the graceful stepdown to new_leader below is accepted
+  // (a just-created follower may not yet be caught up enough to take over leadership).
+  std::vector<itest::TServerDetails*> replicas;
+  for (const auto& [uuid, ts] : ts_map) {
+    replicas.push_back(ts.get());
+  }
+  ASSERT_OK(itest::WaitForAllPeersToCatchup(tablet->id(), replicas, kTimeout));
+
+  // The master's view of the tablet leader, learned only via tablet reports (heartbeats).
+  auto master_leader_uuid = [&tablet]() -> Result<std::string> {
+    return VERIFY_RESULT(tablet->GetLeader())->permanent_uuid();
+  };
+  ASSERT_EQ(ASSERT_RESULT(master_leader_uuid()), old_leader->uuid());
+
+  auto heartbeats = METRIC_handler_latency_yb_master_MasterHeartbeat_TSHeartbeat.Instantiate(
+      mini_master->master()->metric_entity());
+
+  {
+    // Hold the tablet's write lock on the master (as a concurrent catalog operation would), so
+    // heartbeats reporting the leader change cannot be applied.
+    auto contending_lock = tablet->LockForWrite();
+
+    // Trigger a leader change
+    ASSERT_OK(itest::LeaderStepDown(old_leader, tablet->id(), new_leader, kTimeout));
+    ASSERT_OK(itest::WaitUntilLeader(new_leader, tablet->id(), kTimeout));
+
+    // The master keeps completing heartbeats (returning TimedOut) instead of blocking on the held
+    // lock: its heartbeat handler count keeps climbing even though it cannot apply the report.
+    const auto heartbeats_before = heartbeats->TotalCount();
+    ASSERT_OK(WaitFor(
+        [&]() { return heartbeats->TotalCount() >= heartbeats_before + 5; }, kTimeout,
+        "Master keeps processing (and rejecting) heartbeats under lock contention"));
+    // Because it cannot acquire the lock, the master has not applied the change.
+    ASSERT_EQ(ASSERT_RESULT(master_leader_uuid()), old_leader->uuid());
+  }
+
+  // With the contention gone, the tserver's retried heartbeat is applied and the master converges
+  // to the new leader.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader = tablet->GetLeader();
+        return leader.ok() && (*leader)->permanent_uuid() == new_leader->uuid();
+      },
+      kTimeout, "Master observes the new tablet leader"));
 }
 
 // This test verifies the master resets the tracked report sequence number when re-registering a
@@ -724,7 +819,7 @@ TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true /* live_only */));
 
   // Artificially generate a fake universe uuid and propagate that by clearing the universe_uuid.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
+  ASSERT_OK(SET_FLAG(TEST_master_universe_uuid, Uuid::Generate().ToString()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
 
   // Heartbeats should first fail due to universe_uuid mismatch.
@@ -738,7 +833,7 @@ TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
 
 class MasterHeartbeatITestWithExternal : public MasterHeartbeatITest {
  public:
-  bool use_external_mini_cluster() { return true; }
+  bool use_external_mini_cluster() override { return true; }
 
   Status RestartAndWipeWithFlags(
       std::vector<ExternalTabletServer*> tservers,
@@ -890,6 +985,7 @@ void GlobalTransactionTableCreationTest::SetUp() {
       // enable_object_locking_for_table_locks requires ysql_yb_ddl_transaction_block_enabled.
       "--ysql_yb_ddl_transaction_block_enabled=true",
       "--enable_object_locking_for_table_locks=true",
+      "--ysql_enable_concurrent_ddl=true",
   };
   cluster_ = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK(cluster_->Start());
@@ -949,6 +1045,42 @@ void MasterHeartbeatITestOneTServer::SetUp() {
   opts.num_masters = 1;
   cluster_ = std::make_unique<MiniCluster>(opts);
   ASSERT_OK(cluster_->Start());
+}
+
+class MasterHeartbeatITestRF1 : public MasterHeartbeatITest {
+ public:
+  size_t num_tablet_servers() override { return 1; }
+};
+
+TEST_F_EX(MasterHeartbeatITest, MaybeHasXClusterGuardedLease, MasterHeartbeatITestRF1) {
+  const auto kLeaseDuration = 30s;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) =
+      narrow_cast<uint32_t>(MonoDelta(kLeaseDuration).ToMilliseconds());
+
+  auto tserver_descs =
+      ASSERT_RESULT(mini_cluster_->WaitForTabletServerCount(1, /*live_only=*/true));
+  auto tserver_desc = tserver_descs[0];
+
+  // TServer should have a lease because it's been heartbeating.
+  ASSERT_TRUE(tserver_desc->MaybeHasXClusterGuardedLease());
+
+  // Stop heartbeats.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+
+  // Wait for lease to expire.  MaybeUpdateLiveness (called periodically) will transition the state
+  // once the lease duration plus clock drift slack has passed since the last heartbeat; allow for
+  // the heartbeat and background task intervals on top of that.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return !tserver_desc->MaybeHasXClusterGuardedLease(); },
+      MonoDelta(kLeaseDuration) + MonoDelta::FromMicroseconds(2 * FLAGS_max_clock_skew_usec) +
+          MonoDelta(3s * kTimeMultiplier),
+      "Wait for xCluster-guarded information lease to expire"));
+
+  // When we resume heartbeats, the lease should be re-acquired.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return tserver_desc->MaybeHasXClusterGuardedLease(); },
+      3s * kTimeMultiplier, "Wait for xCluster-guarded information lease to be re-acquired"));
 }
 
 }  // namespace yb::integration_tests

@@ -73,6 +73,11 @@ public class PACollector extends Model {
   @ApiModelProperty(value = "Metrics Scrape Period Seconds", accessMode = READ_WRITE)
   private Long metricsScrapePeriodSecs;
 
+  @ApiModelProperty(
+      value = "True when this collector is the embedded PA managed by PACollectorSync",
+      accessMode = READ_ONLY)
+  private boolean embedded;
+
   public PACollector generateUUID() {
     this.uuid = UUID.randomUUID();
     return this;

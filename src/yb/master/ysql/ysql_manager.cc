@@ -35,6 +35,7 @@
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/status_log.h"
 
 // TODO (mbautin, 2019-12): switch the default to true after updating all external callers
 // (yb-ctl, YugaWare) and unit tests.
@@ -264,6 +265,10 @@ Status YsqlManager::RollbackYsqlMajorCatalogVersion(
   return Status::OK();
 }
 
+Status YsqlManager::CleanupStalePgUpgradeSocketDir() {
+  return ysql_initdb_and_major_upgrade_helper_->CleanupStalePgUpgradeSocketDir();
+}
+
 Status YsqlManager::GetYsqlMajorCatalogUpgradeState(
     const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
     GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc) {
@@ -355,8 +360,11 @@ Result<std::string> YsqlManager::GetCachedPgSchemaName(
   const PgOid* const nsp_oid_ptr =
       FindOrNull(DCHECK_NOTNULL(nsp_data_ptr)->rel_nsp_oid_map, oids.pg_table_oid);
   const PgOid relnamespace_oid = (nsp_oid_ptr ? *nsp_oid_ptr : kPgInvalidOid);
-  SCHECK_NE(relnamespace_oid, kPgInvalidOid, NotFound,
-      Format("$0: $1", kRelnamespaceNotFoundErrorStr, oids.pg_table_oid));
+  if (relnamespace_oid == kPgInvalidOid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kRelnamespaceNotFoundErrorStr, oids.pg_table_oid),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
+  }
 
   const std::string* const pg_schema_name_ptr =
       FindOrNull(nsp_data_ptr->rel_nsp_name_map, relnamespace_oid);

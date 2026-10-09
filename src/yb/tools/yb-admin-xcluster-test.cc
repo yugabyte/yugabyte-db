@@ -38,6 +38,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"

@@ -16,7 +16,6 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
-import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
@@ -42,7 +41,6 @@ import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.PersistenceContextScope;
 import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Transactional;
@@ -83,7 +81,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -682,6 +680,31 @@ public class Universe extends Model {
   }
 
   /**
+   * Returns details about a single node in the universe, looked up by its stable node UUID.
+   *
+   * <p>Prefer this over {@link #getNode(String)} for K8s subtasks whose node reference can outlive
+   * a rename of {@code NodeDetails.nodeName} (see {@code KubernetesCommandExecutor.processNodeInfo}
+   * which can rebuild the node set when {@code PlacementInfoUtil.isMultiAZ(provider)} flips).
+   *
+   * @return details about a node, null if it does not exist.
+   */
+  public NodeDetails getNodeByUuid(UUID nodeUuid) {
+    return maybeGetNodeByUuid(nodeUuid).orElse(null);
+  }
+
+  public Optional<NodeDetails> maybeGetNodeByUuid(UUID nodeUuid) {
+    if (nodeUuid == null) {
+      return Optional.empty();
+    }
+    for (NodeDetails node : getNodes()) {
+      if (nodeUuid.equals(node.nodeUuid)) {
+        return Optional.of(node);
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
    * Returns details about a single node by ip address in the universe.
    *
    * @param nodeIP Private IP address of the node
@@ -951,18 +974,22 @@ public class Universe extends Model {
     return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
   }
 
+  public CertificateInfo getCertificateInfoNodeToNode() {
+    UniverseDefinitionTaskParams details = this.getUniverseDetails();
+    if (details.rootCA != null && details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
+      return CertificateInfo.getOrBadRequest(details.rootCA);
+    }
+    return null;
+  }
+
   /**
    * Returns the certificate path in case node to node TLS is enabled.
    *
    * @return path to the certfile.
    */
   public String getCertificateNodetoNode() {
-    UniverseDefinitionTaskParams details = this.getUniverseDetails();
-    if (details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
-      // This means there must be a root CA associated with it.
-      return CertificateInfo.get(details.rootCA).getCertificate();
-    }
-    return null;
+    CertificateInfo certInfo = getCertificateInfoNodeToNode();
+    return certInfo != null ? certInfo.getCertificate() : null;
   }
 
   /**
@@ -1198,7 +1225,7 @@ public class Universe extends Model {
   private HostAndPort getMasterLeaderInternal() {
     final YBClientService ybService =
         StaticInjectorHolder.injector().instanceOf(YBClientService.class);
-    try (YBClient client = ybService.getUniverseClient(this)) {
+    try (YBClientApi client = ybService.getUniverseClient(this)) {
       return client.getLeaderMasterHostAndPort();
     } catch (Exception e) {
       throw Throwables.propagate(e);
@@ -1215,6 +1242,24 @@ public class Universe extends Model {
   @JsonIgnore
   public NodeDetails getMasterLeaderNode() {
     return getNodeByPrivateIP(getMasterLeaderHostText());
+  }
+
+  /**
+   * Find the current master leader node, failing loudly when it is missing. Prefer this over {@link
+   * #getMasterLeaderNode()} on paths that cannot make progress without a master leader, so that a
+   * missing leader surfaces as an actionable error instead of a NullPointerException.
+   *
+   * @return NodeDetails of the master leader, never null
+   * @throws RuntimeException if the universe has no reachable master leader
+   */
+  @JsonIgnore
+  public NodeDetails getMasterLeaderNodeOrThrow() {
+    NodeDetails masterLeaderNode = getMasterLeaderNode();
+    if (masterLeaderNode == null) {
+      throw new IllegalStateException(
+          "Could not find the master leader node in universe " + getUniverseUUID());
+    }
+    return masterLeaderNode;
   }
 
   /**
@@ -1344,13 +1389,6 @@ public class Universe extends Model {
    * details.
    */
   public static Set<String> getNodePrefixesForCustomer(Long customerId) {
-    if (AppInit.isH2Db()) {
-      return listUniversesForCustomerWithDetails(customerId).stream()
-          .map(u -> u.getUniverseDetails().nodePrefix)
-          .filter(StringUtils::isNotBlank)
-          .collect(Collectors.toSet());
-    }
-
     String query =
         "select universe_details_json::jsonb->>'nodePrefix' as node_prefix from universe"
             + " where customer_id = :customerId"
@@ -1362,13 +1400,6 @@ public class Universe extends Model {
   }
 
   public static List<UUID> findUniverseUuidsByNodePrefix(Long customerId, String nodePrefix) {
-    if (AppInit.isH2Db()) {
-      return listUniversesForCustomerWithDetails(customerId).stream()
-          .filter(u -> matchesNodePrefix(u, nodePrefix))
-          .map(Universe::getUniverseUUID)
-          .collect(Collectors.toList());
-    }
-
     String query =
         "select universe_uuid from universe"
             + " where customer_id = :customerId"
@@ -1379,25 +1410,8 @@ public class Universe extends Model {
         .collect(Collectors.toList());
   }
 
-  private static List<Universe> listUniversesForCustomerWithDetails(Long customerId) {
-    return find
-        .query()
-        .setPersistenceContextScope(PersistenceContextScope.QUERY)
-        .where()
-        .eq("customer_id", customerId)
-        .findList()
-        .stream()
-        .peek(Universe::fillUniverseDetails)
-        .collect(Collectors.toList());
-  }
-
   private static SqlQuery customerSqlQuery(String query, Long customerId) {
     return DB.sqlQuery(query).setParameter("customerId", customerId);
-  }
-
-  private static boolean matchesNodePrefix(Universe universe, String nodePrefix) {
-    return universe.getUniverseDetails().nodePrefix != null
-        && universe.getUniverseDetails().nodePrefix.equals(nodePrefix);
   }
 
   static boolean isUniversePaused(UUID uuid) {

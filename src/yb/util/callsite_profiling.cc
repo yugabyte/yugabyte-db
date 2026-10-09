@@ -18,6 +18,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/source_location.h"
@@ -101,7 +102,7 @@ ProfilingHelper::~ProfilingHelper() {
         << "Call took " << elapsed_usec << " usec (>= " << stack_trace_threshold_usec << " usec). "
         << callsite->ToString()
         << ", avg time: "
-        << StringPrintf("%.3f", callsite->AvgMicros())
+        << FixedPoint(callsite->AvgMicros(), 3)
         << " usec, stack trace:\n"
         << GetStackTrace();
   }

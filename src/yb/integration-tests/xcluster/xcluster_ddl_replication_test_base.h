@@ -69,6 +69,14 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   Status StepDownDdlQueueTablet(Cluster& cluster);
 
+  // This is used when setting up RF>1 replication, where the target's ddl_queue tablet leader is
+  // usually not the single pg proxy tserver.
+  // The ddl_queue poller must stay on the tserver that hosts the single minicluster postgres so
+  // that it can share xcluster_context with it.
+  // disable_leader_balancing also stops the leader from moving away afterwards.
+  Status MoveDdlQueueTabletLeaderToPgProxy(
+      Cluster& cluster, bool disable_leader_balancing = true);
+
   // We require at least one colocated table to exist before setting up replication.
   Status CreateInitialColocatedTable();
 

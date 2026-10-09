@@ -25,6 +25,7 @@
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/result.h"
 #include "yb/util/stack_trace.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 

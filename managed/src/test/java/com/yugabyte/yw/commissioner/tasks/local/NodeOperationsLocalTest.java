@@ -42,7 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -541,7 +541,7 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
     checkAndWaitForTask(result);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    try (YBClient client =
+    try (YBClientApi client =
         ybClientService.getClient(
             universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
       assertFalse(universe.getNode(nodeName).isTserver);

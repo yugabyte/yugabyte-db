@@ -67,9 +67,71 @@ const reduxFormRolldownPlugin = () =>
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const apiTarget = env.VITE_YUGAWARE_API_URL
-    ? new URL(env.VITE_YUGAWARE_API_URL).origin
-    : 'http://localhost:9000';
+  // Fail loudly on a malformed URL. new URL('htt://host').origin silently returns the string
+  // "null", which makes http-proxy fall back to "base.invalid" (getaddrinfo ENOTFOUND base.invalid).
+  const toOrigin = (value, varName) => {
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error(`${varName} is not a valid URL: "${value}". Expected e.g. http://10.152.0.78`);
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new Error(`${varName} must start with http:// or https:// (got "${value}").`);
+    }
+    return url.origin;
+  };
+  // When VITE_YUGAWARE_API_URL is set, run in "remote backend" dev mode (see `npm run start:remote`):
+  // the browser only talks to the Vite dev server (same origin, so no browser CORS) and Vite proxies
+  // /api to the remote YBA. Only the origin of VITE_YUGAWARE_API_URL is used (any /api path is
+  // ignored); the client uses relative API roots (see src/config.js and YBAxios.ts) and we rewrite
+  // request/response headers below.
+  const apiUrl = env.VITE_YUGAWARE_API_URL;
+  const apiTarget = apiUrl ? toOrigin(apiUrl, 'VITE_YUGAWARE_API_URL') : 'http://localhost:9000';
+  const apiProxy = {
+    target: apiTarget,
+    changeOrigin: true,
+    ...(apiUrl
+      ? {
+          // Allow proxying to remote backends with self-signed TLS certs.
+          secure: false,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              // Play's CSRF filter rejects POSTs whose Origin (http://localhost:3000) doesn't match
+              // the upstream Host (the remote YBA). Strip Origin so requests look same-origin.
+              proxyReq.removeHeader('origin');
+              // Play uses a double-submit CSRF token: the value in the `csrfCookie` cookie must also
+              // be echoed in the Csrf-Token header on state-changing requests. The SPA sets this
+              // header itself, but on first load (index.html is served by Vite, not the backend) the
+              // cookie may not have existed when the app captured it. Derive it here on every request
+              // so proxied POSTs always carry a valid token.
+              const cookieHeader = proxyReq.getHeader('cookie');
+              if (typeof cookieHeader === 'string' && !proxyReq.getHeader('csrf-token')) {
+                const match = cookieHeader.match(/(?:^|;\s*)csrfCookie=([^;]+)/);
+                if (match) {
+                  proxyReq.setHeader('Csrf-Token', decodeURIComponent(match[1]));
+                }
+              }
+            });
+            proxy.on('proxyRes', (proxyRes) => {
+              // The remote sets its auth/CSRF cookies (e.g. csrfCookie, PLAY_SESSION) with Domain=
+              // and/or Secure attributes. Over http://localhost:3000 the browser would drop those,
+              // so the app can't read csrfCookie and Play then rejects POSTs with
+              // "No CSRF token found". Rewrite Set-Cookie so the cookies are stored on localhost.
+              const setCookie = proxyRes.headers['set-cookie'];
+              if (setCookie) {
+                proxyRes.headers['set-cookie'] = setCookie.map((cookie) =>
+                  cookie
+                    .replace(/;\s*Domain=[^;]*/i, '')
+                    .replace(/;\s*Secure/i, '')
+                    .replace(/;\s*SameSite=None/i, '; SameSite=Lax')
+                );
+              }
+            });
+          }
+        }
+      : {})
+  };
 
   return {
     plugins: [
@@ -148,10 +210,7 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       host: '0.0.0.0',
       proxy: {
-        '/api': {
-          target: apiTarget,
-          changeOrigin: true
-        }
+        '/api': apiProxy
       }
     },
     preview: {

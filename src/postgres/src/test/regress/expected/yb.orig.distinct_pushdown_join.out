@@ -744,7 +744,397 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t t
 (10 rows)
 
 DROP INDEX irv;
+-- Do not partially translate uniqkeys through a subquery scan.
+\set query ':P SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1 FROM t WHERE r1 = r2) s;'
+\set Pnext :_iter_query
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1 FROM t WHERE r1 = r2) s;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Unique (actual rows=1 loops=1)
+   ->  Unique (actual rows=1 loops=1)
+         ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
+               Distinct Keys: t.r1, t.r2
+               Storage Filter: (r1 = r2)
+(5 rows)
+
+SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1 FROM t WHERE r1 = r2) s;
+ r1 
+----
+  1
+(1 row)
+
+-- Retain the outer distinct when the subquery has additional distinct keys.
+\set query ':P SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1, r2 FROM t) s;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1, r2 FROM t) s;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Unique (actual rows=2 loops=1)
+   ->  Subquery Scan on s (actual rows=6 loops=1)
+         ->  Unique (actual rows=6 loops=1)
+               ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
+                     Distinct Keys: t.r1, t.r2
+(5 rows)
+
+SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1, r2 FROM t) s;
+ r1 
+----
+  1
+ 10
+(2 rows)
+
 DROP TABLE t;
+CREATE TABLE distinct_expr (a INT);
+INSERT INTO distinct_expr
+  SELECT i % 5 FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_expr;
+-- Do not propagate uniqkeys when the subquery has no distinct pushdown.
+CREATE INDEX distinct_expr_a_idx ON distinct_expr (a ASC);
+\set query ':P SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on s (actual rows=5 loops=1)
+   ->  Unique (actual rows=5 loops=1)
+         ->  Sort (actual rows=5 loops=1)
+               Sort Key: distinct_expr.a, ((distinct_expr.a + 1))
+               Sort Method: quicksort
+               ->  Result distinct_expr (actual rows=5 loops=1)
+                     ->  Unique (actual rows=5 loops=1)
+                           ->  Distinct Index Only Scan using distinct_expr_a_idx on distinct_expr (actual rows=5 loops=1)
+                                 Distinct Keys: distinct_expr.a
+                                 Heap Fetches: 0
+(10 rows)
+
+SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
+ a 
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+-- Preserve distinct pushdown through a subquery without DISTINCT.
+\set query ':P SELECT DISTINCT s.a FROM (SELECT a FROM distinct_expr) s ORDER BY 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT a FROM distinct_expr) s ORDER BY 1;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Unique (actual rows=5 loops=1)
+   ->  Distinct Index Only Scan using distinct_expr_a_idx on distinct_expr (actual rows=5 loops=1)
+         Distinct Keys: distinct_expr.a
+         Heap Fetches: 0
+(4 rows)
+
+SELECT DISTINCT s.a FROM (SELECT a FROM distinct_expr) s ORDER BY 1;
+ a 
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+-- Translate uniqkeys through nested subquery scans.
+\set query ':P SELECT DISTINCT s2.a FROM (SELECT DISTINCT s1.a FROM (SELECT DISTINCT a FROM distinct_expr) s1) s2 ORDER BY 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s2.a FROM (SELECT DISTINCT s1.a FROM (SELECT DISTINCT a FROM distinct_expr) s1) s2 ORDER BY 1;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Unique (actual rows=5 loops=1)
+   ->  Distinct Index Only Scan using distinct_expr_a_idx on distinct_expr (actual rows=5 loops=1)
+         Distinct Keys: distinct_expr.a
+         Heap Fetches: 0
+(4 rows)
+
+SELECT DISTINCT s2.a FROM (SELECT DISTINCT s1.a FROM (SELECT DISTINCT a FROM distinct_expr) s1) s2 ORDER BY 1;
+ a 
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+DROP INDEX distinct_expr_a_idx;
+-- Drop uniqkeys when one key is not exposed by the subquery scan.
+CREATE INDEX distinct_expr_a_expr_idx
+  ON distinct_expr (a ASC, (a + 1) ASC);
+\set query ':P SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on s (actual rows=5 loops=1)
+   ->  Unique (actual rows=5 loops=1)
+         ->  Result distinct_expr (actual rows=5 loops=1)
+               ->  Unique (actual rows=5 loops=1)
+                     ->  Distinct Index Only Scan using distinct_expr_a_expr_idx on distinct_expr (actual rows=5 loops=1)
+                           Distinct Keys: distinct_expr.a
+                           Heap Fetches: 0
+(7 rows)
+
+SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
+ a 
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+DROP TABLE distinct_expr;
+CREATE DOMAIN dint AS INT4;
+CREATE TABLE td (x dint);
+CREATE INDEX td_x_idx ON td (x ASC);
+INSERT INTO td
+  SELECT (i % 5)::dint FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE td;
+-- Translate a domain-to-base relabel through a subquery scan.
+\set query ':P SELECT DISTINCT s.a FROM (SELECT DISTINCT x::INT4 AS a FROM td) s ORDER BY 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT DISTINCT x::INT4 AS a FROM td) s ORDER BY 1;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Unique (actual rows=5 loops=1)
+   ->  Result td (actual rows=5 loops=1)
+         ->  Unique (actual rows=5 loops=1)
+               ->  Distinct Index Only Scan using td_x_idx on td (actual rows=5 loops=1)
+                     Distinct Keys: td.x
+                     Heap Fetches: 0
+(6 rows)
+
+SELECT DISTINCT s.a FROM (SELECT DISTINCT x::INT4 AS a FROM td) s ORDER BY 1;
+ a 
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+DROP TABLE td;
+DROP DOMAIN dint;
+-- Do not translate uniqkeys when collations do not match.
+CREATE TABLE distinct_collate (a TEXT);
+CREATE INDEX distinct_collate_c_idx ON distinct_collate (a COLLATE "C" ASC);
+INSERT INTO distinct_collate
+  SELECT (i % 5)::TEXT FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_collate;
+\set query ':P SELECT DISTINCT s.x FROM (SELECT DISTINCT a COLLATE "C" AS x FROM distinct_collate) s ORDER BY 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.x FROM (SELECT DISTINCT a COLLATE "C" AS x FROM distinct_collate) s ORDER BY 1;
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Unique (actual rows=5 loops=1)
+   ->  Result distinct_collate (actual rows=5 loops=1)
+         ->  Unique (actual rows=5 loops=1)
+               ->  Distinct Index Only Scan using distinct_collate_c_idx on distinct_collate (actual rows=5 loops=1)
+                     Distinct Keys: distinct_collate.a
+                     Heap Fetches: 0
+(6 rows)
+
+SELECT DISTINCT s.x FROM (SELECT DISTINCT a COLLATE "C" AS x FROM distinct_collate) s ORDER BY 1;
+ x 
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+DROP TABLE distinct_collate;
+-- Regression test for untranslated uniqkeys leaking from subquery paths.
+CREATE TABLE distinct_outer(k INT);
+CREATE TABLE distinct_inner(a INT);
+CREATE INDEX distinct_outer_k_idx ON distinct_outer(k ASC);
+CREATE INDEX distinct_inner_a_idx ON distinct_inner(a ASC);
+INSERT INTO distinct_outer
+  SELECT CASE WHEN i <= 500 THEN 1 ELSE 2 END
+  FROM GENERATE_SERIES(1, 1000) AS i;
+INSERT INTO distinct_inner
+  SELECT i % 3
+  FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_outer;
+ANALYZE distinct_inner;
+\set query ':P SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1;'
+\set Pnext :_iter_query
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1;
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Unique (actual rows=2 loops=1)
+   ->  Nested Loop (actual rows=6 loops=1)
+         ->  Unique (actual rows=2 loops=1)
+               ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2 loops=1)
+                     Distinct Keys: o.k
+                     Heap Fetches: 0
+         ->  Materialize (actual rows=3 loops=2)
+               ->  Subquery Scan on s (actual rows=3 loops=1)
+                     ->  Unique (actual rows=3 loops=1)
+                           ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=3 loops=1)
+                                 Distinct Keys: distinct_inner.a
+                                 Heap Fetches: 0
+(12 rows)
+
+SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1;
+ k 
+---
+ 1
+ 2
+(2 rows)
+
+-- Propagate uniqkeys from a subquery through a cross join.
+\set query ':P SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1, 2;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1, 2;
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: o.k, distinct_inner.a
+   Sort Method: quicksort
+   ->  Nested Loop (actual rows=6 loops=1)
+         ->  Unique (actual rows=2 loops=1)
+               ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2 loops=1)
+                     Distinct Keys: o.k
+                     Heap Fetches: 0
+         ->  Materialize (actual rows=3 loops=2)
+               ->  Unique (actual rows=3 loops=1)
+                     ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=3 loops=1)
+                           Distinct Keys: distinct_inner.a
+                           Heap Fetches: 0
+(13 rows)
+
+SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1, 2;
+ k | a 
+---+---
+ 1 | 0
+ 1 | 1
+ 1 | 2
+ 2 | 0
+ 2 | 1
+ 2 | 2
+(6 rows)
+
+-- Propagate uniqkeys from a subquery through an inner join.
+\set query ':P SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s WHERE o.k = s.a ORDER BY 1, 2;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s WHERE o.k = s.a ORDER BY 1, 2;
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Merge Join (actual rows=2 loops=1)
+   Merge Cond: (o.k = distinct_inner.a)
+   ->  Unique (actual rows=2 loops=1)
+         ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2 loops=1)
+               Distinct Keys: o.k
+               Heap Fetches: 0
+   ->  Unique (actual rows=3 loops=1)
+         ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=3 loops=1)
+               Distinct Keys: distinct_inner.a
+               Heap Fetches: 0
+(10 rows)
+
+SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s WHERE o.k = s.a ORDER BY 1, 2;
+ k | a 
+---+---
+ 1 | 1
+ 2 | 2
+(2 rows)
+
+-- Handle propagated uniqkeys from the nullable side of a left join.
+\set query ':P SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=2 loops=1)
+   Sort Key: o.k, distinct_inner.a
+   Sort Method: quicksort
+   ->  Hash Right Join (actual rows=2 loops=1)
+         Hash Cond: (distinct_inner.a = o.k)
+         ->  Unique (actual rows=1 loops=1)
+               ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=1 loops=1)
+                     Index Cond: (a = 1)
+                     Distinct Keys: distinct_inner.a
+                     Heap Fetches: 0
+         ->  Hash (actual rows=2 loops=1)
+               Buckets: 1024 (originally 1024)  Original Batches: 1
+               ->  Unique (actual rows=2 loops=1)
+                     ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2 loops=1)
+                           Distinct Keys: o.k
+                           Heap Fetches: 0
+(16 rows)
+
+SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;
+ k | a 
+---+---
+ 1 | 1
+ 2 |  
+(2 rows)
+
+-- Preserve correct results through a UNION subquery.
+\set query ':P SELECT DISTINCT s.x FROM (SELECT k FROM distinct_outer UNION SELECT a FROM distinct_inner) s(x) ORDER BY 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.x FROM (SELECT k FROM distinct_outer UNION SELECT a FROM distinct_inner) s(x) ORDER BY 1;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: distinct_outer.k
+   Sort Method: quicksort
+   ->  HashAggregate (actual rows=3 loops=1)
+         Group Key: distinct_outer.k
+         ->  HashAggregate (actual rows=3 loops=1)
+               Group Key: distinct_outer.k
+               ->  Append (actual rows=2000 loops=1)
+                     ->  Seq Scan on distinct_outer (actual rows=1000 loops=1)
+                     ->  Seq Scan on distinct_inner (actual rows=1000 loops=1)
+(10 rows)
+
+SELECT DISTINCT s.x FROM (SELECT k FROM distinct_outer UNION SELECT a FROM distinct_inner) s(x) ORDER BY 1;
+ x 
+---
+ 0
+ 1
+ 2
+(3 rows)
+
+DROP TABLE distinct_outer;
+DROP TABLE distinct_inner;
 -- Regression test case for GitHub issue #20827
 CREATE TABLE t1 (col_int_key int, pad int, primary key(col_int_key asc, pad asc));
 INSERT INTO t1 (select 3, i from generate_series(1, 1000) i);

@@ -79,6 +79,11 @@ import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUs
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
+import {
+  buildFederationTargets,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION
+} from '../components/CrossCloudFederatedIamFields';
 
 interface AWSProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -88,6 +93,12 @@ interface AWSProviderCreateFormProps {
 export interface AWSProviderCreateFormFieldValues {
   accessKeyId: string;
   dbNodePublicInternetAccess: boolean;
+  enableFederatedIam?: boolean;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
   enableHostedZone: boolean;
   hostedZoneId: string;
   ntpServers: string[];
@@ -131,6 +142,7 @@ const YB_IMAGE_TYPE_OPTIONS: OptionProps[] = [
 ];
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -198,6 +210,12 @@ export const AWSProviderCreateForm = ({
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
+    enableFederatedIam: false,
+    federationGcsEnabled: false,
+    federationGcsAudience: '',
+    federationS3Enabled: false,
+    federationS3RoleArn: '',
+    federationS3Audience: '',
     enableHostedZone: false,
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
@@ -435,6 +453,12 @@ export const AWSProviderCreateForm = ({
                   />
                 </FormField>
               )}
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+                providerCloud="aws"
+              />
+
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -698,7 +722,11 @@ const constructProviderPayload = async (
             awsAccessKeyID: formValues.accessKeyId,
             awsAccessKeySecret: formValues.secretAccessKey
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
+          ...(formValues.enableFederatedIam && {
+            enableFederatedIam: true,
+            crossCloudFederationTargets: buildFederationTargets(formValues)
+          })
         }
       },
       ntpServers: formValues.ntpServers,

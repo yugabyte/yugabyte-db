@@ -16,6 +16,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -53,6 +54,11 @@ class ColocatedTablesWithTablespacesTest : public ColocatedDBTest {
     ColocatedDBTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
+    // AssertLocation checks the exact replica set of a tablet right after DDL. The load balancer
+    // relocates tablets within the placement allowed by the tablespace to even out per-tserver
+    // tablet counts, and such a move adds the new replica before dropping the old one, so the
+    // tablet is transiently over-replicated. Quiesce it to make the placement observable.
+    options->extra_master_flags.emplace_back("--enable_load_balancing=false");
 
     options->extra_tserver_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
@@ -394,6 +400,16 @@ class ColocationConcurrencyTest : public ColocatedDBTest {
     ColocatedDBTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.emplace_back(
         "--ysql_enable_auto_analyze=false");
+    // TODO(#32565): remove this override once backfill pins history at its read time.  The
+    // pgwrapper harness runs with timestamp_history_retention_interval_sec=0 to surface
+    // stale-read-point bugs.  Here that canary trips on a known, deferred limitation instead:
+    // CREATE INDEX CONCURRENTLY backfills at a fixed read time, and the DML these tests run
+    // concurrently on a sibling colocated table compacts the shared parent tablet, advancing its
+    // history cutoff past that read time and failing the backfill with "Snapshot too old".  Raise
+    // retention beyond the test's lifetime so the cutoff can never reach a read time chosen
+    // during the test.
+    options->extra_tserver_flags.emplace_back(
+        "--timestamp_history_retention_interval_sec=3600");
   }
 };
 

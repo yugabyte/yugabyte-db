@@ -21,6 +21,44 @@ rightNav:
 
 ### 2026
 
+#### October 7, 2026
+
+##### New feature
+
+- {{<tags/feature/ea>}}Support for autoscaling. Autoscaling adds or removes nodes in a YugabyteDB Aeon cluster as CPU and connection load rise and fall, keeping the cluster sized to match gradual, sustained changes in demand. To try this feature, contact {{% support-cloud %}}.
+- {{<tags/feature/ga idea="1368">}}Support for built-in [YSQL Connection Pooling](../../additional-features/connection-manager-ysql/) is now GA for YugabyteDB v2026.1 and later.
+
+##### Database
+
+- Extended track updated to v2025.2.7.0.
+- Rapid track updated to v2026.1.2.0.
+
+#### August 25, 2026
+
+##### New feature
+
+- {{<tags/feature/ea>}}Support for multitenancy. Safely consolidate many independent YSQL databases on a single YugabyteDB cluster using [Resource Governance](../cloud-clusters/resource-governance/). Resource Governance provides multitenancy for YSQL databases, with predictable CPU allocation during periods of contention, allowing you to increase infrastructure density without introducing noisy-neighbor problems. To try this feature, contact {{% support-cloud %}}.
+
+##### Improvements
+
+- Improved reliability during periods of cloud provider capacity constraints, reducing the likelihood of task failures.
+
+##### Database
+
+- Extended track updated to v2025.2.5.2.
+- Rapid track updated to v2026.1.1.0.
+
+#### July 24, 2026
+
+##### Improvements
+
+- Support for three-region [Replicate across Regions](../cloud-basics/create-clusters/create-clusters-multisync/) clusters that are resilient to 2 availability zone failures. This configuration requires a minimum of 5 nodes, across 5 availability zones, across 3 regions: two regions have 2 zones while the third region has a single zone. This [replication factor](/stable/architecture/docdb-replication/replication/#replication-factor) 5 cluster provides quicker failover; with two replicas in the preferred region, when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region. The cluster can be scaled in increments of 2-2-1 nodes per region.
+
+##### Database
+
+- Extended track updated to v2024.2.10.0.
+- Rapid track updated to v2025.2.4.1.
+
 #### June 30, 2026
 
 ##### Improvements

@@ -12,10 +12,11 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
-import org.yb.minicluster.MiniYBClusterBuilder;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -28,12 +29,19 @@ public class TestPgRegressPgTypesUDT extends BasePgRegressTestPorted {
   }
 
   @Override
-  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
-    super.customizeMiniClusterBuilder(builder);
-    // TODO(28543): Remove once transactional ddl is enabled by default.
-    builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
-    builder.addCommonTServerFlag(
-        "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // The schedule runs DDL inside a transaction block and its expected output assumes the DDL
+    // is part of that transaction, so it needs the new DDL mode in every build type.
+    toggleDDLMode(flagMap, /* useLegacy */ false);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ false);
+    return flagMap;
   }
 
   @Test

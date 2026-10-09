@@ -35,6 +35,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
 
@@ -345,6 +347,18 @@ class TSLocalLockManager::Impl {
     return Status::OK();
   }
 
+  void ApplyLeaseEpochFloors(
+      const google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors)
+      EXCLUDES(mutex_) {
+    TRACE_FUNC();
+    for (const auto& floor : floors) {
+      if (floor.session_host_uuid().empty() || !floor.ignore_lease_epochs_before()) {
+        continue;
+      }
+      UpdateLeaseEpochIfNecessary(floor.session_host_uuid(), floor.ignore_lease_epochs_before());
+    }
+  }
+
   Status CheckShutdown() const {
     return shutdown_
         ? STATUS_FORMAT(ShutdownInProgress, "Object Lock Manager Shutdown") : Status::OK();
@@ -401,7 +415,7 @@ class TSLocalLockManager::Impl {
     return Wait(
         [this]() -> bool {
           bool ret = is_bootstrapped_;
-          VTRACE(2, "Is bootstrapped: $0", ret);
+          VTRACE(2, "Is bootstrapped: $0", ret ? "true" : "false");
           return ret;
         },
         deadline, "Waiting to Bootstrap.");
@@ -427,6 +441,7 @@ class TSLocalLockManager::Impl {
     WaitIfNecessaryForSimulatingOutOfOrderRequestsInTests(req, deadline);
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
+    ApplyLeaseEpochFloors(req.lease_epoch_floors());
     RETURN_NOT_OK(CheckRequestForDeadline(req));
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
@@ -518,7 +533,9 @@ class TSLocalLockManager::Impl {
             << " and subtxn: " << req.subtxn_id()
             << " with incoming rpc request: " << req.ShortDebugString();
 
-    UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
+    auto ignore_lease_epochs_before =
+        std::max(req.ignore_lease_epochs_before(), req.lease_epoch());
+    UpdateLeaseEpochIfNecessary(req.session_host_uuid(), ignore_lease_epochs_before);
     RETURN_NOT_OK(WaitToApplyIfNecessary(req, deadline));
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
@@ -560,7 +577,8 @@ class TSLocalLockManager::Impl {
       const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
       CoarseTimePoint deadline,
       StdStatusCallback&& callback,
-      const TransactionId& background_txn_id) {
+      const TransactionId& background_txn_id,
+      const TabletId& background_txn_status_tablet) {
     auto s = CheckShutdown();
     if (!s.ok()) {
       callback(s);
@@ -581,7 +599,8 @@ class TSLocalLockManager::Impl {
       return;
     }
     object_lock_manager_.WaitForConflictingLockers(
-        *keys_to_check, std::move(callback), deadline, background_txn_id);
+        *keys_to_check, std::move(callback), deadline, background_txn_id,
+        background_txn_status_tablet);
   }
 
   void Poll() {
@@ -725,6 +744,7 @@ class TSLocalLockManager::Impl {
         return s;
       }
     }
+    ApplyLeaseEpochFloors(entries.lease_epoch_floors());
     MarkBootstrapped();
     VLOG_WITH_FUNC(2) << "success.";
     return Status::OK();
@@ -737,6 +757,30 @@ class TSLocalLockManager::Impl {
     // We need to load and track the fastpath object locks from shared memory first
     object_lock_manager_.ConsumePendingSharedLockRequests();
     lock_tracker_->PopulateObjectLocks(object_lock_infos);
+
+    // The tracker only knows granted/waiting state; overlay the blocker information (which the
+    // ObjectLockManager computes for deadlock detection) so that pg_locks can report which
+    // transactions are blocking a waiting object lock.
+    std::unordered_map<docdb::ObjectLockOwner, std::vector<TransactionId>> blockers_by_owner;
+    object_lock_manager_.PopulateObjectLockWaiterBlockers(blockers_by_owner);
+    if (blockers_by_owner.empty()) {
+      return;
+    }
+    for (auto& lock_info : *object_lock_infos) {
+      if (lock_info.lock_state() != ObjectLockState::WAITING) {
+        continue;
+      }
+      auto txn_id = FullyDecodeTransactionId(lock_info.transaction_id());
+      LOG_IF(DFATAL, !txn_id.ok()) <<  "Failed to decode txn id:" << txn_id.status();
+      auto it = blockers_by_owner.find(
+          docdb::ObjectLockOwner{*txn_id, lock_info.subtransaction_id()});
+      if (it == blockers_by_owner.end()) {
+        continue;
+      }
+      for (const auto& blocker_id : it->second) {
+        lock_info.add_blocking_txn_ids(blocker_id.data(), blocker_id.size());
+      }
+    }
   }
 
  private:
@@ -790,8 +834,11 @@ void TSLocalLockManager::WaitForLockersAsync(
     const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
     CoarseTimePoint deadline,
     StdStatusCallback&& callback,
-    const TransactionId& background_txn_id) {
-  impl_->WaitForLockersAsync(object_locks, deadline, std::move(callback), background_txn_id);
+    const TransactionId& background_txn_id,
+    const TabletId& background_txn_status_tablet) {
+  impl_->WaitForLockersAsync(
+      object_locks, deadline, std::move(callback), background_txn_id,
+      background_txn_status_tablet);
 }
 
 void TSLocalLockManager::Start(

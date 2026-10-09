@@ -36,6 +36,8 @@
 
 #include "yb/util/logging.h"
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 
@@ -78,10 +80,11 @@ MiniMaster::~MiniMaster() {
 Status MiniMaster::Start(bool TEST_simulate_fs_create_failure) {
   CHECK(!running_);
 
-  FLAGS_rpc_server_allow_ephemeral_ports = true;
-  FLAGS_TEST_simulate_fs_create_failure = TEST_simulate_fs_create_failure;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_server_allow_ephemeral_ports) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_fs_create_failure) =
+      TEST_simulate_fs_create_failure;
   // Disable WAL fsync for tests
-  FLAGS_durable_wal_write = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_durable_wal_write) = false;
   RETURN_NOT_OK(StartOnPorts(rpc_port_, web_port_));
   return master_->WaitForCatalogManagerInit();
 }

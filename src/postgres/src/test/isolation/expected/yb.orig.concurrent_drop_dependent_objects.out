@@ -1,0 +1,61 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin s2_begin s1_drop_mv s2_drop_table s1_commit s2_commit s2_check_mv
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_drop_mv: DROP MATERIALIZED VIEW test_mv;
+step s2_drop_table: DROP TABLE test CASCADE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_drop_table: <... completed>
+step s2_commit: COMMIT;
+step s2_check_mv: SELECT count(*) FROM pg_class WHERE relname IN ('test', 'test_mv');
+count
+-----
+    0
+(1 row)
+
+
+starting permutation: s1_begin s2_begin s1_drop_table_ct s2_drop_type s1_commit s2_commit s2_check_type
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_drop_table_ct: DROP TABLE test_with_ct;
+step s2_drop_type: DROP TYPE test_ct CASCADE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_drop_type: <... completed>
+step s2_commit: COMMIT;
+step s2_check_type: SELECT count(*) FROM pg_type WHERE typname = 'test_ct';
+count
+-----
+    0
+(1 row)
+
+
+starting permutation: s1_begin s2_begin s1_drop_default s2_drop_seq s1_commit s2_commit s2_check_seq
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_drop_default: ALTER TABLE test_with_seq ALTER COLUMN c DROP DEFAULT;
+step s2_drop_seq: DROP SEQUENCE test_seq; <waiting ...>
+step s1_commit: COMMIT;
+step s2_drop_seq: <... completed>
+step s2_commit: COMMIT;
+step s2_check_seq: SELECT count(*) FROM pg_class WHERE relname = 'test_seq';
+count
+-----
+    0
+(1 row)
+
+
+starting permutation: s1_begin s2_begin s1_set_schema s2_drop_schema s1_commit s2_commit s2_check_schema
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_set_schema: ALTER TABLE test_old_schema.test_moved SET SCHEMA test_new_schema;
+step s2_drop_schema: DROP SCHEMA test_old_schema CASCADE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_drop_schema: <... completed>
+step s2_commit: COMMIT;
+step s2_check_schema: SELECT nspname FROM pg_class JOIN pg_namespace ON relnamespace = pg_namespace.oid WHERE relname = 'test_moved';
+nspname        
+---------------
+test_new_schema
+(1 row)
+

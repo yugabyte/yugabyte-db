@@ -42,6 +42,7 @@
 
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
@@ -55,6 +56,7 @@ DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+DECLARE_bool(xcluster_enable_target_applied_filter);
 
 using namespace std::placeholders;
 
@@ -252,7 +254,7 @@ XClusterSourceManager::InitOutboundReplicationGroup(
                    xcluster_manager->IsNamespaceInAutomaticModeTarget(namespace_id);
           },
       .create_xcluster_streams_func =
-          std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2),
+          std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2, _3, _4, _5),
       .checkpoint_xcluster_streams_func =
           std::bind(&XClusterSourceManager::CheckpointXClusterStreams, this, _1, _2, _3, _4, _5),
       .delete_cdc_stream_func = [&catalog_manager = catalog_manager_](
@@ -262,6 +264,8 @@ XClusterSourceManager::InitOutboundReplicationGroup(
         RETURN_NOT_OK(catalog_manager.DeleteCDCStream(&req, &resp, nullptr));
         return resp;
       },
+      .get_alive_streams_func =
+          [this](const std::vector<TableId>& table_ids) { return GetAliveStreamIds(table_ids); },
       .upsert_to_sys_catalog_func =
           [&sys_catalog = sys_catalog_](
               const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo* info,
@@ -459,9 +463,15 @@ Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXCluste
 
 Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXClusterStreamsForTableIds(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    const std::vector<TableId>& source_table_ids) const {
+    const std::vector<TableId>& source_table_ids, bool create_stream_if_missing,
+    const LeaderEpoch& epoch) {
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  if (create_stream_if_missing) {
+    RETURN_NOT_OK(outbound_replication_group->CreateAndCheckpointStreamsForAnchoredTables(
+        namespace_id, source_table_ids, epoch));
+  }
 
   return outbound_replication_group->GetNamespaceCheckpointInfoForTableIds(
       namespace_id, source_table_ids);
@@ -532,9 +542,11 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>>
 XClusterSourceManager::CreateStreamsForDbScoped(
-    const std::vector<TableId>& table_ids, const LeaderEpoch& epoch) {
+    const std::vector<TableId>& table_ids, const LeaderEpoch& epoch, bool automatic_ddl_mode,
+    bool allow_hidden_table, bool is_wal_anchor) {
   return CreateStreamsInternal(
-      table_ids, SysCDCStreamEntryPB::INITIATED, cdc::StreamModeTransactional::kTrue, epoch);
+      table_ids, SysCDCStreamEntryPB::INITIATED, cdc::StreamModeTransactional::kTrue, epoch,
+      automatic_ddl_mode, allow_hidden_table, is_wal_anchor);
 }
 
 Result<xrepl::StreamId> XClusterSourceManager::CreateNonTxnStreamForNewTable(
@@ -549,7 +561,8 @@ Result<xrepl::StreamId> XClusterSourceManager::CreateNonTxnStreamForNewTable(
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::CreateStreamsInternal(
     const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,
-    cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch) {
+    cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch, bool automatic_ddl_mode,
+    bool allow_hidden_table, bool is_wal_anchor) {
   SCHECK(
       state == SysCDCStreamEntryPB::ACTIVE || state == SysCDCStreamEntryPB::INITIATED,
       InvalidArgument, "Stream state must be either ACTIVE or INITIATED");
@@ -558,12 +571,20 @@ Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::Cre
 
   auto create_context = std::make_unique<XClusterCreateStreamContextImpl>(catalog_manager_, *this);
 
+  // The target-applied filter is captured immutably per stream at creation.
+  // Bi-directional mode keeps the legacy external_hybrid_time filter for loop-prevention.
+  const bool eligible_for_use_target_applied_filter =
+      automatic_ddl_mode && FLAGS_xcluster_enable_target_applied_filter;
+
   for (const auto& table_id : table_ids) {
     auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
     auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(stripped_table_id));
-    SCHECK_FORMAT(
-        table_info->LockForRead()->visible_to_client(), NotFound, "Table $0 does not exist",
-        stripped_table_id);
+    {
+      // A hidden table is still streamable, its tablets are retained by the streams referencing it.
+      auto l = table_info->LockForRead();
+      const bool exists = allow_hidden_table ? l->is_running() : l->visible_to_client();
+      SCHECK_FORMAT(exists, NotFound, "Table $0 does not exist", stripped_table_id);
+    }
 
     VLOG(1) << "Creating xcluster streams for table: " << table_id;
 
@@ -575,6 +596,16 @@ Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::Cre
     // We use a static set of options for all xCluster streams.
     *metadata.mutable_options() = client::GetXClusterStreamOptions();
     metadata.set_state(state);
+
+    if (eligible_for_use_target_applied_filter) {
+      metadata.set_xcluster_use_target_applied_filter(true);
+      VLOG(1) << "Stamping xcluster_use_target_applied_filter=true on stream " << stream->StreamId()
+              << " for table " << stripped_table_id;
+    }
+
+    if (is_wal_anchor) {
+      metadata.set_xcluster_is_wal_anchor(true);
+    }
 
     RecordOutboundStream(stream, table_id);
 
@@ -1004,8 +1035,9 @@ Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
   RETURN_NOT_OK(catalog_manager_.BackfillMetadataForXRepl(table_info, epoch));
 
   const auto state = initial_state ? *initial_state : SysCDCStreamEntryPB::ACTIVE;
-  auto create_context =
-      VERIFY_RESULT(CreateStreamsInternal({table_id}, state, transactional, epoch));
+  auto create_context = VERIFY_RESULT(CreateStreamsInternal(
+      {table_id}, state, transactional, epoch, /*automatic_ddl_mode=*/false,
+      /*allow_hidden_table=*/false, /*is_wal_anchor=*/false));
   RSTATUS_DCHECK_EQ(
       create_context->streams_.size(), 1, IllegalState,
       "Unexpected Expected number of streams created");
@@ -1121,7 +1153,25 @@ Status XClusterSourceManager::PopulateXClusterStatus(
         }
         table_status.is_checkpointing = table_info.is_checkpointing();
         table_status.is_part_of_initial_bootstrap = table_info.is_part_of_initial_bootstrap();
+
+        const auto full_table_name = table_status.full_table_name;
         ns_status.table_statuses.push_back(std::move(table_status));
+
+        // The table's WAL anchor is an unconsumed stream that pins WAL so an in flight DDL can be
+        // retried on target.
+        if (table_info.has_wal_anchor_stream_id()) {
+          auto anchor_stream_id =
+              VERIFY_RESULT(xrepl::StreamId::FromString(table_info.wal_anchor_stream_id()));
+          stream_status_map.erase(anchor_stream_id);
+
+          XClusterOutboundReplicationGroupTableStatus anchor_status;
+          anchor_status.full_table_name = full_table_name;
+          anchor_status.table_id = table_id;
+          anchor_status.stream_id = anchor_stream_id;
+          anchor_status.state = "WAL_ANCHOR";
+          anchor_status.is_wal_anchor = true;
+          ns_status.table_statuses.push_back(std::move(anchor_status));
+        }
       }
       group_status.namespace_statuses.push_back(std::move(ns_status));
     }
@@ -1200,12 +1250,15 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
     index_lock.Commit();
   }
 
-  // Checkpoint xCluster streams of indexes after the backfill completes. The backfilled data is not
-  // replicated, and the target cluster performs its own backfill, so we can skip streaming changes
-  // before the backfill completion.
-  // For BiDirectional indexes we create the index on both sides at the same time, and add them to
-  // replication before backfill completes, so we cannot perform this optimization.
+  // Checkpoint xCluster streams of indexes after the backfill so the target's local backfill is
+  // not duplicated by replicated WAL entries. We skip this for:
+  //   - BiDirectional indexes: backfill happens before replication is set up.
+  //   - xcluster_use_target_applied_filter streams: the target relies on replicated backfill writes
+  //     instead of running its own local backfill
 
+  // TODO(#33443): Advance the WAL_ANCHOR here and start new streams from its checkpoint.
+  // Do not advance WAL_ANCHOR stream with the index's table streams.
+  const auto anchor_stream_ids = GetWalAnchorStreamIds(index_ids);
   std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
   {
     SharedLock l(tables_to_stream_map_mutex_);
@@ -1213,6 +1266,15 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
       if (tables_to_stream_map_.contains(index_id) &&
           !master_.xcluster_manager()->IsTableBiDirectionallyReplicated(index_id)) {
         for (const auto& stream : tables_to_stream_map_.at(index_id)) {
+          if (stream->LockForRead()->pb.xcluster_use_target_applied_filter()) {
+            LOG(INFO) << "Skipping past-backfill checkpoint of xCluster stream "
+                      << stream->StreamId() << " of index " << index_id
+                      << " because backfill writes are replicated to the target";
+            continue;
+          }
+          if (anchor_stream_ids.contains(stream->StreamId())) {
+            continue;
+          }
           LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
                     << index_id << " to its end of WAL";
           table_streams.emplace_back(index_id, stream->StreamId());
@@ -1264,6 +1326,81 @@ Status XClusterSourceManager::RepairOutboundReplicationGroupRemoveTable(
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
   return outbound_replication_group->RepairRemoveTable(table_id, epoch);
+}
+
+Status XClusterSourceManager::DeleteXClusterWalAnchorStreams(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<TableId>& source_table_ids) {
+  auto outbound_rg = VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  DeleteCDCStreamRequestPB req;
+  for (const auto& table_id : source_table_ids) {
+    auto table = catalog_manager_.GetTableInfo(table_id);
+    if (!table) {
+      continue;
+    }
+
+    auto wal_anchor_stream_id = outbound_rg->GetWalAnchorStreamId(table->namespace_id(), table_id);
+    if (!wal_anchor_stream_id.ok() && !wal_anchor_stream_id.status().IsNotFound()) {
+      return wal_anchor_stream_id.status();
+    }
+    if (!wal_anchor_stream_id.ok() || wal_anchor_stream_id->empty()) {
+      VLOG_WITH_FUNC(1) << "No WAL_ANCHOR stream for source table " << table_id
+                        << " in replication group " << replication_group_id
+                        << "; nothing to delete";
+      continue;
+    }
+    req.add_stream_id(*wal_anchor_stream_id);
+  }
+
+  if (req.stream_id_size() == 0) {
+    return Status::OK();
+  }
+  req.set_force_delete(true);
+  req.set_ignore_errors(true);
+  LOG(INFO) << "Deleting " << req.stream_id_size()
+            << " xCluster WAL_ANCHOR stream(s) for committed source tables "
+            << yb::ToString(source_table_ids) << " in replication group " << replication_group_id;
+
+  DeleteCDCStreamResponsePB resp;
+  RETURN_NOT_OK(catalog_manager_.DeleteCDCStream(&req, &resp, /*rpc=*/nullptr));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+std::unordered_set<xrepl::StreamId> XClusterSourceManager::GetWalAnchorStreamIds(
+    const std::unordered_set<TableId>& table_ids) const {
+  std::unordered_set<xrepl::StreamId> anchor_stream_ids;
+  for (const auto& table_id : table_ids) {
+    for (const auto& stream : GetStreamsForTable(table_id)) {
+      if (stream->LockForRead()->pb.xcluster_is_wal_anchor()) {
+        anchor_stream_ids.insert(stream->StreamId());
+      }
+    }
+  }
+  return anchor_stream_ids;
+}
+
+std::unordered_set<xrepl::StreamId> XClusterSourceManager::GetAliveStreamIds(
+    const std::vector<TableId>& table_ids) const {
+  std::unordered_set<xrepl::StreamId> alive_stream_ids;
+  for (const auto& table_id : table_ids) {
+    for (const auto& stream : GetStreamsForTable(table_id)) {
+      alive_stream_ids.insert(stream->StreamId());
+    }
+  }
+  return alive_stream_ids;
+}
+
+Result<std::string> XClusterSourceManager::TEST_GetWalAnchorStreamId(
+    const TableId& table_id) const {
+  auto anchor_stream_ids = GetWalAnchorStreamIds({table_id});
+  SCHECK(
+      anchor_stream_ids.size() <= 1, IllegalState,
+      Format("Expected at most one WAL_ANCHOR stream for table $0", table_id));
+  return anchor_stream_ids.empty() ? std::string() : anchor_stream_ids.begin()->ToString();
 }
 
 std::vector<xcluster::ReplicationGroupId>

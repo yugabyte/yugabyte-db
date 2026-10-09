@@ -101,6 +101,19 @@
   <logger name="oshi.software.os.linux.LinuxFileSystem" level="ERROR" />
   <logger name="org.apache.pekko.actor.ActorSystemImpl" level="ERROR"/>
 
+  <!-- Tests build and tear down an application per class/method, so Play/Hikari/executor shutdown
+       logging is repeated hundreds of times and drowns out useful output. Quiet it down. -->
+  <logger name="play.core.server.PekkoHttpServer" level="WARN" />
+  <logger name="play.api.internal.libs.concurrent.CoordinatedShutdownSupport" level="WARN" />
+  <logger name="play.api.db.HikariCPConnectionPool" level="WARN" />
+  <logger name="com.yugabyte.yw.common.PlatformExecutorFactory" level="INFO" />
+  <logger name="com.yugabyte.yw.commissioner.TaskExecutor" level="WARN" />
+
+  <!-- We manage the embedded Postgres lifecycle (and its teardown/reaping) ourselves in TestPostgres.
+       zonky registers its own JVM shutdown hook that races with ours; the loser's `pg_ctl stop` fails
+       and logs a benign ERROR. Suppress it - a real startup failure still surfaces as an exception. -->
+  <logger name="io.zonky.test.db.postgres.embedded.EmbeddedPostgres" level="OFF" />
+
 
     <if condition='property("LOGTESTTOFILE").equals("true")'>
     <then>

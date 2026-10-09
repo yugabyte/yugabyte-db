@@ -278,6 +278,37 @@ BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
 ERROR:  FORCE_NULL column "b" not referenced by COPY
 ROLLBACK;
+-- Test NOT NULL constraint enforcement on columns omitted from the COPY column
+-- list.
+CREATE TABLE notnulltest (a INT PRIMARY KEY, b INT NOT NULL);
+-- should fail with not-null constraint violation on omitted column b
+BEGIN;
+COPY notnulltest (a) FROM STDIN;
+ERROR:  null value in column "b" of relation "notnulltest" violates not-null constraint
+DETAIL:  Failing row contains (1, null).
+CONTEXT:  COPY notnulltest, line 1: "1"
+ROLLBACK;
+SELECT * FROM notnulltest ORDER BY a;
+ a | b 
+---+---
+(0 rows)
+
+-- same through partition routing
+CREATE TABLE notnullpart (a INT, b INT NOT NULL, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE notnullpart1 (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY (a));
+ALTER TABLE notnullpart ATTACH PARTITION notnullpart1 FOR VALUES FROM (0) TO (100);
+-- should fail with not-null constraint violation on omitted column b
+BEGIN;
+COPY notnullpart (a) FROM STDIN;
+ERROR:  null value in column "b" of relation "notnullpart1" violates not-null constraint
+DETAIL:  Failing row contains (1, null).
+CONTEXT:  COPY notnullpart, line 1: "1"
+ROLLBACK;
+SELECT * FROM notnullpart ORDER BY a;
+ a | b 
+---+---
+(0 rows)
+
 CREATE TABLE t(k INT PRIMARY KEY, v INT);
 CREATE UNIQUE INDEX ON t(v);
 -- should fail, non unique primary key

@@ -256,6 +256,9 @@ export interface NodeAgent {
   universeUuid: string;
   version: string;
   versionMatched: boolean;
+  certificateUuid?: string;
+  universeName?: string;
+  providerName?: string;
 
   lastError?: {
     code: NodeAgentErrorCode;
@@ -300,8 +303,6 @@ export interface MetadataFields {
   metricsUsername: string;
   metricsPassword: string;
   metricsScrapePeriodSec: number;
-  dataMountPoints: string[];
-  otherMountPoints: string[];
   lastSyncError?: string | null;
 }
 

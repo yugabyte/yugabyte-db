@@ -23,6 +23,7 @@
 #include "yb/qlexpr/ql_expr.h"
 
 #include "yb/util/physical_time.h"
+#include "yb/util/status_format.h"
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"

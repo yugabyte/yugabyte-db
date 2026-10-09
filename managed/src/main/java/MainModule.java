@@ -66,6 +66,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.certmgmt.HostPreservingSSLSocketFactory;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -91,10 +92,12 @@ import com.yugabyte.yw.common.operator.YBInformerFactory;
 import com.yugabyte.yw.common.operator.YBReconcilerFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.TelemetryProviderCrConverter;
 import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
+import com.yugabyte.yw.common.rollback.TaskRollbackModule;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
@@ -118,6 +121,7 @@ import java.security.SecureRandom;
 import java.security.Security;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -145,12 +149,14 @@ import play.Environment;
 @Slf4j
 public class MainModule extends AbstractModule {
   private final Config config;
+  private final Environment environment;
   private static final String[] TLD_OVERRIDE = {"local"};
   private static final String DEFAULT_OIDC_SCOPE = "openid profile email";
   private static final String TMPDIR_PROPERTY = "java.io.tmpdir";
 
   public MainModule(Environment environment, Config config) {
     this.config = config;
+    this.environment = environment;
   }
 
   @Override
@@ -186,6 +192,11 @@ public class MainModule extends AbstractModule {
         }
       }
     }
+    // Netty prefers its bundled BoringSSL over JSSE (BCJSSE) whenever it can load it. This
+    // includes the copy shaded into grpc-netty-shaded, used by the node agent and YBC clients.
+    // Must be set before Netty's OpenSsl class initializes.
+    System.setProperty("io.netty.handler.ssl.noOpenSsl", "true");
+    System.setProperty("io.grpc.netty.shaded.io.netty.handler.ssl.noOpenSsl", "true");
     log.info("Adding BC-FIPS providers");
     Security.setProperty("ssl.KeyManagerFactory.algorithm", "PKIX");
     Security.setProperty("ssl.TrustManagerFactory.algorithm", "PKIX");
@@ -233,6 +244,9 @@ public class MainModule extends AbstractModule {
     System.setProperty("org.xerial.snappy.tempdir", snappyTempPath.toAbsolutePath().toString());
 
     TLSConfig.modifyTLSDisabledAlgorithms(config);
+    // After the BC providers and TLS properties are in place, so the default context is BCJSSE's.
+    HttpsURLConnection.setDefaultSSLSocketFactory(
+        HostPreservingSSLSocketFactory.wrap(HttpsURLConnection.getDefaultSSLSocketFactory()));
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     bind(RuntimeConfigCacheInvalidator.class).asEagerSingleton();
     install(new CustomerConfKeys());
@@ -242,6 +256,7 @@ public class MainModule extends AbstractModule {
     bind(RuntimeConfigCache.class).asEagerSingleton();
 
     install(new CloudModules());
+    install(new TaskRollbackModule());
     PrometheusRegistry.defaultRegistry.clear();
     try {
       DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
@@ -249,8 +264,21 @@ public class MainModule extends AbstractModule {
       log.info("Skipping Initialization of domain validator for dev env's");
     }
 
-    // Bind Application Initializer
-    bind(AppInit.class).asEagerSingleton();
+    // Bind Application Initializer. AppInit eagerly constructs a very large dependency graph (all
+    // the
+    // background schedulers/pollers/GCs and their transitive deps) purely to start them, but its
+    // body is a no-op under test (guarded by !environment.isTest()). Binding it eagerly under test
+    // therefore builds that whole graph for every test application - the dominant unit-test cost -
+    // for nothing. Under test we bind it lazily instead: nothing injects AppInit there, so that
+    // graph
+    // is never constructed, while any service a test actually needs is still built on demand. The
+    // one thing AppInit does before the isTest guard (publishing the YBA version) is handled by
+    // YBALifeCycle, which stays eager. In production AppInit remains eager (startup unchanged).
+    if (environment.isTest()) {
+      bind(AppInit.class).in(com.google.inject.Singleton.class);
+    } else {
+      bind(AppInit.class).asEagerSingleton();
+    }
     bind(ConfigHelper.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);
@@ -327,6 +355,7 @@ public class MainModule extends AbstractModule {
     bind(KubernetesClientFactory.class).asEagerSingleton();
     bind(UniverseImporter.class).asEagerSingleton();
     bind(OperatorResourceRestorer.class).asEagerSingleton();
+    bind(TelemetryProviderCrConverter.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();
@@ -354,8 +383,10 @@ public class MainModule extends AbstractModule {
           SecureRandom secureRandom = new SecureRandom();
           SSLContext sslContext = SSLContext.getInstance("TLS");
           sslContext.init(null, ybaJavaTrustManagers, secureRandom);
-          HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
-          HTTPRequest.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+          SSLSocketFactory socketFactory =
+              HostPreservingSSLSocketFactory.wrap(sslContext.getSocketFactory());
+          HttpsURLConnection.setDefaultSSLSocketFactory(socketFactory);
+          HTTPRequest.setDefaultSSLSocketFactory(socketFactory);
         } catch (Exception e) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());

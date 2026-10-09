@@ -99,7 +99,6 @@ static constexpr int32_t kInvalidClusterConfigVersion = 0;
 static const char* const kYbSystemDbName = "yb_system";
 static const char* const kPgYbNotificationsTableName = "pg_yb_notifications";
 static const char* const kPgYbNotificationsPublicationName = "pg_yb_notifications_publication";
-static const char* const kYbNotificationsSlotPrefix = "yb_notifications_";
 
 } // namespace master
 } // namespace yb

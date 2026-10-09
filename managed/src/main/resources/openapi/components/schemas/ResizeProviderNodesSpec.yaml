@@ -1,0 +1,10 @@
+title: ResizeProviderNodesSpec
+description: Tserver and master resize node specs at a single level of the provider nodes specification hierarchy.
+type: object
+properties:
+  tserver_specification:
+    description: Node specification for tserver processes.
+    $ref: "./ResizeProviderNodeSpec.yaml"
+  master_specification:
+    description: Node specification for master processes.
+    $ref: "./ResizeProviderNodeSpec.yaml"

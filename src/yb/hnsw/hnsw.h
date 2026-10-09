@@ -54,7 +54,9 @@ class SearchCache {
   MisalignedPtr<const YbHnswVectorData> VectorHeader(size_t vector);
   boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInBaseLayer(
       size_t vector);
-  vector_index::VectorId GetVectorData(size_t vector);
+  // Returns the vector id and the payload attached to the vector, decoded from the same aux
+  // data slice. The payload is an empty slice when there is no payload.
+  std::pair<vector_index::VectorId, Slice> GetVectorIdAndPayload(size_t vector);
   const std::byte* CoordinatesPtr(size_t vector);
 
  private:
@@ -141,10 +143,14 @@ class YbHnsw {
   ~YbHnsw();
 
   // Imports specified index to YbHnsw structure, also storing this structure to disk.
+  // payloads provides payloads attached to vectors, stored in the aux data.
+  // It is null when the chunk does not store payloads.
   Status Import(
-    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path);
+    const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
+    const vector_index::VectorPayloadMap* payloads);
   Status Import(
-    const HnswlibIndex<DistanceType>& index, const std::string& path);
+    const HnswlibIndex<DistanceType>& index, const std::string& path,
+    const vector_index::VectorPayloadMap* payloads);
 
   // Initialize YbHnsw from specified file, using block_cache to cache blocks.
   Status Init(const std::string& path);

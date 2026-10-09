@@ -2,7 +2,7 @@
 -- See yb_merge_scan_schedule for details about the test.  Tests merge scan
 -- with RelabelType nodes (binary-compatible casts like varchar <-> text).
 --
--- Where RelabelType nodes come from for the relabel_tbl columns:
+-- Where RelabelType nodes come from for the tv_tbl columns:
 -- - v is varchar: equality uses the text operators, so a comparison wraps the
 --   LHS in a RelabelType (varchar -> text).  An explicit v::text is the same.
 -- - t is text: comparisons need no coercion, so the LHS is bare.  t::varchar
@@ -16,14 +16,20 @@
 -- Compare behavior between
 -- - regular index scan using columns considered redundant for being constant
 -- - merge index scan using SAOP stream columns
+-- The regular index scan is pinned with a hint: idx does not cover the
+-- queries, so a seq scan with the predicate pushed down otherwise wins on
+-- cost.  The 16-row pages from merge_scan_setup still separate the two
+-- scans' read request counts.
+\set off '/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/'
 SELECT $$= '1'$$ AS "R1" \gset
 SELECT $$IN ('1', '1')$$ AS "R2" \gset
 
 --
 -- Index 1: v and t merge streams on bare leading columns.
 --
-CREATE INDEX NONCONCURRENTLY idx ON relabel_tbl (v ASC, t, i2, (v::text), v, (t::varchar), t, i4)
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl (v ASC, t, i2, (v::text), v, (t::varchar), t, i4)
 SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+ANALYZE tv_tbl;
 
 -- RelabelType strip points exercised:
 -- - SAOP clause LHS: v's LHS is wrapped, but the leading index expression is
@@ -34,12 +40,12 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 -- - Redundancy check's stored LHS: v's stored SAOP LHS keeps its RelabelType
 --   and must be stripped to match the redundant v columns.  t's stored LHS is
 --   bare.
-\set query ':P :Q SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v :R AND t :R ORDER BY i2, i4, n LIMIT 5;'
+\set query ':P :Q SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v :R AND t :R ORDER BY i2, i4, n LIMIT 5;'
 \i :run_query
 
 -- Explicit-cast predicates behave identically: v::text parses to the same
 -- wrapped LHS as bare v, and t::varchar is const-folded back to bare t.
-\set query ':P :Q SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text :R AND t::varchar :R ORDER BY i2, i4, n LIMIT 5;'
+\set query ':P :Q SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text :R AND t::varchar :R ORDER BY i2, i4, n LIMIT 5;'
 \i :run_query
 
 DROP INDEX idx;
@@ -47,15 +53,16 @@ DROP INDEX idx;
 --
 -- Index 2: v and t merge streams on cast leading columns.
 --
-CREATE INDEX NONCONCURRENTLY idx ON relabel_tbl ((v::text) ASC, (t::varchar), i2, (v::text), v, (t::varchar), t, i4)
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, (t::varchar), i2, (v::text), v, (t::varchar), t, i4)
 SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+ANALYZE tv_tbl;
 
 -- Beyond index 1:
 -- - The leading (v::text) is wrapped on both sides: the index expression and
 --   the SAOP LHS must each be stripped.
 -- - The (t::varchar) stream column is wrapped on the index expression side
 --   only.
-\set query ':P :Q SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v :R AND t :R ORDER BY i2, i4, n LIMIT 5;'
+\set query ':P :Q SELECT i2, i4, n, v, t FROM tv_tbl WHERE v :R AND t :R ORDER BY i2, i4, n LIMIT 5;'
 \i :run_query
 
 DROP INDEX idx;
@@ -68,13 +75,31 @@ DROP INDEX idx;
 -- constants are relabeled and const-folded back to plain text Consts, which
 -- SAOP eligibility requires, so engagement does not change.
 --
-CREATE INDEX NONCONCURRENTLY idx ON relabel_tbl (v ASC, i2, i4)
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl (v ASC, i2, i4)
 SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 
 SELECT $$= '1'::varchar$$ AS "R3" \gset
 SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 
-\set query ':P :Q SELECT i2, i4, n, v FROM relabel_tbl WHERE v :R ORDER BY i2, i4, n LIMIT 5;'
+\set query ':P :Q SELECT i2, i4, n, v FROM tv_tbl WHERE v :R ORDER BY i2, i4, n LIMIT 5;'
 \i :run_query
 
+DROP INDEX idx;
+
+--
+-- Index 4: a relabeled expression column held at one value, before the stream
+-- column i2.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+\set query ':P :Q SELECT i4, n, v, i2 FROM tv_tbl WHERE v :R AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;'
+\i :run_query
+DROP INDEX idx;
+
+--
+-- Index 5: the same as a hash column, which stays a stream key either way and
+-- shows its equality index condition under Merge Cond.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) HASH, i2 ASC, i4 ASC);
+\i :run_query
 DROP INDEX idx;

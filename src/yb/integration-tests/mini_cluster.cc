@@ -53,7 +53,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -116,7 +115,6 @@
 #include "yb/yql/pggate/util/pg_wire.h"
 
 using namespace std::literals;
-using strings::Substitute;
 
 DEFINE_NON_RUNTIME_string(mini_cluster_base_dir, "", "Directory for master/ts data");
 DEFINE_NON_RUNTIME_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
@@ -259,11 +257,11 @@ Status MiniCluster::StartAsync(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
 
   // This dictates the RF of newly created tables.
-  FLAGS_replication_factor = options_.num_tablet_servers >= 3 ? 3 : 1;
-  FLAGS_memstore_size_mb = 16;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = options_.num_tablet_servers >= 3 ? 3 : 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = 16;
   // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
   // failover.
-  FLAGS_load_balancer_initial_delay_secs = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
 
   // Unlike real deployments, minicluster tests have multiple master/tserver in one process. This
   // results in multiple reserved address segments needed in one process, which is likely enough to
@@ -276,7 +274,7 @@ Status MiniCluster::StartAsync(
 
   if (!extra_tserver_options.empty() &&
       extra_tserver_options.size() != options_.num_tablet_servers) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "num tserver options: $0 doesn't match with num "
+    return STATUS_FORMAT(InvalidArgument, "num tserver options: $0 doesn't match with num "
         "tservers: $1", extra_tserver_options.size(), options_.num_tablet_servers);
   }
 
@@ -284,9 +282,9 @@ Status MiniCluster::StartAsync(
     for (size_t i = 0; i < options_.num_tablet_servers; i++) {
       if (!extra_tserver_options.empty()) {
         RETURN_NOT_OK_PREPEND(
-            AddTabletServer(extra_tserver_options[i], false), Substitute("Error adding TS $0", i));
+            AddTabletServer(extra_tserver_options[i], false), Format("Error adding TS $0", i));
       } else {
-        RETURN_NOT_OK_PREPEND(AddTabletServer(false), Substitute("Error adding TS $0", i));
+        RETURN_NOT_OK_PREPEND(AddTabletServer(false), Format("Error adding TS $0", i));
       }
     }
   } else {
@@ -371,7 +369,7 @@ Status MiniCluster::StartMasters() {
         options_.master_env, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i], i);
     auto status = mini_masters_[i]->StartDistributedMaster(master_rpc_ports_);
     LOG_IF(INFO, !status.ok()) << "Failed to start master: " << status;
-    RETURN_NOT_OK_PREPEND(status, Substitute("Couldn't start follower $0", i));
+    RETURN_NOT_OK_PREPEND(status, Format("Couldn't start follower $0", i));
     VLOG(1) << "Started MiniMaster with UUID " << mini_masters_[i]->permanent_uuid()
             << " at index " << i;
   }
@@ -381,7 +379,7 @@ Status MiniCluster::StartMasters() {
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
     LOG(INFO) << "Waiting to initialize catalog manager on master " << i;
     RETURN_NOT_OK_PREPEND(master->WaitForCatalogManagerInit(),
-                          Substitute("Could not initialize catalog manager on master $0", i));
+                          Format("Could not initialize catalog manager on master $0", i));
     master_addresses += string(i++ == 0 ? "" : ",") + master->bound_rpc_addr().ToString();
   }
 
@@ -703,7 +701,10 @@ void MiniCluster::Shutdown() {
   }
   yb_controller_servers_.clear();
 
-  messenger_->Shutdown();
+  // The messenger is created last in Start, so it is missing when startup failed before that.
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
 
   running_ = false;
 }
@@ -768,22 +769,22 @@ MiniTabletServer* MiniCluster::find_tablet_server(const std::string& uuid) {
 }
 
 string MiniCluster::GetMasterFsRoot(size_t idx) {
-  return JoinPathSegments(fs_root_, Substitute("master-$0-root", idx + 1));
+  return JoinPathSegments(fs_root_, Format("master-$0-root", idx + 1));
 }
 
 string MiniCluster::GetTabletServerFsRoot(size_t idx) {
-  return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx + 1));
+  return JoinPathSegments(fs_root_, Format("ts-$0-root", idx + 1));
 }
 
 string MiniCluster::GetYbControllerServerFsRoot(size_t idx) {
-  return JoinPathSegments(fs_root_, Substitute("ybc-$0-root", idx + 1));
+  return JoinPathSegments(fs_root_, Format("ybc-$0-root", idx + 1));
 }
 
 string MiniCluster::GetTabletServerDrive(size_t idx, int drive_index) {
   if (options_.num_drives == 1) {
     return GetTabletServerFsRoot(idx);
   }
-  return JoinPathSegments(fs_root_, Substitute("ts-$0-drive-$1", idx + 1, drive_index + 1));
+  return JoinPathSegments(fs_root_, Format("ts-$0-drive-$1", idx + 1, drive_index + 1));
 }
 
 tserver::TSTabletManager* MiniCluster::GetTabletManager(size_t idx) {
@@ -842,8 +843,8 @@ Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
 
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
-  return STATUS(TimedOut, Substitute("Tablet $0 never reached expected replica count $1",
-                                     tablet_id, expected_count));
+  return STATUS(TimedOut, Format("Tablet $0 never reached expected replica count $1",
+                                 tablet_id, expected_count));
 }
 
 Status MiniCluster::WaitForAllTabletServers() {
@@ -894,7 +895,7 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
 
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
-  return STATUS(TimedOut, Substitute("$0 TS(s) never registered with master", count));
+  return STATUS(TimedOut, Format("$0 TS(s) never registered with master", count));
 }
 
 Status MiniCluster::WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout) {
@@ -1709,7 +1710,7 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster) {
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t bytes_per_sec) {
   LOG(INFO) << "Setting FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec to: " << bytes_per_sec
             << " and updating compact/flush rate in existing tablets";
-  FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = bytes_per_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = bytes_per_sec;
   for (auto& tablet_peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
     auto tablet_result = tablet_peer->shared_tablet();
     if (!tablet_result.ok()) {
@@ -1845,23 +1846,20 @@ Status WaitForPeersPostSplitCompacted(
   std::stringstream description;
   description << "Waiting for peers [" << CollectionToString(ids) << "] are post split compacted.";
 
-  const auto s = LoggedWaitFor([&peers, &ids](){
-    for (size_t n = 0; n < peers.size(); ++n) {
-      const auto peer = peers[n];
-      if (!peer) {
-        continue;
-      }
-      if (peer->tablet_metadata()->parent_data_compacted()) {
-        ids.erase(peer->tablet_id());
-        peers[n] = nullptr;
-      }
-    }
-    return ids.empty();
+  // Every listed replica must be compacted. Erasing a tablet id on the first finished replica
+  // would return while followers of the same tablet are still compacting.
+  const auto s = LoggedWaitFor([&peers]() {
+    std::erase_if(peers, [](const auto& peer) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      return tablet && !tablet->MayHaveOrphanedPostSplitData();
+    });
+    return peers.empty();
   }, timeout, description.str());
 
-  if (!s.ok() && !ids.empty()) {
-    LOG(ERROR) <<
-      "Failed to wait for peers [" << CollectionToString(ids) << "] are post split compacted.";
+  if (!s.ok() && !peers.empty()) {
+    LOG(ERROR) << "Failed to wait for peers ["
+               << CollectionToString(peers, [](const auto& p) { return p->tablet_id(); })
+               << "] are post split compacted.";
   }
   return s;
 }
@@ -1921,15 +1919,8 @@ std::vector<std::string> DumpDocDBToStrings(MiniCluster* cluster, ListPeersFilte
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable) {
   for (const auto& peer : ListTabletPeers(&cluster, ListPeersFilter::kAll)) {
     auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto doc_db = tablet->doc_db();
-    if (doc_db.regular) {
-      doc_db.regular->SetDisableFlushOnShutdown(disable);
-    }
-    if (doc_db.intents) {
-      doc_db.intents->SetDisableFlushOnShutdown(disable);
+    if (tablet) {
+      tablet->TEST_SetDisableFlushOnShutdown(disable);
     }
   }
 }

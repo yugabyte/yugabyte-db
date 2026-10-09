@@ -18,7 +18,13 @@ menu:
 
 The following sections provide workarounds for issues detected by the Voyager [migration assessment](../reference/assess-migration/) and [schema analysis](../reference/schema-migration/analyze-schema/) commands.
 
-Review the unsupported features and limitations, and implement the suggested workarounds to successfully migrate data from MySQL, Oracle, or PostgreSQL to YugabyteDB.
+{{< warning title="MySQL and Oracle offline migration deprecated" >}}
+
+MySQL and Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. The workarounds in this section remain applicable for in-progress migrations. Contact {{% support-general %}} for guidance on migration options.
+
+{{< /warning >}}
+
+Review the unsupported features and limitations, and implement the suggested workarounds to successfully migrate data from PostgreSQL to YugabyteDB. For MySQL and Oracle, refer to the following sections only if you have an in-progress migration.
 
 - [Workarounds for PostgreSQL issues](./postgresql/)
 - [Workarounds for Oracle issues](./oracle/)
@@ -126,3 +132,7 @@ Global objects in PostgreSQL are database-level objects that are not tied to a s
 - `CREATE ACCESS METHOD` / `ALTER ACCESS METHOD`
 - `CREATE SERVER`
 - `CREATE DATABASE` with certain options (for example, `ICU_LOCALE`, `LOCALE_PROVIDER`)
+
+### PostgreSQL features after version 17
+
+Features from PostgreSQL versions later than 17 that are incompatible with YugabyteDB are not reported.

@@ -56,7 +56,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 import play.data.Form;
@@ -215,7 +215,8 @@ public class TablesController extends AuthenticatedController {
       boolean includeParentTableInfo,
       @Deprecated boolean excludeColocatedTables,
       boolean includeColocatedParentTables,
-      boolean xClusterSupportedOnly) {
+      boolean xClusterSupportedOnly,
+      boolean includeMatviewTables) {
     List<TableInfoForm.TableInfoResp> resp =
         tableHandler.listTables(
             customerUUID,
@@ -223,7 +224,8 @@ public class TablesController extends AuthenticatedController {
             includeParentTableInfo,
             excludeColocatedTables,
             includeColocatedParentTables,
-            xClusterSupportedOnly);
+            xClusterSupportedOnly,
+            includeMatviewTables);
     return PlatformResults.withData(resp);
   }
 
@@ -651,7 +653,7 @@ public class TablesController extends AuthenticatedController {
       return Collections.emptyList();
     }
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       return client.getTablesList().getTableInfoList();
     } catch (Exception e) {
       LOG.warn(e.toString());

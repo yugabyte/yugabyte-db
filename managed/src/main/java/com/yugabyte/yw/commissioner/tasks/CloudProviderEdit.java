@@ -214,12 +214,12 @@ public class CloudProviderEdit extends CloudTaskBase {
   }
 
   /*
-   * Utility to remoe the region reference from the image Bundles
-   * for AWS providers on region deletion.
+   * Utility to remove the region reference from the image Bundles
+   * for providers with per-region images (AWS, OCI) on region deletion.
    */
   private void removeRegionReferenceFromImageBundles(Provider provider, String regionCode) {
-    if (provider.getCloudCode() != CloudType.aws) {
-      // continue;
+    if (!provider.getCloudCode().usesPerRegionImages()) {
+      return;
     }
 
     List<ImageBundle> bundles = provider.getImageBundles();

@@ -13,6 +13,8 @@
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 
+#include "yb/util/status_log.h"
+
 namespace yb {
 
 void ExternalMiniClusterITestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {

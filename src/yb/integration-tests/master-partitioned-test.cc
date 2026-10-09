@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <map>
 #include <memory>
 #include <thread>
 
@@ -36,11 +37,18 @@
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -65,6 +73,7 @@ DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
+DECLARE_int32(follower_unavailable_considered_failed_sec);
 
 DEFINE_NON_RUNTIME_int32(num_test_tablets, 60, "Number of tablets for stress test");
 
@@ -362,6 +371,135 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   ASSERT_OK(RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer2));
   ASSERT_OK(RestoreMasterConnectivityTo(new_cohort_peer1, old_leader_idx));
   ASSERT_OK(RestoreMasterConnectivityTo(new_cohort_peer2, old_leader_idx));
+}
+
+// Verify that the master eventually deletes an evicted replica after a network partition heals.
+TEST_F(MasterPartitionedTest, DeleteEvictedReplicaAfterConnectivityRestored) {
+  const auto kTimeout = 30s * kTimeMultiplier;
+
+  ASSERT_EQ(cluster_->num_tablet_servers(), 5);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_unavailable_considered_failed_sec) =
+      5 * kTimeMultiplier;
+
+  DontVerifyClusterBeforeNextTearDown();
+
+  for (size_t ts_idx = cluster_->num_masters(); ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(ts_idx));
+  }
+
+  const int kNumTablets = 6;
+  YBTableName table_name(YQL_DATABASE_REDIS, "my_keyspace", "delete_evicted_replica");
+  ASSERT_NO_FATALS(CreateTable(table_name, kNumTablets));
+
+  std::shared_ptr<client::YBTable> table;
+  ASSERT_OK(client_->OpenTable(table_name, &table));
+  const auto table_id = table->id();
+
+  ASSERT_OK(WaitFor([this, &table_id]() -> Result<bool> {
+    std::map<std::string, int> running_per_tablet;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      for (const auto& peer : cluster_->GetTabletManager(i)->GetTabletPeersWithTableId(table_id)) {
+        if (peer->CheckRunning().ok()) {
+          ++running_per_tablet[peer->tablet_id()];
+        }
+      }
+    }
+    if (running_per_tablet.size() < static_cast<size_t>(kNumTablets)) {
+      return false;
+    }
+    for (const auto& [id, count] : running_per_tablet) {
+      if (count < 3) {
+        return false;
+      }
+    }
+    return true;
+  }, kTimeout, "Wait for all tablets to have 3 running replicas"));
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    for (size_t ts_idx = cluster_->num_masters(); ts_idx < cluster_->num_tablet_servers();
+         ++ts_idx) {
+      if (cluster_->GetTabletManager(ts_idx)->GetLeaderCount() != 0) {
+        return false;
+      }
+    }
+    return true;
+  }, kTimeout, "Wait for leaders to move off the leader blacklisted tablet servers"));
+
+  std::string tablet_id;
+  size_t target_ts_idx = 0;
+  for (size_t ts_idx = cluster_->num_masters(); ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    for (const auto& peer :
+         cluster_->GetTabletManager(ts_idx)->GetTabletPeersWithTableId(table_id)) {
+      if (peer->CheckRunning().ok()) {
+        tablet_id = peer->tablet_id();
+        target_ts_idx = ts_idx;
+        break;
+      }
+    }
+    if (!tablet_id.empty()) {
+      break;
+    }
+  }
+  ASSERT_FALSE(tablet_id.empty())
+      << "Could not find a follower replica on a tablet server with index >= num_masters()";
+  const auto target_uuid = cluster_->mini_tablet_server(target_ts_idx)->server()->permanent_uuid();
+  LOG(INFO) << "Target: tablet " << tablet_id << ", follower replica on tablet server "
+            << target_ts_idx << " (" << target_uuid << ")";
+
+  {
+    auto peer = cluster_->GetTabletManager(target_ts_idx)->LookupTablet(tablet_id);
+    ASSERT_TRUE(peer != nullptr);
+    ASSERT_OK(peer->CheckRunning());
+  }
+
+  LOG(INFO) << "Isolating tablet server " << target_ts_idx;
+  ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), target_ts_idx));
+
+  ASSERT_OK(WaitFor([this, &target_uuid]() -> Result<bool> {
+    auto* master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master();
+    auto desc = VERIFY_RESULT(master->ts_manager()->LookupTSByUUID(target_uuid));
+    return !desc->IsLive();
+  }, kTimeout, "Wait for the master to mark the isolated tablet server as dead"));
+  LOG(INFO) << "Master marked tablet server " << target_uuid << " as dead";
+
+  ASSERT_OK(WaitFor([this, &tablet_id, &target_uuid]() -> Result<bool> {
+    auto leader_peer = GetLeaderPeerForTablet(cluster_.get(), tablet_id);
+    if (!leader_peer.ok()) {
+      return false;
+    }
+    auto consensus = VERIFY_RESULT((*leader_peer)->GetConsensus());
+    for (const auto& member : consensus->CommittedConfig().peers()) {
+      if (member.permanent_uuid() == target_uuid) {
+        return false;
+      }
+    }
+    return true;
+  }, kTimeout, "Wait for the isolated replica to be evicted from the Raft config"));
+  LOG(INFO) << "Isolated replica was evicted from the Raft config of tablet " << tablet_id;
+
+  {
+    auto peer = cluster_->GetTabletManager(target_ts_idx)->LookupTablet(tablet_id);
+    ASSERT_TRUE(peer != nullptr);
+    const auto data_state = peer->tablet_metadata()->tablet_data_state();
+    ASSERT_NE(data_state, tablet::TABLET_DATA_TOMBSTONED);
+    ASSERT_NE(data_state, tablet::TABLET_DATA_DELETED);
+  }
+
+  LOG(INFO) << "Restoring connectivity to tablet server " << target_ts_idx;
+  ASSERT_OK(SetupConnectivityWithAll(cluster_.get(), target_ts_idx, Connectivity::kOn));
+
+  ASSERT_OK(WaitFor([this, target_ts_idx, &tablet_id]() -> Result<bool> {
+    auto peer = cluster_->GetTabletManager(target_ts_idx)->LookupTablet(tablet_id);
+    if (peer == nullptr) {
+      return true;
+    }
+    const auto data_state = peer->tablet_metadata()->tablet_data_state();
+    return data_state == tablet::TABLET_DATA_TOMBSTONED ||
+           data_state == tablet::TABLET_DATA_DELETED;
+  }, kTimeout, "Wait for the master to delete the evicted replica on the reconnected tserver"));
+  LOG(INFO) << "Master deleted the evicted replica on reconnected tserver " << target_uuid;
 }
 
 }  // namespace yb

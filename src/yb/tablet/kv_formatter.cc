@@ -20,6 +20,8 @@
 
 #include "yb/rocksdb/db/dbformat.h"
 
+#include "yb/util/status_format.h"
+
 using namespace std::literals;
 
 namespace yb::tablet {
@@ -101,6 +103,10 @@ Status KVFormatter::ProcessArgument(const std::string& argument) {
   }
 
   return STATUS_FORMAT(InvalidArgument, "Unknown formatter argument: $0", argument);
+}
+
+bool KVFormatter::CanDecodePackedRows() const {
+  return schema_packing_provider_ != nullptr;
 }
 
 }  // namespace yb::tablet

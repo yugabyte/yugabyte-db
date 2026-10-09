@@ -46,6 +46,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tcmalloc_util.h"

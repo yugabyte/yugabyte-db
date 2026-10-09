@@ -127,6 +127,7 @@ message XClusterConsumerStreamTabletStatusPB {
   required bytes producer_tablet_id = 1;
   required int64 consumer_term = 2;
   required ReplicationErrorPb error = 3;
+  optional string error_detail = 4;
 }
 
 message XClusterConsumerTableStatusPB {
@@ -148,6 +149,10 @@ message FullCompactionStatusPB {
    // Time of completion of the last fully completed full compaction.
    // Raw representation of a HybridTime.
   optional fixed64 last_full_compaction_time = 3;
+}
+
+message YsqlDbOldestPinnedReadTime {
+  optional fixed64 db_level_oldest_read_time = 1;
 }
 
 message ReportedTabletUpdatesPB {
@@ -256,6 +261,10 @@ message TSHeartbeatRequestPB {
 
   repeated XClusterConsumerReplicationStatusPB
       xcluster_consumer_replication_status = 23;
+
+  // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
+  // map[db_oid] -> earliest local live transaction registered for that db.
+  map<uint32, YsqlDbOldestPinnedReadTime> ts_ysql_db_oldest_pinned_read_times = 24;
 }
 
 message TSHeartbeatResponsePB {
@@ -333,13 +342,15 @@ message TSHeartbeatResponsePB {
   // the server to be in a severe bad state and should be immediately shutdown.
   optional bool is_fatal_error = 27;
 
-  optional uint32 oid_cache_invalidations_count = 29;
+  // Moved to xcluster_guarded_info via auto flag skip_fields_moved_to_xcluster_guarded_info.
+  optional uint32 DEPRECATED_oid_cache_invalidations_count = 29;
 
   message XClusterHeartbeatInfo {
     // Local NamespaceId -> xCluster info for that namespace.
     map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 1;
   }
-  optional XClusterHeartbeatInfo xcluster_heartbeat_info = 30;
+  // Moved to xcluster_guarded_info via auto flag skip_fields_moved_to_xcluster_guarded_info.
+  optional XClusterHeartbeatInfo DEPRECATED_xcluster_heartbeat_info = 30;
 
   optional ReplicationInfoPB cluster_replication_info = 31;
 
@@ -347,6 +358,26 @@ message TSHeartbeatResponsePB {
   // as per master's view. Tservers use this to proactively mark replicas hosted by
   // these tservers as followers in their meta-cache.
   repeated string leader_blacklisted_tservers_with_no_leaders = 32;
+
+  // Cluster-wide oldest read HybridTime pinned by live PG transactions, aggregated across
+  // all live tservers. map[db_oid] -> earliest live transaction registered for that db.
+  map<uint32, YsqlDbOldestPinnedReadTime> cluster_ysql_db_oldest_pinned_read_times = 33;
+
+  // Always true once the master has received database pins from every live tserver, false
+  // otherwise. Tservers must apply cluster_ysql_db_oldest_pinned_read_times only when
+  // this is true, and keep their last applied cluster pin map otherwise. If false, the map
+  // may be incomplete and needs no special handling since it is not applied.
+  //
+  // Defaults to true so that an outdated master keeps the previous behavior of
+  // applying every map it sends.
+  optional bool cluster_ysql_db_pins_ready = 34 [default = true];
+
+  // xCluster-guarded information.
+  optional XClusterGuardedInfoPB xcluster_guarded_info = 35;
+
+  // If present, this heartbeat response grants the TServer a xCluster-guarded information lease
+  // of this duration from when the TServer sent the heartbeat request.
+  optional uint32 xcluster_guarded_lease_duration_ms = 36;
 }
 
 service MasterHeartbeat {

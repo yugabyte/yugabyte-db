@@ -13,6 +13,8 @@ package com.yugabyte.yw.common.ha;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -44,15 +46,18 @@ import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.NodeAgent;
+import jakarta.persistence.PersistenceException;
 import java.io.File;
 import java.net.URL;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -152,8 +157,9 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       expectedCommandArgs.add("create");
       expectedCommandArgs.add("--exclude_prometheus");
       expectedCommandArgs.add("--exclude_releases");
-      expectedCommandArgs.add("--exclude_pa_database");
+      // HA sync backup includes PA "configuration" tables via --include_pa_config_only so
       expectedCommandArgs.add("--exclude_pa_files");
+      expectedCommandArgs.add("--include_pa_config_only");
       expectedCommandArgs.add("--disable_version_check");
       if (isYbaInstaller) {
         expectedCommandArgs.add("--pg_dump_path");
@@ -237,6 +243,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
         .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
+    when(mockConfig.getString("yb.pa.url")).thenReturn("http://localhost:9000");
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.disablePlatformHARestoreTransaction)))
         .thenReturn(false);
     doCallRealMethod()
@@ -397,5 +404,67 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     // All node agents upgraded, query was made to metrics to confirm if they got upgraded before
     // the backup was taken.
     verify(mockMetricQueryHelper, times(1)).queryDirect(anyString());
+  }
+
+  @Test
+  public void testStalePlanErrorIsRecognisedThroughTheCauseChain() {
+    // What Ebean actually hands us: the driver's SQLException wrapped in a PersistenceException.
+    assertTrue(
+        PlatformReplicationManager.isStalePlanError(
+            new PersistenceException(
+                "Query threw SQLException",
+                new SQLException("ERROR: cached plan must not change result type"))));
+    // Same condition reported by SQL state alone.
+    assertTrue(
+        PlatformReplicationManager.isStalePlanError(
+            new PersistenceException(new SQLException("some other wording", "0A000"))));
+    assertFalse(
+        PlatformReplicationManager.isStalePlanError(
+            new PersistenceException(
+                "Query threw SQLException",
+                new SQLException("ERROR: duplicate key violates unique constraint", "23505"))));
+    assertFalse(PlatformReplicationManager.isStalePlanError(new RuntimeException("unrelated")));
+  }
+
+  @Test
+  public void testStalePlanErrorDoesNotLoopOnACyclicCauseChain() {
+    // Throwable rejects a throwable that causes itself, but not a pair that cause each other,
+    // so walking the chain has to terminate on its own rather than hang the promotion.
+    SQLException first = new SQLException("boom", "42P01");
+    SQLException second = new SQLException("bang", "42P01", first);
+    first.initCause(second);
+    assertFalse(PlatformReplicationManager.isStalePlanError(first));
+  }
+
+  @Test
+  public void testPromotionIsRetriedOnceAfterAStalePlan() {
+    AtomicInteger attempts = new AtomicInteger();
+    backupManager.retryOnStalePlan(
+        "test operation",
+        () -> {
+          if (attempts.incrementAndGet() == 1) {
+            throw new PersistenceException(
+                new SQLException("ERROR: cached plan must not change result type"));
+          }
+        });
+    assertEquals(2, attempts.get());
+  }
+
+  @Test
+  public void testAnUnrelatedFailureIsNotRetried() {
+    AtomicInteger attempts = new AtomicInteger();
+    RuntimeException thrown = new RuntimeException("not a stale plan");
+    RuntimeException caught =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                backupManager.retryOnStalePlan(
+                    "test operation",
+                    () -> {
+                      attempts.incrementAndGet();
+                      throw thrown;
+                    }));
+    assertSame(thrown, caught);
+    assertEquals(1, attempts.get());
   }
 }

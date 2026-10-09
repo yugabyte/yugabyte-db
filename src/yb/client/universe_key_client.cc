@@ -26,6 +26,8 @@
 
 #include "yb/rpc/secure.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
@@ -71,6 +73,12 @@ void UniverseKeyClient::ProcessGetUniverseKeyRegistryResponse(
   if (!rpc->status().ok() || resp->has_error()) {
     YB_LOG_EVERY_N(WARNING, 100) << Format(
         "Rpc status: $0, resp: $1", rpc->status(), resp->ShortDebugString());
+
+    // The callback is invoked inline on the reactor thread when the callback thread pool rejects
+    // it, i.e. during shutdown. Retrying there would block the reactor forever.
+    if (!rpc->thread_pool_failure().ok()) {
+      return;
+    }
 
     // Always retry the request on failure.
     backoff_waiter.Wait();

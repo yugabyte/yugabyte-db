@@ -138,6 +138,7 @@ reset enable_bitmapscan;
 -- test parallel merge join path.
 set enable_hashjoin to off;
 set enable_nestloop to off;
+set yb_bnl_batch_size to 1;
 
 explain (costs off)
 	select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
@@ -145,6 +146,7 @@ select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
 
 reset enable_hashjoin;
 reset enable_nestloop;
+reset yb_bnl_batch_size;
 
 -- test gather merge
 set enable_hashagg = false;
@@ -329,6 +331,7 @@ DEALLOCATE pstmt;
 
 -- test interaction between subquery and partial_paths
 SET LOCAL min_parallel_table_scan_size TO 0;
+SET LOCAL yb_test_force_parallel = force;
 CREATE VIEW tenk1_vw_sec WITH (security_barrier) AS SELECT * FROM tenk1;
 EXPLAIN (COSTS OFF)
 SELECT 1 FROM tenk1_vw_sec

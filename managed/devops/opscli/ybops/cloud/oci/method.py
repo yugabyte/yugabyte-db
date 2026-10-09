@@ -58,6 +58,11 @@ class OciCreateInstancesMethod(CreateInstancesMethod):
             "--memory_in_gbs", type=float, default=None,
             help="Memory in GBs for Flex shapes."
         )
+        self.parser.add_argument(
+            "--instance_template",
+            default=None,
+            help="OCI Instance Configuration OCID for launched instances."
+        )
 
     def run_create_instance(self, args):
         if args.ssh_user is not None:
@@ -132,16 +137,35 @@ class OciDeleteRootVolumesMethod(DeleteRootVolumesMethod):
 
 
 class OciReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
+    """--replacement_disk carries the target image OCID. OCI generates the new boot volume from
+    it during the instance update, so there is no disk to detach or attach beforehand.
+    """
 
     def __init__(self, base_command):
         super(OciReplaceRootVolumeMethod, self).__init__(base_command)
 
-    def _mount_root_volume(self, args, volume):
-        raise YBOpsRuntimeError("Root volume replacement not supported for OCI")
+    def add_extra_args(self):
+        super(OciReplaceRootVolumeMethod, self).add_extra_args()
+        self.parser.add_argument("--force_replacement", action="store_true", default=False,
+                                 help="Replace the boot volume even if it was already created "
+                                      "from the image, as a forced VM image upgrade does.")
+
+    def _mount_root_volume(self, host_info, image_id):
+        self.cloud.replace_boot_volume(
+            host_info, image_id, force=host_info.get("force_replacement", False))
+
+    # replace_boot_volume waits for an unfinished replacement and skips one already done itself.
+    # The base checks query cloud.get_disk, which OCI does not implement.
+    def _is_disk_mounting(self, host_info, volume_id, args):
+        return False
+
+    def _is_disk_mounted(self, host_info, volume_id, args):
+        return False
 
     def _host_info_with_current_root_volume(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return (vars(args), None)
+        host_info["force_replacement"] = getattr(args, "force_replacement", False)
+        return (host_info, None)
 
 
 class OciQueryRegionsMethod(AbstractMethod):
@@ -265,6 +289,74 @@ class OciAccessAddKeyMethod(AbstractAccessMethod):
     def callback(self, args):
         (private_key_file, public_key_file) = self.validate_key_files(args)
         print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
+
+
+class AbstractDnsMethod(AbstractMethod):
+    def __init__(self, base_command, method_name):
+        super(AbstractDnsMethod, self).__init__(base_command, method_name)
+        self.ip_list = []
+        self.naming_info_required = True
+
+    def add_extra_args(self):
+        super(AbstractDnsMethod, self).add_extra_args()
+        self.parser.add_argument("--hosted_zone_id", required=True,
+                                 help="The OCID of the OCI DNS zone.")
+        self.parser.add_argument("--domain_name_prefix", required=self.naming_info_required,
+                                 help="The prefix to create the RecordSet with, in your Zone.")
+        self.parser.add_argument("--node_ips", required=self.naming_info_required,
+                                 help="The CSV of the node IPs to associate to this DNS entry.")
+
+    def preprocess_args(self, args):
+        super(AbstractDnsMethod, self).preprocess_args(args)
+        if args.node_ips:
+            self.ip_list = args.node_ips.split(',')
+
+
+class OciCreateDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(OciCreateDnsEntryMethod, self).__init__(base_command, "create")
+
+    def callback(self, args):
+        self.cloud.create_dns_record_set(
+            args.hosted_zone_id, args.domain_name_prefix, self.ip_list)
+
+
+class OciEditDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(OciEditDnsEntryMethod, self).__init__(base_command, "edit")
+
+    def callback(self, args):
+        self.cloud.edit_dns_record_set(
+            args.hosted_zone_id, args.domain_name_prefix, self.ip_list)
+
+
+class OciDeleteDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(OciDeleteDnsEntryMethod, self).__init__(base_command, "delete")
+
+    def callback(self, args):
+        self.cloud.delete_dns_record_set(args.hosted_zone_id, args.domain_name_prefix)
+
+
+class OciListDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(OciListDnsEntryMethod, self).__init__(base_command, "list")
+        self.naming_info_required = False
+
+    def callback(self, args):
+        try:
+            result = self.cloud.list_dns_record_set(args.hosted_zone_id)
+            if getattr(result, 'is_protected', False):
+                print(json.dumps({'error': (
+                    "DNS zone {} ({}) is OCI-managed and does not accept record changes. "
+                    "Use a private zone you created, in a view attached to the VCN's "
+                    "resolver.".format(result.name, args.hosted_zone_id))}))
+                return
+            print(json.dumps({
+                'name': result.name
+            }))
+        except Exception as e:
+            print(json.dumps({'error': repr(e)}))
 
 
 class OciAbstractNetworkMethod(AbstractMethod):

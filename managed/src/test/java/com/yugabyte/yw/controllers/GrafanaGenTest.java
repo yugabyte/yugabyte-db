@@ -17,6 +17,7 @@ import org.junit.Test;
 import play.Environment;
 import play.Mode;
 import play.libs.Json;
+import play.test.Helpers;
 
 @Slf4j
 public class GrafanaGenTest extends FakeDBApplication {
@@ -105,7 +106,8 @@ public class GrafanaGenTest extends FakeDBApplication {
     GrafanaGenTest metricGenTest = new GrafanaGenTest();
     String dashboardGenPath = args[0];
     try {
-      metricGenTest.startServer();
+      metricGenTest.app = metricGenTest.provideApplication();
+      Helpers.start(metricGenTest.app);
       ObjectNode expectedDashboard = metricGenTest.getExpectedDashboard();
       ObjectNode currentDashboard = metricGenTest.getCurrentDashboard();
       boolean match = expectedDashboard.equals(currentDashboard);
@@ -117,7 +119,9 @@ public class GrafanaGenTest extends FakeDBApplication {
         MetricGrafanaGen.writeJSON(expectedDashboard, dashboardGenPath);
       }
     } finally {
-      metricGenTest.stopServer();
+      if (metricGenTest.app != null) {
+        Helpers.stop(metricGenTest.app);
+      }
     }
   }
 }

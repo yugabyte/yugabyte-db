@@ -16,7 +16,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class WaitForMasterLeader extends AbstractTaskBase {
@@ -41,7 +41,7 @@ public class WaitForMasterLeader extends AbstractTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info("Running {}: masterAddresses={}.", getName(), universe.getMasterAddresses());
       client.waitForMasterLeader(config.getDuration("yb.wait_for_server_timeout").toMillis());
     } catch (Exception e) {

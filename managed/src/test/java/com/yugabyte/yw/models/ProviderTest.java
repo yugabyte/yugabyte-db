@@ -23,7 +23,6 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import jakarta.persistence.OptimisticLockException;
 import java.util.Collections;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -71,7 +70,7 @@ public class ProviderTest extends FakeDBApplication {
     try {
       Provider.create(defaultCustomer.getUuid(), Common.CloudType.aws, "Amazon");
     } catch (Exception e) {
-      assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
+      assertThat(e.getMessage(), containsString("duplicate key value violates unique constraint"));
     }
   }
 
@@ -107,8 +106,9 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testCreateProviderWithSameName() {
+    Customer otherCustomer = ModelFactory.testCustomer("tc2", "Test Customer 2");
     Provider p1 = ModelFactory.awsProvider(defaultCustomer);
-    Provider p2 = Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
+    Provider p2 = Provider.create(otherCustomer.getUuid(), Common.CloudType.aws, "Amazon");
     assertNotNull(p1);
     assertNotNull(p2);
   }

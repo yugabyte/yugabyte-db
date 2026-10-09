@@ -54,7 +54,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
@@ -106,7 +106,7 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       try {
         Set<UUID> tableSet = new HashSet<>(params().tableUUIDList);
-        try (YBClient client = ybService.getUniverseClient(universe)) {
+        try (YBClientApi client = ybService.getUniverseClient(universe)) {
           // If user specified the list of tables, only get info for those tables.
           if (tableSet.size() != 0) {
             for (UUID tableUUID : tableSet) {

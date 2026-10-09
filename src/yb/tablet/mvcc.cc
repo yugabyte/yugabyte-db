@@ -46,6 +46,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
 

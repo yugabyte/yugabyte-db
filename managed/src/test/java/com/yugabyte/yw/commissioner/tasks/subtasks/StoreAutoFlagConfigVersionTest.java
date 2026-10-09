@@ -20,7 +20,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.GetAutoFlagsConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -86,7 +86,7 @@ public class StoreAutoFlagConfigVersionTest extends FakeDBApplication {
               u.setUniverseDetails(details);
             });
 
-    YBClient mockClient = org.mockito.Mockito.mock(YBClient.class);
+    YBClientApi mockClient = org.mockito.Mockito.mock(YBClientApi.class);
     when(ybClientService.getUniverseClient(any())).thenReturn(mockClient);
     GetAutoFlagsConfigResponsePB responsePb =
         GetAutoFlagsConfigResponsePB.newBuilder()

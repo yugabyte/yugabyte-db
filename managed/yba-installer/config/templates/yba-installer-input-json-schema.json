@@ -315,6 +315,29 @@
             }
           }
         },
+        "byocApiProxy": {
+          "description": "BYOC API Proxy Config Parameters",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^(latest|[0-9]+\\.[0-9]+\\.[0-9]+)$"
+            },
+            "downloadBaseUrl": {
+              "type": "string"
+            },
+            "restartSeconds": {
+              "type": "integer"
+            },
+            "appConfig": {
+              "description": "Free-form Spring Boot properties for the proxy's application.yaml",
+              "type": "object"
+            }
+          }
+        },
         "installRoot": {
           "type": "string"
         },

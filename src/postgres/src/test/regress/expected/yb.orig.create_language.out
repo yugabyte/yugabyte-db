@@ -2,7 +2,9 @@
 -- YB_FEATURE Testsuite: CREATE LANGUAGE
 --
 DROP EXTENSION plpgsql CASCADE;
-NOTICE:  drop cascades to function myfunc(integer)
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to function myfunc(integer)
+drop cascades to function yb_create_global_view(text,text)
 CREATE LANGUAGE plpgsql;
 CREATE FUNCTION test() RETURNS INTEGER AS $$begin return 1; end$$ LANGUAGE plpgsql;
 SELECT * FROM test();

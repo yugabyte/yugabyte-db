@@ -7,6 +7,7 @@ import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -177,7 +178,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
   }
 
   private void validateNodeDiskSize(Cluster cluster, ServerType serverType) {
-    boolean isKubernetes = cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes);
+    boolean isKubernetes = Util.isKubernetesBased(cluster);
 
     Function<NodeDetails, Boolean> serverTypeFilter =
         (nD) ->
@@ -258,7 +259,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
 
   private double fetchDiskSizeLocally(Cluster cluster, NodeDetails node) {
     // The method getDeviceInfoForNode takes care of dedicated masters case
-    DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+    DeviceInfo deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
     return deviceInfo.volumeSize == null ? -1.0 : deviceInfo.volumeSize;
   }
 
@@ -270,7 +271,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
         .forEach(
             n -> {
               UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
-              DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(n);
+              DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
               if (deviceInfo != null && StringUtils.isNotEmpty(deviceInfo.mountPoints)) {
                 nodeMountPoints.put(
                     n.getNodeName(),
@@ -285,9 +286,8 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     Cluster cluster = taskParams().getClusterByUuid(taskParams().clusterUuid);
-    CloudType cloudType = cluster.userIntent.providerType;
     boolean isDedicated = cluster.userIntent.dedicatedNodes;
-    if ((cloudType == CloudType.kubernetes) || isDedicated) {
+    if (Util.isKubernetesBased(cluster) || isDedicated) {
       if (taskParams().mastersChanged) {
         validateNodeDiskSize(cluster, ServerType.MASTER);
       }

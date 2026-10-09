@@ -3887,7 +3887,7 @@ def CheckBraces(filename, clean_lines, linenum, error):
       (endline, endlinenum, endpos) = CloseExpression(clean_lines, linenum, pos)
     # Check for an opening brace, either directly after the if or on the next
     # line. If found, this isn't a single-statement conditional.
-    if (not Match(r'\s*{', endline[endpos:])
+    if (not Match(r'\s*(?:\[\[(?:un)?likely\]\]\s*)?{', endline[endpos:])
         and not (Match(r'\s*$', endline[endpos:])
                  and endlinenum < (len(clean_lines.elided) - 1)
                  and Match(r'\s*{', clean_lines.elided[endlinenum + 1]))):

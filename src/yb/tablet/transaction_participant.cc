@@ -27,6 +27,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
+#include "yb/client/transaction_status_tablets.h"
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
@@ -45,9 +46,9 @@
 #include "yb/tablet/cleanup_aborts_task.h"
 #include "yb/tablet/cleanup_intents_task.h"
 #include "yb/tablet/operations/update_txn_operation.h"
-#include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/running_transaction.h"
 #include "yb/tablet/running_transaction_context.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_loader.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/transaction_status_resolver.h"
@@ -59,7 +60,6 @@
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
@@ -117,6 +117,12 @@ DEFINE_RUNTIME_AUTO_bool(cdc_write_post_apply_metadata, kLocalPersisted, false, 
 DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, true,
     "Clean up transactions from memory after apply, even if its changes have not yet been "
     "streamed by CDC.");
+
+DEFINE_RUNTIME_bool(cdc_enable_time_based_intent_retention, false,
+    "When true, the cleanup of intent sst files for tablets under CDCSDK replication is done based "
+    "on the age of these files. These files will be retained for at least "
+    "cdc_min_sec_to_retain_intent seconds and then will be asynchronously deleted.");
+
 DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
     "Delays the abort callback in StopActiveTxns to repro GitHub #23399.");
 
@@ -129,6 +135,7 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(clear_deadlocked_txns_info_older_than_heartbeats);
 
 DECLARE_bool(use_bootstrap_intent_ht_filter);
+DECLARE_bool(consistent_restore);
 
 METRIC_DEFINE_simple_counter(
     tablet, transaction_not_found, "Total number of missing transactions during load",
@@ -138,7 +145,9 @@ METRIC_DEFINE_simple_gauge_uint64(
     yb::MetricUnit::kTransactions);
 METRIC_DEFINE_simple_gauge_uint64(
     tablet, aborted_transactions_pending_cleanup,
-    "Total number of aborted transactions running in participant",
+    "Number of transactions held in memory whose last known status is ABORTED; includes "
+    "transactions the coordinator has forgotten, which it reports as ABORTED and which may "
+    "actually have committed",
     yb::MetricUnit::kTransactions);
 METRIC_DEFINE_simple_gauge_uint64(
     tablet, wal_replayable_applied_transactions,
@@ -203,8 +212,7 @@ DEFINE_test_flag(uint64, wait_inactive_transaction_cleanup_sleep_ms, 0,
                  "The amount of time the thread sleeps while waiting for the transaction to be "
                  "cleaned up");
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 namespace {
 
@@ -260,8 +268,8 @@ class TransactionParticipant::Impl
             CreateMetrics::kFalse)),
         recently_applied_(typename RecentlyAppliedTransactions::allocator_type(mem_tracker_)),
         loader_(this, entity),
-        poller_(log_prefix_, std::bind(&Impl::Poll, this)),
-        wait_queue_poller_(log_prefix_, std::bind(&Impl::PollWaitQueue, this)) {
+        poller_(log_prefix_, [this] { Poll(); }),
+        wait_queue_poller_(log_prefix_, [this] { PollWaitQueue(); }) {
     LOG_WITH_PREFIX(INFO) << "Create";
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
@@ -284,7 +292,7 @@ class TransactionParticipant::Impl
         METRIC_current_fast_mode_rr_rc_transactions.Instantiate(entity, 0);
   }
 
-  ~Impl() {
+  ~Impl() override {
     if (StartShutdown()) {
       CompleteShutdown();
     } else {
@@ -426,6 +434,12 @@ class TransactionParticipant::Impl
       RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
       return CreateAbortedStatus("Transaction was recently aborted: $0", metadata.transaction_id);
     }
+    // Do not (re)create a transaction that started at or before a restore boundary.
+    if (metadata.start_time <= ignore_all_transactions_started_before_) {
+      return CreateAbortedStatus(
+          "Transaction $0 started at $1, which is at or before the restore boundary $2",
+          metadata.transaction_id, metadata.start_time, ignore_all_transactions_started_before_);
+    }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
 
     VLOG_WITH_PREFIX(3) << "Adding a new transaction txn_id: " << metadata.transaction_id
@@ -523,6 +537,11 @@ class TransactionParticipant::Impl
 
   template <class PB>
   Result<TransactionMetadata> PrepareMetadata(const PB& pb) {
+    // If this is a historical read, we don't need to check the transaction status.
+    if (pb.is_read_only_historical_committed_txn()) {
+      return TransactionMetadata::FromPB(pb);
+    }
+
     if (pb.has_isolation()) {
       auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(pb));
       std::unique_lock<std::mutex> lock(mutex_);
@@ -912,7 +931,14 @@ class TransactionParticipant::Impl
       std::lock_guard lock(mutex_);
       const OpId& cdcsdk_checkpoint_op_id = GetLatestCheckPointUnlocked();
 
-      if (cdcsdk_checkpoint_op_id != OpId::Max()) {
+      if (cdcsdk_checkpoint_op_id != OpId::Max() &&
+          FLAGS_cdc_enable_time_based_intent_retention) {
+        // Time-based intent retention is enabled on this CDC tablet. Defer the intent cleanup to
+        // the intent SST file cleanup pathway, which enforces the retention interval. Leaving the
+        // set empty means no intents are removed here.
+        VLOG_WITH_PREFIX(2)
+            << "Skipping aborted transaction intent cleanup due to time-based intent retention";
+      } else if (cdcsdk_checkpoint_op_id != OpId::Max()) {
         for (const auto& [transaction_id, apply_op_id] : txns) {
           const OpId* apply_record_op_id = &apply_op_id;
           if (!apply_op_id.valid()) {
@@ -1026,6 +1052,7 @@ class TransactionParticipant::Impl
       }
       if (data.apply_to_storages.Any()) {
         auto apply_state = applier_.ApplyIntents(data);
+        TEST_SYNC_POINT("TransactionParticipant::ApplyIntentsDone");
 
         VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                             << apply_state.ToString();
@@ -1110,7 +1137,7 @@ class TransactionParticipant::Impl
     if (handle != rpcs_.InvalidHandle()) {
       *handle = UpdateTransaction(
           TransactionRpcDeadline(),
-          nullptr /* remote_tablet */,
+          /*tablet=*/nullptr,
           client,
           &req,
           GuardedByWeak(weak_from_this(), [this, handle](
@@ -1332,6 +1359,10 @@ class TransactionParticipant::Impl
     // committed/applied, aborted or we realize that transaction was not committed at
     // resolve_at.
     for (;;) {
+      // Committed transactions are no longer applied once shutdown starts, so waiting for them
+      // below would block until the deadline and stall shutdown of the calling RPC handler thread.
+      RETURN_NOT_OK(CheckClosing());
+
       TransactionStatusResolver resolver(
           &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
           [this, resolve_at, &recheck_ids, &committed_ids](
@@ -1601,11 +1632,13 @@ class TransactionParticipant::Impl
   }
 
   Status ReplicateUpdateTransactionPromoting(
-      const TransactionId& transaction_id, const TabletId& new_status_tablet) {
+      const TransactionId& transaction_id, const ReplicatedData& data,
+      const TabletId& new_status_tablet) {
     RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
     MinRunningNotifier min_running_notifier(&applier_);
 
     TransactionStatusResult txn_status_res;
+    bool signal_promoted{wait_queue_};
     {
       std::lock_guard lock(mutex_);
 
@@ -1618,17 +1651,23 @@ class TransactionParticipant::Impl
       auto& transaction = *it;
       // Leader has already applied the update.
       if (transaction->metadata().status_tablet == new_status_tablet) {
-        return Status::OK();
+        signal_promoted = false;
+      } else {
+        txn_status_res = DoUpdateTransactionPromoting(*transaction, new_status_tablet);
+        TransactionsModifiedUnlocked(&min_running_notifier);
       }
-
-      txn_status_res = DoUpdateTransactionPromoting(*transaction, new_status_tablet);
-      TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
-    if (wait_queue_) {
+    if (signal_promoted) {
       wait_queue_->SignalPromoted(transaction_id, std::move(txn_status_res));
     }
-    return Status::OK();
+
+    VLOG_WITH_PREFIX(3) << "Writing status moved metadata for promoted operation";
+    yb::LWTransactionMetadataPB update(&data.state.arena());
+    update.set_locality(TransactionLocality::GLOBAL);
+    update.ref_status_tablet(data.state.tablets().front());
+    return applier_.WriteTransactionMetadataUpdate(
+        data.op_id, data.hybrid_time, data.state.transaction_id(), update);
   }
 
   void RecordConflictResolutionKeysScanned(int64_t num_keys) {
@@ -1636,7 +1675,7 @@ class TransactionParticipant::Impl
   }
 
   void RecordConflictResolutionScanLatency(MonoDelta latency) {
-    metric_conflict_resolution_latency_->Increment(latency.ToMilliseconds());
+    metric_conflict_resolution_latency_->Increment(latency.ToMicroseconds());
   }
 
   Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
@@ -1646,7 +1685,7 @@ class TransactionParticipant::Impl
     RETURN_NOT_OK(loader_.WaitAllLoaded());
     std::lock_guard lock(mutex_);
     return DoProcessRecentlyAppliedTransactions(
-        retryable_requests_flushed_op_id, false /* persist */);
+        retryable_requests_flushed_op_id, /*persist=*/false);
   }
 
   void SetRetryableRequestsFlushedOpId(const OpId& flushed_op_id) EXCLUDES(mutex_) {
@@ -1657,7 +1696,7 @@ class TransactionParticipant::Impl
   Status ProcessRecentlyAppliedTransactions() EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     return ResultToStatus(DoProcessRecentlyAppliedTransactions(
-        retryable_requests_flushed_op_id_, true /* persist */));
+        retryable_requests_flushed_op_id_, /*persist=*/true));
   }
 
   std::weak_ptr<void> RetainWeak() override {
@@ -1789,7 +1828,7 @@ class TransactionParticipant::Impl
   class FirstWriteTimeTag;
   class ApplyOpIdTag;
 
-  typedef boost::multi_index_container<RunningTransactionPtr,
+  using Transactions = boost::multi_index_container<RunningTransactionPtr,
       boost::multi_index::indexed_by <
           boost::multi_index::hashed_unique <
               boost::multi_index::const_mem_fun <
@@ -1806,7 +1845,7 @@ class TransactionParticipant::Impl
                   RunningTransaction, HybridTime, &RunningTransaction::abort_check_ht>
           >
       >
-  > Transactions;
+  >;
 
   struct AppliedTransactionState {
     OpId apply_op_id;
@@ -1876,7 +1915,8 @@ class TransactionParticipant::Impl
         for (const auto& [txn_id, pending_apply] : pending_applies) {
           auto it = transactions_.find(txn_id);
           if (it == transactions_.end()) {
-            LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(txn_id);
+            LOG_WITH_PREFIX(DFATAL)
+                << "Unknown transaction for pending apply: " << AsString(txn_id);
             continue;
           }
 
@@ -2041,7 +2081,13 @@ class TransactionParticipant::Impl
     const TransactionId& txn_id = (**it).id();
     const OpId& op_id = (**it).GetApplyOpId();
     if (op_id <= checkpoint_op_id) {
-      if (PREDICT_TRUE(!FLAGS_TEST_no_schedule_remove_intents)) {
+      // When time-based intent retention is enabled on a CDCSDK tablet, we skip the per-transaction
+      // intent deletion entirely and rely on the intent SST file cleanup pathway to remove intents
+      // only after they are old enough.
+      const bool cdc_active = checkpoint_op_id != OpId::Max();
+      const bool skip_intent_removal =
+          FLAGS_cdc_enable_time_based_intent_retention && cdc_active;
+      if (PREDICT_TRUE(!FLAGS_TEST_no_schedule_remove_intents) && !skip_intent_removal) {
         (**it).ScheduleRemoveIntents(*it, reason);
       }
     } else {
@@ -2147,13 +2193,14 @@ class TransactionParticipant::Impl
       UniqueLock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
-        if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
+        if (FLAGS_consistent_restore &&
+            (**it).start_ht() <= ignore_all_transactions_started_before_) {
           YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
               << "Ignore transaction for '" << reason << "' because of limit: "
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
           return LockAndFindResult{};
         }
-        return LockAndFindResult{std::move(GetLockForCondition(lock)), it};
+        return LockAndFindResult{.lock = std::move(GetLockForCondition(lock)), .iterator = it};
       }
       recently_removed = WasTransactionRecentlyRemoved(id);
       deadlock_status = GetTransactionDeadlockStatusUnlocked(id);
@@ -2349,6 +2396,7 @@ class TransactionParticipant::Impl
   }
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
+    TEST_SYNC_POINT("TransactionParticipant::HandleApplying");
     if (RandomActWithProbability(FLAGS_TEST_transaction_ignore_applying_probability)) {
       VLOG_WITH_PREFIX(2)
           << "TEST: Rejected apply: "
@@ -2395,7 +2443,7 @@ class TransactionParticipant::Impl
                            "Expected only one tablet during PROMOTING, state received: $0",
                            data.state);
     }
-    return ReplicateUpdateTransactionPromoting(id, data.state.tablets().front().ToBuffer());
+    return ReplicateUpdateTransactionPromoting(id, data, data.state.tablets().front().ToBuffer());
   }
 
   Status ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
@@ -2641,7 +2689,8 @@ class TransactionParticipant::Impl
         << "Adding recently applied transaction: "
         << "first_write_ht=" << first_write_ht << " apply_op_id=" << apply_op_id
         << " (cleaned " << cleaned << ")";
-    recently_applied_.insert(AppliedTransactionState{apply_op_id, first_write_ht});
+    recently_applied_.insert(
+        AppliedTransactionState{.apply_op_id = apply_op_id, .first_write_ht = first_write_ht});
     metric_wal_replayable_applied_transactions_->IncrementBy(1 - static_cast<int64_t>(cleaned));
     UpdateMinReplayTxnFirstWriteTimeIfNeeded();
     TEST_SYNC_POINT_CALLBACK(
@@ -3313,5 +3362,4 @@ void FastModeTransactionScope::Reset() {
   participant_ = nullptr;
 }
 
-}  // namespace tablet
-}  // namespace yb
+} // namespace yb::tablet

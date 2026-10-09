@@ -303,7 +303,10 @@ export function buildReadReplicaClusterSizingAndPlacement(
   }
 
   const provider_spec = {
-    region_list: placementRegionUuids
+    region_list: placementRegionUuids,
+    ...(instanceSettings.imageBundleUUID
+      ? { image_bundle_uuid: instanceSettings.imageBundleUUID }
+      : {})
   };
 
   const node_spec = buildReadReplicaNodeSpec(primary, instanceSettings);

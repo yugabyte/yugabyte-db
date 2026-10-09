@@ -54,6 +54,7 @@
 #include "yb/util/range.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"

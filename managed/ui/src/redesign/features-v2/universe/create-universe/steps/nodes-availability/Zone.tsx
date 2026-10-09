@@ -14,9 +14,11 @@ import { HelpOutline } from '@material-ui/icons';
 import Return from '../../../../../assets/tree.svg';
 import RemoveIcon from '../../../../../assets/close-large.svg';
 import BookIcon from '../../../../../assets/blue-book.svg';
+import BulbIcon from '../../../../../assets/bulb.svg';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../helpers/constants';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
-const { MenuItem, Typography, IconButton, Link, styled } = mui;
+const { MenuItem, Typography, IconButton, Link, styled, Divider } = mui;
 
 interface ZoneProps {
   control: Control<NodeAvailabilityProps>;
@@ -58,14 +60,42 @@ const StyledTooltipFooter = styled('div')(({ theme }) => ({
 const StyledPreferedMenuItem = mui.styled(MenuItem)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
-  padding: '16px !important',
+  padding: '8 16px !important',
   gap: '8px',
-  height: 'auto',
+  height: '56px',
   justifyContent: 'flex-start',
   alignItems: 'flex-start',
   width: '300px',
   '.MuiTypography-subtitle1': {
     color: theme.palette.grey[700]
+  }
+}));
+
+const StyledRankingHintMenuItem = styled(MenuItem)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '4px 16px !important',
+  height: '32px',
+  width: '300px',
+  cursor: 'default',
+  pointerEvents: 'none',
+  opacity: '1 !important',
+  color: theme.palette.grey[700],
+  fontSize: '11.5px',
+  lineHeight: '16px',
+  fontWeight: 400,
+  '&.Mui-disabled': {
+    opacity: 1
+  },
+  '& svg': {
+    flexShrink: 0,
+    width: 24,
+    height: 24,
+    '& path': {
+      fill: theme.palette.grey[700]
+    }
   }
 }));
 
@@ -84,9 +114,13 @@ export const Zone: FC<ZoneProps> = ({
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
-  const [{ resilienceAndRegionsSettings }] = (useContext(
+  const { t: tCommon } = useTranslation('translation', { keyPrefix: 'common' });
+  const [{ resilienceAndRegionsSettings, generalSettings }] = useContext(
     CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  ) as unknown as CreateUniverseContextMethods;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
   const isPrefferedAllowed = ![FaultToleranceType.NODE_LEVEL, FaultToleranceType.NONE].includes(
     resilienceAndRegionsSettings!.faultToleranceType
   );
@@ -94,6 +128,8 @@ export const Zone: FC<ZoneProps> = ({
   const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
 
   const availabilityZones = useWatch({ name: 'availabilityZones', control });
+  const useDedicatedNodes = useWatch({ name: 'useDedicatedNodes', control });
+
   const selectedAzCountInRegion = availabilityZones?.[region.code]?.length ?? 0;
   const selectedAzNames = useMemo(
     () =>
@@ -117,36 +153,53 @@ export const Zone: FC<ZoneProps> = ({
         .map((az) => az.map((zone) => zone.preffered))
         .flat()
         .filter((rank) => rank > AZ_NOT_PREFERRED)
-        .reduce(
-          (maxRank, rank) => Math.max(maxRank, rank),
-          AZ_NOT_PREFERRED
-        ),
+        .reduce((maxRank, rank) => Math.max(maxRank, rank), AZ_NOT_PREFERRED),
     [availabilityZones]
   );
 
-  const preferredMenuItems = isPrefferedAllowed
-    ? Array.from({ length: zonesCount }, (_, i) => i + AZ_PREFFERED_HIGHEST_RANK).map((rank) => (
-      <StyledPreferedMenuItem
-        key={rank}
-        value={rank}
-        disabled={rank > maxPrefferedRankSelected + 1}
-      >
-        <Typography variant="body1">{`Rank ${rank}`}</Typography>
-        <Typography variant="subtitle1">
-          {rank === AZ_PREFFERED_HIGHEST_RANK
-            ? 'Default Preferred Zone'
-            : 'Preferred zone if higher-rank zones fail.'}
-        </Typography>
-      </StyledPreferedMenuItem>
-    ))
-    : null;
+  const selectedRegionCount = resilienceAndRegionsSettings?.regions?.length ?? 0;
+  const showCrossRegionRankingHint = selectedRegionCount > 1;
 
-  preferredMenuItems?.unshift(
-    <StyledPreferedMenuItem key="no-option-selected" value={AZ_NOT_PREFERRED}>
-      <Typography variant="body1">No</Typography>
-      <Typography variant="subtitle1">Not Preferred</Typography>
-    </StyledPreferedMenuItem>
-  );
+  const preferredMenuItems = isPrefferedAllowed
+    ? (() => {
+        const options = [
+          ...(showCrossRegionRankingHint
+            ? [
+                <StyledRankingHintMenuItem key="ranking-across-regions-hint" disabled>
+                  <BulbIcon width={24} height={24} />
+                  {t('rankingAcrossRegions')}
+                </StyledRankingHintMenuItem>
+              ]
+            : []),
+          <StyledPreferedMenuItem key="no-option-selected" value={AZ_NOT_PREFERRED}>
+            <Typography variant="body1">No</Typography>
+            <Typography variant="subtitle1">Not Preferred</Typography>
+          </StyledPreferedMenuItem>,
+          ...Array.from({ length: zonesCount }, (_, i) => i + AZ_PREFFERED_HIGHEST_RANK).map(
+            (rank) => (
+              <StyledPreferedMenuItem
+                key={rank}
+                value={rank}
+                disabled={rank > maxPrefferedRankSelected + 1}
+              >
+                <Typography variant="body1">{`Rank ${rank}`}</Typography>
+                <Typography variant="subtitle1">
+                  {rank === AZ_PREFFERED_HIGHEST_RANK
+                    ? 'Default Preferred Zone'
+                    : 'Preferred zone if higher-rank zones fail.'}
+                </Typography>
+              </StyledPreferedMenuItem>
+            )
+          )
+        ];
+
+        return options.flatMap((option, optionIndex) =>
+          optionIndex < options.length - 1
+            ? [option, <Divider key={`preferred-divider-${optionIndex}`} />]
+            : [option]
+        );
+      })()
+    : null;
 
   const updateNodeCountAcrossRegions = (nodeCount: number) => {
     const updatedAz = { ...availabilityZones };
@@ -171,15 +224,12 @@ export const Zone: FC<ZoneProps> = ({
     name: `availabilityZones.${region.code}.${index}`,
     control
   });
-  const isGuidedMode = resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED;
+  const isGuidedMode =
+    resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED;
 
-  const isNodeInputEditable =
-    !isGuidedMode ||
-    (regionIndex === 0 && index === 0);
+  const isNodeInputEditable = !isGuidedMode || (regionIndex === 0 && index === 0);
   const showAzSelectError =
-    isSubmitted &&
-    (errors as any)?.lesserNodes?.message === 'errMsg.expertAzBlank' &&
-    !zone?.name;
+    isSubmitted && (errors as any)?.lesserNodes?.message === 'errMsg.expertAzBlank' && !zone?.name;
   const showOnPremNodeCountError =
     isSubmitted &&
     (errors as any)?.availabilityZones?.[region.code]?.[index]?.nodeCount?.message ===
@@ -195,13 +245,13 @@ export const Zone: FC<ZoneProps> = ({
         name={`availabilityZones.${region.code}.${index}`}
         render={({ field }) => (
           <YBSelect
-            label="Availability Zone"
+            label={t('availabilityZone')}
             sx={{ width: '300px' }}
             error={showAzSelectError}
             value={zone?.name ?? ''}
             renderValue={(value) =>
               !isGuidedMode && (value === '' || value === null || value === undefined)
-                ? 'Select'
+                ? tCommon('select')
                 : (value as string)
             }
             selectProps={!isGuidedMode ? ({ displayEmpty: true } as any) : undefined}
@@ -211,7 +261,7 @@ export const Zone: FC<ZoneProps> = ({
                 field.onChange({
                   ...selectedZone,
                   nodeCount: zone.nodeCount ?? field.value?.nodeCount,
-                  preffered: zone.preffered ?? field.value?.preffered
+                  preffered: zone.preffered ?? field.value?.preffered ?? AZ_NOT_PREFERRED
                 });
               }
             }}
@@ -256,7 +306,11 @@ export const Zone: FC<ZoneProps> = ({
             <span style={{ display: 'inline-block' }}>
               <YBInput
                 type="number"
-                label="Nodes"
+                label={
+                  useDedicatedNodes
+                    ? t(isK8s ? 'tServerPods' : 'tServer')
+                    : t(isK8s ? 'pods' : 'nodes')
+                }
                 error={showNodesCountError || showOnPremNodeCountError}
                 value={field.value}
                 onChange={(e) => {
@@ -264,7 +318,9 @@ export const Zone: FC<ZoneProps> = ({
                   if (isNaN(nextValue) || nextValue < 1) {
                     return;
                   }
-                  if (resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED) {
+                  if (
+                    resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED
+                  ) {
                     updateNodeCountAcrossRegions(nextValue);
                   } else {
                     field.onChange(nextValue);
@@ -316,7 +372,7 @@ export const Zone: FC<ZoneProps> = ({
       {resilienceAndRegionsSettings?.faultToleranceType !== FaultToleranceType.NONE &&
         (selectedAzCountInRegion > 1 ? (
           <IconButton
-            aria-label="Remove availability zone"
+            aria-label={t('removeAvailabilityZone')}
             onClick={remove}
             data-testid="remove-availability-zone"
             sx={{ marginTop: '24px', marginLeft: '8px' }}

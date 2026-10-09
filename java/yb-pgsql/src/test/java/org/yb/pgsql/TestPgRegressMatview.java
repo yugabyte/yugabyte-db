@@ -31,13 +31,20 @@ public class TestPgRegressMatview extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flags.put("enable_object_locking_for_table_locks", "false");
-    flags.put("ysql_enable_concurrent_ddl", "false");
-    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
+    toggleDDLMode(flags, /* useLegacy */ false);
+    // The schedule exercises DDL inside savepoints, so the support has to be on in every
+    // build type.
+    flags.put("ysql_yb_enable_ddl_savepoint_support", "true");
+    return flags;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flags = super.getMasterFlags();
+    toggleDDLMode(flags, /* useLegacy */ false);
+    // The schedule exercises DDL inside savepoints, so the support has to be on in every
+    // build type.
+    flags.put("ysql_yb_enable_ddl_savepoint_support", "true");
     return flags;
   }
 

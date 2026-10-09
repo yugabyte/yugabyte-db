@@ -76,34 +76,6 @@ Result<NamespaceId> MasterDDLClient::CreateNamespaceAndWait(
   return id;
 }
 
-Result<RefreshYsqlLeaseInfoPB> MasterDDLClient::RefreshYsqlLease(
-    const std::string& permanent_uuid, int64_t instance_seqno, uint64_t time_ms,
-    std::optional<uint64_t> current_lease_epoch) {
-  RefreshYsqlLeaseRequestPB req;
-  req.mutable_instance()->set_permanent_uuid(permanent_uuid);
-  req.mutable_instance()->set_instance_seqno(instance_seqno);
-  req.set_local_request_send_time_ms(time_ms);
-  if (current_lease_epoch) {
-    req.set_current_lease_epoch(*current_lease_epoch);
-  }
-  RefreshYsqlLeaseResponsePB resp;
-  rpc::RpcController rpc;
-  RETURN_NOT_OK(proxy_.RefreshYsqlLease(req, &resp, &rpc));
-  RETURN_NOT_OK(ResponseStatus(resp));
-  return resp.info();
-}
-
-Status MasterDDLClient::RelinquishYsqlLease(
-    const std::string& permanent_uuid, int64_t instance_seqno) {
-  RelinquishYsqlLeaseRequestPB req;
-  req.mutable_instance()->set_permanent_uuid(permanent_uuid);
-  req.mutable_instance()->set_instance_seqno(instance_seqno);
-  RelinquishYsqlLeaseResponsePB resp;
-  rpc::RpcController rpc;
-  RETURN_NOT_OK(proxy_.RelinquishYsqlLease(req, &resp, &rpc));
-  return ResponseStatus(resp);
-}
-
 Status MasterDDLClient::DeleteTable(const TableId& id, MonoDelta timeout) {
   DeleteTableRequestPB req;
   req.mutable_table()->set_table_id(id);

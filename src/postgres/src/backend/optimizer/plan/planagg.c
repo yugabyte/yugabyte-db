@@ -417,6 +417,8 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	 */
 	subroot->tuple_fraction = 1.0;
 	subroot->limit_tuples = 1.0;
+	/* YB: the subquery's own LIMIT 1 bounds its first fetch */
+	subroot->yb_limit_tuples = 1.0;
 
 	/*
 	 * YB: Since we are essentially planning a different query we want to save

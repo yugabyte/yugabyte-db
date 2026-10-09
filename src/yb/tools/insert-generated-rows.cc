@@ -46,7 +46,6 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/tools/data_gen_util.h"
 

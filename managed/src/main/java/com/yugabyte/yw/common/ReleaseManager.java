@@ -916,7 +916,7 @@ public class ReleaseManager {
               .filter(r -> Util.compareYbVersions(currentVersion, r.get("name").asText()) >= 0)
               .sorted(releaseNameComparator)
               .findFirst()
-              .get();
+              .orElse(null);
       if (latestRelease == null || latestRelease.isNull()) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Could not find latest release in response JSON.");

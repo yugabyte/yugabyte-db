@@ -48,6 +48,7 @@ std::unique_ptr<rpc::ServiceIf> MakeMasterEncryptionService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterHeartbeatService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterReplicationService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterTestService(Master* master);
+std::unique_ptr<rpc::ServiceIf> MakeMasterYsqlLeaseService(Master* master);
 
 } // namespace master
 } // namespace yb

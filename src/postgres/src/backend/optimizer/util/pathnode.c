@@ -38,7 +38,7 @@
 
 /* YB includes */
 #include "access/xact.h"
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
 #include "catalog/pg_am.h"
 #include "optimizer/planner.h"
 #include "pg_yb_utils.h"
@@ -68,6 +68,9 @@ static bool contain_references_to(PlannerInfo *root, Node *clause,
 								  Relids relids);
 static bool ris_contain_references_to(PlannerInfo *root, List *rinfos,
 									  Relids relids);
+/* YB declarations */
+static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
+											 RelOptInfo *rel, Path *subpath);
 
 
 /*****************************************************************************
@@ -840,6 +843,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			}
 		}
 
+		if (remove_old &&
+			IsYugaByteEnabled() &&
+			yb_test_force_parallel != YB_FORCE_PARALLEL_OFF &&
+			old_path->param_info == NULL &&
+			!yb_path_contains_gather(new_path) &&
+			yb_path_contains_gather(old_path))
+			remove_old = false;
+
 		/*
 		 * Remove current element from pathlist if dominated by new.
 		 */
@@ -1545,7 +1556,7 @@ create_index_path(PlannerInfo *root,
 				  Relids required_outer,
 				  double loop_count,
 				  bool partial_path,
-				  List *yb_merge_scan_saop_cols)
+				  List *yb_merge_scan_stream_cols)
 {
 	IndexPath  *pathnode = makeNode(IndexPath);
 	RelOptInfo *rel = index->rel;
@@ -1566,11 +1577,20 @@ create_index_path(PlannerInfo *root,
 	pathnode->yb_bitmap_idx_pushdowns = yb_bitmap_idx_pushdowns;
 	pathnode->indexorderbys = indexorderbys;
 	pathnode->indexorderbycols = indexorderbycols;
+
+	/*
+	 * YB: NoMovementScanDirection means "row order does not matter".  For
+	 * it, yb_scan_core.c does not call YBCPgSetForwardScan, and an unset
+	 * direction lets pggate read tablets in parallel
+	 * (CouldBeExecutedInParallel) and skip preserving ybctid order on
+	 * secondary index scans.  Forward and Backward both forfeit those
+	 * optimizations.
+	 */
 	pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?
 		NoMovementScanDirection : indexscandir;
 
-	pathnode->yb_index_path_info.merge_scan_saop_cols =
-		yb_merge_scan_saop_cols;
+	pathnode->yb_index_path_info.merge_scan_stream_cols =
+		yb_merge_scan_stream_cols;
 
 	if (IsYugaByteEnabled() &&
 		yb_enable_base_scans_cost_model &&
@@ -1913,17 +1933,30 @@ create_append_path(PlannerInfo *root,
 		/* YB */
 		if (subpaths)
 		{
+			List	   *groups = NIL;
+
 			/* YB: Accumulate batching info from subpaths for this "baserel". */
 			Assert(yb_has_same_batching_reqs(subpaths));
 
 			root->yb_cur_batched_relids =
 				YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(subpaths));
+
+			/*
+			 * The parent's movable clauses can miss a group that a child's
+			 * index condition batches on, and children can batch different
+			 * clauses, so pass on the union of the children's groups.
+			 */
+			foreach(l, subpaths)
+				groups = list_concat(groups,
+									 YB_PATH_BATCHED_GROUPS((Path *) lfirst(l)));
+			root->yb_cur_batched_groups = groups;
 		}
 
 		pathnode->path.param_info = get_baserel_parampathinfo(root,
 															  rel,
 															  required_outer);
 		root->yb_cur_batched_relids = NULL;
+		root->yb_cur_batched_groups = NIL;
 	}
 	else
 		pathnode->path.param_info = get_appendrel_parampathinfo(rel,
@@ -2699,8 +2732,8 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
-	yb_propagate_fields(&pathnode->path.yb_path_info,
-						&subpath->yb_path_info);
+	yb_propagate_subqueryscan_fields(&pathnode->path.yb_path_info, rel,
+									 subpath);
 	pathnode->subpath = subpath;
 
 	cost_subqueryscan(pathnode, root, rel, pathnode->path.param_info);
@@ -3202,6 +3235,8 @@ create_nestloop_path(PlannerInfo *root,
 	pathnode->jpath.outerjoinpath = outer_path;
 	pathnode->jpath.innerjoinpath = inner_path;
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
+
+	pathnode->yb_first_batch_size = workspace->yb_first_batch_size;
 
 	if (IsYugaByteEnabled())
 	{
@@ -5657,6 +5692,10 @@ yb_create_distinct_index_path(PlannerInfo *root,
 										  NULL);
 	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
 
+	/*
+	 * TODO(#18943): model distinct index scan cost. startup_cost has to reflect
+	 * the extra work to fill the first batch.
+	 */
 	run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
 	run_cost *= selectivity;
 	pathnode->path.total_cost = pathnode->path.startup_cost + run_cost;
@@ -5764,4 +5803,27 @@ yb_assign_unique_path_node_id(PlannerInfo *root, Path *path)
 			path->ybHasHintedUid = true;
 		}
 	}
+}
+
+/*
+ * Propagate YugabyteDB fields through a SubqueryScanPath.
+ *
+ * SubqueryScanPath crosses a namespace boundary:
+ * fields represented in the subquery's terms must be translated to
+ * the outer query.
+ */
+static void
+yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
+								 Path *subpath)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (subpath->yb_path_info.yb_uniqkeys == NIL)
+		return;
+
+	parent_fields->yb_uniqkeys =
+		yb_convert_subquery_uniqkeys(rel,
+									 subpath->yb_path_info.yb_uniqkeys,
+									 make_tlist_from_pathtarget(subpath->pathtarget));
 }

@@ -3,8 +3,11 @@ package ybactlstate
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/viper"
 
@@ -27,6 +30,9 @@ const improvedCertHandling = 11
 const stateServices = 12
 const asRootState = 13
 const nodeExporterConfig = 14
+const perfAdvisorConfig = 15
+const fipsConfig = 16
+const fipsState = 17
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -40,17 +46,23 @@ func handleMigration(state *State) error {
 	updateMade := false
 	for nextSchema < endSchema {
 		nextSchema++
+		migrate, defined := migrations[nextSchema]
 		if slices.Contains(state._internalFields.RunSchemas, nextSchema) {
-			continue
+			if !defined || !state.lostStateField(migrate.stateField) {
+				continue
+			}
+			log.Warn(fmt.Sprintf("state file is missing %s, re-running migration %d",
+				strings.Join(migrate.stateField, "."), nextSchema))
+			state._internalFields.RunSchemas = slices.DeleteFunc(state._internalFields.RunSchemas,
+				func(s int) bool { return s == nextSchema })
 		}
-		migrate := getMigrationHandler(nextSchema)
-		if migrate == nil {
+		if !defined {
 			log.Debug("skipping migration " + strconv.Itoa(nextSchema) + " as it is not defined")
 			continue
 		}
 		updateMade = true
 		log.Debug(fmt.Sprintf("running migration %d", nextSchema))
-		if err := migrate(state); err != nil {
+		if err := migrate.run(state); err != nil {
 			return fmt.Errorf("failed to run migration %d: %w", nextSchema, err)
 		}
 		log.Debug(fmt.Sprintf("migration %d complete", nextSchema))
@@ -62,6 +74,12 @@ func handleMigration(state *State) error {
 	}
 	// StoreState in order to persist migration SchemaVersion
 	return StoreState(state)
+}
+
+// lostStateField reports whether a field written by a migration is absent from the state file
+// this state was loaded from.
+func (s *State) lostStateField(path []string) bool {
+	return len(path) > 0 && s._loadedFields != nil && !hasJsonPath(s._loadedFields, path)
 }
 
 // Update how we track the schema version. Previously, we tracked the max version with the schema
@@ -89,6 +107,16 @@ func updateSchemaTracking(state *State) error {
 }
 
 type migrator func(state *State) error
+
+// migration pairs the function that runs a schema change with, for migrations that write into
+// the state file, the json path of the field they populate. A yba-ctl older than that field
+// drops it when it rewrites the state file (e.g. reconfigure with the installed binary after a
+// failed upgrade attempt) while the migration stays marked as run, so handleMigration uses the
+// path to notice the loss and run the migration again.
+type migration struct {
+	run        migrator
+	stateField []string
+}
 
 // Migrate on default is a no-op, mainly assuming that the default values given to struct fields
 // are sufficient.
@@ -290,6 +318,76 @@ func migrateAsRootState(state *State) error {
 	return nil
 }
 
+// migratePerfAdvisorConfig backfills the perfAdvisor.* section in yba-ctl.yml
+// on upgrades from a version that pre-dates Performance Advisor. Default
+// values are sourced from viper after overlaying the reference yba-ctl.yml,
+// so the migration stays in sync with the canonical defaults without
+// duplicating them.
+//
+// Note: viper.IsSet on the global viper returns true for any key that has a
+// registered default (see Viper.find which consults v.defaults), so it can't
+// be used here to determine whether the user's file already has a key. We
+// load the user's file into a fresh viper (no defaults) to make that check.
+func migratePerfAdvisorConfig(state *State) error {
+	keys := []string{
+		"perfAdvisor.enabled",
+		"perfAdvisor.port",
+		"perfAdvisor.restartSeconds",
+		"perfAdvisor.paSecret",
+		"perfAdvisor.tls.enabled",
+		"perfAdvisor.tls.sslProtocols",
+		"perfAdvisor.tls.hsts",
+		"perfAdvisor.tls.keystorePassword",
+		"perfAdvisor.callhome.enabled",
+		"perfAdvisor.callhome.environment",
+	}
+	userCfg := viper.New()
+	userCfg.SetConfigFile(common.InputFile())
+	if err := userCfg.ReadInConfig(); err != nil {
+		return fmt.Errorf("error reading %s: %w", common.InputFile(), err)
+	}
+	viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+	for _, key := range keys {
+		if userCfg.IsSet(key) {
+			continue
+		}
+		if err := common.SetYamlValue(common.InputFile(), key, viper.Get(key)); err != nil {
+			return fmt.Errorf("error migrating %s: %w", key, err)
+		}
+	}
+	common.InitViper()
+	return nil
+}
+
+// migrateFipsConfig adds the fips block to yba-ctl.yml. Existing files are never regenerated, so
+// without this an upgraded install has no fips key to set - the templates still render because
+// viper supplies the default, but an operator cannot turn FIPS on without hand-editing the yml.
+func migrateFipsConfig(state *State) error {
+	const key = "fips.enabled"
+
+	// The global viper cannot answer this: viper.IsSet consults registered defaults, so it is true
+	// for any key with a SetDefault whether or not the user's file has it. A fresh viper reading
+	// only that file is the discriminator. The six older migrations above get away with the global
+	// one because none of their keys has a default registered.
+	userCfg := viper.New()
+	userCfg.SetConfigFile(common.InputFile())
+	if err := userCfg.ReadInConfig(); err != nil {
+		return fmt.Errorf("error reading %s: %w", common.InputFile(), err)
+	}
+	if userCfg.IsSet(key) {
+		return nil
+	}
+
+	// Overlaying the reference config mutates the global viper, so it happens only on the path
+	// that needs the default, and InitViper below puts it back.
+	viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+	if err := common.SetYamlValue(common.InputFile(), key, viper.Get(key)); err != nil {
+		return fmt.Errorf("error migrating %s: %w", key, err)
+	}
+	common.InitViper()
+	return nil
+}
+
 // migrateInitialized migrates the initialized flag - all previous installs
 // have been initialized so set to true
 func migrateInitialized(state *State) error {
@@ -334,29 +432,41 @@ func migrateNodeExporterConfig(state *State) error {
 	return nil
 }
 
-var migrations map[int]migrator = map[int]migrator{
-	defaultMigratorValue: defaultMigrate,
-	promConfigMV:         migratePrometheus,
-	postgresUserMV:       migratePostgresUser,
-	ymlTypeFixMV:         migrateYmlTypes,
-	promOomConfgMV:       migratePrometheusOOMConfig,
-	promTLSCipherSuites:  migratePrometheusTLSCipherSuites,
-	asRoot:               migrateAsRootConfig,
-	ybaWait:              migrateYbaWait,
-	initialized:          migrateInitialized,
-	asRootRetry:          migrateAsRootConfig,
-	improvedCertHandling: migrateCertHandler,
-	stateServices:        migrateStateServices,
-	asRootState:          migrateAsRootState,
-	nodeExporterConfig:   migrateNodeExporterConfig,
+// migrateFipsState records the FIPS mode an existing install is running in. It is read from the
+// installed platform unit, which only carries the approved-only flag in FIPS mode, rather than from
+// yba-ctl.yml, which may already hold the change the state is meant to refuse.
+func migrateFipsState(state *State) error {
+	unit, err := os.ReadFile(filepath.Join(common.SystemdDir, "yb-platform.service"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			state.Config.FipsEnabled = viper.GetBool("fips.enabled")
+			return nil
+		}
+		return fmt.Errorf("reading the platform service to determine FIPS mode: %w", err)
+	}
+	state.Config.FipsEnabled = strings.Contains(string(unit),
+		"-Dorg.bouncycastle.fips.approved_only=true")
+	return nil
 }
 
-func getMigrationHandler(toSchema int) migrator {
-	m, ok := migrations[toSchema]
-	if !ok {
-		return nil
-	}
-	return m
+var migrations = map[int]migration{
+	defaultMigratorValue: {run: defaultMigrate},
+	promConfigMV:         {run: migratePrometheus},
+	postgresUserMV:       {run: migratePostgresUser},
+	ymlTypeFixMV:         {run: migrateYmlTypes},
+	promOomConfgMV:       {run: migratePrometheusOOMConfig},
+	promTLSCipherSuites:  {run: migratePrometheusTLSCipherSuites},
+	asRoot:               {run: migrateAsRootConfig},
+	ybaWait:              {run: migrateYbaWait},
+	initialized:          {run: migrateInitialized, stateField: []string{"initialized"}},
+	asRootRetry:          {run: migrateAsRootConfig},
+	improvedCertHandling: {run: migrateCertHandler, stateField: []string{"config", "self_signed_cert"}},
+	stateServices:        {run: migrateStateServices, stateField: []string{"services"}},
+	asRootState:          {run: migrateAsRootState, stateField: []string{"config", "as_root"}},
+	nodeExporterConfig:   {run: migrateNodeExporterConfig},
+	perfAdvisorConfig:    {run: migratePerfAdvisorConfig},
+	fipsConfig:           {run: migrateFipsConfig},
+	fipsState:            {run: migrateFipsState, stateField: []string{"config", "fips_enabled"}},
 }
 
 func getSchemaVersion() int {
@@ -370,6 +480,6 @@ func getSchemaVersion() int {
 	return schemaVersionCache
 }
 
-func getMigrations() map[int]migrator {
+func getMigrations() map[int]migration {
 	return migrations
 }

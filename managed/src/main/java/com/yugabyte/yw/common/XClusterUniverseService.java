@@ -52,7 +52,7 @@ import org.yb.client.GetReplicationStatusResponse;
 import org.yb.client.GetXClusterSafeTimeResponse;
 import org.yb.client.IsBootstrapRequiredResponse;
 import org.yb.client.ListCDCStreamsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
@@ -345,7 +345,7 @@ public class XClusterUniverseService {
             sourceUniverseCertificate,
             ybClientTimeout,
             ybClientTimeout);
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       try {
         int partitionSize =
             XClusterConfigTaskBase.supportsMultipleTablesWithIsBootstrapRequired(sourceUniverse)
@@ -483,7 +483,7 @@ public class XClusterUniverseService {
 
   public Set<CDCStreamInfo> getAllCDCStreamInfoInUniverse(
       YBClientService ybClientService, Universe universe) {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       ListCDCStreamsResponse cdcStreamsResponse = client.listCDCStreams(null, null, null);
       if (cdcStreamsResponse.hasError()) {
         throw new RuntimeException(
@@ -526,7 +526,7 @@ public class XClusterUniverseService {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YbClientConfig clientConfig =
         ybClientConfigFactory.create(targetUniverseMasterAddresses, targetUniverseCertificate);
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       GetReplicationStatusResponse resp =
           client.getReplicationStatus(xClusterConfig.getReplicationGroupName());
       if (resp.hasError()) {
@@ -579,7 +579,7 @@ public class XClusterUniverseService {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YbClientConfig clientConfig =
         ybClientConfigFactory.create(targetUniverseMasterAddresses, targetUniverseCertificate);
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       GetXClusterSafeTimeResponse resp = client.getXClusterSafeTime();
       if (resp.hasError()) {
         throw new RuntimeException(
@@ -594,7 +594,7 @@ public class XClusterUniverseService {
 
   public Map<String, String> getSourceTableIdTargetTableIdMap(
       Universe targetUniverse, String replicationGroupName) {
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(targetUniverse)) {
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
       if (clusterConfigResp.hasError()) {
         String errMsg =

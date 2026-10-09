@@ -13,6 +13,7 @@
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 using yb::Format;
@@ -60,7 +61,7 @@ const KeyValueEntry& TransitionLoggingIteratorWrapper::Prev() {
 }
 
 std::string TransitionLoggingIteratorWrapper::LogPrefix() const {
-  return StringPrintf("%sIter %p ", rocksdb_log_prefix_.c_str(), wrapped_.get());
+  return yb::Format("$0Iter $1 ", rocksdb_log_prefix_, static_cast<void*>(wrapped_.get()));
 }
 
 std::string TransitionLoggingIteratorWrapper::StateStr() const {

@@ -40,6 +40,7 @@
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/status_log.h"
 
 DEFINE_UNKNOWN_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
     "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");

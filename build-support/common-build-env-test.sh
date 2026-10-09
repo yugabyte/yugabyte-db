@@ -157,24 +157,20 @@ test_set_cmake_build_type_and_compiler_type() {
 # The last parameter is expected exit code (0 or 1).
 
 test_set_cmake_build_type_and_compiler_type asan         linux-gnu clang14 release_asserts clang14 0
-test_set_cmake_build_type_and_compiler_type asan         linux-gnu gcc     N/A             N/A     1
-test_set_cmake_build_type_and_compiler_type asan         linux-gnu gcc12   N/A             gcc12   1
 test_set_cmake_build_type_and_compiler_type tsan         linux-gnu clang14 release_asserts clang14 0
-test_set_cmake_build_type_and_compiler_type tsan         linux-gnu gcc     N/A             N/A     1
-test_set_cmake_build_type_and_compiler_type tsan         linux-gnu gcc12   N/A             gcc12   1
 test_set_cmake_build_type_and_compiler_type debug        darwin    auto    debug           clang21 0
-test_set_cmake_build_type_and_compiler_type debug        darwin    clang   debug           clang   0
-test_set_cmake_build_type_and_compiler_type debug        linux-gnu clang   debug           clang   0
-test_set_cmake_build_type_and_compiler_type debug        linux-gnu gcc     debug           gcc     0
+test_set_cmake_build_type_and_compiler_type debug        darwin    clang   debug           clang21 0
+test_set_cmake_build_type_and_compiler_type debug        linux-gnu clang   debug           clang21 0
+test_set_cmake_build_type_and_compiler_type debug        linux-gnu gcc     debug           gcc15   0
 test_set_cmake_build_type_and_compiler_type debug        linux-gnu gcc12   debug           gcc12   0
 test_set_cmake_build_type_and_compiler_type FaStDeBuG    darwin    auto    fastdebug       clang21 0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG    darwin    clang   fastdebug       clang   0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG    linux-gnu clang   fastdebug       clang   0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG    linux-gnu gcc     fastdebug       gcc     0
+test_set_cmake_build_type_and_compiler_type FaStDeBuG    darwin    clang   fastdebug       clang21 0
+test_set_cmake_build_type_and_compiler_type FaStDeBuG    linux-gnu clang   fastdebug       clang21 0
+test_set_cmake_build_type_and_compiler_type FaStDeBuG    linux-gnu gcc     fastdebug       gcc15   0
 test_set_cmake_build_type_and_compiler_type release      darwin    auto    release         clang21 0
-test_set_cmake_build_type_and_compiler_type release      darwin    clang   release         clang   0
-test_set_cmake_build_type_and_compiler_type release      linux-gnu clang   release         clang   0
-test_set_cmake_build_type_and_compiler_type release      linux-gnu gcc     release         gcc     0
+test_set_cmake_build_type_and_compiler_type release      darwin    clang   release         clang21 0
+test_set_cmake_build_type_and_compiler_type release      linux-gnu clang   release         clang21 0
+test_set_cmake_build_type_and_compiler_type release      linux-gnu gcc     release         gcc15   0
 test_set_cmake_build_type_and_compiler_type release      linux-gnu gcc12   release         gcc12   0
 test_set_cmake_build_type_and_compiler_type debug        linux-gnu auto    debug           clang21 0
 test_set_cmake_build_type_and_compiler_type FaStDeBuG    linux-gnu auto    fastdebug       clang21 0

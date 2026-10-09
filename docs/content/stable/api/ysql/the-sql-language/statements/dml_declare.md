@@ -140,6 +140,6 @@ And this is the result from `FETCH ALL`:
 
 ## See also
 
-- [`MOVE`](../dml_move)
-- [`FETCH`](../dml_fetch)
-- [`CLOSE`](../dml_close)
+- [MOVE](../dml_move)
+- [FETCH](../dml_fetch)
+- [CLOSE](../dml_close)

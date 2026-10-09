@@ -37,6 +37,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_AUTO_bool(enable_flush_retryable_requests, kLocalPersisted, false, true,
     "If enabled, will flush bootstrap state structure to the disk when roll the log segment, "

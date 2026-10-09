@@ -1,0 +1,11 @@
+title: ProviderRootNodesSpec
+description: 'Root-level node specification for a provider, optionally containing per-region and per-AZ overrides. Matches ProviderSpecification.nodesSpecs.'
+type: object
+allOf:
+  - $ref: "./ProviderNodesSpec.yaml"
+  - properties:
+      region_nodes_specs:
+        description: Per-region node specification overrides.
+        type: array
+        items:
+          $ref: "./ProviderRegionNodesSpec.yaml"

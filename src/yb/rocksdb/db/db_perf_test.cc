@@ -17,6 +17,7 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 
 DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);

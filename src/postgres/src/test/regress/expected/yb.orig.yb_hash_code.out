@@ -1464,15 +1464,15 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) < 60 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
- 5205 | 5205 | 5205 | Tue Dec 18 04:59:54 2018 PST | 5205 | 5205 | 06-02-2016 | t
- 2756 | 2756 | 2756 | Tue Dec 18 04:59:54 2018 PST | 2756 | 2756 | 06-02-2016 | f
  3550 | 3550 | 3550 | Tue Dec 18 04:59:54 2018 PST | 3550 | 3550 | 06-02-2016 | f
  3102 | 3102 | 3102 | Tue Dec 18 04:59:54 2018 PST | 3102 | 3102 | 06-02-2016 | f
+ 2756 | 2756 | 2756 | Tue Dec 18 04:59:54 2018 PST | 2756 | 2756 | 06-02-2016 | f
  5083 | 5083 | 5083 | Tue Dec 18 04:59:54 2018 PST | 5083 | 5083 | 06-02-2016 | t
- 1540 | 1540 | 1540 | Tue Dec 18 04:59:54 2018 PST | 1540 | 1540 | 06-02-2016 | f
- 5763 | 5763 | 5763 | Tue Dec 18 04:59:54 2018 PST | 5763 | 5763 | 06-02-2016 | t
+ 5205 | 5205 | 5205 | Tue Dec 18 04:59:54 2018 PST | 5205 | 5205 | 06-02-2016 | t
  8479 | 8479 | 8479 | Tue Dec 18 04:59:54 2018 PST | 8479 | 8479 | 06-02-2016 | t
+ 5763 | 5763 | 5763 | Tue Dec 18 04:59:54 2018 PST | 5763 | 5763 | 06-02-2016 | t
  5021 | 5021 | 5021 | Tue Dec 18 04:59:54 2018 PST | 5021 | 5021 | 06-02-2016 | t
+ 1540 | 1540 | 1540 | Tue Dec 18 04:59:54 2018 PST | 1540 | 1540 | 06-02-2016 | f
  6968 | 6968 | 6968 | Tue Dec 18 04:59:54 2018 PST | 6968 | 6968 | 06-02-2016 | f
 (10 rows)
 
@@ -1492,15 +1492,15 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 60 LIMI
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  5872 | 5872 | 5872 | Tue Dec 18 04:59:54 2018 PST | 5872 | 5872 | 06-02-2016 | f
- 9030 | 9030 | 9030 | Tue Dec 18 04:59:54 2018 PST | 9030 | 9030 | 06-02-2016 | f
- 4104 | 4104 | 4104 | Tue Dec 18 04:59:54 2018 PST | 4104 | 4104 | 06-02-2016 | f
  3315 | 3315 | 3315 | Tue Dec 18 04:59:54 2018 PST | 3315 | 3315 | 06-02-2016 | t
+ 9030 | 9030 | 9030 | Tue Dec 18 04:59:54 2018 PST | 9030 | 9030 | 06-02-2016 | f
   925 |  925 | 925  | Tue Dec 18 04:59:54 2018 PST |  925 |  925 | 06-02-2016 | t
- 6018 | 6018 | 6018 | Tue Dec 18 04:59:54 2018 PST | 6018 | 6018 | 06-02-2016 | f
+ 4104 | 4104 | 4104 | Tue Dec 18 04:59:54 2018 PST | 4104 | 4104 | 06-02-2016 | f
     1 |    1 | 1    | Tue Dec 18 04:59:54 2018 PST |    1 |    1 | 06-02-2016 | t
- 5975 | 5975 | 5975 | Tue Dec 18 04:59:54 2018 PST | 5975 | 5975 | 06-02-2016 | t
- 6158 | 6158 | 6158 | Tue Dec 18 04:59:54 2018 PST | 6158 | 6158 | 06-02-2016 | f
  9834 | 9834 | 9834 | Tue Dec 18 04:59:54 2018 PST | 9834 | 9834 | 06-02-2016 | f
+ 5975 | 5975 | 5975 | Tue Dec 18 04:59:54 2018 PST | 5975 | 5975 | 06-02-2016 | t
+ 6018 | 6018 | 6018 | Tue Dec 18 04:59:54 2018 PST | 6018 | 6018 | 06-02-2016 | f
+ 6158 | 6158 | 6158 | Tue Dec 18 04:59:54 2018 PST | 6158 | 6158 | 06-02-2016 | f
 (10 rows)
 
 \set query ':P SELECT yb_hash_code(r1,r2,v1), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v1), r1, r2, v1 LIMIT 3;'
@@ -1613,16 +1613,16 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) < 65500 AND yb_hash_code(r1, r2, v1) > 5500 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
- 5872 | 5872 | 5872 | Tue Dec 18 04:59:54 2018 PST | 5872 | 5872 | 06-02-2016 | f
- 1736 | 1736 | 1736 | Tue Dec 18 04:59:54 2018 PST | 1736 | 1736 | 06-02-2016 | f
- 7154 | 7154 | 7154 | Tue Dec 18 04:59:54 2018 PST | 7154 | 7154 | 06-02-2016 | f
- 9802 | 9802 | 9802 | Tue Dec 18 04:59:54 2018 PST | 9802 | 9802 | 06-02-2016 | f
- 1092 | 1092 | 1092 | Tue Dec 18 04:59:54 2018 PST | 1092 | 1092 | 06-02-2016 | f
- 4550 | 4550 | 4550 | Tue Dec 18 04:59:54 2018 PST | 4550 | 4550 | 06-02-2016 | f
- 5287 | 5287 | 5287 | Tue Dec 18 04:59:54 2018 PST | 5287 | 5287 | 06-02-2016 | t
+ 3827 | 3827 | 3827 | Tue Dec 18 04:59:54 2018 PST | 3827 | 3827 | 06-02-2016 | t
+ 5069 | 5069 | 5069 | Tue Dec 18 04:59:54 2018 PST | 5069 | 5069 | 06-02-2016 | t
  5709 | 5709 | 5709 | Tue Dec 18 04:59:54 2018 PST | 5709 | 5709 | 06-02-2016 | t
+ 3996 | 3996 | 3996 | Tue Dec 18 04:59:54 2018 PST | 3996 | 3996 | 06-02-2016 | f
  9468 | 9468 | 9468 | Tue Dec 18 04:59:54 2018 PST | 9468 | 9468 | 06-02-2016 | f
- 2938 | 2938 | 2938 | Tue Dec 18 04:59:54 2018 PST | 2938 | 2938 | 06-02-2016 | f
+ 7633 | 7633 | 7633 | Tue Dec 18 04:59:54 2018 PST | 7633 | 7633 | 06-02-2016 | t
+ 5287 | 5287 | 5287 | Tue Dec 18 04:59:54 2018 PST | 5287 | 5287 | 06-02-2016 | t
+ 1641 | 1641 | 1641 | Tue Dec 18 04:59:54 2018 PST | 1641 | 1641 | 06-02-2016 | t
+ 4397 | 4397 | 4397 | Tue Dec 18 04:59:54 2018 PST | 4397 | 4397 | 06-02-2016 | t
+ 7154 | 7154 | 7154 | Tue Dec 18 04:59:54 2018 PST | 7154 | 7154 | 06-02-2016 | f
 (10 rows)
 
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) > 65500 AND yb_hash_code(r1, r2, v1) > 5500;'
@@ -1668,6 +1668,26 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) > 600 AND
  5783 | 5783 | 5783 | Tue Dec 18 04:59:54 2018 PST | 5783 | 5783 | 06-02-2016 | t
  6291 | 6291 | 6291 | Tue Dec 18 04:59:54 2018 PST | 6291 | 6291 | 06-02-2016 | t
 (10 rows)
+
+-- yb_hash_code with partial hash key should not error.
+-- TODO(#30756): recheck should not be needed.
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 6000 AND h1 = 48;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 6000 AND h1 = 48;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=1 loops=1)
+   Index Cond: ((yb_hash_code(h1, h2, h3) < 6000) AND (h1 = 48))
+   Rows Removed by Index Recheck: 953
+(3 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 6000 AND h1 = 48;
+ h1 | h2 | h3 |              r1              | r2 | v1 |     v2     | v3 
+----+----+----+------------------------------+----+----+------------+----
+ 48 | 48 | 48 | Tue Dec 18 04:59:54 2018 PST | 48 | 48 | 06-02-2016 | f
+(1 row)
 
 DROP TABLE test_table_multi_col_key;
 -- test recheck of index only scan with yb_hash_code
@@ -2267,3 +2287,254 @@ EXPLAIN (COSTS OFF) /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, y
 /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM tt WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
 (output identical to previous)
 drop table tt;
+-- GH-34210: large arguments must be handled correctly.
+SELECT yb_hash_code(repeat('x', 10000000)) IS NOT NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+CREATE TEMP TABLE large_hash_input (n int);
+INSERT INTO large_hash_input VALUES (10000000);
+SELECT yb_hash_code(repeat('x', n)) IS NOT NULL FROM large_hash_input;
+ ?column? 
+----------
+ t
+(1 row)
+
+DROP TABLE large_hash_input;
+-- GH-34733: yb_hash_code is not unique.  Keys 534 and 1970 share hash code
+-- 63516, so a yb_hash_code condition must not prove uniqueness of a key
+-- column.
+CREATE TABLE hash_pk (k int PRIMARY KEY);
+INSERT INTO hash_pk VALUES (1), (534), (1970), (2000);
+CREATE TABLE hash_range_pk (k int, r int, PRIMARY KEY (k HASH, r ASC));
+INSERT INTO hash_range_pk SELECT k, k FROM hash_pk;
+CREATE TABLE hash_codes (id int PRIMARY KEY, h int);
+INSERT INTO hash_codes VALUES (1, yb_hash_code(534));
+SELECT k, yb_hash_code(k) FROM hash_pk ORDER BY k;
+  k   | yb_hash_code 
+------+--------------
+    1 |         4624
+  534 |        63516
+ 1970 |        63516
+ 2000 |        61538
+(4 rows)
+
+-- A LEFT JOIN whose inner table appears only in its ON clause can be removed
+-- only if each outer row matches at most one inner row.  The hash_codes row
+-- matches both 534 and 1970, so the join stays and returns 2 rows.
+\set Q1 'hash_codes.h'
+\set Q2 'yb_hash_code(534)'
+\set query ':P SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = :Q;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Merge Right Join
+   Merge Cond: (yb_hash_code(hash_pk.k) = hash_codes.h)
+   ->  Index Scan using hash_pk_pkey on hash_pk
+   ->  Sort
+         Sort Key: hash_codes.h
+         ->  Seq Scan on hash_codes
+(6 rows)
+
+EXPLAIN (COSTS OFF) SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = yb_hash_code(534);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Nested Loop Left Join
+   ->  Seq Scan on hash_codes
+   ->  Materialize
+         ->  Index Scan using hash_pk_pkey on hash_pk
+               Index Cond: (yb_hash_code(k) = 63516)
+(5 rows)
+
+SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+ id 
+----
+  1
+  1
+(2 rows)
+
+SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = yb_hash_code(534);
+(output identical to previous)
+-- Different keys can share a hash code, so yb_hash_code(hash_pk.k) =
+-- hash_codes.h can match several hash_pk rows, and no join method may treat
+-- hash_pk as unique.  So the plans must not show Inner Unique, which only
+-- EXPLAIN VERBOSE prints in text format, and each count is 2.
+\set explain 'EXPLAIN (VERBOSE, COSTS OFF)'
+\set Q1 '/*+ Leading((hash_codes hash_pk)) HashJoin(hash_codes hash_pk) */'
+\set Q2 '/*+ Leading((hash_codes hash_pk)) MergeJoin(hash_codes hash_pk) */'
+\set Q3 '/*+ Leading((hash_codes hash_pk)) NestLoop(hash_codes hash_pk) SeqScan(hash_pk) */'
+\set query ':P :Q SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (VERBOSE, COSTS OFF) /*+ Leading((hash_codes hash_pk)) HashJoin(hash_codes hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Hash Join
+         Hash Cond: (hash_codes.h = yb_hash_code(hash_pk.k))
+         ->  Seq Scan on public.hash_codes
+               Output: hash_codes.h
+         ->  Hash
+               Output: hash_pk.k
+               ->  Seq Scan on public.hash_pk
+                     Output: hash_pk.k
+(10 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) /*+ Leading((hash_codes hash_pk)) MergeJoin(hash_codes hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Merge Join
+         Merge Cond: (hash_codes.h = (yb_hash_code(hash_pk.k)))
+         ->  Sort
+               Output: hash_codes.h
+               Sort Key: hash_codes.h
+               ->  Seq Scan on public.hash_codes
+                     Output: hash_codes.h
+         ->  Sort
+               Output: hash_pk.k, (yb_hash_code(hash_pk.k))
+               Sort Key: (yb_hash_code(hash_pk.k))
+               ->  Seq Scan on public.hash_pk
+                     Output: hash_pk.k, yb_hash_code(hash_pk.k)
+(14 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) /*+ Leading((hash_codes hash_pk)) NestLoop(hash_codes hash_pk) SeqScan(hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Nested Loop
+         Join Filter: (hash_codes.h = yb_hash_code(hash_pk.k))
+         ->  Seq Scan on public.hash_codes
+               Output: hash_codes.h
+         ->  Materialize
+               Output: hash_pk.k
+               ->  Seq Scan on public.hash_pk
+                     Output: hash_pk.k
+(10 rows)
+
+/*+ Leading((hash_codes hash_pk)) HashJoin(hash_codes hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+ count 
+-------
+     2
+(1 row)
+
+/*+ Leading((hash_codes hash_pk)) MergeJoin(hash_codes hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+(output identical to previous)
+/*+ Leading((hash_codes hash_pk)) NestLoop(hash_codes hash_pk) SeqScan(hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+(output identical to previous)
+\unset Q3
+\set explain 'EXPLAIN (COSTS OFF)'
+-- GH-34733, GH-31403: yb_hash_code(k) is not key column k or r, so a NullTest
+-- on it is not an index condition on either column.
+-- TODO(#34807): use the fact that yb_hash_code never returns NULL to avoid a
+-- post-scan filter.
+\set Q1 'IS NULL'
+\set Q2 'IS NOT NULL'
+\set query ':P /*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) :Q;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NULL;
+                QUERY PLAN                 
+-------------------------------------------
+ Aggregate
+   ->  Seq Scan on hash_range_pk
+         Filter: (yb_hash_code(k) IS NULL)
+(3 rows)
+
+EXPLAIN (COSTS OFF) /*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NOT NULL;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Aggregate
+   ->  Seq Scan on hash_range_pk
+         Filter: (yb_hash_code(k) IS NOT NULL)
+(3 rows)
+
+/*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NULL;
+ count 
+-------
+     0
+(1 row)
+
+/*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NOT NULL;
+ count 
+-------
+     4
+(1 row)
+
+-- The comparison value of an index condition must be known before the scan
+-- starts, so a yb_hash_code comparison with a column of the scanned row or
+-- with a volatile value is a filter.
+CREATE TABLE same_row_cmp (k int PRIMARY KEY, j int);
+INSERT INTO same_row_cmp SELECT k, yb_hash_code(k) + (k % 2) FROM hash_pk;
+-- A column of the scanned row.  Both operand orders are tested because
+-- yb_match_clause_to_index checks each separately.
+\set Q1 'yb_hash_code(k) = j'
+\set Q2 'j = yb_hash_code(k)'
+\set query ':P /*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE :Q ORDER BY k;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE yb_hash_code(k) = j ORDER BY k;
+              QUERY PLAN               
+---------------------------------------
+ Sort
+   Sort Key: k
+   ->  Seq Scan on same_row_cmp
+         Filter: (yb_hash_code(k) = j)
+(4 rows)
+
+EXPLAIN (COSTS OFF) /*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE j = yb_hash_code(k) ORDER BY k;
+              QUERY PLAN               
+---------------------------------------
+ Sort
+   Sort Key: k
+   ->  Seq Scan on same_row_cmp
+         Filter: (j = yb_hash_code(k))
+(4 rows)
+
+/*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE yb_hash_code(k) = j ORDER BY k;
+  k   |   j   
+------+-------
+  534 | 63516
+ 1970 | 63516
+ 2000 | 61538
+(3 rows)
+
+/*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE j = yb_hash_code(k) ORDER BY k;
+(output identical to previous)
+-- A volatile value.  PG evaluates a volatile function at every row where its
+-- value is needed, and never in an index condition, which evaluates its
+-- comparison value once.  So each row is compared with a new value: the first
+-- with 0, which passes, and every later one with 100000 or more, which fails,
+-- so the count is 1.
+CREATE SEQUENCE hash_code_seq MINVALUE 0 START 0 INCREMENT 100000;
+\set query ':P /*+ IndexScan(same_row_cmp) */ SELECT count(*) FROM same_row_cmp WHERE yb_hash_code(k) >= nextval(''hash_code_seq'');'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(same_row_cmp) */ SELECT count(*) FROM same_row_cmp WHERE yb_hash_code(k) >= nextval('hash_code_seq');
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Aggregate
+   ->  Seq Scan on same_row_cmp
+         Filter: (yb_hash_code(k) >= nextval('hash_code_seq'::regclass))
+(3 rows)
+
+/*+ IndexScan(same_row_cmp) */ SELECT count(*) FROM same_row_cmp WHERE yb_hash_code(k) >= nextval('hash_code_seq');
+ count 
+-------
+     1
+(1 row)
+
+DROP SEQUENCE hash_code_seq;
+DROP TABLE hash_pk, hash_range_pk, hash_codes, same_row_cmp;

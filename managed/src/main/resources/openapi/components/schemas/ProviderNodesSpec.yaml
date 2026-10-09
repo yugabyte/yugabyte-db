@@ -1,0 +1,10 @@
+title: ProviderNodesSpec
+description: Tserver and master node specs at a single level of the provider nodes specification hierarchy.
+type: object
+properties:
+  tserver_specification:
+    description: Node specification for tserver processes.
+    $ref: "./ProviderNodeSpec.yaml"
+  master_specification:
+    description: Node specification for master processes.
+    $ref: "./ProviderNodeSpec.yaml"

@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -39,6 +40,8 @@
 #include "yb/rocksdb/types.h"
 
 #include "yb/storage/storage_types.h"
+
+#include "yb/util/status_format.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -112,7 +115,43 @@ struct Range {
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
 
-using UserFrontierRange = std::pair<yb::storage::UserFrontierPtr, yb::storage::UserFrontierPtr>;
+enum class TablePropertiesErrorHandling {
+  kFail,
+  // Omit a file whose properties cannot be read. The caller must compare the result with the live
+  // file set if it needs to account for the missing file.
+  kSkip,
+};
+
+using UserFrontierRange = yb::storage::UserFrontierRange;
+
+// Holds the DB's version as of its creation, for size-based queries over that version's SST files.
+// Results from different versions are not comparable, so a caller whose results must agree pins
+// once and runs every query against the same PinnedVersion; the answers stay consistent with each
+// other even if a flush or compaction runs concurrently. A PinnedVersion keeps its SST files on
+// disk until it is destroyed, so it should be held no longer than the computation that needs it,
+// and it must be destroyed before the DB is.
+class PinnedVersion {
+ public:
+  virtual ~PinnedVersion() {}
+
+  // Returns the total size of the data (excluding metadata/index/filter blocks) across all SSTs
+  // in the pinned version.
+  virtual yb::Result<uint64_t> TotalDataSize() = 0;
+
+  // Returns the sum of SeekOffsetOf(key) across all SSTs in the pinned version.
+  // `key` is a user key; empty means the start of the keyspace.
+  virtual yb::Result<uint64_t> Cross(Slice key) = 0;
+
+  // Returns an existing user key inside [lower_bound_key; upper_bound_key) whose Cross() value is
+  // close to `target_size` -- an absolute Cross value, not one relative to the lower bound.
+  // "Close" is bounded by FLAGS_find_target_key_max_deviation_ratio.
+  // An empty bound means no corresponding bound. The lower bound also happens to be exclusive,
+  // but callers needing strictly increasing results must still check for themselves.
+  // Returns Status(Incomplete) when no suitable key exists; callers that can tolerate a worse cut
+  // should fall back to DB::GetMiddleKey() on it. Any other status is a real failure.
+  virtual yb::Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) = 0;
+};
 
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
@@ -646,7 +685,7 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
-  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void SetDisableFlushOnShutdown() {}
   virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
@@ -668,6 +707,50 @@ class DB {
       const int output_level, const int output_path_id = -1) {
     return CompactFiles(compact_options, DefaultColumnFamily(),
                         input_file_names, output_level, output_path_id);
+  }
+
+  // Reports the outcome of a db path move scheduled by ScheduleDBPathMove(). Runs with no DB lock
+  // held, so it may use the DB -- except that the move counts as in-flight background work until
+  // the callback returns, so waiting for background work to drain deadlocks on this very
+  // callback: no PauseBackgroundWork, CancelAllBackgroundWork(wait=true), DB close, or
+  // CompactRange with exclusive_manual_compaction (its default). Defer those to another thread.
+  //
+  // Runs on a compaction pool thread, the caller's thread if the pool rejects the task, or the
+  // thread driving shutdown -- so do not hold a lock the callback takes across ScheduleDBPathMove.
+  using DBPathMoveCompactionCallback = std::function<void(const Status&)>;
+
+  // Schedules a move of live SST `file_number` to db_paths[target_path_id] as a raw byte-for-byte
+  // copy: nothing decodes a key or a value, so the moved file is identical to the source.
+  //
+  // The move runs on the compaction/flush priority thread pool, so it is throttled like any other
+  // background work: it shares the compaction rate limiter, queues below regular compactions, and
+  // is preempted mid-copy by a higher priority task. Shutdown waits for moves to finish or abort.
+  //
+  // Returns immediately after queueing. If (and only if) this returns OK, `callback` is invoked
+  // exactly once with one of these outcomes; all but OK leave the source file untouched:
+  //   - OK: the file was copied to target_path_id and the MANIFEST updated.
+  //   - NotFound: the file is no longer live, e.g. a compaction already replaced it; a no-op.
+  //   - AlreadyPresent: the file already sits on target_path_id; a no-op.
+  //   - Aborted: a compaction holds the file and places its output itself; re-check afterwards.
+  //   - ShutdownInProgress: the DB began shutting down while the move was queued or mid-copy.
+  //   - Anything else: the copy or the MANIFEST update failed.
+  // Given a valid request on a DB that supports moves, this returns without queueing -- and
+  // without invoking `callback` -- only if the DB is shutting down.
+  //
+  // target_path_id must be a valid index into this DB's db_paths; anything else is a programming
+  // error, not a runtime condition. Moves are deliberately not held back by an in-progress
+  // exclusive manual compaction: a move never touches a file a compaction already holds (it
+  // reports Aborted instead), so it only relocates files that compaction did not take.
+  virtual Status ScheduleDBPathMove(
+      ColumnFamilyHandle* column_family, uint64_t file_number, uint32_t target_path_id,
+      DBPathMoveCompactionCallback callback) {
+    return STATUS(NotSupported, "ScheduleDBPathMove not implemented");
+  }
+
+  virtual Status ScheduleDBPathMove(
+      uint64_t file_number, uint32_t target_path_id, DBPathMoveCompactionCallback callback) {
+    return ScheduleDBPathMove(
+        DefaultColumnFamily(), file_number, target_path_id, std::move(callback));
   }
 
   // This function will wait until all currently running background processes
@@ -842,7 +925,33 @@ class DB {
     return result;
   }
 
-  virtual yb::storage::UserFrontierPtr GetFlushedFrontier() { return nullptr; }
+  // Computes the requested frontiers atomically (under a single lock) so the returned views are
+  // mutually consistent. This is the single primitive subclasses override; the accessors below are
+  // expressed in terms of it.
+  virtual yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) {
+    return {};
+  }
+
+  yb::storage::UserFrontierPtr GetFlushedFrontier() {
+    return GetFrontiers(yb::storage::FrontierKinds{yb::storage::FrontierKind::kFlushed}).flushed;
+  }
+
+  // Returns the (smallest, largest) frontiers of the in-memory (not yet flushed) state.
+  UserFrontierRange GetInMemoryFrontiers() {
+    return GetFrontiers(yb::storage::FrontierKinds{
+        yb::storage::FrontierKind::kInMemorySmallest,
+        yb::storage::FrontierKind::kInMemoryLargest}).in_memory;
+  }
+
+  // Returns the smallest or largest frontier of the in-memory (not yet flushed) state.
+  yb::storage::UserFrontierPtr GetInMemoryFrontier(yb::storage::UpdateUserValueType type) {
+    if (type == yb::storage::UpdateUserValueType::kSmallest) {
+      return GetFrontiers(yb::storage::FrontierKinds{
+          yb::storage::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+    }
+    return GetFrontiers(yb::storage::FrontierKinds{
+        yb::storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
+  }
 
   virtual Status ModifyFlushedFrontier(
       yb::storage::UserFrontierPtr values,
@@ -857,14 +966,6 @@ class DB {
   virtual yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
       yb::storage::UpdateUserValueType type) {
     return nullptr;
-  }
-
-  virtual yb::storage::UserFrontierPtr CalcMemTableFrontier(yb::storage::UpdateUserValueType type) {
-    return nullptr;
-  }
-
-  virtual UserFrontierRange CalcMemTableFrontiers() {
-    return {};
   }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
@@ -926,10 +1027,13 @@ class DB {
   // Returns default column family handle
   virtual ColumnFamilyHandle* DefaultColumnFamily() const = 0;
 
-  virtual Status GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
-                                          TablePropertiesCollection* props) = 0;
-  virtual Status GetPropertiesOfAllTables(TablePropertiesCollection* props) {
-    return GetPropertiesOfAllTables(DefaultColumnFamily(), props);
+  virtual Status GetPropertiesOfAllTables(
+      ColumnFamilyHandle* column_family, TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) = 0;
+  virtual Status GetPropertiesOfAllTables(
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) {
+    return GetPropertiesOfAllTables(DefaultColumnFamily(), props, error_handling);
   }
   virtual Status GetPropertiesOfTablesInRange(
       ColumnFamilyHandle* column_family, const Range* range, std::size_t n,
@@ -949,6 +1053,9 @@ class DB {
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;
 
+  // Pins the current version for size-based queries over its SST files.
+  virtual std::unique_ptr<PinnedVersion> PinCurrentVersion() = 0;
+
   // If true, will allow compactions to fail without setting bg_error and not causing writes to
   // fail. Should only be used with extra care for troubleshooting when/while there are no other
   // options available.
@@ -962,11 +1069,6 @@ class DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
-
-  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
-  virtual yb::Result<uint64_t> TEST_Cross(Slice key) {
-    return STATUS(NotSupported, "");
-  }
 
  private:
   // No copying allowed

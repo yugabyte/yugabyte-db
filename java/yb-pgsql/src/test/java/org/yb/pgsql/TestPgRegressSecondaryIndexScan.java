@@ -25,6 +25,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.time.Instant;
 
 import static org.yb.AssertionWrappers.*;
@@ -60,6 +61,20 @@ public class TestPgRegressSecondaryIndexScan extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // The 55k row COPY is batched (yb_default_copy_from_rows_per_transaction=20000) into three
+    // distributed transactions. Pipelined writes are acked before replication completes, so a Raft
+    // leader election (routine under ASAN/TSAN CPU oversubscription) drops an unreplicated write
+    // and fails the in-flight batch unretryably, leaving a partial load. Synchronous writes are
+    // instead transparently retried against the new leader.
+    // TODO(#33082): gating early acks on leader health narrows this window rather than closing it,
+    // so this flag may be needed even after that fix.
+    flagMap.put("ysql_enable_write_pipelining", "false");
+    return flagMap;
   }
 
   private void runSecondaryHashIndexScan(String airportType, int rowCount) throws Exception {

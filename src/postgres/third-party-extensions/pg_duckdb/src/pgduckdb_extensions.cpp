@@ -5,6 +5,9 @@
 #include "pgduckdb/pg/snapshots.hpp"
 #include "pgduckdb/pg/relations.hpp"
 
+/* YB includes */
+#include "pgduckdb/pgduckdb_guc.hpp"
+
 extern "C" {
 #include "postgres.h"
 
@@ -67,6 +70,16 @@ ReadDuckdbExtensions() {
 	return duckdb_extensions;
 }
 
+static void
+YbRejectExtensionManagementInLakeIoMode(const char *verb) {
+	if (YbIsLakeIoMode()) {
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("DuckDB extensions cannot be %s in this mode", verb),
+		         errhint("Supported extensions are built in and load automatically.")));
+	}
+}
+
 } // namespace pgduckdb
 
 extern "C" {
@@ -74,6 +87,8 @@ extern "C" {
 DECLARE_PG_FUNCTION(install_extension) {
 	std::string extension_name = pgduckdb::pg::GetArgString(fcinfo, 0);
 	std::string repository = pgduckdb::pg::GetArgString(fcinfo, 1);
+
+	pgduckdb::YbRejectExtensionManagementInLakeIoMode("installed");
 
 	pgduckdb::DuckDBQueryOrThrow(pgduckdb::ddb::InstallExtensionQuery(extension_name, repository));
 
@@ -101,6 +116,8 @@ DECLARE_PG_FUNCTION(install_extension) {
 
 DECLARE_PG_FUNCTION(duckdb_load_extension) {
 	std::string extension_name = pgduckdb::pg::GetArgString(fcinfo, 0);
+
+	pgduckdb::YbRejectExtensionManagementInLakeIoMode("loaded");
 
 	pgduckdb::DuckDBQueryOrThrow(pgduckdb::ddb::LoadExtensionQuery(extension_name));
 

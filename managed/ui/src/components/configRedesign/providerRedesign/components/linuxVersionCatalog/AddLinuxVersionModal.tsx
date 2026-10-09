@@ -30,11 +30,12 @@ import {
   ImageBundleType,
   RunTimeConfigEntry
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
-import { ArchitectureType, ProviderCode } from '../../constants';
+import { ArchitectureType, isPerRegionImageProvider, ProviderCode } from '../../constants';
 import { runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import { AWSProviderEditFormFieldValues } from '../../forms/aws/AWSProviderEditForm';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
+import { isSameImageBundle } from './LinuxVersionUtils';
 import { getAddLinuxVersionSchema } from './ValidationSchemas';
 
 import styles from '../RegionList.module.scss';
@@ -119,6 +120,19 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
 
   const showIMDSv2 = providerType === ProviderCode.AWS && isIMDSv2Enabled;
 
+  const isPerRegionImage = isPerRegionImageProvider(providerType);
+
+  const perRegionImageTitle =
+    providerType === ProviderCode.AWS
+      ? t('form.amazonMachineImage')
+      : t('form.machineImagePerRegion');
+  const perRegionImageColumnLabel =
+    providerType === ProviderCode.AWS ? t('form.amiId') : t('form.imageId');
+  const perRegionImagePlaceholder =
+    providerType === ProviderCode.AWS
+      ? t('form.machineImagePlaceholder')
+      : t('form.machineImageIdPlaceholder');
+
   const regions = useFieldArray({
     name: 'regions',
     control
@@ -129,6 +143,14 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
   const isYBAManagedBundle =
     isNonEmptyObject(editDetails) &&
     (editDetails as ImageBundle)?.metadata?.type === ImageBundleType.YBA_ACTIVE;
+
+  // The bundle being edited is left out so that keeping its own name is not reported as a
+  // duplicate.
+  const otherImageBundles = isEditMode
+    ? existingImageBundles.filter(
+        (imageBundle) => !isSameImageBundle(imageBundle, editDetails as ImageBundle)
+      )
+    : existingImageBundles;
 
   const {
     control: formControl,
@@ -147,7 +169,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
       getAddLinuxVersionSchema(
         providerType,
         t,
-        existingImageBundles as any,
+        otherImageBundles as any,
         isEditMode,
         isYBAManagedBundle
       )
@@ -224,13 +246,13 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             name="name"
             className={classes.nameInput}
             placeholder={t('form.linuxVersionNamePlaceholder')}
-            disabled={isEditMode || isYBAManagedBundle || isDisabled}
+            disabled={isYBAManagedBundle || isDisabled}
             inputProps={{
               'data-testid': 'AddLinuxVersionModal-LinuxVersionNameInput'
             }}
           />
         </div>
-        {providerType !== ProviderCode.AWS && (
+        {!isPerRegionImage && (
           <div>
             <Typography variant="body1">{t('form.machineImageId')}</Typography>
             <YBInputField
@@ -245,7 +267,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             />
           </div>
         )}
-        {providerType === ProviderCode.AWS && (
+        {isPerRegionImage && (
           <div>
             <Typography variant="body1">{t('form.cpuArch')}</Typography>
             <YBRadioGroupField
@@ -257,9 +279,9 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             />
           </div>
         )}
-        {providerType === ProviderCode.AWS && (
+        {isPerRegionImage && (
           <div>
-            <Typography variant="body1">{t('form.amazonMachineImage')}</Typography>
+            <Typography variant="body1">{perRegionImageTitle}</Typography>
             <div>
               <div className={clsx(styles.bootstrapTableContainer, classes.regions)}>
                 <BootstrapTable tableContainerClass={styles.bootstrapTable} data={regions.fields}>
@@ -272,14 +294,14 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                         <YBInputField
                           control={formControl}
                           name={`details.regions.${cell.code}.ybImage`}
-                          placeholder={t('form.machineImagePlaceholder')}
+                          placeholder={perRegionImagePlaceholder}
                           className={classes.amiInput}
                           disabled={isYBAManagedBundle || isDisabled}
                         />
                       );
                     }}
                   >
-                    {t('form.amiId')}
+                    {perRegionImageColumnLabel}
                   </TableHeaderColumn>
                 </BootstrapTable>
               </div>

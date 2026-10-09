@@ -31,8 +31,6 @@
 
 bool		YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-extern bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
-
 bool		YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
 
 bool		is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
@@ -62,12 +60,4 @@ extern struct YbUpdateAffectedEntities *YbComputeAffectedEntitiesForRelation(Mod
 																			 const Relation rel,
 																			 Bitmapset *update_attrs);
 
-struct PlannerInfo;
-struct RelOptInfo;
-struct RangeTblEntry;
-
-extern Bitmapset *YbExtractFederatedTserverFilter(struct PlannerInfo *root,
-												  struct RelOptInfo *rel,
-												  struct RangeTblEntry *rte,
-												  YbcServerDescriptor *servers,
-												  size_t nservers);
+extern AttrNumber yb_get_federated_tserver_uuid_attno(Oid relid);

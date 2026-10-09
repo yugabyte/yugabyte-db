@@ -5,8 +5,10 @@ import { browserHistory, withRouter, WithRouterProps } from 'react-router';
 import { Divider } from '@material-ui/core';
 import { mui, YBTab, YBTabs } from '@yugabyte-ui-library/core';
 
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '@app/actions/customers';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
-import { api } from '@app/redesign/helpers/api';
+import { api, runtimeConfigQueryKey } from '@app/redesign/helpers/api';
+import { isK8OperatorApiBlocked } from '@app/redesign/helpers/k8OperatorResourceUtils';
 import { useGetUniverse } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { getClusterByType } from './EditUniverseUtils';
@@ -21,8 +23,9 @@ import {
   isValidEditUniverseTab,
   parseEditUniverseTabFromPath
 } from './editUniverseTabUtils';
+import { WhereThingsMovedTip } from '@app/redesign/features-v2/onboarding/universe-revamp/tips/WhereThingsMovedTip';
 
-const { Grid, styled } = mui;
+const { styled, Box } = mui;
 
 interface EditUniverseProps {
   universeUUID: string;
@@ -82,14 +85,24 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
     }
   );
 
+  const { data: runtimeConfigs } = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE)
+  );
+
+  const isK8OperatorEditBlocked = isK8OperatorApiBlocked(
+    universeData?.info?.is_kubernetes_operator_controlled,
+    runtimeConfigs?.configEntries
+  );
+
   const contextValue = useMemo(
     () => ({
       ...InitialEditUniverseContextState,
       activeTab: selectedTab,
       universeData: universeData ?? null,
-      providerRegions: providerRegions ?? []
+      providerRegions: providerRegions ?? [],
+      isK8OperatorEditBlocked
     }),
-    [selectedTab, universeData, providerRegions]
+    [selectedTab, universeData, providerRegions, isK8OperatorEditBlocked]
   );
 
   if (isLoading || !universeData || isProviderLoading || !providerRegions) {
@@ -97,8 +110,47 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
   }
 
   return (
-    <Grid container direction="row" spacing={2}>
-      <Grid item sx={{ width: '230px' }}>
+    <Box
+      data-edit-universe-root
+      sx={{
+        display: 'flex',
+        flex: 1,
+        width: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        // Contain portaled onboarding tips (e.g. Advanced Placement) within this shell.
+        position: 'relative'
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: '232px',
+          minWidth: '232px',
+          maxWidth: '232px',
+          flexShrink: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          '& .MuiTabs-root': {
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden'
+          },
+          '& .MuiTabs-scroller': {
+            overflowX: 'hidden !important',
+            overflowY: 'visible !important'
+          },
+          '& .MuiTabs-flexContainer': {
+            width: '100%',
+            maxWidth: '100%'
+          },
+          '& .MuiTab-root': {
+            maxWidth: '100%',
+            boxSizing: 'border-box'
+          }
+        }}
+      >
         <YBTabs
           orientation="vertical"
           variant="secondary"
@@ -116,13 +168,37 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
           <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
           <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
         </YBTabs>
-      </Grid>
-      <Grid item sx={{ flexGrow: 1, flex: 1 }}>
-        <EditUniverseContext.Provider value={contextValue}>
-          <SwitchEditUniverseTabs />
-        </EditUniverseContext.Provider>
-      </Grid>
-    </Grid>
+        <Box
+          sx={{ marginTop: '-8px', marginLeft: '16px', maxWidth: 'calc(100% - 16px)', minWidth: 0 }}
+        >
+          <WhereThingsMovedTip />
+        </Box>
+      </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: 'auto'
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: '856px',
+            width: '100%',
+            mt: 2
+          }}
+        >
+          <EditUniverseContext.Provider value={contextValue}>
+            <SwitchEditUniverseTabs />
+          </EditUniverseContext.Provider>
+        </Box>
+      </Box>
+    </Box>
   );
 };
 

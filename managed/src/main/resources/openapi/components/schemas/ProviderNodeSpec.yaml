@@ -1,0 +1,21 @@
+title: ProviderNodeSpec
+description: Node properties at a specific level in the provider nodes specification hierarchy. Part of ProviderRootNodesSpec.
+type: object
+properties:
+  instance_type:
+    description: Instance type for tserver/master nodes that determines the cpu and memory resources.
+    type: string
+    example: c5.xlarge
+  storage_spec:
+    $ref: "./ClusterStorageSpec.yaml"
+  cgroup_size:
+    description: Amount of memory in MB to limit the postgres process using the ysql cgroup. The value should be greater than 0. When set to 0 it results in no cgroup limits. Applicable only for nodes running as Linux VMs on AWS/GCP/Azure Cloud Provider.
+    type: integer
+    example: 1024
+    x-yba-api-visibility: internal
+  backup_proxy_config:
+    description: Proxy configuration for backup operations on this node. Should be set only for tserver configuration
+    $ref: "./NodeProxyConfig.yaml"
+  k8s_node_resource_spec:
+    description: Custom cpu and memory requests/limits for k8s pods.
+    $ref: "./K8SNodeResourceSpec.yaml"

@@ -36,10 +36,14 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.rollback.TaskRollbackModule;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
+import com.yugabyte.yw.forms.AllowedUniverseTasksResp;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -49,13 +53,18 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -468,6 +477,103 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     assertThat(lbMap, anEmptyMap());
   }
 
+  private static NodeDetails liveTserver(String name, UUID clusterUUID, AvailabilityZone az) {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = name;
+    node.nodeUuid = UUID.randomUUID();
+    node.placementUuid = clusterUUID;
+    node.azUuid = az.getUuid();
+    node.isTserver = true;
+    node.state = NodeDetails.NodeState.Live;
+    node.cloudInfo = new CloudSpecificInfo();
+    return node;
+  }
+
+  @Test
+  public void testCreateLoadBalancerMapForManagedLoadBalancer() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region r1 = Region.create(provider, "r1", "r1", "image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r1, "r1a", "r1a", "subnet-1a");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r1, "r1b", "r1b", "subnet-1b");
+    Region r2 = Region.create(provider, "r2", "r2", "image");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r2, "r2a", "r2a", "subnet-2a");
+    // The state still lists r3, which an edit dropped from the placement, and r4, whose creation
+    // did not finish. Neither gets an entry: the delete step covers both.
+    Region r3 = Region.create(provider, "r3", "r3", "image");
+    Region r4 = Region.create(provider, "r4", "r4", "image");
+
+    PlacementInfo primaryPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), primaryPlacement);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), primaryPlacement);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), primaryPlacement);
+    Universe universe =
+        ModelFactory.createUniverse(
+            "managed-lb", UUID.randomUUID(), customer.getId(), CloudType.aws, primaryPlacement);
+    UUID primaryUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID replicaUUID = UUID.randomUUID();
+    String lbName = ManagedLoadBalancerUtil.getPrivateName(primaryUUID);
+    NodeDetails n1 = liveTserver("n1", primaryUUID, az1);
+    NodeDetails n2 = liveTserver("n2", primaryUUID, az2);
+    NodeDetails n3 = liveTserver("n3", primaryUUID, az3);
+    NodeDetails replicaNode = liveTserver("rr1", replicaUUID, az1);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent primaryIntent =
+                  details.getPrimaryCluster().userIntent;
+              UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
+                  new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+              lbConfig.setEnablePrivate(true);
+              primaryIntent.setManagedLoadBalancer(lbConfig);
+              // The read replica has no load balancer, and its node shares az1 with n1.
+              UniverseDefinitionTaskParams.UserIntent replicaIntent = primaryIntent.clone();
+              replicaIntent.setManagedLoadBalancer(null);
+              PlacementInfo replicaPlacement = new PlacementInfo();
+              PlacementInfoUtil.addPlacementZone(az1.getUuid(), replicaPlacement);
+              details.upsertCluster(replicaIntent, null, replicaPlacement, replicaUUID);
+              details.nodeDetailsSet.addAll(ImmutableSet.of(n1, n2, n3, replicaNode));
+              ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+              state.put(
+                  new ManagedLoadBalancer(
+                      primaryUUID,
+                      r3.getUuid(),
+                      ManagedLoadBalancer.Scheme.PRIVATE,
+                      ImmutableList.of(),
+                      lbName,
+                      "r3.elb"));
+              state.put(
+                  new ManagedLoadBalancer(
+                      primaryUUID,
+                      r4.getUuid(),
+                      ManagedLoadBalancer.Scheme.PRIVATE,
+                      ImmutableList.of(),
+                      lbName,
+                      null));
+              details.setManagedLoadBalancerState(state);
+              u.setUniverseDetails(details);
+            });
+
+    // n3 is being removed, so r2 keeps an entry without nodes and n3 is deregistered.
+    Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
+        universeTaskBase.createLoadBalancerMap(
+            universe.getUniverseDetails(), null, ImmutableSet.of(n3), null);
+
+    UUID providerUUID = provider.getUuid();
+    Map<LoadBalancerPlacement, Set<NodeDetails>> nodesByLb = new HashMap<>();
+    lbMap.forEach((placement, config) -> nodesByLb.put(placement, getAllNodes(config)));
+    assertEquals(
+        ImmutableMap.of(
+            new LoadBalancerPlacement(providerUUID, "r1", lbName), ImmutableSet.of(n1, n2),
+            new LoadBalancerPlacement(providerUUID, "r2", lbName), ImmutableSet.of()),
+        nodesByLb);
+    assertEquals(
+        ImmutableSet.of(az1, az2),
+        lbMap.get(new LoadBalancerPlacement(providerUUID, "r1", lbName)).getAzNodes().keySet());
+  }
+
   @Test
   public void testNoDuplicateCommunicationPorts() {
     // Verify all ports are unique.
@@ -535,6 +641,48 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     assertEquals(3456, universeTaskBase.getSleepTimeForProcess(UniverseTaskBase.ServerType.MASTER));
     assertEquals(
         4567, universeTaskBase.getSleepTimeForProcess(UniverseTaskBase.ServerType.TSERVER));
+  }
+
+  private static UniverseTaskBase.AllowedTasks allowedTasksForFailedTask(TaskType lockedTaskType) {
+    TaskInfo taskInfo = new TaskInfo(lockedTaskType, null);
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    return UniverseTaskBase.getAllowedTasksOnFailure(taskInfo);
+  }
+
+  @Test
+  public void testAllowedTasksAfterFailedEditKeepReprovision() {
+    UniverseTaskBase.AllowedTasks allowedTasks = allowedTasksForFailedTask(TaskType.EditUniverse);
+    assertTrue(allowedTasks.isRestricted());
+    assertTrue(allowedTasks.getTaskTypes().contains(TaskType.ProvisionUniverseNodes));
+  }
+
+  @Test
+  public void testAllowedTasksAfterFailedRollbackDropReprovision() {
+    for (TaskType rollbackType : TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.values()) {
+      UniverseTaskBase.AllowedTasks allowedTasks = allowedTasksForFailedTask(rollbackType);
+      Set<TaskType> taskTypes = allowedTasks.getTaskTypes();
+      assertTrue(rollbackType.name(), allowedTasks.isRestricted());
+      assertFalse(rollbackType.name(), taskTypes.contains(TaskType.ProvisionUniverseNodes));
+      assertTrue(rollbackType.name(), taskTypes.contains(TaskType.DestroyUniverse));
+      assertTrue(rollbackType.name(), taskTypes.contains(TaskType.DestroyKubernetesUniverse));
+      assertTrue(rollbackType.name(), taskTypes.contains(TaskType.ReinstallNodeAgent));
+      // Only re-provisioning is dropped; other universe-broken tasks, e.g. support bundles, stay.
+      assertTrue(rollbackType.name(), taskTypes.contains(TaskType.CreateSupportBundle));
+    }
+  }
+
+  @Test
+  public void testAllowedTaskIdsAfterFailedRollbackMatchUiActions() {
+    // The UI freezes an action when its "<task>_<target>" id is missing from taskIds.
+    Set<String> taskIds =
+        new AllowedUniverseTasksResp(allowedTasksForFailedTask(TaskType.RollbackEditUniverse))
+            .getTaskIds();
+    assertTrue(taskIds.contains("Delete_Universe"));
+    assertTrue(taskIds.contains("Install_NodeAgent"));
+    assertFalse(taskIds.contains("ProvisionUniverseNodes_Universe"));
+    assertFalse(taskIds.contains("Update_NodeAgent"));
+    assertFalse(taskIds.contains("RegisterWithPACollector_Universe"));
+    assertFalse(taskIds.contains("UnregisterFromPACollector_Universe"));
   }
 
   private class TestUniverseTaskBase extends UniverseTaskBase {

@@ -219,7 +219,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testListProvidersWithValidCustomer() {
-    Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
+    Customer otherCustomer = ModelFactory.testCustomer("diffcust1", "Different Customer 1");
+    Provider.create(otherCustomer.getUuid(), Common.CloudType.aws, "Amazon");
     Provider p = ModelFactory.gcpProvider(customer);
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
@@ -306,7 +307,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateProviderSameNameDiffCustomer() {
-    Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
+    Customer otherCustomer = ModelFactory.testCustomer("diffcust2", "Different Customer 2");
+    Provider.create(otherCustomer.getUuid(), Common.CloudType.aws, "Amazon");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
@@ -677,7 +679,10 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Universe universe = createUniverse(customer.getId());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = p.getUuid().toString();
+
+    TestUtils.initUserIntent(
+        userIntent, p, ApiUtils.UTIL_INST_TYPE, ApiUtils.getDummyDeviceInfo(1, 100), "demo-access");
+
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");

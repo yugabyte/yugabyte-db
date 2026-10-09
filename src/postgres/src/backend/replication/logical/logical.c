@@ -337,6 +337,7 @@ StartupDecodingContext(List *output_plugin_options,
 			hash_create("yb_needs_relcache_invalidation table",
 						32,		/* start small and extend */
 						&ctl, HASH_ELEM | HASH_BLOBS);
+		ctx->yb_inval_catalog_on_decode_commit = false;
 	}
 
 	MemoryContextSwitchTo(old_context);
@@ -782,6 +783,13 @@ void
 YBValidateOutputPlugin(char *plugin)
 {
 	OutputPluginCallbacks *callbacks;
+
+	/*
+	 * The sentinel YB_GRPC_STREAM_INDICATOR marks a slot as a gRPC stream slot.
+	 * gRPC streams have no output plugin, so skip the load attempt.
+	 */
+	if (strcmp(plugin, YB_GRPC_STREAM_INDICATOR) == 0)
+		return;
 
 	callbacks = palloc(sizeof(OutputPluginCallbacks));
 	LoadOutputPlugin(callbacks, plugin);

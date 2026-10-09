@@ -25,8 +25,12 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
+#include "yb/master/master_defaults.h"
+
 #include "yb/tools/test_admin_client.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -107,7 +111,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -123,7 +127,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   YbcPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YbcPgExpr expr_job;
-  string job = strings::Substitute("Job_title_$0", seed);
+  string job = Format("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
   YbcPgExpr expr_oid;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_oid));
@@ -154,7 +158,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
-    job = strings::Substitute("Job_title_$0", seed);
+    job = Format("Job_title_$0", seed);
     CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_job, job.c_str(), false));
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_oid, seed, false));
   }
@@ -165,7 +169,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -232,7 +236,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    string expected_job_name = Format("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
     #ifdef YB_TODO
@@ -249,7 +253,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -304,7 +308,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    string expected_job_name = Format("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
     #ifdef YB_TODO
@@ -556,7 +560,7 @@ Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
 
   CHECK_YBC_STATUS(YBCPgNewSelect(
       db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
@@ -856,7 +860,7 @@ class PggateTestBucketizedSelect : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewInsert(
         kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-        YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
     // Allocate constant expressions.
     YbcPgExpr expr_bkt;
@@ -896,7 +900,7 @@ class PggateTestBucketizedSelect : public PggateTest {
       CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_bkt, bucket_id, false));
       CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_k1, k1, false));
       CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_k2, k2, false));
-      auto description = strings::Substitute("Bucket: $0, k1: $1, k2: $2", bucket_id, k1, k2);
+      auto description = Format("Bucket: $0, k1: $1, k2: $2", bucket_id, k1, k2);
       CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_descr, description.c_str(), false));
       BeginTransaction();
       CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
@@ -910,7 +914,7 @@ class PggateTestBucketizedSelect : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewSelect(
         kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-        false /* skip_intents_read */, &pg_stmt));
+        {} /* skip_intents_info */, &pg_stmt));
 
     // Specify the selected expressions.
     YbcPgExpr colref;
@@ -1477,7 +1481,27 @@ TEST_F_EX(PggateTestSelect, TestGetYbSystemTableInfo, PggateTestSelectWithYbSyst
   auto database_name = "yb_system";
   auto table_name = "abcd";
 
-  sleep(NonTsanVsTsan(10, 30));  // Wait for master to create yb_system database.
+  // The master bootstraps yb_system asynchronously: it creates the database, then
+  // pg_yb_notifications and its publication. Those DDLs bump the yb_system catalog version and
+  // write pg_publication, so they conflict with the DDLs below, which cannot be retried. Wait for
+  // the publication, created by the last bootstrap statement, to become visible.
+  ASSERT_OK(WaitFor(
+      [this, database_name]() -> Result<bool> {
+        auto conn = PgConnect(database_name);
+        if (!conn.ok()) {
+          LOG(WARNING) << "Failed to connect to " << database_name << ": " << conn.status();
+          return false;
+        }
+        auto exists = conn->FetchRow<bool>(Format(
+            "SELECT EXISTS(SELECT 1 FROM pg_publication WHERE pubname = '$0')",
+            master::kPgYbNotificationsPublicationName));
+        if (!exists.ok()) {
+          LOG(WARNING) << "Failed to query pg_publication: " << exists.status();
+          return false;
+        }
+        return *exists;
+      },
+      120s * kTimeMultiplier, "yb_system bootstrap to complete"));
 
   auto conn = ASSERT_RESULT(PgConnect(database_name));
 
@@ -1530,7 +1554,7 @@ class PggateTestBackwardScanSelect : public PggateTestSelectWithYsql {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewSelect(
         pg_table_id.database_oid, pg_table_id.object_oid, NULL /* prepare_params */,
-        kDefaultTableLocality, false /* skip_intents_read */, &pg_stmt));
+        kDefaultTableLocality, {} /* skip_intents_info */, &pg_stmt));
 
     // Specify the selected expressions.
     YbcPgExpr colref;
@@ -1632,7 +1656,7 @@ class PggateTestRowBounds : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewInsert(
         kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-        YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
     // First row.
     YbcPgExpr expr_h1;
@@ -1716,7 +1740,7 @@ class PggateTestRowBounds : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewSelect(
         kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-        false /* skip_intents_read */, &pg_stmt));
+        {} /* skip_intents_info */, &pg_stmt));
 
     // Specify the selected expressions.
     YbcPgExpr colref;

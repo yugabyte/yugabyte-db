@@ -57,7 +57,7 @@ import org.yb.cdc.CdcConsumer;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import play.libs.Json;
@@ -73,7 +73,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
   private AvailabilityZone az1, az2, az3;
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() {
@@ -146,6 +146,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_DESTROY_UNIVERSE_TASKS =
       ImmutableList.of(
+          TaskType.UnregisterUniverseFromPaCollector,
           TaskType.DestroyEncryptionAtRest,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
@@ -156,6 +157,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           // This will not be used because currently all tests are old naming based
           Json.toJson(ImmutableMap.of("commandType", CommandType.NAMESPACED_SVC_DELETE.name())),
@@ -251,7 +253,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyKubernetesUniverseSuccessAndPromoteAutoFlagsOnOthers() {
     setupUniverse(false);
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {

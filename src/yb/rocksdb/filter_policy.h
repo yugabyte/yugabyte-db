@@ -37,6 +37,7 @@
 #include <memory>
 
 #include "yb/rocksdb/env.h"
+
 #include "yb/util/slice.h"
 
 namespace rocksdb {
@@ -214,4 +215,30 @@ extern const FilterPolicy* NewBloomFilterPolicy(int bits_per_key,
 extern const FilterPolicy* NewFixedSizeFilterPolicy(size_t total_bits,
                                                     double error_rate,
                                                     Logger* logger);
+
+// Cache filter key produced from user key by particular transformer.
+struct FilterKeyCache {
+  explicit FilterKeyCache(Slice user_key) : filter_key(user_key) {}
+
+  Slice filter_key;
+  const void* transformer = nullptr;
+
+  void Reset(Slice user_key) {
+    filter_key = user_key;
+    transformer = nullptr;
+  }
+};
+
+// Returns key to be added to filter or verified against filter based on user_key.
+// filter_key_cache could be reused only with the same user key.
+inline Slice GetFilterKeyFromUserKey(
+    Slice user_key, FilterKeyCache* filter_key_cache,
+    const FilterPolicy::KeyTransformer* transformer) {
+  if (transformer != filter_key_cache->transformer) {
+    filter_key_cache->transformer = transformer;
+    filter_key_cache->filter_key = transformer ? transformer->Transform(user_key) : user_key;
+  }
+  return filter_key_cache->filter_key;
+}
+
 }  // namespace rocksdb

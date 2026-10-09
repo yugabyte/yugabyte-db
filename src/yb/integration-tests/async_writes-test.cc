@@ -42,13 +42,16 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(quick_leader_election_on_create);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(use_create_table_leader_hint);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(ht_lease_duration_ms);
@@ -57,6 +60,9 @@ DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_int64(protege_synchronization_timeout_ms);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_WaitForAsyncWrite);
+METRIC_DECLARE_counter(write_pipelining_aborts);
+METRIC_DECLARE_counter(write_pipelining_abort_discarded_reads);
+METRIC_DECLARE_counter(write_pipelining_abort_discarded_writes);
 
 namespace yb {
 
@@ -248,6 +254,54 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
     return old_leader_idx;
   }
 
+  // Followers put into reject mode by RejectFollowerUpdates, plus the term of the leader they were
+  // isolated from.
+  struct IsolatedFollowers {
+    std::vector<tablet::TabletPeerPtr> peers;
+    int64_t leader_term = 0;
+  };
+
+  // Makes the followers reject non-empty UpdateConsensus, so an operation appended on the leader
+  // cannot reach them via a racing heartbeat. TEST_DelayUpdate is not enough: it only delays the
+  // follower's response, after the op was already appended to its local log.
+  Result<IsolatedFollowers> RejectFollowerUpdates(const TabletId& tablet_id, size_t leader_idx) {
+    IsolatedFollowers result;
+    auto leader_peer = VERIFY_RESULT(GetTabletPeerOnTserver(leader_idx, tablet_id));
+    result.leader_term = VERIFY_RESULT(leader_peer->GetRaftConsensus())->LeaderTerm();
+    SCHECK_GT(result.leader_term, 0, IllegalState, "Leader term is not established");
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      if (i == leader_idx) {
+        continue;
+      }
+      auto peer = VERIFY_RESULT(GetTabletPeerOnTserver(i, tablet_id));
+      VERIFY_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+      result.peers.push_back(peer);
+    }
+    return result;
+  }
+
+  // Clears the reject mode set by RejectFollowerUpdates, per follower, only once that follower
+  // advanced past the old leader term. An update carrying the unreplicated op can race ahead of the
+  // leader isolation and sit in a follower's queue; until the follower advances that update is
+  // dropped by reject mode, and once it has advanced it is dropped by the stale-term check, so this
+  // leaves no accepting window.
+  Status AllowFollowerUpdates(const IsolatedFollowers& followers) {
+    for (const auto& peer : followers.peers) {
+      auto consensus = VERIFY_RESULT(peer->GetRaftConsensus());
+      RETURN_NOT_OK(LoggedWaitFor(
+          [&consensus, term = followers.leader_term]() -> Result<bool> {
+            return consensus->ConsensusState(consensus::CONSENSUS_CONFIG_ACTIVE, nullptr)
+                       .current_term() > term;
+          },
+          30s * kTimeMultiplier,
+          Format(
+              "Wait for follower $0 to advance past term $1 before clearing reject mode",
+              peer->permanent_uuid(), followers.leader_term)));
+      consensus->TEST_RejectMode(consensus::RejectMode::kNone);
+    }
+    return Status::OK();
+  }
+
   Result<std::vector<tablet::TabletPeerPtr>> DelayFollowers(
       const std::string& table_name, MonoDelta delay) {
     auto peers = VERIFY_RESULT(
@@ -320,7 +374,53 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
     return total;
   }
 
-  void LeaderStepDownAfterWriteAckTest(bool perform_read);
+  uint64_t SumTserverCounter(const CounterPrototype& proto) {
+    uint64_t total = 0;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* ts = cluster_->mini_tablet_server(i);
+      if (!ts->is_started()) {
+        continue;
+      }
+      total += ts->metric_entity().FindOrCreateMetric<Counter>(&proto)->value();
+    }
+    return total;
+  }
+
+  struct WritePipeliningAbortMetrics {
+    uint64_t aborts;
+    uint64_t discarded_reads;
+    uint64_t discarded_writes;
+  };
+
+  WritePipeliningAbortMetrics GetWritePipeliningAbortMetrics() {
+    return {
+        .aborts = SumTserverCounter(METRIC_write_pipelining_aborts),
+        .discarded_reads = SumTserverCounter(METRIC_write_pipelining_abort_discarded_reads),
+        .discarded_writes = SumTserverCounter(METRIC_write_pipelining_abort_discarded_writes),
+    };
+  }
+
+  // The aborted read/write counters are reported when the client transaction object is destroyed,
+  // which happens asynchronously to the pg statement that observed the failure.
+  void WaitForWritePipeliningAbortMetrics(const WritePipeliningAbortMetrics& expected) {
+    WritePipeliningAbortMetrics actual;
+    auto status = LoggedWaitFor(
+        [&]() -> Result<bool> {
+          actual = GetWritePipeliningAbortMetrics();
+          return actual.aborts == expected.aborts &&
+                 actual.discarded_reads == expected.discarded_reads &&
+                 actual.discarded_writes == expected.discarded_writes;
+        },
+        30s, "Wait for write pipelining abort metrics");
+    ASSERT_TRUE(status.ok()) << status << ", expected aborts=" << expected.aborts
+                             << " reads=" << expected.discarded_reads
+                             << " writes=" << expected.discarded_writes
+                             << ", actual aborts=" << actual.aborts
+                             << " reads=" << actual.discarded_reads
+                             << " writes=" << actual.discarded_writes;
+  }
+
+  void LeaderStepDownAfterWriteAckTest(bool perform_read, bool with_ddl = false);
   void LeaderStepDownBeforeWriteAckTest(bool use_pk);
 
   std::unique_ptr<pgwrapper::PGConn> conn_;
@@ -398,7 +498,8 @@ TEST_F(YSqlAsyncWriteTest, LeaderStepDownAfterWriteAckWithRead) {
   ASSERT_NO_FATALS(LeaderStepDownAfterWriteAckTest(/* perform_read */ true));
 }
 
-void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
+void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read, bool with_ddl) {
+  constexpr auto kDdlTableName = "ddl_tbl";
   constexpr auto create_table =
       "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS";
   ASSERT_OK(conn_->ExecuteFormat(create_table, kTableName));
@@ -407,23 +508,16 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
 
   const size_t old_leader_idx = ASSERT_RESULT(PrepareToBreakConnectivity(tablet_id));
 
-  // Record the term old_leader_idx leads in. PrepareToBreakConnectivity only returns once
-  // old_leader_idx actually holds leadership, so its leader term is already established.
-  auto leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(old_leader_idx, tablet_id));
-  auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
-  const int64_t old_leader_term = leader_consensus->LeaderTerm();
-  ASSERT_GT(old_leader_term, 0);
+  // Keep the INSERT off the followers so it can't replicate via a racing heartbeat between
+  // queue_->AppendOperations and BreakConnectivityWithAll.
+  auto followers = ASSERT_RESULT(RejectFollowerUpdates(tablet_id, old_leader_idx));
 
-  // Reject non-empty UpdateConsensus on followers so the INSERT can't replicate via a racing
-  // heartbeat between queue_->AppendOperations and BreakConnectivityWithAll.
-  std::vector<tablet::TabletPeerPtr> follower_peers;
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    if (i == old_leader_idx) {
-      continue;
-    }
-    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_id));
-    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
-    follower_peers.push_back(peer);
+  const auto metrics_before = GetWritePipeliningAbortMetrics();
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  if (with_ddl) {
+    // Run the DDL before arming the sync point, so that its own writes are not blocked.
+    ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (key INT)", kDdlTableName));
   }
 
   // Block the WriteOperation such that the WAL is not replicated.
@@ -433,27 +527,12 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
   });
   sync_point->EnableProcessing();
 
-  ASSERT_OK(conn_->Execute("BEGIN"));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'A')", kTableName));
   // Client has received the async write ack, but it is not yet replicated to followers.
 
   ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), old_leader_idx));
-  // Clear reject mode on each follower only after it advances past old_leader_idx's term. An
-  // UpdateConsensus carrying the unreplicated INSERT can race ahead of BreakConnectivityWithAll and
-  // sit in a follower's queue; if reject mode is cleared while that follower is still in the old
-  // term, the queued update is accepted, the INSERT survives on the new leader, and COMMIT
-  // spuriously succeeds. Until the follower advances the update is dropped by reject mode, and once
-  // it has advanced it is dropped by the stale-term check, so this leaves no accepting window.
-  for (auto& peer : follower_peers) {
-    auto follower_consensus = ASSERT_RESULT(peer->GetRaftConsensus());
-    ASSERT_OK(LoggedWaitFor(
-        [&follower_consensus, old_leader_term]() -> Result<bool> {
-          return follower_consensus->ConsensusState(consensus::CONSENSUS_CONFIG_ACTIVE, nullptr)
-                     .current_term() > old_leader_term;
-        },
-        30s, "Wait for follower to advance past old leader term before clearing reject mode"));
-    follower_consensus->TEST_RejectMode(consensus::RejectMode::kNone);
-  }
+  // If the INSERT survived on the new leader, COMMIT would spuriously succeed.
+  ASSERT_OK(AllowFollowerUpdates(followers));
   TEST_SYNC_POINT("LeaderStepDownAfterWriteAck::LeaderConnectivityBroken");
 
   // Wait for a new leader to be elected.
@@ -476,12 +555,40 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
     // COMMIT of a failed transaction internally performs a ROLLBACK in pg.
     ASSERT_OK(conn_->CommitTransaction());
   } else {
+    const auto start = MonoTime::Now();
     ASSERT_NOK(conn_->CommitTransaction());
+    if (with_ddl) {
+      // Ensure the abort happens immediately, instead of waiting for DDL verification to time out.
+      ASSERT_LT(MonoTime::Now() - start, 10s * kTimeMultiplier);
+    }
+  }
+
+  if (with_ddl) {
+    // The DDL's catalog writes are part of the aborted transaction, so they also count.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          return GetWritePipeliningAbortMetrics().discarded_writes >
+                 metrics_before.discarded_writes + 1;
+        },
+        30s, "Wait for discarded DDL writes"));
+    ASSERT_EQ(GetWritePipeliningAbortMetrics().aborts, metrics_before.aborts + 1);
+  } else {
+    // Just expect one discarded write for the initial INSERT. The read doesn't succeed, so doesn't
+    // get counted in the metrics.
+    ASSERT_NO_FATALS(WaitForWritePipeliningAbortMetrics({
+        .aborts = metrics_before.aborts + 1,
+        .discarded_reads = metrics_before.discarded_reads,
+        .discarded_writes = metrics_before.discarded_writes + 1,
+    }));
   }
 
   // Reset the connection and make sure the transaction was aborted.
   conn_ = std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(Connect()));
   ASSERT_EQ(ASSERT_RESULT(get_row_count()), 0);
+  if (with_ddl) {
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM pg_class WHERE relname = '$0'", kDdlTableName))), 0);
+  }
 
   // Go back to the old leader and make sure aborted data is not visible.
   ASSERT_OK(StepDown(new_leader_idx, old_leader_idx, tablet_id));
@@ -641,6 +748,12 @@ TEST_F(YSqlAsyncWriteTest, FailedInsertOnConflict) {
 
   const size_t old_leader_idx = ASSERT_RESULT(PrepareToBreakConnectivity(tablet_id));
 
+  // The new leader must not get the (1, 'A') intent: the async write is acked once submitted to the
+  // leader queue, so without this the INSERT can replicate via a heartbeat racing
+  // BreakConnectivityWithAll. Then (1, 'B') conflicts with the live (1, 'A') intent on the new
+  // leader and waits for the retry blocked below.
+  auto followers = ASSERT_RESULT(RejectFollowerUpdates(tablet_id, old_leader_idx));
+
   auto sync_point = SyncPoint::GetInstance();
   sync_point->LoadDependency(
       {{"WriteQuery::BeforeCallbackInvoke", "FailedInsertOnConflict::LeaderConnectivityBroken1"},
@@ -695,6 +808,8 @@ END $$$$;)",
   TEST_SYNC_POINT("FailedInsertOnConflict::LeaderConnectivityBroken1");
   ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), old_leader_idx));
   TEST_SYNC_POINT("FailedInsertOnConflict::LeaderConnectivityBroken2");
+
+  ASSERT_OK(AllowFollowerUpdates(followers));
 
   size_t new_leader_idx;
   ASSERT_OK(LoggedWaitFor(
@@ -938,6 +1053,8 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateHoldsAcrossLeaderCrash) {
   // Keep Y's tablet and the transaction status tablets clear of the crash.
   ASSERT_OK(MoveLeadersOffTserver(old_leader_idx, tablet_x));
 
+  const auto metrics_before = GetWritePipeliningAbortMetrics();
+
   // conn1: lock account Y first, while the whole cluster is healthy. This creates the
   // transaction (status record) and writes conn1's txn metadata on Y's tablet, all
   // quorum-replicated. Give the status record a couple of heartbeat periods to settle so the
@@ -948,18 +1065,8 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateHoldsAcrossLeaderCrash) {
   ASSERT_EQ(rows, "2, 100");
   SleepFor(2s * kTimeMultiplier);
 
-  // Make X's followers reject non-empty appends so the X lock write cannot land on ANY follower
-  // before the crash, not even via a racing heartbeat. (TEST_DelayUpdate is not enough: it only
-  // delays the follower's response, after the op was already appended to its local log.)
-  std::vector<tablet::TabletPeerPtr> follower_peers;
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    if (i == old_leader_idx) {
-      continue;
-    }
-    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_x));
-    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
-    follower_peers.push_back(peer);
-  }
+  // Keep the X lock write off ANY follower before the crash, not even via a racing heartbeat.
+  auto followers = ASSERT_RESULT(RejectFollowerUpdates(tablet_x, old_leader_idx));
 
   const auto internal_count_before = internal_async_write_count.GetEventCount();
 
@@ -983,7 +1090,7 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateHoldsAcrossLeaderCrash) {
     ASSERT_GT(received.index, committed.index)
         << "Trigger guard failed: the lock op already reached quorum; the crash below would "
            "not destroy it.";
-    for (auto& peer : follower_peers) {
+    for (const auto& peer : followers.peers) {
       const auto follower_received =
           ASSERT_RESULT(ASSERT_RESULT(peer->GetRaftConsensus())->GetLastOpId(
               consensus::RECEIVED_OPID));
@@ -997,9 +1104,7 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateHoldsAcrossLeaderCrash) {
   cluster_->mini_tablet_server(old_leader_idx)->Shutdown();
 
   // Let the surviving followers accept appends again so they can elect a new leader.
-  for (auto& peer : follower_peers) {
-    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
-  }
+  ASSERT_OK(AllowFollowerUpdates(followers));
   const size_t new_leader_idx = ASSERT_RESULT(WaitForNewTabletLeader(tablet_x, old_leader_idx));
   LOG(INFO) << "New leader of X's tablet after crash: tserver index " << new_leader_idx;
 
@@ -1034,6 +1139,14 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateHoldsAcrossLeaderCrash) {
       << final_x + final_y << ") break the total >= 0 invariant the FOR UPDATE locks existed "
          "to protect. conn1's COMMIT was never gated on its lock write because the read-path "
          "async_write_op_id ack was lost.";
+
+  // Discarded reads: the two FOR UPDATE reads plus the UPDATE's row fetch.
+  // Discarded writes: the UPDATE's write op.
+  ASSERT_NO_FATALS(WaitForWritePipeliningAbortMetrics({
+      .aborts = metrics_before.aborts + 1,
+      .discarded_reads = metrics_before.discarded_reads + 3,
+      .discarded_writes = metrics_before.discarded_writes + 1,
+  }));
 }
 
 // The SERIALIZABLE flavor of SelectForUpdateHoldsAcrossLeaderCrash: plain SELECTs write read
@@ -1068,6 +1181,12 @@ TEST_F(YSqlAsyncWriteTest, SerializableIsolationHoldsAcrossLeaderCrash) {
   // Keep Y's tablet and the transaction status tablets clear of the crash.
   ASSERT_OK(MoveLeadersOffTserver(old_leader_idx, tablet_x));
 
+  // Warm this backend's catalog caches for the statement measured at trigger guard 1
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          conn_->FetchRow<int32_t>(Format("SELECT balance FROM $0 WHERE id = 1", kAcctX))),
+      100);
+
   // conn1: read account Y first, while the whole cluster is healthy (creates the transaction and
   // its Y-side read intents on quorum-safe ground; see SelectForUpdateHoldsAcrossLeaderCrash for
   // why). The read is a plain SELECT: SERIALIZABLE turns it into a pipelined lock write.
@@ -1077,15 +1196,7 @@ TEST_F(YSqlAsyncWriteTest, SerializableIsolationHoldsAcrossLeaderCrash) {
   ASSERT_EQ(y_balance, 100);
   SleepFor(2s * kTimeMultiplier);
 
-  std::vector<tablet::TabletPeerPtr> follower_peers;
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    if (i == old_leader_idx) {
-      continue;
-    }
-    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_x));
-    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
-    follower_peers.push_back(peer);
-  }
+  auto followers = ASSERT_RESULT(RejectFollowerUpdates(tablet_x, old_leader_idx));
 
   const auto internal_count_before = internal_async_write_count.GetEventCount();
 
@@ -1107,7 +1218,7 @@ TEST_F(YSqlAsyncWriteTest, SerializableIsolationHoldsAcrossLeaderCrash) {
     ASSERT_GT(received.index, committed.index)
         << "Trigger guard failed: the read-intent op already reached quorum; the crash below "
            "would not destroy it.";
-    for (auto& peer : follower_peers) {
+    for (const auto& peer : followers.peers) {
       const auto follower_received =
           ASSERT_RESULT(ASSERT_RESULT(peer->GetRaftConsensus())->GetLastOpId(
               consensus::RECEIVED_OPID));
@@ -1119,9 +1230,7 @@ TEST_F(YSqlAsyncWriteTest, SerializableIsolationHoldsAcrossLeaderCrash) {
 
   // Crash X's leader. conn1's read locks on account X die with it.
   cluster_->mini_tablet_server(old_leader_idx)->Shutdown();
-  for (auto& peer : follower_peers) {
-    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
-  }
+  ASSERT_OK(AllowFollowerUpdates(followers));
   const size_t new_leader_idx = ASSERT_RESULT(WaitForNewTabletLeader(tablet_x, old_leader_idx));
   LOG(INFO) << "New leader of X's tablet after crash: tserver index " << new_leader_idx;
 
@@ -1422,7 +1531,39 @@ TEST_F(YSqlAsyncWriteTest, YB_DEBUG_ONLY_TEST(HandleLeaderStepDown)) {
       [&first_wait_blocked] { return first_wait_blocked.load(); }, 30s,
       "Wait for first async write to get blocked"));
 
+  // Freeze automatic failure detection before isolating the old leader. Otherwise both surviving
+  // followers race into an election, and a split vote bumps the raft term twice (term N -> N+1
+  // split -> N+2). That strands the still-blocked term-N async writes across more than one leader
+  // move, which the client rejects ("tablet leader moved more than once", transaction.cc), aborting
+  // the transaction and flaking the test. Instead drive exactly one election on a single chosen
+  // follower for a deterministic single-term handover.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_election_when_fail_detected) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
   ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), old_leader_idx));
+
+  // Elect the surviving follower whose log is most up-to-date. A candidate whose log trails the
+  // other reachable follower loses the vote, and with failure detection off there is no retry, so
+  // a lagging target would hang until the 30s timeout.
+  size_t target_idx = old_leader_idx;
+  OpId best_received;
+  for (size_t i = 0; i < NumTabletServers(); ++i) {
+    if (i == old_leader_idx) {
+      continue;
+    }
+    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_id));
+    auto received = ASSERT_RESULT(ASSERT_RESULT(peer->GetRaftConsensus())->GetLastOpId(
+        consensus::RECEIVED_OPID));
+    if (target_idx == old_leader_idx || best_received < received) {
+      target_idx = i;
+      best_received = received;
+    }
+  }
+  auto target_peer = ASSERT_RESULT(GetTabletPeerOnTserver(target_idx, tablet_id));
+  // Force the election with ELECT_EVEN_IF_LEADER_IS_ALIVE.
+  ASSERT_OK(ASSERT_RESULT(target_peer->GetRaftConsensus())->StartElection(
+      consensus::LeaderElectionData{
+          .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+          .must_be_committed_opid = {}}));
   size_t new_leader_idx = ASSERT_RESULT(WaitForNewTabletLeader(tablet_id, old_leader_idx));
   ASSERT_OK(SetupConnectivityWithAll(cluster_.get(), old_leader_idx));
 
@@ -1599,6 +1740,9 @@ TEST_F(YSqlAsyncWriteTest, RepeatedStepDownsWithAsyncWrites) {
   const auto count = ASSERT_RESULT(
       conn_->FetchRow<pgwrapper::PGUint64>(Format("SELECT COUNT(*) FROM $0", kTableName)));
   ASSERT_EQ(count, kNumIterations);
+
+  // Every write was verified on the next leader, so nothing was attributed to write pipelining.
+  ASSERT_EQ(GetWritePipeliningAbortMetrics().aborts, 0);
 }
 
 class YSqlAsyncWriteLongLeaseTest : public YSqlAsyncWriteTest {
@@ -1679,6 +1823,22 @@ TEST_F(YSqlAsyncWriteLongLeaseTest, GracefulStepDownWithExtendedProtegeSyncWait)
   const auto rows =
       ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
   ASSERT_EQ(rows, "1, A; 2, B");
+}
+
+class YSqlAsyncWriteDdlTest : public YSqlAsyncWriteTest {
+ public:
+  void SetTestFlags() override {
+    YSqlAsyncWriteTest::SetTestFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  }
+};
+
+// A DDL transaction whose async write fails at commit must be aborted before the commit waits for
+// master DDL verification. Otherwise the wait keeps the transaction alive until it times out,
+// while the DDL holds its exclusive object locks.
+TEST_F(YSqlAsyncWriteDdlTest, LeaderStepDownAfterWriteAckInDdlTransaction) {
+  ASSERT_NO_FATALS(LeaderStepDownAfterWriteAckTest(/* perform_read */ false, /* with_ddl */ true));
 }
 
 class YSqlAsyncWriteSplitTest : public YSqlAsyncWriteTest {

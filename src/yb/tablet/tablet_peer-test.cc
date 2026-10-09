@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include <atomic>
+
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
@@ -69,6 +71,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/threadpool.h"
@@ -223,6 +226,11 @@ class TabletPeerTest : public YBTabletTest {
       .name = "raft_notifications",
       .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
     });
+    auto* sync_point = SyncPoint::GetInstance();
+    sync_point->SetCallBack("RaftGroupMetadata::Flush", [this](void*) {
+      ++superblock_flushes_during_init_;
+    });
+    sync_point->EnableProcessing();
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            nullptr /* server_mem_tracker */,
                                            messenger_.get(),
@@ -232,6 +240,7 @@ class TabletPeerTest : public YBTabletTest {
                                            table_metric_entity_,
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
+                                           raft_pool_.get() /* snapshot_cleanup_pool */,
                                            raft_notifications_pool_.get(),
                                            tablet_prepare_pool_.get(),
                                            &retryable_requests,
@@ -239,6 +248,8 @@ class TabletPeerTest : public YBTabletTest {
                                            nullptr /* consensus_meta */,
                                            multi_raft_manager_.get(),
                                            flush_bootstrap_state_pool_.get()));
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
     tablet_peer_->EnableFlushBootstrapState();
   }
 
@@ -379,9 +390,15 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::unique_ptr<ThreadPool> flush_bootstrap_state_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
+  std::atomic<int> superblock_flushes_during_init_{0};
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
+
+// Peer init reads the CDC barriers from the superblock and must not rewrite it.
+TEST_F(TabletPeerTest, InitDoesNotFlushSuperblock) {
+  ASSERT_EQ(superblock_flushes_during_init_.load(), 0);
+}
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
 TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
@@ -393,7 +410,7 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   int32_t num_gced;
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
@@ -437,7 +454,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   int32_t num_gced;
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
@@ -521,7 +538,7 @@ TEST_F(TabletPeerTest, TestActiveOperationPreventsLogGC) {
   Log* log = tablet_peer_->log_.get();
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
@@ -601,7 +618,7 @@ TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
   Log* log = tablet_peer_->log();
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
@@ -614,11 +631,10 @@ TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
 
   auto metadata = tablet()->metadata();
 
-  std::unique_ptr<log::LogReader> reader;
-  ASSERT_OK(log::LogReader::Open(
+  auto reader = ASSERT_RESULT(log::LogReader::Open(
       metadata->fs_manager()->env(), /*index=*/nullptr, "Log reader: ", metadata->wal_dir(),
       /*table_metric_entity=*/nullptr,
-      /*tablet_metric_entity=*/nullptr, /*read_wal_mem_tracker=*/nullptr, &reader));
+      /*tablet_metric_entity=*/nullptr, /*read_wal_mem_tracker=*/nullptr));
 
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
   VerifyNonDecreasingTxnStartTimeInClosedSegments(segments);
@@ -686,7 +702,7 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
   auto* log = tablet_peer_->log();
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   for (auto& segment : segments) {

@@ -39,6 +39,7 @@
 
 #include "yb/gutil/integral_types.h"
 #include "yb/util/atomic.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/rw_mutex.h"

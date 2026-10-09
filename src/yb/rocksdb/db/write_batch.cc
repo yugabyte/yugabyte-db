@@ -59,6 +59,7 @@
 
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/faststring.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

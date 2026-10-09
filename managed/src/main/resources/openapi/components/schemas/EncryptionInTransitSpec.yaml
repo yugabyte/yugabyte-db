@@ -10,6 +10,10 @@ properties:
     description: Whether to enable encryption for client connection to DB nodes
     type: boolean
     example: false
+  root_and_client_root_ca_same:
+    description: 'In case certificates are generated, whether to use the same certificate'
+    type: boolean
+    example: false
   root_ca:
     description: The UUID of the rootCA to be used to generate node certificates and facilitate TLS communication between database nodes.
     type: string

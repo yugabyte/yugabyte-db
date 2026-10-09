@@ -67,11 +67,11 @@ Split-brain is a computing scenario in which data and availability inconsistenci
 
 ## Data distribution
 
-YugabyteDB splits table data into smaller pieces called tablets and distributes these tablets across different nodes in the cluster for better performance, availability, and resiliency. YugabyteDB automatically re-balances the number of tablets on each node as the cluster scales.
+YugabyteDB splits table data into smaller pieces called tablets and distributes these tablets across different nodes in the cluster for better performance, availability, and resiliency. YugabyteDB automatically rebalances the number of tablets on each node as the cluster scales.
 
 ## Load balancing
 
-YugabyteDB monitors and automatically re-balances the number of tablet leaders and followers on each node continuously. This leads to the distribution of reads and writes across multiple nodes avoiding hot-spots and ensuring efficient resource utilization.
+YugabyteDB monitors and automatically rebalances the number of tablet leaders and followers on each node continuously. This leads to the distribution of reads and writes across multiple nodes avoiding hot-spots and ensuring efficient resource utilization.
 
 ## Data locality
 

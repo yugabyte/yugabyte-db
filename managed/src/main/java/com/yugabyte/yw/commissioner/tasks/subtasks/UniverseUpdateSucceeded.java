@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.TaskType;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -53,6 +54,13 @@ public class UniverseUpdateSucceeded extends UniverseTaskBase {
               }
               // Set the operation success flag.
               universeDetails.updateSucceeded = true;
+              // The first successful Create task on this universe permanently marks it as
+              // "created". Consumers (HealthChecker, AlertConfigurationService, etc.) rely on
+              // this flag to skip work for universes that never made it past creation.
+              if (universeDetails.updatingTask == TaskType.CreateUniverse
+                  || universeDetails.updatingTask == TaskType.CreateKubernetesUniverse) {
+                universeDetails.creationSucceeded = true;
+              }
               universe.setUniverseDetails(universeDetails);
             }
           };

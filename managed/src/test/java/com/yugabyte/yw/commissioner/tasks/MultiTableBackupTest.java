@@ -37,7 +37,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
 
@@ -105,12 +105,12 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     tableInfoList1.add(ti1);
     tableInfoList2.add(ti3);
     tableInfoList2.add(ti4);
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     GetTableSchemaResponse mockSchemaResponse1 = mock(GetTableSchemaResponse.class);
     GetTableSchemaResponse mockSchemaResponse2 = mock(GetTableSchemaResponse.class);
     GetTableSchemaResponse mockSchemaResponse3 = mock(GetTableSchemaResponse.class);
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);

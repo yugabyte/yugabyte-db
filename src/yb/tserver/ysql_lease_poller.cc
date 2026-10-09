@@ -17,7 +17,7 @@
 
 #include "yb/common/ysql_operation_lease.h"
 
-#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_ysql_lease.proxy.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/server/server_base.proxy.h"
@@ -32,6 +32,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 
 DEFINE_RUNTIME_uint64(ysql_lease_refresher_rpc_timeout_ms, 15000,
@@ -70,7 +71,7 @@ class YsqlLeasePoller : public MasterLeaderPollerInterface {
   TabletServer& server_;
   YsqlLeaderClientListener listener_;
   MasterLeaderFinder& finder_;
-  std::optional<master::MasterDdlProxy> proxy_;
+  std::optional<master::MasterYsqlLeaseProxy> proxy_;
 };
 
 class YsqlLeaseClient::Impl {
@@ -161,7 +162,7 @@ Status YsqlLeasePoller::Poll() {
   auto timeout =
       MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_rpc_timeout_ms);
   if (!proxy_) {
-    proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterDdlProxy>(timeout));
+    proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterYsqlLeaseProxy>(timeout));
   }
 
   master::RefreshYsqlLeaseRequestPB req;
@@ -207,7 +208,7 @@ std::future<Status> YsqlLeasePoller::RelinquishLease(MonoDelta timeout) const {
     promise.set_value(Status::OK());
     return promise.get_future();
   }
-  auto proxy = master::MasterDdlProxy(&finder_.get_proxy_cache(), current_host_port);
+  auto proxy = master::MasterYsqlLeaseProxy(&finder_.get_proxy_cache(), current_host_port);
   auto rpc = std::make_shared<rpc::RpcController>();
   rpc->set_timeout(timeout);
   master::RelinquishYsqlLeaseRequestPB req;

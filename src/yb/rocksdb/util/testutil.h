@@ -213,8 +213,9 @@ class VectorIterator : public InternalIterator {
 
   bool MatchFilter(
       const IteratorFilter* filter, const QueryOptions& options, Slice user_key,
-      FilterKeyCache* cache) override {
-    return filter->Filter(options, user_key, cache, &keys_);
+      FilterKeyCache* filter_key_cache) override {
+    return filter->Filter(
+        options, user_key, filter_key_cache, /* filter_cache = */ nullptr, &keys_);
   }
 
   Status status() const override { return Status::OK(); }
@@ -342,7 +343,7 @@ class StringSource: public RandomAccessFile {
 
   const std::string& filename() const override { return filename_; }
 
-  size_t memory_footprint() const override { LOG(FATAL) << "Not supported"; }
+  size_t memory_footprint() const override;
 
   int total_reads() const { return total_reads_; }
 

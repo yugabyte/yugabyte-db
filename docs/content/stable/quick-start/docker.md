@@ -157,7 +157,13 @@ docker exec -it yugabyte yugabyted status
 
 ### Run Docker in a persistent volume
 
-In the preceding `docker run` command, the data stored in YugabyteDB does not persist across container restarts. To make YugabyteDB persist data across restarts, you can add a volume mount option to the docker run command, as follows:
+In the preceding `docker run` command, data is stored in the container's writable layer. That data survives `docker stop` / `docker start`, but is lost if you remove the container (`docker rm`). To persist data across container recreation, use a host volume mount **instead of** the preceding command, as follows:
+
+1. If you already started a container named `yugabyte`, remove it:
+
+    ```sh
+    docker rm -f yugabyte
+    ```
 
 1. Create a `~/yb_data` directory by executing the following command:
 
@@ -168,20 +174,25 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 1. Run Docker with the volume mount option by executing the following command:
 
     ```sh
-    docker run -d --name yugabyte01 --hostname yugabyte01 \
+    docker run -d --name yugabyte --hostname yugabyte \
               -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
+              -v ~/yb_data:/home/yugabyte/yb_data \
               yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} bin/yugabyted start \
               --base_dir=/home/yugabyte/yb_data \
               --background=false
     ```
 
-    If running macOS Monterey, replace `-p 7000:7000` with `-p 7001:7000`.
+    If you are running macOS Monterey, use the same port mapping change described above.
 
     It is important to use a static container hostname to avoid startup errors if the hostname changes, such as when recreating the container with the same volume.
 
     yugabyted uses `$HOME/var` by default to store data, configurations, and logs. You can change the [base directory](../../reference/configuration/yugabyted/#base-directory) when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base_dir` flag when running subsequent commands on the cluster.
 
-    For example, to get the status of the cluster you just created, you would enter `bin/yugabyted status --base_dir=/home/yugabyte/yb_data`.
+    For example, to check the status of the cluster you just created:
+
+    ```sh
+    docker exec -it yugabyte yugabyted status --base_dir=/home/yugabyte/yb_data
+    ```
 
 ## Connect to the database
 
@@ -204,6 +215,8 @@ Type "help" for help.
 
 yugabyte=#
 ```
+
+`--host $(hostname)` is required: ysqlsh defaults to `localhost`, but inside the container YugabyteDB listens on the container hostname (its Docker network address), not on loopback.
 
 To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/develop/sample-data/retail-analytics/).
 

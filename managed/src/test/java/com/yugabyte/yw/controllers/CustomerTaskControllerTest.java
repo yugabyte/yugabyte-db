@@ -549,7 +549,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             100.0);
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
-    CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
+    CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertThat(result.status(), is(OK));
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode universeTasks = json.get(universe.getUniverseUUID().toString());
@@ -677,8 +677,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             100.0);
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
-    CustomerTask ct =
-        CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
+    CustomerTask ct = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertThat(result.status(), is(OK));
     assertThat(
         contentAsString(result), allOf(notNullValue(), containsString("Created Universe : Foo")));
@@ -835,6 +834,40 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(universeTasks.isArray(), is(true));
     JsonNode taskJson = universeTasks.get(0);
     assertThat(taskJson.get("userEmail").asText(), equalTo(CustomerTask.BACKGROUND_TASK_USER));
+  }
+
+  @Test
+  public void testTaskDetailsIncludesOriginalTaskUUID() {
+    String authToken = user.createAuthToken();
+    UUID originalTaskUuid = UUID.randomUUID();
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask task =
+        createTaskWithStatusAndResponse(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            Update,
+            TaskType.EditUniverse,
+            "Foo",
+            "Running",
+            10.0,
+            responseJson);
+    responseJson.put("originalTaskUUID", originalTaskUuid.toString());
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/" + customer.getUuid() + "/tasks/" + task.getTaskUUID() + "/details",
+            authToken);
+
+    assertThat(result.status(), is(OK));
+    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode universeTasks = json.get(universe.getUniverseUUID().toString());
+    assertThat(universeTasks.isArray(), is(true));
+    assertValue(universeTasks.get(0), "originalTaskUUID", originalTaskUuid.toString());
   }
 
   // PLAT-21392: retry/abort authz must locate the universe at "taskParams.universeUUID"

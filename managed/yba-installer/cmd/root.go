@@ -15,13 +15,21 @@ import (
 
 // Service Names
 const (
-	YbPlatformServiceName  string = "yb-platform"
-	PostgresServiceName    string = "postgres"
-	PrometheusServiceName  string = "prometheus"
-	YbdbServiceName        string = "ybdb"
-	PerfAdvisorServiceName string = "yb-perf-advisor"
-	LogRotateServiceName   string = "yb-logrotate"
+	YbPlatformServiceName   string = "yb-platform"
+	PostgresServiceName     string = "postgres"
+	PrometheusServiceName   string = "prometheus"
+	YbdbServiceName         string = "ybdb"
+	PerfAdvisorServiceName  string = "yb-perf-advisor"
+	LogRotateServiceName    string = "yb-logrotate"
+	ByocApiProxyServiceName string = "byoc-api-proxy"
+	NodeExporterServiceName string = "node-exporter"
 )
+
+// serviceNameArgs lists the services that status, start, stop and restart accept as an
+// argument. Cobra validates arguments before PersistentPreRun creates the service manager, so
+// the list is static.
+var serviceNameArgs = []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName,
+	PerfAdvisorServiceName, ByocApiProxyServiceName}
 
 var (
 	force             bool

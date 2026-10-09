@@ -26,20 +26,17 @@ import org.yb.YBParameterizedTestRunner;
  */
 @RunWith(value = YBParameterizedTestRunner.class)
 public class TestPgRegressPgMisc extends BasePgRegressTestPorted {
-  private final boolean objectLockingEnabled;
-  private final boolean concurrentDDLEnabled;
+  // Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
+  // cross-flag validators in common_flags.cc, so a single parameter drives all three.
+  private final boolean useLegacyDDLMode;
 
-  public TestPgRegressPgMisc(boolean objectLockingEnabled, boolean concurrentDDLEnabled) {
-    this.objectLockingEnabled = objectLockingEnabled;
-    this.concurrentDDLEnabled = concurrentDDLEnabled;
+  public TestPgRegressPgMisc(boolean useLegacyDDLMode) {
+    this.useLegacyDDLMode = useLegacyDDLMode;
   }
 
-  @Parameterized.Parameters(name = "objectLocking={0}-concurrentDDL={1}")
+  @Parameterized.Parameters(name = "useLegacyDDLMode={0}")
   public static List<Object[]> parameters() {
-    return Arrays.asList(
-        new Object[]{false, false},
-        new Object[]{true, false},
-        new Object[]{true, true});
+    return Arrays.asList(new Object[]{true}, new Object[]{false});
   }
 
   @Override
@@ -53,12 +50,14 @@ public class TestPgRegressPgMisc extends BasePgRegressTestPorted {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_auto_analyze", "false");
-    flagMap.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
-    flagMap.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
-    flagMap.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));
+    toggleDDLMode(flagMap, useLegacyDDLMode);
+    return flagMap;
+  }
 
-    // TODO(28543): Remove once transactional ddl is enabled by default.
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, useLegacyDDLMode);
     return flagMap;
   }
 

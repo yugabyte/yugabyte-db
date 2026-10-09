@@ -16,7 +16,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.XClusterRemoveNamespaceFromOutboundReplicationGroupResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class XClusterRemoveNamespaceFromOutboundReplicationGroup extends XClusterConfigTaskBase {
@@ -64,7 +64,7 @@ public class XClusterRemoveNamespaceFromOutboundReplicationGroup extends XCluste
               taskParams().getDbToRemove()));
     }
 
-    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(sourceUniverse)) {
       log.info(
           "Removing database from XClusterConfig({}): source db id: {}",
           xClusterConfig.getUuid(),

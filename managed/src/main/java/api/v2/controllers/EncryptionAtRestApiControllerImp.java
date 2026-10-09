@@ -6,6 +6,9 @@ import api.v2.handlers.EncryptionAtRestHandler;
 import api.v2.models.KmsConfigPagedQuerySpec;
 import api.v2.models.KmsConfigPagedResp;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import java.util.UUID;
 import play.mvc.Http.Request;
 
@@ -14,7 +17,12 @@ public class EncryptionAtRestApiControllerImp extends EncryptionAtRestApiControl
   private final EncryptionAtRestHandler handler;
 
   @Inject
-  public EncryptionAtRestApiControllerImp(EncryptionAtRestHandler handler) {
+  public EncryptionAtRestApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
+      EncryptionAtRestHandler handler) {
+    super(auditService, config, gFlagsAuditHandler);
     this.handler = handler;
   }
 

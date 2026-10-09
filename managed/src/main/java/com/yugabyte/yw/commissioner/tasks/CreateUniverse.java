@@ -27,14 +27,11 @@ import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.filters.PACollectorFilter;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -42,7 +39,6 @@ import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 @Abortable
@@ -117,41 +113,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // If PA auto-registration is enabled for the customer, make sure there is enough free YBA
       // memory before we start creating the universe (registration runs as a subtask later in
       // the flow and would otherwise leave the universe up but unregistered).
-      validatePaAutoRegistrationMemory(universe);
+      perfAdvisorService.validateAutoRegistrationMemory(universe);
     }
-  }
-
-  /**
-   * Mirrors the resolution logic in {@link
-   * com.yugabyte.yw.commissioner.tasks.subtasks.RegisterUniverseWithPaCollector#run()} so the
-   * precheck reflects the exact mode the auto-registration subtask would apply. No-op when auto
-   * registration is disabled for the customer or no PA Collector is configured (both cases also
-   * short-circuit the subtask, so no PA memory will be consumed).
-   */
-  private void validatePaAutoRegistrationMemory(Universe universe) {
-    Customer customer = Customer.get(universe.getCustomerId());
-    if (!confGetter.getConfForScope(customer, CustomerConfKeys.paAutoRegistrationEnabled)) {
-      return;
-    }
-    List<PACollector> collectors =
-        perfAdvisorService.list(
-            PACollectorFilter.builder().customerUuid(customer.getUuid()).build());
-    if (CollectionUtils.isEmpty(collectors)) {
-      return;
-    }
-    boolean advancedObservability =
-        confGetter.getConfForScope(
-            customer, CustomerConfKeys.paAutoRegistrationAdvancedObservability);
-    PerfAdvisorService.PaMemoryMode targetMode =
-        advancedObservability
-            ? PerfAdvisorService.PaMemoryMode.ADVANCED
-            : PerfAdvisorService.PaMemoryMode.COLLECTOR_ONLY;
-    // CreateUniverse always starts from an unregistered universe, so current PA footprint is NONE.
-    perfAdvisorService.validatePerfAdvisorMemory(
-        universe,
-        PerfAdvisorService.PaMemoryMode.NONE,
-        targetMode,
-        "Cannot create universe with Performance Advisor auto-registration enabled");
   }
 
   // This is invoked only on first try.
@@ -269,9 +232,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createPersistUseClockboundTask();
 
-      createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
-
       createPersistCpuCgroupConfiguredTask(universe);
+
+      for (Cluster cluster : taskParams().clusters) {
+        createEnsureManagedLoadBalancerTasks(cluster);
+      }
 
       boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
@@ -349,8 +314,27 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
+      // Configure cross-cloud federated IAM if the universe is set up for it. The flag is set on
+      // the UserIntent by the create handler (like certs), so create keys off it the same way
+      // edit/add-node/replace do.
+      if (isUniverseFederationConfigured()) {
+        for (Cluster cluster : taskParams().clusters) {
+          createConfigureCloudFederationTasks(
+              cluster.userIntent, taskParams().getNodesInCluster(cluster.uuid), true);
+        }
+      }
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      // This also flips universeDetails.creationSucceeded to true (see UniverseUpdateSucceeded)
+      // which is what gates health checks and alert definition creation for this universe.
       createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Alert definitions are created only after the universe is fully up and marked as
+      // successfully created. Running this earlier would either produce definitions for
+      // universes whose creation later fails, or need the creationSucceeded flag flipped too
+      // early. Any exception here still fails the task, but the universe itself is already up
+      // and the operator can retry to reconcile the missing definitions.
+      createUnivCreateAlertDefinitionsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       // Run all the tasks.
       getRunnableTask().runSubTasks();

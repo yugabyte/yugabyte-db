@@ -25,6 +25,7 @@
 #include "yb/client/client-test-util.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
@@ -61,19 +62,14 @@ class PgDdlAtomicityStressTest : public PgDdlAtomicityTestBase,
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
-                       "ysql_yb_ddl_transaction_block_enabled");
     options->extra_master_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=false");
     if (IsTsan()) {
       options->extra_master_flags.push_back(
           "--TEST_skip_wait_for_ysql_backends_catalog_version=true");
     }
     // TODO(#28042): Enable object locking once the false deadlock issues are addressed.
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 
   Status SetupTables();
@@ -225,7 +221,29 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(
     // over-matching unrelated messages. Note the sqlstate ("pgsql error XX000") is an attached
     // error code, not part of Status::message(), so it must not be included here.
     "' table creation"sv,
-    kDdlVerificationError
+    kDdlVerificationError,
+    // If the transaction is aborted asynchronously by the master, the sys_catalog tablet removes
+    // the provisional intents. If the backend then tries to read pg_attribute for a relation it
+    // just created, it will see 0 rows and fail with this error.
+    "pg_attribute catalog is missing"sv,
+    // Same missing pg_attribute rows, but raised by a direct syscache lookup (ATTNUM) instead of
+    // by the relcache tuple-descriptor build. Reachable when a concurrent DDL bumps the catalog
+    // version and invalidates the backend's cached entry for a relation it just created, forcing
+    // a re-read that finds the rows already rolled back.
+    "cache lookup failed for attribute"sv,
+    // Similar to the above, if the backend tries to read pg_class for a relation it just created,
+    // it will see 0 rows and fail with this error.
+    "cache lookup failed for relation"sv,
+    // Similar to the above, if the backend tries to read pg_index for an index it just created,
+    // it will see 0 rows and fail with this error.
+    "cache lookup failed for index"sv,
+    // Same race, but seen as a torn read across two catalogs: building the relcache entry of a
+    // just-created index reads relnatts from pg_class and indnatts from pg_index. If the rollback
+    // of the aborted transaction lands between the two reads, they disagree and PG fails this
+    // sanity check in RelationInitIndexAccessInfo. Upstream relies on holding a lock on the
+    // relation to prevent this, which does not help when the master removes the rows underneath a
+    // statement that is still executing.
+    "relnatts disagrees with indnatts for index"sv,
   };
   if (HasSubstring(msg, allowed_msgs)) {
     LOG(INFO) << "Execution of stmt " << stmt << " failed: " << s;

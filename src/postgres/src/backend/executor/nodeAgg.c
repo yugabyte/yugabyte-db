@@ -2356,6 +2356,25 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			 */
 			if (!YbDataTypeIsValidForKey(type))
 				return;
+
+			/*
+			 * Aggregates over a money argument are pushed down only if
+			 * they are one of min/max/count, whose transition state
+			 * cannot overflow.  Anything else (sum(money) today, and
+			 * any future or user-defined money aggregate) is evaluated
+			 * in Postgres, where the transition function does proper
+			 * overflow checking: cash_pl raises "money out of range",
+			 * whereas DocDB's EvalSumInt uses plain 64-bit addition
+			 * and would silently wrap around.  This keys on the
+			 * argument type rather than the transition type so that
+			 * aggregates accumulating money in another form (e.g. an
+			 * int8 array) are also caught.
+			 */
+			if (type == MONEYOID &&
+				strcmp(func_name, "min") != 0 &&
+				strcmp(func_name, "max") != 0 &&
+				strcmp(func_name, "count") != 0)
+				return;
 		}
 	}
 
@@ -2472,7 +2491,7 @@ ExecAgg(PlanState *pstate)
 		 */
 		if (IsYugaByteEnabled())
 		{
-			pstate->state->yb_exec_params.limit_use_default = true;
+			pstate->state->yb_exec_params.plan_limit = 0;
 		}
 
 		/* Dispatch based on strategy */
@@ -2731,23 +2750,23 @@ agg_retrieve_direct(AggState *aggstate)
 						{
 							/*
 							 * Like COUNT, add the sum and count values
-							 * directly. The datum is guaranteed to be an
-							 * Int8TransTypeData.
+							 * directly. The datum is guaranteed to be a
+							 * YbInt8TransTypeData.
 							 * The checking code is taken from int8_avg()
 							 * in numeric.c.
 							 */
-							Int8TransTypeData *transdata;
+							YbInt8TransTypeData *transdata;
 							ArrayType  *transarray = (ArrayType *) (pergroupstate->transValue);
 							oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 
 							if (ARR_HASNULL(transarray) ||
 								ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
-								sizeof(Int8TransTypeData))
+								sizeof(YbInt8TransTypeData))
 							{
 								elog(ERROR, "expected 2-element int8 array");
 							}
 
-							transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+							transdata = (YbInt8TransTypeData *) ARR_DATA_PTR(transarray);
 
 							transdata->sum += value;
 							transdata->count += count_value;

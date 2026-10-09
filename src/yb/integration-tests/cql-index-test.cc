@@ -44,6 +44,7 @@ DECLARE_bool(allow_index_table_read_write);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(cql_prepare_child_threshold_ms);
 DECLARE_bool(disable_index_backfill);
+DECLARE_int32(rpc_high_priority_workers_limit);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int64(transaction_abort_check_interval_ms);
 DECLARE_uint64(transaction_manager_workers_limit);
@@ -219,6 +220,11 @@ class CqlIndexSmallWorkersTest : public CqlIndexTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 4;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_manager_workers_limit) = 4;
+    // The starved pool must be the one serving writes. Leaving consensus on 4 workers too queues
+    // UpdateConsensus/RequestConsensusVote for seconds, so no leader can commit its NoOp before
+    // the election timeout and the cluster livelocks re-electing instead of exercising the
+    // conflict resolution path this test covers.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_high_priority_workers_limit) = 256;
     CqlIndexTest::SetUp();
   }
 };
@@ -265,6 +271,9 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
           ++inserts;
         } else {
           LOG(INFO) << "Insert failed: " << status;
+          // Errors reported without a round trip (no host available) would otherwise turn this
+          // into a busy loop that starves the in-process cluster and the driver IO threads.
+          std::this_thread::sleep_for(10ms);
         }
       }
     });
@@ -310,7 +319,7 @@ TEST_F(CqlIndexTest, WriteQueryStuckAndUpdateOnSameKey) {
   ASSERT_NOK(session.ExecuteQuery("INSERT INTO t(id, s) values(-1, 'test');"));
   // Validate that the stuck WriteQuery object block the followup update on same key
   // due to batch lock fail.
-  FLAGS_client_read_write_timeout_ms =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) =
       narrow_cast<uint32_t>(kCassandraTimeOut.ToMilliseconds());
   int64_t failed_batch_lock = GetFailedBatchLockNum(cluster_.get());
   ASSERT_NOK(session.ExecuteQuery("UPDATE t SET s = 'txn' WHERE id = -1;"));

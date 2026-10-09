@@ -104,6 +104,11 @@ CREATE TABLE single_zone_table (id INTEGER, field text)
   TABLESPACE us_east_1a_zone_tablespace SPLIT INTO 1 TABLETS;
 ```
 
+Each placement block can specify an optional `max_num_replicas` upper bound. When omitted, the
+upper bound is the placement's `num_replicas`. For example, an RF5 policy across three zones can
+set each block to `"min_num_replicas":1,"max_num_replicas":2` to prevent any one zone from
+hosting a majority.
+
 To view your tablespaces, you can enter the following command:
 
 ```sql
@@ -293,7 +298,7 @@ In the following example, the tablespace is set up to have replicas in us-east-1
 
 ![Multi Region Table](/images/explore/tablespaces/multi_region_latency.png)
 
-However, setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1a are unavailable, they fall back to the next preferred zone us-east-2a, which has a 12ms latency. The following example creates the tablespace with leader preferences specified:
+However, setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1b are unavailable, they fall back to the next preferred zone us-east-2a, which has a 12ms latency. The following example creates the tablespace with leader preferences specified:
 
 ```sql
 CREATE TABLESPACE us_east1_region_tablespace

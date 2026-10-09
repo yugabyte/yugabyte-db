@@ -53,6 +53,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -107,6 +108,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
       fail();
@@ -196,9 +198,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.SetNodeState, // to Adding
-          TaskType.SetNodeStatus, // to Adding for 'To Be Added'
-          TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
           TaskType.SetupYNP,
@@ -213,12 +212,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Gflags - tServer
           TaskType.SetNodeStatus, // ToJoinCluster
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
+          TaskType.MarkRollbackUnsafe,
           TaskType.AnsibleClusterServerCtl, // start process
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.ModifyBlackList,
+          TaskType.ModifyBlackList, // unblacklist
           TaskType.WaitForTServerHeartBeats,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
@@ -227,9 +227,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -246,12 +243,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // MarkRollbackUnsafe
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // unblacklist
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()));
@@ -263,9 +261,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.SetNodeState, // to Adding
-          TaskType.SetNodeStatus, // to Adding for 'To Be Added'
-          TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
           TaskType.SetupYNP,
@@ -279,12 +274,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Gflags - tServer
           TaskType.SetNodeStatus, // ToJoinCluster
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
+          TaskType.MarkRollbackUnsafe,
           TaskType.AnsibleClusterServerCtl, // start process
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.ModifyBlackList,
+          TaskType.ModifyBlackList, // unblacklist
           TaskType.WaitForTServerHeartBeats,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
@@ -293,9 +289,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -311,12 +304,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // MarkRollbackUnsafe
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // unblacklist
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()));
@@ -327,7 +321,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.PreflightNodeCheck,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.SetNodeState,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
@@ -343,12 +336,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Gflags - tServer
           TaskType.SetNodeStatus, // ToJoinCluster
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
+          TaskType.MarkRollbackUnsafe,
           TaskType.AnsibleClusterServerCtl, // start process (master/tServer)
           TaskType.UpdateNodeProcess, // update process name in DB
           TaskType.WaitForServer, // wait for process to come up
           TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.ModifyBlackList,
+          TaskType.ModifyBlackList, // unblacklist
           TaskType.WaitForTServerHeartBeats,
           TaskType.SetNodeState, // Live
           TaskType.UniverseUpdateSucceeded);
@@ -374,13 +368,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // MarkRollbackUnsafe
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // unblacklist
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()));
@@ -391,9 +385,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.SetNodeState,
-          TaskType.SetNodeStatus,
-          TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
           TaskType.SetupYNP,
@@ -410,6 +401,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // To join cluster
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
+          TaskType.MarkRollbackUnsafe, // before ChangeMasterConfig
           TaskType.ChangeMasterConfig, // master done
           TaskType.CheckFollowerLag, // master done
           TaskType.WaitForServer,
@@ -419,7 +411,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // tServer
           TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.ModifyBlackList,
+          TaskType.ModifyBlackList, // unblacklist (MarkRollbackUnsafe already done)
           TaskType.WaitForTServerHeartBeats,
           TaskType.AnsibleConfigureServers, // add Master
           TaskType.AnsibleConfigureServers,
@@ -432,9 +424,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -453,6 +442,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()), // CheckDbNodePortConnectivity
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
+          Json.toJson(ImmutableMap.of()), // MarkRollbackUnsafe
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -462,7 +452,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // unblacklist
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -561,7 +551,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -572,8 +562,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       // a bump on the cluster config version. The actual number depends on the
       // number of invocations of saveUniverseDetails, so it can vary but the
       // important thing is that it is much more than the other case.
-      // 7 version increments + 1 modify blacklist + 1 from YugawareMetadata init.
-      verify(mockClient, times(15)).changeMasterClusterConfig(any());
+      verify(mockClient, times(13)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }
@@ -586,7 +575,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -650,7 +639,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
 
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -683,7 +672,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(universe.getUniverseUUID(), DEFAULT_NODE_NAME, 4);
     assertEquals(Failure, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -711,7 +700,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(universe.getUniverseUUID(), "yb-tserver-0", 5);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -758,11 +747,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testAddNodeRetries() {
-    SettableRuntimeConfigFactory factory =
-        app.injector().instanceOf(SettableRuntimeConfigFactory.class);
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue("yb.checks.comprehensive_prechecks.enabled", "false");
     // This is set up with under-replicated master to execute master addition flow.
     UniverseModifyBaseTest.mockMasterAndPeerRoles(
         mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
@@ -774,6 +758,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
+    taskParams.nodeDetailsSet = new HashSet<>(universe.getUniverseDetails().nodeDetailsSet);
     taskParams.expectedUniverseVersion = universe.getVersion();
     taskParams.nodeName = DEFAULT_NODE_NAME;
     taskParams.setUniverseUUID(universe.getUniverseUUID());

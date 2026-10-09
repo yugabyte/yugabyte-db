@@ -123,8 +123,7 @@ int od_reset(od_server_t *server)
 	 * if msg pipelining is used by driver.
 	 * Else drop connection, to avoid complexness of state maintenance
 	 */
-	if (server->in_out_response_received !=
-	    server->done_fail_response_received) {
+	if (yb_is_server_in_copy_mode(server)) {
 		od_log(&instance->logger, "reset", server->client, server,
 		       "server left in copy, closing and drop connection");
 		goto drop;

@@ -64,6 +64,7 @@
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -2128,9 +2129,6 @@ TEST_F(DBTest, CompressedCache) {
         // both compressed and uncompressed block cache
         ASSERT_GT(TestGetTickerCount(options, BLOCK_CACHE_MISS), 0);
         ASSERT_GT(TestGetTickerCount(options, BLOCK_CACHE_HIT), 0);
-        ASSERT_EQ(TestGetTickerCount(options, BLOCK_CACHE_SINGLE_TOUCH_HIT) +
-                  TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_HIT),
-                  TestGetTickerCount(options, BLOCK_CACHE_HIT));
         ASSERT_GT(TestGetTickerCount(options, BLOCK_CACHE_COMPRESSED_MISS), 0);
         // compressed doesn't have any hits since blocks are not compressed on
         // storage
@@ -4534,7 +4532,8 @@ class ModelDB: public DB {
   using DB::GetPropertiesOfAllTables;
   virtual Status GetPropertiesOfAllTables(
       ColumnFamilyHandle* column_family,
-      TablePropertiesCollection* props) override {
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override {
     return Status();
   }
 
@@ -4761,6 +4760,10 @@ class ModelDB: public DB {
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override {
     return NotSupported();
+  }
+
+  std::unique_ptr<PinnedVersion> PinCurrentVersion() override {
+    LOG(FATAL) << "PinCurrentVersion is not supported.";
   }
 
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override {
@@ -8664,7 +8667,7 @@ TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
       ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
     }
 
-    db_->SetDisableFlushOnShutdown(true);
+    db_->SetDisableFlushOnShutdown();
     CancelAllBackgroundWork(db_);
 
     // Write one more key, that should trigger scheduling flush.

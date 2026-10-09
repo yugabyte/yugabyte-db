@@ -40,8 +40,8 @@
 #include "yb/consensus/log_index.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
@@ -134,8 +134,8 @@ class MultiThreadedLogTest : public LogTestBase {
       ASSERT_OK(log_->TEST_ReserveAndAppend(
           std::move(entry_batch_pb), batch_replicates, cb->AsStatusCallback()));
     }
-    LOG_TIMING(INFO, strings::Substitute("thread $0 waiting to append and sync $1 batches",
-                                         thread_id, FLAGS_num_batches_per_thread)) {
+    LOG_TIMING(INFO, Format("thread $0 waiting to append and sync $1 batches",
+                            thread_id, FLAGS_num_batches_per_thread)) {
       latch.Wait();
     }
     for (const Status& status : errors) {
@@ -164,19 +164,18 @@ class MultiThreadedLogTest : public LogTestBase {
 TEST_F(MultiThreadedLogTest, TestAppends) {
   BuildLog();
   auto start_current_id = current_index_;
-  LOG_TIMING(INFO, strings::Substitute("inserting $0 batches($1 threads, $2 per-thread)",
+  LOG_TIMING(INFO, Format("inserting $0 batches($1 threads, $2 per-thread)",
                                       FLAGS_num_writer_threads * FLAGS_num_batches_per_thread,
                                       FLAGS_num_batches_per_thread, FLAGS_num_writer_threads)) {
     ASSERT_NO_FATALS(Run());
   }
   ASSERT_OK(log_->Close());
 
-  std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(
+  auto reader = ASSERT_RESULT(LogReader::Open(
       fs_manager_->env(), /*index=*/nullptr,
       "Log reader: ", fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
       /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &reader));
+      /*read_wal_mem_tracker=*/nullptr));
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 

@@ -30,7 +30,7 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class CheckClusterConsistency extends ServerSubTaskBase {
@@ -75,7 +75,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             + " this check (not recommended), briefly disable the runtime config "
             + UniverseConfKeys.verifyClusterStateBeforeTask.getKey()
             + ".";
-    try (YBClient ybClient = ybService.getUniverseClient(universe)) {
+    try (YBClientApi ybClient = ybService.getUniverseClient(universe)) {
       errors = doCheckServers(ybClient, universe, cloudEnabled);
     } catch (Exception e) {
       throw new RuntimeException(
@@ -95,7 +95,8 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
     }
   }
 
-  private Set<String> doCheckServers(YBClient ybClient, Universe universe, boolean cloudEnabled) {
+  private Set<String> doCheckServers(
+      YBClientApi ybClient, Universe universe, boolean cloudEnabled) {
     Set<String> errors = new HashSet<>();
     long maxWaitTime = taskParams().isRunOnlyPrechecks() ? 1 : MAX_WAIT_TIME_MS;
     doWithConstTimeout(
@@ -157,7 +158,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
   }
 
   public static CheckResult checkCurrentServers(
-      YBClient ybClient,
+      YBClientApi ybClient,
       Universe universe,
       @Nullable Set<String> skipMaybeRunning,
       boolean strict,

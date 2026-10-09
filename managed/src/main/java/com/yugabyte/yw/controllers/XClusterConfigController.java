@@ -221,6 +221,9 @@ public class XClusterConfigController extends AuthenticatedController {
     xClusterCreatePrecheck.xClusterCreatePreChecks(
         requestedTableInfoList,
         createFormData.configType,
+        // The v1 xCluster create API cannot create configs in automatic DDL mode; only DR configs
+        // are created in automatic DDL mode.
+        false /* automaticDdlMode */,
         sourceUniverse,
         sourceTableInfoList,
         targetUniverse,
@@ -246,7 +249,9 @@ public class XClusterConfigController extends AuthenticatedController {
         sourceTableIdTargetTableIdMap,
         ybService,
         createFormData.bootstrapParams,
-        null /* currentReplicationGroupName */);
+        null /* currentReplicationGroupName */,
+        // The v1 xCluster create API cannot create configs in automatic DDL mode.
+        false /* matviewSupported */);
 
     if (createFormData.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
@@ -364,12 +369,15 @@ public class XClusterConfigController extends AuthenticatedController {
       Universe sourceUniverse =
           Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
       String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
-      Map<String, String> additionalFilters = new HashMap<>();
-      additionalFilters.put("node_prefix", nodePrefix);
-      additionalFilters.put("stream_id", String.join("|", streamIds));
+      Map<String, String> lagFilters = new HashMap<>();
+      lagFilters.put("node_prefix", nodePrefix);
+      lagFilters.put("stream_id", String.join("|", streamIds));
+      // The two filters above should be applied to *every* metric in the request (there is
+      // only one right now, but keep the plumbing uniform), so put them under the ALL bucket
+      // of filterOverrides rather than reintroducing an "additionalFilters" parameter.
       lagMetricData =
           metricQueryHelper.query(
-              customer, List.of(metric), metricParams, Map.of(), additionalFilters);
+              customer, List.of(metric), metricParams, Map.of(MetricQueryHelper.ALL, lagFilters));
     } catch (Exception e) {
       String errorMsg =
           String.format(
@@ -641,10 +649,22 @@ public class XClusterConfigController extends AuthenticatedController {
         }
       }
 
+      // Materialized views are replicated only in automatic DDL mode on supported YBDB versions.
+      XClusterUtil.checkMatviewReplicationSupported(
+          requestedTableInfoList,
+          Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode()),
+          sourceUniverse,
+          targetUniverse);
+      boolean matviewSupported =
+          XClusterUtil.isMatviewReplicationSupported(
+              Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode()),
+              sourceUniverse,
+              targetUniverse);
+
       // Make sure only supported relations types are passed in by the user.
       Map<Boolean, List<String>> tableIdsPartitionedByIsXClusterSupported =
           XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
-              requestedTableInfoList);
+              requestedTableInfoList, matviewSupported);
       if (!tableIdsPartitionedByIsXClusterSupported.get(false).isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -652,7 +672,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 "Only the following relation types are supported for xCluster replication: %s; The"
                     + " following tables have different relation types or is a colocated child"
                     + " table: %s",
-                XClusterConfigTaskBase.X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET,
+                XClusterConfigTaskBase.getSupportedTableRelationTypes(matviewSupported),
                 tableIdsPartitionedByIsXClusterSupported.get(false)));
       }
 
@@ -723,7 +743,8 @@ public class XClusterConfigController extends AuthenticatedController {
           sourceTableIdTargetTableIdMap,
           ybService,
           bootstrapParams,
-          xClusterConfig.getReplicationGroupName());
+          xClusterConfig.getReplicationGroupName(),
+          matviewSupported);
 
       if (!dryRun) {
         // Save the to-be-added tables in the DB.
@@ -944,7 +965,8 @@ public class XClusterConfigController extends AuthenticatedController {
         ybService,
         bootstrapParams,
         xClusterConfig.getReplicationGroupName(),
-        true /* isRestartReplication */);
+        true /* isRestartReplication */,
+        XClusterUtil.isMatviewReplicationSupported(xClusterConfig));
 
     return new XClusterConfigTaskParams(
         xClusterConfig,
@@ -1781,7 +1803,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 XClusterConfigTaskBase.getProducerCertsDir(
-                    targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider)));
+                    targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent)));
       }
     } catch (IllegalArgumentException e) {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, e.getMessage());
@@ -1796,7 +1818,8 @@ public class XClusterConfigController extends AuthenticatedController {
       Map<String, String> sourceTableIdTargetTableIdMap,
       YBClientService ybService,
       @Nullable BootstrapParams bootstrapParams,
-      @Nullable String currentReplicationGroupName) {
+      @Nullable String currentReplicationGroupName,
+      boolean matviewSupported) {
     xClusterBootstrappingPreChecks(
         requestedTableInfoList,
         sourceTableInfoList,
@@ -1806,7 +1829,8 @@ public class XClusterConfigController extends AuthenticatedController {
         ybService,
         bootstrapParams,
         currentReplicationGroupName,
-        false /* isRestartReplication */);
+        false /* isRestartReplication */,
+        matviewSupported);
   }
 
   public static void xClusterBootstrappingPreChecks(
@@ -1818,7 +1842,8 @@ public class XClusterConfigController extends AuthenticatedController {
       YBClientService ybService,
       @Nullable BootstrapParams bootstrapParams,
       @Nullable String currentReplicationGroupName,
-      boolean isRestartReplication) {
+      boolean isRestartReplication,
+      boolean matviewSupported) {
 
     Set<String> requestedTableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     // If some tables do not exist on the target universe, bootstrapping is required.
@@ -1916,7 +1941,8 @@ public class XClusterConfigController extends AuthenticatedController {
                         sourceTableInfoList.stream()
                             .filter(
                                 tableInfo ->
-                                    XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                                    XClusterConfigTaskBase.isXClusterSupported(
+                                            tableInfo, matviewSupported)
                                         && tableInfo
                                             .getNamespace()
                                             .getId()

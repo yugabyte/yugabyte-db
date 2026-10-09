@@ -39,6 +39,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
@@ -312,6 +313,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   ~Impl() {
+    if (write_pipelining_abort_) {
+      std::lock_guard lock(mutex_);
+      ReportWritePipeliningAbort();
+    }
     std::vector<rpc::Rpcs::Handle *> handles{
         &heartbeat_handle_, &new_heartbeat_handle_, &commit_handle_, &abort_handle_,
         &old_abort_handle_};
@@ -522,6 +527,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     bool schedule_status_moved = false;
 
     CommitCallback commit_callback;
+    if (!status.ok() &&
+        tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST) {
+      write_pipelining_abort_ = true;
+    }
     {
       std::lock_guard lock(mutex_);
       running_requests_ -= ops.size();
@@ -549,8 +558,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
+          const bool applied = op.yb_op->applied();
+          // Only count user ops and catalog writes.
+          if (applied) {
+            if (!op.yb_op->read_only()) {
+              ++completed_write_ops_;
+            } else if (!op.yb_op->IsYsqlCatalogOp()) {
+              ++completed_read_ops_;
+            }
+          }
           const std::string& tablet_id = op.tablet->tablet_id();
-          if (op.yb_op->applied() && op.yb_op->should_apply_intents(metadata_.isolation)) {
+          if (applied && op.yb_op->should_apply_intents(metadata_.isolation)) {
             if (prev_tablet_id == nullptr || tablet_id != *prev_tablet_id) {
               prev_tablet_id = &tablet_id;
               tablets_[tablet_id].has_metadata = true;
@@ -576,6 +594,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
             abort = true;
+            // Remember why we abort, so that the operations that fail because of this abort could
+            // report the original failure instead of their own kAborted error.
+            flush_abort_cause_ = status;
             // State will be changed to aborted in SetError
           }
           SetErrorUnlocked(status, "Flush");
@@ -602,6 +623,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
+  Status FlushAbortCause() EXCLUDES(mutex_) override {
+    std::lock_guard lock(mutex_);
+    return flush_abort_cause_;
+  }
+
   void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback)
       EXCLUDES(mutex_) {
     auto transaction = transaction_->shared_from_this();
@@ -611,19 +637,24 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       auto status = async_write_status_;
       if (!status.ok()) {
         lock.unlock();
+        // Abort before invoking the callback, since the callback may wait for the txn to finish.
+        Abort(TransactionRpcDeadline());
         callback(status);
         return;
       }
       if (!inflight_async_writes_.empty()) {
         async_write_commit_waiter_ = [transaction, seal_only, deadline,
-                                      callback = std::move(callback)](const Status& status) {
+                                      wait_state = ash::WaitStateInfo::CurrentWaitState(),
+                                      callback = std::move(callback)](const Status&) {
+          ADOPT_WAIT_STATE(wait_state);
+          SCOPED_WAIT_STATUS(OnCpu_Active);
           TRACE_TO(transaction->trace(), "YBTransaction::Commit Async writes completed");
-          if (status.ok()) {
-            transaction->Commit(deadline, seal_only, std::move(callback));
-          } else {
-            callback(status);
-          }
+          transaction->Commit(deadline, seal_only, std::move(callback));
         };
+        // The commit stays blocked after we return and resumes on the thread that completes the
+        // last async write.
+        ASH_ENABLE_CONCURRENT_UPDATES();
+        SET_WAIT_STATUS(YBClient_WaitingForPipelinedWrites);
         return;
       }
     }
@@ -638,13 +669,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (!status.ok()) {
         auto should_abort = state_.load(std::memory_order_acquire) == TransactionState::kRunning;
         lock.unlock();
-        callback(status);
         // Since the backend cannot recover from this commit failure, abort explicitly so the
-        // status tablet is notified immediately; otherwise the transaction could remain alive until
-        // all strong references drop and the status tablet expires it due to missed heartbeats.
+        // status tablet is notified immediately. Abort before invoking the callback, since the
+        // callback may wait for the transaction to finish.
         if (should_abort) {
           Abort(TransactionRpcDeadline());
         }
+        callback(status);
         return;
       }
       state_.store(seal_only ? TransactionState::kSealed : TransactionState::kCommitted,
@@ -670,6 +701,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         RequestStatusTablet(deadline);
         return;
       }
+      DropPendingStatusMovesWithoutMetadata();
       if (!transaction_status_move_handles_.empty()) {
         DCHECK(!commit_waiter_);
         VLOG_WITH_PREFIX(1) << "Waiting for transaction move RPCs to finish";
@@ -687,6 +719,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     VLOG_WITH_PREFIX(2) << "Abort";
     TRACE_TO(trace_, __func__);
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
+      return;
+    }
     {
       UniqueLock lock(mutex_);
       auto state = state_.load(std::memory_order_acquire);
@@ -834,6 +870,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       LOG_WITH_PREFIX(DFATAL) << "Attempting to promote transaction not in running state";
     }
     ready_ = false;
+    metadata_future_ = {};
+    metadata_promise_ = std::make_shared<std::promise<Result<TransactionMetadata>>>();
     metadata_.locality = TransactionFullLocality::Global();
 
     transaction_status_move_tablets_.reserve(tablets_.size());
@@ -858,33 +896,55 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (metadata_future_.valid()) {
       return metadata_future_;
     }
+    if (!metadata_promise_) {
+      metadata_promise_ = std::make_shared<std::promise<Result<TransactionMetadata>>>();
+    }
     metadata_future_ = std::shared_future<Result<TransactionMetadata>>(
-        metadata_promise_.get_future());
+        metadata_promise_->get_future());
     if (ready_) {
-      metadata_promise_.set_value(metadata_);
+      metadata_promise_->set_value(metadata_);
       return metadata_future_;
     }
 
     if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
-      metadata_promise_.set_value(STATUS(IllegalState, "Transaction aborted"));
+      metadata_promise_->set_value(STATUS(IllegalState, "Transaction aborted"));
       return metadata_future_;
     }
 
-    auto transaction = transaction_->shared_from_this();
-    waiters_.push_back([this, transaction](const Status& status) {
-      WARN_NOT_OK(status, "Transaction request failed");
-      UniqueLock lock(mutex_);
-      if (status.ok()) {
-        metadata_promise_.set_value(metadata_);
-      } else {
-        metadata_promise_.set_value(status);
-      }
-    });
+    QueueGetMetadataWaiter(transaction_->shared_from_this(), metadata_promise_);
 
     auto result = metadata_future_;
     lock.unlock();
     RequestStatusTablet(deadline);
     return result;
+  }
+
+  void QueueGetMetadataWaiter(
+      const YBTransactionPtr& transaction,
+      const std::shared_ptr<std::promise<Result<TransactionMetadata>>>& metadata_promise)
+      REQUIRES(mutex_) {
+    waiters_.push_back([this, transaction, metadata_promise](const Status& status) {
+      DoGetMetadata(status, transaction, metadata_promise);
+    });
+  }
+
+  void DoGetMetadata(
+      const Status& status, const YBTransactionPtr& transaction,
+      const std::shared_ptr<std::promise<Result<TransactionMetadata>>>& metadata_promise)
+      EXCLUDES(mutex_) {
+    WARN_NOT_OK(status, "Transaction request failed");
+    UniqueLock lock(mutex_);
+    if (!status.ok()) {
+      metadata_promise->set_value(status);
+      return;
+    }
+    // Waiters are invoked outside mutex_, so a promotion may have started after this waiter was
+    // dequeued, leaving metadata_ partially updated. Requeue; the promotion notifies waiters again.
+    if (!ready_) {
+      QueueGetMetadataWaiter(transaction, metadata_promise);
+      return;
+    }
+    metadata_promise->set_value(metadata_);
   }
 
   Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
@@ -1078,6 +1138,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       rpc::Rpcs::Handle* handle,
       const SubtxnSet& aborted_sub_txn_set) {
     DCHECK(status_tablet);
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
+      return MakeFuture<Status>([s](auto callback) { callback(s); });
+    }
 
     return MakeFuture<Status>([&, handle](auto callback) {
       manager_->rpcs().RegisterAndStart(
@@ -1244,6 +1308,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "Log prefix tag changed";
   }
 
+  void MarkHistoricalReadReady() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    ready_ = true;
+  }
+
   bool OldTransactionAborted() const {
     auto state = old_status_tablet_state_.load(std::memory_order_acquire);
     return state == OldTransactionState::kAborted;
@@ -1313,6 +1382,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       }
     }
 
+    if (!status.ok()) {
+      write_pipelining_abort_ = true;
+    }
+
     for (auto& waiter : waiters) {
       waiter(status);
     }
@@ -1331,11 +1404,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // abort the transaction.
     auto min_op = *write_query->op_ids.begin();
     auto max_op = *write_query->op_ids.rbegin();
-    SCHECK_FORMAT(
-        max_op.term - min_op.term <= 1, IllegalState,
-        "Tablet $0: tablet leader moved more than once before async writes completed "
-        "(min_op: $1, max_op: $2)",
-        tablet_id, min_op, max_op);
+    if (max_op.term - min_op.term > 1) {
+      auto status = STATUS_EC_FORMAT(
+          IllegalState, TransactionError(TransactionErrorCode::kAborted),
+          "Tablet $0: tablet leader moved more than once before async writes completed "
+          "(min_op: $1, max_op: $2)",
+          tablet_id, min_op, max_op);
+      write_pipelining_abort_ = true;
+      return status;
+    }
 
     // Now we either have pending writes within the same term, or across 2 consecutive terms.
     //
@@ -1375,9 +1452,28 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     callback(status);
   }
 
+  void ReportWritePipeliningAbort() const REQUIRES(mutex_) {
+    VLOG_WITH_PREFIX(1) << "Write pipelining abort discarded " << completed_read_ops_
+                        << " read ops and " << completed_write_ops_ << " write ops";
+    if (auto aborts = manager_->write_pipelining_aborts_metric()) {
+      IncrementCounter(aborts);
+    }
+    if (auto discarded_reads = manager_->write_pipelining_abort_discarded_reads_metric()) {
+      IncrementCounterBy(discarded_reads, completed_read_ops_);
+    }
+    if (auto discarded_writes = manager_->write_pipelining_abort_discarded_writes_metric()) {
+      IncrementCounterBy(discarded_writes, completed_write_ops_);
+    }
+  }
+
   void SetOriginId(uint32_t origin_id) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     origin_id_ = origin_id;
+  }
+
+  void RemoteAbortCallback(std::function<void(void)> callback) {
+    std::lock_guard lock(mutex_);
+    remote_abort_callback_ = std::move(callback);
   }
 
  private:
@@ -1577,10 +1673,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
     }
 
+    auto* status_tablet = status_tablet_.get();
+    auto old_status_tablet = old_status_tablet_;
+    lock.unlock();
+
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
             deadline,
-            status_tablet_.get(),
+            status_tablet,
             manager_->client(),
             &req,
             [this, transaction](const auto& status, const auto& req, const auto& resp) {
@@ -1588,8 +1688,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             }),
         &commit_handle_);
 
-    auto old_status_tablet = old_status_tablet_;
-    lock.unlock();
     SendAbortToOldStatusTabletIfNeeded(deadline, transaction, old_status_tablet);
   }
 
@@ -1826,6 +1924,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
     VLOG_WITH_PREFIX(2) << "RequestStatusTablet()";
+    initial_heartbeat_deadline_.store(AdjustDeadline(deadline), std::memory_order_release);
     auto transaction = transaction_->shared_from_this();
     if (metadata_.status_tablet.empty()) {
       manager_->PickStatusTablet(
@@ -1887,7 +1986,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto status = HandleLookupTabletCases(result, &waiters, promoting);
 
     if (status == TransactionStatus::ABORTED) {
-      DCHECK(promoting);
+      DCHECK(!promoting);
       decltype(old_status_tablet_) old_status_tablet;
       {
         SharedLock lock(mutex_);
@@ -1897,6 +1996,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     } else {
       std::weak_ptr<YBTransaction> weak_transaction = transaction;
       auto send_new_heartbeat = [this, weak_transaction, status, promoting](const Status&) {
+        // TODO(#16670): start an independent span here, linked to the originating span.
+        auto detach_token = dist_trace::DetachTraceContext();
         if (auto transaction = weak_transaction.lock()) {
           SendHeartbeat(status, metadata_.transaction_id, transaction,
                         SendHeartbeatToNewTablet(promoting));
@@ -1968,11 +2069,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status_tablet_id.empty()) {
         // Initial status lookup, not pre-created.
         status_tablet_id = status_tablet_->tablet_id();
-        notify_waiters = false;
         status = TransactionStatus::CREATED;
       } else {
         // Pre-created transaction.
-        notify_waiters = true;
         status = TransactionStatus::PENDING;
       }
 
@@ -1986,11 +2085,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           old_status_tablet_state_.store(OldTransactionState::kRunning, std::memory_order_release);
         }
 
-        notify_waiters = false;
-
         // Return status ABORTED here to trigger abort to old status tablet if needed.
         status = TransactionStatus::ABORTED;
       }
+      notify_waiters = !promotion_lookup_finished &&
+                       state_.load(std::memory_order_acquire) != TransactionState::kPromoting &&
+                       status == TransactionStatus::PENDING;
     }
 
     if (notify_waiters) {
@@ -2014,7 +2114,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     NotifyWaitersAndRelease(&lock, status, operation, set_ready);
   }
 
-  // Notify all waiters. The transaction will be aborted if it is running and status is not OK.
+  // Notify all waiters iff they can progress, that is either the transaction is ready_ or has
+  // failed. The transaction will be aborted if it is running and status is not OK.
   // `lock` will be released in this function. If `set_ready` is true and status is OK, `ready_`
   // must be false, and will be set to true.
   void NotifyWaitersAndRelease(UniqueLock<std::shared_mutex>* lock,
@@ -2036,7 +2137,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       DCHECK(!ready_);
       ready_ = true;
     }
-    waiters_.swap(waiters);
+    if (ready_ || !status.ok()) {
+      waiters_.swap(waiters);
+    }
 
     lock->unlock();
 
@@ -2065,6 +2168,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (!transaction) {
       // Cannot use LOG_WITH_PREFIX here, since this was actually destroyed.
       VLOG(1) << id << ": Transaction destroyed";
+      return;
+    }
+
+    if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << s;
       return;
     }
 
@@ -2274,9 +2382,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", txn state: " << state;
 
       if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress() ||
-          manager_->IsClosing()) {
+          status.IsDeleted() || manager_->IsClosing()) {
         // IsAborted/IsShutdownInProgress - Service is shutting down, no reason to retry.
         // IsExpired - Transaction expired.
+        // IsDeleted - Transaction was aborted remotely, and then status tablet was deleted.
         // We want to notify waiters for RUNNING if we are in kPromoting state -- this is heartbeat
         // to old status tablet during promotion, and SetError will cause the PROMOTED heartbeat to
         // new status tablet to be skipped if it has not started yet. It's OK even if it actually
@@ -2289,8 +2398,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           SetError(status, "Heartbeat");
         }
         // If state is committed, then we should not cleanup.
-        if (status.IsExpired() &&
+        if ((status.IsExpired() || status.IsDeleted()) &&
             (state == TransactionState::kRunning || state == TransactionState::kPromoting)) {
+           std::function<void(void)> remote_abort_callback;
+          {
+            std::lock_guard lock(mutex_);
+            std::swap(remote_abort_callback_, remote_abort_callback);
+          }
+          if (remote_abort_callback) {
+            remote_abort_callback();
+          }
           DoAbortCleanup(transaction, CleanupType::kImmediate);
         }
         return;
@@ -2302,6 +2419,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             << "PgSessionRequestVersion changed from " << pg_session_req_version_
             << " to " << *new_pg_session_req_version;
         pg_session_req_version_ = *new_pg_session_req_version;
+      }
+      // The CREATED heartbeat gates ready_, so retrying it forever leaves every waiter (the first
+      // write, the commit) blocked with no way to observe its own deadline. Give up once the
+      // requester that asked for the status tablet has run out of time.
+      if (transaction_status == TransactionStatus::CREATED && !send_to_new_tablet &&
+          CoarseMonoClock::now() >= initial_heartbeat_deadline_.load(std::memory_order_acquire)) {
+        NotifyWaiters(status, "Heartbeat", SetReady::kTrue);
+        return;
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
@@ -2319,6 +2444,30 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           DoSendUpdateTransactionPromotingRpcs(std::move(transaction), id);
         },
         std::chrono::milliseconds(FLAGS_TEST_txn_status_moved_rpc_send_delay_ms));
+  }
+
+  // Stops waiting on the participants whose UpdateTransaction(PROMOTING) rpc is never going to be
+  // sent. DoSendUpdateTransactionPromotingRpcs() skips a participant until one of its batches
+  // completes, so a participant whose only batches failed keeps its entry in
+  // transaction_status_move_handles_ forever and the commit waits on an rpc that never goes out.
+  //
+  // Only safe at commit time: CheckCouldCommitUnlocked() rejects a commit with running requests, so
+  // no further batch can complete. Such a participant is not part of the commit either, since
+  // DoCommit() drops tablets without metadata.
+  void DropPendingStatusMovesWithoutMetadata() REQUIRES(mutex_) {
+    for (auto it = transaction_status_move_tablets_.begin();
+         it != transaction_status_move_tablets_.end();) {
+      const auto tablet_state = tablets_.find(*it);
+      CHECK(tablet_state != tablets_.end());
+      if (tablet_state->second.has_metadata) {
+        ++it;
+        continue;
+      }
+      VLOG_WITH_PREFIX(1) << "Tablet " << *it << " has no metadata, dropping its"
+                          << " UpdateTransaction(PROMOTING) rpc";
+      transaction_status_move_handles_.erase(*it);
+      it = transaction_status_move_tablets_.erase(it);
+    }
   }
 
   void DoSendUpdateTransactionPromotingRpcs(
@@ -2557,8 +2706,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     callback(child_txn_data_pb);
   }
 
+  Status CheckNotHistoricalReadTxn() const {
+    RSTATUS_DCHECK(
+        !metadata_.is_read_only_historical_committed_txn, IllegalState,
+        "Commit, abort, and heartbeat are not allowed on a historical read-only transaction $0",
+        metadata_.transaction_id);
+    return Status::OK();
+  }
+
   Status CheckCouldCommitUnlocked(SealOnly seal_only) REQUIRES(mutex_) {
     RETURN_NOT_OK(CheckRunningUnlocked());
+    RETURN_NOT_OK(CheckNotHistoricalReadTxn());
     if (child_) {
       return STATUS(IllegalState, "Commit of child transaction is not allowed");
     }
@@ -2603,6 +2761,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       subtxn_table_mutation_counter_map_ GUARDED_BY(mutation_count_mutex_);
 
   std::atomic<bool> requested_status_tablet_{false};
+  // Deadline of the requester that triggered the initial status tablet request. Bounds the retries
+  // of the CREATED heartbeat, which gates ready_.
+  std::atomic<CoarseTimePoint> initial_heartbeat_deadline_{CoarseTimePoint::max()};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
   internal::RemoteTabletPtr old_status_tablet_ GUARDED_BY(mutex_);
   std::atomic<TransactionState> state_{TransactionState::kRunning};
@@ -2646,7 +2807,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   std::atomic<OldTransactionState> old_status_tablet_state_{OldTransactionState::kNone};
 
-  std::promise<Result<TransactionMetadata>> metadata_promise_ GUARDED_BY(mutex_);
+  std::shared_ptr<std::promise<Result<TransactionMetadata>>> metadata_promise_ GUARDED_BY(mutex_);
   std::shared_future<Result<TransactionMetadata>> metadata_future_ GUARDED_BY(mutex_);
   // As of 2021-04-05 running_requests_ reflects number of ops in progress within this transaction
   // only if no in-transaction operations have failed.
@@ -2659,6 +2820,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // We might need to fix this before turning on transactions sealing.
   // https://github.com/yugabyte/yugabyte-db/issues/7984.
   size_t running_requests_ GUARDED_BY(mutex_) = 0;
+  // Flush failure that made this transaction abort itself, if any.
+  Status flush_abort_cause_ GUARDED_BY(mutex_);
   // Set to true after commit record is replicated. Used only during transaction sealing.
   bool commit_replicated_ GUARDED_BY(mutex_) = false;
 
@@ -2681,7 +2844,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   StdStatusCallback async_write_commit_waiter_ GUARDED_BY(async_write_query_mutex_);
   Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
 
+  // Ops this transaction has successfully flushed. If write_pipelining_abort_ is set, then these
+  // are reported as discarded work.
+  int64_t completed_read_ops_ GUARDED_BY(mutex_) = 0;
+  int64_t completed_write_ops_ GUARDED_BY(mutex_) = 0;
+  mutable std::atomic<bool> write_pipelining_abort_{false};
+
   uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
+
+  std::function<void(void)> remote_abort_callback_ GUARDED_BY(mutex_);
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2702,6 +2873,15 @@ YBTransaction::YBTransaction(
 
 YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData data)
     : impl_(new Impl(manager, this, std::move(data))) {
+}
+
+YBTransactionPtr YBTransaction::Fabricate(
+    TransactionManager* manager, const TransactionMetadata& metadata) {
+  auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
+  if (metadata.is_read_only_historical_committed_txn) {
+    result->impl_->MarkHistoricalReadReady();
+  }
+  return result;
 }
 
 YBTransaction::~YBTransaction() {
@@ -2924,6 +3104,10 @@ void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallb
 }
 
 void YBTransaction::SetOriginId(uint32_t origin_id) { impl_->SetOriginId(origin_id); }
+
+void YBTransaction::RemoteAbortCallback(std::function<void(void)> callback) {
+  impl_->RemoteAbortCallback(std::move(callback));
+}
 
 } // namespace client
 } // namespace yb

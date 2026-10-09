@@ -101,11 +101,11 @@ export enum StorageType {
   OCI_LOWERCOST = 'OCI_LOWERCOST'
 }
 export interface DeviceInfo {
-  volumeSize: number;
-  numVolumes: number;
+  volumeSize: number | null;
+  numVolumes: number | null;
   diskIops: number | null;
   throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  storageClass: string;
   mountPoints?: string | null;
   storageType: StorageType | null;
 }
@@ -376,11 +376,11 @@ export interface CommunicationPorts {
 }
 
 export interface DeviceInfo {
-  volumeSize: number;
-  numVolumes: number;
+  volumeSize: number | null;
+  numVolumes: number | null;
   diskIops: number | null;
   throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  storageClass: string;
   mountPoints?: string | null;
   storageType: StorageType | null;
   cloudVolumeEncryption?: {
@@ -390,8 +390,8 @@ export interface DeviceInfo {
 }
 
 export interface K8NodeSpec {
-  memoryGib: number;
-  cpuCoreCount: number;
+  memoryGib: number | null;
+  cpuCoreCount: number | null;
 }
 //-------------------------------------------------------- Most Used OR Common Types - Ends --------------------------------------------------------
 

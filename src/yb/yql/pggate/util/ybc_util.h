@@ -42,14 +42,16 @@ bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
-bool YBCStatusIsFatalError(YbcStatus s);
 uint32_t YBCStatusPgsqlError(YbcStatus s);
 void YBCFreeStatus(YbcStatus s);
 
-const char* YBCStatusFilename(YbcStatus s);
-int YBCStatusLineNumber(YbcStatus s);
-const char* YBCStatusFuncname(YbcStatus s);
-size_t YBCStatusMessageLen(YbcStatus s);
+typedef struct YbcStatusErrorLocationInfo {
+    const char *filename;
+    int lineno;
+    const char *funcname;
+} YbcStatusErrorLocationInfo;
+
+YbcStatusErrorLocationInfo YBCStatusErrorLocation(YbcStatus s);
 const char* YBCStatusMessageBegin(YbcStatus s);
 const char* YBCMessageAsCString(YbcStatus s);
 unsigned int YBCStatusRelationOid(YbcStatus s);
@@ -152,6 +154,7 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info);
 const char* YBCGetWaitEventAuxDescription(uint32_t wait_event_info);
 uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type);
 uint32_t YBCWaitEventForWaitingOnTServer();
+YbcAshAuxKind YBCGetWaitEventAuxKind(uint32_t wait_event_info);
 int YBCGetRandomUniformInt(int a, int b);
 YbcWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
 int YBCGetCircularBufferSizeInKiBs();
@@ -176,7 +179,21 @@ uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t ke
 
 char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
 
+/*
+ * Latch the value of the enable_object_locking_infra auto flag for the transaction that is about
+ * to start. The flag is PGC_SIGHUP, so without a per-transaction copy it can change between
+ * two statements of the same transaction block and flip object locking on or off mid-transaction.
+ * Must be called from PG's StartTransaction() before AtStart_Cache(), which already consults the
+ * value, and must not be called for savepoints or for the internal transaction restarts that
+ * happen within one PG transaction.
+ */
+void YBCSetObjectLockingInfraForCurrTxn();
+
+/* The value latched by YBCSetObjectLockingInfraForCurrTxn(). */
+bool YBCIsObjectLockingInfraEnabled();
+
 bool YBCIsObjectLockingEnabled();
+
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 
 bool YBCIsAutoAnalyzeEnabled();

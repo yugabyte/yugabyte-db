@@ -81,6 +81,7 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 
 -- No limit
 -- TODO(#29078): this likely should use merge scan.
@@ -113,10 +114,9 @@ SPLIT AT VALUES (
 DROP INDEX r5n_expr_r2_r3_r4_idx;
 
 --
--- Derive from secondary index expression, expression not being a prefix,
--- modulus being negative.
+-- Derive from secondary index expression, expression not being a prefix
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r1 ASC, (yb_hash_code(r1, r3, r4) % -5) ASC, r3, r4)
+CREATE INDEX NONCONCURRENTLY r5n_r1_expr_r3_r4_idx ON r5n (r1 ASC, (yb_hash_code(r1, r3, r4) % 5) ASC, r3, r4)
 SPLIT AT VALUES (
     (1),
     (2),
@@ -124,14 +124,15 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 
 -- Expression in sort, so not derived
 -- Merge scan should not be used.
-\set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
+\set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;'
 \i :run_query
 
 -- Expression in sort, so not derived (v2)
-\set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
+\set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;'
 \i :run_query
 
 -- Derived
@@ -166,6 +167,7 @@ SPLIT AT VALUES (
     (2, 2),
     (2, 2, 2),
     (3));
+ANALYZE parent;
 
 -- Parent
 \set query ':P :Q SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;'
@@ -193,6 +195,7 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 CREATE INDEX NONCONCURRENTLY ON parent ((yb_hash_code(r2, r3) % 3) ASC, r2, r3)
 SPLIT AT VALUES (
     (1),
@@ -200,6 +203,7 @@ SPLIT AT VALUES (
     (2, 2),
     (2, 2, 2),
     (3));
+ANALYZE parent;
 
 -- Derive from r5n
 \set query ':P :Q SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;'

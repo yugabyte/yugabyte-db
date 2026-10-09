@@ -3,11 +3,31 @@ description: Optional filter for listing customer tasks.
 type: object
 properties:
   date_range_start:
-    description: Include tasks created on or after this time.
+    description: |
+      Include tasks created on or after this time (filters `create_time`).
+      May be set alone (open-ended upper bound) or together with `date_range_end`.
     type: string
     format: date-time
   date_range_end:
-    description: Include tasks created on or before this time.
+    description: |
+      Include tasks created on or before this time (filters `create_time`).
+      May be set alone (open-ended lower bound) or together with `date_range_start`.
+    type: string
+    format: date-time
+  completion_date_range_start:
+    description: |
+      Include tasks that completed on or after this time.
+      May be set alone (open-ended upper bound) or together with `completion_date_range_end`.
+      In-progress tasks don't have a completion time yet and are always excluded when either
+      completion bound is set (SQL comparisons do not match nulls).
+    type: string
+    format: date-time
+  completion_date_range_end:
+    description: |
+      Include tasks that completed on or before this time.
+      May be set alone (open-ended lower bound) or together with `completion_date_range_start`.
+      In-progress tasks don't have a completion time yet and are always excluded when either
+      completion bound is set (SQL comparisons do not match nulls).
     type: string
     format: date-time
   target_list:

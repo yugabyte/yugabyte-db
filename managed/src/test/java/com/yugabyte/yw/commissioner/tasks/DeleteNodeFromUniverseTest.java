@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
@@ -39,14 +40,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final List<TaskType> DELETE_NODE_TASK_SEQUENCE_WITH_INSTANCE =
       ImmutableList.of(
@@ -76,8 +77,15 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -89,7 +97,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
               }
             }));
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
     when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());

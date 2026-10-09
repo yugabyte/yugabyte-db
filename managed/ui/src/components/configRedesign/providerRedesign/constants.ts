@@ -30,6 +30,12 @@ export const ProviderCode = {
 } as const;
 export type ProviderCode = typeof ProviderCode[keyof typeof ProviderCode];
 
+// Clouds whose image bundles store a distinct image per region (AWS AMIs, OCI image
+// OCIDs are region scoped) as opposed to a single global image (GCP/Azure). Mirrors
+// the backend Common.CloudType#usesPerRegionImages().
+export const isPerRegionImageProvider = (providerCode: ProviderCode) =>
+  providerCode === ProviderCode.AWS || providerCode === ProviderCode.OCI;
+
 export const CloudVendorProviders = [
   ProviderCode.AWS,
   ProviderCode.AZU,

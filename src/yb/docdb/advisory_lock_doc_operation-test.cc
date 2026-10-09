@@ -19,6 +19,8 @@
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/pgsql_operation.h"
 
+#include "yb/util/status_log.h"
+
 namespace yb {
 namespace docdb {
 

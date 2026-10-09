@@ -23,6 +23,8 @@ public class CustomerConfigConsts {
 
   public static final String USE_AZURE_IAM_FIELDNAME = "USE_AZURE_IAM";
 
+  public static final String AZURE_CLIENT_ID_FIELDNAME = "AZURE_CLIENT_ID";
+
   public static final String USE_OCI_IAM_FIELDNAME = "USE_OCI_IAM";
 
   public static final String OCI_REGION_FIELDNAME = "OCI_REGION";

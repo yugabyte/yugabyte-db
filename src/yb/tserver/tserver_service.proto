@@ -53,7 +53,9 @@ service TabletServerService {
     option (yb.rpc.send_metadata) = true;
     option (yb.rpc.lightweight_method).sides = BOTH;
   }
-  rpc WaitForAsyncWrite(WaitForAsyncWriteRequestPB) returns (WaitForAsyncWriteResponsePB);
+  rpc WaitForAsyncWrite(WaitForAsyncWriteRequestPB) returns (WaitForAsyncWriteResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc Read(ReadRequestPB) returns (ReadResponsePB) {
     option (yb.rpc.send_metadata) = true;
     option (yb.rpc.lightweight_method).sides = BOTH;
@@ -648,6 +650,10 @@ message AdminExecutePgsqlRequestPB {
   required string database_name = 1;
   // The list of SQL statements to execute. Execution will stop at the first error.
   repeated string pgsql_statements = 2;
+  // Wire name of the YbInternalConnKind to tag the internal PG connection that
+  // runs these statements (see src/postgres/src/include/yb_internal_conn.h).
+  // Empty for a generic (untagged) internal connection.
+  optional string yb_internal_conn_kind = 3;
 }
 
 message AdminExecutePgsqlResponsePB {
@@ -688,15 +694,42 @@ message DumpTabletDataRequestPB {
   // inclusive, end_key is exclusive; an absent/empty bound means the table's start/end. For a
   // colocated table the server prepends the table's colocation_id/cotable_id prefix, so the range
   // addresses that table's slice of the shared tablet. A key range scopes a single table, so it
-  // requires a concrete table_id (not the colocation parent id).
+  // requires a concrete table_id (not the colocation parent id). A bound may also be a next_key
+  // returned by an earlier capped scan, which for a hash table is an encoded row key rather than a
+  // 2-byte hash; the server tells the two apart by length.
   optional bytes start_key = 5;
   optional bytes end_key = 6;
+
+  // How long to wait for safe time to reach read_ht, before failing with READ_TIME_NOT_REACHED.
+  // 0 fails immediately. Unset uses FLAGS_dump_tablet_data_max_read_time_wait_ms. Capped at the
+  // RPC deadline.
+  // A tserver that predates this field ignores it and answers at whatever it has applied.
+  optional uint32 max_wait_ms = 7;
+
+  // Stop after hashing this many rows (0 = unlimited), for every partitioning scheme. When the scan
+  // stops early, next_key on the response is the exclusive continuation key (the first unhashed
+  // row) so the caller can resume with start_key = next_key. Requires a concrete table_id (not a
+  // colocation parent).
+  optional uint64 max_rows = 8;
 }
 
 message DumpTabletDataResponsePB {
   optional TabletServerErrorPB error = 1;
   optional uint64 row_count = 2;
   optional uint64 xor_hash = 3;
+  // Exclusive continuation key when max_rows stopped the scan before end_key. Empty if the
+  // requested range was fully hashed. Accepted as a start_key / end_key on a later request. For a
+  // hash table this is the first unhashed row's encoded key, so the scan resumes mid-band.
+  optional bytes next_key = 4;
+
+  // Which hashing scheme produced xor_hash (tablet::kTabletDataHashSchemeVersion). Two xor_hash
+  // values are comparable only when produced under the same scheme, so a caller comparing hashes
+  // from two servers checks this first.
+  //
+  // Unset means a tserver that predates this field, whose scheme is the original one. Read that as
+  // version 0 and not as "same as mine": during a rolling upgrade the old and new binaries answer
+  // the same question differently.
+  optional uint32 hash_scheme_version = 5;
 }
 
 message ConnectivityStateRequestPB {
@@ -739,8 +772,21 @@ message PgRemoteExecRequestPB {
 
 message PgRemoteExecResponsePB {
   optional TabletServerErrorPB error = 1;
-  optional PgResultPB pg_result = 2;
+
+  // Deprecated pg_result (PgResultPB): rows now travel in the sidecar below.
+  reserved 2;
+
   optional bool reached_size_limit = 3;
+
+  // Error from executing the query on the remote PG.
+  optional string error_message = 4;
+
+  // Index of the sidecar with row data (format: yb/yql/pggate/pg_global_view_read.h).
+  optional uint32 rows_sidecar = 5;
+  // Set on every successful response, so an unset num_rows means the tserver
+  // predates the sidecar encoding.
+  optional int32 num_rows = 6;
+  optional int32 num_cols = 7;
 }
 
 message CollectYsqlCallHomeStatsRequestPB {

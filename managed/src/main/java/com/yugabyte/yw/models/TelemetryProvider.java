@@ -7,16 +7,22 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
+import io.ebean.annotation.WhenCreated;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostPersist;
+import jakarta.persistence.PostRemove;
+import jakarta.persistence.PostUpdate;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -59,6 +65,7 @@ public class TelemetryProvider extends Model {
   @ApiModelProperty(value = "Extra Tags", accessMode = READ_WRITE)
   private Map<String, String> tags = new HashMap<>();
 
+  @WhenCreated
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Creation timestamp",
@@ -66,6 +73,7 @@ public class TelemetryProvider extends Model {
       accessMode = READ_ONLY)
   private Date createTime;
 
+  @WhenModified
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Updation timestamp",
@@ -88,6 +96,17 @@ public class TelemetryProvider extends Model {
 
   public static ExpressionList<TelemetryProvider> createQuery() {
     return find.query().where();
+  }
+
+  public static List<TelemetryProvider> getAll() {
+    return find.all();
+  }
+
+  @PostPersist
+  @PostUpdate
+  @PostRemove
+  public void invalidateRedactedSecrets() {
+    RedactingService.invalidateTelemetrySecrets();
   }
 
   public static List<TelemetryProvider> list(UUID customerUuid) {

@@ -38,6 +38,7 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/trim.hpp>
 
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/strings/split.h"
@@ -54,11 +55,12 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/url-coding.h"
@@ -284,7 +286,7 @@ bool IsStringFlagAllowed(const std::string& flag_name);
 namespace {
 
 void AppendXMLTag(const char* tag, const string& txt, string* r) {
-  strings::SubstituteAndAppend(r, "<$0>$1</$0>", tag, EscapeForHtmlToString(txt));
+  *r += Format("<$0>$1</$0>", tag, EscapeForHtmlToString(txt));
 }
 
 YB_STRONGLY_TYPED_BOOL(OnlyDisplayDefaultFlagValue);
@@ -395,10 +397,10 @@ void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values
 
   cout << "<?xml version=\"1.0\"?>" << endl;
   cout << "<AllFlags>" << endl;
-  cout << strings::Substitute(
+  cout << Format(
               "<program>$0</program>", EscapeForHtmlToString(GetStaticProgramName()))
        << endl;
-  cout << strings::Substitute(
+  cout << Format(
       "<usage>$0</usage>",
       EscapeForHtmlToString(google::ProgramUsage())) << endl;
 
@@ -481,7 +483,14 @@ bool ValidateAllowedPreviewFlagsCsv(std::string* err_msg, const string& allowed_
   for (const auto& flag : flag_infos) {
     unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
-    if (!IsPreviewFlagUpdateAllowed(flag, tags, flag.current_value, allowed_flags_csv, err_msg)) {
+    const std::string* current_value = &flag.current_value;
+    if (const auto* proposed = flags_internal::GetProposedFlagValues()) {
+      auto it = proposed->find(flag.name);
+      if (it != proposed->end()) {
+        current_value = &it->second;
+      }
+    }
+    if (!IsPreviewFlagUpdateAllowed(flag, tags, *current_value, allowed_flags_csv, err_msg)) {
       return false;
     }
   }
@@ -498,7 +507,10 @@ bool IsFlagUpdateAllowed(
   }
 
   return IsPreviewFlagUpdateAllowed(
-      flag_info, tags, new_value, FLAGS_allowed_preview_flags_csv, err_msg);
+      flag_info, tags, new_value,
+      flags_internal::GetFinalFlagValue(
+          FLAGS_allowed_preview_flags_csv, "allowed_preview_flags_csv"),
+      err_msg);
 }
 
 // Validates that the requested updates to vmodule can be made.
@@ -724,6 +736,12 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   }
 }
 
+void ParseCommandLineFlagsForTests(int* argc, char*** argv) {
+  // Set before ParseCommandLineFlags so that user provided override takes precedence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_promote_all_auto_flags) = ShouldTestPromoteAllAutoFlags();
+  ParseCommandLineFlags(argc, argv, /* remove_flags */ true);
+}
+
 bool RefreshFlagsFile(const std::string& filename) {
   // prog_name is a placeholder that isn't really used by ReadFromFlags.
   // TODO: Find a better way to refresh flags from the file, ReadFromFlagsFile is going to be
@@ -741,6 +759,26 @@ bool RefreshFlagsFile(const std::string& filename) {
 }
 
 namespace flags_internal {
+
+namespace {
+
+thread_local const std::map<std::string, std::string>* tls_proposed_flag_values = nullptr;
+
+}  // namespace
+
+ProposedFlagValues::ProposedFlagValues(std::map<std::string, std::string> values)
+    : values_(std::move(values)), previous_(tls_proposed_flag_values) {
+  tls_proposed_flag_values = &values_;
+}
+
+ProposedFlagValues::~ProposedFlagValues() {
+  tls_proposed_flag_values = previous_;
+}
+
+const std::map<std::string, std::string>* GetProposedFlagValues() {
+  return tls_proposed_flag_values;
+}
+
 string SetFlagInternal(
     const void* flag_ptr, const char* flag_name, const string& new_value,
     const gflags::FlagSettingMode set_mode) {

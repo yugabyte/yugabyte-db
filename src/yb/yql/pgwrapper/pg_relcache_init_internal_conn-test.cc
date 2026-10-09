@@ -62,20 +62,12 @@ class PgRelcacheInitInternalConnTest : public PgMiniTestBase {
   }
 };
 
-// A connection that carries yb_internal_conn_kind="relcache_init" must materialize as the
-// dedicated YB_RELCACHE_INIT_BACKEND. Both the minimal-preload gate and the recursion gate
-// read MyBackendType, so verifying backend_type here proves the discriminator is wired up
-// from libpq through the postmaster and the registry.
 TEST_F(PgRelcacheInitInternalConnTest, RelcacheInitConnGetsDedicatedBackendType) {
   auto conn = ASSERT_RESULT(ConnectAs(YbInternalConnKindWireName::kRelcacheInit));
   const auto backend_type = ASSERT_RESULT(CurrentBackendType(&conn));
   ASSERT_EQ(backend_type, "yb relcache init backend");
 }
 
-// A different kind of internal connection (auto-analyze) must NOT show up as the
-// relcache-init backend type. This is the direct regression guard for the problem the
-// framework solves: previously every internal connection was lumped together and would
-// have its dedicated relcache-init build suppressed.
 TEST_F(PgRelcacheInitInternalConnTest, NonRelcacheInitInternalConnIsNotRelcacheInitBackend) {
   auto conn = ASSERT_RESULT(ConnectAs(YbInternalConnKindWireName::kAutoAnalyze));
   const auto backend_type = ASSERT_RESULT(CurrentBackendType(&conn));
@@ -83,7 +75,6 @@ TEST_F(PgRelcacheInitInternalConnTest, NonRelcacheInitInternalConnIsNotRelcacheI
   ASSERT_EQ(backend_type, "yb auto analyze backend");
 }
 
-// A plain client connection must not be confused with the relcache-init backend.
 TEST_F(PgRelcacheInitInternalConnTest, RegularConnIsNotRelcacheInitBackend) {
   auto conn = ASSERT_RESULT(Connect());
   const auto backend_type = ASSERT_RESULT(CurrentBackendType(&conn));
@@ -91,8 +82,18 @@ TEST_F(PgRelcacheInitInternalConnTest, RegularConnIsNotRelcacheInitBackend) {
   ASSERT_EQ(backend_type, "client backend");
 }
 
-// An unrecognized yb_internal_conn_kind value must be rejected at startup; we should not
-// silently coerce it to "regular client" because that masks misconfiguration.
+TEST_F(PgRelcacheInitInternalConnTest, XClusterDdlQueueConnGetsDedicatedBackendType) {
+  auto conn = ASSERT_RESULT(ConnectAs(YbInternalConnKindWireName::kXClusterDdlQueue));
+  const auto backend_type = ASSERT_RESULT(CurrentBackendType(&conn));
+  ASSERT_EQ(backend_type, "yb xcluster ddl queue backend");
+}
+
+TEST_F(PgRelcacheInitInternalConnTest, XClusterSetupConnGetsDedicatedBackendType) {
+  auto conn = ASSERT_RESULT(ConnectAs(YbInternalConnKindWireName::kXClusterSetup));
+  const auto backend_type = ASSERT_RESULT(CurrentBackendType(&conn));
+  ASSERT_EQ(backend_type, "yb xcluster setup backend");
+}
+
 TEST_F(PgRelcacheInitInternalConnTest, UnknownInternalConnKindIsRejected) {
   auto result = ConnectAs(/*yb_internal_conn_kind_wire_name=*/"not_a_real_kind");
   ASSERT_NOK(result);

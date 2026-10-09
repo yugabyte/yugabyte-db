@@ -3,9 +3,12 @@
 package com.yugabyte.yw.cloud.oci;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import com.oracle.bmc.core.model.Image;
+import com.yugabyte.yw.cloud.oci.OCICloudUtil.ImageType;
 import java.util.HashMap;
 import java.util.Map;
 import junitparams.JUnitParamsRunner;
@@ -15,6 +18,23 @@ import org.junit.runner.RunWith;
 
 @RunWith(JUnitParamsRunner.class)
 public class OCICloudUtilTest {
+
+  @Test
+  public void testValidInstanceConfigurationOcid() {
+    assertTrue(
+        OCICloudUtil.isValidInstanceConfigurationOcid(
+            "ocid1.instanceconfiguration.oc1.us-ashburn-1.example"));
+  }
+
+  @Test
+  public void testInvalidInstanceConfigurationOcids() {
+    assertFalse(OCICloudUtil.isValidInstanceConfigurationOcid(null));
+    assertFalse(OCICloudUtil.isValidInstanceConfigurationOcid(""));
+    assertFalse(OCICloudUtil.isValidInstanceConfigurationOcid("template-display-name"));
+    assertFalse(
+        OCICloudUtil.isValidInstanceConfigurationOcid("ocid1.instance.oc1.us-ashburn-1.example"));
+    assertFalse(OCICloudUtil.isValidInstanceConfigurationOcid("ocid1.instanceconfiguration.oc1"));
+  }
 
   @Test
   public void testComputeEffectiveTagCountWithOnlyMandatoryTags() {
@@ -65,5 +85,21 @@ public class OCICloudUtilTest {
     } else {
       assertTrue(error.contains("provisioning would apply"));
     }
+  }
+
+  @Parameters({
+    "publisherCompartment, MARKETPLACE",
+    "null, PLATFORM",
+    ", PLATFORM",
+    "ocid1.compartment.oc1..example, CUSTOM"
+  })
+  @Test
+  public void testGetImageType(String compartmentId, ImageType expected) {
+    Image image =
+        Image.builder()
+            .id("ocid1.image.oc1..example")
+            .compartmentId("null".equals(compartmentId) ? null : compartmentId)
+            .build();
+    assertEquals(expected, OCICloudUtil.getImageType(image));
   }
 }

@@ -38,6 +38,7 @@ properties:
       - NFS
       - AZ
       - GCS
+      - OCI
       - FILE
   is_full_backup:
     description: Whether this is a full backup rather than incremental.

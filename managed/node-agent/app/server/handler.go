@@ -38,8 +38,8 @@ func RetrieveUser(ctx context.Context, apiToken string) error {
 	return nil
 }
 
-// Registers the node agent to the platform.
-func RegisterNodeAgent(ctx context.Context, apiToken string) error {
+// Registers the node agent to the platform with the optional certificate name for TLS.
+func RegisterNodeAgent(ctx context.Context, apiToken, certificateName string) error {
 	config := util.CurrentConfig()
 	host := config.String(util.NodeBindIpKey)
 	port := config.String(util.NodePortKey)
@@ -59,7 +59,7 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	}
 	defer server.Stop()
 	util.FileLogger().Info(ctx, "Submiting Registration task to the executor.")
-	registrationHandler := task.NewAgentRegistrationHandler(apiToken)
+	registrationHandler := task.NewAgentRegistrationHandler(apiToken, certificateName)
 	// Call platform to register the node agent.
 	err = executor.GetInstance().
 		ExecuteTask(ctx, registrationHandler.Handle)
@@ -71,9 +71,14 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	nuuid := data.Uuid
 	config.Update(util.NodeAgentIdKey, nuuid)
 	util.FileLogger().Info(ctx, "Saving the node agent certs.")
+	// Clean up old cert folders to avoid piling up.
+	if err := util.RemoveSubfolders(util.CertsDir()); err != nil {
+		util.FileLogger().Errorf(ctx, "Failed to clear old cert dirs - %s", err)
+		return err
+	}
 	certsUUID := util.NewUUID().String()
 	config.Update(util.PlatformCertsKey, certsUUID)
-	err = util.SaveCerts(ctx, config, data.Config.ServerCert, data.Config.ServerKey, certsUUID)
+	err = util.SaveCerts(ctx, config, &data.Config, certsUUID)
 	if err != nil {
 		util.FileLogger().Info(
 			ctx,
@@ -150,7 +155,7 @@ func UnregisterNodeAgent(ctx context.Context, apiToken string) error {
 }
 
 // ValidateNodeAgentIfExists validates if the existing node agent communication works.
-func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
+func ValidateNodeAgentIfExists(ctx context.Context, apiToken, certificateName string) error {
 	config := util.CurrentConfig()
 	getNodeAgentHandler := task.NewGetNodeAgentHandler(apiToken)
 	err := executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
@@ -169,7 +174,26 @@ func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
 		getNodeAgentHandler = task.NewGetNodeAgentHandler("")
 		err = executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
 		if err == nil {
-			return nil
+			matches, err := certificateMatches(
+				ctx,
+				apiToken,
+				nodeAgent.CertificateUuid,
+				certificateName,
+			)
+			if err != nil {
+				return err
+			}
+			if matches {
+				return nil
+			}
+			util.FileLogger().Infof(ctx,
+				"Node agent certificate changed (existing uuid=%q, requested name=%q); reinstalling",
+				nodeAgent.CertificateUuid, certificateName)
+			err = UnregisterNodeAgent(ctx, apiToken)
+			if err != nil {
+				return err
+			}
+			return util.ErrNotExist
 		}
 	}
 	if nodeAgentId != nodeAgent.Uuid {
@@ -188,4 +212,25 @@ func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
 		return err
 	}
 	return util.ErrNotExist
+}
+
+// certificateMatches reports whether the node agent's certificateUuid matches the
+// YBA certificate labeled certificateName.
+func certificateMatches(
+	ctx context.Context,
+	apiToken, existingCertificateUuid, certificateName string,
+) (bool, error) {
+	desiredUuid := ""
+	if certificateName != "" {
+		// Determine the certificate UUID by name.
+		handler := task.NewGetCertificateUuidHandler(apiToken, certificateName)
+		err := executor.GetInstance().ExecuteTask(ctx, handler.Handle)
+		if err != nil {
+			util.FileLogger().Errorf(ctx,
+				"Failed to resolve certificate name %q - %s", certificateName, err)
+			return false, err
+		}
+		desiredUuid = handler.Result()
+	}
+	return existingCertificateUuid == desiredUuid, nil
 }

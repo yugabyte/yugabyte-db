@@ -1709,6 +1709,21 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v1 = abs(v1), v
          Index Cond: (k = 1)
 (3 rows)
 
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v1 = 2, v2 = v2 WHERE k = 1;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Update on single_row_not_null_constraints
+   ->  Index Scan using single_row_not_null_constraints_pkey on single_row_not_null_constraints
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = NULL WHERE k = 1;
+                  QUERY PLAN                  
+----------------------------------------------
+ Update on single_row_not_null_constraints
+   ->  Result single_row_not_null_constraints
+(2 rows)
+
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints SET v1 = 2 WHERE k = 1;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
@@ -1761,6 +1776,19 @@ SELECT * FROM single_row_not_null_constraints ORDER BY k;
  2 |  2 |  2
 (2 rows)
 
+-- Identity SET on NOT NULL must succeed via non-single-row path (GH-32716).
+UPDATE single_row_not_null_constraints SET v1 = 3, v2 = v2 WHERE k = 1;
+-- Should fail constraint check.
+UPDATE single_row_not_null_constraints SET v2 = NULL WHERE k = 1;
+ERROR:  null value in column "v2" of relation "single_row_not_null_constraints" violates not-null constraint
+DETAIL:  Failing row contains (1, null, null).
+SELECT * FROM single_row_not_null_constraints ORDER BY k;
+ k | v1 | v2 
+---+----+----
+ 1 |  3 | 16
+ 2 |  2 |  2
+(2 rows)
+
 -- Should fail constraint check.
 UPDATE single_row_not_null_constraints SET v2 = v2 + null WHERE k = 1;
 ERROR:  null value in column "v2" of relation "single_row_not_null_constraints" violates not-null constraint
@@ -1770,7 +1798,7 @@ UPDATE single_row_not_null_constraints SET v2 = v2 + 2 WHERE k = 4;
 SELECT * FROM single_row_not_null_constraints ORDER BY k;
  k | v1 | v2 
 ---+----+----
- 1 |  2 | 16
+ 1 |  3 | 16
  2 |  2 |  2
 (2 rows)
 
@@ -3380,6 +3408,39 @@ SELECT * FROM t_temp ORDER BY k;
   9 |  9
  10 | 10
 (9 rows)
+
+-- Test to validate that NOT NULL constraints are enforced for partitioned tables.
+CREATE TABLE single_row_not_null_constraints_partitioned (k int PRIMARY KEY, v1 int NOT NULL, v2 int NOT NULL) PARTITION BY RANGE (k);
+CREATE TABLE not_null_constraints_partitioned_1 PARTITION OF single_row_not_null_constraints_partitioned FOR VALUES FROM (1) TO (10);
+CREATE TABLE not_null_constraints_partitioned_default PARTITION OF single_row_not_null_constraints_partitioned DEFAULT;
+INSERT INTO not_null_constraints_partitioned_1 VALUES (1, 1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints_partitioned SET v1 = v1 + 1, v2 = v2 WHERE k = 1;
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Update on single_row_not_null_constraints_partitioned
+   Update on not_null_constraints_partitioned_1 single_row_not_null_constraints_partitioned_1
+   ->  Index Scan using not_null_constraints_partitioned_1_pkey on not_null_constraints_partitioned_1 single_row_not_null_constraints_partitioned_1
+         Index Cond: (k = 1)
+(4 rows)
+
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints_partitioned SET v2 = NULL WHERE k = 1;
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on single_row_not_null_constraints_partitioned
+   Update on not_null_constraints_partitioned_1 single_row_not_null_constraints_partitioned
+   ->  Result single_row_not_null_constraints_partitioned
+(3 rows)
+
+UPDATE single_row_not_null_constraints_partitioned SET v1 = v1 + 1, v2 = v2 WHERE k = 1;
+-- Should fail constraint check.
+UPDATE single_row_not_null_constraints_partitioned SET v2 = NULL WHERE k = 1;
+ERROR:  null value in column "v2" of relation "not_null_constraints_partitioned_1" violates not-null constraint
+DETAIL:  Failing row contains (1, null, null).
+SELECT * FROM single_row_not_null_constraints_partitioned ORDER BY k;
+ k | v1 | v2 
+---+----+----
+ 1 |  2 |  1
+(1 row)
 
 -- Cleanup.
 DROP FUNCTION next_v3;

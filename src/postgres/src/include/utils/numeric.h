@@ -65,12 +65,16 @@ typedef struct NumericData *Numeric;
 #define PG_GETARG_NUMERIC_COPY(n) DatumGetNumericCopy(PG_GETARG_DATUM(n))
 #define PG_RETURN_NUMERIC(x)	  return NumericGetDatum(x)
 
-
-typedef struct Int8TransTypeData
+/*
+ * YB: numeric.c's Int8TransTypeData, the transition state of avg(int2) and
+ * avg(int4), made public so that nodeAgg.c can combine pushed-down partial
+ * aggregates.  numeric.c aliases it back to the upstream name.
+ */
+typedef struct YbInt8TransTypeData
 {
 	int64		count;
 	int64		sum;
-} Int8TransTypeData;
+} YbInt8TransTypeData;
 
 /*
  * Utility functions in numeric.c

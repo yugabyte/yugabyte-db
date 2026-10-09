@@ -42,7 +42,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @RunWith(MockitoJUnitRunner.class)
 public class PGUpgradeTServerCheckTest extends CommissionerBaseTest {
@@ -58,11 +58,11 @@ public class PGUpgradeTServerCheckTest extends CommissionerBaseTest {
           + "\n"
           + "Clusters are compatible";
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() {
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
   }
 

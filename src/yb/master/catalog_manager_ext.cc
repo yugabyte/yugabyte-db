@@ -44,12 +44,12 @@
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
@@ -104,7 +104,6 @@ using std::unordered_map;
 using std::unordered_set;
 using std::vector;
 
-using strings::Substitute;
 
 DECLARE_int32(master_rpc_timeout_ms);
 
@@ -147,8 +146,10 @@ DEFINE_RUNTIME_AUTO_bool(enable_export_snapshot_using_relfilenode, kExternal, fa
 
 DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
-DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
+DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 
 namespace yb {
@@ -826,7 +827,7 @@ Status CatalogManager::AbortSnapshotRestore(
   auto txn_restoration_id = TryFullyDecodeTxnSnapshotRestorationId(req->restoration_id());
 
   if (txn_restoration_id) {
-    LOG(INFO) << Substitute(
+    LOG(INFO) << Format(
         "Servicing AbortSnapshotRestore request. restoration id: $0, request: $1",
         txn_restoration_id.ToString(), req->ShortDebugString());
     return master_->snapshot_coordinator().AbortRestore(
@@ -1003,24 +1004,28 @@ Status CatalogManager::DoImportSnapshotMeta(
       }
     }
   }
-  // For YSQL restores (both backup/restore and clone), we would have run ysql_dump before
-  // ImportSnapshot. It is important to invalidate the TServer's OID cache after ImportSnapshot so
-  // that the TServer is aware of all objects that were created. Otherwise, the following order of
-  // events is possible:
-  // 1. The dump script creates a table with OID 16384 because that is what the dump script says
-  //    to use (using binary_upgrade_set_next_heap_relfilenode). This does not go through the
-  //    TServer's oid allocator.
-  // 2. The dump script creates an object that needs a new OID (e.g., a CHECK constraint). To get a
-  //    new OID, the TServer calls ReservePgsqlOids, which returns 16384-17000 as available OIDs.
-  // 3. The constraint is created with OID 16385 because that is the first free OID in the range.
-  // 4. A snapshot schedule is created for the restored database.
-  // 5. The table is dropped (actually hidden, because of the snapshot schedule).
-  // 6. The table is recreated with OID 16384, which PG thinks is a free OID because the table is
-  //    not in pg_class anymore. This fails on master because the original table with this OID still
-  //    exists.
+  // Restores (backup/restore and clone) first replay a ysql_dump script, which assigns pg_class and
+  // pg_type OIDs explicitly (binary-upgrade mode), bypassing the OID allocator.  Objects that still
+  // need new OIDs during the replay (e.g., CHECK constraints) make the TServer reserve and cache a
+  // chunk of OIDs that can overlap those explicit OIDs.  Unless that chunk is discarded, the
+  // TServer can later allocate one of these OIDs from it, possibly leading to a collision with one
+  // of the explicit OIDs already in use.  (Postgres normally detects and avoids collisions with
+  // OIDs in use in its catalog tables but it cannot detect collisions with OIDs being used for
+  // hidden DocDB tables.)  AdvanceOidCounters above moved master's counters past every OID in use,
+  // so chunks fetched after this invalidation are safe.
+  //
   // Invalidating the OID cache forces the TServer to refresh its OID cache on the next heartbeat
   // it receives from the master.
   RETURN_NOT_OK(InvalidateTserverOidCaches());
+  // We deliberately do not wait for the invalidation to reach every TServer (e.g., via
+  // PropagateXClusterGuardedInfo): that would make restores and clones fail, or stall for up to the
+  // xCluster-guarded lease duration, whenever a TServer has died recently.  Only TServers that
+  // allocated OIDs in the new database before AdvanceOidCounters can hold a stale chunk for it.
+  // For a clone that is just the TServer that replayed the dump, since the database does not accept
+  // other connections until the clone completes; for a backup restore it is in practice the same.
+  // That TServer was just in use and gets the invalidation with its next heartbeat; until then, a
+  // DDL that allocates a hidden table's OID fails.  This is both unlikely and not particularly
+  // harmful, so we prefer to avoid the chance of failing/stalling restores and clones.
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
@@ -1079,6 +1084,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -2197,12 +2203,11 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     VLOG_WITH_FUNC(2) << "Committed to disk: table " << table->id() << " repartition from "
                       << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
 
-    // Commit to memory. Commit new tablets (addition) first since that doesn't break anything.
-    // Commit table next since new tablets are already committed and ready to be referenced. Commit
-    // old tablets (deletion) last since the table is not referencing them anymore.
+    // Release tablet locks before table lock otherwise we may deadlock with heartbeats.
+    // Note that in-mem table->tablet map has already been updated by this point.
     unlocker_new.Commit();
-    table_lock.Commit();
     unlocker_old.Commit();
+    table_lock.Commit();
     VLOG_WITH_FUNC(1) << "Committed to memory: table " << table->id() << " repartition from "
                       << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
   }
@@ -2267,12 +2272,7 @@ Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>&
   }
   // Check if table schemas match (if present in snapshot).
   if (!snapshot_data->pg_schema_name.empty()) {
-    if (table->GetTableType() != PGSQL_TABLE_TYPE) {
-      LOG_WITH_FUNC(DFATAL) << "ExternalTableSnapshotData.pg_schema_name set when table type is not"
-          << " PGSQL: schema name: " << snapshot_data->pg_schema_name
-          << ", table type: " << TableType_Name(table->GetTableType());
-      // If not a debug build, ignore pg_schema_name.
-    } else {
+    if (table->ShouldLookupPgSchemaName(table_lock)) {
       const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
           VERIFY_RESULT(table->GetPgTableAllOids())));
       const string& external_schema_name = snapshot_data->pg_schema_name;
@@ -2282,6 +2282,16 @@ Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>&
                             << " for " << table->ToString();
         return false;
       }
+    } else {
+      // If not a debug build, ignore pg_schema_name.
+      LOG_WITH_FUNC(DFATAL)
+          << "ExternalTableSnapshotData.pg_schema_name is set but pg schema name lookup is not "
+          << "supported for table " << table->ToString()
+          << ": snapshot pg_schema_name=" << snapshot_data->pg_schema_name
+          << ", table_type=" << TableType_Name(table->GetTableType())
+          << ", is_system=" << table->is_system()
+          << ", is_sequences_system_table=" << table->IsSequencesSystemTable(table_lock)
+          << ", is_colocation_parent=" << table->IsColocationParentTable();
     }
   }
 
@@ -2355,6 +2365,7 @@ Status CatalogManager::ImportTableEntry(
   table = std::move(*table_result);
 
   std::optional<int> schema_version;
+  bool notify_ts_for_schema_change = false;
 
   // Don't do schema validation/column updates on the parent colocated table.
   // However, still do the validation for regular colocated tables.
@@ -2454,9 +2465,6 @@ Status CatalogManager::ImportTableEntry(
           table, parent_table_id, table_data, epoch, is_clone, add_table_waiter));
     }
 
-    // Table schema update depending on different conditions.
-    bool notify_ts_for_schema_change = false;
-
     // Update the table column ids if it's not equal to the stored ids. Note: this only
     // applies to regular tables. We cannot reach here for indexes because their column ids have
     // already been checked earlier.
@@ -2493,6 +2501,63 @@ Status CatalogManager::ImportTableEntry(
       notify_ts_for_schema_change = true;
     }
 
+    // CREATE INDEX on the restore cluster fills vector_idx_options from local state, which can
+    // differ from the snapshot's:
+    // - The CREATE TABLE that recreates the indexed table on restore assigns column ids
+    //   sequentially. If a column was dropped from the indexed table before the snapshot was
+    //   taken, the snapshotted and restored tables can have different column ids. Phase 3 fixes
+    //   the indexed table's column ids when it imports that table.
+    // - hnsw.backend and store_payload come from --vector_index_backend and
+    //   --vector_index_store_payload, which can differ between the two clusters.
+    // - id names the tablet's vector index directory. The tablet takes it from the snapshot
+    //   superblock, so the restored files are found under the snapshot's id.
+    // Here in phase 4, while importing the vector index, we copy the snapshot's options, if
+    // necessary, into both the index's and the indexed table's metadata, so they match the
+    // tablets'.
+    //
+    // Do not bump either schema version. The tablets do not need this rewrite: their copy comes
+    // from the superblock merge.
+    if (meta.has_index_info() && meta.index_info().has_vector_idx_options() &&
+        table->is_vector_index()) {
+      const auto& source_options = meta.index_info().vector_idx_options();
+      // Returns whether `options` changed.
+      auto restore_options = [&source_options](PgVectorIdxOptionsPB* options) {
+        if (pb_util::ArePBsEqual(*options, source_options, /* diff_str= */ nullptr)) {
+          return false;
+        }
+        *options = source_options;
+        return true;
+      };
+      auto indexed_table = VERIFY_RESULT(FindTableById(table->indexed_table_id()));
+      // Write-lock tables in increasing table id order, and commit in reverse.
+      const bool index_first = table->id() < indexed_table->id();
+      auto first_l = (index_first ? table : indexed_table)->LockForWrite();
+      auto second_l = (index_first ? indexed_table : table)->LockForWrite();
+      auto& index_l = index_first ? first_l : second_l;
+      auto& indexed_l = index_first ? second_l : first_l;
+
+      auto* options =
+          index_l.mutable_data()->pb.mutable_index_info()->mutable_vector_idx_options();
+      const auto old_options = options->ShortDebugString();
+      bool updated = restore_options(options);
+      if (updated) {
+        LOG_WITH_FUNC(INFO) << "Restoring vector index options for " << table->ToString()
+                            << " from " << old_options << " to " << options->ShortDebugString();
+      }
+      for (auto& index_info : *indexed_l.mutable_data()->pb.mutable_indexes()) {
+        if (index_info.table_id() == table->id() && index_info.has_vector_idx_options() &&
+            restore_options(index_info.mutable_vector_idx_options())) {
+          updated = true;
+        }
+      }
+      if (updated) {
+        // Upsert skips whichever of the two entries is unchanged.
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, indexed_table));
+        second_l.Commit();
+        first_l.Commit();
+      }
+    }
+
     // Set missing values for tables that were created with a default value. ysql_dump will not
     // properly set that value because it is only set on ADD COLUMN, and it creates the column
     // directly in CREATE TABLE.
@@ -2518,14 +2583,19 @@ Status CatalogManager::ImportTableEntry(
     }
 
     // Restore table properties fixed at create time (partitioning_version,
-    // owns_vector_reverse_mapping) from backup snapshot metadata.
+    // owns_vector_reverse_mapping, skip_vector_reverse_mapping) from backup snapshot
+    // metadata.
     const bool restore_partitioning_version =
         persisted_schema.table_properties().partitioning_version() !=
         schema.table_properties().partitioning_version();
     const bool restore_owns_vector_reverse_mapping =
         persisted_schema.table_properties().owns_vector_reverse_mapping() !=
         schema.table_properties().owns_vector_reverse_mapping();
-    if (restore_partitioning_version || restore_owns_vector_reverse_mapping) {
+    const bool restore_skip_vector_reverse_mapping =
+        persisted_schema.table_properties().writes_vector_reverse_mapping() !=
+        schema.table_properties().writes_vector_reverse_mapping();
+    if (restore_partitioning_version || restore_owns_vector_reverse_mapping ||
+        restore_skip_vector_reverse_mapping) {
       auto l = table->LockForWrite();
       auto* table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
       if (restore_partitioning_version) {
@@ -2535,6 +2605,10 @@ Status CatalogManager::ImportTableEntry(
         table_props->set_owns_vector_reverse_mapping(
             schema.table_properties().owns_vector_reverse_mapping());
       }
+      if (restore_skip_vector_reverse_mapping) {
+        table_props->set_skip_vector_reverse_mapping(
+            !schema.table_properties().writes_vector_reverse_mapping());
+      }
 
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2542,48 +2616,51 @@ Status CatalogManager::ImportTableEntry(
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the current schema version of the target table
-    // CQL index tables always have schema version 0 because we do not support dropping or
-    // renaming columns on CQL indexes. CQL index writes depend on this because they implicitly
-    // use a schema_version of 0 (by not setting the field in the protobuf write request). This is
-    // checked against the table schema_version when applying the write. Therefore we must never
-    // bump the schema version for CQL index tables.
-    if (meta.table_type() == TableType::YQL_TABLE_TYPE && table_data->is_index()) {
-      SCHECK_EQ(meta.version(), 0, IllegalState, "CQL index table should have version 0");
-    } else if (is_clone) {
-      // Bump the schema version to 1 + the current schema version of source table. This ensures
-      // that the current schema version is greater than all schema versions that might exist in the
-      //  snapshot used for clone.
-      TRACE("Looking up source table");
-      TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
-      auto source_table_lock = source_table->LockForRead();
-      schema_version = source_table_lock->pb.version() + 1;
-    } else if (meta.version() >= table->LockForRead()->pb.version()) {
-      // Restoring a backup: bump the schema version to 1 + the schema version of SysTableEntryPB
-      // found in the SnapshotInfoPB if the latter is >= the current version. It is guaranteed that
-      // the schema version in snapshotInfo is the maximum version that can be found in the snapshot
-      // at backup time. The extra bump avoids conflicts with the snapshot's older schema packings
-      // at tserver side. At the tserver, all schema packings from the snapshot will be used in
-      // tablet-meta and the last schema will have the correct committed schema created at restore
-      // side as part of executing the SQL dump. The last schema is sent from master to tservers
-      // during ImportSnapshot.
-      schema_version = meta.version() + 1;
-    }
+  }
 
-    if (schema_version) {
-      VLOG_WITH_FUNC(1) << Format(
-          "Bump up schema version of table $0 to: $1", table_data->new_table_id, schema_version);
-      auto l = table->LockForWrite();
-      l.mutable_data()->pb.set_version(schema_version.value());
-      RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
-      l.Commit();
-      notify_ts_for_schema_change = true;
-    }
+  // Bump up the current schema version of the target table. This includes the parent colocated
+  // table: a clone bumps its version, so a backup of a cloned database carries a parent table
+  // schema version > 0 that the restored parent table must not be behind.
+  // CQL index tables always have schema version 0 because we do not support dropping or
+  // renaming columns on CQL indexes. CQL index writes depend on this because they implicitly
+  // use a schema_version of 0 (by not setting the field in the protobuf write request). This is
+  // checked against the table schema_version when applying the write. Therefore we must never
+  // bump the schema version for CQL index tables.
+  if (meta.table_type() == TableType::YQL_TABLE_TYPE && table_data->is_index()) {
+    SCHECK_EQ(meta.version(), 0, IllegalState, "CQL index table should have version 0");
+  } else if (is_clone) {
+    // Bump the schema version to 1 + the current schema version of source table. This ensures
+    // that the current schema version is greater than all schema versions that might exist in the
+    //  snapshot used for clone.
+    TRACE("Looking up source table");
+    TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
+    auto source_table_lock = source_table->LockForRead();
+    schema_version = source_table_lock->pb.version() + 1;
+  } else if (meta.version() >= table->LockForRead()->pb.version()) {
+    // Restoring a backup: bump the schema version to 1 + the schema version of SysTableEntryPB
+    // found in the SnapshotInfoPB if the latter is >= the current version. It is guaranteed that
+    // the schema version in snapshotInfo is the maximum version that can be found in the snapshot
+    // at backup time. The extra bump avoids conflicts with the snapshot's older schema packings
+    // at tserver side. At the tserver, all schema packings from the snapshot will be used in
+    // tablet-meta and the last schema will have the correct committed schema created at restore
+    // side as part of executing the SQL dump. The last schema is sent from master to tservers
+    // during ImportSnapshot.
+    schema_version = meta.version() + 1;
+  }
 
-    // Update the new table schema in tablets.
-    if (notify_ts_for_schema_change) {
-      RETURN_NOT_OK(SendAlterTableRequest(table, epoch));
-    }
+  if (schema_version) {
+    VLOG_WITH_FUNC(1) << Format(
+        "Bump up schema version of table $0 to: $1", table_data->new_table_id, schema_version);
+    auto l = table->LockForWrite();
+    l.mutable_data()->pb.set_version(schema_version.value());
+    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+    l.Commit();
+    notify_ts_for_schema_change = true;
+  }
+
+  // Update the new table schema in tablets.
+  if (notify_ts_for_schema_change) {
+    RETURN_NOT_OK(SendAlterTableRequest(table, epoch));
   }
 
   // Set the type of the table in the response pb (default is TABLE so only set if colocated).
@@ -3057,7 +3134,8 @@ Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb
   // Restore master snapshot and load it to RocksDB.
   auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(snapshot_id, restore_at));
   rocksdb::Options rocksdb_options;
-  tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  tablet->InitRocksDBOptions(
+      &rocksdb_options, log_prefix + " [TMP]: ", docdb::StorageDbType::kRegular);
 
   return rocksdb::DB::Open(rocksdb_options, dir);
 }
@@ -3179,7 +3257,8 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
     tablet->CompleteShutdownStorages(op_pauses);
 
     rocksdb::Options rocksdb_opts;
-    tablet->InitRocksDBOptions(&rocksdb_opts, tablet->LogPrefix());
+    tablet->InitRocksDBOptions(
+        &rocksdb_opts, tablet->LogPrefix(), docdb::StorageDbType::kRegular);
     docdb::RocksDBPatcher patcher(tablet->metadata()->rocksdb_dir(), rocksdb_opts);
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.SetHybridTimeFilter(restoration->db_oid, restoration->restore_at));
@@ -3301,6 +3380,9 @@ void CatalogManager::CleanupHiddenTablets(
   }
 
   if (!tablets_to_delete.empty()) {
+    std::sort(
+        tablets_to_delete.begin(), tablets_to_delete.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs->tablet_id() < rhs->tablet_id(); });
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
     WARN_NOT_OK(
         DeleteOrHideTabletsAndSendRequests(
@@ -3662,7 +3744,7 @@ Status CatalogManager::GetTableSchemaFromSysCatalog(
   auto status = sys_catalog_->GetTableSchema(
       req->table().table_id(), ReadHybridTime::FromUint64(read_time), &schema, &schema_version);
   if (!status.ok()) {
-    Status s = STATUS_SUBSTITUTE(
+    Status s = STATUS_FORMAT(
         NotFound, "Could not find specific schema from system catalog for request $0.",
         req->DebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
@@ -3672,20 +3754,11 @@ Status CatalogManager::GetTableSchemaFromSysCatalog(
 
   const auto& table_id = req->table().table_id();
   auto table_result = FindTableById(table_id);
-  if (table_result.ok() && (*table_result)->GetTableType() == PGSQL_TABLE_TYPE) {
-    auto pg_tbl_oids = (*table_result)->GetPgTableAllOids();
-    if (pg_tbl_oids.ok()) {
-      // pgschema_name inside that schema object comes from SchemaPB.DEPRECATED_pgschema_name.
-      // So, instead we query the pgschema_name from the pg_class+pg_namespace tables.
-      auto pgschema_name = GetYsqlManager().GetPgSchemaName(
-          *pg_tbl_oids, ReadHybridTime::FromUint64(read_time));
-      if (pgschema_name.ok() && !pgschema_name->empty()) {
-        resp->set_pgschema_name(std::move(*pgschema_name));
-      } else {
-        LOG(WARNING) << "Unable to find schema name for YSQL table "
-                     << (*table_result)->name() << " id " << table_id
-                     << " due to error: " << pgschema_name.status();
-      }
+  if (table_result.ok()) {
+    auto pgschema_name = LookupPgSchemaNameForTable(
+        **table_result, ReadHybridTime::FromUint64(read_time));
+    if (pgschema_name) {
+      resp->set_pgschema_name(std::move(*pgschema_name));
     }
   }
 
@@ -3821,24 +3894,103 @@ Status CatalogManager::GetYsqlYbSystemTableInfo(
   return Status::OK();
 }
 
+namespace {
+
+// The oldest read time pinned by a live ysql transaction anywhere in the cluster, as reported by
+// tserver heartbeats, or an invalid HybridTime when nothing is pinned. Only populated on the master
+// leader, which is the only master tservers heartbeat to.
+HybridTime ClusterYsqlOldestPinnedReadTime(const DbOidToHybridTimeMap& pins) {
+  HybridTime pin = HybridTime::kInvalid;
+  // The sys catalog tablet applies a single cutoff to all of its cotables, so the catalog of every
+  // database is retained back to the oldest pin in the cluster.
+  for (const auto& [db_oid, db_pin] : pins) {
+    pin.MakeAtMost(db_pin);
+  }
+  return pin;
+}
+
+}  // namespace
+
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
   auto cutoff = master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
 
   DCHECK_EQ(metadata->table_id(), kSysCatalogTableId);
 
+  const auto now = Clock()->Now();
   auto syscatalog_history_retention_interval_sec =
       ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_syscatalog_history_retention_interval_sec);
   if (syscatalog_history_retention_interval_sec) {
     HybridTime allowed_from_syscatalog_flag =
-        Clock()->Now().AddSeconds(-syscatalog_history_retention_interval_sec);
+        now.AddSeconds(-syscatalog_history_retention_interval_sec);
     cutoff.MakeAtMost({allowed_from_syscatalog_flag, allowed_from_syscatalog_flag});
   }
   cutoff.MakeAtMost({metadata->cdc_sdk_safe_time(), metadata->cdc_sdk_safe_time()});
   VLOG(2) << "CDC SDK history cutoff: " << cutoff.ToString()
           << " for tablet: " << metadata->raft_group_id();
 
+  // Hold back the pg catalog tables (this tablet's cotables) for transactions that may still read
+  // them at their own read time. The leader has the live picture from heartbeats; every master,
+  // leader or follower, additionally honors the pin published to the sys catalog, which is all a
+  // follower has to go on.
+  if (FLAGS_enable_db_history_retention_pins) {
+    auto pin = ClusterYsqlOldestPinnedReadTime(
+        master_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes());
+    pin.MakeAtMost(GetPublishedYsqlHistoryRetentionPin());
+    if (pin.is_valid()) {
+      // A transaction that outlives the hard cap keeps publishing its pin until it fails with
+      // snapshot too old and aborts, and a published pin is not refreshed at all while there is no
+      // leader. Applying the cap here, against the local clock, ages both out.
+      pin.MakeAtLeast(now.AddSeconds(-FLAGS_db_history_retention_pin_max_txn_age_sec));
+      cutoff.cotables_cutoff_ht.MakeAtMost(pin);
+    }
+  }
+
   return cutoff;
+}
+
+HybridTime CatalogManager::GetPublishedYsqlHistoryRetentionPin() const {
+  return ysql_history_retention_pin_.ysql_pin();
+}
+
+Status CatalogManager::PersistYsqlHistoryRetentionPin(const LeaderEpoch& epoch) {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return Status::OK();
+  }
+  const auto cluster_pins =
+      master_->ts_manager()->GetClusterYsqlDbPinsForPublishing(TimeSinceElectedLeader());
+  // Publishing an incomplete map after failover would drop a pin a transaction still needs.
+  if (!cluster_pins.ready) {
+    return Status::OK();
+  }
+  const auto pin = ClusterYsqlOldestPinnedReadTime(cluster_pins.pins);
+  if (pin == GetPublishedYsqlHistoryRetentionPin()) {
+    return Status::OK();
+  }
+
+  auto l = ysql_history_retention_pin_.LockForWrite();
+  auto& pb = l.mutable_data()->pb;
+  if (pin.is_valid()) {
+    pb.set_ysql_oldest_pinned_read_time(pin.value());
+  } else {
+    pb.clear_ysql_oldest_pinned_read_time();
+  }
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(epoch, &ysql_history_retention_pin_),
+      "Publishing the ysql catalog history retention pin");
+  l.Commit();
+  ysql_history_retention_pin_.RefreshCachedYsqlPin();
+
+  LOG_WITH_PREFIX(INFO) << "Published ysql catalog history retention pin: " << pin;
+  return Status::OK();
+}
+
+Status CatalogManager::RefreshYsqlHistoryRetentionPin() {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return Status::OK();
+  }
+  return sys_catalog_->Load<HistoryRetentionPinLoader>(
+      "ysql history retention pin", ysql_history_retention_pin_);
 }
 
 namespace {

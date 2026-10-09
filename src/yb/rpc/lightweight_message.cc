@@ -17,6 +17,7 @@
 
 #include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace yb::size_literals;
 

@@ -16,6 +16,7 @@
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 DEFINE_RUNTIME_bool(vector_index_enable_block_cache_reservation, true,
     "Whether a usearch/hnswlib vector index chunk reserves space in the block cache for its "
@@ -25,13 +26,18 @@ DEFINE_RUNTIME_bool(vector_index_enable_block_cache_reservation, true,
 
 namespace yb::vector_index {
 
-BlockCacheReservation::BlockCacheReservation(rocksdb::Cache* cache, size_t bytes) {
+Result<BlockCacheReservation> BlockCacheReservation::Create(
+    rocksdb::Cache* cache, size_t bytes, rocksdb::Cache::ReservationMode reservation_mode) {
   if (cache == nullptr || bytes == 0 || !FLAGS_vector_index_enable_block_cache_reservation) {
-    return;
+    return BlockCacheReservation{};
   }
-  cache_ = cache;
-  bytes_ = bytes;
-  cache_->ConsumeSpace(bytes_);
+  // TODO(vector_index): it may make sense to add a metric for capacity violations here.
+  const bool within_capacity = VERIFY_RESULT(cache->ConsumeSpace(bytes, reservation_mode));
+  if (!within_capacity) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "Block cache reservation of " << bytes << " bytes exceeds cache capacity";
+  }
+  return BlockCacheReservation{ cache, bytes };
 }
 
 BlockCacheReservation::BlockCacheReservation(BlockCacheReservation&& rhs) noexcept

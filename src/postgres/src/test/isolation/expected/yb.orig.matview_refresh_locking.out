@@ -1,0 +1,37 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s2_insert_base s1_begin s1_refresh s2_select_mv s1_commit
+step s2_insert_base: INSERT INTO base VALUES (3, 3);
+step s1_begin: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_refresh: REFRESH MATERIALIZED VIEW mv;
+step s2_select_mv: SELECT * FROM mv ORDER BY k; <waiting ...>
+step s1_commit: COMMIT;
+step s2_select_mv: <... completed>
+k|v
+-+-
+1|1
+2|2
+3|3
+(3 rows)
+
+
+starting permutation: s2_insert_base s1_begin s1_select_mv s2_refresh_conc s1_select_mv s1_commit
+step s2_insert_base: INSERT INTO base VALUES (3, 3);
+step s1_begin: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_select_mv: SELECT * FROM mv ORDER BY k;
+k|v
+-+-
+1|1
+2|2
+(2 rows)
+
+step s2_refresh_conc: REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
+step s1_select_mv: SELECT * FROM mv ORDER BY k;
+k|v
+-+-
+1|1
+2|2
+3|3
+(3 rows)
+
+step s1_commit: COMMIT;

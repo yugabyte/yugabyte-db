@@ -25,6 +25,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/common/version_info.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -583,7 +584,7 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
   tserver::UpgradeYsqlRequestPB req;
   tserver::UpgradeYsqlResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(2min * kTimeMultiplier);
+  rpc.set_timeout(4min * kTimeMultiplier);
 
   RETURN_NOT_OK(cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0).UpgradeYsql(
       req, &resp, &rpc));

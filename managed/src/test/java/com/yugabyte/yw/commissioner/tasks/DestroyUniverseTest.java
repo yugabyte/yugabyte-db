@@ -11,16 +11,20 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
@@ -28,11 +32,14 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Backup;
@@ -44,12 +51,16 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -69,7 +80,7 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import play.libs.Json;
@@ -87,7 +98,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
 
   private File certFolder;
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Override
   @Before
@@ -96,15 +107,18 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent;
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
     userIntent.regionList =
         defaultProvider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
     userIntent.useSystemd = true;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+    ProviderInitializer providerInitializer =
+        TestUtils.getProviderInitializerForTests(userIntent, defaultProvider.getUuid());
+
+    providerInitializer.setAccessCode("demo-access");
+    providerInitializer.setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
 
     String caFile = createTempFile("destroy_universe_test", "ca.crt", "test content");
     certFolder = new File(caFile).getParentFile();
@@ -124,7 +138,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
               ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */).run(u);
               u.getUniverseDetails().rootCA = certInfo.getUuid();
             });
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
@@ -507,5 +521,70 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
         assertEquals(NodeInstance.State.FREE, instance.getState());
       }
     }
+  }
+
+  // Records an active managed load balancer in the primary cluster's region.
+  private String saveManagedLoadBalancer() {
+    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    String lbName = ManagedLoadBalancerUtil.getPrivateName(clusterUUID);
+    UUID regionUUID = Region.getByCode(defaultProvider, "region-1").getUuid();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+          state.put(
+              new ManagedLoadBalancer(
+                  clusterUUID,
+                  regionUUID,
+                  ManagedLoadBalancer.Scheme.PRIVATE,
+                  List.of(),
+                  lbName,
+                  "lbi.elb.example.com"));
+          u.getUniverseDetails().setManagedLoadBalancerState(state);
+        });
+    return lbName;
+  }
+
+  private DestroyUniverse.Params destroyParams(boolean forceDelete) {
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.isForceDelete = forceDelete;
+    taskParams.isDeleteBackups = false;
+    taskParams.isDeleteAssociatedCerts = false;
+    return taskParams;
+  }
+
+  @Test
+  public void testDestroyUniverseDeletesManagedLoadBalancerAfterNodes() {
+    String lbName = saveManagedLoadBalancer();
+
+    TaskInfo taskInfo = submitTask(destroyParams(false), -1);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    verify(cloudAPI).deleteManagedLoadBalancer(any(), eq("region-1"), eq(lbName));
+    List<TaskType> subTasks =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    int destroyServer = subTasks.lastIndexOf(TaskType.AnsibleDestroyServer);
+    int deleteLb = subTasks.indexOf(TaskType.DeleteManagedLoadBalancer);
+    int removeUniverse = subTasks.indexOf(TaskType.RemoveUniverseEntry);
+    assertTrue(subTasks.toString(), destroyServer < deleteLb && deleteLb < removeUniverse);
+    assertFalse(Universe.maybeGet(defaultUniverse.getUniverseUUID()).isPresent());
+  }
+
+  @Test
+  public void testForceDestroyUniverseIgnoresManagedLoadBalancerDeleteFailure() {
+    saveManagedLoadBalancer();
+    doThrow(new RuntimeException("DependencyViolation"))
+        .when(cloudAPI)
+        .deleteManagedLoadBalancer(any(), any(), any());
+
+    TaskInfo taskInfo = submitTask(destroyParams(true), -1);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertFalse(Universe.maybeGet(defaultUniverse.getUniverseUUID()).isPresent());
   }
 }

@@ -40,7 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -292,7 +292,7 @@ public class PitrController extends AuthenticatedController {
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams.pitrConfigUUID);
     ListSnapshotSchedulesResponse scheduleResp;
     List<SnapshotScheduleInfo> scheduleInfoList = null;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       scheduleResp = client.listSnapshotSchedules(pitrConfig.getUuid());
       scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
     } catch (Exception ex) {

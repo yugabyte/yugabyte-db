@@ -47,6 +47,8 @@ public class HierarchicalNodesSpec {
   /** Per-process node properties shared across all hierarchy levels. */
   @Data
   @Builder(toBuilder = true)
+  @NoArgsConstructor
+  @AllArgsConstructor
   public static class NodeSpec {
     @Builder.Default @ApiModelProperty private DeviceInfo deviceInfo = null;
     @Builder.Default @ApiModelProperty private String instanceType = null;

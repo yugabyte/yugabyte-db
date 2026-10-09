@@ -14,7 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 @Retryable
@@ -54,7 +54,7 @@ public class DeletePitrConfig extends UniverseTaskBase {
     if (optionalPitrConfig.isPresent()) {
       PitrConfig pitrConfig = optionalPitrConfig.get();
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      try (YBClient client = ybService.getUniverseClient(universe)) {
+      try (YBClientApi client = ybService.getUniverseClient(universe)) {
         ListSnapshotSchedulesResponse scheduleListResp = client.listSnapshotSchedules(null);
         for (SnapshotScheduleInfo scheduleInfo : scheduleListResp.getSnapshotScheduleInfoList()) {
           if (scheduleInfo.getSnapshotScheduleUUID().equals(pitrConfig.getUuid())) {

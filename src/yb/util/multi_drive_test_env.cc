@@ -18,6 +18,7 @@
 #include <mutex>
 
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

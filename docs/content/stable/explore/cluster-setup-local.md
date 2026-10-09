@@ -116,7 +116,7 @@ The application is used to demonstrate the following Explore topics:
 - [Resiliency](../fault-tolerance/macos/)
 - [Multi-region deployment](../multi-region-deployments/synchronous-replication-ysql/)
 
-The application uses the YugabyteDB JDBC [Smart Driver](/stable/develop/drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and re-balances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
+The application uses the YugabyteDB JDBC [Smart Driver](/stable/develop/drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and rebalances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 
 ### Download
 

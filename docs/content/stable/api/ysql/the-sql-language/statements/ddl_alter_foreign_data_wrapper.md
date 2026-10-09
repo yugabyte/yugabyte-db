@@ -64,5 +64,5 @@ yugabyte=# ALTER FOREIGN DATA WRAPPER my_wrapper OPTIONS(ADD new '1', SET old '2
 
 ## See also
 
-- [`CREATE FOREIGN DATA WRAPEPR`](../ddl_create_foreign_data_wrapper/)
-- [`DROP FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper/)
+- [CREATE FOREIGN DATA WRAPEPR](../ddl_create_foreign_data_wrapper/)
+- [DROP FOREIGN DATA WRAPPER](../ddl_create_foreign_data_wrapper/)

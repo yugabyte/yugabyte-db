@@ -27,6 +27,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 
 DECLARE_bool(ysql_yb_enable_ash);
@@ -199,6 +200,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kWAL_Read)
     (kConsensusMeta_Flush)
     (kReplicaState_TakeUpdateLock)
+    (kRaft_WaitingForPipelinedReplication)
 
     // Wait states related to RocksDB
     ((kRocksDB_ReadBlockFromFile, YB_ASH_MAKE_EVENT(RocksDB)))
@@ -224,6 +226,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
     (kYBClient_WaitingOnMaster)
+    (kYBClient_WaitingForPipelinedWrites)
 
     // Wait states related to the vector index
     ((kVectorIndex_Search, YB_ASH_MAKE_EVENT(VectorIndex)))

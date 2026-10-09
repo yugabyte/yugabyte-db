@@ -18,9 +18,9 @@
 pub mod entity;
 
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{quote, ToTokens, TokenStreamExt};
-use syn::parse::{Parse, ParseStream};
+use quote::{ToTokens, TokenStreamExt, quote};
 use syn::ItemMod;
+use syn::parse::{Parse, ParseStream};
 
 /// A parsed `#[pg_schema] mod example {}` item.
 ///
@@ -77,24 +77,30 @@ impl Schema {
             // End of hack
         };
 
-        let sql_graph_entity_fn_name =
-            quote::format_ident!("__pgrx_internals_schema_{ident}_{postfix}");
+        let sql_graph_entity_fn_name = quote::format_ident!("__pgrx_schema_{ident}_{postfix}");
+        let payload_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(module_path!())
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#ident))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(file!())
+                + ::pgrx::pgrx_sql_entity_graph::section::u32_len()
+        };
+        let total_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u32_len() + (#payload_len)
+        };
         quote! {
-            #[no_mangle]
-            #[doc(hidden)]
-            #[allow(unknown_lints, clippy::no_mangle_with_rust_abi)]
-            pub extern "Rust" fn  #sql_graph_entity_fn_name() -> ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity {
-                extern crate alloc;
-                use alloc::vec::Vec;
-                use alloc::vec;
-                let submission = ::pgrx::pgrx_sql_entity_graph::SchemaEntity {
-                        module_path: module_path!(),
-                        name: stringify!(#ident),
-                        file: file!(),
-                        line: line!(),
-                    };
-                ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity::Schema(submission)
-            }
+            ::pgrx::pgrx_sql_entity_graph::__pgrx_schema_entry!(
+                #sql_graph_entity_fn_name,
+                #total_len,
+                ::pgrx::pgrx_sql_entity_graph::section::EntryWriter::<{ #total_len }>::new()
+                    .u32((#payload_len) as u32)
+                    .u8(::pgrx::pgrx_sql_entity_graph::section::ENTITY_SCHEMA)
+                    .str(module_path!())
+                    .str(stringify!(#ident))
+                    .str(file!())
+                    .u32(line!())
+                    .finish()
+            );
         }
     }
 }

@@ -260,6 +260,9 @@ public class Region extends Model {
     } else if (cloudType.equals(CloudType.azu)) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
+    } else if (cloudType.equals(CloudType.oci)) {
+      OCIRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setYbImage(ybImage);
     }
   }
 

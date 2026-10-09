@@ -70,7 +70,12 @@ INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL);
 CREATE TABLE usc_multi_asc(k int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON usc_multi_asc(k, r ASC NULLS FIRST);
 INSERT INTO usc_multi_asc(k, r, v) VALUES (1, 10, 1),(1, NULL, 2),(1, 20, 3);
-\set query ':P SELECT * FROM usc_multi_asc WHERE k = 1;'
+-- YB divergence: this query originally had no ORDER BY and relied on the secondary index scan
+-- emitting rows in index order. YB sorts the batched ybctid fetch by ybctid for scans that don't
+-- require order, and this table has no primary key (ybctid is a random ybrowid), so that implicit
+-- order is not reproducible. Add ORDER BY matching the index; the :P EXPLAIN still
+-- shows an Index Scan with no Sort node, so index-order retrieval is still verified.
+\set query ':P SELECT * FROM usc_multi_asc WHERE k = 1 ORDER BY r ASC NULLS FIRST;'
 \i :run_query
 
 -- Test non-unique secondary index ordering
@@ -87,7 +92,9 @@ INSERT INTO sc_desc VALUES (4, NULL),(2, 20),(3, 30),(1, 10),(4, NULL);
 CREATE TABLE sc_multi_desc(k int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON sc_multi_desc(k, r DESC);
 INSERT INTO sc_multi_desc(k, r, v) VALUES (1, 10, 10),(1, 10, 10),(1, NULL, 2),(1, 20, 3);
-\set query ':P SELECT * FROM sc_multi_desc WHERE k = 1;'
+-- YB divergence (see usc_multi_asc above): explicit ORDER BY added so the no-PK result is
+-- reproducible; the index still supplies it with no Sort node (shown by the :P EXPLAIN).
+\set query ':P SELECT * FROM sc_multi_desc WHERE k = 1 ORDER BY r DESC NULLS FIRST;'
 \i :run_query
 
 -- Testing for the case in issue #12481
@@ -99,15 +106,25 @@ CREATE INDEX range_ind ON sc_multi_desc(v ASC, r ASC);
 CREATE TABLE sc_desc_nl(h int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX on sc_desc_nl(h HASH, r DESC NULLS LAST);
 INSERT INTO sc_desc_nl(h,r,v) values (1,1,1), (1,2,2), (1,3,3), (1,4,4), (1,5,5), (1, null, 6);
--- Rows should be ordered DESC NULLS LAST by r.
-SELECT * FROM sc_desc_nl WHERE h = 1;
-SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1);
-SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= 2;
-SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r >= 2;
-SELECT * FROM sc_desc_nl WHERE h = 1 AND r < 4;
-SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < 4;
-SELECT * FROM sc_desc_nl WHERE h = 1 AND r > 1 AND r <= 4;
-SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r > 1 AND r <= 4;
+-- YB divergence (see usc_multi_asc above): explicit ORDER BY added so the no-PK result is
+-- reproducible. Rows come DESC NULLS LAST on r directly from the index (Index Scan, no Sort
+-- node); the :P EXPLAIN proves the NULLS LAST encoding.
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 ORDER BY r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY h, r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= 2 ORDER BY r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r >= 2 ORDER BY h, r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 AND r < 4 ORDER BY r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < 4 ORDER BY h, r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 AND r > 1 AND r <= 4 ORDER BY r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r > 1 AND r <= 4 ORDER BY h, r DESC NULLS LAST;'
+\i :run_query
 
 -- <value> >/>=/=/<=/< null is never true per SQL semantics.
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r = null;
@@ -326,6 +343,46 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
 \set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);'
 \i :run_query
 DROP TABLE pk_range_int_asc;
+
+-- Test composite keys and integer overflow (issue #32153 / DB-21846).
+CREATE TABLE pk_comp (a INT, b TEXT, PRIMARY KEY (a ASC, b ASC));
+INSERT INTO pk_comp VALUES (-5, 'q'), (-1, 'p'), (0, 'a'), (3, 'z');
+-- Lower bound below int4 range: every row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) >= (-4294967296, ''p'') ORDER BY a, b;'
+\i :run_query
+-- Upper bound above int4 range: every row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) < (4294967297, ''p'') ORDER BY a, b;'
+\i :run_query
+-- Upper bound below int4 range: no row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) < (-4294967296, ''p'') ORDER BY a, b;'
+\i :run_query
+-- Lower bound above int4 range: no row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, ''p'') ORDER BY a, b;'
+\i :run_query
+-- NULL on a varlena key column must not crash while binding row bounds
+-- (YbDatumToBinary used to detoast a null pointer).
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) > (0, NULL) ORDER BY a, b;'
+\i :run_query
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) <= (0, NULL) ORDER BY a, b;'
+\i :run_query
+DROP TABLE pk_comp;
+
+-- Same tests as above but the overflowing subkey is in the middle of PK
+CREATE TABLE pk_comp (a TEXT, b INT, c TEXT, PRIMARY KEY (a ASC, b ASC, c ASC));
+INSERT INTO pk_comp VALUES ('q', -5, 'a'), ('p', -1, 'b'), ('p', 5, 'b'), ('a', 1, 'c'), ('z', 3, 'd');
+-- Lower bound below int4 range: 4 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) >= (''p'', -4294967296, 'a') ORDER BY a, b, c;'
+\i :run_query
+-- Upper bound above int4 range: 3 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) < (''p'', 4294967297, 'a') ORDER BY a, b, c;'
+\i :run_query
+-- Upper bound below int4 range: 1 row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) < (''p'', -4294967296, 'a') ORDER BY a, b, c;'
+\i :run_query
+-- Lower bound above int4 range: 2 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) >= (''p'', 4294967297, 'c') ORDER BY a, b, c;'
+\i :run_query
+DROP TABLE pk_comp;
 
 -- test row comparison expressions where we have differing column orderings
 CREATE TABLE pk_range_asc_desc_asc (r1 BIGINT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 desc, r3 asc));

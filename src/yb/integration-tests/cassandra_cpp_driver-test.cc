@@ -18,7 +18,6 @@
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/cql_test_util.h"
@@ -31,6 +30,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
@@ -49,7 +49,6 @@ using std::tuple;
 using std::get;
 using std::map;
 
-using strings::Substitute;
 
 using yb::CoarseBackoffWaiter;
 using yb::client::YBTableName;
@@ -278,7 +277,10 @@ class CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
     flags.push_back("--enable_load_balancing=true");
-    flags.push_back("--index_backfill_rpc_max_retries=0");
+    // Chunks sent to a stale leader are retried (index_backfill_rpc_max_retries=10 from the base
+    // fixture). Raise the backoff cap so the retries span ~12s instead of ~5s, giving the master
+    // time to learn the new leader from heartbeats.
+    flags.push_back("--index_backfill_rpc_max_delay_ms=4000");
     // We do not want backfill to fail because of any throttling.
     flags.push_back("--index_backfill_rpc_timeout_ms=180000");
     return flags;
@@ -298,10 +300,11 @@ class CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves
       constexpr auto kSleepTimeMs = 5000;
       for (int i = 0; !thread_holder_.stop_flag(); i++) {
         const auto tserver_id = i % kNumTServers;
-        ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+        // ASSERT_OK records successes in gtest results, racing with the main thread.
+        ASSERT_OK_FAST(cluster_->AddTServerToLeaderBlacklist(
             cluster_->master(), cluster_->tablet_server(tserver_id)));
         SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
-        ASSERT_OK(cluster_->ClearBlacklist(cluster_->master()));
+        ASSERT_OK_FAST(cluster_->ClearBlacklist(cluster_->master()));
       }
     });
   }
@@ -1573,7 +1576,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDrive
   LOG(INFO) << "Inserting " << kNumRows << " rows";
   for (int i = 1; i <= kNumRows; i++) {
     ASSERT_OK(session_.ExecuteQuery(
-        Substitute("insert into test_table (k, v) values ($0, $0);", i)));
+        Format("insert into test_table (k, v) values ($0, $0);", i)));
   }
 
   LOG(INFO) << "Creating index";
@@ -1600,9 +1603,9 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDrive
   LOG(INFO) << "Inserting " << kNumRows / 2 << " rows again.";
   for (int i = 1; i < kNumRows / 2; i++) {
     if (session_
-            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ExecuteQuery(Format("delete from test_table where k=$0;", i))
             .ok()) {
-      WARN_NOT_OK(session_.ExecuteQuery(Substitute(
+      WARN_NOT_OK(session_.ExecuteQuery(Format(
                       "insert into test_table (k, v) values ($0, $0);", i)),
                   "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -1623,9 +1626,9 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDrive
   LOG(INFO) << "Inserting " << kNumRows / 2 << " more rows again.";
   for (int i = kNumRows / 2; i <= kNumRows; i++) {
     if (session_
-            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ExecuteQuery(Format("delete from test_table where k=$0;", i))
             .ok()) {
-      WARN_NOT_OK(session_.ExecuteQuery(Substitute(
+      WARN_NOT_OK(session_.ExecuteQuery(Format(
                       "insert into test_table (k, v) values (-$0, $0);", i)),
                   "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -1653,7 +1656,7 @@ TEST_F_EX(
   LOG(INFO) << "Inserting " << kNumRows << " rows";
   for (int i = 1; i <= kNumRows; i++) {
     ASSERT_OK(session_.ExecuteQuery(
-        Substitute("insert into test_table (k, v) values ($0, 'v-$0');", i)));
+        Format("insert into test_table (k, v) values ($0, 'v-$0');", i)));
   }
 
   LOG(INFO) << "Creating index";
@@ -1680,10 +1683,10 @@ TEST_F_EX(
   LOG(INFO) << "Inserting " << kNumRows / 2 << " rows again.";
   for (int i = 1; i < kNumRows / 2; i++) {
     if (session_
-            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ExecuteQuery(Format("delete from test_table where k=$0;", i))
             .ok()) {
       WARN_NOT_OK(
-          session_.ExecuteQuery(Substitute(
+          session_.ExecuteQuery(Format(
               "insert into test_table (k, v) values (-$0, 'v-$0');", i)),
           "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -1704,10 +1707,10 @@ TEST_F_EX(
   LOG(INFO) << "Inserting " << kNumRows / 2 << " more rows again.";
   for (int i = kNumRows / 2; i <= kNumRows; i++) {
     if (session_
-            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ExecuteQuery(Format("delete from test_table where k=$0;", i))
             .ok()) {
       WARN_NOT_OK(
-          session_.ExecuteQuery(Substitute(
+          session_.ExecuteQuery(Format(
               "insert into test_table (k, v) values (-$0, 'v-$0');", i)),
           "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
@@ -2394,12 +2397,12 @@ class CppCassandraDriverTestIndexSnapshotTooOld : public CppCassandraDriverTestI
   const MonoDelta kHistoryRetentionInterval = MonoDelta::FromSeconds(kHistoryRetentionSec);
 };
 
-// Verify that compacting the INDEX TABLE after the history retention interval does NOT cause
-// CQL unique index backfill writes to fail with "Snapshot too old".  Although the index
-// tablet's history cutoff advances past the backfill safe time, the index table has
-// retain_delete_markers=true during backfill.  This means compaction preserves all data
-// (delete markers and regular values), so RegisterReaderTimestamp skips the SnapshotTooOld
-// check and allows the read to proceed.
+// Verify that compacting the INDEX TABLE after the history retention interval does NOT cause CQL
+// unique index backfill writes to fail with "Snapshot too old".  Although the index tablet's
+// history cutoff advances past the backfill safe time, the index table has
+// retain_delete_markers=true during backfill, so RegisterReaderTimestamp skips the SnapshotTooOld
+// check and allows the read to proceed (see the comment there for why retaining delete markers
+// makes that safe).
 //
 // A UNIQUE index is used because unique index backfill uses QL_STMT_INSERT
 // (which sets insert_into_unique_index_ = true, require_read_ = true, and thus
@@ -2470,6 +2473,128 @@ TEST_F_EX(CppCassandraDriverTest, SnapshotTooOldOnIndexWritePath,
       << "Expected index creation to succeed (retain_delete_markers prevents "
          "SnapshotTooOld during backfill), but got permission: " << perm;
 }
+
+// Override the snapshot-too-old test class to turn off YCQL packed rows.  With per-column storage,
+// a full compaction does per-column overwrite garbage collection and drops the as-of-read-time
+// version of an updated column, so a backfill read below the history cutoff reconstructs a wrong
+// (NULL) value.  A packed-row repack would instead fold the current value forward and mask the
+// below-cutoff read (see issue #32522 trigger conditions).
+class CppCassandraDriverTestIndexSnapshotTooOldPackedRowsOff
+    : public CppCassandraDriverTestIndexSnapshotTooOld {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTestIndexSnapshotTooOld::ExtraTServerFlags();
+    flags.push_back("--ycql_enable_packed_row=false");
+    return flags;
+  }
+};
+
+// Regression test for issue #32522 / #32560, YCQL flavor: a backfill base-table read below the base
+// table's history cutoff must fail loud with "Snapshot too old" instead of silently building a
+// wrong index.  The YCQL in-process backfill scan (Tablet::BackfillIndexes) reads via a direct
+// iterator, not the guarded tserver read path, so before the fix nothing checked the backfill read
+// time against the base table's history cutoff.
+// 1. Backfill blocks after choosing its read time (TEST_block_do_backfill).
+// 2. UPDATE moves the indexed column v: 10 -> 20.  Index maintenance (index is at DO_BACKFILL)
+//    writes the v=20 index entry and deletes the v=10 entry above the backfill read time.
+// 3. History retention expires, and a flush + compact of the base table garbage-collects the v=10
+//    version (packed rows are off, so no repack folds the current value forward).
+// 4. Backfill unblocks and scans the base table at its read time, now below the committed history
+//    cutoff.  It must fail with "Snapshot too old" recorded in the index's backfill_error_message.
+//    Without the guard, it reads v as NULL and writes a (NULL, k=1) index entry that index
+//    maintenance never wrote-then-deleted: a silent wrong index.
+// Also verify the loud failure leaves a retryable state: drop the failed index, re-create it, and
+// expect success with matching table/index sizes.
+//
+// TODO(#32565): once base-table history is pinned at the backfill read time, this scenario builds a
+// consistent index and CREATE INDEX succeeds.  Rework this test to disable the pinning so the
+// below-cutoff guard keeps regression coverage.
+TEST_F_EX(CppCassandraDriverTest, BelowHistoryCutoffReadFailsLoud,
+          CppCassandraDriverTestIndexSnapshotTooOldPackedRowsOff) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+
+  TestTable<cass_int32_t, cass_int32_t> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  LOG(INFO) << "Inserting initial row (1, 10)";
+  ASSERT_OK(session_.ExecuteQuery("INSERT INTO test_table (k, v) VALUES (1, 10);"));
+
+  // Block backfill after it chooses its read time.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
+
+  LOG(INFO) << "Creating index";
+  auto s = session_.ExecuteQuery("CREATE INDEX test_table_index_by_v ON test_table (v);");
+  ASSERT_TRUE(CreateTableSuccessOrTimedOut(s));
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  // Wait for backfill to reach safe time.
+  ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
+
+  // Update the indexed column after the backfill read time was chosen.  This is what makes a read
+  // below the history cutoff produce a wrong index rather than a benign stale-but-equal read.
+  LOG(INFO) << "Updating indexed value 10 -> 20";
+  ASSERT_OK(session_.ExecuteQuery("UPDATE test_table SET v = 20 WHERE k = 1;"));
+
+  LOG(INFO) << "Sleeping past history retention (" << kHistoryRetentionSec << "s)";
+  SleepFor(kHistoryRetentionInterval);
+
+  // Flush and compact the base table to advance its committed history cutoff past the backfill read
+  // time and garbage-collect the v=10 version.
+  const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client_.get(), kNamespace, "test_table"));
+  constexpr int kTimeoutSec = 3;
+  LOG(INFO) << "Flushing and compacting the base table";
+  ASSERT_OK(client_->FlushTables({table_id}, MonoDelta::FromSeconds(kTimeoutSec)));
+  ASSERT_OK(client_->CompactTables({table_id}, MonoDelta::FromSeconds(kTimeoutSec)));
+
+  LOG(INFO) << "Unblocking backfill";
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+
+  // Backfill must fail with "Snapshot too old" promptly (first rejected chunk), not silently build
+  // the index and not burn through index_backfill_rpc_max_retries.  Also stop waiting if the index
+  // unexpectedly goes live, to produce a clear failure message instead of a timeout.
+  std::string backfill_error;
+  bool index_went_live = false;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto table_info = VERIFY_RESULT(client_->GetYBTableInfo(table_name));
+    VERIFY_EQ(table_info.index_map.size(), 1UL);
+    const auto& index_info = table_info.index_map.begin()->second;
+    backfill_error = index_info.backfill_error_message();
+    index_went_live =
+        index_info.index_permissions() == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+    return !backfill_error.empty() || index_went_live;
+  }, 60s * kTimeMultiplier, "Waiting for backfill to fail."));
+  if (index_went_live) {
+    // The old, silent-corruption behavior of issue #32522: backfill read the base table below the
+    // history cutoff and built the index from garbage-collected state.  Surface what backfill
+    // wrote: with the bug, the index holds a spurious (NULL, k=1) entry that index maintenance
+    // never wrote-then-deleted, alongside the maintained (20, k=1) entry.
+    auto index_contents =
+        session_.ExecuteAndRenderToString("SELECT * FROM test_table_index_by_v;");
+    FAIL() << "index built successfully instead of failing with Snapshot too old "
+           << "(#32522, #32560).  Index contents: "
+           << (index_contents.ok() ? *index_contents : index_contents.status().ToString());
+  }
+  ASSERT_STR_CONTAINS(backfill_error, "Snapshot too old");
+
+  // The rejection must also be counted by the backfill_reads_rejected_below_history_cutoff metric.
+  ASSERT_GE(ASSERT_RESULT(TotalBackfillReadsRejectedBelowHistoryCutoff(cluster_.get())), 1);
+
+  // The loud failure must leave a retryable state: drop the failed index and re-create it (backfill
+  // is no longer blocked, so the retry chooses a fresh read time and succeeds).
+  LOG(INFO) << "Dropping failed index and retrying";
+  ASSERT_OK(session_.ExecuteQuery("DROP INDEX test_table_index_by_v;"));
+  ASSERT_OK(session_.ExecuteQuery("CREATE INDEX test_table_index_by_v ON test_table (v);"));
+  auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  auto main_table_size = ASSERT_RESULT(GetTableSize(&session_, "test_table"));
+  auto index_table_size = ASSERT_RESULT(GetTableSize(&session_, "test_table_index_by_v"));
+  ASSERT_EQ(main_table_size, index_table_size);
+}
+
 // Table starts with one row (1, 'one'). After backfill safe time, we insert another
 // row (2, 'one') with the same indexed value. The CREATE UNIQUE INDEX should fail
 // because backfill sees the original row and the concurrent insert detects a collision.
@@ -3135,7 +3260,7 @@ TEST_F_EX(CppCassandraDriverTest, TestInsertLocality, CppCassandraDriverTestNoPa
   ColumnsTuple input("", "test_value");
 
   for (int i = 0; i < total_keys; ++i) {
-    get<0>(input) = Substitute("key_$0", i);
+    get<0>(input) = Format("key_$0", i);
 
     // Prepared object can now be used to create new statement.
     auto statement = prepared.Bind();
@@ -3391,11 +3516,10 @@ class CppCassandraDriverTestPartitionsVtableCache : public CppCassandraDriverTes
  private:
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTest::ExtraMasterFlags();
-    flags.push_back(Substitute("--partitions_vtable_cache_refresh_secs=$0", kCacheRefreshSecs));
-    flags.push_back(Substitute("--generate_partitions_vtable_on_changes=$0", false));
-    flags.push_back(Substitute(
-        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=$0",
-        false));
+    flags.push_back(Format("--partitions_vtable_cache_refresh_secs=$0", kCacheRefreshSecs));
+    flags.push_back("--generate_partitions_vtable_on_changes=false");
+    flags.push_back(
+        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=false");
     return flags;
   }
 
@@ -3476,11 +3600,10 @@ class CppCassandraDriverTestPartitionsVtableCacheUpdateOnChanges :
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTest::ExtraMasterFlags();
     // Test for generating system.partitions as changes occur, rather than via a bg task.
-    flags.push_back(Substitute("--partitions_vtable_cache_refresh_secs=$0", 0));
-    flags.push_back(Substitute("--generate_partitions_vtable_on_changes=$0", true));
-    flags.push_back(Substitute(
-        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=$0",
-        true));
+    flags.push_back(Format("--partitions_vtable_cache_refresh_secs=$0", 0));
+    flags.push_back("--generate_partitions_vtable_on_changes=true");
+    flags.push_back(
+        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=true");
     return flags;
   }
 };

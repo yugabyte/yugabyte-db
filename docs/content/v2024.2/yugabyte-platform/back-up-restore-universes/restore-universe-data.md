@@ -16,6 +16,10 @@ To access backups from a specific universe, navigate to the universe and choose 
 
 To access all universe backups, navigate to **Backups**.
 
+You can restore the full backup, or a specific increment if the backup is incremental. If the backup was created with a PITR-enabled scheduled backup policy, you can also restore to a point in time.
+
+To rewind a database or keyspace in place, see [Rewind to a point in time](../pitr/).
+
 {{< warning title="Restoring a backup using YBC" >}}
 
 Backups from a stable track universe can only be restored to a higher version stable track YugabyteDB universe, and the same applies for preview track. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YugabyteDB Anywhere version checks during restores. For more information, contact {{% support-platform %}}.
@@ -99,11 +103,6 @@ To restore, do the following:
     If you are restoring a YSQL backup to a universe with an existing database with the same name, you must rename the database.
 
 1. If you selected a YCQL backup, you can choose to select specific tables to restore, by selecting the **Select a subset of tables** option.
-
-    Note that this option is only available if the following conditions are met:
-
-    - The backup was made on a universe running YugabyteDB v2.16.0 or later.
-    - The selected target universe is running YugabyteDB v2.18.0 or later.
 
 1. If you chose to rename databases/keyspaces or select tables, click **Next** to rename keyspaces and, if applicable, select tables.
 

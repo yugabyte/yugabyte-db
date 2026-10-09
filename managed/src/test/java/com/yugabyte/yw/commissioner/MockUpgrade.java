@@ -91,6 +91,8 @@ public class MockUpgrade extends UpgradeTaskBase {
   protected UpgradeTaskParams taskParams() {
     UpgradeTaskParams params = new UpgradeTaskParams();
     params.setUniverseUUID(universe.getUniverseUUID());
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
     return params;
   }
 
@@ -154,6 +156,14 @@ public class MockUpgrade extends UpgradeTaskBase {
   private void flushSubtasks() {
     subtasksByPosition.put(position++, new ArrayList<>(tasksForTaskGroup));
     tasksForTaskGroup.clear();
+  }
+
+  public MockUpgrade addSimultaneousTasks(TaskType taskType, JsonNode... params) {
+    for (JsonNode param : params) {
+      addTaskNoFlush(taskType, param);
+    }
+    flushSubtasks();
+    return this;
   }
 
   public MockUpgrade addSimultaneousTasks(TaskType taskType, int count) {
@@ -403,6 +413,9 @@ public class MockUpgrade extends UpgradeTaskBase {
     private boolean ybcPresent = false;
 
     private List<ExpectedTaskDetails> expectedTasksList = new ArrayList<>();
+    private TaskType oneShotTask;
+    private TaskType oneShotBeforeTaskType;
+    private boolean oneShotEmitted;
 
     private UpgradeRound(UpgradeTaskParams.UpgradeOption upgradeOption, boolean stopBothProcesses) {
       this.upgradeOption = upgradeOption;
@@ -462,6 +475,18 @@ public class MockUpgrade extends UpgradeTaskBase {
     public UpgradeRound tserverTask(
         TaskType task, JsonNode details, BiConsumer<JsonNode, NodeDetails> nodeDetailsCustomizer) {
       return task(ServerType.TSERVER, task, details, nodeDetailsCustomizer);
+    }
+
+    /**
+     * Inserts {@code oneShot} once on the first {@code applyUpgradeOnNodes} call, immediately
+     * before the first expected task whose type equals {@code beforeTaskType}. Subsequent node
+     * rounds omit it. Used for universe-level checkpoints (e.g. {@code MarkRollbackUnsafe}) that
+     * sit before the first volume-size {@code Disk_Update}.
+     */
+    public UpgradeRound oneShotBefore(TaskType oneShot, TaskType beforeTaskType) {
+      this.oneShotTask = oneShot;
+      this.oneShotBeforeTaskType = beforeTaskType;
+      return this;
     }
 
     public UpgradeRound masterTasks(TaskType... tasks) {
@@ -563,6 +588,14 @@ public class MockUpgrade extends UpgradeTaskBase {
                           || processTypes.contains(ServerType.EITHER))
               .collect(Collectors.toList());
       for (ExpectedTaskDetails task : lst) {
+        if (!oneShotEmitted
+            && oneShotTask != null
+            && oneShotBeforeTaskType != null
+            && task.taskType == oneShotBeforeTaskType) {
+          addTaskNoFlush(oneShotTask, null);
+          flushSubtasks();
+          oneShotEmitted = true;
+        }
         for (NodeDetails node : nodes) {
           JsonNode copy = null;
           if (task.details != null) {

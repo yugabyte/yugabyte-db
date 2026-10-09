@@ -141,9 +141,9 @@ class HeaderManagerImpl : public HeaderManager {
  private:
   Status CheckSliceCanBeDecoded(const Slice& s, uint32_t expected_length, const string& field) {
     if (s.size() < expected_length) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-                               "Error parsing field $0: expect $1 bytes found $2",
-                               field, expected_length, s.size());
+      return STATUS_FORMAT(InvalidArgument,
+                           "Error parsing field $0: expect $1 bytes found $2",
+                           field, expected_length, s.size());
     }
     return Status::OK();
   }

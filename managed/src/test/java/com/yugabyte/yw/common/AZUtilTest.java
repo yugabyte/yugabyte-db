@@ -26,6 +26,7 @@ import com.azure.storage.blob.models.BlobItemProperties;
 import com.azure.storage.blob.models.BlobProperties;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.yugabyte.yw.common.AZUtil.CloudLocationInfoAzure;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
@@ -38,6 +39,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
@@ -51,6 +53,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
+import org.yb.ybc.CloudStoreSpec;
 
 @RunWith(JUnitParamsRunner.class)
 public class AZUtilTest {
@@ -713,5 +716,45 @@ public class AZUtilTest {
     verify(mockBlobContainerClient, atLeast(1)).getBlobClient(fileNameCaptor.capture());
     String expectedFileName = "sub/dir/" + randomFile.toString() + ".txt";
     assertEquals(expectedFileName, fileNameCaptor.getValue());
+  }
+
+  @Test
+  public void testCreateCloudStoreSpecPassesAzureClientIdToYbcWhenPresent() {
+    CustomerConfigStorageAzureData azData = new CustomerConfigStorageAzureData();
+    azData.useAzureIam = true;
+    azData.azureClientId = "test-client-id";
+    azData.backupLocation = "https://test-account.blob.core.windows.net/test-container/backup";
+    String azureUrl = "https://test-account.blob.core.windows.net";
+    String bucket = "test-container";
+    CloudLocationInfoAzure cLInfo = mockAZUtil.new CloudLocationInfoAzure(azureUrl, bucket, "");
+    doReturn(cLInfo).when(mockAZUtil).getCloudLocationInfo(any(), any(), any());
+
+    CloudStoreSpec spec =
+        mockAZUtil.createCloudStoreSpec(
+            YbcBackupUtil.DEFAULT_REGION_STRING, "common-dir", null, azData, null);
+
+    Map<String, String> creds = spec.getCredsMap();
+    assertEquals("true", creds.get(AZUtil.YBC_USE_AZURE_IAM_FIELDNAME));
+    assertEquals("test-client-id", creds.get(AZUtil.YBC_AZURE_CLIENT_ID_FIELDNAME));
+    assertEquals(azureUrl, creds.get(AZUtil.YBC_AZURE_STORAGE_END_POINT_FIELDNAME));
+  }
+
+  @Test
+  public void testCreateCloudStoreSpecOmitsAzureClientIdWhenAbsent() {
+    CustomerConfigStorageAzureData azData = new CustomerConfigStorageAzureData();
+    azData.useAzureIam = true;
+    azData.backupLocation = "https://test-account.blob.core.windows.net/test-container/backup";
+    String azureUrl = "https://test-account.blob.core.windows.net";
+    String bucket = "test-container";
+    CloudLocationInfoAzure cLInfo = mockAZUtil.new CloudLocationInfoAzure(azureUrl, bucket, "");
+    doReturn(cLInfo).when(mockAZUtil).getCloudLocationInfo(any(), any(), any());
+
+    CloudStoreSpec spec =
+        mockAZUtil.createCloudStoreSpec(
+            YbcBackupUtil.DEFAULT_REGION_STRING, "common-dir", null, azData, null);
+
+    Map<String, String> creds = spec.getCredsMap();
+    assertEquals("true", creds.get(AZUtil.YBC_USE_AZURE_IAM_FIELDNAME));
+    assertFalse(creds.containsKey(AZUtil.YBC_AZURE_CLIENT_ID_FIELDNAME));
   }
 }

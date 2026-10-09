@@ -73,7 +73,6 @@ devops/pex/.cache
 
 # openapi generated server stubs during build
 src/main/resources/openapi.yaml
-src/main/resources/openapi_public.yaml
 src/main/resources/swagger-all.json
 tmp
 

@@ -35,6 +35,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
@@ -308,9 +309,6 @@ TEST_F(PgSingleTServerTest, AggregateArenaReset) {
   constexpr int kNumRows = 1000;
   constexpr size_t kValueLen = 1000;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256 * 1024;
-  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
-
   use_colocation_ = false;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
@@ -325,6 +323,8 @@ TEST_F(PgSingleTServerTest, AggregateArenaReset) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO tbl (k, v) VALUES ($0, '$1')", i, v));
   }
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256 * 1024;
+  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
   auto actual_min = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT min(v) FROM tbl"));
   ASSERT_EQ(expected_min, actual_min);
 

@@ -48,7 +48,6 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/rpc/messenger.h"
@@ -71,11 +70,13 @@
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 using namespace yb::size_literals;
@@ -135,7 +136,6 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using std::min;
-using strings::Substitute;
 using tablet::TabletDataState;
 using tablet::TabletDataState_Name;
 using tablet::RaftGroupMetadata;
@@ -155,10 +155,10 @@ Status RemoteBootstrapClient::SetTabletToReplace(const RaftGroupMetadataPtr& met
   CHECK_EQ(tablet_id_, meta->raft_group_id());
   TabletDataState data_state = meta->tablet_data_state();
   if (data_state != tablet::TABLET_DATA_TOMBSTONED) {
-    return STATUS(IllegalState, Substitute("Tablet $0 not in tombstoned state: $1 ($2)",
-                                           tablet_id_,
-                                           TabletDataState_Name(data_state),
-                                           data_state));
+    return STATUS(IllegalState, Format("Tablet $0 not in tombstoned state: $1 ($2)",
+                                       tablet_id_,
+                                       TabletDataState_Name(data_state),
+                                       data_state));
   }
 
   replace_tombstoned_tablet_ = true;
@@ -167,9 +167,9 @@ Status RemoteBootstrapClient::SetTabletToReplace(const RaftGroupMetadataPtr& met
   int64_t last_logged_term = meta->tombstone_last_logged_opid().term;
   if (last_logged_term > caller_term) {
     return STATUS(InvalidArgument,
-        Substitute("Leader has term $0 but the last log entry written by the tombstoned replica "
-                   "for tablet $1 has higher term $2. Refusing remote bootstrap from leader",
-                   caller_term, tablet_id_, last_logged_term));
+        Format("Leader has term $0 but the last log entry written by the tombstoned replica "
+               "for tablet $1 has higher term $2. Refusing remote bootstrap from leader",
+               caller_term, tablet_id_, last_logged_term));
   }
 
   // Load the old consensus metadata, if it exists.
@@ -299,6 +299,10 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   // below and re-applied to the persisted superblock in FetchAll(). RBS downloads all SSTs into the
   // local home dir (path_id 0); a subsequent tier reconcile can migrate them later.
   kv_store->clear_tier_paths();
+  // target_storage_tier (e.g. "ssd"/"hdd") is intentionally left as-is; still applies on this new
+  // replica. target_tier_path_id must be cleared. TSTabletManager will re-resolve it the first time
+  // this tablet is opened (via ResolveTargetTierPathId), since RBS always lands data on path_id 0.
+  kv_store->clear_target_tier_path_id();
 
   superblock_->set_tablet_data_state(tablet::TABLET_DATA_COPYING);
   wal_seqnos_.assign(resp.deprecated_wal_segment_seqnos().begin(),
@@ -324,13 +328,13 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     int64_t last_logged_term = meta_->tombstone_last_logged_opid().term;
     if (last_logged_term > remote_committed_cstate_->current_term()) {
       return STATUS(InvalidArgument,
-          Substitute("Tablet $0: Bootstrap source has term $1 but "
-                     "tombstoned replica has last-logged opid with higher term $2. "
-                      "Refusing remote bootstrap from source peer $3",
-                      tablet_id_,
-                      remote_committed_cstate_->current_term(),
-                      last_logged_term,
-                      bootstrap_peer_uuid));
+          Format("Tablet $0: Bootstrap source has term $1 but "
+                 "tombstoned replica has last-logged opid with higher term $2. "
+                  "Refusing remote bootstrap from source peer $3",
+                  tablet_id_,
+                  remote_committed_cstate_->current_term(),
+                  last_logged_term,
+                  bootstrap_peer_uuid));
     }
     // Replace rocksdb_dir in the received superblock with our rocksdb_dir.
     kv_store->set_rocksdb_dir(meta_->rocksdb_dir());
@@ -338,7 +342,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     // Replace wal_dir in the received superblock with our assigned wal_dir.
     superblock_->set_wal_dir(meta_->wal_dir());
 
-    RETURN_NOT_OK(CheckDiskSpace(*superblock_, meta_->data_root_dir()));
+    RETURN_NOT_OK(CheckDiskSpace(*superblock_, meta_->data_root_dir(), meta_->wal_root_dir()));
 
     // This will flush to disk, but we set the data state to COPYING above.
     RETURN_NOT_OK_PREPEND(meta_->ReplaceSuperBlock(*superblock_),
@@ -381,7 +385,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
 
     auto tablet_assigned_root_data_dir = VERIFY_RESULT(fs_manager().GetTabletPath(tablet_id_));
-    auto status = CheckDiskSpace(*superblock_, tablet_assigned_root_data_dir);
+    auto status = CheckDiskSpace(*superblock_, tablet_assigned_root_data_dir, wal_root_dir);
     if (!status.ok()) {
       if (ts_manager) {
         ts_manager->UnregisterDataWalDir(table_id, tablet_id_, data_root_dir, wal_root_dir);
@@ -399,6 +403,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
             .colocated = colocated,
             .snapshot_schedules = {},
             .hosted_services = hosted_services,
+            .target_storage_tier = kv_store->target_storage_tier(),
         },
         data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
@@ -506,11 +511,16 @@ Status RemoteBootstrapClient::Finish() {
   LOG_WITH_PREFIX(INFO) << "Remote bootstrap complete. Replacing tablet superblock.";
   UpdateStatusMessage("Replacing tablet superblock");
   new_superblock_.set_tablet_data_state(remote_tablet_data_state_);
+  // The file lists only describe the transfer. RaftGroupMetadata never serializes them, so if they
+  // were persisted, RemoteBootstrapSession::CreateSnapshot on this replica would see the on-disk
+  // superblock differ from the in-memory one and fail every remote bootstrap sourced from it.
+  new_superblock_.mutable_kv_store()->clear_rocksdb_files();
+  new_superblock_.mutable_kv_store()->clear_snapshot_files();
   RETURN_NOT_OK(meta_->ReplaceSuperBlock(new_superblock_));
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
     string meta_path = VERIFY_RESULT(fs_manager().GetRaftGroupMetadataPath(tablet_id_));
-    string meta_copy_path = Substitute("$0.copy.$1.tmp", meta_path, start_time_micros_);
+    string meta_copy_path = Format("$0.copy.$1.tmp", meta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), meta_path, meta_copy_path,
                                    WritableFileOptions()),
                           "Unable to make copy of tablet metadata");
@@ -566,9 +576,9 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
   } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
 
   return STATUS(TimedOut,
-                Substitute("Timed out waiting member type of peer $0 to change in the committed "
-                           "config $1", permanent_uuid(),
-                           committed_config.ShortDebugString()));
+                Format("Timed out waiting member type of peer $0 to change in the committed "
+                       "config $1", permanent_uuid(),
+                       committed_config.ShortDebugString()));
 }
 
 void RemoteBootstrapClient::UpdateStatusMessage(const string& message) {
@@ -588,19 +598,19 @@ Status RemoteBootstrapClient::DownloadWALs() {
   }
   auto wal_table_top_dir = DirName(wal_dir);
   RETURN_NOT_OK_PREPEND(fs_manager().CreateDirIfMissing(wal_table_top_dir),
-                        Substitute("Failed to create WAL table directory $0", wal_table_top_dir));
+                        Format("Failed to create WAL table directory $0", wal_table_top_dir));
 
   // fsync() parent dir.
   RETURN_NOT_OK_PREPEND(env().SyncDir(DirName(wal_table_top_dir)),
-                        Substitute("Failed to sync WAL root directory $0",
-                                   DirName(wal_table_top_dir)));
+                        Format("Failed to sync WAL root directory $0",
+                               DirName(wal_table_top_dir)));
 
   RETURN_NOT_OK_PREPEND(env().CreateDir(wal_dir),
-                        Substitute("Failed to create WAL tablet directory $0", wal_dir));
+                        Format("Failed to create WAL tablet directory $0", wal_dir));
 
   // fsync() parent dir.
   RETURN_NOT_OK_PREPEND(env().SyncDir(wal_table_top_dir),
-                        Substitute("Failed to sync WAL table directory $0", wal_table_top_dir));
+                        Format("Failed to sync WAL table directory $0", wal_table_top_dir));
 
   // Download the WAL segments.
   uint64_t counter = 0;
@@ -640,8 +650,8 @@ Status RemoteBootstrapClient::DownloadWALs() {
     auto num_segments = wal_seqnos_.size();
     LOG_WITH_PREFIX(INFO) << "Starting download of " << num_segments << " WAL segments...";
     for (uint64_t seg_seqno : wal_seqnos_) {
-      UpdateStatusMessage(Substitute("Downloading WAL segment with seq. number $0 ($1/$2)",
-                                     seg_seqno, counter + 1, num_segments));
+      UpdateStatusMessage(Format("Downloading WAL segment with seq. number $0 ($1/$2)",
+                                 seg_seqno, counter + 1, num_segments));
       RETURN_NOT_OK(DownloadWAL(seg_seqno));
       ++counter;
     }
@@ -650,8 +660,10 @@ Status RemoteBootstrapClient::DownloadWALs() {
   if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
     // Persist directory so that recently downloaded files are accessible.
     RETURN_NOT_OK_PREPEND(env().SyncDir(wal_table_top_dir),
-                          Substitute("Failed to sync WAL table directory $0", wal_table_top_dir));
+                          Format("Failed to sync WAL table directory $0", wal_table_top_dir));
   }
+
+  RETURN_NOT_OK(CheckFreeDiskSpace());
 
   downloaded_wal_ = true;
   return Status::OK();
@@ -660,12 +672,12 @@ Status RemoteBootstrapClient::DownloadWALs() {
 Status RemoteBootstrapClient::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
   // Create the directory table-uuid first.
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissing(DirName(db_dir)),
-                        Substitute("Failed to create RocksDB table directory $0",
-                                   DirName(db_dir)));
+                        Format("Failed to create RocksDB table directory $0",
+                               DirName(db_dir)));
 
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissing(db_dir),
-                        Substitute("Failed to create RocksDB tablet directory $0",
-                                   db_dir));
+                        Format("Failed to create RocksDB tablet directory $0",
+                               db_dir));
 
   for (const auto& component : components_) {
     RETURN_NOT_OK(component->CreateDirectories(db_dir, fs));
@@ -682,6 +694,7 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   DataIdPB data_id;
   data_id.set_type(DataIdPB::ROCKSDB_FILE);
   for (auto const& file_pb : new_superblock_.kv_store().rocksdb_files()) {
+    RETURN_NOT_OK(CheckFreeDiskSpace());
     auto start = MonoTime::Now();
     RETURN_NOT_OK(downloader_.DownloadFile(
         file_pb, rocksdb_dir, &data_id,
@@ -699,12 +712,15 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
     // Persist directory so that recently downloaded files are accessible.
     RETURN_NOT_OK(env.SyncDir(rocksdb_dir));
   }
+  RETURN_NOT_OK(CheckFreeDiskSpace());
+
   downloaded_rocksdb_files_ = true;
   return Status::OK();
 }
 
 Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   VLOG_WITH_PREFIX(1) << "Downloading WAL segment with seqno " << wal_segment_seqno;
+  RETURN_NOT_OK(CheckFreeDiskSpace());
   DataIdPB data_id;
   data_id.set_type(DataIdPB::LOG_SEGMENT);
   data_id.set_wal_segment_seqno(wal_segment_seqno);
@@ -720,8 +736,8 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
 
   auto start = MonoTime::Now();
   RETURN_NOT_OK_PREPEND(downloader_.DownloadFile(data_id, writer.get()),
-                        Substitute("Unable to download WAL segment with seq. number $0",
-                                   wal_segment_seqno));
+                        Format("Unable to download WAL segment with seq. number $0",
+                               wal_segment_seqno));
   RETURN_NOT_OK(env().RenameFile(temp_dest_path, dest_path));
   auto elapsed = MonoTime::Now().GetDeltaSince(start);
   LOG_WITH_PREFIX(INFO) << "Downloaded WAL segment with seq. number " << wal_segment_seqno
@@ -778,7 +794,7 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
     string cmeta_path = VERIFY_RESULT(fs_manager().GetConsensusMetadataPath(tablet_id_));
-    string cmeta_copy_path = Substitute("$0.copy.$1.tmp", cmeta_path, start_time_micros_);
+    string cmeta_copy_path = Format("$0.copy.$1.tmp", cmeta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), cmeta_path, cmeta_copy_path,
                                    WritableFileOptions()),
                           "Unable to make copy of consensus metadata");
@@ -797,7 +813,15 @@ uint64_t RemoteBootstrapClient::GetTotalDataSizeBytes(
 }
 
 Status RemoteBootstrapClient::CheckDiskSpace(
-    const tablet::RaftGroupReplicaSuperBlockPB& superblock, const string& rocksdb_dir) {
+    const tablet::RaftGroupReplicaSuperBlockPB& superblock, const string& rocksdb_dir,
+    const string& wal_root_dir) {
+  // Apply the same thresholds that reject writes when the disk is close to full.
+  // TODO: May check the free space with the data size to be downloaded accounted for, so that
+  // the download can be avoided if the disk would be close to full after downloading.
+  data_disk_checker_.emplace(fs_manager().env(), rocksdb_dir, /* always_check_disk = */ true);
+  wal_disk_checker_.emplace(fs_manager().env(), wal_root_dir, /* always_check_disk = */ true);
+  RETURN_NOT_OK(CheckFreeDiskSpace());
+
   const auto max_size_ratio = FLAGS_rbs_data_size_to_disk_space_ratio_threshold;
   if (PREDICT_FALSE(max_size_ratio <= 0)) {
     return Status::OK();
@@ -810,6 +834,17 @@ Status RemoteBootstrapClient::CheckDiskSpace(
     return STATUS_FORMAT(IOError, "Not enough disk space for bootstrap. path: $0, "
                          "free spaces: $1 bytes, need $2 bytes",
                          rocksdb_dir, free_space_bytes, total_data_size_bytes);
+  }
+  return Status::OK();
+}
+
+Status RemoteBootstrapClient::CheckFreeDiskSpace() {
+  for (auto* checker : {&data_disk_checker_, &wal_disk_checker_}) {
+    if (*checker && !(*checker)->HasSufficientDiskSpace()) {
+      return STATUS_FORMAT(
+          IOError, "Not enough disk space for bootstrap. Path $0 has insufficient disk space",
+          (*checker)->path());
+    }
   }
   return Status::OK();
 }

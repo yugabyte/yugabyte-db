@@ -13,8 +13,9 @@
 
 #pragma once
 
-#include <memory>
 #include <mutex>
+
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/util/monotime.h"
 
@@ -23,24 +24,33 @@ namespace yb {
 // Tracks long running operation.
 // If it does not complete within specified duration warning is added to log.
 // Warning contains stack trace of thread that created this tracker.
+//
+// Registration is lock-free for typical durations: a background checker thread picks up new
+// operations when it scans its intake queue, at least every 100ms while it is otherwise idle.
+// A warning is therefore typically logged within 100ms of the operation deadline, though scans
+// can be delayed while the checker thread is dumping stacks of other overdue operations.
+// Registering an operation with a duration shorter than 200ms additionally wakes the checker
+// thread, so that the stack trace warning is not skipped when such an operation expires and
+// completes between two scans.
 class LongOperationTracker {
  public:
-  LongOperationTracker() = default;
   LongOperationTracker(const char* message, MonoDelta duration);
-  ~LongOperationTracker();
 
   LongOperationTracker(const LongOperationTracker&) = delete;
   void operator=(const LongOperationTracker&) = delete;
 
-  LongOperationTracker(LongOperationTracker&&) = default;
-  LongOperationTracker& operator=(LongOperationTracker&&) = default;
+  // Defined out-of-line because they require a complete TrackedOperation type.
+  LongOperationTracker();
+  ~LongOperationTracker();
+  LongOperationTracker(LongOperationTracker&& rhs);
+  LongOperationTracker& operator=(LongOperationTracker&& rhs);
 
   void Swap(LongOperationTracker* rhs);
 
   struct TrackedOperation;
 
  private:
-  std::shared_ptr<TrackedOperation> tracked_operation_;
+  scoped_refptr<TrackedOperation> tracked_operation_;
 };
 
 

@@ -26,6 +26,7 @@
 
 #include "yb/util/bitmap.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tablet {

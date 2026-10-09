@@ -20,6 +20,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/yb_partition.h"
 
 namespace yb {

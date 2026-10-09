@@ -270,6 +270,53 @@ SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
  foo_idx | regress_tblspace
 (1 row)
 
+-- YB: Vector (ybhnsw) indexes are copartitioned with the indexed table -- they
+-- are stored on the table's own tablets -- so, like primary key indexes, their
+-- tablespace always follows the indexed table.  Verify that pg_class.reltablespace
+-- stays consistent with the indexed table.
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE testschema.vectbl (id int PRIMARY KEY, embedding vector(3))
+    TABLESPACE regress_tblspace;
+-- Without a TABLESPACE clause, the vector index inherits the indexed table's
+-- tablespace (rather than recording reltablespace = 0).
+CREATE INDEX vec_idx_inherit ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops);
+-- The table and its vector index report the same tablespace.
+SELECT relname, spcname FROM pg_catalog.pg_class c
+    LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+    WHERE c.relname IN ('vectbl', 'vec_idx_inherit') ORDER BY relname;
+     relname     |     spcname      
+-----------------+------------------
+ vec_idx_inherit | regress_tblspace
+ vectbl          | regress_tblspace
+(2 rows)
+
+-- Fail: a vector index's tablespace cannot be set directly; it always follows
+-- the indexed table.  An explicit TABLESPACE clause is rejected even when it
+-- matches the indexed table's tablespace.
+CREATE INDEX vec_idx_match ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops)
+    TABLESPACE regress_tblspace;
+ERROR:  cannot set tablespace for a vector index
+CREATE INDEX vec_idx_mismatch ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops)
+    TABLESPACE regress_tblspace_2;
+ERROR:  cannot set tablespace for a vector index
+-- ALTER TABLE ... SET TABLESPACE moves the vector index with the table and
+-- keeps the index's reltablespace in sync.
+ALTER TABLE testschema.vectbl SET TABLESPACE regress_tblspace_2;
+NOTICE:  data movement for table vectbl is successfully initiated
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables.
+SELECT relname, spcname FROM pg_catalog.pg_class c
+    LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+    WHERE c.relname IN ('vectbl', 'vec_idx_inherit') ORDER BY relname;
+     relname     |      spcname       
+-----------------+--------------------
+ vec_idx_inherit | regress_tblspace_2
+ vectbl          | regress_tblspace_2
+(2 rows)
+
+-- Fail: a vector index's tablespace cannot be set directly; it follows the table.
+ALTER INDEX testschema.vec_idx_inherit SET TABLESPACE regress_tblspace;
+ERROR:  cannot set tablespace for a vector index
+DROP TABLE testschema.vectbl;
 -- partitioned table
 CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
 CREATE TABLE testschema.part12 PARTITION OF testschema.part FOR VALUES IN(1,2) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
@@ -760,6 +807,50 @@ DROP TABLE foo;
 DROP TABLE bar;
 DROP TABLESPACE valid_tablespace;
 DROP TABLESPACE LP;
+-- Test storage_tier
+-- Invalid type for storage_tier.
+CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+ERROR:  Invalid type for "storage_tier" field in replica_placement. Expected string, got number.:  Provided replica_placement: {"num_replicas":1, "storage_tier":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}
+-- Empty storage_tier is not possible.
+CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":"", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+ERROR:  "storage_tier" field in replica_placement cannot be empty.:  Provided replica_placement: {"num_replicas":1, "storage_tier":"", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}
+-- Unknown storage tier: only "ssd" and "hdd" are valid, matching the fixed set of tier labels a
+-- tserver's --fs_data_dirs can advertise.
+CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":"nvme-archive", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+ERROR:  Invalid "storage_tier" value "nvme-archive" in replica_placement. Valid storage tiers are: ssd, hdd:  Provided replica_placement: {"num_replicas":1, "storage_tier":"nvme-archive", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}
+-- Positive case: both valid storage tiers are accepted and persisted in spcoptions.
+CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":"hdd", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+CREATE TABLESPACE storage_tier_ts2 WITH (replica_placement='{"num_replicas":1, "storage_tier":"ssd", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_ts';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_ts2';
+ ?column? 
+----------
+ t
+(1 row)
+
+CREATE TABLE storage_tier_tab (i int) TABLESPACE storage_tier_ts;
+CREATE TABLE storage_tier_tab2 (i int) TABLESPACE storage_tier_ts2;
+DROP TABLE storage_tier_tab;
+DROP TABLE storage_tier_tab2;
+DROP TABLESPACE storage_tier_ts;
+DROP TABLESPACE storage_tier_ts2;
+-- storage_tier is also supported on a read_replica_placement, independently of the live
+-- placement's tier.
+CREATE TABLESPACE storage_tier_rr_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":"ssd", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}', read_replica_placement='{"num_replicas":1, "storage_tier":"hdd", "placement_blocks":[{"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_rr_ts';
+ ?column? 
+----------
+ t
+(1 row)
+
+CREATE TABLE storage_tier_rr_tab (i int) TABLESPACE storage_tier_rr_ts;
+DROP TABLE storage_tier_rr_tab;
+DROP TABLESPACE storage_tier_rr_ts;
 -- Test ALTER TABLE/INDEX/MATERILIZED VIEW ALL IN TABLESPACE ... SET TABLESPACE ...
 CREATE TABLESPACE tsp1 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1 }]}');
 CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud2", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1 }]}');

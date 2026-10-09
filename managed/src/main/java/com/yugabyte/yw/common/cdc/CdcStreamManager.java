@@ -47,7 +47,7 @@ public class CdcStreamManager {
   }
 
   public List<CdcStream> getAllCdcStreams(Universe universe) throws Exception {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       List<CdcStream> streams = new ArrayList<>();
       ListCDCStreamsResponse response =
           client.listCDCStreams(null, null, MasterReplicationOuterClass.IdTypePB.NAMESPACE_ID);
@@ -74,7 +74,7 @@ public class CdcStreamManager {
   }
 
   @VisibleForTesting
-  protected YBTable getFirstTable(YBClient client, String databaseName) throws Exception {
+  protected YBTable getFirstTable(YBClientApi client, String databaseName) throws Exception {
     ListTablesResponse tablesResp = client.getTablesList();
 
     String tid = "";
@@ -104,7 +104,7 @@ public class CdcStreamManager {
   public CdcStreamCreateResponse createCdcStream(
       Universe universe, String databaseName, String format, String checkpointType)
       throws Exception {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
 
       LOG.info(
           "Creating CDC stream for universeId='{}' dbName='{}' format='{}', checkpointType='{}'",
@@ -133,7 +133,7 @@ public class CdcStreamManager {
 
   public CdcStreamDeleteResponse deleteCdcStream(Universe universe, String streamId)
       throws Exception {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       HashSet<String> streamsToDelete = new HashSet<>();
       streamsToDelete.add(streamId);
 
@@ -151,7 +151,7 @@ public class CdcStreamManager {
   }
 
   public CDCReplicationSlotResponse listReplicationSlot(Universe universe) throws Exception {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
 
       ListCDCStreamsResponse response =
           client.listCDCStreams(null, null, MasterReplicationOuterClass.IdTypePB.NAMESPACE_ID);

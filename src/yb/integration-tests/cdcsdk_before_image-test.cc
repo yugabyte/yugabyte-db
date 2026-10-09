@@ -835,7 +835,14 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleMultiShardUpdate
   ExpectedRecord expected_before_image_records[] = {{},     {0, 0}, {1, 2}, {1, 3},   {0, 0},
                                                     {2, 3}, {2, 3}, {0, 0}, {2, 888}, {3, 4}};
 
-  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // A multi-shard transaction is streamed only once its APPLY record has been replicated, which
+  // happens asynchronously after COMMIT returns to the client. Retry until all records show up.
+  // Every retry re-reads from the same checkpoint, so count the records of the last response only.
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 9 /* expected_count */,
+      /* is_explicit_checkpoint */ true, /* cp = */ nullptr, /* tablet_idx = */ 0,
+      /* safe_hybrid_time = */ -1, /* wal_segment_index = */ 0, /* timeout_secs = */ 60));
 
   uint32_t seen_dml_records = 0;
   for (const auto& record : change_resp.cdc_sdk_proto_records()) {

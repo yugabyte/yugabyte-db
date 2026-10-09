@@ -21,6 +21,8 @@
 #include "yb/encryption/encryption_util.h"
 #include "yb/encryption/header_manager.h"
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/random_util.h"
@@ -41,7 +43,7 @@ class TestCipherStream : public YBTest {
  public:
   Status TestOverFlowWithKeyType(bool use_openssl_compatible_counter_overflow) {
     // Create a cipher stream on an iv about to overflow.
-    FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow =
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow) =
         use_openssl_compatible_counter_overflow;
     auto params = EncryptionParams::NewEncryptionParams();
     // Initialize the nonce to be about to overflow for each position.

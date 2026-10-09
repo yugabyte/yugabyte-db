@@ -4,11 +4,7 @@ version = "0.0.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib", "lib"]
-
-[[bin]]
-name = "pgrx_embed_{name}"
-path = "./src/bin/pgrx_embed.rs"
+crate-type = ["cdylib"]
 
 [features]
 default = ["pg13"]
@@ -17,13 +13,20 @@ pg14 = ["pgrx/pg14", "pgrx-tests/pg14" ]
 pg15 = ["pgrx/pg15", "pgrx-tests/pg15" ]
 pg16 = ["pgrx/pg16", "pgrx-tests/pg16" ]
 pg17 = ["pgrx/pg17", "pgrx-tests/pg17" ]
+pg18 = ["pgrx/pg18", "pgrx-tests/pg18" ]
 pg_test = []
+pg_bench = ["dep:pgrx-bench"]
 
 [dependencies]
-pgrx = "=0.14.1"
+pgrx = "=0.18.1"
+
+[dependencies.pgrx-bench]
+version = "=0.18.1"
+optional = true
 
 [dev-dependencies]
-pgrx-tests = "=0.14.1"
+[dev-dependencies.pgrx-tests]
+version = "=0.18.1"
 
 [profile.dev]
 panic = "unwind"

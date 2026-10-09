@@ -6,7 +6,6 @@
 
 -- Install required extensions
 CREATE EXTENSION file_fdw;
-CREATE EXTENSION postgres_fdw;
 
 -- Create enum type for the status column
 CREATE TYPE metric_status AS ENUM ('active', 'warning', 'critical');
@@ -212,6 +211,109 @@ SELECT MIN(created_at) AS earliest, MAX(created_at) AS latest
 FROM "gv$node_metrics";
 SELECT MIN(created_at) AS earliest, MAX(created_at) AS latest
 FROM "gv$node_metrics";
+
+--
+-- Aggregate pushdown by server_uuid
+-- Each EXPLAIN is followed by a deterministic result check. server_uuid is
+-- not selected (its value is random per run); the checks group by server_uuid
+-- and order by the aggregates, whose per-tserver values are fixed by the data.
+
+-- GROUP BY server_uuid: count(*) pushed to each tserver.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+SELECT COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY cnt;
+
+-- One group per tserver; counts sum to 11 rows.
+SELECT COUNT(*) AS num_server_groups, SUM(cnt) AS total_rows
+FROM (SELECT server_uuid, COUNT(*) AS cnt
+      FROM "gv$node_metrics" GROUP BY server_uuid) s;
+
+-- Without GROUP BY on server_uuid count(*) is not pushed down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT COUNT(*) FROM "gv$node_metrics";
+SELECT COUNT(*) FROM "gv$node_metrics";
+
+-- GROUP BY a non-partition-key column: only a partial aggregate is pushed
+-- below the Append. Each node_id lives on a single tserver, but the planner
+-- cannot know that, so it must not pick a full per-tserver aggregate.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, COUNT(*) FROM "gv$node_metrics"
+GROUP BY node_id;
+SELECT node_id, COUNT(*) FROM "gv$node_metrics"
+GROUP BY node_id
+ORDER BY node_id;
+
+-- Superset of the partition key: still fully pushed down.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, metric_name, COUNT(*) AS cnt, SUM(event_count) AS events
+FROM "gv$node_metrics"
+GROUP BY server_uuid, metric_name;
+SELECT metric_name, COUNT(*) AS cnt, SUM(event_count) AS events
+FROM "gv$node_metrics"
+GROUP BY server_uuid, metric_name
+ORDER BY metric_name, cnt, events;
+
+-- Numeric: sum/avg/min/max/count(col).
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, SUM(event_count), AVG(metric_value),
+       MIN(total_bytes), MAX(ratio), COUNT(node_id)
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+SELECT SUM(event_count), AVG(metric_value),
+       MIN(total_bytes), MAX(ratio), COUNT(node_id)
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY 1, 2, 3, 4, 5;
+
+-- Statistical: stddev/variance.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, STDDEV(metric_value), VARIANCE(event_count)
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+SELECT STDDEV(metric_value), VARIANCE(event_count)
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY 1, 2;
+
+-- Boolean: bool_and/bool_or.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, BOOL_AND(is_healthy), BOOL_OR(is_healthy)
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+SELECT BOOL_AND(is_healthy), BOOL_OR(is_healthy)
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY 1, 2;
+
+-- Temporal and text min/max.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, MIN(created_at), MAX(updated_at),
+       MIN(metric_name), MAX(tag)
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+SELECT MIN(created_at), MAX(updated_at),
+       MIN(metric_name), MAX(tag)
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY 1, 2, 3, 4;
+
+-- enable_partitionwise_aggregate = off: the GROUP BY server_uuid aggregate is
+-- no longer pushed down. Rows are pulled back from each tserver and aggregated
+-- locally (plain HashAggregate over the Append); the result stays correct.
+SET enable_partitionwise_aggregate = off;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+SELECT COUNT(*) AS num_server_groups, SUM(cnt) AS total_rows
+FROM (SELECT server_uuid, COUNT(*) AS cnt
+      FROM "gv$node_metrics" GROUP BY server_uuid) s;
+RESET enable_partitionwise_aggregate;
 
 --
 -- HAVING clause
@@ -832,7 +934,6 @@ DROP VIEW local_node_metrics;
 DROP FOREIGN TABLE local_node_metrics_csv;
 DROP SERVER gv_server CASCADE;
 DROP SERVER file_server CASCADE;
-DROP EXTENSION postgres_fdw;
 DROP EXTENSION file_fdw;
 DROP TYPE metric_status;
 DROP FUNCTION is_high_value(real);

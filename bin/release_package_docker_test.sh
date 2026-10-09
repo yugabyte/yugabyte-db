@@ -71,8 +71,8 @@ if [[ -z ${docker_image} ]]; then
 fi
 
 # Do a quick sanity test on the release package. This verifies that we can at least start the
-# cluster, which requires all RPATHs to be set correctly, either at the time the package is
-# built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
+# cluster, which requires all RPATHs to be set correctly, at the time the package is
+# built (new approach).
 #
 # To test this locally, build the package using yb_release
 #

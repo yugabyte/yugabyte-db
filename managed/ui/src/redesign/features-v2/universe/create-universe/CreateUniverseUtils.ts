@@ -4,7 +4,8 @@ export {
   getGuidedNodesStepReplicationFactor,
   getEffectiveReplicationFactorForResilience,
   canSelectMultipleRegions,
-  computeResilienceTypeFromProvider
+  computeResilienceTypeFromProvider,
+  isCurrentConfigSupportedByGuidedMode
 } from './utils/resilienceReplication';
 export type {
   DedicatedTserverMasterCounts,
@@ -17,6 +18,8 @@ export {
   assignRegionsAZNodeByReplicationFactor,
   reduceExpertNodeCountsToAtMostRf,
   getExpertNodesStepDefaultPlacement,
+  toExpertResilienceForDefaults,
+  getExpertAvailabilityZonesOrEmpty,
   getPlacementRegions,
   getAZCount,
   distributeReplicationFactorAcrossAzs
@@ -32,4 +35,14 @@ export {
   effectiveUseDedicatedNodes,
   getNodeSpec
 } from './utils/createUniverseNodeSpec';
-export { isV2CreateEditUniverseEnabled } from './utils/createUniverseRuntime';
+export {
+  isV2CreateEditUniverseEnabled,
+  isNewUniverseExperienceForAllUsers
+} from './utils/createUniverseRuntime';
+export {
+  canOverrideCommunicationPorts,
+  shouldApplyConnectionPoolingPortOverrides,
+  shouldKeepCustomInternalYsqlPort,
+  shouldSyncConnectionPoolingPorts,
+  DEFAULT_CONNECTION_POOLING_PORTS
+} from './helpers/syncConnectionPoolingPorts';

@@ -18,7 +18,7 @@ import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class WaitForLoadBalance extends AbstractTaskBase {
@@ -58,7 +58,7 @@ public class WaitForLoadBalance extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     boolean ret = false;
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info(
           "Running {}: masterAddresses={}, numTservers={}.",
           getName(),

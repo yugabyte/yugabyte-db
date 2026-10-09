@@ -10,9 +10,9 @@ import { toast } from 'react-toastify';
 
 import { YBModal } from '@app/redesign/components';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
-import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { getIsMetricsExportSupported } from '@app/redesign/features/export-telemetry/utils';
-import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
+import { api, telemetryProviderQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
+import { handleServerError } from '@app/utils/errorHandlingUtils';
 import {
   useConfigureExportTelemetryConfig,
   useGetExportTelemetryConfig,
@@ -24,12 +24,12 @@ import {
   COLLECTION_LEVEL_OPTIONS,
   CollectionLevelOption,
   getDefaultFormValues,
+  getScrapeConfigTargetOptions,
   getValidationSchema,
   METRICS_EXPORT_DOCS_URL,
   METRICS_EXPORT_TRANSLATION_KEY_PREFIX,
   MetricsExportFormValues,
   MetricsExportOperation,
-  SCRAPE_CONFIG_TARGET_OPTIONS,
   ScrapeConfigTargetOption
 } from './metricsExportHelpers';
 
@@ -46,6 +46,8 @@ interface MetricsExportSettingsModalProps {
   operation: MetricsExportOperation;
   universeUuid: string;
   universeName: string;
+  replicationFactor: number;
+  isKubernetes?: boolean;
   onClose: () => void;
 }
 
@@ -218,6 +220,8 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
   operation,
   universeUuid,
   universeName,
+  replicationFactor,
+  isKubernetes = false,
   onClose
 }) => {
   const classes = useStyles();
@@ -235,6 +239,11 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
     api.fetchTelemetryProviderList()
   );
 
+  const scrapeConfigTargetOptions = useMemo(
+    () => getScrapeConfigTargetOptions(isKubernetes),
+    [isKubernetes]
+  );
+
   const telemetryProviderOptions = useMemo(
     () =>
       (telemetryProvidersQuery.data ?? []).reduce((filteredProviders, telemetryProvider) => {
@@ -250,7 +259,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
   );
 
   const formMethods = useForm<MetricsExportFormValues>({
-    defaultValues: getDefaultFormValues(currentTelemetryConfig?.metrics),
+    defaultValues: getDefaultFormValues(currentTelemetryConfig?.metrics, { isKubernetes }),
     resolver: yupResolver(getValidationSchema(t)),
     mode: 'onChange'
   });
@@ -258,10 +267,10 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
 
   useEffect(() => {
     if (telemetryConfigQuery.isSuccess) {
-      reset(getDefaultFormValues(currentTelemetryConfig?.metrics));
+      reset(getDefaultFormValues(currentTelemetryConfig?.metrics, { isKubernetes }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [telemetryConfigQuery.isSuccess, currentTelemetryConfig]);
+  }, [telemetryConfigQuery.isSuccess, currentTelemetryConfig, isKubernetes]);
 
   const configureTelemetry = useConfigureExportTelemetryConfig();
 
@@ -270,7 +279,6 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
       {
         uniUUID: universeUuid,
         data: {
-          upgrade_options: { rolling_upgrade: true },
           telemetry_config: buildTelemetryConfig(values, currentTelemetryConfig)
         }
       },
@@ -282,12 +290,18 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
             </Typography>
           );
           queryClient.invalidateQueries(telemetryConfigQuery.queryKey);
+          queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUuid));
           queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid));
           setIsConfirmationOpen(false);
           onClose();
         },
         onError: (error) => {
-          toast.error(createErrorMessage(error));
+          handleServerError(error, {
+            customErrorLabel:
+              operation === 'create'
+                ? t('toast.enableRequestFailedLabel')
+                : t('toast.updateRequestFailedLabel')
+          });
           setIsConfirmationOpen(false);
         }
       }
@@ -546,7 +560,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
                         control={control}
                         name="scrapeConfigTargets"
                         render={({ field, fieldState }) => {
-                          const selectedTargets = SCRAPE_CONFIG_TARGET_OPTIONS.filter(
+                          const selectedTargets = scrapeConfigTargetOptions.filter(
                             (targetOption) => field.value.includes(targetOption.value)
                           );
 
@@ -561,7 +575,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
                                 className={classes.metricSourcesAutocomplete}
                                 value={selectedTargets as unknown as Record<string, string>[]}
                                 options={
-                                  SCRAPE_CONFIG_TARGET_OPTIONS as unknown as Record<
+                                  scrapeConfigTargetOptions as unknown as Record<
                                     string,
                                     string
                                   >[]
@@ -617,6 +631,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
         <MetricsExportConfirmationModal
           operation={operation}
           universeName={universeName}
+          replicationFactor={replicationFactor}
           isSubmitting={configureTelemetry.isLoading}
           onSubmit={onConfirm}
           modalProps={{

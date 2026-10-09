@@ -199,6 +199,15 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
     }
   }
 
+  // Neither tablet lookups nor tablet RPCs can make progress once the client is shutting down, so
+  // retrying until the operation deadline (10 minutes for YSQL by default) would only keep the
+  // caller's resources pinned. E.g. a PG session's shared memory holds the request of an in-flight
+  // operation, and releasing it waits for that operation, blocking the whole tserver shutdown.
+  if (client_->data_->Closing()) {
+    command_->Finished(STATUS(ShutdownInProgress, "Client is shutting down"));
+    return;
+  }
+
   ash::WaitStateSnapshot wait_state_snapshot;
 
   if (!tablet_) {

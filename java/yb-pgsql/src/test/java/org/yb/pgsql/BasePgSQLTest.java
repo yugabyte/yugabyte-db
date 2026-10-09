@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertLessThan;
@@ -2407,11 +2408,34 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return Arrays.asList(output.split("\n"));
   }
 
-  protected HostAndPort getMasterLeaderAddress() {
-    return miniCluster.getClient().getLeaderMasterHostAndPort();
+  protected HostAndPort getMasterLeaderAddress() throws Exception {
+    // getLeaderMasterHostAndPort() asks each master for its registration/role
+    // and returns the LEADER's address, or null if none respond as leader.
+    //
+    // That lookup can transiently fail even when a master leader exists and is
+    // healthy. The Java client keeps cached TCP connections to masters (via
+    // Netty Java networking library). Those connections have a short socket
+    // read timeout (~5s by default): if a connection sits idle longer than that
+    // with no inbound data, Netty's ReadTimeoutHandler closes it and the client
+    // logs "Encountered a read timeout". A subsequent registration RPC may then
+    // hit the stale/closing channel (or race while reconnecting), so the
+    // leader is missed and this method would otherwise return null and NPE
+    // in setServerFlag. Retry until we get a non-null address.
+    AtomicReference<HostAndPort> leaderAddress = new AtomicReference<>();
+    TestUtils.waitFor(() -> {
+      HostAndPort hp = miniCluster.getClient().getLeaderMasterHostAndPort();
+      if (hp == null) {
+        LOG.warn("Master leader address not available yet; retrying");
+        return false;
+      }
+      leaderAddress.set(hp);
+      return true;
+    }, 90000 /* timeoutMs */);
+    return leaderAddress.get();
   }
 
   protected void setServerFlag(HostAndPort server, String flag, String value) throws Exception {
+    checkNotNull(server, "server");
     runProcess(TestUtils.findBinary("yb-ts-cli"),
                "--server_address",
                server.toString(),

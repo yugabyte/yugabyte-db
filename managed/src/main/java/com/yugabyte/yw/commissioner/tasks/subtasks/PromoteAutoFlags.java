@@ -13,7 +13,7 @@ import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.PromoteAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterTypes.MasterErrorPB;
 
 @Slf4j
@@ -49,7 +49,7 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
   public void run() {
     log.info("Running {}", getName());
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = getClient()) {
+    try (YBClientApi client = getClient()) {
       PromoteAutoFlagsResponse resp =
           client.promoteAutoFlags(
               taskParams().maxClass,

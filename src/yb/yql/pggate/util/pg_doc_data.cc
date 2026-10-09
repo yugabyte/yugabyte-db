@@ -43,6 +43,15 @@ void PgWriteFloat(Value value, Buffer* buffer) {
   PgWriteInt(bit_cast<Int>(value), buffer);
 }
 
+template <class Buffer>
+void PgWriteNull(Buffer* buffer) {
+  PgWireDataHeader header;
+  header.set_null();
+  char buf[PgWireDataHeader::kSerializedSize];
+  header.SerializeTo(buf);
+  buffer->Append(buf, sizeof(buf));
+}
+
 template <bool kNullTerminated, class Buffer>
 void PgWriteBytes(const Slice& value, Buffer* buffer) {
   auto length = value.size() + kNullTerminated;
@@ -57,11 +66,7 @@ template <class Value, class Buffer>
 Status DoWriteColumn(const Value& col_value, Buffer* buffer) {
   // Write data header.
   if (IsNull(col_value)) {
-    PgWireDataHeader header;
-    header.set_null();
-    char buf[PgWireDataHeader::kSerializedSize];
-    header.SerializeTo(buf);
-    buffer->Append(buf, sizeof(buf));
+    PgWriteNull(buffer);
     return Status::OK();
   }
 
@@ -156,6 +161,10 @@ Status WriteColumn(const LWQLValuePB& col_value, ValueBuffer* buffer) {
 
 void WriteBinaryColumn(const Slice& col_value, WriteBuffer* buffer) {
   PgWriteBytes</* null_terminating= */ false>(col_value, buffer);
+}
+
+void WriteNullColumn(WriteBuffer* buffer) {
+  PgWriteNull(buffer);
 }
 
 //--------------------------------------------------------------------------------------------------

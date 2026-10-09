@@ -31,16 +31,16 @@ pub use returning::NameMacro;
 use syn::token::Comma;
 
 use self::returning::Returning;
-use super::UsedType;
+use crate::ExternArgs;
+use crate::ToSqlConfig;
 use crate::enrich::{CodeEnrichment, ToEntityGraphTokens, ToRustCodeTokens};
 use crate::finfo::{finfo_v1_extern_c, finfo_v1_tokens};
 use crate::fmt::ErrHarder;
-use crate::ToSqlConfig;
 use operator::{PgrxOperatorAttributeWithIdent, PgrxOperatorOpName};
 use search_path::SearchPathList;
 
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -95,7 +95,6 @@ pub struct PgExtern {
     cast: Option<PgCast>,
     search_path: Option<SearchPathList>,
     inputs: Vec<PgExternArgument>,
-    input_types: Vec<syn::Type>,
     returns: Returning,
 }
 
@@ -136,7 +135,6 @@ impl PgExtern {
         let operator = Self::operator(&func)?;
         let search_path = Self::search_path(&func)?;
         let inputs = Self::inputs(&func)?;
-        let input_types = Self::input_types(&func)?;
         let returns = Returning::try_from(&func.sig.output)?;
         Ok(CodeEnrichment(Self {
             attrs,
@@ -146,36 +144,15 @@ impl PgExtern {
             cast: None,
             search_path,
             inputs,
-            input_types,
             returns,
         }))
     }
 
     /// Returns a new instance of this `PgExtern` with `cast` overwritten to `pg_cast`.
-    pub fn as_cast(&self, pg_cast: PgCast) -> PgExtern {
+    pub fn as_cast(&self, pg_cast: PgCast) -> Self {
         let mut result = self.clone();
         result.cast = Some(pg_cast);
         result
-    }
-
-    #[track_caller]
-    fn input_types(func: &syn::ItemFn) -> syn::Result<Vec<syn::Type>> {
-        func.sig
-            .inputs
-            .iter()
-            .filter_map(|v| -> Option<syn::Result<syn::Type>> {
-                match v {
-                    syn::FnArg::Receiver(_) => None,
-                    syn::FnArg::Typed(pat_ty) => {
-                        let ty = match UsedType::new(*pat_ty.ty.clone()) {
-                            Ok(v) => v.resolved_ty,
-                            Err(e) => return Some(Err(e)),
-                        };
-                        Some(Ok(ty))
-                    }
-                }
-            })
-            .collect()
     }
 
     fn name(&self) -> String {
@@ -205,11 +182,7 @@ impl PgExtern {
         let mut retval = None;
         let mut in_commented_sql_block = false;
         for meta in self.func.attrs.iter().filter_map(|attr| {
-            if attr.meta.path().is_ident("doc") {
-                Some(attr.meta.clone())
-            } else {
-                None
-            }
+            if attr.meta.path().is_ident("doc") { Some(attr.meta.clone()) } else { None }
         }) {
             let Meta::NameValue(syn::MetaNameValue { ref value, .. }) = meta else { continue };
             let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(inner), .. }) = value else {
@@ -311,83 +284,178 @@ impl PgExtern {
     fn entity_tokens(&self) -> TokenStream2 {
         let ident = &self.func.sig.ident;
         let name = self.name();
-        let unsafety = &self.func.sig.unsafety;
         let schema = self.schema();
-        let schema_iter = schema.iter();
-        let extern_attrs = self
-            .attrs
-            .iter()
-            .map(|attr| attr.to_sql_entity_graph_tokens())
-            .collect::<Punctuated<_, Token![,]>>();
-        let search_path = self.search_path.clone().into_iter();
         let inputs = &self.inputs;
-        let inputs_iter = inputs.iter().map(|v| v.entity_tokens());
-
-        let input_types = self.input_types.iter().cloned();
-
         let returns = &self.returns;
-
-        let return_type = match &self.func.sig.output {
-            syn::ReturnType::Default => None,
-            syn::ReturnType::Type(arrow, ty) => {
-                let ty = ty.clone();
-                Some(syn::ReturnType::Type(*arrow, ty))
-            }
-        };
-
-        let operator = self.operator.clone().into_iter();
-        let cast = self.cast.clone().into_iter();
         let to_sql_config = match self.overridden() {
             None => self.to_sql_config.clone(),
             Some(content) => ToSqlConfig { content: Some(content), ..self.to_sql_config.clone() },
         };
-
-        let lifetimes = self
-            .func
-            .sig
-            .generics
-            .params
-            .iter()
-            .filter_map(|generic| match generic {
-                // syn::GenericParam::Type(_) => todo!(),
-                syn::GenericParam::Lifetime(lt) => Some(lt),
-                _ => None, // syn::GenericParam::Const(_) => todo!(),
+        let sql_graph_entity_fn_name = format_ident!("__pgrx_schema_fn_{}", ident);
+        let input_count = self.inputs.len();
+        let extern_attr_count = self.attrs.len();
+        let args_len = inputs.iter().map(PgExternArgument::section_len_tokens);
+        let return_len = returns.section_len_tokens();
+        let schema_len = schema
+            .as_ref()
+            .map(|schema| {
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                        + ::pgrx::pgrx_sql_entity_graph::section::str_len(#schema)
+                }
             })
-            .collect::<Vec<_>>();
-        let hrtb = if lifetimes.is_empty() { None } else { Some(quote! { for<#(#lifetimes),*> }) };
-
-        let sql_graph_entity_fn_name = format_ident!("__pgrx_internals_fn_{}", ident);
+            .unwrap_or_else(|| quote! { ::pgrx::pgrx_sql_entity_graph::section::bool_len() });
+        let extern_attr_lens = self.attrs.iter().map(|attr| {
+            let extern_arg = match attr {
+                Attribute::CreateOrReplace => ExternArgs::CreateOrReplace,
+                Attribute::Immutable => ExternArgs::Immutable,
+                Attribute::Strict => ExternArgs::Strict,
+                Attribute::Stable => ExternArgs::Stable,
+                Attribute::Volatile => ExternArgs::Volatile,
+                Attribute::Raw => ExternArgs::Raw,
+                Attribute::NoGuard => ExternArgs::NoGuard,
+                Attribute::SecurityDefiner => ExternArgs::SecurityDefiner,
+                Attribute::SecurityInvoker => ExternArgs::SecurityInvoker,
+                Attribute::ParallelSafe => ExternArgs::ParallelSafe,
+                Attribute::ParallelUnsafe => ExternArgs::ParallelUnsafe,
+                Attribute::ParallelRestricted => ExternArgs::ParallelRestricted,
+                Attribute::ShouldPanic(value) => ExternArgs::ShouldPanic(value.value()),
+                Attribute::Schema(value) => ExternArgs::Schema(value.value()),
+                Attribute::Support(value) => ExternArgs::Support(value.clone()),
+                Attribute::Name(value) => ExternArgs::Name(value.value()),
+                Attribute::Cost(value) => ExternArgs::Cost(value.to_token_stream().to_string()),
+                Attribute::Requires(items) => ExternArgs::Requires(items.iter().cloned().collect()),
+                Attribute::Sql(_) => unreachable!("sql attributes are handled separately"),
+            };
+            extern_arg.section_len_tokens()
+        });
+        let search_path_len = self
+            .search_path
+            .as_ref()
+            .map(SearchPathList::section_len_tokens)
+            .unwrap_or_else(|| quote! { ::pgrx::pgrx_sql_entity_graph::section::bool_len() });
+        let operator_len = self
+            .operator
+            .as_ref()
+            .map(|operator| {
+                let inner = operator.section_len_tokens();
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::bool_len() + (#inner)
+                }
+            })
+            .unwrap_or_else(|| quote! { ::pgrx::pgrx_sql_entity_graph::section::bool_len() });
+        let cast_len = self
+            .cast
+            .as_ref()
+            .map(|cast| {
+                let inner = cast.section_len_tokens();
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::bool_len() + (#inner)
+                }
+            })
+            .unwrap_or_else(|| quote! { ::pgrx::pgrx_sql_entity_graph::section::bool_len() });
+        let to_sql_config_len = to_sql_config.section_len_tokens();
+        let payload_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(#name)
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#ident))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(core::module_path!())
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(concat!(core::module_path!(), "::", stringify!(#ident)))
+                + ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                    #( #args_len ),*
+                ])
+                + (#return_len)
+                + (#schema_len)
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(file!())
+                + ::pgrx::pgrx_sql_entity_graph::section::u32_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                    #( #extern_attr_lens ),*
+                ])
+                + (#search_path_len)
+                + (#operator_len)
+                + (#cast_len)
+                + (#to_sql_config_len)
+        };
+        let total_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u32_len() + (#payload_len)
+        };
+        let writer_ident =
+            Ident::new("__pgrx_schema_writer", Span::mixed_site().located_at(ident.span()));
+        let arg_writers =
+            inputs.iter().map(|arg| arg.section_writer_tokens(quote! { #writer_ident }));
+        let return_writer = returns.section_writer_tokens(quote! { #writer_ident });
+        let schema_writer = schema
+            .as_ref()
+            .map(|schema| quote! { .bool(true).str(#schema) })
+            .unwrap_or_else(|| quote! { .bool(false) });
+        let extern_attr_writers = self.attrs.iter().map(|attr| {
+            let extern_arg = match attr {
+                Attribute::CreateOrReplace => ExternArgs::CreateOrReplace,
+                Attribute::Immutable => ExternArgs::Immutable,
+                Attribute::Strict => ExternArgs::Strict,
+                Attribute::Stable => ExternArgs::Stable,
+                Attribute::Volatile => ExternArgs::Volatile,
+                Attribute::Raw => ExternArgs::Raw,
+                Attribute::NoGuard => ExternArgs::NoGuard,
+                Attribute::SecurityDefiner => ExternArgs::SecurityDefiner,
+                Attribute::SecurityInvoker => ExternArgs::SecurityInvoker,
+                Attribute::ParallelSafe => ExternArgs::ParallelSafe,
+                Attribute::ParallelUnsafe => ExternArgs::ParallelUnsafe,
+                Attribute::ParallelRestricted => ExternArgs::ParallelRestricted,
+                Attribute::ShouldPanic(value) => ExternArgs::ShouldPanic(value.value()),
+                Attribute::Schema(value) => ExternArgs::Schema(value.value()),
+                Attribute::Support(value) => ExternArgs::Support(value.clone()),
+                Attribute::Name(value) => ExternArgs::Name(value.value()),
+                Attribute::Cost(value) => ExternArgs::Cost(value.to_token_stream().to_string()),
+                Attribute::Requires(items) => ExternArgs::Requires(items.iter().cloned().collect()),
+                Attribute::Sql(_) => unreachable!("sql attributes are handled separately"),
+            };
+            extern_arg.section_writer_tokens(quote! { #writer_ident })
+        });
+        let search_path_writer = self
+            .search_path
+            .as_ref()
+            .map(|search_path| search_path.section_writer_tokens(quote! { #writer_ident }))
+            .unwrap_or_else(|| quote! { #writer_ident.bool(false) });
+        let operator_writer = self
+            .operator
+            .as_ref()
+            .map(|operator| operator.section_writer_tokens(quote! { #writer_ident.bool(true) }))
+            .unwrap_or_else(|| quote! { #writer_ident.bool(false) });
+        let cast_writer = self
+            .cast
+            .as_ref()
+            .map(|cast| cast.section_writer_tokens(quote! { #writer_ident.bool(true) }))
+            .unwrap_or_else(|| quote! { #writer_ident.bool(false) });
+        let to_sql_config_writer = to_sql_config.section_writer_tokens(quote! { #writer_ident });
         quote_spanned! { self.func.sig.span() =>
-            #[no_mangle]
-            #[doc(hidden)]
-            #[allow(unknown_lints, clippy::no_mangle_with_rust_abi)]
-            pub extern "Rust" fn  #sql_graph_entity_fn_name() -> ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity {
-                extern crate alloc;
-                #[allow(unused_imports)]
-                use alloc::{vec, vec::Vec};
-                type FunctionPointer = #hrtb #unsafety fn(#( #input_types ),*) #return_type;
-                let submission = ::pgrx::pgrx_sql_entity_graph::PgExternEntity {
-                    name: #name,
-                    unaliased_name: stringify!(#ident),
-                    module_path: core::module_path!(),
-                    full_path: concat!(core::module_path!(), "::", stringify!(#ident)),
-                    metadata: <FunctionPointer as ::pgrx::pgrx_sql_entity_graph::metadata::FunctionMetadata::<_>>::entity(),
-                    fn_args: vec![#(#inputs_iter),*],
-                    fn_return: #returns,
-                    #[allow(clippy::or_fun_call)]
-                    schema: None #( .unwrap_or_else(|| Some(#schema_iter)) )*,
-                    file: file!(),
-                    line: line!(),
-                    extern_attrs: vec![#extern_attrs],
-                    #[allow(clippy::or_fun_call)]
-                    search_path: None #( .unwrap_or_else(|| Some(vec![#search_path])) )*,
-                    #[allow(clippy::or_fun_call)]
-                    operator: None #( .unwrap_or_else(|| Some(#operator)) )*,
-                    cast: None #( .unwrap_or_else(|| Some(#cast)) )*,
-                    to_sql_config: #to_sql_config,
-                };
-                ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity::Function(submission)
-            }
+            ::pgrx::pgrx_sql_entity_graph::__pgrx_schema_entry!(
+                #sql_graph_entity_fn_name,
+                #total_len,
+                {
+                    let #writer_ident = ::pgrx::pgrx_sql_entity_graph::section::EntryWriter::<{ #total_len }>::new()
+                        .u32((#payload_len) as u32)
+                        .u8(::pgrx::pgrx_sql_entity_graph::section::ENTITY_FUNCTION)
+                        .str(#name)
+                        .str(stringify!(#ident))
+                        .str(core::module_path!())
+                        .str(concat!(core::module_path!(), "::", stringify!(#ident)))
+                        .u32(#input_count as u32);
+                    #( let #writer_ident = { #arg_writers }; )*
+                    let #writer_ident = { #return_writer };
+                    let #writer_ident = #writer_ident
+                        #schema_writer
+                        .str(file!())
+                        .u32(line!())
+                        .u32(#extern_attr_count as u32);
+                    #( let #writer_ident = { #extern_attr_writers }; )*
+                    let #writer_ident = { #search_path_writer };
+                    let #writer_ident = { #operator_writer };
+                    let #writer_ident = { #cast_writer };
+                    let #writer_ident = { #to_sql_config_writer };
+                    #writer_ident.finish()
+                }
+            );
         }
     }
 
@@ -481,7 +549,7 @@ trait LastIdent {
 impl LastIdent for syn::Type {
     #[inline]
     fn filter_last_ident(&self, id: &str) -> Option<&syn::PathSegment> {
-        let syn::Type::Path(syn::TypePath { path, .. }) = self else { return None };
+        let Self::Path(syn::TypePath { path, .. }) = self else { return None };
         path.filter_last_ident(id)
     }
 }

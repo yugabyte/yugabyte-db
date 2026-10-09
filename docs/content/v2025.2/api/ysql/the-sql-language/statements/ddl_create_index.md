@@ -27,14 +27,29 @@ In YugabyteDB, indexes are sharded - they are split into tablets and distributed
 
 ### Concurrent index creation
 
-Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions).
+Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. If you specify neither keyword, the index is built concurrently. In certain cases, though, concurrent index creation is not possible and the default mode is nonconcurrent index creation. Some of the common cases are:
 
-Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
+- The statement runs inside a transaction block. This includes schema migration tools that wrap each migration in a transaction. The only indication of the switch is the following client notice:
+
+    ```output
+    NOTICE:  making create index for table "<table>" nonconcurrent
+    DETAIL:  Create index in transaction block cannot be concurrent.
+    HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+    ```
+
+- The table is partitioned. No notice is issued. See [Partitioned indexes](#partitioned-indexes) for how to build indexes on partitioned tables concurrently.
+- The table is temporary.
+
+A nonconcurrent build does not perform online index backfill. Unless [table-level locks](../../../../../explore/transactions/explicit-locking/#table-level-locks) are enabled, concurrent writes during nonconcurrent index creation can result in an inconsistent index. When table-level locks are enabled, those writes wait until the nonconcurrent CREATE INDEX completes instead.
+
+Specify CONCURRENTLY explicitly whenever possible. With the explicit keyword, a statement that cannot be built concurrently (inside a transaction block or on a partitioned table) fails with an error instead of silently switching to a nonconcurrent build.
+
+Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, unless [table-level locks](../../../../../explore/transactions/explicit-locking/#table-level-locks) are enabled. When table-level locks are enabled, concurrent writers are blocked until the index creation completes, to ensure safety. The following table summarizes the differences in these two modes.
 
 | Condition | Concurrent | Nonconcurrent |
 | :-------- | :--------- | :------------ |
-| Safe to do other DMLs during CREATE INDEX? | yes | no |
-| Keeps other transactions alive during CREATE INDEX? | mostly | no |
+| Safe to do other DMLs during CREATE INDEX? | yes | no (unless [table-level locks](../../../../../explore/transactions/explicit-locking/#table-level-locks) are enabled) |
+| Keeps other transactions alive during CREATE INDEX? | mostly | no (unless [table-level locks](../../../../../explore/transactions/explicit-locking/#table-level-locks) are enabled) |
 | Parallelizes index loading? | yes | no |
 
 {{< note title="Note" >}}
@@ -51,31 +66,15 @@ If the table is colocated, its index is also colocated; if the table is not colo
 
 Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
 
-- Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
-- [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
-- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)). As a workaround, you can use the [ONLY](#only) keyword to create indexes on child partitions separately, as described in that section.
+- The indexes need to be created [CONCURRENTLY](#concurrently): concurrent builds for indexes on partitioned tables aren't supported.
+- [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used and you want to create the index separately on each partition to customize the tablespace in which each index is created.
 
-### UNIQUE
+#### Creating indexes concurrently on partitioned tables
 
-Enforce that duplicate values in a table are not allowed.
-
-### CONCURRENTLY
-
-Enable the use of online index backfill (see [Semantics](#semantics) for details), with some restrictions:
-
-- When creating an index on a temporary table, online schema migration is disabled.
-- CREATE INDEX CONCURRENTLY is not supported for partitioned tables.
-- CREATE INDEX CONCURRENTLY is not supported inside a transaction block.
-
-### NONCONCURRENTLY
-
-Disable online index backfill (see [Semantics](#semantics) for details).
-
-### ONLY
-
-Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
-
-When recursion is disabled using ONLY, the index is created in an INVALID state on only the (parent) partitioned table. To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`. For example:
+Begin by creating the index on the (parent) partitioned table using the [ONLY](#only) keyword.
+The index is created in an INVALID state on only the (parent) partitioned table.
+To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`.
+For example:
 
 ```sql
 CREATE TABLE parent_partition(c1 int, c2 int) PARTITION BY RANGE (c1);
@@ -119,6 +118,83 @@ Indexes:
     "parent_index" lsm (c1 HASH, c2 ASC)
 Number of partitions: 2 (Use \d+ to list them.)
 ```
+
+Once all partitions successfully create their indexes, the partitioned index should automatically be promoted out of the INVALID state.
+
+#### Recreating unique index constraints concurrently on partitioned tables
+
+Suppose you have a partitioned table where the parent has a unique constraint.
+To recreate indexes, you should avoid directly creating a replacement index on the (parent) partitioned table if it is concurrently taking writes because partitioned tables cannot use [CONCURRENTLY](#concurrently).
+Furthermore, if you only want to recreate a subset of the partitions' indexes, recreating the (parent) partitioned index is wasteful.
+Follow these steps to recreate a partition index online:
+
+```plpgsql
+-- Set up example
+CREATE TABLE parent (i int UNIQUE) PARTITION BY RANGE (i);
+CREATE TABLE child0 PARTITION OF parent FOR VALUES FROM (0) TO (100000);
+CREATE TABLE child1 PARTITION OF parent FOR VALUES FROM (100000) TO (200000);
+CREATE TABLE child2 PARTITION OF parent FOR VALUES FROM (200000) TO (300000);
+INSERT INTO parent VALUES (generate_series(0, 299999));
+
+-- 1. Build standalone unique index (slow, but non-blocking)
+CREATE UNIQUE INDEX CONCURRENTLY child0_i_unique ON child0 (i);
+-- 2. Add CHECK constraint matching partition bounds (fast: no scan)
+ALTER TABLE child0 ADD CONSTRAINT child0_partition_check
+  CHECK (i IS NOT NULL AND i >= 0 AND i < 100000) NOT VALID;
+-- 3. Validate the CHECK (slow, but non-blocking on parent)
+ALTER TABLE child0 VALIDATE CONSTRAINT child0_partition_check;
+
+BEGIN;
+-- 4. Lock the parent to prevent queries from missing the partition's data
+--    while it is detached.
+LOCK TABLE parent IN ACCESS EXCLUSIVE MODE;
+-- 5. Detach (fast)
+ALTER TABLE parent DETACH PARTITION child0;
+-- 6. Drop the old unique constraint (fast: drops its backing index)
+ALTER TABLE child0 DROP CONSTRAINT child0_i_key;
+-- 7. Promote standalone index to a constraint (fast: no rebuild)
+ALTER TABLE child0 ADD CONSTRAINT child0_i_key UNIQUE USING INDEX child0_i_unique;
+-- 8. Reattach (fast: CHECK and UNIQUE already satisfy parent)
+ALTER TABLE parent ATTACH PARTITION child0 FOR VALUES FROM (0) TO (100000);
+COMMIT;
+
+-- 9. Drop temporary CHECK constraint
+ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
+```
+
+Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
+
+{{< note title="Note" >}}
+Step 4 and the surrounding `BEGIN`/`COMMIT` block rely on two features:
+
+- {{<tags/feature/ea idea="1114">}}[Object locking](../../../../../architecture/transactions/concurrency-control/#table-level-locks), for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true`.
+- {{<tags/feature/ea idea="1677">}}[Transactional DDL](../../../../../architecture/transactions/transactional-ddl/), to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`. Object locking depends on this flag as well.
+
+Do not enable these flags on a cluster that uses CDC. Transactional DDL currently doesn't support CDC. See [Limitations](../../../../../architecture/transactions/transactional-ddl/#limitations).
+
+It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
+If there are no reads or writes against the parent table during the detach, omit Step 4 and run Steps 5 to 8 as individual statements instead.
+{{< /note >}}
+
+### UNIQUE
+
+Enforce that duplicate values in a table are not allowed.
+
+### CONCURRENTLY
+
+Enable the use of online index backfill (see [Concurrent index creation](#concurrent-index-creation) for details), with some restrictions:
+
+- When creating an index on a temporary table, online schema migration is disabled.
+- CREATE INDEX CONCURRENTLY is not supported for partitioned tables.
+- CREATE INDEX CONCURRENTLY is not supported inside a transaction block. A CREATE INDEX without the CONCURRENTLY keyword inside a transaction block doesn't fail; it is converted to a nonconcurrent build (see [Concurrent index creation](#concurrent-index-creation)).
+
+### NONCONCURRENTLY
+
+Disable online index backfill (see [Semantics](#semantics) for details).
+
+### ONLY
+
+Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
 
 ### *access_method_name*
 

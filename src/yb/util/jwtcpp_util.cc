@@ -14,6 +14,7 @@
 
 #include <jwt-cpp/jwt.h>
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 #include "yb/gutil/casts.h"
 

@@ -12,6 +12,8 @@ import api.v2.models.BackupApiFilter;
 import api.v2.models.BackupPagedQuerySpec;
 import api.v2.models.BackupPagedResp;
 import api.v2.models.GflagMetadata;
+import api.v2.models.IncrementalBackupPagedQuerySpec;
+import api.v2.models.IncrementalBackupPagedResp;
 import api.v2.models.PaginationSpec;
 import api.v2.models.RestoreApiFilter;
 import api.v2.models.RestoreKeyspacePagedQuerySpec;
@@ -21,6 +23,7 @@ import api.v2.models.RestorePagedResp;
 import api.v2.utils.NormalizedPaginationSpec;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.ybc.YbcGflags;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -57,6 +60,31 @@ public class BackupAndRestoreHandler {
     BackupPagedApiResponse response = Backup.pagedList(toPagedQuery(cUUID, spec));
     return HandlerPagingSupport.pagedResponse(
         new BackupPagedResp(), response, BackupMapper.INSTANCE::toBackup);
+  }
+
+  public IncrementalBackupPagedResp pageListIncrementalBackups(
+      UUID cUUID, UUID bUUID, IncrementalBackupPagedQuerySpec spec) {
+    Customer.getOrNotFound(cUUID);
+    Backup backup =
+        Backup.maybeGet(cUUID, bUUID)
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        NOT_FOUND, "Cannot find backup " + bUUID + " for customer " + cUUID));
+    NormalizedPaginationSpec normalized = HandlerPagingSupport.normalize(spec);
+    String order = spec.getDirection() == PaginationSpec.DirectionEnum.ASC ? "asc" : "desc";
+    String orderBy = String.format("create_time %s, backup_uuid %s", order, order);
+    ExpressionList<Backup> expr =
+        Backup.find
+            .query()
+            .where()
+            .eq("customer_uuid", cUUID)
+            .eq("base_backup_uuid", backup.getBaseBackupUUID());
+    PagedList<Backup> pagedList = HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
+    return HandlerPagingSupport.pagedResponse(
+        new IncrementalBackupPagedResp(),
+        pagedList,
+        b -> BackupMapper.INSTANCE.toBackup(BackupUtil.toBackupResp(b)));
   }
 
   public RestorePagedResp pageListRestores(UUID cUUID, RestorePagedQuerySpec spec) {

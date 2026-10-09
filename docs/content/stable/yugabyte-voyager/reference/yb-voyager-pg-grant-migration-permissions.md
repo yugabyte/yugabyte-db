@@ -34,7 +34,7 @@ psql -h <host> -d <database> -U <username> \
 | Parameter | Description |
 | :--- | :--- |
 | `<host>` | Hostname of the PostgreSQL server. |
-| `<database>` | The target YuagbyteDB database name. |
+| `<database>` | The target YugabyteDB database name. |
 | `<username>` | User running the script (must have sufficient privileges). |
 | `<voyager_user>` | The migration user (for example, ybvoyager) that permissions are granted to. |
 | `<schema_list>` | A comma-separated list of schemas (for example, `schema1`, `public`, `schema2`). |

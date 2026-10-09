@@ -40,7 +40,7 @@ import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ProtobufHelper;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
@@ -76,7 +76,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info("Running {}: masterAddresses={}.", getName(), universe.getMasterAddresses());
 
       ModifyUniverseConfig modifyConfig =
@@ -119,7 +119,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
     final List<Cluster> targetClusterStates;
 
     public ModifyUniverseConfig(
-        YBClient client,
+        YBClientApi client,
         UUID universeUUID,
         Set<String> blacklistNodes,
         List<Cluster> targetClusterStates) {

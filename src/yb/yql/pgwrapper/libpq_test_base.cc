@@ -17,9 +17,11 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
@@ -382,7 +384,7 @@ std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics(size_t ts_idx) {
   faststring buf;
 
   auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+      Format("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
   EXPECT_OK(c.FetchURL(json_metrics_url, &buf));
   return ParseJsonMetrics(buf.ToString());
 }
@@ -396,7 +398,7 @@ std::vector<YsqlMetric> LibPqTestBase::GetPrometheusMetrics() {
   faststring buf;
 
   auto prometheus_metrics_url =
-      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
+      Format("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
   EXPECT_OK(c.FetchURL(prometheus_metrics_url, &buf));
   return ParsePrometheusMetrics(buf.ToString());
 }

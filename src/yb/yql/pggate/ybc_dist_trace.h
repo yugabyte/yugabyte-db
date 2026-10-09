@@ -60,8 +60,8 @@ extern "C" {
   } while (0)
 
 bool YBCIsOtelScopeStackEmpty();
-void YBCInitDistTrace(int64_t process_pid, const char* node_uuid);
-void YBCCleanupDistTrace();
+void YBCInitDistTrace(const char* node_uuid);
+void YBCShutdownDistTrace();
 bool YBCIsDistTraceEnabled();
 bool YBCIsDistTraceActive();
 bool YBCIsTraceParentValidAndRemote(const char* traceparent);
@@ -75,6 +75,12 @@ void YBCDistTraceSetCurrSpanAttrStr(const char* key, const char* value);
 void YBCDistTraceEndSpan();
 bool YBCDistTraceIsRootSpan();
 void YBCDistTraceClearStack();
+
+YbcOtelNodeSpan YBCDistTraceCreateNodeSpan(const char* op_name);
+void YBCDistTraceNodeSpanPushScope(YbcOtelNodeSpan node_span);
+void YBCDistTraceNodeSpanPopScope(YbcOtelNodeSpan node_span);
+void YBCDistTraceEndNodeSpan(YbcOtelNodeSpan node_span);
+void YBCDistTraceEndNodeSpanOnError(YbcOtelNodeSpan node_span);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -1,5 +1,5 @@
 title: AvailabilityZoneNodeSpec
-description: Properties for each node in the cluster. The settings can be configured at top-level for uniform node settings for both tserver and master nodes. Granular settings for tserver and master will be honored if provided (and dedicated_nodes is true or this is k8s cluster). Part of ClusterNodeSpec.
+description: 'Properties for each node in the cluster, including per-AZ overrides where storage may be partial. The settings can be configured at top-level for uniform node settings for both tserver and master nodes. Granular settings for tserver and master will be honored if provided (and dedicated_nodes is true or this is k8s cluster). Part of ClusterNodeSpec.'
 type: object
 allOf:
   - $ref: "./PerProcessNodeSpec.yaml"

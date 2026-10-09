@@ -2,12 +2,16 @@
 package api.v2.mappers;
 
 import api.v2.models.CloudSpecificInfo;
+import api.v2.models.ClusterInfo;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.CommunicationPortsSpec;
 import api.v2.models.EncryptionInTransitSpec;
+import api.v2.models.ManagedLoadBalancerInfo;
+import api.v2.models.ManagedLoadBalancerScheme;
 import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseNetworkingSpec;
 import api.v2.models.UniverseSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -15,10 +19,15 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.mapstruct.factory.Mappers;
 
 public abstract class UniverseDefinitionTaskParamsDecorator
@@ -73,11 +82,15 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     // set creatingUser
     params.creatingUser = CommonUtils.getUserFromContext();
     // set rootCA of encryptionInTransit into top-level of v1 universe
+
     if (universeSpec != null && universeSpec.getEncryptionInTransitSpec() != null) {
       EncryptionInTransitSpec source = universeSpec.getEncryptionInTransitSpec();
       params.rootCA = source.getRootCa();
       params.setClientRootCA(source.getClientRootCa());
-      if (source.getRootCa() != null && !source.getRootCa().equals(source.getClientRootCa())) {
+      if (source.getRootAndClientRootCaSame() != null) {
+        params.rootAndClientRootCASame = source.getRootAndClientRootCaSame();
+      } else if (source.getRootCa() != null
+          && !source.getRootCa().equals(source.getClientRootCa())) {
         params.rootAndClientRootCASame = false;
       }
     }
@@ -92,10 +105,12 @@ public abstract class UniverseDefinitionTaskParamsDecorator
           if (universeSpec != null) {
             cluster.userIntent.universeName = universeSpec.getName();
           }
-          // set the provider type for each cluster
-          Provider clusterProvider =
-              Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-          cluster.userIntent.providerType = clusterProvider.getCloudCode();
+          if (!cluster.userIntent.isMulticloudSupport()) {
+            // set the provider type for each cluster
+            Provider clusterProvider =
+                Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+            cluster.userIntent.providerType = clusterProvider.getCloudCode();
+          }
           // set yb software version into all clusters
           if (universeSpec != null && universeSpec.getYbSoftwareVersion() != null) {
             cluster.userIntent.ybSoftwareVersion = universeSpec.getYbSoftwareVersion();
@@ -151,8 +166,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     for (ClusterSpec otherCluster : universeSpec.getClusters()) {
       if (!otherCluster.getClusterType().equals(ClusterTypeEnum.PRIMARY)) {
         ClusterSpec mergedClusterSpec = new ClusterSpec();
-        clusterMapper.deepCopyClusterSpecWithoutPlacementSpec(
-            primaryClusterSpec, mergedClusterSpec);
+        clusterMapper.deepCopyInheritableClusterSpec(primaryClusterSpec, mergedClusterSpec);
         clusterMapper.deepCopyClusterSpec(otherCluster, mergedClusterSpec);
         clusters.add(mergedClusterSpec);
       }
@@ -164,7 +178,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   @Override
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
       UniverseCreateSpec universeCreateSpec) {
-    // copy over unintialized properties of RR cluster from primary cluster
+    // Copy unset RR/async properties from primary (excludes placement, partitions, nodeSpec).
     UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec.getSpec());
     UniverseDefinitionTaskParams params = toV1UniverseDefinitionTaskParams(universeSpec);
     // set Arch
@@ -279,6 +293,43 @@ public abstract class UniverseDefinitionTaskParamsDecorator
       result.otelCollectorMetricsPort = patch.getOtelCollectorMetricsPort();
     }
     return result;
+  }
+
+  // The load balancers are saved at universe level, not per cluster.
+  @Override
+  public UniverseInfo toV2UniverseInfo(UniverseDefinitionTaskParams v1UniverseTaskParams) {
+    UniverseInfo universeInfo = delegate.toV2UniverseInfo(v1UniverseTaskParams);
+    ManagedLoadBalancerState state = v1UniverseTaskParams.getManagedLoadBalancerState();
+    if (state == null || universeInfo.getClusters() == null) {
+      return universeInfo;
+    }
+    for (ClusterInfo clusterInfo : universeInfo.getClusters()) {
+      List<ManagedLoadBalancer> lbs =
+          state.getLoadBalancers().stream()
+              .filter(lb -> lb.getClusterUuid().equals(clusterInfo.getUuid()))
+              .collect(Collectors.toList());
+      if (lbs.isEmpty()) {
+        continue;
+      }
+      // Not from the placement: a region leaves it before its load balancer is deleted.
+      Map<UUID, String> regionCodes =
+          Region.findByUuids(
+                  lbs.stream().map(ManagedLoadBalancer::getRegionUuid).collect(Collectors.toSet()))
+              .stream()
+              .collect(Collectors.toMap(Region::getUuid, Region::getCode));
+      clusterInfo.setLoadBalancers(
+          lbs.stream()
+              .map(
+                  lb ->
+                      new ManagedLoadBalancerInfo()
+                          .scheme(ManagedLoadBalancerScheme.fromValue(lb.getScheme().name()))
+                          .regionCode(regionCodes.get(lb.getRegionUuid()))
+                          .azUuids(lb.getAzUuids())
+                          .name(lb.getName())
+                          .address(lb.getAddress()))
+              .collect(Collectors.toList()));
+    }
+    return universeInfo;
   }
 
   // Need this due to a MapStruct limitation https://github.com/mapstruct/mapstruct/issues/3165

@@ -176,8 +176,8 @@ Yugabyte recommends that you avoid exploiting this freedom and choose a standard
 
 ## See also
 
-- [`ALTER PROCEDURE`](../ddl_alter_procedure)
-- [`DROP PROCEDURE`](../ddl_drop_procedure)
-- [`CREATE FUNCTION`](../ddl_create_function)
-- [`ALTER FUNCTION`](../ddl_alter_function)
-- [`DROP FUNCTION`](../ddl_drop_function)
+- [ALTER PROCEDURE](../ddl_alter_procedure)
+- [DROP PROCEDURE](../ddl_drop_procedure)
+- [CREATE FUNCTION](../ddl_create_function)
+- [ALTER FUNCTION](../ddl_alter_function)
+- [DROP FUNCTION](../ddl_drop_function)

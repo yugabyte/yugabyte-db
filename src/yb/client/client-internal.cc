@@ -80,6 +80,8 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -329,6 +331,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsAlterXClusterReplicationDone);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteUniverseReplication);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupAddTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupRemoveTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteXClusterWalAnchorStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroups);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroupInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplications);
@@ -865,7 +868,10 @@ Status YBClient::Data::CreateTablegroup(
   if (txn) {
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
-    if (YsqlDdlSavepointEnabled()) {
+    // sub_transaction_id can be 0 when the CREATE INDEX statement is executed in separate DDL
+    // transactions even when transactional DDL is enabled. For separate DDL transactions, we do not
+    // support savepoints, so don't forward an invalid value of sub_transaction_id to yb-master.
+    if (YsqlDdlSavepointEnabled() && sub_transaction_id >= kMinSubTransactionId) {
       req.set_sub_transaction_id(sub_transaction_id);
     }
   }
@@ -1038,7 +1044,11 @@ Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
   *backfill_in_progress = true;
   if (!index_info->backfill_error_message().empty()) {
     *backfill_in_progress = false;
-    return STATUS(Aborted, index_info->backfill_error_message());
+    // backfill_status preserves the error codes (such as the PostgreSQL error code) but may be
+    // stale after a rollback: an old master clears only backfill_error_message on success.
+    return index_info->backfill_status().ok()
+        ? STATUS(Aborted, index_info->backfill_error_message())
+        : index_info->backfill_status().CloneAndReplaceCode(Status::kAborted);
   } else if (index_info->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL) {
     *backfill_in_progress = false;
   }
@@ -2037,7 +2047,8 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
       const xrepl::StreamId& stream_id,
       ObjectId* object_id,
       std::unordered_map<std::string, std::string>* options,
-      CoarseTimePoint deadline);
+      CoarseTimePoint deadline,
+      bool* xcluster_use_target_applied_filter);
 
   std::string ToString() const override;
 
@@ -2051,6 +2062,7 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
   xrepl::StreamId stream_id_;
   ObjectId* object_id_;
   std::unordered_map<std::string, std::string>* options_;
+  bool* xcluster_use_target_applied_filter_;
 };
 
 GetCDCStreamRpc::GetCDCStreamRpc(
@@ -2059,12 +2071,14 @@ GetCDCStreamRpc::GetCDCStreamRpc(
     const xrepl::StreamId& stream_id,
     TableId* object_id,
     std::unordered_map<std::string, std::string>* options,
-    CoarseTimePoint deadline)
+    CoarseTimePoint deadline,
+    bool* xcluster_use_target_applied_filter)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
       stream_id_(stream_id),
       object_id_(DCHECK_NOTNULL(object_id)),
-      options_(DCHECK_NOTNULL(options)) {
+      options_(DCHECK_NOTNULL(options)),
+      xcluster_use_target_applied_filter_(xcluster_use_target_applied_filter) {
   req_.set_stream_id(stream_id_.ToString());
 }
 
@@ -2095,6 +2109,10 @@ void GetCDCStreamRpc::ProcessResponse(const Status& status) {
     options_->reserve(resp_.stream().options_size());
     for (const auto& option : resp_.stream().options()) {
       options_->emplace(option.key(), option.value());
+    }
+
+    if (xcluster_use_target_applied_filter_) {
+      *xcluster_use_target_applied_filter_ = resp_.stream().xcluster_use_target_applied_filter();
     }
   }
   user_cb_(status);
@@ -2235,12 +2253,13 @@ class GetXClusterStreamsRpc
 
   Status Init(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      const std::vector<TableId>& source_table_ids) {
+      const std::vector<TableId>& source_table_ids, bool create_stream_if_missing) {
     req_.set_replication_group_id(replication_group_id.ToString());
     req_.set_namespace_id(namespace_id);
     for (const auto& table_id : source_table_ids) {
       req_.add_source_table_ids(table_id);
     }
+    req_.set_create_stream_if_missing(create_stream_if_missing);
     return Status::OK();
   }
 
@@ -2723,14 +2742,16 @@ void YBClient::Data::GetCDCStream(
     std::shared_ptr<ObjectId> object_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
     CoarseTimePoint deadline,
-    StdStatusCallback callback) {
+    StdStatusCallback callback,
+    std::shared_ptr<bool> xcluster_use_target_applied_filter) {
   auto rpc = StartRpc<internal::GetCDCStreamRpc>(
       client,
       callback,
       stream_id,
       object_id.get(),
       options.get(),
-      deadline);
+      deadline,
+      xcluster_use_target_applied_filter.get());
 }
 
 void YBClient::Data::DeleteNotServingTablet(
@@ -3235,11 +3256,12 @@ Status YBClient::Data::GetXClusterStreams(
 Status YBClient::Data::GetXClusterStreams(
     YBClient* client, CoarseTimePoint deadline,
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    const std::vector<TableId>& source_table_ids,
+    const std::vector<TableId>& source_table_ids, bool create_stream_if_missing,
     std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb) {
   auto rpc =
       std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
-  RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, source_table_ids));
+  RETURN_NOT_OK(
+      rpc->Init(replication_group_id, namespace_id, source_table_ids, create_stream_if_missing));
   rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
 
   return Status::OK();

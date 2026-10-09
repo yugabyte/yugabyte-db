@@ -44,6 +44,8 @@ export const RuntimeConfigKey = {
   ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING: 'yb.ui.xcluster.enable_skip_bootstrapping',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
   XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG: 'yb.xcluster.db_scoped.creationEnabled',
+  XCLUSTER_DB_SCOPED_AUTOMATIC_DDL_CREATION_FEATURE_FLAG:
+    'yb.xcluster.db_scoped.automatic_ddl.creationEnabled',
   PERFORMANCE_ADVISOR_UI_FEATURE_FLAG: 'yb.ui.feature_flags.perf_advisor',
   GRANULAR_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.granular_metrics',
   IS_UNIVERSE_AUTH_ENFORCED: 'yb.universe.auth.is_enforced',
@@ -56,6 +58,7 @@ export const RuntimeConfigKey = {
   ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
   GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled',
   ENABLE_PA_COLLECTOR: 'yb.ui.feature_flags.enable_pa_collector',
+  ENABLE_PA_ONLINE_MODE: 'yb.ui.feature_flags.enable_pa_online_mode',
   AWS_COOLDOWN_HOURS: 'yb.aws.disk_resize_cooldown_hours',
   BLOCK_K8_OPERATOR: 'yb.kubernetes.operator.block_api_operator_owned_resources',
   BATCH_ROLLING_UPGRADE_FEATURE_FLAG: 'yb.task.upgrade.batch_roll_enabled',
@@ -89,7 +92,9 @@ export const RuntimeConfigKey = {
   ENABLE_EBS_VOLUME: 'yb.universe.allow_cloud_volume_encryption',
   CONTINUOUS_PLATFORM_BACKUPS_UI: 'yb.ui.feature_flags.continuous_platform_backups',
   METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled',
-  ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.edit_universe_v2_ui_enabled',
+  ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.enable_new_universe_experience',
+  ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS:
+    'yb.ui.enable_new_universe_experience_for_all_users',
   ENABLE_NEW_PERF_ADVISOR_UI: 'yb.ui.feature_flags.enable_new_perf_advisor_ui',
   ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION:
     'yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option',
@@ -97,6 +102,9 @@ export const RuntimeConfigKey = {
   ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade',
   SKIP_XCLUSTER_SNAPSHOT_SCHEDULES: 'yb.xcluster.db_scoped.skip_snapshot_schedules'
 } as const;
+
+/** Query param to open Edit Config after navigating to /admin/advanced/global-config. */
+export const EDIT_RUNTIME_CONFIG_QUERY_PARAM = 'editRuntimeConfigKey';
 
 /**
  * Toast notification duration in milliseconds.
@@ -134,6 +142,10 @@ export const UNIVERSE_ACTION_TO_FROZEN_TASK_MAP = {
   ENCRYPTION_IN_TRANSIT: 'TlsToggle_Universe',
   INSTALL_NODE_AGENT: 'Install_NodeAgent',
   REPROVISION_NODES_WITH_YNP: 'ProvisionUniverseNodes_Universe',
+  UPDATE_NODE_AGENT: 'Update_NodeAgent',
+  // Enable/Disable Advanced Observability re-register the universe, so they use the register id.
+  REGISTER_UNIVERSE_TO_PERF_ADVISOR: 'RegisterWithPACollector_Universe',
+  UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR: 'UnregisterFromPACollector_Universe',
 
   // xCluster replication Tab - refer to the button where you can disable (check api is called from)
   CONFIGURE_REPLICATION: 'Create_XClusterConfig',
@@ -189,6 +201,9 @@ export const UNIVERSE_TASKS = {
   ENCRYPTION_IN_TRANSIT: 'ENCRYPTION_IN_TRANSIT',
   INSTALL_NODE_AGENT: 'INSTALL_NODE_AGENT',
   REPROVISION_NODES_WITH_YNP: 'REPROVISION_NODES_WITH_YNP',
+  UPDATE_NODE_AGENT: 'UPDATE_NODE_AGENT',
+  REGISTER_UNIVERSE_TO_PERF_ADVISOR: 'REGISTER_UNIVERSE_TO_PERF_ADVISOR',
+  UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR: 'UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR',
 
   // xCluster replication actions
   CONFIGURE_REPLICATION: 'CONFIGURE_REPLICATION',
@@ -219,6 +234,15 @@ export const UNIVERSE_TASKS = {
   // Backup actions
   CREATE_BACKUP: 'CREATE_BACKUP'
 };
+
+// Edit-style rollback tasks. When one fails it holds the universe lock, so it is the universe's
+// `updatingTask`. Mirrors the backend's TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.
+export const EDIT_ROLLBACK_TASK_TYPES = [
+  'RollbackEditUniverse',
+  'RollbackEditKubernetesUniverse',
+  'RollbackAddNodeToUniverse',
+  'RollbackResizeNode'
+];
 
 export const MIN_PG_SUPPORTED_PREVIEW_VERSION = '2.23.0.0-b416';
 export const MIN_PG_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';

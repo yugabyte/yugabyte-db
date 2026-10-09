@@ -19,8 +19,14 @@ test: yb.orig.roundtrip_estimate_setup
 
 test: yb.orig.roundtrip_estimate
 test: yb.orig.roundtrip_estimate_parallel
+test: yb.orig.roundtrip_estimate_limit
 
 # Dependency for the BNL cost parity tests
 test: yb.orig.bnl_cost_parity_setup
 
 test: yb.orig.bnl_cost_parity
+
+# Dependency for the join skip-rows cost tests
+test: yb.orig.join_cost_skip_rows_setup
+
+test: yb.orig.join_cost_skip_rows

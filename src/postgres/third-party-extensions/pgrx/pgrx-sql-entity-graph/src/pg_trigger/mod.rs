@@ -24,7 +24,7 @@ use crate::{CodeEnrichment, ToSqlConfig};
 use attribute::PgTriggerAttribute;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
-use syn::{spanned::Spanned, ItemFn, Token};
+use syn::{ItemFn, Token, spanned::Spanned};
 
 #[derive(Debug, Clone)]
 pub struct PgTrigger {
@@ -65,7 +65,7 @@ impl PgTrigger {
             crate::ident_is_acceptable_to_postgres(&func.sig.ident)?;
         }
 
-        Ok(CodeEnrichment(PgTrigger { func, to_sql_config }))
+        Ok(CodeEnrichment(Self { func, to_sql_config }))
     }
 
     pub fn wrapper_tokens(&self) -> Result<ItemFn, syn::Error> {
@@ -108,29 +108,39 @@ impl PgTrigger {
 impl ToEntityGraphTokens for PgTrigger {
     fn to_entity_graph_tokens(&self) -> TokenStream2 {
         let func_sig_ident = &self.func.sig.ident;
-        let sql_graph_entity_fn_name = format_ident!("__pgrx_internals_trigger_{}", func_sig_ident);
+        let sql_graph_entity_fn_name = format_ident!("__pgrx_schema_trigger_{}", func_sig_ident);
         let function_name = func_sig_ident.to_string();
         let to_sql_config = &self.to_sql_config;
+        let to_sql_config_len = to_sql_config.section_len_tokens();
+        let payload_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(#function_name)
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(file!())
+                + ::pgrx::pgrx_sql_entity_graph::section::u32_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(module_path!())
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(concat!(module_path!(), "::", stringify!(#func_sig_ident)))
+                + (#to_sql_config_len)
+        };
+        let total_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u32_len() + (#payload_len)
+        };
+        let writer = to_sql_config.section_writer_tokens(quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::EntryWriter::<{ #total_len }>::new()
+                .u32((#payload_len) as u32)
+                .u8(::pgrx::pgrx_sql_entity_graph::section::ENTITY_TRIGGER)
+                .str(#function_name)
+                .str(file!())
+                .u32(line!())
+                .str(module_path!())
+                .str(concat!(module_path!(), "::", stringify!(#func_sig_ident)))
+        });
 
         quote! {
-            #[no_mangle]
-            #[doc(hidden)]
-            #[allow(unknown_lints, clippy::no_mangle_with_rust_abi, nonstandard_style)]
-            pub extern "Rust" fn #sql_graph_entity_fn_name() -> ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity {
-                use core::any::TypeId;
-                extern crate alloc;
-                use alloc::vec::Vec;
-                use alloc::vec;
-                let submission = ::pgrx::pgrx_sql_entity_graph::PgTriggerEntity {
-                    function_name: #function_name,
-                    file: file!(),
-                    line: line!(),
-                    full_path: concat!(module_path!(), "::", stringify!(#func_sig_ident)),
-                    module_path: module_path!(),
-                    to_sql_config: #to_sql_config,
-                };
-                ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity::Trigger(submission)
-            }
+            ::pgrx::pgrx_sql_entity_graph::__pgrx_schema_entry!(
+                #sql_graph_entity_fn_name,
+                #total_len,
+                #writer.finish()
+            );
         }
     }
 }

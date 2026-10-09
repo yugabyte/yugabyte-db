@@ -10,15 +10,17 @@ properties:
     format: uuid
     example: 89a46d52-4edd-4736-922a-35177a0b990c
   region_list:
-    description: The list of regions in the cloud provider to place data replicas
+    description: 'Deprecated: specify the placement explicitly. The list of regions in the cloud provider to place data replicas'
     type: array
     items:
       type: string
       format: uuid
+    deprecated: true
   preferred_region:
-    description: The region to nominate as the preferred region in a geo-partitioned multi-region cluster
+    description: 'Deprecated: use default partition. The region to nominate as the preferred region in a geo-partitioned multi-region cluster'
     type: string
     format: uuid
+    deprecated: true
   access_key_code:
     description: 'One of the SSH access keys defined in Cloud Provider to be configured on nodes VMs. Required for AWS, Azure and GCP Cloud Providers.'
     type: string

@@ -86,7 +86,8 @@ public class WaitForClockSync extends NodeTaskBase {
               + taskParams().getUniverseUUID());
     }
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if (cluster.userIntent.providerType == Common.CloudType.local) {
+    Common.CloudType providerType = cluster.getProviderCloudType(node);
+    if (providerType == Common.CloudType.local) {
       log.info("Skipping sync for local provider");
       return;
     }

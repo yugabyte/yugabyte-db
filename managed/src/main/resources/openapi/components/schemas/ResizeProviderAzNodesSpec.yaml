@@ -1,0 +1,11 @@
+title: ResizeProviderAzNodesSpec
+description: Availability-zone-level resize node specification (leaf of the provider nodes specification hierarchy).
+type: object
+allOf:
+  - $ref: "./ResizeProviderNodesSpec.yaml"
+  - properties:
+      az_code:
+        description: Availability zone code within the region.
+        type: string
+    required:
+      - az_code

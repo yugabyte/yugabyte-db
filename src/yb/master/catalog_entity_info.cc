@@ -52,6 +52,8 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_ysql_lease.pb.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
@@ -64,7 +66,6 @@
 
 using std::string;
 
-using strings::Substitute;
 
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -198,6 +199,9 @@ TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
       table_(table),
       last_update_time_(MonoTime::Now()),
       last_time_with_valid_leader_(last_update_time_) {
+  if (tablet_id_ == kSysCatalogTabletId) {
+    mutable_metadata()->SetExcludeFromHeldTabletWriteLockCount();
+  }
 }
 
 TabletInfo::~TabletInfo() = default;
@@ -400,8 +404,8 @@ bool TabletInfo::colocated() const {
 }
 
 string TabletInfo::ToString() const {
-  return Substitute("$0 (table $1)", tablet_id_,
-                    (table_ != nullptr ? table_->ToString() : "MISSING"));
+  return Format("$0 (table $1)", tablet_id_,
+                (table_ != nullptr ? table_->ToString() : "MISSING"));
 }
 
 void TabletInfo::RegisterLeaderStepDownFailure(const TabletServerId& dest_leader,
@@ -483,12 +487,12 @@ bool TableInfo::IsPreparing() const {
 }
 
 string TableInfo::ToString() const {
-  return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
+  return Format("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
 
 string TableInfo::ToStringWithState() const {
   auto l = LockForRead();
-  return Substitute("$0 [id=$1, state=$2]",
+  return Format("$0 [id=$1, state=$2]",
       l->pb.name(), table_id_, SysTablesEntryPB::State_Name(l->pb.state()));
 }
 
@@ -601,7 +605,12 @@ bool TableInfo::IsBeingDroppedDueToSubTxnRollback(
 
 Status TableInfo::AddTablet(const TabletInfoPtr& tablet) {
   std::lock_guard l(lock_);
-  return AddTabletUnlocked(tablet);
+  return AddTabletUnlocked(tablet, tablet->metadata().dirty());
+}
+
+Status TableInfo::AddTablet(const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state) {
+  std::lock_guard l(lock_);
+  return AddTabletUnlocked(tablet, tablet_state);
 }
 
 Status TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet) {
@@ -611,13 +620,13 @@ Status TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInf
       VERIFY_RESULT(PromoteTabletPointer(it->second)) == old_tablet) {
     partitions_.erase(it);
   }
-  return AddTabletUnlocked(new_tablet);
+  return AddTabletUnlocked(new_tablet, new_tablet->metadata().dirty());
 }
 
 Status TableInfo::AddTablets(const TabletInfos& tablets) {
   std::lock_guard l(lock_);
   for (const auto& tablet : tablets) {
-    RETURN_NOT_OK(AddTabletUnlocked(tablet));
+    RETURN_NOT_OK(AddTabletUnlocked(tablet, tablet->metadata().dirty()));
   }
   return Status::OK();
 }
@@ -672,18 +681,18 @@ Result<TabletInfo::WriteLock> TableInfo::AddStatusTabletViaSplitPartition(
   return old_lock;
 }
 
-Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
-  const auto& tablet_dirty = tablet->metadata().dirty();
-  if (tablet_dirty.is_deleted()) {
+Status TableInfo::AddTabletUnlocked(
+    const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state) {
+  if (tablet_state.is_deleted()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
     return Status::OK();
   }
-  const auto& tablet_meta = tablet_dirty.pb;
+  const auto& tablet_meta = tablet_state.pb;
   tablets_.emplace(tablet->id(), tablet);
 
-  if (tablet_dirty.is_hidden()) {
+  if (tablet_state.is_hidden()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
@@ -767,6 +776,27 @@ Result<bool> TableInfo::RemoveTabletUnlocked(
     tablets_.erase(it);
   }
   return result;
+}
+
+bool TableInfo::RemoveInactiveTablet(const TabletInfoPtr& tablet) {
+  // Read before taking lock_. Taking a tablet's lock under lock_ would invert the order used by
+  // the PITR restore path, which holds tablet write locks across TableInfo::RemoveTablets. Reads
+  // committed state, not dirty state, so no write lock on the tablet is required.
+  const auto partition_key_start =
+      tablet->LockForRead()->pb.partition().partition_key_start();
+
+  std::lock_guard l(lock_);
+  // Never drop a tablet that still owns a partition. A split parent shares its start key with its
+  // first child, so finding an entry is not enough -- it has to be this tablet.
+  auto partitions_it = partitions_.find(partition_key_start);
+  if (partitions_it != partitions_.end()) {
+    auto partitions_tablet = partitions_it->second.lock();
+    if (partitions_tablet && partitions_tablet->tablet_id() == tablet->tablet_id()) {
+      return false;
+    }
+  }
+  tablets_.erase(tablet->tablet_id());
+  return true;
 }
 
 Result<TabletInfos> TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req) const {
@@ -907,6 +937,15 @@ Status TableInfo::SetIsBackfilling() {
 
   is_backfilling_ = true;
   return Status::OK();
+}
+
+bool TableInfo::TrySetPostTabletCreateTasksScheduled() {
+  bool expected = false;
+  return post_tablet_create_tasks_scheduled_.compare_exchange_strong(expected, true);
+}
+
+void TableInfo::ClearPostTabletCreateTasksScheduled() {
+  post_tablet_create_tasks_scheduled_.store(false);
 }
 
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
@@ -1104,6 +1143,15 @@ bool TableInfo::IsSequencesSystemTable(const ReadLock& lock) const {
     return false;
   }
   return *table_oid == kPgSequencesDataTableOid;
+}
+
+bool TableInfo::ShouldLookupPgSchemaName() const {
+  return ShouldLookupPgSchemaName(LockForRead());
+}
+
+bool TableInfo::ShouldLookupPgSchemaName(const ReadLock& lock) const {
+  return lock->table_type() == PGSQL_TABLE_TYPE && !is_system() &&
+         !IsColocationParentTable() && !IsSequencesSystemTable(lock);
 }
 
 bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
@@ -1391,7 +1439,7 @@ bool NamespaceInfo::colocated() const {
 }
 
 string NamespaceInfo::ToString() const {
-  return Substitute("$0 [id=$1]", name(), namespace_id_);
+  return Format("$0 [id=$1]", name(), namespace_id_);
 }
 
 // ================================================================================================
@@ -1628,7 +1676,7 @@ bool PersistentUniverseReplicationInfo::IsAutomaticDdlMode() const {
 // ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+  return Format("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
@@ -1743,7 +1791,7 @@ void PersistentUniverseReplicationBootstrapInfo::set_into_tables_data(
 // ================================================================================================
 std::string UniverseReplicationBootstrapInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+  return Format("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 void UniverseReplicationBootstrapInfo::SetReplicationBootstrapErrorStatus(const Status& status) {

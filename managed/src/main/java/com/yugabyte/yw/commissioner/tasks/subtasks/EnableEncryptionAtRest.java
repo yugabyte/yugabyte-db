@@ -27,7 +27,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class EnableEncryptionAtRest extends AbstractTaskBase {
@@ -72,7 +72,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
           String.format(
               "Universe %s has %d keys but none of them are active", universeUUID, numKeys));
     }
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
 
       if (numKeys == 0 || kmsConfigUUID.equals(activeKmsHistory.getConfigUuid())) {
         // This is for both the following cases:

@@ -23,6 +23,7 @@ public class PACollectorFilter {
   Set<UUID> uuids;
   UUID customerUuid;
   String paUrl;
+  Boolean embedded;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -36,6 +37,9 @@ public class PACollectorFilter {
     }
     if (paUrl != null) {
       result.paUrl(paUrl);
+    }
+    if (embedded != null) {
+      result.embedded(embedded);
     }
     return result;
   }
@@ -60,6 +64,11 @@ public class PACollectorFilter {
 
     public PACollectorFilterBuilder paUrl(@NonNull String paUrl) {
       this.paUrl = paUrl;
+      return this;
+    }
+
+    public PACollectorFilterBuilder embedded(boolean embedded) {
+      this.embedded = embedded;
       return this;
     }
   }

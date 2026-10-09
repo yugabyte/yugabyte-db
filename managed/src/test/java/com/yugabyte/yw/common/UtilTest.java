@@ -16,10 +16,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.cronutils.utils.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -1069,5 +1071,62 @@ public class UtilTest extends FakeDBApplication {
         .thenReturn(true);
 
     assertTrue(Util.configureCgroup(userIntent, provider, true, confGetter));
+  }
+
+  @Test
+  public void testGetPostgresCompatiblePassword() {
+    Set<String> passwords = new HashSet<>();
+    for (int i = 0; i < 500; i++) {
+      String password = Util.getPostgresCompatiblePassword();
+      assertEquals(Util.POSTGRES_PASSWORD_LENGTH, password.length());
+      assertFalse("contains '$$': " + password, password.contains("$$"));
+      assertFalse("contains '$': " + password, password.contains("$"));
+      for (char c : password.toCharArray()) {
+        assertTrue(
+            "unexpected char '" + c + "' in " + password,
+            Util.POSTGRES_PASSWORD_ALLOWED_CHARS.indexOf(c) >= 0);
+      }
+      passwords.add(password);
+    }
+    assertEquals(500, passwords.size());
+  }
+
+  @Test
+  public void testTaskParamsUpdater_sameArchAcrossProviders_succeeds() {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    Util.TaskParamsUpdater updater = new Util.TaskParamsUpdater(taskParams);
+    Provider first = providerWithUuid(UUID.randomUUID());
+    Provider second = providerWithUuid(UUID.randomUUID());
+
+    updater.setArch(first, Architecture.x86_64);
+    updater.setArch(second, Architecture.x86_64);
+
+    assertEquals(Architecture.x86_64, taskParams.arch);
+  }
+
+  @Test
+  public void testTaskParamsUpdater_differentArchAcrossProviders_fails() {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    Util.TaskParamsUpdater updater = new Util.TaskParamsUpdater(taskParams);
+    UUID firstUuid = UUID.randomUUID();
+    UUID secondUuid = UUID.randomUUID();
+    Provider first = providerWithUuid(firstUuid);
+    Provider second = providerWithUuid(secondUuid);
+
+    updater.setArch(first, Architecture.x86_64);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class, () -> updater.setArch(second, Architecture.aarch64));
+
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertTrue(exception.getMessage().contains("Architecture"));
+    assertTrue(exception.getMessage().contains(firstUuid + " has x86_64"));
+    assertTrue(exception.getMessage().contains(secondUuid + " has aarch64"));
+  }
+
+  private static Provider providerWithUuid(UUID uuid) {
+    Provider provider = mock(Provider.class);
+    when(provider.getUuid()).thenReturn(uuid);
+    return provider;
   }
 }

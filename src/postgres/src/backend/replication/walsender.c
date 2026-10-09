@@ -1488,11 +1488,19 @@ DropReplicationSlot(DropReplicationSlotCmd *cmd)
 				 errdetail("yb_enable_replication_commands is false or a "
 						   "system upgrade is in progress")));
 
-	if (IsYugaByteEnabled() && cmd->wait)
+	/*
+	 * YB: WAIT works via the cluster-wide slot advisory lock taken by
+	 * ReplicationSlotAcquire(); without it there is no way to wait for the
+	 * slot to become inactive.
+	 */
+	if (IsYugaByteEnabled() && cmd->wait &&
+		!yb_enable_replication_slot_exclusive_lock)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("waiting for a replication slot is not yet"
-						" supported")));
+						" supported"),
+				 errhint("Enable yb_enable_replication_slot_exclusive_lock to"
+						 " use DROP_REPLICATION_SLOT ... WAIT.")));
 
 	ReplicationSlotDrop(cmd->slotname, !cmd->wait, /* yb_force = */ false,
 						/* yb_if_exists= */ false);
@@ -2723,6 +2731,28 @@ WalSndCheckTimeOut(void)
 	if (wal_sender_timeout > 0 && last_processing >= timeout)
 	{
 		/*
+		 * YB: A single blocking GetConsistentChanges RPC can span the whole
+		 * timeout, so the stall is entirely server side and the client was
+		 * never asked to reply.  Request a reply and restart the timer once
+		 * before giving up.  waiting_for_ping_response stays set until the
+		 * client answers, so a truly unresponsive client still times out at
+		 * the next expiry.
+		 */
+		if (IsYugaByteEnabled() && !waiting_for_ping_response)
+		{
+			/*
+			 * Fresh timestamp, not last_processing: the latter predates the
+			 * stall, so a second slow RPC would expire the timer before the
+			 * client had a chance to answer this ping.
+			 */
+			last_reply_timestamp = GetCurrentTimestamp();
+			WalSndKeepalive(true, InvalidXLogRecPtr);
+			if (pq_flush_if_writable() != 0)
+				WalSndShutdown();
+			return;
+		}
+
+		/*
 		 * Since typically expiration of replication timeout means
 		 * communication problem, we don't send the error message to the
 		 * standby.
@@ -3373,6 +3403,14 @@ XLogSendLogical(void)
 		LogicalDecodingProcessRecord(logical_decoding_ctx, logical_decoding_ctx->reader);
 
 		sentPtr = logical_decoding_ctx->reader->EndRecPtr;
+
+		/* YB: test hook to send a keepalive after every record. */
+		if (IsYugaByteEnabled() && yb_test_walsender_keepalive_after_each_record)
+		{
+			WalSndKeepalive(false, InvalidXLogRecPtr);
+			if (pq_flush_if_writable() != 0)
+				WalSndShutdown();
+		}
 	}
 
 	/*
@@ -3995,10 +4033,18 @@ WalSndKeepalive(bool requestReply, XLogRecPtr writePtr)
 {
 	elog(DEBUG2, "sending replication keepalive");
 
+	XLogRecPtr	yb_keepalive_ptr = XLogRecPtrIsInvalid(writePtr) ? sentPtr : writePtr;
+
+	if (IsYugaByteEnabled() &&
+		MyReplicationSlot != NULL &&
+		MyReplicationSlot->yb_lsn_type == CRS_HYBRID_TIME &&
+		yb_keepalive_ptr > 0)
+		yb_keepalive_ptr -= 1;
+
 	/* construct the message... */
 	resetStringInfo(&output_message);
 	pq_sendbyte(&output_message, 'k');
-	pq_sendint64(&output_message, XLogRecPtrIsInvalid(writePtr) ? sentPtr : writePtr);
+	pq_sendint64(&output_message, yb_keepalive_ptr);
 	pq_sendint64(&output_message, GetCurrentTimestamp());
 	pq_sendbyte(&output_message, requestReply ? 1 : 0);
 

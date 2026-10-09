@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
@@ -45,7 +45,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     Universe targetUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(targetUniverse)) {
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
           getClusterConfig(client, targetUniverse.getUniverseUUID());
       XClusterConfigSyncFormData syncFormData = taskParams().getSyncFormData();

@@ -258,6 +258,17 @@ public class UpgradeUniverseHandler {
 
   public UUID rollbackUpgrade(
       RollbackUpgradeParams requestParams, Customer customer, Universe universe) {
+    TaskType taskType = prepareRollbackUpgrade(requestParams, universe);
+    return submitUpgradeTask(
+        taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
+  }
+
+  /**
+   * Validates and fills {@link RollbackUpgradeParams} for a software-upgrade downgrade, and returns
+   * the VM or Kubernetes rollback task type. Shared by the upgrade UI path and the task-rollback
+   * registry.
+   */
+  public TaskType prepareRollbackUpgrade(RollbackUpgradeParams requestParams, Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     TaskType taskType =
         Util.isKubernetesBasedUniverse(universe)
@@ -272,9 +283,7 @@ public class UpgradeUniverseHandler {
     } else {
       requestParams.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     }
-
-    return submitUpgradeTask(
-        taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
+    return taskType;
   }
 
   private void mergeSensitiveMasterTserverGFlagsForRequestClusters(

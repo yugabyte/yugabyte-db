@@ -99,7 +99,6 @@ static void ExecutePlan(QueryDesc *queryDesc,
 						uint64 numberTuples,
 						ScanDirection direction,
 						DestReceiver *dest);
-static bool ExecCheckRTEPerms(RangeTblEntry *rte);
 static bool ExecCheckRTEPermsModified(Oid relOid, Oid userid,
 									  Bitmapset *modifiedCols,
 									  AclMode requiredPerms);
@@ -144,12 +143,6 @@ YbIsReadAheadAllowed()
 void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	/*
-	 * Disable skip intents if this query has a modifying CTE. We must do this
-	 * before execution starts because the write might occur before any read.
-	 */
-	YbDisableSkipIntentsIfModifyingCTE(queryDesc);
-
 	/*
 	 * In some cases (e.g. an EXECUTE statement or an execute message with the
 	 * extended query protocol) the query_id won't be reported, so do it now.
@@ -281,8 +274,6 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate->es_top_eflags = eflags;
 	estate->es_instrument = queryDesc->instrument_options;
 	estate->es_jit_flags = queryDesc->plannedstmt->jitFlags;
-
-	estate->yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
 
 	/*
 	 * Set up an AFTER-trigger statement context, unless told not to, or
@@ -655,7 +646,7 @@ ExecCheckRTPerms(List *rangeTable, bool ereport_on_violation)
  * ExecCheckRTEPerms
  *		Check access permissions for a single RTE.
  */
-static bool
+bool
 ExecCheckRTEPerms(RangeTblEntry *rte)
 {
 	AclMode		requiredPerms;
@@ -1684,6 +1675,7 @@ ExecutePlan(QueryDesc *queryDesc,
 	bool		use_parallel_mode;
 	TupleTableSlot *slot;
 	uint64		current_tuple_count;
+	bool		yb_read_ahead_allowed = false;
 
 	/*
 	 * initialize local variables
@@ -1705,12 +1697,17 @@ ExecutePlan(QueryDesc *queryDesc,
 	if (queryDesc->already_executed || numberTuples != 0)
 		use_parallel_mode = false;
 	else
+	{ /* YB: Account for read-ahead logic */
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
+		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
+	}
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
 	if (use_parallel_mode)
 		EnterParallelMode();
+
+	estate->yb_read_ahead_allowed = yb_read_ahead_allowed;
 
 	/*
 	 * Loop until we've processed the proper number of tuples from the plan.
@@ -2012,10 +2009,15 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		/*
 		 * YB: When the plan does not fetch the target tuple (e.g. the
 		 * single-row UPDATE path), unmodified columns are absent from the
-		 * slot, so the NOT NULL check below must skip them.
+		 * slot, so the NOT NULL check below must skip them.  Skip only for
+		 * UPDATE and DELETE: an INSERT has no target tuple to fetch, and the
+		 * inserted tuple is always complete.  Any future operation (e.g.
+		 * MERGE) must opt in deliberately.
 		 */
 		bool		yb_skip_unmodified = (mtstate &&
-										  !mtstate->yb_fetch_target_tuple);
+										  (mtstate->operation == CMD_UPDATE ||
+										   mtstate->operation == CMD_DELETE) &&
+										  mtstate->yb_skip_fetch_target_tuple);
 		Bitmapset  *yb_modifiedCols = NULL;
 
 		if (yb_skip_unmodified)

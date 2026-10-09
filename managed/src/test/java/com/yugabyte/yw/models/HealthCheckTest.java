@@ -85,6 +85,24 @@ public class HealthCheckTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetAllWithLimit() {
+    UUID universeUUID = UUID.randomUUID();
+    HealthCheck check1 = addCheck(universeUUID);
+    HealthCheck check2 = addCheck(universeUUID);
+    HealthCheck check3 = addCheck(universeUUID);
+
+    List<HealthCheck> limited = HealthCheck.getAll(universeUUID, 2);
+    assertEquals(2, limited.size());
+    // Most recent entries, still in ascending check_time order.
+    assertEquals(check2.getIdKey().checkTime, limited.get(0).getIdKey().checkTime);
+    assertEquals(check3.getIdKey().checkTime, limited.get(1).getIdKey().checkTime);
+
+    List<HealthCheck> all = HealthCheck.getAll(universeUUID, null);
+    assertEquals(3, all.size());
+    assertEquals(check1.getIdKey().checkTime, all.get(0).getIdKey().checkTime);
+  }
+
+  @Test
   public void testHasError() {
     UUID universeUUID = UUID.randomUUID();
     HealthCheck noDetails = addCheck(universeUUID);

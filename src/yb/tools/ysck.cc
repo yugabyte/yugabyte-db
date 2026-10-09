@@ -35,13 +35,13 @@
 #include <mutex>
 #include <unordered_set>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/blocking_queue.h"
 #include "yb/util/countdown_latch.h"
@@ -57,7 +57,6 @@ using std::shared_ptr;
 using std::string;
 using std::unordered_map;
 using std::vector;
-using strings::Substitute;
 
 DEFINE_NON_RUNTIME_int32(checksum_timeout_sec, 120,
              "Maximum total seconds to wait for a checksum scan to complete "
@@ -126,7 +125,7 @@ Status Ysck::FetchTableAndTabletInfo() {
 Status Ysck::CheckTabletServersRunning() {
   VLOG(1) << "Getting the Tablet Servers list";
   auto servers_count = cluster_->tablet_servers().size();
-  VLOG(1) << Substitute("List of $0 Tablet Servers retrieved", servers_count);
+  VLOG(1) << Format("List of $0 Tablet Servers retrieved", servers_count);
 
   if (servers_count == 0) {
     return STATUS(NotFound, "No tablet servers found");
@@ -141,11 +140,11 @@ Status Ysck::CheckTabletServersRunning() {
     }
   }
   if (bad_servers == 0) {
-    LOG(INFO) << Substitute("Connected to all $0 Tablet Servers", servers_count);
+    LOG(INFO) << Format("Connected to all $0 Tablet Servers", servers_count);
     return Status::OK();
   } else {
-    LOG(WARNING) << Substitute("Connected to $0 Tablet Servers, $1 weren't reachable",
-                               servers_count - bad_servers, bad_servers);
+    LOG(WARNING) << Format("Connected to $0 Tablet Servers, $1 weren't reachable",
+                           servers_count - bad_servers, bad_servers);
     return STATUS(NetworkError, "Not all Tablet Servers are reachable");
   }
 }
@@ -156,8 +155,8 @@ Status Ysck::ConnectToTabletServer(const shared_ptr<YsckTabletServer>& ts) {
   if (s.ok()) {
     VLOG(1) << "Connected to Tablet Server: " << ts->uuid();
   } else {
-    LOG(WARNING) << Substitute("Unable to connect to Tablet Server $0 because $1",
-                               ts->uuid(), s.ToString());
+    LOG(WARNING) << Format("Unable to connect to Tablet Server $0 because $1",
+                           ts->uuid(), s.ToString());
   }
   return s;
 }
@@ -165,7 +164,7 @@ Status Ysck::ConnectToTabletServer(const shared_ptr<YsckTabletServer>& ts) {
 Status Ysck::CheckTablesConsistency() {
   VLOG(1) << "Getting the tables list";
   auto tables_count = cluster_->tables().size();
-  VLOG(1) << Substitute("List of $0 tables retrieved", tables_count);
+  VLOG(1) << Format("List of $0 tables retrieved", tables_count);
 
   if (tables_count == 0) {
     LOG(INFO) << "The cluster doesn't have any tables";
@@ -180,12 +179,12 @@ Status Ysck::CheckTablesConsistency() {
     }
   }
   if (bad_tables_count == 0) {
-    LOG(INFO) << Substitute("The metadata for $0 tables is HEALTHY", tables_count);
+    LOG(INFO) << Format("The metadata for $0 tables is HEALTHY", tables_count);
     return Status::OK();
   } else {
-    LOG(WARNING) << Substitute("$0 out of $1 tables are not in a healthy state",
-                               bad_tables_count, tables_count);
-    return STATUS(Corruption, Substitute("$0 tables are bad", bad_tables_count));
+    LOG(WARNING) << Format("$0 out of $1 tables are not in a healthy state",
+                           bad_tables_count, tables_count);
+    return STATUS(Corruption, Format("$0 tables are bad", bad_tables_count));
   }
 }
 
@@ -410,10 +409,10 @@ Status Ysck::ChecksumData(const vector<string>& tables,
           for (const ChecksumResultReporter::ResultPair& result : r.second) {
             const Status &status = result.first;
             uint64_t checksum = result.second;
-            string status_str = (status.ok()) ? Substitute("Checksum: $0", checksum)
-                : Substitute("Error: $0", status.ToString());
-            LOG(INFO) << Substitute("T $0 P $1 ($2): $3",
-                                    tablet->id(), ts->uuid(), ts->address(), status_str);
+            string status_str = (status.ok()) ? Format("Checksum: $0", checksum)
+                : Format("Error: $0", status.ToString());
+            LOG(INFO) << Format("T $0 P $1 ($2): $3",
+                                tablet->id(), ts->uuid(), ts->address(), status_str);
             if (!status.ok()) {
               num_errors++;
             } else if (!seen_first_replica) {
@@ -432,18 +431,18 @@ Status Ysck::ChecksumData(const vector<string>& tables,
     if (printed_table_name) LOG(INFO) << "";
   }
   if (num_results != num_tablet_replicas) {
-    CHECK(timed_out) << Substitute("Unexpected error: only got $0 out of $1 replica results",
-                                   num_results, num_tablet_replicas);
-    return STATUS(TimedOut, Substitute("Checksum scan did not complete within the timeout of $0: "
-                                       "Received results for $1 out of $2 expected replicas",
-                                       options.timeout.ToString(), num_results,
-                                       num_tablet_replicas));
+    CHECK(timed_out) << Format("Unexpected error: only got $0 out of $1 replica results",
+                               num_results, num_tablet_replicas);
+    return STATUS(TimedOut, Format("Checksum scan did not complete within the timeout of $0: "
+                                   "Received results for $1 out of $2 expected replicas",
+                                   options.timeout.ToString(), num_results,
+                                   num_tablet_replicas));
   }
   if (num_mismatches != 0) {
-    return STATUS(Corruption, Substitute("$0 checksum mismatches were detected", num_mismatches));
+    return STATUS(Corruption, Format("$0 checksum mismatches were detected", num_mismatches));
   }
   if (num_errors != 0) {
-    return STATUS(Aborted, Substitute("$0 errors were detected", num_errors));
+    return STATUS(Aborted, Format("$0 errors were detected", num_errors));
   }
 
   return Status::OK();
@@ -454,12 +453,12 @@ bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
   vector<shared_ptr<YsckTablet> > tablets = table->tablets();
   auto tablets_count = tablets.size();
   if (tablets_count == 0) {
-    LOG(WARNING) << Substitute("Table $0 has 0 tablets", table->name().ToString());
+    LOG(WARNING) << Format("Table $0 has 0 tablets", table->name().ToString());
     return false;
   }
   int table_num_replicas = table->num_replicas();
-  VLOG(1) << Substitute("Verifying $0 tablets for table $1 configured with num_replicas = $2",
-                        tablets_count, table->name().ToString(), table_num_replicas);
+  VLOG(1) << Format("Verifying $0 tablets for table $1 configured with num_replicas = $2",
+                    tablets_count, table->name().ToString(), table_num_replicas);
   size_t bad_tablets_count = 0;
   // TODO check if the tablets are contiguous and in order.
   for (const shared_ptr<YsckTablet> &tablet : tablets) {
@@ -468,10 +467,10 @@ bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
     }
   }
   if (bad_tablets_count == 0) {
-    LOG(INFO) << Substitute("Table $0 is HEALTHY", table->name().ToString());
+    LOG(INFO) << Format("Table $0 is HEALTHY", table->name().ToString());
   } else {
-    LOG(WARNING) << Substitute("Table $0 has $1 bad tablets",
-                               table->name().ToString(), bad_tablets_count);
+    LOG(WARNING) << Format("Table $0 has $1 bad tablets",
+                           table->name().ToString(), bad_tablets_count);
     good_table = false;
   }
   return good_table;
@@ -481,8 +480,8 @@ bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, size_t table_num_r
   vector<shared_ptr<YsckTabletReplica> > replicas = tablet->replicas();
   bool good_tablet = true;
   if (replicas.size() != table_num_replicas) {
-    LOG(WARNING) << Substitute("Tablet $0 has $1 instead of $2 replicas",
-                               tablet->id(), replicas.size(), table_num_replicas);
+    LOG(WARNING) << Format("Tablet $0 has $1 instead of $2 replicas",
+                           tablet->id(), replicas.size(), table_num_replicas);
     // We only fail the "goodness" check if the tablet is under-replicated.
     if (replicas.size() < table_num_replicas) {
       good_tablet = false;
@@ -492,10 +491,10 @@ bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, size_t table_num_r
   int followers_count = 0;
   for (const shared_ptr<YsckTabletReplica>& replica : replicas) {
     if (replica->is_leader()) {
-      VLOG(1) << Substitute("Replica at $0 is a LEADER", replica->ts_uuid());
+      VLOG(1) << Format("Replica at $0 is a LEADER", replica->ts_uuid());
       leaders_count++;
     } else if (replica->is_follower()) {
-      VLOG(1) << Substitute("Replica at $0 is a FOLLOWER", replica->ts_uuid());
+      VLOG(1) << Format("Replica at $0 is a FOLLOWER", replica->ts_uuid());
       followers_count++;
     }
   }
@@ -503,8 +502,8 @@ bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, size_t table_num_r
     LOG(WARNING) << Format("Tablet $0 doesn't have a leader, replicas: $1", tablet->id(), replicas);
     good_tablet = false;
   }
-  VLOG(1) << Substitute("Tablet $0 has $1 leader and $2 followers",
-                        tablet->id(), leaders_count, followers_count);
+  VLOG(1) << Format("Tablet $0 has $1 leader and $2 followers",
+                    tablet->id(), leaders_count, followers_count);
   return good_tablet;
 }
 

@@ -127,6 +127,10 @@ $padding: 30px;
   padding-top: 30px;
   margin-top: 0 !important;
 }
+
+.universe-detail.universe-detail-settings > .tab-content {
+  padding: 16px 16px 16px 0px;
+}
 .delete-universe-check-container {
   float: left;
   margin-top: 10px;
@@ -855,12 +859,13 @@ h2 {
   line-height: normal;
   margin: 12px 0px;
   color: #333 !important;
-  &:hover, &:focus {
+  &:hover,
+  &:focus {
     color: #333 !important;
   }
 }
 .menu-item-subtext {
-  color: #4E5F6D;
+  color: #4e5f6d;
   font-size: 10px;
   font-style: normal;
   font-weight: 300;

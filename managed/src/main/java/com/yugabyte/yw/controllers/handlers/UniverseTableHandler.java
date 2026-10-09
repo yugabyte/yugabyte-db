@@ -62,7 +62,7 @@ import org.yb.CommonTypes;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
@@ -120,6 +120,33 @@ public class UniverseTableHandler {
       boolean excludeColocatedTables,
       boolean includeColocatedParentTables,
       boolean xClusterSupportedOnly) {
+    return listTables(
+        customerUUID,
+        universeUUID,
+        includeParentTableInfo,
+        excludeColocatedTables,
+        includeColocatedParentTables,
+        xClusterSupportedOnly,
+        false /* includeMatviewTables */);
+  }
+
+  /**
+   * Same as {@link #listTables(UUID, UUID, boolean, boolean, boolean, boolean)}, but lets the
+   * caller ask for materialized views to be counted as xCluster supported. Only relevant when
+   * {@code xClusterSupportedOnly} is set; materialized views take part in replication only for
+   * configs in automatic DDL mode on YBDB versions that replicate them, so the caller is
+   * responsible for deciding that. See {@link
+   * com.yugabyte.yw.common.XClusterUtil#isMatviewReplicationSupported(
+   * com.yugabyte.yw.models.XClusterConfig)}.
+   */
+  public List<TableInfoResp> listTables(
+      UUID customerUUID,
+      UUID universeUUID,
+      boolean includeParentTableInfo,
+      boolean excludeColocatedTables,
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly,
+      boolean includeMatviewTables) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
@@ -140,7 +167,9 @@ public class UniverseTableHandler {
         includeParentTableInfo,
         excludeColocatedTables,
         includeColocatedParentTables,
-        xClusterSupportedOnly);
+        xClusterSupportedOnly,
+        false /* includePostgresSystemTables */,
+        includeMatviewTables);
   }
 
   public List<TableInfoResp> getTableInfoRespFromTableInfo(
@@ -181,6 +210,33 @@ public class UniverseTableHandler {
       boolean includeColocatedParentTables,
       boolean xClusterSupportedOnly,
       boolean includePostgresSystemTables) {
+    return getTableInfoRespFromTableInfo(
+        universe,
+        tableInfoList,
+        includeParentTableInfo,
+        excludeColocatedTables,
+        includeColocatedParentTables,
+        xClusterSupportedOnly,
+        includePostgresSystemTables,
+        false /* matviewSupported */);
+  }
+
+  /**
+   * Same as {@link #getTableInfoRespFromTableInfo(Universe, List, boolean, boolean, boolean,
+   * boolean, boolean)}, but lets the caller state whether materialized views count as xCluster
+   * supported. Only relevant when {@code xClusterSupportedOnly} is set; see {@link
+   * com.yugabyte.yw.common.XClusterUtil#isMatviewReplicationSupported(
+   * com.yugabyte.yw.models.XClusterConfig)}.
+   */
+  public List<TableInfoResp> getTableInfoRespFromTableInfo(
+      Universe universe,
+      List<TableInfo> tableInfoList,
+      boolean includeParentTableInfo,
+      boolean excludeColocatedTables,
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly,
+      boolean includePostgresSystemTables,
+      boolean matviewSupported) {
     if (xClusterSupportedOnly && (!includeColocatedParentTables || excludeColocatedTables)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -321,7 +377,9 @@ public class UniverseTableHandler {
     if (xClusterSupportedOnly) {
       tableInfoRespList =
           tableInfoRespList.stream()
-              .filter(XClusterConfigTaskBase::isXClusterSupported)
+              .filter(
+                  tableInfoResp ->
+                      XClusterConfigTaskBase.isXClusterSupported(tableInfoResp, matviewSupported))
               .collect(Collectors.toList());
     }
     return tableInfoRespList;
@@ -338,7 +396,7 @@ public class UniverseTableHandler {
     }
 
     GetTableSchemaResponse schemaResponse;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       schemaResponse = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -447,7 +505,7 @@ public class UniverseTableHandler {
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       GetTableSchemaResponse response =
           client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
       return createFromResponse(universe, tableUUID, response);
@@ -551,7 +609,7 @@ public class UniverseTableHandler {
 
   public ListTablesResponse listTablesOrBadRequest(Universe universe, boolean excludeSystemTables) {
     ListTablesResponse response;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       checkLeaderMasterAvailability(client);
       response = client.getTablesList(null, excludeSystemTables, null);
     } catch (Exception e) {
@@ -563,7 +621,7 @@ public class UniverseTableHandler {
     return response;
   }
 
-  private void checkLeaderMasterAvailability(YBClient client) {
+  private void checkLeaderMasterAvailability(YBClientApi client) {
     long waitForLeaderTimeoutMs = config.getDuration(MASTER_LEADER_TIMEOUT_CONFIG_PATH).toMillis();
     try {
       client.waitForMasterLeader(waitForLeaderTimeoutMs);
@@ -574,7 +632,7 @@ public class UniverseTableHandler {
 
   public ListNamespacesResponse listNamespacesOrBadRequest(Universe universe) {
     ListNamespacesResponse response;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       checkLeaderMasterAvailability(client);
       response = client.getNamespacesList();
     } catch (Exception e) {

@@ -41,13 +41,13 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/strand.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
@@ -58,7 +58,6 @@ DEFINE_RUNTIME_bool(threadpool_use_current_trace_for_tasks, false,
 
 namespace yb {
 
-using strings::Substitute;
 using std::unique_ptr;
 using std::deque;
 
@@ -71,7 +70,7 @@ ThreadPoolBuilder::ThreadPoolBuilder(std::string name)
     : options_(ThreadPoolOptions {
         .name = std::move(name),
         .max_workers = make_unsigned(NumEffectiveCPUs()),
-        .idle_timeout = MonoDelta::FromMilliseconds(500),
+        .idle_timeout = DefaultIdleTimeout(),
       }) {}
 
 Status ThreadPool::SubmitClosure(const Closure& task) {
@@ -198,12 +197,18 @@ Status TaskRunner::Wait(StopWaitIfFailed stop_wait_if_failed) {
 void TaskRunner::CompleteTask(const Status& status) {
   bool is_first_failure = false;
   if (!status.ok()) {
-    bool expected = false;
-    if (failed_.compare_exchange_strong(expected, true)) {
-      is_first_failure = true;
+    {
+      // Set failed_ under mutex_ together with first_failure_. Wait() checks failed_ while
+      // holding mutex_, so otherwise it could observe the flag before the status is stored and
+      // return OK.
       std::lock_guard lock(mutex_);
-      first_failure_ = status;
-    } else {
+      bool expected = false;
+      if (failed_.compare_exchange_strong(expected, true)) {
+        is_first_failure = true;
+        first_failure_ = status;
+      }
+    }
+    if (!is_first_failure) {
       LOG(WARNING) << status.message() << std::endl;
     }
   }

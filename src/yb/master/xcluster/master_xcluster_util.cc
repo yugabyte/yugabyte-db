@@ -22,7 +22,12 @@
 
 #include "yb/util/async_util.h"
 
+#include "yb/util/format.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+DECLARE_bool(enable_xcluster_wal_anchor_stream_infra);
+DECLARE_bool(enable_xcluster_wal_anchor_stream);
 
 namespace yb::master {
 
@@ -102,7 +107,7 @@ std::string TableDesignator::name() const { return table_info->name(); }
 std::string TableDesignator::pgschema_name() const { return table_info->pgschema_name(); }
 
 std::string TableDesignator::ToString() const {
-  return strings::Substitute("$0.$1 [id=$2]", pgschema_name(), name(), id);
+  return Format("$0.$1 [id=$2]", pgschema_name(), name(), id);
 }
 
 Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
@@ -133,6 +138,10 @@ Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
   return table_designators;
 }
 
+bool IsXClusterWalAnchorStreamEnabled() {
+  return FLAGS_enable_xcluster_wal_anchor_stream_infra && FLAGS_enable_xcluster_wal_anchor_stream;
+}
+
 bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info) {
   return replication_info.has_db_scoped_info() &&
          replication_info.db_scoped_info().namespace_infos_size() > 0;
@@ -159,7 +168,7 @@ Status SetupDDLReplicationExtension(
   RETURN_NOT_OK(ExecutePgsqlStatements(
       namespace_name, {statement}, catalog_manager,
       CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
-      sync.AsStdStatusCallback()));
+      sync.AsStdStatusCallback(), pgwrapper::YbInternalConnKindWireName::kXClusterSetup));
   auto status = sync.Wait();
   if (!status.ok()) {
     callback(status);
@@ -192,7 +201,7 @@ Status DropDDLReplicationExtensionIfExists(
   return ExecutePgsqlStatements(
       namespace_name, {statement}, catalog_manager,
       CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
-      std::move(callback));
+      std::move(callback), pgwrapper::YbInternalConnKindWireName::kXClusterSetup);
 }
 
 }  // namespace yb::master

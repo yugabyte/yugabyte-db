@@ -100,10 +100,18 @@ public class MetricQueryHelperTest extends FakeDBApplication {
         };
   }
 
+  // Thin wrapper for the convenience `query(customer, metricKeys, params)` shape that used to
+  // live on MetricQueryHelper itself. It was only ever called from these tests, so it has been
+  // moved here to keep the production API focused on the (metricKeys, params, filterOverrides)
+  // signature that real callers actually use.
+  private JsonNode query(Customer customer, List<String> metricKeys, Map<String, String> params) {
+    return metricQueryHelper.query(customer, metricKeys, params, Collections.emptyMap());
+  }
+
   @Test
   public void testQueryWithInvalidParams() {
     try {
-      metricQueryHelper.query(customer, Collections.emptyList(), Collections.emptyMap());
+      query(customer, Collections.emptyList(), Collections.emptyMap());
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
           re.buildResult(fakeRequest), "Empty metricsWithSettings data provided.");
@@ -117,7 +125,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     params.put("filters", "my-own-filter");
 
     try {
-      metricQueryHelper.query(customer, ImmutableList.of("valid_metric"), params);
+      query(customer, ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
           re.buildResult(fakeRequest), "Invalid filter params provided, it should be a hash.");
@@ -132,7 +140,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     params.put("end", String.valueOf(startTimestamp - 1));
 
     try {
-      metricQueryHelper.query(customer, ImmutableList.of("valid_metric"), params);
+      query(customer, ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
           re.buildResult(fakeRequest), "Start time cannot be greater than the end time");
@@ -148,7 +156,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     params.put("step", "qwe");
 
     try {
-      metricQueryHelper.query(customer, ImmutableList.of("valid_metric"), params);
+      query(customer, ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       final Result result = re.buildResult(fakeRequest);
       AssertHelper.assertBadRequest(result, "Step should be a valid integer");
@@ -164,7 +172,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     params.put("step", "0");
 
     try {
-      metricQueryHelper.query(customer, ImmutableList.of("valid_metric"), params);
+      query(customer, ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       String expectedErr = "Step should not be less than 1 second";
       AssertHelper.assertBadRequest(re.buildResult(fakeRequest), expectedErr);
@@ -187,7 +195,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
 
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(responseJson);
-    metricQueryHelper.query(customer, ImmutableList.of("valid_metric"), params);
+    query(customer, ImmutableList.of("valid_metric"), params);
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
@@ -225,7 +233,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
 
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(responseJson);
-    metricQueryHelper.query(customer, ImmutableList.of("valid_metric"), params);
+    query(customer, ImmutableList.of("valid_metric"), params);
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
@@ -267,7 +275,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
 
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(responseJson);
-    metricQueryHelper.query(customer, ImmutableList.of("valid_metric"), params);
+    query(customer, ImmutableList.of("valid_metric"), params);
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
@@ -351,7 +359,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     List<String> metricKeys = ImmutableList.of("valid_metric2", "valid_metric");
 
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(responseJson);
-    JsonNode result = metricQueryHelper.query(customer, metricKeys, params);
+    JsonNode result = query(customer, metricKeys, params);
     verify(mockApiHelper, times(2))
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query_range")));

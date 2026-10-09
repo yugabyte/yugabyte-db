@@ -107,10 +107,14 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 
 	/*
 	 * In YB, system views can only be created during initdb and YSQL upgrade.
+	 * Global initdb runs yb_global_views.sql in normal processing mode (not
+	 * bootstrap), so allow pg_catalog-qualified views there via the initdb env
+	 * var.
 	 */
 	if (IsYugaByteEnabled() &&
 		!IsYsqlUpgrade &&
 		!IsBootstrapProcessingMode() &&
+		!YBCIsInitDbModeEnvVarSet() &&
 		YbIsCatalogNamespaceByName(relation->schemaname))
 	{
 		ereport(ERROR,

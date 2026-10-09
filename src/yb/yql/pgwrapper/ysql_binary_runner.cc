@@ -17,6 +17,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"

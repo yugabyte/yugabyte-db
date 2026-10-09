@@ -7,13 +7,14 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use crate::command::install::install_extension;
-use crate::manifest::{display_version_info, PgVersionSource};
 use crate::CommandExecute;
-use crate::{command::get::get_property, profile::CargoProfile};
+use crate::cargo::CargoProfile;
+use crate::command::get::get_property;
+use crate::command::install::{install_extension, warn_if_pg_bench_enabled};
+use crate::manifest::{PgVersionSource, display_version_info};
 use cargo_toml::Manifest;
-use eyre::{eyre, WrapErr};
-use pgrx_pg_config::{get_target_dir, PgConfig, Pgrx};
+use eyre::{WrapErr, eyre};
+use pgrx_pg_config::{PgConfig, Pgrx, get_target_dir};
 use std::path::{Path, PathBuf};
 
 /// Create an installation package directory.
@@ -51,11 +52,12 @@ pub(crate) struct Package {
 
 impl Package {
     pub(crate) fn perform(mut self) -> eyre::Result<(PathBuf, Vec<PathBuf>)> {
-        let metadata = crate::metadata::metadata(&self.features, self.manifest_path.as_ref())
+        warn_if_pg_bench_enabled(&self.features, "package");
+        let metadata = crate::metadata::metadata(&self.features, self.manifest_path.as_deref())
             .wrap_err("couldn't get cargo metadata")?;
-        crate::metadata::validate(self.manifest_path.as_ref(), &metadata)?;
+        crate::metadata::validate(self.manifest_path.as_deref(), &metadata)?;
         let package_manifest_path =
-            crate::manifest::manifest_path(&metadata, self.package.as_ref())
+            crate::manifest::manifest_path(&metadata, self.package.as_deref())
                 .wrap_err("Couldn't get manifest path")?;
         let package_manifest =
             Manifest::from_path(&package_manifest_path).wrap_err("Couldn't parse manifest")?;
@@ -81,24 +83,19 @@ impl Package {
         let out_dir = if let Some(out_dir) = self.out_dir {
             out_dir
         } else {
-            build_base_path(
-                &pg_config,
-                &package_manifest_path,
-                &profile,
-                self.target.as_ref().map(|x| x.as_str()),
-            )?
+            build_base_path(&pg_config, &package_manifest_path, &profile, self.target.as_deref())?
         };
 
         let output_files = package_extension(
-            self.manifest_path.as_ref(),
-            self.package.as_ref(),
+            self.manifest_path.as_deref(),
+            self.package.as_deref(),
             &package_manifest_path,
             &pg_config,
             out_dir.clone(),
             &profile,
             self.test,
             &self.features,
-            self.target.as_ref().map(|x| x.as_str()),
+            self.target.as_deref(),
         )?;
 
         Ok((out_dir, output_files))
@@ -119,8 +116,8 @@ impl CommandExecute for Package {
     test = is_test,
 ))]
 pub(crate) fn package_extension(
-    user_manifest_path: Option<impl AsRef<Path>>,
-    user_package: Option<&String>,
+    user_manifest_path: Option<&Path>,
+    user_package: Option<&str>,
     package_manifest_path: &Path,
     pg_config: &PgConfig,
     out_dir: PathBuf,
@@ -152,7 +149,7 @@ pub(crate) fn package_extension(
 
 pub(crate) fn build_base_path(
     pg_config: &PgConfig,
-    manifest_path: impl AsRef<Path>,
+    manifest_path: &Path,
     profile: &CargoProfile,
     target: Option<&str>,
 ) -> eyre::Result<PathBuf> {

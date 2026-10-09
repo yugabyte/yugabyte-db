@@ -16,6 +16,8 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/util/status_format.h"
+
 namespace yb {
 namespace tools {
 

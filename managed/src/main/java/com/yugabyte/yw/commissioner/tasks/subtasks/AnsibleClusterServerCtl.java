@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.base.Stopwatch;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -30,7 +31,7 @@ import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class AnsibleClusterServerCtl extends NodeTaskBase {
@@ -52,13 +53,24 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public String command;
     public int sleepAfterCmdMills = 0;
     public boolean isIgnoreError = false;
-    public boolean checkVolumesAttached = false;
     // Set it to deconfigure the server like deleting the conf file.
     public boolean deconfigure = false;
     // Skip stopping processes if VM is paused.
     public boolean skipStopForPausedVM = false;
     // Make best effort to flush tablets before stopping tserver.
     public boolean flushTabletsOnStopTserver = false;
+
+    /**
+     * Check if the volume attached check is needed for this task. This is needed for start command
+     * of tserver and master.
+     *
+     * @return true if volume attached check is needed, false otherwise.
+     */
+    public boolean shouldCheckVolumeAttached() {
+      return "start".equalsIgnoreCase(command)
+          && (ServerType.TSERVER.name().equalsIgnoreCase(process)
+              || ServerType.MASTER.name().equalsIgnoreCase(process));
+    }
   }
 
   @Override
@@ -123,9 +135,13 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
         // Flush tablets before stopping tserver.
         flushTablets(universeOpt.get(), nodeDetails);
       }
-      boolean isNodeAgentSupported =
-          NodeAgentClient.isCloudTypeSupported(
-              universeOpt.get().getUniverseDetails().getPrimaryCluster().userIntent.providerType);
+      Common.CloudType providerType =
+          universeOpt
+              .get()
+              .getUniverseDetails()
+              .getClusterByUuid(nodeDetails.placementUuid)
+              .getProviderCloudType(nodeDetails);
+      boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
       if (isNodeAgentSupported) {
         NodeAgent nodeAgent =
             nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
@@ -188,7 +204,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     config.setOperationTimeout(flushTimeout);
     config.setAdminOperationTimeout(flushTimeout);
     Stopwatch flushStopwatch = Stopwatch.createStarted();
-    try (YBClient ybClient = ybService.getClientWithConfig(config)) {
+    try (YBClientApi ybClient = ybService.getClientWithConfig(config)) {
       ybClient.flushTablets(
           tserverNode.cloudInfo.private_ip, tserverNode.tserverRpcPort, Collections.emptyList());
     } catch (Exception e) {

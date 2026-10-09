@@ -129,28 +129,33 @@ If the user has already stated a preference or named a project, honor it.
 
 3. **Confirm the title and body with the user before creating.**
 
-4. Write the body to a temp file and run:
+4. **Decide the assignee.** Don't ask. By default **leave the issue
+   unassigned** — omit the `--assignee` flag entirely. Only when the user has
+   explicitly named an assignee should you pass `--assignee <username>` (use
+   `@me` if they asked to assign it to themselves).
+
+5. Write the body to a temp file and run (shown here unassigned; add
+   `--assignee <username>` only if the user named an assignee in step 4):
 
    ```
    gh issue create \
      --repo yugabyte/yugabyte-db \
-     --assignee @me \
      --title "<title>" \
      --body-file /tmp/claude/issue-body.md \
      --label "<comma-separated labels from template>"
    ```
 
-   **Always assign the issue to the current user** (`--assignee @me`).
-
-5. Capture the issue number from the URL `gh issue create` prints.
+6. Capture the issue number from the URL `gh issue create` prints.
 
 ### Step 3b: Create a JIRA ticket
 
 1. Ask the user which project (e.g., `PLAT`) if not already known.
-2. Load the Atlassian tool via ToolSearch, then call
+2. Don't ask about the assignee. By default leave the ticket unassigned; only
+   when the user has explicitly named an assignee, set it accordingly.
+3. Load the Atlassian tool via ToolSearch, then call
    `mcp__claude_ai_Atlassian__createJiraIssue` with the confirmed summary and
    description. **Confirm the summary/description with the user before creating.**
-3. Capture the resulting JIRA key.
+4. Capture the resulting JIRA key.
 
 ### Step 4: Report back
 

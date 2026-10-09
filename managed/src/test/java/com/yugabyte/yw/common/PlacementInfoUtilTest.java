@@ -104,7 +104,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -156,16 +156,19 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       userIntent.universeName = univName;
       userIntent.replicationFactor = replFactor;
       userIntent.numNodes = numNodes;
-      userIntent.provider = provider.getUuid().toString();
       userIntent.regionList = regionList;
-      userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
       userIntent.ybSoftwareVersion = "0.0.1";
-      userIntent.accessKeyCode = "akc";
-      userIntent.providerType = cloud;
       userIntent.preferredRegion = r1.getUuid();
-      userIntent.deviceInfo = new DeviceInfo();
-      userIntent.deviceInfo.volumeSize = 100;
-      userIntent.deviceInfo.numVolumes = 1;
+
+      ProviderInitializer providerInitializer =
+          TestUtils.intentProviderInitializer(userIntent, provider);
+      providerInitializer.setInstanceType(ApiUtils.UTIL_INST_TYPE);
+      providerInitializer.setAccessCode("akc");
+      DeviceInfo deviceInfo = new DeviceInfo();
+      deviceInfo.volumeSize = 100;
+      deviceInfo.numVolumes = 1;
+      providerInitializer.setDeviceInfo(deviceInfo);
+
       Universe.saveDetails(univUuid, ApiUtils.mockUniverseUpdater(userIntent));
       universe = Universe.getOrBadRequest(univUuid);
       final Collection<NodeDetails> nodes = universe.getNodes();
@@ -346,12 +349,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.numNodes = rf;
     userIntent.replicationFactor = rf;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.universeName = t.univName;
-    userIntent.providerType = t.cloudType;
-    userIntent.provider = t.provider.getUuid().toString();
+
+    TestUtils.initUserIntent(
+        userIntent,
+        t.provider.getUuid(),
+        t.cloudType,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
     return userIntent;
   }
 
@@ -373,7 +380,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void setUp() {
     testData.add(new TestData(Common.CloudType.aws));
     testData.add(new TestData(onprem));
-    YBClient mockYbClient = Mockito.mock(YBClient.class);
+    YBClientApi mockYbClient = Mockito.mock(YBClientApi.class);
     when(mockService.getClient(Mockito.any(), Mockito.any())).thenReturn(mockYbClient);
     when(mockYbClient.getLeaderMasterHostAndPort())
         .thenReturn(HostAndPort.fromString("some").withDefaultPort(11));
@@ -418,10 +425,15 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     rrIntent.replicationFactor = 1;
     rrIntent.numNodes = 1;
     rrIntent.universeName = universe.getName();
-    rrIntent.provider = provider.getUuid().toString();
     rrIntent.regionList = Collections.singletonList(region.getUuid());
-    rrIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    rrIntent.imageBundleUUID = UUID.randomUUID();
+
+    TestUtils.initUserIntent(
+            rrIntent,
+            provider,
+            ApiUtils.UTIL_INST_TYPE,
+            ApiUtils.getDummyDeviceInfo(1, 100),
+            "demo-access")
+        .setImageBundleUUID(UUID.randomUUID());
 
     UniverseDefinitionTaskParams.Cluster asyncCluster =
         new UniverseDefinitionTaskParams.Cluster(
@@ -565,7 +577,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Universe.saveDetails(univUuid, t.setAzUUIDs());
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
-      primaryCluster.userIntent.instanceType = "m4.medium";
+      TestUtils.updateInstanceType(primaryCluster.userIntent, "m4.medium");
 
       // In case of onprem we need to add nodes.
       if (t.cloudType.equals(onprem)) {
@@ -644,7 +656,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Universe.saveDetails(univUuid, t.setAzUUIDs());
       udtp.setUniverseUUID(univUuid);
       primaryCluster.userIntent.numNodes = INITIAL_NUM_NODES - 2;
-      primaryCluster.userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+      TestUtils.updateInstanceType(primaryCluster.userIntent, ApiUtils.UTIL_INST_TYPE);
       primaryCluster.userIntent.ybSoftwareVersion = "0.0.1";
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
@@ -703,7 +715,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Universe.saveDetails(univUuid, t.setAzUUIDs());
       udtp.setUniverseUUID(univUuid);
       primaryCluster.userIntent.numNodes = INITIAL_NUM_NODES - 1;
-      primaryCluster.userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+      TestUtils.updateInstanceType(primaryCluster.userIntent, ApiUtils.UTIL_INST_TYPE);
       primaryCluster.userIntent.ybSoftwareVersion = "0.0.1";
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
@@ -882,7 +894,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     }
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
     assertEquals(3, nodes.size());
-    primaryCluster.userIntent.instanceType = newType;
+    TestUtils.updateInstanceType(primaryCluster.userIntent, newType);
     PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getId(), primaryCluster.uuid, CREATE);
     nodes = ud.getNodesInCluster(primaryCluster.uuid);
     assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
@@ -1072,7 +1084,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Cluster primaryCluster = udtp.getPrimaryCluster();
       Universe.saveDetails(univUuid, t.setAzUUIDs());
       udtp.setUniverseUUID(univUuid);
-      primaryCluster.userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+      TestUtils.updateInstanceType(primaryCluster.userIntent, ApiUtils.UTIL_INST_TYPE);
       primaryCluster.userIntent.ybSoftwareVersion = "0.0.1";
       t.setAzUUIDs(udtp);
       Map<UUID, Integer> azToNum = PlacementInfoUtil.getAzUuidToNumNodes(udtp.nodeDetailsSet);
@@ -1229,13 +1241,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       t.setAzUUIDs(udtp);
       setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
       Map<String, String> myTags = ImmutableMap.of("MyKey", "MyValue", "Keys", "Values");
-      primaryCluster.userIntent.instanceTags = myTags;
+      ProviderInitializer pi =
+          TestUtils.existingProviderInitializer(primaryCluster.userIntent).setInstanceTags(myTags);
       switch (mode) {
         case WITH_EXPAND:
           primaryCluster.userIntent.numNodes = INITIAL_NUM_NODES + 2;
           break;
         case WITH_FULL_MOVE:
-          primaryCluster.userIntent.instanceType = "m4.medium";
+          pi.setInstanceType("m4.medium");
           break;
         case DEFAULT:
           break;
@@ -1255,7 +1268,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
               : (mode == TagTest.WITH_FULL_MOVE ? INITIAL_NUM_NODES : 0),
           PlacementInfoUtil.getTserversToProvision(nodes).size());
       assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
-      assertEquals(myTags, udtp.getPrimaryCluster().userIntent.instanceTags);
+
+      assertEquals(
+          myTags,
+          udtp.getPrimaryCluster()
+              .userIntent
+              .getInstanceTagsForProvider(
+                  udtp.getPrimaryCluster().userIntent.maybeGetSingleProviderUUID().get()));
     }
   }
 
@@ -2143,17 +2162,21 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
     userIntent.dedicatedNodes = true;
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    userIntent.masterInstanceType = "m4.medium";
-    userIntent.providerType = onprem;
-    userIntent.provider = UUID.randomUUID().toString();
+    String masterInstanceType = "m4.medium";
+
+    TestUtils.initUserIntent(
+            userIntent,
+            UUID.randomUUID(),
+            onprem,
+            ApiUtils.UTIL_INST_TYPE,
+            ApiUtils.getDummyDeviceInfo(1, 100),
+            "demo-access")
+        .setMasterInstanceType(masterInstanceType);
 
     String defaultRegion = getDefaultRegionCode(zones);
     List<NodeDetails> nodes =
         configureNodesByDescriptor(
-            onprem,
-            zones,
-            (descr) -> new Pair<>(userIntent.masterInstanceType, Integer.parseInt(descr[4])));
+            onprem, zones, (descr) -> new Pair<>(masterInstanceType, Integer.parseInt(descr[4])));
     makeDedicated(nodes, new Cluster(ClusterType.PRIMARY, userIntent));
     SelectMastersResult selection = selectMasters(null, nodes, defaultRegion, true, userIntent);
     verifyMasters(
@@ -2176,17 +2199,21 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
     userIntent.dedicatedNodes = true;
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    userIntent.masterInstanceType = "m4.medium";
-    userIntent.providerType = onprem;
-    userIntent.provider = UUID.randomUUID().toString();
+    String masterInstanceType = "m4.medium";
+
+    TestUtils.initUserIntent(
+            userIntent,
+            UUID.randomUUID(),
+            onprem,
+            ApiUtils.UTIL_INST_TYPE,
+            ApiUtils.getDummyDeviceInfo(1, 100),
+            "demo-access")
+        .setMasterInstanceType(masterInstanceType);
 
     String defaultRegion = getDefaultRegionCode(zones);
     List<NodeDetails> nodes =
         configureNodesByDescriptor(
-            onprem,
-            zones,
-            (descr) -> new Pair<>(userIntent.masterInstanceType, Integer.parseInt(descr[4])));
+            onprem, zones, (descr) -> new Pair<>(masterInstanceType, Integer.parseInt(descr[4])));
     makeDedicated(nodes, new Cluster(ClusterType.PRIMARY, userIntent));
     String errorMessage =
         assertThrows(
@@ -2487,13 +2514,18 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.universeName = "Testuniverse";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 5;
-    userIntent.provider = provider.getCode();
     userIntent.regionList = regionList;
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.ybSoftwareVersion = "0.0.1";
-    userIntent.accessKeyCode = "akc";
     userIntent.providerType = cloud;
     userIntent.preferredRegion = r1.getUuid();
+
+    TestUtils.initUserIntent(
+        userIntent,
+        provider.getUuid(),
+        cloud,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "akc");
 
     // Using default region. Only AZs from the default region should have
     // replicationFactor = 1.
@@ -2755,7 +2787,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     // Emulating the `change InstanceType` operation if needed...
     if (changeInstanceType) {
-      universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType = "m2.medium";
+      TestUtils.updateInstanceType(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent, "m2.medium");
+
       NodeDetails node = universe.getNodeOrBadRequest("host-n0");
 
       // Copying node.
@@ -2791,6 +2825,107 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(
         toBeAdded,
         params.nodeDetailsSet.stream().filter(n -> n.state == NodeState.ToBeAdded).count());
+  }
+
+  @Test
+  @Parameters(method = "parametersForCheckReplicasDistributionIsCorrect")
+  public void testCheckReplicasDistributionIsCorrect(
+      String caseName,
+      String specs,
+      @Nullable String defaultRegionCode,
+      @Nullable String expectedMessage) {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    String[] split = specs.split(":");
+    int rf = Integer.parseInt(split[0]);
+    String zoneSpecs = split[1];
+    PlacementInfo placementInfo = buildPlacementInfoFromZoneSpecs(provider, zoneSpecs);
+
+    Region defaultRegion =
+        StringUtils.isEmpty(defaultRegionCode)
+            ? null
+            : Region.getByCode(provider, defaultRegionCode);
+    UUID defaultRegionUUID = defaultRegion == null ? null : defaultRegion.getUuid();
+
+    boolean result =
+        PlacementInfoUtil.checkReplicasDistributionIsCorrect(
+            placementInfo, rf, defaultRegionUUID, false);
+
+    assertEquals(caseName, expectedMessage == null, result);
+
+    if (expectedMessage != null) {
+      IllegalStateException exception =
+          assertThrows(
+              IllegalStateException.class,
+              () ->
+                  PlacementInfoUtil.checkReplicasDistributionIsCorrect(
+                      placementInfo, rf, defaultRegionUUID, true));
+
+      assertTrue(caseName, exception.getMessage().contains(expectedMessage));
+    }
+  }
+
+  @SuppressWarnings("unused")
+  private Object[] parametersForCheckReplicasDistributionIsCorrect() {
+    return new Object[] {
+      // Valid distributions
+      new Object[] {"valid_3az_equal", "3:r1,1,3|r1,1,3|r1,1,3", null, null},
+      new Object[] {"valid_rf3_2regions", "3:r1,1,3|r1,1,3|r2,1,3", null, null},
+      new Object[] {"valid_rf5_3regions", "5:r1,2,3|r2,1,3|r3,2,3", null, null},
+      new Object[] {"valid_special_rf3_two_zones", "3:r1,1,3|r1,1,3", null, null},
+      new Object[] {"valid_replicas_in_default_region_only", "3:r1,2,3|r1,1,3|r2,0,3", "r1", null},
+      // Majority-in-region allowed
+      new Object[] {"allow_majority_in_single_region", "5:r1,2,3|r1,2,3|r2,1,3", null, null},
+      // Incorrect total replicas
+      new Object[] {
+        "wrong_total_replicas",
+        "3:r1,1,3|r1,1,3|r1,2,3",
+        null,
+        "Illegal number of replicas: current 4 but should be 3"
+      },
+      // Zero-replica zones when zone count <= RF
+      new Object[] {"zero_replica_zone", "3:r1,2,3|r1,0,3|r1,1,3", null, "has zero replicas"},
+      // Default region placement
+      new Object[] {
+        "incorrectly_placed_outside_default_region",
+        "3:r1,1,3|r2,1,3",
+        "r1",
+        "should be in default region only"
+      },
+      // Negative per-AZ replication factor
+      new Object[] {
+        "negative_replication_factor",
+        "3:r1,-1,3|r1,1,3|r1,1,3",
+        null,
+        "Cannot have negative number of replicas"
+      },
+      // Replicas exceed available nodes in zone
+      new Object[] {
+        "replicas_exceed_nodes_in_zone",
+        "3:r1,2,1|r2,1,1",
+        null,
+        "Cannot have number of replicas 2 greater than the number of nodes 1"
+      },
+    };
+  }
+
+  /** Builds placement info from zone specs encoded as {@code RF:region,rf,numNodes|...}. */
+  private PlacementInfo buildPlacementInfoFromZoneSpecs(Provider provider, String zoneSpecs) {
+    PlacementInfo pi = new PlacementInfo();
+    int azIndex = 1;
+    for (String zoneSpec : zoneSpecs.split("\\|")) {
+      String[] parts = zoneSpec.split(",");
+      Region region = getOrCreate(provider, parts[0]);
+      int replicationFactor = Integer.parseInt(parts[1]);
+      int numNodesInAZ = Integer.parseInt(parts[2]);
+      AvailabilityZone az =
+          AvailabilityZone.createOrThrow(
+              region, "PlacementAZ " + azIndex, "az-" + azIndex, "subnet-" + azIndex);
+      PlacementInfoUtil.addPlacementZone(az.getUuid(), pi, replicationFactor, numNodesInAZ);
+      azIndex++;
+    }
+    return pi;
   }
 
   @Test
@@ -2936,12 +3071,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = new ArrayList<>(primaryCluster.userIntent.regionList);
     userIntent.enableYSQL = true;
-    userIntent.provider = primaryCluster.userIntent.provider;
-    userIntent.providerType = primaryCluster.userIntent.providerType;
+
+    ProviderInitializer providerInitializer =
+        TestUtils.intentProviderInitializer(
+            userIntent, primaryCluster.userIntent.maybeGetSingleProviderUUID().get());
+    providerInitializer.setAccessCode("demo-access");
+    providerInitializer.setInstanceType(ApiUtils.UTIL_INST_TYPE);
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(t.az1.getUuid(), pi, 1, 1, false);
@@ -3050,9 +3187,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.numNodes = nodesToRemove * 2;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = new ArrayList<>(primaryCluster.userIntent.regionList);
+
+    TestUtils.initUserIntent(
+        userIntent,
+        provider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(zoneToDecrease.getKey(), pi, 1, nodesToRemove * 2, false);
@@ -3283,14 +3425,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     currentNodes.get(2).state = Live;
 
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    userIntent.masterInstanceType = masterInstanceType;
+    ProviderInitializer pi =
+        TestUtils.getProviderInitializerForTests(userIntent, UUID.randomUUID())
+            .setInstanceType(ApiUtils.UTIL_INST_TYPE)
+            .setMasterInstanceType(masterInstanceType);
 
     Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
     cluster.uuid = clusterUUID;
 
     // Checking cloud provider - have infinite number nodes.
-    userIntent.providerType = CloudType.aws;
+    pi.setProviderType(CloudType.aws);
     AvailableNodeTracker awsNodeTracker =
         new AvailableNodeTracker(clusterUUID, Collections.singletonList(cluster), currentNodes);
     assertEquals(Integer.MAX_VALUE, awsNodeTracker.getAvailableForZone(z1.getUuid()));
@@ -3306,7 +3450,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     awsNodeTracker.acquire(z3.getUuid());
 
     // Checking onprem.
-    userIntent.providerType = CloudType.onprem;
+    pi.setProviderType(CloudType.onprem);
     userIntent.dedicatedNodes = true;
     AvailableNodeTracker onpremNodeTracker =
         new AvailableNodeTracker(clusterUUID, Collections.singletonList(cluster), currentNodes);
@@ -3383,13 +3527,17 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.universeName = "aaa";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 5;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = Collections.singletonList(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.ybSoftwareVersion = "0.0.1";
-    userIntent.accessKeyCode = "akc";
-    userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        provider.getUuid(),
+        provider.getCloudCode(),
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "akc");
 
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null, null);
@@ -3417,13 +3565,17 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.universeName = "aaa";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 3;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = Collections.singletonList(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.ybSoftwareVersion = "0.0.1";
-    userIntent.accessKeyCode = "akc";
-    userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        provider.getUuid(),
+        provider.getCloudCode(),
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "akc");
 
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
@@ -3460,14 +3612,18 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.universeName = "aaa";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 3;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = Collections.singletonList(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.ybSoftwareVersion = "0.0.1";
-    userIntent.accessKeyCode = "akc";
     userIntent.dedicatedNodes = true;
-    userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        provider.getUuid(),
+        provider.getCloudCode(),
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "akc");
 
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null, null);
@@ -3480,7 +3636,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Universe.create(params, customer.getId());
 
     params.nodeDetailsSet.forEach(node -> node.state = Live);
-    params.getPrimaryCluster().userIntent.masterInstanceType = "new_type";
+    TestUtils.existingProviderInitializer(params.getPrimaryCluster().userIntent)
+        .setMasterInstanceType("new_type");
 
     PlacementInfoUtil.updateUniverseDefinition(
         params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
@@ -3681,12 +3838,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.universeName = "aaa";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 3;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = Collections.singletonList(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.ybSoftwareVersion = "0.0.1";
-    userIntent.accessKeyCode = "akc";
-    userIntent.providerType = provider.getCloudCode();
+
+    TestUtils.initUserIntent(
+        userIntent,
+        provider.getUuid(),
+        provider.getCloudCode(),
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "akc");
 
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null, null);
@@ -3703,12 +3864,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UserIntent rrUserIntent = new UserIntent();
     rrUserIntent.replicationFactor = 1;
     rrUserIntent.numNodes = 1;
-    rrUserIntent.provider = provider.getUuid().toString();
     rrUserIntent.regionList = Collections.singletonList(region.getUuid());
-    rrUserIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     rrUserIntent.ybSoftwareVersion = "0.0.1";
-    rrUserIntent.accessKeyCode = "akc";
-    rrUserIntent.providerType = provider.getCloudCode();
+
+    TestUtils.initUserIntent(
+        rrUserIntent,
+        provider.getUuid(),
+        provider.getCloudCode(),
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "akc");
 
     params.upsertCluster(rrUserIntent, null, null, UUID.randomUUID(), ClusterType.ASYNC);
     Cluster rrCluster = params.getReadOnlyClusters().get(0);
@@ -3728,7 +3893,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                     PlacementInfoUtil.updateUniverseDefinition(
                         params, customer.getId(), rrCluster.uuid, CREATE))
             .getMessage();
-    assertEquals("Couldn't find 1 node(s) of type " + rrUserIntent.instanceType, errorMessage);
+    assertEquals("Couldn't find 1 node(s) of type " + ApiUtils.UTIL_INST_TYPE, errorMessage);
   }
 
   @Test
@@ -3753,12 +3918,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.universeName = "aaa";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 3;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = Collections.singletonList(r1.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.ybSoftwareVersion = "0.0.1";
-    userIntent.accessKeyCode = "akc";
-    userIntent.providerType = provider.getCloudCode();
+
+    TestUtils.initUserIntent(
+        userIntent,
+        provider.getUuid(),
+        provider.getCloudCode(),
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "akc");
 
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null, null);
@@ -3776,12 +3945,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UserIntent rrUserIntent = new UserIntent();
     rrUserIntent.replicationFactor = 2;
     rrUserIntent.numNodes = 2;
-    rrUserIntent.provider = provider.getUuid().toString();
     rrUserIntent.regionList = Collections.singletonList(r2.getUuid());
-    rrUserIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     rrUserIntent.ybSoftwareVersion = "0.0.1";
-    rrUserIntent.accessKeyCode = "akc";
-    rrUserIntent.providerType = provider.getCloudCode();
+
+    TestUtils.initUserIntent(
+        rrUserIntent,
+        provider.getUuid(),
+        provider.getCloudCode(),
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "akc");
 
     params.upsertCluster(rrUserIntent, null, null, UUID.randomUUID(), ClusterType.ASYNC);
     Cluster rrCluster = params.getReadOnlyClusters().get(0);
@@ -3922,9 +4095,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntent.universeName = "aaa";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 3;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = Collections.singletonList(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+
+    // Here we use overrides so should work for old-fashion style.
+    TestUtils.intentProviderInitializer(userIntent, provider.getUuid())
+        .setInstanceType(ApiUtils.UTIL_INST_TYPE)
+        .setProviderType(provider.getCloudCode())
+        .setAccessCode("akc");
+
     UniverseDefinitionTaskParams.UserIntentOverrides userIntentOverrides =
         new UniverseDefinitionTaskParams.UserIntentOverrides();
     UniverseDefinitionTaskParams.AZOverrides azOverrides =
@@ -3933,9 +4111,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     userIntentOverrides.setAzOverrides(Collections.singletonMap(z1.getUuid(), azOverrides));
     userIntent.setUserIntentOverrides(userIntentOverrides);
     userIntent.ybSoftwareVersion = "0.0.1";
-    userIntent.accessKeyCode = "akc";
-    userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
+
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null, null);
     params.currentClusterType = ClusterType.PRIMARY;
@@ -4006,7 +4183,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     setupAndApplyActions(
         "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
         u -> {
-          u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.numVolumes = 2;
+          TestUtils.updateDeviceInfo(
+              u.getUniverseDetails().getPrimaryCluster().userIntent,
+              UniverseTaskBase.ServerType.TSERVER,
+              deviceInfo -> deviceInfo.numVolumes = 2);
         },
         Collections.emptyMap(),
         Collections.emptyList(),
@@ -4081,10 +4261,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         "r1-z1r1-2-1;r1-z2r1-1-1;r1-z3r1-1-1",
         u -> {
           ApiUtils.mockUniverseUpdaterSetDedicated().run(u);
-          u.getUniverseDetails().getPrimaryCluster().userIntent.masterInstanceType =
-              u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
-          u.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo =
-              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.clone();
+          //          u.getUniverseDetails().getPrimaryCluster().userIntent.masterInstanceType =
+          //              u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+          //          u.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo =
+          //              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.clone();
         },
         Collections.emptyMap(),
         Collections.singletonList("c5.2xlarge"),
@@ -4312,10 +4492,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             existing.getUniverseUUID(),
             u -> {
               UniverseDefinitionTaskParams details = u.getUniverseDetails();
-              details.getPrimaryCluster().userIntent.deviceInfo.storageType =
-                  PublicCloudConstants.StorageType.GP3;
-              details.getPrimaryCluster().userIntent.deviceInfo.throughput = 500;
-              details.getPrimaryCluster().userIntent.deviceInfo.diskIops = 5000;
+              TestUtils.updateDeviceInfo(
+                  u.getUniverseDetails().getPrimaryCluster().userIntent,
+                  UniverseTaskBase.ServerType.TSERVER,
+                  deviceInfo -> {
+                    deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
+                    deviceInfo.throughput = 500;
+                    deviceInfo.diskIops = 5000;
+                  });
               u.setUniverseDetails(details);
             });
 
@@ -4333,7 +4517,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     AvailabilityZone z1r3 = AvailabilityZone.createOrThrow(r3, "z1r3", "z1r3", "subnet-1");
 
     List<String> allInstanceTypes = new ArrayList<>();
-    allInstanceTypes.add(existing.getUniverseDetails().getPrimaryCluster().userIntent.instanceType);
+    allInstanceTypes.add(
+        existing
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getBaseInstanceType(provider.getUuid()));
     InstanceType.upsert(
         provider.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     InstanceType.upsert(
@@ -4428,11 +4617,15 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             existing.getUniverseUUID(),
             u -> {
               UniverseDefinitionTaskParams details = u.getUniverseDetails();
-              details.getPrimaryCluster().userIntent.deviceInfo.storageType =
-                  PublicCloudConstants.StorageType.GP3;
-              details.getPrimaryCluster().userIntent.imageBundleUUID = DEFAULT_IMAGE_BUNDLE_UUID;
-              details.getPrimaryCluster().userIntent.deviceInfo.throughput = 500;
-              details.getPrimaryCluster().userIntent.deviceInfo.diskIops = 5000;
+              TestUtils.existingProviderInitializer(
+                      u.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .updateDeviceInfo(
+                      deviceInfo -> {
+                        deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
+                        deviceInfo.throughput = 500;
+                        deviceInfo.diskIops = 5000;
+                      })
+                  .setImageBundleUUID(DEFAULT_IMAGE_BUNDLE_UUID);
               details.communicationPorts.masterHttpPort = 7000;
               u.setUniverseDetails(details);
               if (mutator != null) {
@@ -4463,7 +4656,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       }
     }
     Set<String> instanceTypes = new HashSet<>();
-    instanceTypes.add(existing.getUniverseDetails().getPrimaryCluster().userIntent.instanceType);
+    instanceTypes.add(
+        existing
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getBaseInstanceType(provider.getUuid()));
     for (String instanceType : additionalInstanceTypes) {
       InstanceType.upsert(
           provider.getUuid(), instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -4524,14 +4722,25 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         PlacementInfoUtil.isSamePlacement(oldCluster.placementInfo, cluster.placementInfo);
     boolean rfTheSame =
         cluster.userIntent.replicationFactor == oldCluster.userIntent.replicationFactor;
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
     boolean instanceTypesUnchanged =
-        Objects.equals(oldCluster.userIntent.instanceType, cluster.userIntent.instanceType)
+        Objects.equals(
+                oldCluster.userIntent.getBaseInstanceType(providerUUID),
+                cluster.userIntent.getBaseInstanceType(providerUUID))
             && Objects.equals(
-                oldCluster.userIntent.masterInstanceType, cluster.userIntent.masterInstanceType);
+                oldCluster.userIntent.getBaseInstanceType(
+                    providerUUID, UniverseTaskBase.ServerType.MASTER),
+                cluster.userIntent.getBaseInstanceType(
+                    providerUUID, UniverseTaskBase.ServerType.MASTER));
     boolean devicesUnchanged =
-        Objects.equals(oldCluster.userIntent.deviceInfo, cluster.userIntent.deviceInfo)
+        Objects.equals(
+                oldCluster.userIntent.getBaseDeviceInfo(providerUUID),
+                cluster.userIntent.getBaseDeviceInfo(providerUUID))
             && Objects.equals(
-                oldCluster.userIntent.masterDeviceInfo, cluster.userIntent.masterDeviceInfo);
+                oldCluster.userIntent.getBaseDeviceInfo(
+                    providerUUID, UniverseTaskBase.ServerType.MASTER),
+                cluster.userIntent.getBaseDeviceInfo(
+                    providerUUID, UniverseTaskBase.ServerType.MASTER));
 
     List<NodeDetails> toBeRemoved =
         params.nodeDetailsSet.stream()
@@ -4572,8 +4781,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     for (NodeDetails nodeDetails : toBeRemoved) {
       boolean absentInPlacement = !curAZs.contains(nodeDetails.azUuid);
 
-      DeviceInfo oldDevice = oldCluster.userIntent.getDeviceInfoForNode(nodeDetails);
-      DeviceInfo newDevice = cluster.userIntent.getDeviceInfoForNode(nodeDetails);
+      DeviceInfo oldDevice = oldCluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
+      DeviceInfo newDevice = cluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
       boolean sameDevice = oldDevice.equals(newDevice);
 
       String oldInstanceType = oldCluster.userIntent.getInstanceTypeForNode(nodeDetails);
@@ -4645,11 +4854,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             u -> {
               UniverseDefinitionTaskParams details = u.getUniverseDetails();
               UserIntent userIntent = details.getPrimaryCluster().userIntent;
-              userIntent.deviceInfo = new DeviceInfo();
-              userIntent.deviceInfo.volumeSize = 100;
-              userIntent.deviceInfo.numVolumes = 1;
-              userIntent.deviceInfo.storageClass = "standart";
-              userIntent.instanceType = "i3.instance";
+              DeviceInfo deviceInfo = new DeviceInfo();
+              deviceInfo.volumeSize = 100;
+              deviceInfo.numVolumes = 1;
+              deviceInfo.storageClass = "standard";
+
+              TestUtils.existingProviderInitializer(userIntent)
+                  .setDeviceInfo(deviceInfo)
+                  .setInstanceType("i3.instance");
               u.setUniverseDetails(details);
             });
 
@@ -4659,7 +4871,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     params.clusters = existing.getUniverseDetails().clusters;
     params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
     params.userAZSelected = false;
-    params.getPrimaryCluster().userIntent.instanceType = "c3.large";
+    TestUtils.updateInstanceType(params.getPrimaryCluster().userIntent, "c3.large");
 
     PlacementInfoUtil.updateUniverseDefinition(
         params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
@@ -4897,7 +5109,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             params.getPrimaryCluster().getOverallPlacement()));
 
     // This will lead to a full move
-    params.getPrimaryCluster().userIntent.deviceInfo.numVolumes += 1;
+    TestUtils.updateDeviceInfo(
+        params.getPrimaryCluster().userIntent,
+        UniverseTaskBase.ServerType.TSERVER,
+        deviceInfo -> deviceInfo.numVolumes += 1);
 
     PlacementInfoUtil.updateUniverseDefinition(
         params,
@@ -4911,6 +5126,120 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<NodeState, Integer> counts = new HashMap<>();
     params.nodeDetailsSet.forEach(n -> counts.merge(n.state, 1, Integer::sum));
     assertEquals(Map.of(ToBeRemoved, 3, ToBeAdded, 5), counts);
+  }
+
+  // getOverallPlacement() rebuilds the PlacementInfo from partitions. It must carry over the K8s
+  // statefulset indices from the partition placement, otherwise master addresses / pod names
+  // computed from the overall placement point at the wrong (old) statefulsets during a full move.
+  // It must also carry leaderPreference, which addPlacementZone does not set.
+  @Test
+  public void testGetOverallPlacementCopiesK8sStsIndicesFromPartitions() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.kubernetes);
+    Region region = Region.create(provider, "r1", "region-1", "yb-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(region, "az1", "az1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(region, "az2", "az2", "subnet-2");
+
+    PlacementInfo partitionPlacement = new PlacementInfo();
+    PlacementAZ pAz1 =
+        PlacementInfoUtil.addPlacementZone(az1.getUuid(), partitionPlacement, 1, 1, true);
+    PlacementAZ pAz2 =
+        PlacementInfoUtil.addPlacementZone(az2.getUuid(), partitionPlacement, 1, 1, true);
+    pAz1.masterStsIndex = 2;
+    pAz1.tsStsIndex = 3;
+    pAz1.leaderPreference = 1;
+    pAz2.masterStsIndex = 4;
+    pAz2.tsStsIndex = 5;
+    pAz2.leaderPreference = 2;
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = CloudType.kubernetes;
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.replicationFactor = 2;
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partition.setDefaultPartition(true);
+    partition.setReplicationFactor(2);
+    partition.setPlacement(partitionPlacement);
+    cluster.setPartitions(Collections.singletonList(partition));
+
+    PlacementInfo overall = cluster.getOverallPlacement();
+
+    PlacementAZ overallAz1 = overall.findByAZUUID(az1.getUuid());
+    PlacementAZ overallAz2 = overall.findByAZUUID(az2.getUuid());
+    assertNotNull(overallAz1);
+    assertNotNull(overallAz2);
+    assertEquals(2, overallAz1.masterStsIndex);
+    assertEquals(3, overallAz1.tsStsIndex);
+    assertEquals(1, overallAz1.leaderPreference);
+    assertEquals(4, overallAz2.masterStsIndex);
+    assertEquals(5, overallAz2.tsStsIndex);
+    assertEquals(2, overallAz2.leaderPreference);
+  }
+
+  // A K8s full move increments the statefulset index on cluster.placementInfo. Those increments
+  // must be propagated to the partition placements too, since getOverallPlacement() (and therefore
+  // the computed master addresses) is rebuilt from partitions.
+  @Test
+  public void testApplyK8sStsIndexIncrementSyncsPartitions() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.kubernetes);
+    Region region = Region.create(provider, "r1", "region-1", "yb-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(region, "az1", "az1", "subnet-1");
+
+    // cluster.placementInfo and the partition placement are distinct objects, both at index 0,
+    // mirroring what the client submits for a partition-based (new UX) universe.
+    PlacementInfo clusterPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), clusterPlacement, 1, 1, true);
+
+    PlacementInfo partitionPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), partitionPlacement, 1, 1, true);
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = CloudType.kubernetes;
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.replicationFactor = 1;
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    cluster.placementInfo = clusterPlacement;
+
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partition.setDefaultPartition(true);
+    partition.setReplicationFactor(1);
+    partition.setPlacement(partitionPlacement);
+    cluster.setPartitions(Collections.singletonList(partition));
+
+    // Full move for the AZ: an existing master+tserver removed and a new master+tserver added.
+    Set<NodeDetails> nodes = new HashSet<>();
+    nodes.add(makeK8sMoveNode(az1.getUuid(), ToBeRemoved));
+    nodes.add(makeK8sMoveNode(az1.getUuid(), ToBeAdded));
+
+    PlacementInfoUtil.applyK8sStsIndexIncrement(cluster, nodes);
+
+    PlacementAZ clusterAz = cluster.placementInfo.findByAZUUID(az1.getUuid());
+    assertEquals(1, clusterAz.masterStsIndex);
+    assertEquals(1, clusterAz.tsStsIndex);
+
+    // Partition placement must be synced with the incremented cluster placement.
+    PlacementAZ partitionAz = partition.getPlacement().findByAZUUID(az1.getUuid());
+    assertEquals(1, partitionAz.masterStsIndex);
+    assertEquals(1, partitionAz.tsStsIndex);
+
+    // getOverallPlacement() (rebuilt from partitions) must reflect the new indices.
+    PlacementAZ overallAz = cluster.getOverallPlacement().findByAZUUID(az1.getUuid());
+    assertEquals(1, overallAz.masterStsIndex);
+    assertEquals(1, overallAz.tsStsIndex);
+  }
+
+  private NodeDetails makeK8sMoveNode(UUID azUuid, NodeState state) {
+    NodeDetails node = new NodeDetails();
+    node.azUuid = azUuid;
+    node.state = state;
+    node.isMaster = true;
+    node.isTserver = true;
+    return node;
   }
 
   @Test
@@ -4968,10 +5297,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     rrIntent.replicationFactor = 1;
     rrIntent.numNodes = 1;
     rrIntent.universeName = universe.getName();
-    rrIntent.provider = provider.getUuid().toString();
     rrIntent.regionList = Collections.singletonList(region.getUuid());
-    rrIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    rrIntent.imageBundleUUID = UUID.randomUUID();
+
+    TestUtils.initUserIntent(
+            rrIntent,
+            provider.getUuid(),
+            provider.getCloudCode(),
+            ApiUtils.UTIL_INST_TYPE,
+            ApiUtils.getDummyDeviceInfo(1, 100),
+            "akc")
+        .setImageBundleUUID(UUID.randomUUID());
 
     UniverseDefinitionTaskParams.Cluster asyncCluster =
         new UniverseDefinitionTaskParams.Cluster(
@@ -4991,7 +5326,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.currentClusterType = ClusterType.ASYNC;
-    taskParams.getReadOnlyClusters().get(0).userIntent.imageBundleUUID = UUID.randomUUID();
+    TestUtils.existingProviderInitializer(taskParams.getReadOnlyClusters().get(0).userIntent)
+        .setImageBundleUUID(UUID.randomUUID());
 
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), asyncCluster.uuid, EDIT);
@@ -5105,6 +5441,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                     !curZones.contains(az.getUuid())
                         && curRegions.contains(az.getRegion().getUuid()))
             .collect(Collectors.toList());
+    UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
     switch (action) {
       case MODIFY_IMAGE_BUNDLE_UUID:
         if (Objects.equals(userIntent.imageBundleUUID, DEFAULT_IMAGE_BUNDLE_UUID)) {
@@ -5235,9 +5572,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       case CHANGE_INSTANCE_TYPE:
         String curInstanceType;
         if (action == UserAction.CHANGE_MASTER_INSTANCE_TYPE) {
-          curInstanceType = userIntent.masterInstanceType;
+          curInstanceType =
+              userIntent.getBaseInstanceType(providerUUID, UniverseTaskBase.ServerType.MASTER);
         } else {
-          curInstanceType = userIntent.instanceType;
+          curInstanceType = userIntent.getBaseInstanceType(providerUUID);
         }
         Set<String> notUsed =
             allInstanceTypes.stream()
@@ -5245,17 +5583,17 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                 .collect(Collectors.toSet());
         String newType = getFromList(notUsed, var);
         if (action == UserAction.CHANGE_MASTER_INSTANCE_TYPE) {
-          userIntent.masterInstanceType = newType;
+          TestUtils.updateInstanceType(userIntent, UniverseTaskBase.ServerType.MASTER, newType);
         } else {
-          userIntent.instanceType = newType;
+          TestUtils.updateInstanceType(userIntent, UniverseTaskBase.ServerType.TSERVER, newType);
         }
         return newType;
       case CHANGE_DEVICE_DETAILS:
       case CHANGE_MASTER_DEVICE_DETAILS:
         DeviceInfo deviceInfo =
             action == UserAction.CHANGE_DEVICE_DETAILS
-                ? userIntent.deviceInfo
-                : userIntent.masterDeviceInfo;
+                ? userIntent.getBaseDeviceInfo(providerUUID)
+                : userIntent.getBaseDeviceInfo(providerUUID, UniverseTaskBase.ServerType.MASTER);
         int p = var % 6;
         if (p == 0) {
           // dec volume size
@@ -5345,5 +5683,54 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                     .collect(Collectors.toList()))
         // otherwise an empty collection
         .orElse(Collections.emptyList());
+  }
+
+  private UniverseDefinitionTaskParams.PartitionInfo buildPartition(
+      AvailabilityZone az, int partitionRf, int azRf, int numNodes, boolean defaultPartition) {
+    PlacementInfo placement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az.getUuid(), placement, azRf, numNodes, true);
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partition.setDefaultPartition(defaultPartition);
+    partition.setReplicationFactor(partitionRf);
+    partition.setPlacement(placement);
+    return partition;
+  }
+
+  @Test
+  public void testValidatePartitionRejectsNodesLessThanRf() {
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        buildPartition(testData.get(0).az1, 3, 3, 2, true);
+
+    UnsupportedOperationException ex =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () ->
+                PlacementInfoUtil.validatePartition(
+                    partition, false /* geoPartitioned */, ClusterType.PRIMARY));
+    assertTrue(
+        ex.getMessage().contains("Number of nodes 2 cannot be less than the replication factor 3"));
+  }
+
+  @Test
+  public void testValidatePartitionsRFReject() {
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        buildPartition(testData.get(0).az1, 4, 4, 4, true);
+
+    UserIntent intent = new UserIntent();
+    intent.replicationFactor = 3;
+    intent.numNodes = 3;
+    Cluster primary = new Cluster(ClusterType.PRIMARY, intent);
+    primary.setPartitions(Collections.singletonList(partition));
+
+    UnsupportedOperationException ex =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> PlacementInfoUtil.validatePartitions(primary));
+    assertTrue(ex.getMessage().contains("Replication factor 4 not allowed"));
+
+    Cluster async = new Cluster(ClusterType.ASYNC, intent);
+    async.setPartitions(Collections.singletonList(partition));
+    PlacementInfoUtil.validatePartitions(async);
   }
 }

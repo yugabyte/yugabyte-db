@@ -488,7 +488,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestRetentionBarrierSettingRace) {
   google::SetVLOGLevel("tablet*", 1);
   SyncPoint::GetInstance()->LoadDependency(
       {{"Tablet::SetAllInitialCDCSDKRetentionBarriers::End", "UpdatePeersAndMetrics::Start"},
-       {"TabletPeer::reset_all_cdc_retention_barriers_if_stale::End",
+       {"TabletPeer::reset_cdc_retention_barriers_if_stale::End",
         "PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start"}});
   SyncPoint::GetInstance()->EnableProcessing();
 

@@ -34,6 +34,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using namespace std::literals;

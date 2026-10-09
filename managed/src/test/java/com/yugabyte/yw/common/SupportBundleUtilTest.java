@@ -3,15 +3,26 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.ScopedRuntimeConfig;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -25,12 +36,15 @@ import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class SupportBundleUtilTest extends FakeDBApplication {
@@ -45,9 +59,24 @@ public class SupportBundleUtilTest extends FakeDBApplication {
   public static final String ybc_logs_regex_pattern =
       "((?:.*)(?:yb-)(?:controller(?:-server)?)(?:.*))(\\d{8}-\\d{6})(?:\\..*)?";
 
+  private Path overriddenConfigTestDir;
+
   @Before
   public void setup() {
     MockitoAnnotations.initMocks(this);
+    try {
+      overriddenConfigTestDir =
+          Files.createTempDirectory("support-bundle-overridden-runtime-config-test");
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @After
+  public void tearDownOverriddenConfigTestDir() throws IOException {
+    if (overriddenConfigTestDir != null) {
+      FileUtils.deleteDirectory(overriddenConfigTestDir.toFile());
+    }
   }
 
   @Test
@@ -491,8 +520,11 @@ public class SupportBundleUtilTest extends FakeDBApplication {
 
   @Test
   public void testGetServiceAccountName() throws ParseException {
+    // Use a real customer so the provider's customer_uuid FK is satisfied (Postgres enforces it;
+    // H2 previously did not).
+    Customer customer = ModelFactory.testCustomer();
     Provider testProvider =
-        Provider.create(UUID.randomUUID(), Common.CloudType.kubernetes, "testProvider");
+        Provider.create(customer.getUuid(), Common.CloudType.kubernetes, "testProvider");
 
     Map<String, String> provConfig1 = new HashMap<String, String>();
     provConfig1.put("KUBECONFIG_SERVICE_ACCOUNT", "old service account");
@@ -511,5 +543,118 @@ public class SupportBundleUtilTest extends FakeDBApplication {
     assertEquals(
         "service-account",
         supportBundleUtil.getServiceAccountName(testProvider, mockKubernetesManager, envConfig));
+  }
+
+  private JsonNode readOverriddenConfig(String destDir) throws IOException {
+    Path file = Paths.get(destDir, "overridden_runtime_config.json");
+    assertTrue("expected " + file, Files.exists(file));
+    String raw = Files.readString(file, StandardCharsets.UTF_8);
+    JsonNode node = Json.parse(raw);
+    assertTrue(node.isArray());
+    return node;
+  }
+
+  private JsonNode findEntry(JsonNode array, String key, UUID scopeUuid) {
+    for (JsonNode entry : array) {
+      if (key.equals(entry.path("key").asText())
+          && scopeUuid.toString().equals(entry.path("scopeUuid").asText())) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  @Test
+  public void testGetRuntimeConfigMetadata_writesOverriddenConfigs() throws IOException {
+    Customer customer = ModelFactory.testCustomer("tc", "acme");
+    Provider provider = ModelFactory.awsProvider(customer);
+    Universe universe = ModelFactory.createUniverse("prod-universe", customer.getId());
+    Customer otherCustomer = ModelFactory.testCustomer("ot", "other-co");
+
+    RuntimeConfigEntry.upsertGlobal("yb.sb.startYear", "2024");
+    RuntimeConfigEntry.upsert(customer, "yb.kms.allow_oci", "true");
+    RuntimeConfigEntry.upsert(provider, "yb.task.max_threads", "8");
+    RuntimeConfigEntry.upsert(universe, "yb.upgrade.vm_image", "false");
+    RuntimeConfigEntry.upsert(otherCustomer, "yb.kms.allow_oci", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.security.secret", "super-secret-value");
+    RuntimeConfigEntry.upsert(customer, "yb.api.mode.strict", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.metrics.auth_password", "prom-secret-password");
+
+    String destDir = overriddenConfigTestDir.toString();
+    supportBundleUtil.getRuntimeConfigMetadata(customer, destDir);
+
+    JsonNode array = readOverriddenConfig(destDir);
+
+    JsonNode global = findEntry(array, "yb.sb.startYear", ScopedRuntimeConfig.GLOBAL_SCOPE_UUID);
+    assertNotNull(global);
+    assertTrue(global.path("value").isTextual());
+    assertEquals("2024", global.path("value").asText());
+    assertEquals("GLOBAL", global.path("scopeType").asText());
+    assertEquals("global", global.path("scopeName").asText());
+
+    JsonNode customerEntry = findEntry(array, "yb.kms.allow_oci", customer.getUuid());
+    assertNotNull(customerEntry);
+    assertTrue(customerEntry.path("value").isTextual());
+    assertEquals("true", customerEntry.path("value").asText());
+    assertEquals("CUSTOMER", customerEntry.path("scopeType").asText());
+    assertEquals("acme", customerEntry.path("scopeName").asText());
+
+    JsonNode providerEntry = findEntry(array, "yb.task.max_threads", provider.getUuid());
+    assertNotNull(providerEntry);
+    assertTrue(providerEntry.path("value").isTextual());
+    assertEquals("8", providerEntry.path("value").asText());
+    assertEquals("PROVIDER", providerEntry.path("scopeType").asText());
+    assertEquals(provider.getName(), providerEntry.path("scopeName").asText());
+
+    JsonNode universeEntry = findEntry(array, "yb.upgrade.vm_image", universe.getUniverseUUID());
+    assertNotNull(universeEntry);
+    assertTrue(universeEntry.path("value").isTextual());
+    assertEquals("false", universeEntry.path("value").asText());
+    assertEquals("UNIVERSE", universeEntry.path("scopeType").asText());
+    assertEquals("prod-universe", universeEntry.path("scopeName").asText());
+
+    JsonNode secret = findEntry(array, "yb.security.secret", ScopedRuntimeConfig.GLOBAL_SCOPE_UUID);
+    assertNotNull(secret);
+    assertTrue(secret.path("value").isTextual());
+    assertEquals(
+        CommonUtils.getEmptiableMaskedValue("yb.security.secret", "super-secret-value"),
+        secret.path("value").asText());
+    assertNotEquals("super-secret-value", secret.path("value").asText());
+
+    JsonNode apiMode = findEntry(array, "yb.api.mode.strict", customer.getUuid());
+    assertNotNull(apiMode);
+    assertTrue(apiMode.path("value").isTextual());
+    assertEquals("true", apiMode.path("value").asText());
+
+    JsonNode authPassword =
+        findEntry(array, "yb.metrics.auth_password", ScopedRuntimeConfig.GLOBAL_SCOPE_UUID);
+    assertNotNull(authPassword);
+    assertTrue(authPassword.path("value").isTextual());
+    assertEquals(
+        CommonUtils.getEmptiableMaskedValue("yb.metrics.auth_password", "prom-secret-password"),
+        authPassword.path("value").asText());
+    assertNotEquals("prom-secret-password", authPassword.path("value").asText());
+
+    assertNull(findEntry(array, "yb.kms.allow_oci", otherCustomer.getUuid()));
+  }
+
+  @Test
+  public void testGetRuntimeConfigMetadata_emptyOverridesWritesEmptyArray() throws IOException {
+    Customer customer = ModelFactory.testCustomer("em", "empty-co");
+    String destDir = overriddenConfigTestDir.toString();
+    supportBundleUtil.getRuntimeConfigMetadata(customer, destDir);
+    JsonNode array = readOverriddenConfig(destDir);
+    assertEquals(0, array.size());
+  }
+
+  @Test
+  public void testGatherAndSaveAllMetadata_writesOverriddenConfigJson() throws IOException {
+    Customer customer = ModelFactory.testCustomer("ga", "gather-all-co");
+    Universe universe = ModelFactory.createUniverse("gather-universe", customer.getId());
+    String destDir = overriddenConfigTestDir.toString();
+    Date now = new Date();
+    supportBundleUtil.gatherAndSaveAllMetadata(customer, universe, destDir, now, now);
+    JsonNode array = readOverriddenConfig(destDir);
+    assertTrue(array.isArray());
   }
 }

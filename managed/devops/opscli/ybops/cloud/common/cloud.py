@@ -529,14 +529,23 @@ class AbstractCloud(AbstractCommandParser):
                 raise YBOpsRuntimeError(
                     f"RSA key size in server cert at {server_key_path} is less than 2048 bits.")
 
-            # Verify key signs the certificate
-            cert_md5 = remote_shell.run_command_raw(
-                "openssl x509 -noout -modulus -in {} | openssl md5".format(server_crt_path)).stdout
-            key_md5 = remote_shell.run_command_raw(
-                "openssl rsa -noout -modulus -in {} | openssl md5".format(
-                    server_key_path)
-                ).stdout
-            if cert_md5 != key_md5:
+            # Verify key signs the certificate. This only compares the two moduli, so the digest
+            # is interchangeable - it is sha256 rather than md5 because a node in FIPS mode has no
+            # md5 in its OpenSSL and the command would fail outright.
+            cert_result = remote_shell.run_command_raw(
+                "openssl x509 -noout -modulus -in {} | openssl sha256".format(
+                    server_crt_path))
+            key_result = remote_shell.run_command_raw(
+                "openssl rsa -noout -modulus -in {} | openssl sha256".format(
+                    server_key_path))
+            # Checked before comparing: run_command_raw does not raise, and a failed command
+            # leaves stdout empty on both sides, so an unchecked comparison would read as a match
+            # and pass a cert/key pair nothing had actually verified.
+            for path, result in ((server_crt_path, cert_result), (server_key_path, key_result)):
+                if result.exited != 0:
+                    raise YBOpsRuntimeError(
+                        "Could not read the modulus of {}: {}".format(path, result.stderr))
+            if not cert_result.stdout.strip() or cert_result.stdout != key_result.stdout:
                 raise YBOpsRuntimeError(
                     "Server certificate and server key do not match.")
 
@@ -672,44 +681,6 @@ class AbstractCloud(AbstractCommandParser):
         check_rm_result(result)
         # No need to check the result of this command.
         remote_shell.run_command_raw('rm -d ' + xcluster_dest_certs_dir)
-
-    def copy_client_certs(
-            self,
-            connect_options,
-            root_cert_path,
-            client_cert_path,
-            client_key_path,
-            certs_location):
-        remote_shell = RemoteShell(connect_options)
-        yb_root_cert_path = os.path.join(
-            self.YSQLSH_CERT_DIR, self.CLIENT_ROOT_NAME)
-        yb_client_cert_path = os.path.join(
-            self.YSQLSH_CERT_DIR, self.CLIENT_CERT_NAME)
-        yb_client_key_path = os.path.join(
-            self.YSQLSH_CERT_DIR, self.CLIENT_KEY_NAME)
-
-        logging.info("Moving client certs located at {}, {}, {}.".format(
-            root_cert_path, client_cert_path, client_key_path))
-
-        remote_shell.check_exec_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
-        # Give write permissions. If the command fails, ignore.
-        remote_shell.check_exec_command(
-            'chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
-
-        if certs_location == self.CERT_LOCATION_NODE:
-            remote_shell.check_exec_command("cp '{}' '{}'".format(root_cert_path,
-                                                                  yb_root_cert_path))
-            remote_shell.check_exec_command("cp '{}' '{}'".format(client_cert_path,
-                                                                  yb_client_cert_path))
-            remote_shell.check_exec_command("cp '{}' '{}'".format(client_key_path,
-                                                                  yb_client_key_path))
-        if certs_location == self.CERT_LOCATION_PLATFORM:
-            remote_shell.put_file(root_cert_path, yb_root_cert_path)
-            remote_shell.put_file(client_cert_path, yb_client_cert_path)
-            remote_shell.put_file(client_key_path, yb_client_key_path)
-
-        # Reset the write permission as a sanity check.
-        remote_shell.check_exec_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
     def cleanup_client_certs(self, connect_options):
         remote_shell = RemoteShell(connect_options)

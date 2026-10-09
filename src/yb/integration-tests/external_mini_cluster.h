@@ -52,8 +52,6 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_daemon.h"
 #include "yb/integration-tests/external_yb_controller.h"
@@ -77,7 +75,6 @@
 
 namespace yb {
 
-using strings::Substitute;
 
 class ExternalDaemon;
 class ExternalMaster;
@@ -844,6 +841,11 @@ class ExternalTabletServer : public ExternalDaemon {
       std::vector<std::pair<std::string, std::string>> flags = {});
 
   Status SetNumDrives(uint16_t num_drives);
+
+  // In addition to stopping the tablet server, waits for its postgres child to exit.
+  void Shutdown(
+      SafeShutdown safe_shutdown = SafeShutdown::kFalse,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse) override;
 
   // IP addresses to bind to.
   const std::string& bind_host() const {

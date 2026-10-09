@@ -380,6 +380,8 @@ static void isDatabaseColocated(Archive *fout);
 static char *extractYbPresplitFromReloptions(const char *reloptions);
 static char *removeYbPresplitFromReloptions(const char *reloptions);
 static bool ybDumpPresplitInCreate(Archive *fout);
+static const char *ybFindIndexdefClause(const char *indexdef,
+										const char *clause);
 static char *ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 										  const char *value);
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
@@ -496,6 +498,7 @@ main(int argc, char **argv)
 		{"on-conflict-do-nothing", no_argument, &dopt.do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 10},
 		{"include-foreign-data", required_argument, NULL, 11},
+		{"restrict-key", required_argument, NULL, 25},
 
 		/* YB: does not have short option letter */
 		{"no-serializable-deferrable", no_argument, &no_serializable_deferrable, 1},
@@ -504,8 +507,8 @@ main(int argc, char **argv)
 		{"include-yb-metadata", no_argument, &dopt.include_yb_metadata, 1},
 		{"dump-role-checks", no_argument, &dopt.yb_dump_role_checks, 1},
 		{"read-time", required_argument, NULL, 12},
-		{"rename-database", required_argument, NULL, 25},
-		{"rename-owner", required_argument, NULL, 26},
+		{"rename-database", required_argument, NULL, 26},
+		{"rename-owner", required_argument, NULL, 27},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -758,11 +761,15 @@ main(int argc, char **argv)
 				with_statistics = true;
 				break;
 
-			case 25:			/* YB: --rename-database=new_db_name */
+			case 25:
+				dopt.restrict_key = pg_strdup(optarg);
+				break;
+
+			case 26:			/* YB: --rename-database=new_db_name */
 				dopt.yb_rename_database = pg_strdup(optarg);
 				break;
 
-			case 26:			/* YB: --rename-owner=new_owner_name */
+			case 27:			/* YB: --rename-owner=new_owner_name */
 				dopt.yb_rename_owner = pg_strdup(optarg);
 				break;
 
@@ -897,7 +904,35 @@ main(int argc, char **argv)
 
 	/* archiveFormat specific setup */
 	if (archiveFormat == archNull)
+	{
 		plainText = 1;
+
+		/*
+		 * If you don't provide a restrict key, one will be appointed for you.
+		 */
+		if (!dopt.restrict_key)
+			dopt.restrict_key = generate_restrict_key();
+		if (!dopt.restrict_key)
+			pg_fatal("could not generate restrict key");
+		if (!valid_restrict_key(dopt.restrict_key))
+			pg_fatal("invalid restrict key");
+	}
+	else if (dopt.restrict_key)
+		pg_fatal("option --restrict-key can only be used with --format=plain");
+
+	/*
+	 * YB: --include-yb-metadata guards its statements with psql meta-commands
+	 * (\if, \else, \endif, \set, \gset, \echo).  Several are stored in a TOC
+	 * entry rather than written to the script, so a non-plain archive carries
+	 * them as text that pg_restore replays inside the restricted-mode region it
+	 * brackets the script with, where psql rejects them.  The brackets below
+	 * cannot help there, because pg_restore mints its own restrict key.
+	 *
+	 * This also covers --dump-role-checks, which the check above already
+	 * requires --include-yb-metadata for.
+	 */
+	if (dopt.include_yb_metadata && !plainText)
+		pg_fatal("option --include-yb-metadata can only be used with --format=plain");
 
 	/* Custom and directory formats are compressed by default, others not */
 	if (compressLevel == -1)
@@ -1177,6 +1212,7 @@ main(int argc, char **argv)
 	ropt->enable_row_security = dopt.enable_row_security;
 	ropt->sequence_data = dopt.sequence_data;
 	ropt->binary_upgrade = dopt.binary_upgrade;
+	ropt->restrict_key = dopt.restrict_key ? pg_strdup(dopt.restrict_key) : NULL;
 
 	if (compressLevel == -1)
 		ropt->compression = 0;
@@ -1266,7 +1302,8 @@ help(const char *progname)
 	printf(_("  --include-yb-metadata        include Yugabyte-specific metadata, uses extended\n"
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
-			 "                               like SPLIT details).\n"));
+			 "                               like SPLIT details).\n"
+			 "                               Requires --format=plain.\n"));
 	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
 			 "                               exists. The ROLE usage statements are skipped if\n"
 			 "                               the ROLE does not exist.\n"
@@ -1296,6 +1333,7 @@ help(const char *progname)
 	printf(_("  --rename-owner=NAME          rewrite every OWNER TO clause whose owner equals\n"
 			 "                               the source database owner to OWNER TO NAME (other\n"
 			 "                               owners are emitted unchanged). Requires -C/--create.\n"));
+	printf(_("  --restrict-key=RESTRICT_KEY  use provided string as psql \\restrict key\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
@@ -2197,9 +2235,41 @@ selectDumpableExtension(ExtensionInfo *extinfo, DumpOptions *dopt)
 	 * user installed extension if the user drops and then re-creates it.
 	 * Avoid dumping plpgsql to prevent potential issues with upgrade:
 	 * see GH issue #25346.
+	 *
+	 * All the objects under builtin extensions are created in pg_catalog
+	 * schema with an OID not greater than g_last_builtin_oid. If an user
+	 * drops and recreates it, it will be created in some other schema than
+	 * pg_catalog (creating objects in pg_catalog is only allowed during
+	 * initdb and ysql upgrade) with an OID more than g_last_builtin_oid.
+	 *
+	 * Without the following check on postgres_fdw and pg_stat_statements,
+	 * if the user then creates a backup with --include-yb-metadata after
+	 * dropping and recreating a system created extension,
+	 * DROP EXTENSION IF EXISTS ... is emitted in the restore script, followed
+	 * by creating the extension via binary_upgrade_create_empty_extension,
+	 * and then the related objects in the same schema are created and linked
+	 * to the extension.
+	 *
+	 * Global views add dependency on postgres_fdw and pg_stat_statements,
+	 * so a DROP EXTENSION postgres_fdw / pg_stat_statements fails with an
+	 * error message saying there are dependent objects and you need to run it
+	 * with CASCADE.
+	 *
+	 * During restore, the DROP EXTENSION IF EXISTS ... and the subsequent
+	 * creation of extension via binary_upgrade_create_empty_extension fails,
+	 * but the rest of the script creates the functions linked to the
+	 * extensions. The end result is that there is a copy of each function of
+	 * the extension, one in pg_catalog schema that was created by the system,
+	 * one in the schema where the user created.
+	 *
+	 * With the following check on postgres_fdw and pg_stat_statements, we
+	 * avoid the duplicate objects by excluding DROP + CREATE of these
+	 * extensions from the restore script.
 	 */
 	if (extinfo->dobj.catId.oid <= (Oid) g_last_builtin_oid ||
-		strcmp("plpgsql", extinfo->dobj.name) == 0)
+		strcmp("plpgsql", extinfo->dobj.name) == 0 ||
+		strcmp("postgres_fdw", extinfo->dobj.name) == 0 ||
+		strcmp("pg_stat_statements", extinfo->dobj.name) == 0)
 		extinfo->dobj.dump = extinfo->dobj.dump_contains = DUMP_COMPONENT_ACL;
 	else
 	{
@@ -2798,11 +2868,14 @@ dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 		 forcePartitionRootLoad(tbinfo)))
 	{
 		TableInfo  *parentTbinfo;
+		char	   *sanitized;
 
 		parentTbinfo = getRootTableInfo(tbinfo);
 		copyFrom = fmtQualifiedDumpable(parentTbinfo);
+		sanitized = sanitize_line(copyFrom, true);
 		printfPQExpBuffer(copyBuf, "-- load via partition root %s",
-						  copyFrom);
+						  sanitized);
+		free(sanitized);
 		tdDefn = pg_strdup(copyBuf->data);
 	}
 	else
@@ -3651,7 +3724,8 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "DATABASE", dbname, NULL, NULL,
-							   yb_dopt->yb_dump_role_checks, outbuf);
+							   yb_dopt->yb_dump_role_checks,
+							   yb_dopt->restrict_key, outbuf);
 
 	PQclear(res);
 
@@ -3664,16 +3738,25 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	res = ExecuteSqlQuery(AH, buf->data, PGRES_TUPLES_OK);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+	{
+		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\if :use_roles\n");
+		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
+	}
 
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 1),
 							   "ROLE", PQgetvalue(res, i, 0),
 							   "DATABASE", dbname,
-							   yb_dopt->yb_dump_role_checks, outbuf);
+							   yb_dopt->yb_dump_role_checks,
+							   yb_dopt->restrict_key, outbuf);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+	{
+		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\endif\n");
+		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
+	}
 
 	PQclear(res);
 
@@ -4267,7 +4350,9 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 		PQExpBuffer yb_source_sql = query;
 
 		query = createPQExpBuffer();
+		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\if :use_roles\n");
+		ybAppendRestrict(query, dopt->restrict_key);
 
 		if (dopt->yb_dump_role_checks)
 		{
@@ -4275,12 +4360,14 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 								polinfo->polroles,	/* role1 */
 								NULL,	/* role2 */
 								NULL,	/* role3 */
-								query);
+								query, dopt->restrict_key);
 		}
 		else
 			appendPQExpBufferStr(query, yb_source_sql->data);
 
+		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\endif\n");
+		ybAppendRestrict(query, dopt->restrict_key);
 		destroyPQExpBuffer(yb_source_sql);
 	}
 
@@ -6454,12 +6541,8 @@ getAggregates(Archive *fout, int *numAggs)
 		if (agginfo[i].aggfn.nargs == 0)
 			agginfo[i].aggfn.argtypes = NULL;
 		else
-		{
-			agginfo[i].aggfn.argtypes = (Oid *) pg_malloc(agginfo[i].aggfn.nargs * sizeof(Oid));
-			parseOidArray(PQgetvalue(res, i, i_proargtypes),
-						  agginfo[i].aggfn.argtypes,
-						  agginfo[i].aggfn.nargs);
-		}
+			agginfo[i].aggfn.argtypes = parseOidArray(PQgetvalue(res, i, i_proargtypes),
+													  agginfo[i].aggfn.nargs);
 		agginfo[i].aggfn.postponed_def = false; /* might get set during sort */
 
 		/* Decide whether we want to dump it */
@@ -6654,11 +6737,8 @@ getFuncs(Archive *fout, int *numFuncs)
 		if (finfo[i].nargs == 0)
 			finfo[i].argtypes = NULL;
 		else
-		{
-			finfo[i].argtypes = (Oid *) pg_malloc(finfo[i].nargs * sizeof(Oid));
-			parseOidArray(PQgetvalue(res, i, i_proargtypes),
-						  finfo[i].argtypes, finfo[i].nargs);
-		}
+			finfo[i].argtypes = parseOidArray(PQgetvalue(res, i, i_proargtypes),
+											  finfo[i].nargs);
 		finfo[i].postponed_def = false; /* might get set during sort */
 
 		/* Decide whether we want to dump it */
@@ -7760,12 +7840,11 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			indxinfo[j].indreloptions = pg_strdup(PQgetvalue(res, j, i_indreloptions));
 			indxinfo[j].indstatcols = pg_strdup(PQgetvalue(res, j, i_indstatcols));
 			indxinfo[j].indstatvals = pg_strdup(PQgetvalue(res, j, i_indstatvals));
-			indxinfo[j].indkeys = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
-			parseOidArray(PQgetvalue(res, j, i_indkey),
-						  indxinfo[j].indkeys, indxinfo[j].indnattrs);
-			indxinfo[j].indoptions = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
-			parseOidArray(PQgetvalue(res, j, i_indoption),
-						  indxinfo[j].indoptions, indxinfo[j].indnattrs);
+			indxinfo[j].indkeys = parseIntArray(PQgetvalue(res, j, i_indkey),
+												indxinfo[j].indnattrs);
+			/* YB */
+			indxinfo[j].indoptions = parseOidArray(PQgetvalue(res, j, i_indoption),
+												   indxinfo[j].indnkeyattrs);
 			indxinfo[j].indisclustered = (PQgetvalue(res, j, i_indisclustered)[0] == 't');
 			indxinfo[j].indisreplident = (PQgetvalue(res, j, i_indisreplident)[0] == 't');
 			indxinfo[j].indnullsnotdistinct = (PQgetvalue(res, j, i_indnullsnotdistinct)[0] == 't');
@@ -9998,6 +10077,15 @@ getForeignServers(Archive *fout, int *numForeignServers)
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(srvinfo[i].dobj), fout);
+
+		/*
+		 * YB: yb_global_views_server is created during initdb (see
+		 * yb_global_views.sql) and exists in every database. Dumping it would
+		 * break clone/restore with "server already exists", so never dump it.
+		 */
+		if (IsYugabyteEnabled &&
+			strcmp(srvinfo[i].dobj.name, "yb_global_views_server") == 0)
+			srvinfo[i].dobj.dump = DUMP_COMPONENT_NONE;
 
 		/* Servers have user mappings */
 		srvinfo[i].dobj.components |= DUMP_COMPONENT_USERMAP;
@@ -13088,12 +13176,10 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 
 	if (*protrftypes)
 	{
-		Oid		   *typeids = palloc(FUNC_MAX_ARGS * sizeof(Oid));
-		int			i;
+		Oid		   *typeids = parseOidArray(protrftypes, -1);
 
 		appendPQExpBufferStr(q, " TRANSFORM ");
-		parseOidArray(protrftypes, typeids, FUNC_MAX_ARGS);
-		for (i = 0; typeids[i]; i++)
+		for (int i = 0; typeids[i]; i++)
 		{
 			if (i != 0)
 				appendPQExpBufferStr(q, ", ");
@@ -15735,6 +15821,7 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 								 daclinfo->defaclrole,
 								 fout->remoteVersion,
 								 dopt->yb_dump_role_checks,
+								 dopt->restrict_key,
 								 q))
 		pg_fatal("could not parse default ACL list (%s)",
 				 daclinfo->dacl.acl);
@@ -15835,7 +15922,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
 		if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 							  initprivs, acldefault, owner,
-							  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
+							  "", fout->remoteVersion, dopt->yb_dump_role_checks,
+							  dopt->restrict_key, sql))
 			pg_fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 					 initprivs, acldefault, name, type);
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
@@ -15860,7 +15948,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 
 	if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 						  acls, baseacls, owner,
-						  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
+						  "", fout->remoteVersion, dopt->yb_dump_role_checks,
+						  dopt->restrict_key, sql))
 		pg_fatal("could not parse ACL list (%s) or default (%s) for object \"%s\" (%s)",
 				 acls, baseacls, name, type);
 
@@ -15879,7 +15968,14 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		if (dopt->include_yb_metadata)
 		{
 			yb_use_roles_sql = createPQExpBuffer();
-			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
+			appendPQExpBufferStr(yb_use_roles_sql, "\\if :use_roles\n");
+			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
+			ybAppendBracketedBlock(yb_use_roles_sql, sql->data,
+								   dopt->restrict_key);
+			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
+			appendPQExpBufferStr(yb_use_roles_sql, "\\endif\n");
+			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
 		}
 
 		aclDeps[nDeps++] = objDumpId;
@@ -18270,7 +18366,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 				appendPQExpBuffer(q, " (");
 				for (k = 0; k < indxinfo->indnkeyattrs; k++)
 				{
-					int			indkey = (int) indxinfo->indkeys[k];
+					int			indkey = indxinfo->indkeys[k];
 					const char *attname;
 
 					if (indkey == InvalidAttrNumber)
@@ -18287,7 +18383,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 
 				for (k = indxinfo->indnkeyattrs; k < indxinfo->indnattrs; k++)
 				{
-					int			indkey = (int) indxinfo->indkeys[k];
+					int			indkey = indxinfo->indkeys[k];
 					const char *attname;
 
 					if (indkey == InvalidAttrNumber)
@@ -20490,6 +20586,57 @@ extractYbPresplitFromReloptions(const char *reloptions)
 	return result;
 }
 
+/* Find a top-level clause, ignoring quoted text and parenthesized expressions. */
+static const char *
+ybFindIndexdefClause(const char *indexdef, const char *clause)
+{
+	const size_t clause_len = strlen(clause);
+	int			paren_depth = 0;
+	char		quote = '\0';
+
+	for (const char *p = indexdef; *p != '\0'; p++)
+	{
+		if (quote != '\0')
+		{
+			if (*p == quote)
+			{
+				if (p[1] == quote)
+					p++;
+				else
+					quote = '\0';
+			}
+			continue;
+		}
+
+		/*
+		 * Check for the clause before consuming *p as a quote or
+		 * parenthesis so a clause that begins with one of those
+		 * characters can still match at top level.
+		 */
+		if (paren_depth == 0 && strncmp(p, clause, clause_len) == 0)
+			return p;
+
+		if (*p == '\'' || *p == '"')
+		{
+			quote = *p;
+			continue;
+		}
+		if (*p == '(')
+		{
+			paren_depth++;
+			continue;
+		}
+		if (*p == ')')
+		{
+			if (paren_depth > 0)
+				paren_depth--;
+			continue;
+		}
+	}
+
+	return NULL;
+}
+
 /*
  * YB: Return a newly-allocated copy of `indexdef` with a yb_presplit=<value>
  * entry folded into the WITH clause.
@@ -20501,11 +20648,15 @@ extractYbPresplitFromReloptions(const char *reloptions)
  *
  * `indexdef` is the string produced by pg_get_indexdef(), shaped roughly
  * as "CREATE [UNIQUE] INDEX ... ON tbl USING am (cols) [WITH (opts)]
- * [SPLIT ...]".  We splice the new option into the existing WITH clause
- * if present; otherwise we insert a fresh `WITH (yb_presplit='<value>')`
- * before the SPLIT keyword if present; otherwise we append it at the end
- * of the indexdef (e.g. for a single-tablet index that still has an
- * explicit reloption to preserve).
+ * [SPLIT ...] [WHERE ...]".  We splice the new option into the existing
+ * WITH clause if present; otherwise we insert a fresh
+ * `WITH (yb_presplit='<value>')` before SPLIT or WHERE, whichever comes
+ * first.  If neither is present, we append it at the end of the indexdef
+ * (e.g. for a single-tablet index that still has an explicit reloption to
+ * preserve).
+ *
+ * The SQL pg_get_indexdef() used by getIndexes() intentionally omits
+ * TABLESPACE; pg_dump carries it separately in the archive entry metadata.
  */
 static char *
 ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
@@ -20514,6 +20665,8 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 	const char *with_start;
 	const char *with_close;
 	const char *split_start;
+	const char *where_start;
+	const char *insert_start;
 	PQExpBuffer buf;
 	char	   *result;
 
@@ -20522,7 +20675,7 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 	if (!value)
 		value = "";
 
-	with_start = strstr(indexdef, " WITH (");
+	with_start = ybFindIndexdefClause(indexdef, " WITH (");
 	if (with_start != NULL)
 	{
 		/* Find the matching ')' after WITH ( -- the first ')'. */
@@ -20545,19 +20698,24 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 
 	/*
 	 * No existing WITH clause.  Insert a fresh `WITH (yb_presplit='...')`
-	 * before the SPLIT keyword if there is one, otherwise at the end of
-	 * the indexdef.
+	 * before the first SPLIT or WHERE clause, otherwise at the end of the
+	 * indexdef.
 	 */
-	split_start = strstr(indexdef, " SPLIT ");
-	if (split_start == NULL)
-		split_start = indexdef + strlen(indexdef);
+	split_start = ybFindIndexdefClause(indexdef, " SPLIT ");
+	where_start = ybFindIndexdefClause(indexdef, " WHERE ");
+	insert_start = split_start;
+	if (where_start != NULL &&
+		(insert_start == NULL || where_start < insert_start))
+		insert_start = where_start;
+	if (insert_start == NULL)
+		insert_start = indexdef + strlen(indexdef);
 
 	buf = createPQExpBuffer();
-	appendBinaryPQExpBuffer(buf, indexdef, split_start - indexdef);
+	appendBinaryPQExpBuffer(buf, indexdef, insert_start - indexdef);
 	appendPQExpBufferStr(buf, " WITH (yb_presplit=");
 	appendStringLiteralAH(buf, value, fout);
 	appendPQExpBufferChar(buf, ')');
-	appendPQExpBufferStr(buf, split_start);
+	appendPQExpBufferStr(buf, insert_start);
 	result = pg_strdup(buf->data);
 	destroyPQExpBuffer(buf);
 	return result;

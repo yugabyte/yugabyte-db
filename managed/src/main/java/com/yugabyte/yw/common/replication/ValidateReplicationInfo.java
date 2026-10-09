@@ -12,7 +12,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 @Singleton
@@ -31,7 +31,7 @@ public class ValidateReplicationInfo {
     String certificate = universe.getCertificateNodetoNode();
     UUID primaryClusterPlacementUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
     if (CollectionUtils.isNotEmpty(tablespaces)) {
-      try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
+      try (YBClientApi client = ybClientService.getClient(masterAddresses, certificate)) {
         return tablespaces.stream()
             .filter(
                 t -> {

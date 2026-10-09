@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -70,7 +71,7 @@ import org.yb.Schema;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
@@ -264,7 +265,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     }
     createXClusterRequestParams.putArray("tables").addAll(tables);
 
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
@@ -353,8 +354,9 @@ public class AttachDetachControllerTest extends FakeDBApplication {
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-          userIntent.provider = defaultProvider.getUuid().toString();
-          userIntent.providerType = Common.CloudType.aws;
+          TestUtils.existingProviderInitializer(userIntent)
+              .setProviderUUID(defaultProvider.getUuid())
+              .setProviderType(Common.CloudType.aws);
           universe.getUniverseDetails().upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
           universe.updateConfig(config);

@@ -51,7 +51,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/rpc/lightweight_message.h"
@@ -62,6 +61,7 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
@@ -176,7 +176,13 @@ class LogTestBase : public YBTest {
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
   }
 
-  void BuildLog(int64_t byte_limit = -1) {
+  // When create_new_segment is kFalse, the log is opened lazily and stays in kLogInitialized state
+  // (no active segment allocated) until the first append or an explicit EnsureSegmentInitialized()
+  // call. This mirrors how tablet bootstrap opens the log when skip_wal_rewrite is enabled (the
+  // default), and is required to exercise Log::CopyTo in the kLogInitialized state.
+  void BuildLog(
+      int64_t byte_limit = -1,
+      CreateNewSegment create_new_segment = CreateNewSegment::kTrue) {
     Schema schema_with_ids = SchemaBuilder(schema_).Build();
     read_wal_mem_tracker_ =
         MemTracker::FindOrCreateTracker(byte_limit, "Log Reader Memory");
@@ -192,7 +198,10 @@ class LogTestBase : public YBTest {
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
-                       &log_));
+                       &log_,
+                       /* pre_log_rollover_callback = */ {},
+                       /* callback = */ {},
+                       create_new_segment));
     LOG(INFO) << "Sucessfully opened the log at " << tablet_wal_path_;
   }
 
@@ -336,12 +345,12 @@ class LogTestBase : public YBTest {
     std::string dump;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
       dump.append("------------\n");
-      strings::SubstituteAndAppend(&dump, "Segment: $0, Path: $1\n",
-                                   segment->header().sequence_number(), segment->path());
-      strings::SubstituteAndAppend(&dump, "Header: $0\n",
-                                   segment->header().ShortDebugString());
+      dump += Format("Segment: $0, Path: $1\n",
+                     segment->header().sequence_number(), segment->path());
+      dump += Format("Header: $0\n",
+                     segment->header().ShortDebugString());
       if (segment->HasFooter()) {
-        strings::SubstituteAndAppend(&dump, "Footer: $0\n", segment->footer().ShortDebugString());
+        dump += Format("Footer: $0\n", segment->footer().ShortDebugString());
       } else {
         dump.append("Footer: None or corrupt.");
       }
@@ -399,10 +408,9 @@ Status CorruptLogFile(Env* env, const std::string& log_path,
 
 Result<SegmentSequence> GetReadableSegments(const std::string& wal_dir_path) {
   SegmentSequence segments;
-  std::unique_ptr<LogReader> reader;
-  RETURN_NOT_OK(LogReader::Open(
+  auto reader = VERIFY_RESULT(LogReader::Open(
       Env::Default(), nullptr, "Log reader", wal_dir_path, nullptr, nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &reader));
+      /*read_wal_mem_tracker=*/nullptr));
   RETURN_NOT_OK(reader->GetSegmentsSnapshot(&segments));
   return segments;
 }

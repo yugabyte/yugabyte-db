@@ -111,6 +111,7 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /* entry for a hash table we use to map from xid to our transaction state */
@@ -210,7 +211,7 @@ typedef struct ReorderBufferDiskChange
  * resource management here, but it's not entirely clear what that would look
  * like.
  *
- * YB NOTE: This is overridden by yb_reorderbuffer_max_changes_in_memory GUC.
+ * YB NOTE: Spill decisions use yb_reorderbuffer_max_memory_kb.
  */
 int			logical_decoding_work_mem;
 static const Size max_changes_in_memory = 4096; /* XXX for restore only */
@@ -547,6 +548,7 @@ ReorderBufferReturnChange(ReorderBuffer *rb, ReorderBufferChange *change,
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT:
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
+		case YB_REORDER_BUFFER_CHANGE_DDL:
 			break;
 	}
 
@@ -2237,6 +2239,11 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					if (IsYugaByteEnabled())
 					{
+						if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+							YBCSetHistoricalReadContext(change->data.tp.yb_read_time,
+														change->data.tp.yb_in_txn_limit,
+														change->data.tp.yb_txn_id);
+
 						/*
 						 * In YB, the replica identity used for streaming is the
 						 * one that existed at the time of slot (stream)
@@ -2491,6 +2498,16 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 				case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 					elog(ERROR, "tuplecid value in changequeue");
+					break;
+
+				case YB_REORDER_BUFFER_CHANGE_DDL:
+					YBCInvalidateCachesForHistoricalReadContext();
+					/*
+					 * Inform the output plugin about the schema change so that
+					 * it can send the RELATION message to the client.
+					 */
+					YBReorderBufferSchemaChange(rb,
+												change->data.yb_ddl.table_oid);
 					break;
 			}
 		}
@@ -3594,7 +3611,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 
 	/* bail out if we haven't exceeded the memory limit */
 	if (rb->size < (IsYugaByteEnabled() ?
-					yb_reorderbuffer_max_changes_in_memory :
+					yb_reorderbuffer_max_memory_kb :
 					logical_decoding_work_mem) *
 		1024L)
 		return;
@@ -3609,7 +3626,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	 * change.
 	 */
 	while (rb->size >= (IsYugaByteEnabled() ?
-						yb_reorderbuffer_max_changes_in_memory :
+						yb_reorderbuffer_max_memory_kb :
 						logical_decoding_work_mem) *
 		   1024L)
 	{
@@ -3659,7 +3676,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 
 	/* We must be under the memory limit now. */
 	Assert(rb->size < (IsYugaByteEnabled() ?
-					   yb_reorderbuffer_max_changes_in_memory :
+					   yb_reorderbuffer_max_memory_kb :
 					   logical_decoding_work_mem) *
 		   1024L);
 }
@@ -3978,6 +3995,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT:
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
+		case YB_REORDER_BUFFER_CHANGE_DDL:
 			/* ReorderBufferChange contains everything important */
 			break;
 	}
@@ -4242,6 +4260,7 @@ ReorderBufferChangeSize(ReorderBufferChange *change)
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT:
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
+		case YB_REORDER_BUFFER_CHANGE_DDL:
 			/* ReorderBufferChange contains everything important */
 			break;
 	}
@@ -4279,9 +4298,12 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	XLByteToSeg(txn->final_lsn, last_segno, wal_segment_size);
 
-	while ((restored <
-			(IsYugaByteEnabled() ? yb_reorderbuffer_max_changes_in_memory : max_changes_in_memory))
-		   && (*segno <= last_segno))
+	/*
+	 * YB restores a fixed number of changes so restore batching is independent
+	 * from the memory limit that controls spilling.
+	 */
+	while ((restored < max_changes_in_memory) &&
+		   (*segno <= last_segno))
 	{
 		int			readBytes;
 		ReorderBufferDiskChange *ondisk;
@@ -4595,6 +4617,7 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT:
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
+		case YB_REORDER_BUFFER_CHANGE_DDL:
 			break;
 	}
 

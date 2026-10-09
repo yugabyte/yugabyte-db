@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
@@ -20,7 +21,6 @@ import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.HashMap;
@@ -52,7 +52,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
           "aws", new CloudOS("9.5_20241122", "AlmaLinux"),
           "gcp", new CloudOS("9.5_v20250212", "AlmaLinux"),
           "azu", new CloudOS("9.5_202411260", "AlmaLinux"),
-          "oci", new CloudOS("9.5", "OracleLinux"));
+          "oci", new CloudOS("9.8.20260616", "AlmaLinux"));
 
   @Inject
   public CloudImageBundleSetup(
@@ -76,7 +76,8 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   }
 
   public static void verifyImageBundleDetails(ImageBundleDetails details, Provider provider) {
-    if (provider.getCloudCode() != CloudType.aws) {
+    // Region level image override exists only for clouds with per-region images (AWS, OCI).
+    if (!provider.getCloudCode().usesPerRegionImages()) {
       return;
     }
 
@@ -92,7 +93,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       }
     }
 
-    if (provider.getCloudCode() == CloudType.aws && regionsImageInfo != null) {
+    if (regionsImageInfo != null) {
       boolean allYbImagesNull = true;
       boolean allYbImagesNonNull = true;
       for (ImageBundleDetails.BundleInfo bundleInfo : regionsImageInfo.values()) {
@@ -102,7 +103,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
 
         if (!(allYbImagesNull || allYbImagesNonNull)) {
           throw new PlatformServiceException(
-              BAD_REQUEST, String.format("AMI id should be specified for all regions or none."));
+              BAD_REQUEST, String.format("Image id should be specified for all regions or none."));
         }
       }
     }
@@ -111,6 +112,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   public static void generateYBADefaultImageBundle(
       Provider provider,
       CloudQueryHelper cloudQueryHelper,
+      ImageBundleUtil bundleUtil,
       Architecture arch,
       boolean isDefault,
       boolean forceFetchFromMetadata,
@@ -120,24 +122,19 @@ public class CloudImageBundleSetup extends CloudTaskBase {
     if (arch == null) {
       arch = Architecture.x86_64;
     }
-    if (cloudType != CloudType.aws && arch == Architecture.aarch64) {
-      // Need not to generate bundles for aarch type for non-AWS providers.
+    if (!cloudType.usesPerRegionImages() && arch == Architecture.aarch64) {
       return;
     }
 
     ImageBundleDetails details = new ImageBundleDetails();
     details.setArch(arch);
     boolean isCustomImage = false;
-    if (cloudType.equals(CloudType.aws)) {
+    if (cloudType.usesPerRegionImages()) {
       Map<String, ImageBundleDetails.BundleInfo> regionsImageInfo = new HashMap<>();
       for (Region r : regions) {
-        String ybImage = null;
-        if (r.getDetails() != null && r.getDetails().getCloudInfo() != null) {
-          AWSRegionCloudInfo awsRegionCloudInfo = r.getDetails().getCloudInfo().getAws();
-          if (awsRegionCloudInfo != null) {
-            ybImage = awsRegionCloudInfo.getYbImage();
-          }
-        }
+        // Region.getYbImage() resolves the per-region image from the cloud-specific
+        // region cloud info (AWS AMI / OCI image OCID).
+        String ybImage = r.getYbImage();
         ImageBundleDetails.BundleInfo bundleInfo = new ImageBundleDetails.BundleInfo();
         if (ybImage == null || forceFetchFromMetadata) {
           ybImage = cloudQueryHelper.getDefaultImage(r, arch.toString());
@@ -213,6 +210,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       metadata.setVersion(CLOUD_OS_MAP.get(provider.getCode()).getVersion());
       bundleName = getDefaultImageBundleName(provider.getCode());
     }
+    bundleUtil.setImageMarketplaceBasedFlags(provider, details, null);
     ImageBundle.create(provider, bundleName, details, metadata, isDefault);
   }
 
@@ -247,7 +245,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
         }
       }
       generateYBADefaultImageBundle(
-          provider, cloudQueryHelper, arch, true, false, enableVMOSPatching);
+          provider, cloudQueryHelper, imageBundleUtil, arch, true, false, enableVMOSPatching);
     } else if (imageBundles != null) {
       Map<UUID, ImageBundle> existingImageBundles =
           provider.getImageBundles().stream()
@@ -306,7 +304,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
     }
 
     if (enableVMOSPatching
-        && provider.getCloudCode() == CloudType.aws
+        && provider.getCloudCode().usesPerRegionImages()
         && bundle.getMetadata() != null
         && bundle.getMetadata().getType() == ImageBundleType.YBA_ACTIVE) {
       // In case the region is added as part of provider edit, we will add
@@ -336,12 +334,14 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       String defaultRegionImage =
           cloudQueryHelper.getDefaultImage(region, bundle.getDetails().getArch().toString());
       info.setYbImage(defaultRegionImage);
+      info.setIsImageMarketplaceBased(null);
       details.setSshUser(cloudType.getSshUser());
 
       regionBundleInfo.put(region.getCode(), info);
       details.setRegions(regionBundleInfo);
     }
     bundle.setDetails(details);
+    imageBundleUtil.setImageMarketplaceBasedFlags(provider, bundle);
     bundle.update();
   }
 
@@ -361,8 +361,8 @@ public class CloudImageBundleSetup extends CloudTaskBase {
             .filter(iB -> iB.getDetails().getArch() == arch)
             .findFirst()
             .orElse(null);
-    if (cloudType.equals(CloudType.aws)) {
-      // Region level image override exists for aws only.
+    if (cloudType.usesPerRegionImages()) {
+      // Region level image override exists for clouds with per-region images (AWS, OCI).
       Map<String, ImageBundleDetails.BundleInfo> regionsImageInfo = details.getRegions();
 
       for (Region region : regions) {
@@ -437,6 +437,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
                 provider.getUuid(), defaultImageBundle.get().getUuid(), arch.toString()));
       }
     }
+    imageBundleUtil.setImageMarketplaceBasedFlags(provider, details, null);
     ImageBundle.create(provider, bundle.getName(), details, metadata, bundle.getUseAsDefault());
   }
 

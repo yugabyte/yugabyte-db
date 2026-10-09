@@ -14,26 +14,27 @@
 
 #include "yb/client/client-test-util.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/transaction.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_string(allowed_preview_flags_csv);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_bool(TEST_ysql_ddl_fail_transaction_status_poll);
@@ -89,34 +90,14 @@ class PgDdlTransactionTest : public LibPqTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
-    opts->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    ToggleDDLMode(opts->extra_master_flags, /* use_legacy = */ false);
     opts->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
-    opts->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
     opts->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    ToggleDDLMode(opts->extra_tserver_flags, /* use_legacy = */ false);
     opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
-    opts->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled,"
-        "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
     opts->extra_tserver_flags.push_back(
         Format("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0",
                (RandomUniformBool() ? "true" : "false")));
-  }
-
-  // ysql_yb_disable_ddl_transaction_block_for_read_committed is a non-runtime flag for now, so we
-  // need to restart the cluster.
-  void RestartClusterSetDisableTxnBlockForReadCommitted(bool value) {
-    LOG(INFO) << "Restart the cluster and turn " << (value ? "on" : "off")
-              << " --ysql_yb_disable_ddl_transaction_block_for_read_committed";
-    cluster_->Shutdown();
-    const std::string flag_value = Format(
-        "--ysql_yb_disable_ddl_transaction_block_for_read_committed=$0",
-        value ? "true" : "false");
-    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      cluster_->tablet_server(i)->mutable_flags()->push_back(flag_value);
-    }
-    ASSERT_OK(cluster_->Restart());
   }
 };
 
@@ -228,40 +209,10 @@ TEST_F(PgDdlTransactionTest, TestRewriteAndDropMaterializedViewInTxn) {
   ASSERT_EQ(row, expected_row);
 }
 
-TEST_F(PgDdlTransactionTest, TestReadCommittedTxnDdlDisabled) {
-  auto conn = ASSERT_RESULT(Connect());
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
-  ASSERT_OK(conn.Execute("CREATE TABLE foo (id SERIAL PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
-  ASSERT_OK(conn.Execute("ROLLBACK"));
-  auto res = GetTableIdByTableName(client.get(), "yugabyte", "foo");
-  ASSERT_NOK(res);
-  ASSERT_TRUE(res.status().IsNotFound());
-
-  // Disable transactional DDL for READ COMMITTED isolation level. This will make DDLs use
-  // autonomous transactions, which are not rolled back by the enclosing transaction block.
-  RestartClusterSetDisableTxnBlockForReadCommitted(true /* value */);
-  conn = ASSERT_RESULT(Connect());
-  client = ASSERT_RESULT(cluster_->CreateClient());
-
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
-  ASSERT_OK(conn.Execute("CREATE TABLE foo (id SERIAL PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
-  ASSERT_OK(conn.Execute("ROLLBACK"));
-
-  // The table 'foo' should exist in DocDB after the transaction rollback, as the DDLs were executed
-  // in autonomous transactions.
-  // The column 'new_col' should also exist in the table 'foo'.
-  ASSERT_OK(GetTableIdByTableName(client.get(), "yugabyte", "foo"));
-  ASSERT_OK(conn.Execute("INSERT INTO foo (id, new_col) VALUES (1, 42)"));
-}
-
 class PgDdlTransactionMiniClusterTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 5;
     pgwrapper::PgMiniTestBase::SetUp();
   }
@@ -495,9 +446,7 @@ class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
                                       public ::testing::WithParamInterface<TestCommit> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
-        "ysql_yb_enable_ddl_savepoint_support";
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
 
     // Disable READ_COMMITTED isolation because it creates additional savepoints (sub_transactions)
@@ -969,6 +918,10 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
       }
     }
   }
+  ASSERT_FALSE(table_id_after_drop.empty());
+  // Hold the TableInfo now: once the rollback below deletes this table, the catalog manager's
+  // background cleanup erases it from its table map and GetTableInfo returns null.
+  auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN b", kTableName));
   ASSERT_OK(conn.Execute("RELEASE SAVEPOINT b"));
   ASSERT_OK(conn.Execute("SAVEPOINT c"));
@@ -990,9 +943,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_EQ(table_schema.columns()[1].name(), "a");
   ASSERT_EQ(table_schema.columns()[2].name(), "b");
 
-  ASSERT_FALSE(table_id_after_drop.empty());
   ASSERT_OK(WaitForTableDeletionToFinish(client.get(), table_id_after_drop));
-  auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN e TEXT", kTableName));
@@ -1052,6 +1003,129 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithSlowIndexDeleti
   SyncPoint::GetInstance()->DisableProcessing();
 
   ASSERT_OK(conn.Execute("DROP TABLE existing_table"));
+}
+
+// Probe for #29139 / D51840: without the fix, when sys.catalog raft replication on yb-master is
+// delayed, the master's safe time lags current hybrid time and this can cause a read restart error
+// even without concurrent sessions. This can happen in a single connection in auto-commit mode
+// running sequential autonomous DDLs (i.e., the legacy DDL mode) that modify the PG catalog (say
+// stmt1 and stmt2), and stmt2 picks safe_time as its read time which can predate stmt1's catalog
+// write time -- causing a read restart error. Also, note that the read restart error is faced by
+// any rpc other than the 1st one in stmt2 because the error is retried internally on yb-master if
+// faced by the 1st rpc.
+//
+// Note that in the new mode (i.e., transactional DDL + object locking) this wouldn't happen because
+// catalog reads "clamp" the uncertainty window that causes read restart errors (see the reasoning
+// in PgTxnManager::ClampCatalogReadTime).
+class PgMasterDDLReadRestartProbeTest : public LibPqTestBase {
+ public:
+  int GetNumMasters() const override { return 3; }
+
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+  }
+
+  Status RunRepro(bool expect_error);
+
+  void RestartClusterSetDDLMode(bool use_legacy) {
+    LOG(INFO) << "Restart the cluster in the " << (use_legacy ? "legacy" : "new") << " DDL mode";
+    cluster_->Shutdown();
+    for (const auto& daemon : cluster_->daemons()) {
+      ToggleDDLMode(*daemon->mutable_flags(), use_legacy);
+    }
+    ASSERT_OK(cluster_->Restart());
+  }
+};
+
+Status PgMasterDDLReadRestartProbeTest::RunRepro(bool expect_error) {
+  const auto iterations = 10;
+  auto setup_conn = VERIFY_RESULT(Connect());
+  RETURN_NOT_OK(setup_conn.Execute("DROP DATABASE IF EXISTS db_a"));
+  RETURN_NOT_OK(setup_conn.Execute("DROP DATABASE IF EXISTS db_b"));
+  RETURN_NOT_OK(setup_conn.Execute("CREATE DATABASE db_a"));
+  RETURN_NOT_OK(setup_conn.Execute("CREATE DATABASE db_b"));
+
+  // Lag master sys.catalog raft replication so safe_time trails current_ht. Targeted at
+  // the sys.catalog tablet only -- leader heartbeats and background master tasks stay
+  // fast, avoiding the cluster collapse seen with a global UpdateConsensus delay.
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+      "TEST_delay_update_consensus_before_mark_committed_tablet_id",
+      master::kSysCatalogTabletId));
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+      "TEST_delay_update_consensus_before_mark_committed_ms", "10"));
+
+  TestThreadHolder thread_holder;
+
+  // Background: continuous lightweight DDLs on db_b to keep ops in flight on master
+  // sys.catalog, holding majority_replicated (and hence safe_time) behind current_ht.
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(ConnectToDB("db_b"));
+    int i = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      auto s = conn.ExecuteFormat("CREATE SCHEMA bg_r_$0", i);
+      if (!s.ok()) {
+        LOG(WARNING) << "bg CREATE SCHEMA iter=" << i << " failed: " << s;
+      }
+      s = conn.ExecuteFormat("DROP SCHEMA bg_r_$0", i);
+      if (!s.ok()) {
+        LOG(WARNING) << "bg DROP SCHEMA iter=" << i << " failed: " << s;
+      }
+      ++i;
+    }
+  });
+
+  auto conn = VERIFY_RESULT(ConnectToDB("db_a"));
+  RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=true"));
+
+  auto is_read_restart = [](const Status& s) {
+    return !s.ok() &&
+        s.message().ToBuffer().find("Restart read required") != std::string::npos;
+  };
+
+  const char* const kStmts[] = {
+      "CREATE TABLE public.test(k int primary key, "
+      "\"........pg.dropped.62........\" integer)",
+      "UPDATE pg_catalog.pg_attribute SET attlen = -1, attalign = 'i', "
+      "attbyval = false WHERE attname = '........pg.dropped.62........' "
+      "AND attrelid = 'public.test'::pg_catalog.regclass",
+      "ALTER TABLE ONLY public.test DROP COLUMN \"........pg.dropped.62........\";",
+      "DROP TABLE public.test",
+  };
+
+  const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(60);
+  for (int i = 0; i < iterations || (expect_error && MonoTime::Now() < deadline); ++i) {
+    for (const auto* stmt : kStmts) {
+      auto s = conn.Execute(stmt);
+      if (is_read_restart(s)) {
+        LOG(INFO) << "Read restart observed at iter=" << i << ": " << s;
+        if (expect_error) {
+          return Status::OK();
+        }
+        return STATUS(IllegalState, "Faced a read restart error when none were expected");
+      } else if (!s.ok()) {
+        LOG(WARNING) << "Non-read-restart failure iter=" << i << ": " << s;
+      }
+    }
+  }
+
+  thread_holder.Stop();
+  if (expect_error) {
+    return STATUS(TimedOut, "Timed out waiting for the expected read restart error");
+  }
+  return Status::OK();
+}
+
+TEST_F(PgMasterDDLReadRestartProbeTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(DDLStaleSafeTimeReadRestart)) {
+  ASSERT_OK(RunRepro(false /* expect_error */));
+
+  ASSERT_NO_FATALS(RestartClusterSetDDLMode(/* use_legacy = */ false));
+
+  ASSERT_OK(RunRepro(false /* expect_error */));
 }
 
 } // namespace yb::pgwrapper

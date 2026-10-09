@@ -43,11 +43,14 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
 #include "yb/util/result.h"
@@ -326,15 +329,15 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
       int hour = random_.Next32() % 24;
       int minute = random_.Next32() % 60;
       int second = random_.Next32() % 60;
-      timestamp_string = strings::Substitute("$0-$1-$2 $3:$4:$5", year, month, day, hour, minute,
-                                             second);
+      timestamp_string = Format("$0-$1-$2 $3:$4:$5", year, month, day, hour, minute,
+                                second);
       json = "\"{\\\"a\\\":\\\"foo\\\",\\\"b\\\":\\\"bar\\\"}\"";
     } else {
       timestamp_string = std::to_string(static_cast<int64_t>(random_.Next32()));
       json = "\\\\n"; // represents null value.
     }
 
-    string row = strings::Substitute(
+    string row = Format(
         "$0,$1,$2,2017-06-17 14:47:00,\"abc,xyz\",$3,3.14,4.1,$4",
         static_cast<int64_t>(random_.Next32()), timestamp_string, random_.Next32(), kV2Value, json);
     VLOG(1) << "Generated row: " << row;

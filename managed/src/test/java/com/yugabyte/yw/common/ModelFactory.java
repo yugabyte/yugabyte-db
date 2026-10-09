@@ -319,11 +319,19 @@ public class ModelFactory {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
-    userIntent.provider = p.getUuid().toString();
-    userIntent.providerType = cloudType;
     userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     userIntent.useSystemd = useSystemd;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+    String instanceType = ApiUtils.UTIL_INST_TYPE;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        p.getUuid(),
+        cloudType,
+        instanceType,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     userIntent.regionList = regions.stream().map(Region::getUuid).collect(Collectors.toList());
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUUID);
@@ -339,18 +347,23 @@ public class ModelFactory {
       node.nodeUuid = UUID.randomUUID();
       node.cloudInfo = new CloudSpecificInfo();
       node.cloudInfo.cloud = cloudType.toString();
-      node.cloudInfo.instance_type = userIntent.instanceType;
+      node.cloudInfo.instance_type = instanceType;
       node.cloudInfo.private_ip = "127.0.0.1";
       params.nodeDetailsSet.add(node);
       NodeDetails node2 = node.clone();
       node2.nodeUuid = UUID.randomUUID();
       node.cloudInfo = new CloudSpecificInfo();
-      node.cloudInfo.instance_type = userIntent.instanceType;
+      node.cloudInfo.instance_type = instanceType;
       node.cloudInfo.cloud = cloudType.toString();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
     }
     params.upsertPrimaryCluster(userIntent, null, pi);
+    // Test universes stand in for fully created universes; keep the default behavior of health
+    // checks and alert definitions covering them by pretending creation succeeded. Tests that
+    // specifically want to exercise the "creation failed" behavior can override this on the
+    // returned universe.
+    params.creationSucceeded = true;
     return Universe.create(params, customerId);
   }
 
@@ -372,8 +385,8 @@ public class ModelFactory {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
     userIntent.provider = p.getUuid().toString();
-    userIntent.providerType = CloudType.kubernetes;
     userIntent.ybSoftwareVersion = "2.17.0.0-b1";
+    TestUtils.existingProviderInitializer(userIntent).setProviderType(CloudType.kubernetes);
     K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
     spec.cpuCoreCount = cores;
     userIntent.tserverK8SNodeResourceSpec = spec;
@@ -386,6 +399,8 @@ public class ModelFactory {
     params.setYbcInstalled(enableYbc);
     params.nodePrefix = Util.getNodePrefix(customerId, universeName);
     params.upsertPrimaryCluster(userIntent, null, pi);
+    // Same rationale as createUniverse(): test universes stand in for fully created universes.
+    params.creationSucceeded = true;
     Universe u = Universe.create(params, customerId);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString());
@@ -996,15 +1011,17 @@ public class ModelFactory {
     userIntent.universeName = univName;
     userIntent.replicationFactor = rf;
     userIntent.numNodes = numNodes;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = regionList;
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.ybSoftwareVersion = "0.0.1";
-    userIntent.accessKeyCode = "akc";
-    userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     userIntent.useSystemd = true;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        provider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
 
     UniverseUpdater updater =
         u -> {

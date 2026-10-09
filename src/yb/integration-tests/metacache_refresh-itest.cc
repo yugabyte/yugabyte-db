@@ -41,6 +41,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
@@ -71,7 +72,6 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 
-using strings::Substitute;
 using yb::client::YBTableName;
 using yb::client::YBTableType;
 // DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade, where each node is upgraded one at a time. YugabyteDB [automatically re-balances](../../../explore/linear-scalability/data-distribution/) the universe as nodes are taken down and brought back up during the upgrade.
+YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade, where each node is upgraded one at a time. YugabyteDB [automatically rebalances](../../../explore/linear-scalability/data-distribution/) the universe as nodes are taken down and brought back up during the upgrade.
 
 If you have issues after upgrading a universe, you can roll back in-place and restore the universe to its state before the upgrade.
 <!-- Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later. -->
@@ -100,7 +100,19 @@ If you have problems, you can [roll back](#roll-back-an-upgrade) during this tim
 
 For upgrades that require finalizing, you can monitor for as long as you need, up to a _maximum recommended limit of two days_ to avoid operator errors that can arise from having to maintain two versions.
 
-A subset of features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have finalized the current one.
+A subset of features that require format changes will not be available until the upgrade is finalized. 
+
+{{< warning title="DDLs remain blocked until the upgrade is finalized" >}}
+If you are performing a [YSQL major upgrade](../ysql-major-upgrade-yba/), DDL statements and other catalog modifications continue to be blocked during the monitoring phase, including for validation or test queries. A blocked DDL returns the following:
+
+```output
+ERROR: YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade
+```
+
+This is expected. DDL support resumes after you finalize or roll back the upgrade. Refer to [Limitations](../ysql-major-upgrade-yba/#limitations) for the full list of operations unavailable until then.
+{{< /warning >}}
+
+You cannot perform another upgrade until you have finalized the current one.
 
 If you are satisfied with the upgrade:
 

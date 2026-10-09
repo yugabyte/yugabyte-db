@@ -382,8 +382,8 @@ export function reduceExpertNodeCountsToAtMostRf(
 
 /**
  * Expert-mode defaults when landing on Nodes & availability with no prior zone selection.
- * Applies for AZ/region-level and NONE (edit RF=1 maps to NONE). NODE_LEVEL uses
- * {@link assignRegionsAZNodeByReplicationFactor}.
+ * Applies for AZ/region-level and NONE (edit RF=1 maps to NONE).
+ * Callers with NODE_LEVEL should use {@link toExpertResilienceForDefaults} first.
  * Returns null when defaults do not apply.
  */
 export function getExpertNodesStepDefaultPlacement(
@@ -454,6 +454,41 @@ export function getExpertNodesStepDefaultPlacement(
   distributeNodesUntilTotalAtLeastRf(availabilityZones, spec.rf);
 
   return { replicationFactor: spec.rf, availabilityZones };
+}
+
+/**
+ * Coerce resilience into expert-safe shape for default placement.
+ * Expert UI never uses NODE_LEVEL; guided NODE_LEVEL would collapse to region[0].
+ */
+export function toExpertResilienceForDefaults(
+  resilience: ResilienceAndRegionsProps
+): ResilienceAndRegionsProps {
+  return {
+    ...resilience,
+    [RESILIENCE_FORM_MODE]: ResilienceFormMode.EXPERT_MODE,
+    [FAULT_TOLERANCE_TYPE]:
+      resilience[FAULT_TOLERANCE_TYPE] === FaultToleranceType.NODE_LEVEL
+        ? FaultToleranceType.AZ_LEVEL
+        : resilience[FAULT_TOLERANCE_TYPE]
+  };
+}
+
+/**
+ * Expert empty-zone defaults only — never falls back to guided assign.
+ * When expert tables do not apply, returns empty zones with the given RF.
+ */
+export function getExpertAvailabilityZonesOrEmpty(
+  resilience: ResilienceAndRegionsProps
+): ExpertNodesStepDefaultPlacement {
+  const expertResilience = toExpertResilienceForDefaults(resilience);
+  const placement = getExpertNodesStepDefaultPlacement(expertResilience);
+  if (placement) {
+    return placement;
+  }
+  return {
+    availabilityZones: {},
+    replicationFactor: resilience.resilienceFactor ?? 1
+  };
 }
 
 export type AzReplicationSlot = {
@@ -548,10 +583,13 @@ export const getPlacementRegions = (
   availabilityZones?: NodeAvailabilityProps['availabilityZones'],
   nodesAvailability?: Pick<NodeAvailabilityProps, typeof REPLICATION_FACTOR>
 ) => {
-  const { resilienceType } = resilienceAndRegionsSettings;
+  const { resilienceType, resilienceFormMode } = resilienceAndRegionsSettings;
 
   const azs =
-    availabilityZones ?? assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
+    availabilityZones ??
+    (resilienceFormMode === ResilienceFormMode.EXPERT_MODE
+      ? {}
+      : assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings));
 
   // For single node, resilience factor should be 1 for the single AZ
   if (resilienceType === ResilienceType.SINGLE_NODE) {
@@ -609,6 +647,10 @@ export const getPlacementRegions = (
       flatSlots.push({ nodeCount: az.nodeCount, regionUuid: region.uuid });
     });
   });
+
+  if (flatSlots.length === 0) {
+    return [];
+  }
 
   const replicationFactors = distributeReplicationFactorAcrossAzs(
     flatSlots,

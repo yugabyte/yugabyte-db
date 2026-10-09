@@ -110,6 +110,11 @@ class TxnBatcherIf {
       const std::optional<SubTransactionMetadataPB>& subtransaction_pb,
       const ReadHybridTime& used_read_time, const Status& status) = 0;
 
+  // Returns the flush failure that made this transaction abort itself, or an OK status if the
+  // transaction was not aborted this way. Operations that failed because of such an abort should
+  // report this status instead of their own kAborted error, which hides the actual failure reason.
+  virtual Status FlushAbortCause() = 0;
+
   // This function is used to init metadata of Write/Read request.
   // If we don't have enough information, then the function returns false and stores
   // the waiter, which will be invoked when we obtain such information.
@@ -367,7 +372,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void HandleAsyncWriteResponse(
       const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
-      const std::shared_ptr<const YBTable>& table);
+      const std::shared_ptr<const YBTable>& table, const ash::WaitStateInfoPtr& wait_state);
 
   // Returns true if the operations in this batcher are configured to skip the intents DB.
   // Because all operations within a single batch must share the exact same skip_intents

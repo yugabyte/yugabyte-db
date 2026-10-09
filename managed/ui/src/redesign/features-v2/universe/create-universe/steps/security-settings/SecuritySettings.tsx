@@ -25,7 +25,14 @@ import {
   NTON_CERT_FIELD,
   CTON_CERT_FIELD,
   COMMON_CERT_FIELD,
-  KMS_CONFIG_FIELD
+  KMS_CONFIG_FIELD,
+  ENABLE_EAR_FIELD,
+  ENABLE_BOTH_ENCRYPTION,
+  ENABLE_NTON_FIELD,
+  ENABLE_CTON_FIELD,
+  COMMON_CERT_TYPE_FIELD,
+  CTON_CERT_TYPE_FIELD,
+  NTON_CERT_TYPE_FIELD
 } from '../../fields/FieldNames';
 
 const { Box } = mui;
@@ -59,10 +66,17 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const { errors, isSubmitted } = formState;
 
+  const enableBothEncrytVal = watch(ENABLE_BOTH_ENCRYPTION);
+  const enableNToNVal = watch(ENABLE_NTON_FIELD);
+  const enableCToNVal = watch(ENABLE_CTON_FIELD);
   const nTonCertVal = watch(NTON_CERT_FIELD);
   const cTonCertVal = watch(CTON_CERT_FIELD);
   const commonCertVal = watch(COMMON_CERT_FIELD);
+  const EnableEARVal = watch(ENABLE_EAR_FIELD);
   const kmsConfigVal = watch(KMS_CONFIG_FIELD);
+  const nTonCerttypeVal = watch(NTON_CERT_TYPE_FIELD);
+  const cTonCertTypeVal = watch(CTON_CERT_TYPE_FIELD);
+  const commonCertTypeVal = watch(COMMON_CERT_TYPE_FIELD);
 
   useUpdateEffect(() => {
     if (isSubmitted) {
@@ -70,7 +84,19 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
         if (isValid) setShowErrorsAfterSubmit(false);
       });
     }
-  }, [nTonCertVal, cTonCertVal, commonCertVal, kmsConfigVal]);
+  }, [
+    nTonCertVal,
+    cTonCertVal,
+    commonCertVal,
+    kmsConfigVal,
+    enableBothEncrytVal,
+    enableNToNVal,
+    enableCToNVal,
+    EnableEARVal,
+    nTonCerttypeVal,
+    cTonCertTypeVal,
+    commonCertTypeVal
+  ]);
 
   useImperativeHandle(
     forwardRef,

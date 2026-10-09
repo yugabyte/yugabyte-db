@@ -48,6 +48,7 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

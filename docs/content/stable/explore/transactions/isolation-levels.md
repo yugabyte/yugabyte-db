@@ -55,10 +55,10 @@ To set the transaction isolation level of a transaction, use the command `SET TR
 
 PostgreSQL (and the SQL standard) has four isolation levels: Serializable, Repeatable read, Read Committed, and Read Uncommitted.
 
-The following table shows the mapping between the PostgreSQL isolation levels in YSQL, along with transaction anomalies that can occur at each isolation level:
+The following table shows the mapping between SQL standard isolation levels in YSQL, along with transaction anomalies that can occur at each isolation level:
 
-| PostgreSQL Isolation | YugabyteDB Equivalent     | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
-| :------------------- | :------------------------ | :--------- | :------------------ | :----------- | :-------------------- |
+| SQL Standard Isolation | YugabyteDB Equivalent     | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
+| :--------------------- | :------------------------ | :--------- | :------------------ | :----------- | :-------------------- |
 | Read Uncommitted | Read Committed | Allowed, but not in YSQL |  Possible | Possible | Possible |
 | Read Committed   | Read Committed | Not possible | Possible     | Possible | Possible |
 | Repeatable read  | Snapshot                      | Not possible | Not possible | Allowed, but not in YSQL | Possible |

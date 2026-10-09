@@ -20,6 +20,8 @@
 #include <vector>
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -73,6 +75,7 @@ class MasterHeartbeatProxy;
 class MasterReplicationProxy;
 class MasterSnapshotCoordinator;
 class MasterTestProxy;
+class MasterYsqlLeaseProxy;
 class NamespaceInfo;
 class ObjectLockInfoManager;
 class PermissionsManager;
@@ -168,6 +171,7 @@ using RetryingTSRpcTaskWithTablePtr = std::shared_ptr<RetryingTSRpcTaskWithTable
 // Use ordered map to make computing fingerprint of the map easier.
 struct PgCatalogVersion;
 using DbOidToCatalogVersionMap = std::map<uint32_t, PgCatalogVersion>;
+using DbOidToHybridTimeMap = std::unordered_map<PgOid, HybridTime>;
 
 // This map represents pg_yb_invalidation_messages: (db_oid, current_version) => inval messages.
 // If the message value is nullopt, it means a SQL null value. If it is empty string, it means

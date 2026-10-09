@@ -28,11 +28,10 @@ SELECT * FROM xacttest;
 
 ABORT;
 -- should not exist
-SELECT count(oid) FROM pg_class WHERE relname = 'disappear'; -- YB: change to count, TODO: transactional DDL
- count 
--------
-     1
-(1 row)
+SELECT oid FROM pg_class WHERE relname = 'disappear';
+ oid 
+-----
+(0 rows)
 
 -- should have members again
 SELECT * FROM xacttest;
@@ -141,12 +140,9 @@ CREATE TABLE trans_foobar (a int);
 BEGIN;
 	CREATE TABLE trans_foo (a int);
 	SAVEPOINT one;
-/* YB: avoid DROP TABLE since it is not rolled back due to lack of transactional DDL
 		DROP TABLE trans_foo;
-*/ -- YB
 		CREATE TABLE trans_bar (a int);
 	ROLLBACK TO SAVEPOINT one;
-	DROP TABLE trans_bar; -- YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 	RELEASE SAVEPOINT one;
 	SAVEPOINT two;
 		CREATE TABLE trans_baz (a int);
@@ -529,9 +525,7 @@ BEGIN;
 		INSERT INTO koju VALUES (1);
 ERROR:  duplicate key value violates unique constraint "koju_a_key"
 	rollback to x;
-	/* YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 	CREATE TABLE koju (a INT UNIQUE);
-	*/ -- YB
 	INSERT INTO koju VALUES (1);
 	INSERT INTO koju VALUES (1);
 ERROR:  duplicate key value violates unique constraint "koju_a_key"
@@ -573,7 +567,6 @@ rollback to x;
 fetch from foo;
 ERROR:  cursor "foo" does not exist
 commit;
-drop table abc; -- YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 begin;
 create table abc (a int);
 insert into abc values (5);
@@ -601,7 +594,6 @@ fetch from foo;
 (1 row)
 
 abort;
-drop table abc; -- YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 -- Test for proper cleanup after a failure in a cursor portal
 -- that was created in an outer subtransaction
 CREATE FUNCTION invert(x float8) RETURNS float8 LANGUAGE plpgsql AS

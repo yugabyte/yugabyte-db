@@ -19,6 +19,8 @@
 #include "yb/tserver/remote_bootstrap.pb.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);

@@ -26,11 +26,12 @@ import {
   XClusterConfigAction,
   XClusterConfigType,
   XClusterTableStatus,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
+  getXClusterUniverseTableFilters
 } from '../../constants';
 import {
   formatUuidForXCluster,
   getCategorizedNeedBootstrapPerTableResponse,
+  getIsMatviewReplicationSupported,
   getNoSetupBootstrapRequiredTableUuids,
   getXClusterConfigTableType,
   shouldAutoIncludeIndexTables
@@ -115,19 +116,32 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     () => api.fetchUniverse(xClusterConfigFullQuery.data?.sourceUniverseUUID),
     { enabled: !!xClusterConfigFullQuery.data }
   );
+  const targetUniverseQuery = useQuery<Universe>(
+    universeQueryKey.detail(xClusterConfigFullQuery.data?.targetUniverseUUID),
+    () => api.fetchUniverse(xClusterConfigFullQuery.data?.targetUniverseUUID),
+    { enabled: !!xClusterConfigFullQuery.data }
+  );
   const sourceUniverseNamespacesQuery = useQuery<UniverseNamespace[]>(
     universeQueryKey.namespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID),
     () => api.fetchUniverseNamespaces(xClusterConfigFullQuery.data?.sourceUniverseUUID)
   );
+  // Materialized views are listed only for configs in automatic DDL mode whose universes both run a
+  // YBDB version that replicates them.
+  const isMatviewReplicationSupported = getIsMatviewReplicationSupported(
+    !!xClusterConfigFullQuery.data?.automaticDdlMode,
+    sourceUniverseQuery.data,
+    targetUniverseQuery.data
+  );
+  const universeTableFilters = getXClusterUniverseTableFilters(isMatviewReplicationSupported);
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(
       xClusterConfigFullQuery.data?.sourceUniverseUUID,
-      XCLUSTER_UNIVERSE_TABLE_FILTERS
+      universeTableFilters
     ),
     () =>
       fetchTablesInUniverse(
         xClusterConfigFullQuery.data?.sourceUniverseUUID,
-        XCLUSTER_UNIVERSE_TABLE_FILTERS
+        universeTableFilters
       ).then((response) => response.data)
   );
 
@@ -208,6 +222,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     xClusterConfigFullQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
+    targetUniverseQuery.isLoading ||
+    targetUniverseQuery.isIdle ||
     sourceUniverseNamespacesQuery.isLoading ||
     sourceUniverseNamespacesQuery.isIdle ||
     sourceUniverseTablesQuery.isLoading ||
@@ -241,6 +257,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     !sourceUniverseUuid ||
     !targetUniverseUuid ||
     sourceUniverseQuery.isError ||
+    targetUniverseQuery.isError ||
     sourceUniverseNamespacesQuery.isError ||
     sourceUniverseTablesQuery.isError ||
     !xClusterConfigTableType
@@ -471,6 +488,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       targetUniverseUuid: targetUniverseUuid,
       xClusterConfigUuid: xClusterConfig.uuid,
       xClusterConfigType: xClusterConfig.type,
+      isMatviewReplicationSupported: isMatviewReplicationSupported,
       unreplicatedTableInReplicatedNamespace: unreplicatedTableInReplicatedNamespace,
       tableUuidsDroppedOnSource: tableUuidsDroppedOnSource,
       tableUuidsDroppedOnTarget: tableUuidsDroppedOnTarget

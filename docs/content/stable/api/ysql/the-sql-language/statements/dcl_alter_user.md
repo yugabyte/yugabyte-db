@@ -31,7 +31,7 @@ See [`ALTER ROLE`](../dcl_alter_role) for more details.
 
 ## See also
 
-- [`CREATE ROLE`](../dcl_create_role)
-- [`DROP ROLE`](../dcl_drop_role)
-- [`GRANT`](../dcl_grant)
-- [`REVOKE`](../dcl_revoke)
+- [CREATE ROLE](../dcl_create_role)
+- [DROP ROLE](../dcl_drop_role)
+- [GRANT](../dcl_grant)
+- [REVOKE](../dcl_revoke)

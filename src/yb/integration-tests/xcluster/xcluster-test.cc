@@ -48,7 +48,6 @@
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -4066,6 +4065,13 @@ TEST_F_EX(XClusterTest, TestYbAdmin, XClusterTestNoParam) {
   ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_NON_TRANSACTIONAL));
   ASSERT_STR_CONTAINS(result, producer_tables_[0]->id());
   ASSERT_STR_CONTAINS(result, producer_tables_[1]->id());
+
+  auto verify = CallAdmin(consumer_cluster(), "verify_xcluster_group", kReplicationGroupId);
+  ASSERT_NOK(verify);
+  ASSERT_STR_CONTAINS(
+      verify.status().ToString(),
+      "requires automatic-mode xCluster, because its certified safe time distinguishes replication "
+      "lag from divergence");
 
   ASSERT_OK(DeleteUniverseReplication());
 

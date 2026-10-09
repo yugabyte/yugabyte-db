@@ -87,5 +87,5 @@ ALTER INDEX
 
 ## See also
 
-- [`CREATE INDEX`](../ddl_create_index)
-- [`DROP INDEX`](../ddl_drop_index)
+- [CREATE INDEX](../ddl_create_index)
+- [DROP INDEX](../ddl_drop_index)

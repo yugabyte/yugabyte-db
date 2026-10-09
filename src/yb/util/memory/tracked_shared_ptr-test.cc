@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/util/format.h"
 #include "yb/util/memory/tracked_shared_ptr.h"
 #include "yb/util/memory/tracked_shared_ptr_impl.h"
 #include "yb/util/random_util.h"

@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from 'react-query';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 import {
   StyledContent,
-  StyledHeader,
+  StyledCardHeader,
   StyledInfoRow,
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
@@ -13,11 +13,20 @@ import { EncryptionAtRest } from '@app/redesign/features/universe/universe-actio
 import { api, QUERY_KEY } from '@app/redesign/utils/api';
 import { FormProvider, useForm } from 'react-hook-form';
 import { SecuritySettingsProps } from '../../create-universe/steps/security-settings/dtos';
-import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
+import {
+  getClusterByType,
+  useEditUniverseContext,
+  useIsUniverseEditActionDisabled,
+  withUniverseResource
+} from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
+import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { EditNetworkAcessModal } from '../edit-security/EditNetworkAcessModal';
+import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
 
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
@@ -62,12 +71,13 @@ export const SecurityTab = () => {
     earConfig?.encryptionAtRestEnabled ?? earConfig?.kmsConfigUUID
   );
 
-  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
-  const nodeToNodeEnabled =
-    !!universeData?.spec?.encryption_in_transit_spec?.enable_node_to_node_encrypt;
-  const clientToNodeEnabled =
-    !!universeData?.spec?.encryption_in_transit_spec?.enable_client_to_node_encrypt;
+  const legacyPrimaryCluster = legacyUniverse?.universeDetails?.clusters
+    ? getPrimaryCluster(legacyUniverse.universeDetails.clusters)
+    : undefined;
+  const nodeToNodeEnabled = !!legacyPrimaryCluster?.userIntent?.enableNodeToNodeEncrypt;
+  const clientToNodeEnabled = !!legacyPrimaryCluster?.userIntent?.enableClientToNodeEncrypt;
 
+  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const isPublicIPAssigned = !!universeData?.spec?.networking_spec?.assign_public_ip;
   const isIPV6Enabled = !!universeData?.spec?.networking_spec?.enable_ipv6;
   const isK8sPublicIPAssigned =
@@ -75,36 +85,69 @@ export const SecurityTab = () => {
 
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
 
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
+
+  const invalidateUniverseQueries = useCallback(() => {
+    if (!universeUUID) return;
+    void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeUUID]);
+    void queryClient.invalidateQueries(getGetUniverseQueryKey(universeUUID));
+    void queryClient.invalidateQueries(QUERY_KEY.getKMSHistory);
+  }, [queryClient, universeUUID]);
+
+  // TLS / set_key tasks are async; v2 spec updates when the task completes. Refetch the
+  // v1 universe so EncryptionInTransit and EncryptionAtRest pick up the new config.
+  const v2KmsConfigUuid = universeData?.spec?.encryption_at_rest_spec?.kms_config_uuid;
+  const v2Eit = universeData?.spec?.encryption_in_transit_spec;
+  const isFirstSecuritySync = useRef(true);
+  useEffect(() => {
+    if (isFirstSecuritySync.current) {
+      isFirstSecuritySync.current = false;
+      return;
+    }
+    invalidateUniverseQueries();
+  }, [
+    v2KmsConfigUuid,
+    v2Eit?.enable_node_to_node_encrypt,
+    v2Eit?.enable_client_to_node_encrypt,
+    v2Eit?.root_ca,
+    v2Eit?.client_root_ca,
+    v2Eit?.root_and_client_root_ca_same,
+    invalidateUniverseQueries
+  ]);
+
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         {providerCode !== CloudType.onprem && (
           <StyledPanel>
-            <StyledHeader
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
+            <StyledCardHeader>
               {t('networkAccess')}
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
-                <YBButton
+              <RbacValidator
+                accessRequiredOn={withUniverseResource(
+                  ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                  universeUUID
+                )}
+                isControl
+              >
+                <K8OperatorEditBlockedTooltip><YBButton
                   dataTestId="edit-network-access-button"
                   variant="ghost"
                   startIcon={<EditIcon />}
                   onClick={() => {
                     setNetworkModalOpen(true);
                   }}
-                  disabled={!isUniverseReady}
+                  disabled={isEditActionDisabled}
                 >
                   {t('edit', { keyPrefix: 'common' })}
-                </YBButton>
+                </YBButton></K8OperatorEditBlockedTooltip>
               </RbacValidator>
-            </StyledHeader>
+            </StyledCardHeader>
             <StyledContent>
               <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
                 {isCloudVendorCloudType(providerCode) && (
                   <div>
                     <span className="header">{t('publicIP')}</span>
-                    <span className="value sameline nogap">
+                    <span className="value sameline gap4">
                       {t(isPublicIPAssigned ? 'assigned' : 'notAssigned', { keyPrefix: 'common' })}
                       {isPublicIPAssigned ? <CheckedIcon /> : <DisabledIcon />}
                     </span>
@@ -114,14 +157,14 @@ export const SecurityTab = () => {
                   <>
                     <div>
                       <span className="header">{t('ipv6')}</span>
-                      <span className="value sameline nogap">
+                      <span className="value sameline gap4">
                         {t(isIPV6Enabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                         {isIPV6Enabled ? <CheckedIcon /> : <DisabledIcon />}
                       </span>
                     </div>
                     <div>
                       <span className="header">{t('publicIP')}</span>
-                      <span className="value sameline nogap">
+                      <span className="value sameline gap4">
                         {t(isK8sPublicIPAssigned ? 'assigned' : 'notAssigned', {
                           keyPrefix: 'common'
                         })}
@@ -135,65 +178,87 @@ export const SecurityTab = () => {
           </StyledPanel>
         )}
         <StyledPanel>
-          <StyledHeader
-            sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
+          <StyledCardHeader>
             {t('encryptionInTransit')}
-            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
-              <YBButton
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.MODIFY_UNIVERSE_TLS,
+                universeUUID
+              )}
+              isControl
+            >
+              <K8OperatorEditBlockedTooltip><YBButton
                 dataTestId="edit-security-transit-button"
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEitModalOpen(true)}
-                disabled={eitModalOpen || !isUniverseReady}
+                disabled={
+                  eitModalOpen || isLegacyUniverseLoading || !universeUUID || isEditActionDisabled
+                }
               >
                 {t('edit', { keyPrefix: 'common' })}
-              </YBButton>
+              </YBButton></K8OperatorEditBlockedTooltip>
             </RbacValidator>
-          </StyledHeader>
+          </StyledCardHeader>
           <StyledContent>
             <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
               <div>
                 <span className="header">{t('nodeToNode')}</span>
-                <span className="value sameline nogap">
-                  {t(nodeToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
-                  {nodeToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
+                <span className="value sameline gap4">
+                  {isLegacyUniverseLoading ? (
+                    <CircularProgress size={18} />
+                  ) : (
+                    <>
+                      {t(nodeToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
+                      {nodeToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
+                    </>
+                  )}
                 </span>
               </div>
               <div>
                 <span className="header">{t('clientToNode')}</span>
-                <span className="value sameline nogap">
-                  {t(clientToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
-                  {clientToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
+                <span className="value sameline gap4">
+                  {isLegacyUniverseLoading ? (
+                    <CircularProgress size={18} />
+                  ) : (
+                    <>
+                      {t(clientToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
+                      {clientToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
+                    </>
+                  )}
                 </span>
               </div>
             </StyledInfoRow>
           </StyledContent>
         </StyledPanel>
         <StyledPanel>
-          <StyledHeader
-            sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
+          <StyledCardHeader>
             {t('encryptionAtRest')}
-            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
-              <YBButton
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.MODIFY_UNIVERSE_TLS,
+                universeUUID
+              )}
+              isControl
+            >
+              <K8OperatorEditBlockedTooltip><YBButton
                 dataTestId="edit-security-at-rest-button"
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEarModalOpen(true)}
                 disabled={
-                  earModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady
+                  earModalOpen || isLegacyUniverseLoading || !universeUUID || isEditActionDisabled
                 }
               >
                 {t('edit', { keyPrefix: 'common' })}
-              </YBButton>
+              </YBButton></K8OperatorEditBlockedTooltip>
             </RbacValidator>
-          </StyledHeader>
+          </StyledCardHeader>
           <StyledContent>
             <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
               <div>
                 <span className="header">{t('encryption')}</span>
-                <span className="value sameline nogap">
+                <span className="value sameline gap4">
                   {isLegacyUniverseLoading ? (
                     <CircularProgress size={18} />
                   ) : (
@@ -208,17 +273,15 @@ export const SecurityTab = () => {
           </StyledContent>
         </StyledPanel>
       </Box>
-      {universeData?.spec?.encryption_in_transit_spec && (
+      {legacyUniverse && universeUUID && (
         <EncryptionInTransit
           open={eitModalOpen}
           onClose={() => {
             setEitModalOpen(false);
+            invalidateUniverseQueries();
           }}
+          universe={legacyUniverse}
           isItKubernetesUniverse={isItKubernetesUniverse}
-          v2Spec={{
-            universeUUID: universeUUID || '',
-            eitSpec: universeData?.spec?.encryption_in_transit_spec
-          }}
         />
       )}
       {legacyUniverse && universeUUID && (
@@ -226,7 +289,7 @@ export const SecurityTab = () => {
           open={earModalOpen}
           onClose={() => {
             setEarModalOpen(false);
-            void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeUUID]);
+            invalidateUniverseQueries();
           }}
           universeDetails={legacyUniverse}
         />

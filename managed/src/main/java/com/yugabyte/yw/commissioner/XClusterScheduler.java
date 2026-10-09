@@ -42,7 +42,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.AlterUniverseReplicationResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.NetUtil;
@@ -232,7 +232,7 @@ public class XClusterScheduler {
 
     // Get the cluster configuration for the target universe
     CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
-    try (YBClient client = ybClientService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(targetUniverse)) {
       clusterConfig =
           XClusterConfigTaskBase.getClusterConfig(client, config.getTargetUniverseUUID());
     } catch (Exception e) {
@@ -349,7 +349,7 @@ public class XClusterScheduler {
 
     String replicationGroupName = xClusterConfig.getReplicationGroupName();
     Set<HostPortPB> currentMasterAddresses;
-    try (YBClient client = ybClientService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(targetUniverse)) {
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
           XClusterConfigTaskBase.getClusterConfig(client, targetUniverseUUID);
       Map<String, CdcConsumer.ProducerEntryPB> replicationGroups =
@@ -408,7 +408,7 @@ public class XClusterScheduler {
         return;
       }
 
-      try (YBClient client = ybClientService.getUniverseClient(refreshedTarget)) {
+      try (YBClientApi client = ybClientService.getUniverseClient(refreshedTarget)) {
         AlterUniverseReplicationResponse resp =
             client.alterUniverseReplicationSourceMasterAddresses(
                 replicationGroupName, expectedMasterAddresses);

@@ -27,7 +27,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterTypes.MasterErrorPB;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -36,7 +36,7 @@ public class XClusterConfigUpdateMasterAddressesTest extends CommissionerBaseTes
   private Universe sourceUniverse;
   private Universe targetUniverse;
   private XClusterConfig xClusterConfig;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() throws Exception {
@@ -66,7 +66,7 @@ public class XClusterConfigUpdateMasterAddressesTest extends CommissionerBaseTes
     createFormData.tables = Collections.singleton("exampleTableId");
     xClusterConfig = XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     lenient().when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
   }
 

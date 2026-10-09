@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -76,7 +77,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.ServerInfo;
 import play.data.Form;
 import play.libs.Json;
@@ -103,6 +104,8 @@ public class ImportController extends AuthenticatedController {
   @Inject ApiHelper apiHelper;
 
   @Inject ConfigHelper configHelper;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject
   public ImportController(
@@ -594,7 +597,7 @@ public class ImportController extends AuthenticatedController {
   private Map<String, Integer> getTServers(
       String masterAddresses, ImportUniverseResponseData results) {
     Map<String, Integer> tservers_list = new HashMap<>();
-    try (YBClient client = ybService.getClient(masterAddresses)) {
+    try (YBClientApi client = ybService.getClient(masterAddresses)) {
       // Fetch the tablet servers.
       ListTabletServersResponse listTServerResp = client.listTabletServers();
 
@@ -685,12 +688,13 @@ public class ImportController extends AuthenticatedController {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
-    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = new ArrayList<>();
     userIntent.regionList.add(region.getUuid());
-    userIntent.providerType = importForm.providerType;
-    userIntent.instanceType = importForm.instanceType;
     userIntent.replicationFactor = importForm.replicationFactor;
+
+    Util.newProviderInitializer(userIntent, provider.getUuid(), importForm.providerType, confGetter)
+        .setInstanceType(importForm.instanceType);
+
     // Currently using YW version instead of YB version.
     // TODO: #1842: Create YBClient endpoint for getting ybSoftwareVersion.
     userIntent.ybSoftwareVersion =

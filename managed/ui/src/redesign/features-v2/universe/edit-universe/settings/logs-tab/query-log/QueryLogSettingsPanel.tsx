@@ -12,10 +12,9 @@ import {
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from 'react-query';
-import { toast } from 'react-toastify';
 
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { YBModal, YBTooltip } from '@app/redesign/components';
-import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { taskQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
 import {
   getGetUniverseQueryKey,
@@ -27,10 +26,10 @@ import {
   YSQLQueryLogConfigLogMinErrorStatement,
   YSQLQueryLogConfigLogStatement
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import { handleServerError } from '@app/utils/errorHandlingUtils';
 import { QueryLogConfirmationModal } from './QueryLogConfirmationModal';
 import {
-  buildTelemetryConfig,
+  buildEnabledTelemetryConfig,
   getDefaultFormValues,
   getValidationSchema,
   LOG_MIN_DURATION_MAX_VALUE,
@@ -61,6 +60,7 @@ interface QueryLogSettingsPanelProps {
   operation: QueryLogOperation;
   universeUuid: string;
   universeName: string;
+  replicationFactor: number;
   onClose: () => void;
 }
 
@@ -195,6 +195,7 @@ export const QueryLogSettingsPanel: FC<QueryLogSettingsPanelProps> = ({
   operation,
   universeUuid,
   universeName,
+  replicationFactor,
   onClose
 }) => {
   const classes = useStyles();
@@ -235,8 +236,7 @@ export const QueryLogSettingsPanel: FC<QueryLogSettingsPanelProps> = ({
       {
         uniUUID: universeUuid,
         data: {
-          upgrade_options: { rolling_upgrade: true },
-          telemetry_config: buildTelemetryConfig(values, currentTelemetryConfig)
+          telemetry_config: buildEnabledTelemetryConfig(values, currentTelemetryConfig)
         }
       },
       {
@@ -249,7 +249,12 @@ export const QueryLogSettingsPanel: FC<QueryLogSettingsPanelProps> = ({
           onClose();
         },
         onError: (error) => {
-          toast.error(createErrorMessage(error));
+          handleServerError(error, {
+            customErrorLabel:
+              operation === 'create'
+                ? t('toast.enableRequestFailedLabel')
+                : t('toast.updateRequestFailedLabel')
+          });
           setIsConfirmationOpen(false);
         }
       }
@@ -556,6 +561,7 @@ export const QueryLogSettingsPanel: FC<QueryLogSettingsPanelProps> = ({
         <QueryLogConfirmationModal
           operation={operation}
           universeName={universeName}
+          replicationFactor={replicationFactor}
           isSubmitting={configureTelemetry.isLoading}
           onSubmit={onConfirm}
           modalProps={{

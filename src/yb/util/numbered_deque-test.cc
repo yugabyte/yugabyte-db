@@ -15,8 +15,10 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/numbered_deque.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {

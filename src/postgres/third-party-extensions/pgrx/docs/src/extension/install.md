@@ -16,7 +16,7 @@ C code? In MY Rust? Well, it's more likely than you think, but this is not actua
 Postgres thinks every language that compiles to machine code and can be dlopened and called is "C".
 Rust does not disagree: your Rust functions, exposed by `#[pg_extern]`, will look something like
 ```rust
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn your_fn_wrapper(
     fcinfo: pg_sys::FunctionCallInfo
 ) -> pg_sys::Datum {

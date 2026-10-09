@@ -17,12 +17,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -70,6 +70,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
     }
@@ -95,6 +96,8 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus,
+          TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
@@ -120,6 +123,8 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -172,12 +177,15 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.universeName = defaultUniverse.getName();
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -194,7 +202,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -221,12 +229,15 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.numNodes = 2;
     userIntent.replicationFactor = 2;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.instanceType = rrInstanceType;
     userIntent.universeName = universe.getName();
-    userIntent.provider = azuProvider.getUuid().toString();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.initUserIntent(
+        userIntent,
+        azuProvider,
+        rrInstanceType,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     taskParams.clusters.add(universe.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -254,7 +265,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
                 Map.of("1", Arrays.asList("host-readonly1-n1", "host-readonly1-n2")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        20,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -280,12 +291,15 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.numNodes = 2;
     userIntent.replicationFactor = 2;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.instanceType = rrInstanceType;
     userIntent.universeName = universe.getName();
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        rrInstanceType,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     taskParams.clusters.add(universe.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -314,7 +328,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
                     "region-1", Arrays.asList("host-readonly1-n1", "host-readonly1-n2")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        18,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -350,13 +364,15 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(zone.getRegion().getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.provider = onPremProvider.getUuid().toString();
     userIntent.universeName = onPremUniverse.getName();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.initUserIntent(
+        userIntent,
+        onPremProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -395,13 +411,15 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(zone.getRegion().getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.provider = onPremProvider.getUuid().toString();
     userIntent.universeName = onPremUniverse.getName();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.initUserIntent(
+        userIntent,
+        onPremProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -431,12 +449,14 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.universeName = defaultUniverse.getName();
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);

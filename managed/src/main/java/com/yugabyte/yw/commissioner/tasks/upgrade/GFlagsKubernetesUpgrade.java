@@ -11,15 +11,14 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -27,7 +26,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
-import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -84,6 +82,22 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  protected boolean isSkipPrechecks() {
+    return super.isSkipPrechecks() || skipPrechecksForNonRollingGFlagsUpgrade();
+  }
+
+  @Override
+  protected boolean isSkipUpdateConsistencyCheck() {
+    return skipPrechecksForNonRollingGFlagsUpgrade();
+  }
+
+  private boolean skipPrechecksForNonRollingGFlagsUpgrade() {
+    return taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
+        && confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.skipPrechecksForNonRollingGFlagsUpgrade);
+  }
+
+  @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     String softwareVersion =
@@ -94,18 +108,10 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     }
     taskParams().verifyPreviewGFlagsSettings(universe);
 
-    // Validate GFlags through RPC
-    boolean skipRuntimeGflagValidation =
-        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
-    if (!skipRuntimeGflagValidation) {
-      if (Util.compareYBVersions(
-              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
-          >= 0) {
-        List<UniverseDefinitionTaskParams.Cluster> newClustersList =
-            new ArrayList<>(taskParams().clusters);
-        createValidateGFlagsTask(newClustersList, true /* useCLIBinary */, softwareVersion);
-      }
-    }
+    createValidateGFlagsTaskInGFlagsUpgrades(
+        new ArrayList<>(taskParams().clusters),
+        softwareVersion,
+        skipPrechecksForNonRollingGFlagsUpgrade());
     addBasicPrecheckTasks();
   }
 

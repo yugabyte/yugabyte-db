@@ -194,14 +194,21 @@ public class FileData extends Model {
     String relativeDirPath = dirPath.replace(storagePath, "");
     File directory = new File(dirPath);
 
-    for (final File fileEntry : directory.listFiles()) {
-      if (fileEntry.isDirectory()) {
-        deleteFiles(dirPath + File.separator + fileEntry.getName(), deleteDiskDirectory);
-        continue;
-      }
-      FileData file = FileData.getFromFile(relativeDirPath + File.separator + fileEntry.getName());
-      if (file != null) {
-        file.delete();
+    // listFiles() returns null when the path does not exist or is not a directory (e.g. the files
+    // were already removed, or only persisted in the DB). Treat that as "nothing on disk to delete"
+    // rather than throwing a NullPointerException.
+    File[] fileEntries = directory.listFiles();
+    if (fileEntries != null) {
+      for (final File fileEntry : fileEntries) {
+        if (fileEntry.isDirectory()) {
+          deleteFiles(dirPath + File.separator + fileEntry.getName(), deleteDiskDirectory);
+          continue;
+        }
+        FileData file =
+            FileData.getFromFile(relativeDirPath + File.separator + fileEntry.getName());
+        if (file != null) {
+          file.delete();
+        }
       }
     }
     if (deleteDiskDirectory && directory.isDirectory()) {

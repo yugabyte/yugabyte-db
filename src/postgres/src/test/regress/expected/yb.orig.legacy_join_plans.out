@@ -320,6 +320,25 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
                ->  Seq Scan on t2r t2
 (7 rows)
 
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  Merge Join
+         Merge Cond: (t2.k4 = t1.a)
+         ->  Index Scan using i_t2r_k4k5 on t2r t2
+         ->  Sort
+               Sort Key: t1.a
+               ->  Seq Scan on t1
+   ->  Index Scan using i_t1_id on t1 t3
+         Index Cond: (id >= t2.k5)
+(10 rows)
+
 -- BNL enabled
 set yb_bnl_batch_size = 1024;
 set yb_prefer_bnl = on;
@@ -607,6 +626,24 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
    ->  Index Only Scan using i_t2r_k4k5 on t2r t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (5 rows)
+
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.k4)
+         ->  Seq Scan on t1
+         ->  Index Scan using i_t2r_k4k5 on t2r t2
+               Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+   ->  Index Scan using i_t1_id on t1 t3
+         Index Cond: (id >= t2.k5)
+(9 rows)
 
 --
 -- 2024.1 and beyond
@@ -916,6 +953,25 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
                ->  Seq Scan on t2r t2
 (7 rows)
 
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  Merge Join
+         Merge Cond: (t2.k4 = t1.a)
+         ->  Index Scan using i_t2r_k4k5 on t2r t2
+         ->  Sort
+               Sort Key: t1.a
+               ->  Seq Scan on t1
+   ->  Index Scan using i_t1_id on t1 t3
+         Index Cond: (id >= t2.k5)
+(10 rows)
+
 --------------
 -- Analyzed --
 --------------
@@ -1214,6 +1270,25 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
                ->  Seq Scan on t2r t2
 (7 rows)
 
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  Merge Join
+         Merge Cond: (t2.k4 = t1.a)
+         ->  Index Scan using i_t2r_k4k5 on t2r t2
+         ->  Sort
+               Sort Key: t1.a
+               ->  Seq Scan on t1
+   ->  Index Scan using i_t1_id on t1 t3
+         Index Cond: (id >= t2.k5)
+(10 rows)
+
 set yb_bnl_batch_size = 1024;
 set yb_prefer_bnl = on;
 \i :filename
@@ -1500,6 +1575,24 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
    ->  Index Only Scan using i_t2r_k4k5 on t2r t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (5 rows)
+
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.k4)
+         ->  Seq Scan on t1
+         ->  Index Scan using i_t2r_k4k5 on t2r t2
+               Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+   ->  Index Scan using i_t1_id on t1 t3
+         Index Cond: (id >= t2.k5)
+(9 rows)
 
 set yb_enable_cbo = legacy_stats_bnl_mode;
 -- Pre-2024.1 defaults
@@ -1778,6 +1871,27 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
          Index Cond: (k4 = t1.a)
 (4 rows)
 
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Materialize
+         ->  Nested Loop
+               Join Filter: (t2.k5 <= t3.id)
+               ->  Index Scan using i_t2r_k4k5 on t2r t2
+               ->  Materialize
+                     ->  Seq Scan on t1 t3
+(12 rows)
+
 set yb_bnl_batch_size = 1024;
 set yb_prefer_bnl = on;
 \i :filename
@@ -2064,6 +2178,23 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
    ->  Index Only Scan using i_t2r_k4k5 on t2r t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (5 rows)
+
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((t2.k5 <= t3.id) AND (t1.a = t2.k4) AND (t2.k3 < (t1.id + t3.a)))
+   ->  Nested Loop
+         ->  Seq Scan on t1
+         ->  Materialize
+               ->  Seq Scan on t1 t3
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(8 rows)
 
 --
 -- 2024.1 and beyond
@@ -2372,6 +2503,25 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
                ->  Seq Scan on t2r t2
 (7 rows)
 
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  Merge Join
+         Merge Cond: (t2.k4 = t1.a)
+         ->  Index Scan using i_t2r_k4k5 on t2r t2
+         ->  Sort
+               Sort Key: t1.a
+               ->  Seq Scan on t1
+   ->  Index Scan using i_t1_id on t1 t3
+         Index Cond: (id >= t2.k5)
+(10 rows)
+
 set yb_bnl_batch_size = 1;
 set yb_prefer_bnl = off;
 \i :filename
@@ -2659,6 +2809,25 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
                ->  Seq Scan on t2r t2
 (7 rows)
 
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  Merge Join
+         Merge Cond: (t2.k4 = t1.a)
+         ->  Index Scan using i_t2r_k4k5 on t2r t2
+         ->  Sort
+               Sort Key: t1.a
+               ->  Seq Scan on t1
+   ->  Index Scan using i_t1_id on t1 t3
+         Index Cond: (id >= t2.k5)
+(10 rows)
+
 set yb_enable_cbo = legacy_stats_mode;
 set yb_bnl_batch_size = 1;
 set yb_prefer_bnl = off;
@@ -2934,6 +3103,27 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
    ->  Index Only Scan using i_t2r_k4k5 on t2r t2
          Index Cond: (k4 = t1.a)
 (4 rows)
+
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Materialize
+         ->  Nested Loop
+               Join Filter: (t2.k5 <= t3.id)
+               ->  Index Scan using i_t2r_k4k5 on t2r t2
+               ->  Materialize
+                     ->  Seq Scan on t1 t3
+(12 rows)
 
 set yb_bnl_batch_size = 1024;
 set yb_prefer_bnl = on;
@@ -3227,6 +3417,27 @@ select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
    ->  Index Only Scan using i_t2r_k4k5 on t2r t2
          Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (5 rows)
+
+-- a batchable equality on one outer relation, an inequality on another outer
+-- relation in the same index, and a join filter referencing both: the mixed
+-- condition cannot be applied to a batched scan
+explain (costs off, summary off)
+select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 < t1.id + t3.a;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   Join Filter: (t2.k3 < (t1.id + t3.a))
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Materialize
+         ->  Nested Loop
+               Join Filter: (t2.k5 <= t3.id)
+               ->  Index Scan using i_t2r_k4k5 on t2r t2
+               ->  Materialize
+                     ->  Seq Scan on t1 t3
+(12 rows)
 
 --
 -- not only the plans but the cost/row count estimates should never change

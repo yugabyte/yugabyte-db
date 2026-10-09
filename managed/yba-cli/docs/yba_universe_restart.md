@@ -25,6 +25,8 @@ yba universe restart --name <universe-name>
       --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 18000)
       --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 18000)
       --upgrade-option string                [Optional] Upgrade Options, defaults to Rolling. Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime). Only a "Rolling" type of restart is allowed on a Kubernetes universe. (default "Rolling")
+      --primary-batch-size int32             [Optional] Number of primary-cluster tservers to restart in each rolling batch. Only applied when --upgrade-option is Rolling. (default 1)
+      --read-replica-batch-size int32        [Optional] Number of read-replica tservers to restart in each rolling batch. Only applied when --upgrade-option is Rolling. (default 1)
   -h, --help                                 help for restart
 ```
 

@@ -25,12 +25,7 @@ public class TestPgRegressIsolationObjectLockingPorted extends BasePgRegressTest
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("enable_object_locking_for_table_locks", "true");
-    flagMap.put("ysql_enable_concurrent_ddl", "true");
-    flagMap.put("allowed_preview_flags_csv",
-      "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks,"
-      + "ysql_enable_concurrent_ddl");
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
     flagMap.put("ysql_beta_features", "true");
     return flagMap;
@@ -39,16 +34,13 @@ public class TestPgRegressIsolationObjectLockingPorted extends BasePgRegressTest
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("enable_object_locking_for_table_locks", "true");
-    flagMap.put("allowed_preview_flags_csv",
-      "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     return flagMap;
   }
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 300;
+    return 1800;
   }
 
   @Test

@@ -19,6 +19,7 @@
 #include "yb/rpc/messenger.h"
 
 #include "yb/util/source_location.h"
+#include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 
 namespace yb::master {
@@ -206,6 +207,7 @@ Status MultiStepMonitoredTask::RunInternal() {
 
   RETURN_NOT_OK(ValidateRunnable());
 
+  dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
   return step();
 }
 

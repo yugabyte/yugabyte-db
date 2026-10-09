@@ -76,6 +76,7 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
         CustomerConfigStorageAzureData regionConfig = new CustomerConfigStorageAzureData();
         regionConfig.azureSasToken = location.azureSasToken;
         regionConfig.useAzureIam = azureData.useAzureIam;
+        regionConfig.azureClientId = azureData.azureClientId;
         validateAzureUrl(
             regionConfig, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
       }

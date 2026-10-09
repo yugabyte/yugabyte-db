@@ -82,5 +82,5 @@ yugabyte=# START_REPLICATION test_slot LOGICAL 0/2 publication_names 'mypublicat
 
 ## See also
 
-- [`CREATE_REPLICATION_SLOT`](../streaming_create_repl_slot)
-- [`DROP_REPLICATION_SLOT`](../streaming_drop_repl_slot)
+- [CREATE_REPLICATION_SLOT](../streaming_create_repl_slot)
+- [DROP_REPLICATION_SLOT](../streaming_drop_repl_slot)

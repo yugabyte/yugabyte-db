@@ -6,17 +6,19 @@ allOf:
   - properties:
       enable_exposing_service:
         description: Whether to create a load balancer service for this cluster. Defaults to NONE.
-        type: string
         default: NONE
-        enum:
-          - NONE
-          - EXPOSED
-          - UNEXPOSED
+        allOf:
+          - $ref: "./ExposingServiceState.yaml"
       enable_lb:
         description: Create target groups if enabled. Used by YBM.
         type: boolean
         example: false
         x-yba-api-visibility: internal
+      managed_load_balancer:
+        description: 'Load balancers that YBA creates, manages and deletes. Set when the universe is created. Do not combine with enable_lb.'
+        $ref: "./ManagedLoadBalancerSpec.yaml"
+        x-yba-api-since: 2.31.0.0
+        x-yba-api-visibility: preview
       az_networking:
         description: Granular network settings overridden per Availability Zone identified by AZ uuid.
         additionalProperties:

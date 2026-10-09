@@ -38,6 +38,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

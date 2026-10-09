@@ -16,6 +16,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/shared_lock.h"
 
 DEFINE_UNKNOWN_int32(tasks_tracker_num_tasks, 100,
@@ -35,7 +36,6 @@ DEFINE_UNKNOWN_int32(long_term_tasks_tracker_keep_time_multiplier, 86400,
 namespace yb {
 namespace master {
 
-using strings::Substitute;
 
 TasksTracker::TasksTracker(IsUserInitiated user_initiated)
     : user_initiated_(user_initiated),
@@ -83,8 +83,8 @@ void TasksTracker::CleanupOldTasks() {
 
 std::string TasksTracker::ToString() {
   SharedLock l(lock_);
-  return Substitute("TasksTracker has $0 tasks in buffer.",
-                    tasks_.size());
+  return Format("TasksTracker has $0 tasks in buffer.",
+                tasks_.size());
 }
 
 } // namespace master

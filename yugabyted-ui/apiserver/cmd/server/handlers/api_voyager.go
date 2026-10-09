@@ -16,9 +16,9 @@ import (
     "strings"
     "time"
 
-    "github.com/jackc/pgtype"
-    "github.com/jackc/pgx/v4"
-    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/jackc/pgx/v5"
+    "github.com/jackc/pgx/v5/pgtype"
+    "github.com/jackc/pgx/v5/pgxpool"
     "github.com/labstack/echo/v4"
     "github.com/yugabyte/yb-voyager/yb-voyager/src/ybversion"
 )
@@ -315,34 +315,34 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
         // This is done since source db info is only in export rows, target db info in import rows.
         // Info from import rows will overwrite info from export rows.
         migrationDetailsStruct := models.VoyagerMigrationDetails{}
-        if allVoyagerMigration.exportMigrationPhase.Status == pgtype.Present &&
-            allVoyagerMigration.exportInvocationSeq.Status == pgtype.Present {
+        if allVoyagerMigration.exportMigrationPhase.Valid &&
+            allVoyagerMigration.exportInvocationSeq.Valid {
             err := updateMigrationDetailStruct(log, conn, &migrationDetailsStruct,
                 allVoyagerMigration.migrationUuid,
-                allVoyagerMigration.exportMigrationPhase.Int,
-                allVoyagerMigration.exportInvocationSeq.Int)
+                allVoyagerMigration.exportMigrationPhase.Int32,
+                allVoyagerMigration.exportInvocationSeq.Int32)
             if err != nil {
                 log.Errorf("[%s] Error while querying for export phase migration details",
                     LOGGER_FILE_NAME)
             }
         }
-        if allVoyagerMigration.importMigrationPhase.Status == pgtype.Present &&
-            allVoyagerMigration.importInvocationSeq.Status == pgtype.Present {
+        if allVoyagerMigration.importMigrationPhase.Valid &&
+            allVoyagerMigration.importInvocationSeq.Valid {
             err := updateMigrationDetailStruct(log, conn, &migrationDetailsStruct,
                 allVoyagerMigration.migrationUuid,
-                allVoyagerMigration.importMigrationPhase.Int,
-                allVoyagerMigration.importInvocationSeq.Int)
+                allVoyagerMigration.importMigrationPhase.Int32,
+                allVoyagerMigration.importInvocationSeq.Int32)
             if err != nil {
                 log.Errorf("[%s] Error while querying for import phase migration details",
                     LOGGER_FILE_NAME)
             }
         }
-        if allVoyagerMigration.lowestMigrationPhase.Status == pgtype.Present &&
-            allVoyagerMigration.lowestInvocationSeq.Status == pgtype.Present {
+        if allVoyagerMigration.lowestMigrationPhase.Valid &&
+            allVoyagerMigration.lowestInvocationSeq.Valid {
             err := updateMigrationDetailStructStartTimestamp(log, conn, &migrationDetailsStruct,
                 allVoyagerMigration.migrationUuid,
-                allVoyagerMigration.lowestMigrationPhase.Int,
-                allVoyagerMigration.lowestInvocationSeq.Int)
+                allVoyagerMigration.lowestMigrationPhase.Int32,
+                allVoyagerMigration.lowestInvocationSeq.Int32)
             if err != nil {
                 log.Errorf("[%s] Error while querying for migration start timestamp",
                     LOGGER_FILE_NAME)
@@ -404,16 +404,16 @@ func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
             continue
         }
 
-        if database.Status == pgtype.Present && database.String != "" {
+        if database.Valid && database.String != "" {
             migrationDetailsStruct.SourceDb.Database = database.String
         }
-        if schema.Status == pgtype.Present && schema.String != "" {
+        if schema.Valid && schema.String != "" {
             migrationDetailsStruct.SourceDb.Schema = schema.String
         }
-        if status.Status == pgtype.Present && status.String != "" {
+        if status.Valid && status.String != "" {
             migrationDetailsStruct.Status = status.String
         }
-        if exportDir.Status == pgtype.Present && exportDir.String != "" {
+        if exportDir.Valid && exportDir.String != "" {
             migrationDetailsStruct.Voyager.ExportDir = exportDir.String
         }
 
@@ -443,39 +443,39 @@ func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
         migrationDetailsStruct.MigrationName = "Migration_" +
             strings.Split(migrationDetailsStruct.MigrationUuid, "-")[4]
 
-        if dbIp.Status == pgtype.Present {
+        if dbIp.Valid {
             // dbIp determines whether port and db type are for source or target
             var dbIpStruct DbIp
             err = json.Unmarshal([]byte(dbIp.String), &dbIpStruct)
             if dbIpStruct.SourceDbIp != "" {
                 migrationDetailsStruct.SourceDb.Ip = dbIpStruct.SourceDbIp
-                if dbPort.Status == pgtype.Present && dbPort.Int != 0 {
+                if dbPort.Valid && dbPort.Int32 != 0 {
                     migrationDetailsStruct.SourceDb.Port =
-                        strconv.FormatInt(int64(dbPort.Int), 10)
+                        strconv.FormatInt(int64(dbPort.Int32), 10)
                 }
-                if dbType.Status == pgtype.Present && dbType.String != "" {
+                if dbType.Valid && dbType.String != "" {
                     migrationDetailsStruct.SourceDb.Engine = dbType.String
                 }
-                if dbVersion.Status == pgtype.Present && dbVersion.String != "" {
+                if dbVersion.Valid && dbVersion.String != "" {
                     migrationDetailsStruct.SourceDb.Version = dbVersion.String
                 }
             }
             if dbIpStruct.TargetDbIp != "" {
                 migrationDetailsStruct.TargetCluster.Ip = dbIpStruct.TargetDbIp
-                if dbPort.Status == pgtype.Present && dbPort.Int != 0 {
+                if dbPort.Valid && dbPort.Int32 != 0 {
                     migrationDetailsStruct.TargetCluster.Port =
-                        strconv.FormatInt(int64(dbPort.Int), 10)
+                        strconv.FormatInt(int64(dbPort.Int32), 10)
                 }
-                if dbType.Status == pgtype.Present && dbType.String != "" {
+                if dbType.Valid && dbType.String != "" {
                     migrationDetailsStruct.TargetCluster.Engine = dbType.String
                 }
-                if dbVersion.Status == pgtype.Present && dbVersion.String != "" {
+                if dbVersion.Valid && dbVersion.String != "" {
                     migrationDetailsStruct.TargetCluster.Version = dbVersion.String
                 }
             }
         }
 
-        if voyagerInfo.Status == pgtype.Present {
+        if voyagerInfo.Valid {
             var voyagerInfoStruct VoyagerInfo
             err = json.Unmarshal([]byte(voyagerInfo.String), &voyagerInfoStruct)
             migrationDetailsStruct.Voyager.MachineIp = voyagerInfoStruct.Ip
@@ -495,7 +495,7 @@ func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
 
         // This value will be overwritten by the complexity in the migration assessment
         migrationDetailsStruct.Complexity = "N/A"
-        if complexity.Status == pgtype.Present {
+        if complexity.Valid {
             migrationDetailsStruct.Complexity = complexity.String
         }
     }

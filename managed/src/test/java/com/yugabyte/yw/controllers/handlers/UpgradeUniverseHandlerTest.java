@@ -66,6 +66,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
@@ -73,8 +74,8 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -2158,6 +2159,17 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
 
   // ==================== submitExportTelemetryConfigs dispatch tests ====================
 
+  /** Datadog is allowed for both logs and metrics, so it satisfies any export section. */
+  private TelemetryProvider logsCapableTelemetryProvider() {
+    DataDogConfig config = new DataDogConfig();
+    config.setApiKey("api-key");
+    config.setSite("us3.datadoghq.com");
+    TelemetryProvider provider = new TelemetryProvider();
+    provider.setName("datadog-sink");
+    provider.setConfig(config);
+    return provider;
+  }
+
   private ExportTelemetryConfigParams buildExportTelemetryParams(
       Universe u,
       AuditLogConfig auditLogConfig,
@@ -2211,28 +2223,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSubmitExportTelemetryConfigsRejectsActiveMetricsOnK8s() {
-    Customer c = ModelFactory.testCustomer();
-    Universe u = createKubernetesUniverse(c);
-
-    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
-    UniverseMetricsExporterConfig exporter = new UniverseMetricsExporterConfig();
-    exporter.setExporterUuid(UUID.randomUUID());
-    metricsExportConfig.setUniverseMetricsExporterConfig(Collections.singletonList(exporter));
-
-    ExportTelemetryConfigParams params =
-        buildExportTelemetryParams(u, null, null, metricsExportConfig);
-
-    PlatformServiceException ex =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> handler.submitExportTelemetryConfigs(params, c, u));
-    assertTrue(
-        "Error message must mention k8s metrics rejection, got: " + ex.getMessage(),
-        ex.getMessage().contains("Metrics export is not yet supported for kubernetes"));
-  }
-
-  @Test
   public void testSubmitExportTelemetryConfigsRejectsLogExportOnOldK8sVersion() {
     Customer c = ModelFactory.testCustomer();
     // createKubernetesUniverseInternal default uses 2.28.0.0-b0 (supported). Use an older version
@@ -2244,8 +2234,12 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     ysql.setEnabled(true);
     auditLogConfig.setYsqlAuditConfig(ysql);
     UniverseLogsExporterConfig exporter = new UniverseLogsExporterConfig();
-    exporter.setExporterUuid(UUID.randomUUID());
+    UUID exporterUuid = UUID.randomUUID();
+    exporter.setExporterUuid(exporterUuid);
     auditLogConfig.setUniverseLogsExporterConfig(Collections.singletonList(exporter));
+    // Logs-capable, so the assertion below is about the K8s version gate, not the sink type.
+    when(mockTelemetryProviderService.getOrBadRequest(exporterUuid))
+        .thenReturn(logsCapableTelemetryProvider());
 
     ExportTelemetryConfigParams params = buildExportTelemetryParams(u, auditLogConfig, null, null);
 

@@ -68,6 +68,10 @@ public class ModifyKubernetesAuditLoggingConfig extends KubernetesUpgradeTaskBas
               universe.isYbcEnabled(),
               universe.getUniverseDetails().getYbcSoftwareVersion());
           updateAndPersistAuditLoggingConfigTask();
+
+          // Update the swamper target file. Must run after the persist task above, since the
+          // otel targets are gated on universeDetails.otelCollectorEnabled which it sets.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 }

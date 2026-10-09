@@ -51,6 +51,13 @@ uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id) {
   return number | (path_id * (kFileNumberMask + 1));
 }
 
+uint32_t SafePathId(uint32_t target, size_t num_paths) {
+  DCHECK_LT(target, num_paths)
+      << "target_path_id " << target << " >= db_paths.size() " << num_paths
+      << "; defaulting to 0";
+  return target < num_paths ? target : 0;
+}
+
 namespace {
   std::string SanitizeDebugStringHelper(const VersionEditPB& pb, bool short_debug) {
     if (!FLAGS_allow_sensitive_data_in_logs) {
@@ -163,10 +170,13 @@ std::string FileMetaData::FrontiersToString() const {
 }
 
 std::string FileMetaData::ToString() const {
-  return yb::Format("{ number: $0 total_size: $1 base_size: $2 "
-                    "being_compacted: $3 smallest: $4 largest: $5 }",
+  // being_compacted is intentionally omitted. It is a mutable field guarded by the RocksDB mutex,
+  // but ToString() may be called from lock-free contexts (for example the exclude_from_compaction
+  // callback runs inside Version::PrepareApply, which VersionSet::LogAndApply deliberately invokes
+  // with the mutex released). Formatting being_compacted there would be a data race.
+  return yb::Format("{ number: $0 total_size: $1 base_size: $2 smallest: $3 largest: $4 }",
                     fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(),
-                    being_compacted, smallest, largest);
+                    smallest, largest);
 }
 
 void VersionEdit::Clear() {

@@ -887,6 +887,27 @@ message PgPerformOptionsPB {
   bool is_using_table_locks = 32;
 
   ReadTimeOptionsPB read_time_options = 34;
+
+  // When true, route the request through the HistoricalRead session kind.
+  // Used by walsender to read the catalog as of a time in the past within the
+  // context of a committed transaction.
+  bool use_historical_read_session = 35;
+
+  // The id of transaction within which the reads should be performed.
+  // The read will be performed with the in_txn_limit along with the
+  // transaction id, so that we read as of the time when a specific statement
+  // ran in the transaction i.e. see everything committed by the transaction
+  // until that statement.
+  // Only applicable when use_historical_read_session is true.
+  bytes historical_read_transaction_id = 36;
+
+  // OID of the database the backend is connected to; 0 until the backend knows it.
+  uint32 connected_database_oid = 37;
+}
+
+message PgRequestSequenceNumPB {
+  uint64 serial_no = 1;
+  OptionalUint64PB predecessor_serial_no = 2;
 }
 
 message PgPerformRequestPB {
@@ -894,7 +915,7 @@ message PgPerformRequestPB {
   PgPerformOptionsPB options = 2;
   repeated PgPerformOpPB ops = 3;
   fixed64 write_time = 4;
-  uint64 serial_no = 5;
+  PgRequestSequenceNumPB sequence_num = 5;
 }
 
 message PgPerformResponsePB {
@@ -1445,10 +1466,10 @@ enum ObjectLockMode {
 }
 
 message ObjectLockOid {
-  uint64 database_oid = 1;
-  uint64 relation_oid = 2;
-  uint64 object_oid = 3;
-  uint64 object_sub_oid = 4;
+  uint32 database_oid = 1;
+  uint32 relation_oid = 2;
+  uint32 object_oid = 3;
+  uint32 object_sub_oid = 4;
   uint32 tablespace_oid = 5;
 }
 

@@ -38,5 +38,5 @@ yugabyte=# ALTER SERVER my_server SERVER VERSION '2.0' OPTIONS (SET opt1 'true',
 ```
 ## See also
 
-- [`CREATE SERVER`](../ddl_create_server/)
-- [`DROP SERVER`](../ddl_drop_server/)
+- [CREATE SERVER](../ddl_create_server/)
+- [DROP SERVER](../ddl_drop_server/)

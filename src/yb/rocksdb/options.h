@@ -616,6 +616,15 @@ struct ColumnFamilyOptions {
   // Dynamically changeable through SetOptions() API
   bool disable_auto_compactions;
 
+  // Tiered storage: index into DBOptions::db_paths that memtable flushes and
+  // auto-compaction outputs are written to. Default 0 (home disk) is
+  // backward-compatible with non-tiered deployments.
+  // The reconcile worker sets this via SetOptions() under the DB mutex when
+  // migrating a tablet to a different storage tier.
+  //
+  // Dynamically changeable through SetOptions() API
+  uint32_t target_path_id = 0;
+
   // DEPRECATED
   // Does not have any effect.
   bool purge_redundant_kvs_while_flush;
@@ -1337,6 +1346,17 @@ struct DBOptions {
   // DEFAULT: false
   bool fail_if_options_file_error;
 
+  // If false, DB::Open / CreateColumnFamily / SetOptions do not write the OPTIONS file.
+  // Existing OPTIONS files are left alone; nothing in the DB reads them.
+  //
+  // DEFAULT: true
+  bool persist_options_file;
+
+  // If true, the DB keeps no WAL: every write behaves as with WriteOptions::disableWAL, no WAL
+  // file is created, and WAL files left by an earlier open are deleted without replay. Writes are
+  // durable only once flushed, so the caller must be able to recover unflushed ones itself.
+  bool disable_wal = false;
+
   // Initial value for seqno generator.
   // Used only during creation of new DB.
   SequenceNumber initial_seqno = 0;
@@ -1437,25 +1457,17 @@ class ReadFileFilter {
   virtual ~ReadFileFilter() {}
 };
 
-// Cache filter key produced from user key by particular transformer.
-struct FilterKeyCache {
-  explicit FilterKeyCache(Slice user_key) : filter_key(user_key) {}
-
-  Slice filter_key;
-  const void* transformer = nullptr;
-
-  void Reset(Slice user_key) {
-    filter_key = user_key;
-    transformer = nullptr;
-  }
-};
-
 struct QueryOptions;
+
+// Opaque per-iterator cache of the last-resolved fixed-size bloom filter block.
+// Defined in table/block_based_table_reader.cc; only ever passed by pointer here.
+struct FilterBlockCache;
 
 class IteratorFilter {
  public:
   virtual bool Filter(
-      const QueryOptions& options, Slice user_key, FilterKeyCache* cache, void* context) const = 0;
+      const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
+      FilterBlockCache* filter_cache, void* context) const = 0;
 
  protected:
   virtual ~IteratorFilter() = default;

@@ -11,12 +11,16 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.models.KmsConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class CreateKMSConfig extends KMSConfigTaskBase {
 
   @Inject
@@ -28,11 +32,29 @@ public class CreateKMSConfig extends KMSConfigTaskBase {
   @Override
   public void run() {
     log.info("Creating KMS Configuration for customer: " + taskParams().customerUUID.toString());
+
+    // A config with this UUID or name already exists, so a previous attempt succeeded: nothing to
+    // do.
+    boolean alreadyExists =
+        KmsConfig.get(taskParams().configUUID) != null
+            || KmsConfig.listKMSConfigs(taskParams().customerUUID).stream()
+                .anyMatch(config -> config.getName().equals(taskParams().kmsConfigName));
+    if (alreadyExists) {
+      log.info(
+          "KMS Configuration '{}' already exists for customer {}, skipping creation",
+          taskParams().kmsConfigName,
+          taskParams().customerUUID);
+      return;
+    }
+
     KmsConfig createResult =
         kmsManager
             .getServiceInstance(taskParams().kmsProvider.name())
             .createAuthConfig(
-                taskParams().customerUUID, taskParams().kmsConfigName, taskParams().providerConfig);
+                taskParams().customerUUID,
+                taskParams().kmsConfigName,
+                taskParams().providerConfig,
+                taskParams().configUUID);
 
     if (createResult == null) {
       throw new RuntimeException(

@@ -22,7 +22,7 @@ You can install YugabyteDB Voyager on the following:
 - RHEL 8, 9
 - CentOS 8
 - Ubuntu 18.04, 20.04, 22.04
-- macOS (for MySQL/Oracle source databases on macOS, [install yb-voyager](#install-yb-voyager) using the Docker option.)
+- macOS (for MySQL/Oracle source databases on macOS, [install yb-voyager](#install-yb-voyager) using the Docker option. Note that MySQL and Oracle migration is deprecated and will no longer be supported after October 13, 2026.)
 
 ### Hardware requirements
 
@@ -210,13 +210,13 @@ Install the following dependencies on the airgapped machine _before_ running the
 
 **PostgreSQL client tools**
 
-Install the following PostgreSQL 17 client tools and make it available in your system PATH.
+Install the following PostgreSQL 18 client tools and make them available in your system PATH.
 
 | Dependency | Required Version |
 | :--------- | :--------------- |
-| pg_dump | 17 |
-| pg_restore | 17 |
-| psql | 17 |
+| pg_dump | 18 |
+| pg_restore | 18 |
+| psql | 18 |
 
 **MySQL development libraries**
 
@@ -343,13 +343,13 @@ Install the following dependencies on the airgapped machine _before_ running the
 
 **PostgreSQL client tools**
 
-Install the following PostgreSQL 17 client tools and make it available in your system PATH.
+Install the following PostgreSQL 18 client tools and make them available in your system PATH.
 
 | Dependency | Required Version |
 | :--------- | :--------------- |
-| pg_dump | 17 |
-| pg_restore | 17 |
-| psql | 17 |
+| pg_dump | 18 |
+| pg_restore | 18 |
+| psql | 18 |
 
 **MySQL development libraries**
 

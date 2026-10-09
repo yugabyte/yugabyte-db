@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { ComponentProps, ComponentType } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import { dbUpgradeManagementPanelMswHandlers } from '@app/mocks/mock-data/dbUpgradeManagementPanelMswHandlers';
@@ -24,7 +24,14 @@ import {
   type UniverseSoftwareUpgradePrecheckResp
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
+import { SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS } from '@app/redesign/features/tasks/TaskUtils';
+
 import { DbUpgradeTaskBanner } from './DbUpgradeTaskBanner';
+
+type UpgradeSuccessfulStoryArgs = ComponentProps<typeof DbUpgradeTaskBanner> & {
+  /** Storybook-only: drives `task.completionTime` to exercise the 7-day visibility window. */
+  taskCompletionTime: number;
+};
 
 const mockUniverse = generateUniverseMockResponse();
 
@@ -195,17 +202,64 @@ export const UpgradeSuccessfulPendingFinalize: Story = {
   }
 };
 
-const upgradeSuccessfulTask = createDbUpgradeTaskMock({
+const upgradeSuccessfulBaseTask = createDbUpgradeTaskMock({
   status: TaskState.SUCCESS,
   softwareUpgradeProgress: allAzsCompletedSoftwareUpgradeProgress
 });
 
-export const UpgradeSuccessful: Story = {
-  ...storyWithBannerMsw(upgradeSuccessfulTask, {
-    universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
-  }),
+const upgradeSuccessfulStoryMsw = storyWithBannerMsw(upgradeSuccessfulBaseTask, {
+  universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
+});
+
+export const UpgradeSuccessful: StoryObj<UpgradeSuccessfulStoryArgs> = {
+  ...upgradeSuccessfulStoryMsw,
+  parameters: {
+    ...upgradeSuccessfulStoryMsw.parameters,
+    docs: {
+      description: {
+        story: `Success banner shows only when completion is within ${SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS} days. Use **Upgrade completed at** to move the date inside or outside that window.`
+      }
+    }
+  },
+  argTypes: {
+    task: { control: false },
+    universeUuid: { control: false },
+    taskCompletionTime: {
+      name: 'Upgrade completed at',
+      control: 'date'
+    },
+    isUpgradeCompletedBannerDismissed: {
+      name: 'Completed banner dismissed',
+      control: 'boolean'
+    },
+    onDismissUpgradeCompletedBanner: { action: 'dismissed completed banner' }
+  },
   args: {
-    task: upgradeSuccessfulTask
+    task: upgradeSuccessfulBaseTask,
+    universeUuid: DB_UPGRADE_TASK_MOCK_UNIVERSE_UUID,
+    taskCompletionTime: Date.now(),
+    isUpgradeCompletedBannerDismissed: false
+  },
+  render: ({
+    task,
+    universeUuid,
+    taskCompletionTime,
+    isUpgradeCompletedBannerDismissed,
+    onDismissUpgradeCompletedBanner
+  }: UpgradeSuccessfulStoryArgs) => {
+    const completionDate = new Date(taskCompletionTime);
+    const completionTime = Number.isNaN(completionDate.getTime())
+      ? new Date().toISOString()
+      : completionDate.toISOString();
+
+    return (
+      <DbUpgradeTaskBanner
+        task={{ ...task, completionTime }}
+        universeUuid={universeUuid}
+        isUpgradeCompletedBannerDismissed={isUpgradeCompletedBannerDismissed}
+        onDismissUpgradeCompletedBanner={onDismissUpgradeCompletedBanner}
+      />
+    );
   }
 };
 
@@ -238,18 +292,48 @@ export const UpgradeFailed: Story = {
   }
 };
 
-/** Task failed while universe is Ready (e.g. upgrade aborted) — ALERT banner vs {@link UpgradeFailed} ERROR. */
+/** User-aborted mid-upgrade — same ERROR banner as {@link UpgradeFailed}. */
 const upgradeAbortedTask = createDbUpgradeTaskMock({
+  status: TaskState.ABORTED,
+  softwareUpgradeProgress: {
+    masterAZUpgradeStatesList: defaultSoftwareUpgradeProgress.masterAZUpgradeStatesList.map(
+      (az) => ({
+        ...az,
+        status: AZUpgradeStatus.NOT_STARTED
+      })
+    ),
+    tserverAZUpgradeStatesList: defaultSoftwareUpgradeProgress.tserverAZUpgradeStatesList.map(
+      (az) => ({
+        ...az,
+        status: AZUpgradeStatus.NOT_STARTED
+      })
+    )
+  }
+});
+
+export const UpgradeAborted: Story = {
+  ...storyWithBannerMsw(upgradeAbortedTask, {
+    universeInfoOverrides: {
+      software_upgrade_state: UniverseInfoSoftwareUpgradeState.UpgradeFailed
+    }
+  }),
+  args: {
+    task: upgradeAbortedTask
+  }
+};
+
+/** Task failed while universe is Ready (e.g. precheck) — ALERT banner vs {@link UpgradeFailed} ERROR. */
+const upgradeFailedDuringPrecheckTask = createDbUpgradeTaskMock({
   status: TaskState.FAILURE,
   omitSoftwareUpgradeProgress: true
 });
 
 export const UpgradeFailedDuringPrecheck: Story = {
-  ...storyWithBannerMsw(upgradeAbortedTask, {
+  ...storyWithBannerMsw(upgradeFailedDuringPrecheckTask, {
     universeInfoOverrides: { software_upgrade_state: UniverseInfoSoftwareUpgradeState.Ready }
   }),
   args: {
-    task: upgradeAbortedTask
+    task: upgradeFailedDuringPrecheckTask
   }
 };
 

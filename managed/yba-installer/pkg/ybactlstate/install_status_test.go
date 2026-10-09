@@ -120,6 +120,7 @@ func TestTransitions(t *testing.T) {
 		{UpgradingStatus, UpgradingStatus, true, "upgrading retry"},
 		{UpgradingStatus, CleaningStatus, true, "clean from upgrading"},
 		{CleaningStatus, SoftCleanStatus, true, "soft clean"},
+		{SoftCleanStatus, CleaningStatus, true, "clean --all after a soft clean"},
 		{CleaningStatus, InstalledStatus, false, "clean must finish"},
 		{MigratingStatus, MigrateStatus, true, "migrate start"},
 		{MigratingStatus, RollbackStatus, true, "rollback failed migrate"},

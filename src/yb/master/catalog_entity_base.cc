@@ -15,6 +15,8 @@
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
 
 namespace yb::master {
 

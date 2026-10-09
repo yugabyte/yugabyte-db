@@ -30,6 +30,8 @@
 #include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 
@@ -150,6 +152,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       table_metric_entity,
       tablet_metric_entity,
       raft_pool_.get(),
+      raft_pool_.get() /* snapshot_cleanup_pool */,
       raft_notifications_pool_.get(),
       tablet_prepare_pool_.get(),
       &retryable_requests,
@@ -184,7 +187,7 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
   for (int32_t i = 0; i < 1000; i++) {
     WriteRequestPB req;
     req.set_tablet_id(tablet_peer_->tablet_id());
-    AddTestRowInsert(i, i * 2, Substitute("key$0", i), &req);
+    AddTestRowInsert(i, i * 2, Format("key$0", i), &req);
 
     auto arena = SharedThreadSafeArena();
     auto* resp = arena->NewArenaObject<LWWriteResponsePB>();

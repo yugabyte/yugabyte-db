@@ -144,9 +144,6 @@ print_report() {
       print_report_line "%s" "Build architecture" "${YB_TARGET_ARCH}"
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
-      if using_linuxbrew; then
-        print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
-      fi
 
       set +u
       local make_targets_str="${make_targets[*]}"
@@ -194,9 +191,6 @@ build_root: "$BUILD_ROOT"
 compiler_type: "$YB_COMPILER_TYPE"
 thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
 EOT
-    if using_linuxbrew; then
-      echo "linuxbrew_dir: \"${YB_LINUXBREW_DIR:-}\"" >>"$build_descriptor_path"
-    fi
     log "Created a build descriptor file at '$build_descriptor_path'"
   fi
 }
@@ -647,6 +641,13 @@ parse_yb_build_cmd_line "${original_args[@]}"
 # Finished parsing command-line arguments, post-processing them.
 # -------------------------------------------------------------------------------------------------
 
+# org.yb.yugabyted tests start the cluster with "yugabyted --ui=true", and yugabyted silently
+# starts without the UI when $BUILD_ROOT/gobin/yugabyted-ui is missing, so those tests only fail
+# with a refused connection. Jenkins gets that binary from the package build step.
+if [[ -n ${java_test_name} && ${java_test_name} == org.yb.yugabyted.* ]]; then
+  build_yugabyted_ui=true
+fi
+
 if is_apple_silicon && [[ -z ${YB_TARGET_ARCH:-} ]]; then
   # Use arm64 by default on an Apple Silicon machine.
   YB_TARGET_ARCH=arm64
@@ -951,6 +952,7 @@ fi
 find_or_download_ysql_snapshots
 activate_virtualenv
 set_pythonpath
+verify_thirdparty_not_stale
 find_or_download_thirdparty
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
@@ -1040,16 +1042,20 @@ if [[ ${build_cxx} == "true" ]]; then
       "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
 fi
 
-add_brew_bin_to_path
-
 create_build_descriptor_file
 
 create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Build only a subset of targets when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_conn_mgr_template
-      update_ysql_migrations )
+  # yugabyted and yb-admin-driven tests run yb-admin/yb-ts-cli; a stale one crashes against
+  # rebuilt protobuf libraries.
+  make_targets+=( yb-master yb-tserver yb-admin yb-ts-cli gen_auto_flags_json postgres
+      initial_sys_catalog_snapshot update_ysql_conn_mgr_template update_ysql_migrations )
+  # yb-ysql-conn-mgr tests launch bin/odyssey, so it must be part of the subset.
+  if [[ "${build_odyssey:-}" == "true" ]]; then
+    make_targets+=( odyssey )
+  fi
 fi
 
 if [[ $build_type == "compilecmds" ]]; then
