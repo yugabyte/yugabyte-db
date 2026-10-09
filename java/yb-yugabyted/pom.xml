@@ -10,7 +10,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.124-SNAPSHOT-test</version>
+    <version>0.8.124-SNAPSHOT</version>
     </parent>
   <artifactId>yb-yugabyted</artifactId>
 
