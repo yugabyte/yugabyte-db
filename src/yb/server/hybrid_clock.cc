@@ -42,6 +42,7 @@
 
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -85,7 +86,6 @@ DEFINE_UNKNOWN_uint64(clock_skew_force_crash_bound_usec, 60000000,
 
 DECLARE_uint64(max_clock_skew_usec);
 
-using strings::Substitute;
 
 namespace yb {
 namespace server {
@@ -182,7 +182,7 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
   auto now = clock_->Now();
   if (PREDICT_FALSE(!now.ok())) {
     TryRunClockDiagnosticsOnce();
-    LOG(FATAL) << Substitute("Couldn't get the current time: Clock unsynchronized. "
+    LOG(FATAL) << Format("Couldn't get the current time: Clock unsynchronized. "
         "Status: $0", now.status().ToString());
   }
 
@@ -307,7 +307,7 @@ int64_t HybridClock::SkewForMetrics() {
   HybridClockComponents current_components = components_.load(boost::memory_order_acquire);
   auto now = clock_->Now();
   if (PREDICT_FALSE(!now.ok())) {
-    LOG(DFATAL) << Substitute("Couldn't get the current time: Clock unsynchronized. "
+    LOG(DFATAL) << Format("Couldn't get the current time: Clock unsynchronized. "
         "Status: $0", now.status().ToString());
     return 0;
   }

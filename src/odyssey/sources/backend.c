@@ -277,21 +277,9 @@ static void yb_backend_record_prep_stmt(od_server_t *server, char *context,
 	od_instance_t *instance = server->global->instance;
 	od_client_t *client = server->client;
 
-	/*
-	 * The ack was consumed after client has detached. We might
-	 * need client->id to compute server_key, so do early return.
-	 * This only results in an additional ForceParse and has no
-	 * correctness consequences.
-	 */
-	if (client == NULL)
-		return;
-
 	int server_key_len = 0;
 	char *server_key = yb_prepare_server_key(
 		orig_name, orig_name_len, description, description_len,
-		client->id.id,
-		instance->config.yb_optimized_extended_query_protocol
-			? 0 : strlen(client->id.id),
 		&server_key_len);
 	if (server_key == NULL) {
 		od_error(&instance->logger, context, client, server,

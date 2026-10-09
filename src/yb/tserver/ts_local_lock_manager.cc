@@ -347,6 +347,18 @@ class TSLocalLockManager::Impl {
     return Status::OK();
   }
 
+  void ApplyLeaseEpochFloors(
+      const google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors)
+      EXCLUDES(mutex_) {
+    TRACE_FUNC();
+    for (const auto& floor : floors) {
+      if (floor.session_host_uuid().empty() || !floor.ignore_lease_epochs_before()) {
+        continue;
+      }
+      UpdateLeaseEpochIfNecessary(floor.session_host_uuid(), floor.ignore_lease_epochs_before());
+    }
+  }
+
   Status CheckShutdown() const {
     return shutdown_
         ? STATUS_FORMAT(ShutdownInProgress, "Object Lock Manager Shutdown") : Status::OK();
@@ -403,7 +415,7 @@ class TSLocalLockManager::Impl {
     return Wait(
         [this]() -> bool {
           bool ret = is_bootstrapped_;
-          VTRACE(2, "Is bootstrapped: $0", ret);
+          VTRACE(2, "Is bootstrapped: $0", ret ? "true" : "false");
           return ret;
         },
         deadline, "Waiting to Bootstrap.");
@@ -429,6 +441,7 @@ class TSLocalLockManager::Impl {
     WaitIfNecessaryForSimulatingOutOfOrderRequestsInTests(req, deadline);
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
+    ApplyLeaseEpochFloors(req.lease_epoch_floors());
     RETURN_NOT_OK(CheckRequestForDeadline(req));
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
@@ -564,7 +577,8 @@ class TSLocalLockManager::Impl {
       const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
       CoarseTimePoint deadline,
       StdStatusCallback&& callback,
-      const TransactionId& background_txn_id) {
+      const TransactionId& background_txn_id,
+      const TabletId& background_txn_status_tablet) {
     auto s = CheckShutdown();
     if (!s.ok()) {
       callback(s);
@@ -585,7 +599,8 @@ class TSLocalLockManager::Impl {
       return;
     }
     object_lock_manager_.WaitForConflictingLockers(
-        *keys_to_check, std::move(callback), deadline, background_txn_id);
+        *keys_to_check, std::move(callback), deadline, background_txn_id,
+        background_txn_status_tablet);
   }
 
   void Poll() {
@@ -729,6 +744,7 @@ class TSLocalLockManager::Impl {
         return s;
       }
     }
+    ApplyLeaseEpochFloors(entries.lease_epoch_floors());
     MarkBootstrapped();
     VLOG_WITH_FUNC(2) << "success.";
     return Status::OK();
@@ -818,8 +834,11 @@ void TSLocalLockManager::WaitForLockersAsync(
     const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
     CoarseTimePoint deadline,
     StdStatusCallback&& callback,
-    const TransactionId& background_txn_id) {
-  impl_->WaitForLockersAsync(object_locks, deadline, std::move(callback), background_txn_id);
+    const TransactionId& background_txn_id,
+    const TabletId& background_txn_status_tablet) {
+  impl_->WaitForLockersAsync(
+      object_locks, deadline, std::move(callback), background_txn_id,
+      background_txn_status_tablet);
 }
 
 void TSLocalLockManager::Start(

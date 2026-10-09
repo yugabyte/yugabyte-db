@@ -62,6 +62,10 @@ DEFINE_RUNTIME_uint32(xcluster_poller_task_delay_considered_stuck_secs, 3600 /* 
     "Maximum amount of time between tasks of a xcluster poller above which it is considered as "
     "stuck.");
 
+DEFINE_RUNTIME_bool(xcluster_kill_ddl_queue_pg_connection_on_pause, true,
+    "If true, terminate the pg backend running a replicated DDL whenever the replication group is "
+    "paused, whether by a user or by failover, so that the pause can complete.");
+
 DEFINE_test_flag(int32, xcluster_simulated_lag_ms, 0,
     "Simulate lag in xcluster replication. Replication is paused if set to -1.");
 DEFINE_test_flag(string, xcluster_simulated_lag_tablet_filter, "",
@@ -890,6 +894,20 @@ void XClusterPoller::SetPaused(bool is_paused) {
     // we simply mark ourself as failed and let the consumer recreate a fresh poller.
     MarkFailed("the stream was unpaused. The poller should be recreated.");
   }
+}
+
+bool XClusterPoller::ShouldKillStuckDdlBackend() const {
+  return is_stream_paused_ && ddl_queue_handler_ &&
+         FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause &&
+         ddl_queue_handler_->HasDdlInFlight();
+}
+
+void XClusterPoller::KillStuckDdlBackend() {
+  DDLQueueHandlerCallScope ddl_queue_handler_call(*this);
+  if (!is_stream_paused_) {
+    return;
+  }
+  ddl_queue_handler_->KillPgConnection();
 }
 
 Status XClusterPoller::InitializeWaitState(const std::string& ts_uuid) {

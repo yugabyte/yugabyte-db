@@ -324,6 +324,15 @@ func HashicorpVaultAddressFromEnv() (string, error) {
 	return hca.Address, nil
 }
 
+// OCIValueFromEnv retrives value of the given OCI env variable
+func OCIValueFromEnv(envName string) (string, error) {
+	value, isPresent := os.LookupEnv(envName)
+	if !isPresent || IsEmptyString(value) {
+		return "", fmt.Errorf("%s env variable not found", envName)
+	}
+	return value, nil
+}
+
 // ReadFileToString retrieves file content from given file path
 func ReadFileToString(filePath string) (*string, error) {
 	fileContentByte, err := os.ReadFile(filePath)

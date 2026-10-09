@@ -1933,17 +1933,30 @@ create_append_path(PlannerInfo *root,
 		/* YB */
 		if (subpaths)
 		{
+			List	   *groups = NIL;
+
 			/* YB: Accumulate batching info from subpaths for this "baserel". */
 			Assert(yb_has_same_batching_reqs(subpaths));
 
 			root->yb_cur_batched_relids =
 				YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(subpaths));
+
+			/*
+			 * The parent's movable clauses can miss a group that a child's
+			 * index condition batches on, and children can batch different
+			 * clauses, so pass on the union of the children's groups.
+			 */
+			foreach(l, subpaths)
+				groups = list_concat(groups,
+									 YB_PATH_BATCHED_GROUPS((Path *) lfirst(l)));
+			root->yb_cur_batched_groups = groups;
 		}
 
 		pathnode->path.param_info = get_baserel_parampathinfo(root,
 															  rel,
 															  required_outer);
 		root->yb_cur_batched_relids = NULL;
+		root->yb_cur_batched_groups = NIL;
 	}
 	else
 		pathnode->path.param_info = get_appendrel_parampathinfo(rel,
@@ -5679,6 +5692,10 @@ yb_create_distinct_index_path(PlannerInfo *root,
 										  NULL);
 	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
 
+	/*
+	 * TODO(#18943): model distinct index scan cost. startup_cost has to reflect
+	 * the extra work to fill the first batch.
+	 */
 	run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
 	run_cost *= selectivity;
 	pathnode->path.total_cost = pathnode->path.startup_cost + run_cost;

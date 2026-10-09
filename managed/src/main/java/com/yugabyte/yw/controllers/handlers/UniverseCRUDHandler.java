@@ -22,6 +22,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.cloud.oci.OCICloudUtil;
@@ -70,6 +71,7 @@ import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -101,6 +103,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -168,6 +171,8 @@ public class UniverseCRUDHandler {
   @Inject private GFlagsValidation gFlagsValidation;
 
   @Inject private YBClientService ybService;
+
+  @Inject private CloudAPI.Factory cloudAPIFactory;
 
   public enum OpType {
     CONFIGURE,
@@ -837,6 +842,10 @@ public class UniverseCRUDHandler {
 
   public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create for {}.", customer.getUuid());
+    if (appConfig.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      // Not every caller runs configure() first, which is where this is otherwise enforced.
+      taskParams.fipsEnabled = true;
+    }
 
     // Get the user submitted form data.
     if (taskParams.getPrimaryCluster() != null
@@ -874,13 +883,20 @@ public class UniverseCRUDHandler {
       }
       // Record the intended cross-cloud federated IAM state on the cluster's UserIntent (like
       // providerType/rootCA), so CreateUniverse and later edit/add-node/replace key off this one
-      // flag. TODO(multi-cloud): resolve per provider for clusters that span multiple clouds.
+      // flag.
       Provider federationProvider =
           Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-      c.userIntent.setFederationConfigured(
-          CloudInfoInterface.getCrossCloudFederationAudience(federationProvider) != null);
+      boolean federationConfigured =
+          !CloudInfoInterface.getCrossCloudFederationTargets(federationProvider).isEmpty();
+      if (federationConfigured && c.userIntent.isMulticloudSupport()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, CrossCloudFederationTarget.MULTICLOUD_UNSUPPORTED_ERROR);
+      }
+      c.userIntent.setFederationConfigured(federationConfigured);
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+      ManagedLoadBalancerUtil.validateNewCluster(
+          c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
 
@@ -1114,6 +1130,9 @@ public class UniverseCRUDHandler {
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
     validateOciInstanceTags(taskParams);
+
+    // Only tasks write this state. Universe.create() below would save a copy sent by the client.
+    taskParams.setManagedLoadBalancerState(null);
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
     // for this customer id.
@@ -1946,6 +1965,8 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    ManagedLoadBalancerUtil.validateNewCluster(
+        readOnlyCluster, primaryCluster, confGetter, cloudAPIFactory);
     List<GroupName> primaryGflagGroups = new ArrayList<>();
     if (primaryCluster.userIntent.specificGFlags != null) {
       primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
@@ -2887,6 +2908,8 @@ public class UniverseCRUDHandler {
           && curCluster.clusterType == ClusterType.PRIMARY) {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
+      ManagedLoadBalancerUtil.validateEditedCluster(
+          universe.getUniverseDetails().getPrimaryCluster(), curCluster, newCluster);
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {

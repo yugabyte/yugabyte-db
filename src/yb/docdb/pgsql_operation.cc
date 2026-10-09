@@ -72,6 +72,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
 #include "yb/util/result.h"
@@ -765,6 +766,7 @@ Result<TableRowFetch> FetchTableRow(
 struct RowPackerData {
   SchemaVersion schema_version;
   const dockv::SchemaPacking& packing;
+  dockv::VectorValueFormat vector_value_format;
 
   static Result<RowPackerData> Create(
       const PgsqlWriteRequestMsg& request, const DocReadContext& read_context) {
@@ -772,6 +774,7 @@ struct RowPackerData {
     return RowPackerData {
       .schema_version = schema_version,
       .packing = VERIFY_RESULT(read_context.schema_packing_storage.GetPacking(schema_version)),
+      .vector_value_format = read_context.vector_value_format(),
     };
   }
 
@@ -787,7 +790,7 @@ struct RowPackerData {
   dockv::RowPackerVariant MakePackerHelper(bool is_update) const {
     return dockv::RowPackerVariant(
         std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
-        Slice(), is_update);
+        Slice(), is_update, vector_value_format);
   }
 };
 
@@ -1337,12 +1340,15 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
   VLOG_WITH_FUNC(2) << "doc key: " << doc_key_;
 
+  char highest = dockv::KeyEntryTypeAsChar::kHighest;
+  KeyBuffer upperbound_buffer(encoded_doc_key_.as_slice(), Slice(&highest, 1));
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
       BloomFilterOptions::Fixed(encoded_doc_key_.as_slice()),
       rocksdb::kDefaultQueryId,
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), iter.get());
 
   VLOG_WITH_FUNC(4) << "whole row: " << doc_key_;
   DocHybridTime oldest_past_min_dht = VERIFY_RESULT(
@@ -3228,7 +3234,7 @@ Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
     return table_iter_->GetTupleId();
   }
 
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", column_id);
+  return STATUS_FORMAT(InvalidArgument, "Invalid column ID: $0", column_id);
 }
 
 Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {

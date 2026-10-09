@@ -21,6 +21,7 @@
 
 #include "yb/util/flags.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 
@@ -47,8 +48,6 @@ using namespace std::literals;
 
 DECLARE_string(pggate_master_addresses);
 DECLARE_string(test_leave_files);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 
 namespace yb {
 namespace pggate {
@@ -152,9 +151,7 @@ void PggateTest::SetUp() {
   // (and thus acquiring relevant object locks). As a result, the sanity check which ensures
   // that some object locks are taken before performing a read/write fails for these tests.
   // Hence, disabling the object locks feature for this suite.
-  // Concurrent DDL requires object locking, so keep the two flags consistent.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+  ToggleDDLMode(/* use_legacy = */ true);
   YBTest::SetUp();
 }
 

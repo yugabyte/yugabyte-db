@@ -25,6 +25,7 @@
 #include "yb/client/client-test-util.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
@@ -61,17 +62,14 @@ class PgDdlAtomicityStressTest : public PgDdlAtomicityTestBase,
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     options->extra_master_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=false");
     if (IsTsan()) {
       options->extra_master_flags.push_back(
           "--TEST_skip_wait_for_ysql_backends_catalog_version=true");
     }
     // TODO(#28042): Enable object locking once the false deadlock issues are addressed.
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 
   Status SetupTables();

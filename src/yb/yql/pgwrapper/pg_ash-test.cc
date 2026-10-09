@@ -12,6 +12,7 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/test_thread_holder.h"
@@ -104,8 +105,8 @@ class PgAshTest : public LibPqTestBase {
 class PgAshMasterMetadataSerializerTest : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
     PgAshTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -312,11 +313,8 @@ const Configuration kIndexRPCs{
     "--ysql_disable_index_backfill=false",
     "--enable_object_locking_for_table_locks=false",
     "--ysql_yb_ddl_transaction_block_enabled=false",
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
     "--ysql_yb_enable_ddl_savepoint_support=false",
     "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false",
-    "--allowed_preview_flags_csv=ysql_enable_concurrent_ddl",
     "--ysql_enable_concurrent_ddl=false"}};
 
 // Test for RPCs which are fired with queries related to replication slots

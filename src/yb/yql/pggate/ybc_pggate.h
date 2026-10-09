@@ -56,6 +56,9 @@ YbcStatus YBCInitPgGate(
 
 void YBCSetupPgBackendCgroup(YbcPgOid dboid);
 
+// Sent with every request so PG client service can tell which database the backend serves.
+void YBCPgSetConnectedDatabaseOid(YbcPgOid dboid);
+
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
@@ -103,6 +106,10 @@ void YBCRefreshClusterReplicationInfo();
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 
+// Catalog prefetch load on the master leader as of the last heartbeat. Values match
+// YsqlCatalogPrefetchLoadPB: 0 unknown, 1 low, 2 busy, 3 super busy.
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad();
+
 // Set per-db catalog_version to the local tserver's per-db catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedDBCatalogVersion(
@@ -148,6 +155,7 @@ YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 
 int64_t YBCGetTCMallocSamplingPeriod();
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+void YBCTCMallocReleaseFreeMemory(int64_t bytes);
 YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
                              int64_t* num_samples,
                              bool peak_heap);
@@ -787,6 +795,14 @@ bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
 
+// Whether DDLs run inside the enclosing transaction block.
+// ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
+// enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the
+// object locking feature. It therefore follows table locking for the current transaction, which
+// is off until the object locking infra auto flag is promoted and stays at the value latched when
+// the transaction began.
+bool YBCIsDdlTransactionBlockEnabled();
+
 // Effective per-RPC response byte cap that pggate applies when the executor
 // doesn't request a smaller limit.  Equals
 // FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio.
@@ -938,6 +954,11 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
     size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
 void YBCPgResetCatalogReadTime();
+
+void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id);
+
+void YBCPgResetHistoricalReadContext();
+
 YbcReadHybridTime YBCGetPgCatalogReadTime();
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
@@ -948,12 +969,13 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-void YBCStartSysTablePrefetchingNoCache();
+void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,
-    YbcPgSysTablePrefetcherCacheMode cache_mode);
+    YbcPgSysTablePrefetcherCacheMode cache_mode,
+    YbcPgSysTablePrefetchKind kind);
 
 void YBCStopSysTablePrefetching();
 

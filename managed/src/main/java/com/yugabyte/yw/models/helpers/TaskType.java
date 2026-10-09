@@ -1217,6 +1217,9 @@ public enum TaskType {
 
   CheckCpuCgroup(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCpuCgroup.class),
 
+  CheckOCIImageEligibility(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOCIImageEligibility.class),
+
   CheckOpentelemetryOperator(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator.class),
 
@@ -1364,6 +1367,12 @@ public enum TaskType {
   DeleteCapacityReservation(
       com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class),
 
+  EnsureManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.EnsureManagedLoadBalancer.class),
+
+  DeleteManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteManagedLoadBalancer.class),
+
   DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
 
   EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class),
@@ -1397,7 +1406,10 @@ public enum TaskType {
 
   CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class),
 
-  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class);
+  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class),
+
+  CreateYbStorageDatabase(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class);
 
   private final Class<? extends ITask> taskClass;
 

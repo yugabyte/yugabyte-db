@@ -14,6 +14,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
@@ -26,6 +28,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+DECLARE_bool(openssl_require_fips);
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
@@ -145,9 +148,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
     "milliseconds for an available server. Disconnect client on timeout reach. "
     "If the value is set to zero, the client waits for the server connection indefinitely");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
-    "Enable optimized extended query protocol in Ysql Connection Manager. "
-    "If set to false, extended query protocol handling is fully correct but unoptimized.");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_optimized_extended_query_protocol, "10_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_prep_stmt_close, "07_2026");
 DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_parse_queue_tracking, "09_2026");
@@ -385,6 +386,13 @@ Status YsqlConnMgrWrapper::Start() {
   proc_->SetEnv(
       "YB_YSQL_CONN_MGR_FULL_TLS_HANDSHAKE",
       FLAGS_ysql_conn_mgr_full_tls_handshake ? "true" : "false");
+
+  rpc::SetOpenSSLEnv(&*proc_);
+
+  // Conn mgr cannot tell from OPENSSL_CONF alone that FIPS was required, since that variable can
+  // also be inherited from this process's environment, so pass the intent separately. It refuses
+  // to start if the provider did not come up.
+  proc_->SetEnv(YSQL_CONN_MGR_REQUIRE_FIPS, FLAGS_openssl_require_fips ? "true" : "false");
 
 #ifdef THREAD_SANITIZER
   // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.

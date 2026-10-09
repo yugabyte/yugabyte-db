@@ -407,6 +407,8 @@ struct PlannerInfo
 	Relids		yb_cur_batched_relids;	/* valid if we are processing a
 										 * batched NL join */
 	Relids		yb_cur_unbatched_relids;
+	List	   *yb_cur_batched_groups;	/* yb_ppi_batched_groups for the
+										 * path being built */
 
 	/*
 	 * YB: List of Relids. Each element is a Bitmapset that encodes the batched
@@ -452,6 +454,13 @@ struct PlannerInfo
 	 * NULL when the query has no federated foreign tables.
 	 */
 	const char **yb_tserver_uuids;
+
+	/*
+	 * YB: LIMIT count + OFFSET when both fold to constants, else -1.
+	 * Unlike limit_tuples it is not cleared for grouping or DISTINCT;
+	 * yb_first_fetch_limit applies the executor's own pass-through rules.
+	 */
+	Cardinality yb_limit_tuples;
 };
 
 
@@ -1260,6 +1269,20 @@ typedef struct PathTarget
  * the same relation is referenced with a batched array elsewhere in the scan.
  * The join directly above the path applies them instead (see
  * get_joinrel_parampathinfo).  Like ppi_clauses, it is NIL in join cases.
+ *
+ * YB: yb_ppi_batched_groups lists the sets of batched outer relations that a
+ * single batched clause of this path references together.  Such a clause
+ * becomes one YbBatchedExpr, which createplan.c expands into an array using
+ * one batch index for every batched Var inside it, so element i is only
+ * meaningful when all of them come from the same outer tuple -- that is, when
+ * one batched nested loop join fills them.  A join that batches part of a set
+ * probes the diagonal of two independently advancing batches instead of their
+ * cross product and loses rows, so yb_batched_clause_final_check rejects it.
+ * Unlike ppi_clauses this list is carried up through join cases, because the
+ * clause it came from is not reachable from there.  Only sets of two or more
+ * are recorded: one batched relation constrains nothing, and an unbatched
+ * relation in the same expression supplies a scalar parameter that holds
+ * still for a whole rescan of this path.
  */
 typedef struct ParamPathInfo
 {
@@ -1272,6 +1295,7 @@ typedef struct ParamPathInfo
 	/* Yugabyte attributes */
 	Relids		yb_ppi_req_outer_batched;	/* outer rels that can be batched */
 	List	   *yb_ppi_relegated_clauses;	/* clauses withheld from ppi_clauses */
+	List	   *yb_ppi_batched_groups;	/* outer rels to batch together */
 } ParamPathInfo;
 
 
@@ -1298,6 +1322,15 @@ typedef struct YbPathInfo
 	List	   *yb_uniqkeys;	/* list keys that are distinct */
 } YbPathInfo;
 
+/*
+ * Info propagated for YugabyteDB, for scans: what costing assumed about the
+ * scan's DocDB work, carried to the plan node for EXPLAIN (DEBUG) to help
+ * diagnose cost estimates.
+ *
+ * 'first_fetch_limit' is the row bound the LIMIT clause puts on the scan's
+ * first fetch (LIMIT count + OFFSET); 0 if none.  Unlike the other fields it
+ * is not an estimate but derived from the query and plan shape.
+ */
 typedef struct YbPlanInfo
 {
 	double		estimated_num_nexts_prevs;
@@ -1309,17 +1342,20 @@ typedef struct YbPlanInfo
 	double		estimated_num_bmscan_nexts_prevs;
 	double		estimated_num_bmscan_seeks;
 	double		estimated_num_bmscan_result_pages;
+	double		first_fetch_limit;	/* LIMIT bound on first fetch; 0 = none */
 } YbPlanInfo;
 
 /*
  * YB: info used by YbIndexPathInfo.
  *
- * Holds info used for merge scans.
+ * Holds info used for merge scans.  'clause' is the column's SAOP or equality
+ * index condition, or NULL for a hash column with neither, which
+ * ybValidateMergeScanBinds reports.
  */
 typedef struct YbMergeScanStreamColInfo
 {
 	NodeTag		type;
-	Expr	   *clause;			/* the SAOP */
+	Expr	   *clause;			/* SAOP, equality index cond, or NULL */
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
@@ -1330,6 +1366,9 @@ typedef struct YbMergeScanStreamColInfo
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
+ *
+ * 'merge_scan_stream_cols' lists the merge stream keys in index column order
+ * (see yb_finalize_merge_scan_stream_cols).
  */
 typedef struct YbIndexPathInfo
 {
@@ -1411,6 +1450,9 @@ typedef struct Path
 
 #define YB_PATH_NEEDS_BATCHED_RELS(path) \
 	!bms_is_empty(YB_PATH_REQ_OUTER_BATCHED(path))
+
+#define YB_PATH_BATCHED_GROUPS(path)  \
+	((path)->param_info ? ((path)->param_info->yb_ppi_batched_groups) : NIL)
 
 #define YB_PATH_REQ_OUTER_UNBATCHED(path)  \
 	(bms_difference(PATH_REQ_OUTER(path), YB_PATH_REQ_OUTER_BATCHED(path)))

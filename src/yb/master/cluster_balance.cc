@@ -1218,6 +1218,14 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
   // the interval between left and right cannot have load > kMinLoadVarianceToBalance.
   ssize_t last_pos = state_->sorted_load_.size() - 1;
   for (ssize_t left = 0; left <= last_pos; ++left) {
+    // Blacklisted tservers cannot receive load. Using one as the destination could end the search
+    // early via the global load check below. last_pos is never skipped: its iteration
+    // (left == right, load_variance == 0) terminates the loop via return false instead of
+    // falling through to the IllegalState below.
+    if (left < last_pos &&
+        global_state_->blacklisted_servers_.contains(state_->sorted_load_[left])) {
+      continue;
+    }
     for (auto right = last_pos; right >= 0; --right) {
       const TabletServerId& low_load_uuid = state_->sorted_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_load_[right];

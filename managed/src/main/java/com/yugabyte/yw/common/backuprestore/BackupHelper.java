@@ -15,8 +15,10 @@ import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.AWSUtil;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -72,6 +74,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -544,97 +547,133 @@ public class BackupHelper {
       CustomerConfigData configData, @Nullable Universe universe) {
     if (configData instanceof CustomerConfigStorageGCSData) {
       CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
-      if (gcs.useGcpIam) {
-        gcs.federationAudience = resolveCrossCloudFederationAudience(universe);
+      // Only when YBA itself needs to federate. A YBA on GCP reaching a GCS bucket is same-cloud
+      // and must keep its native identity; stamping an audience there would make it build an
+      // AWS-IMDS external_account credential it cannot satisfy.
+      if (GCPUtil.isCrossCloudFederationConfig(gcs)) {
+        CrossCloudFederationTarget target =
+            resolveCrossCloudFederationTarget(universe, CloudType.gcp);
+        if (target != null) {
+          gcs.crossCloudFederationAudience = target.audience;
+        }
       }
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
       if (AWSUtil.isCrossCloudFederationConfig(s3)) {
-        s3.federationAudience = resolveCrossCloudFederationAudience(universe);
-        s3.federationRoleArn = resolveCrossCloudFederationRoleArn(universe);
+        CrossCloudFederationTarget target =
+            resolveCrossCloudFederationTarget(universe, CloudType.aws);
+        if (target != null) {
+          s3.crossCloudFederationAudience = target.audience;
+          s3.crossCloudFederationRoleArn = target.roleArn;
+        }
       }
     }
+  }
+
+  /**
+   * Stamps onto {@code configData} the federation identity YBA needs to reach this backup's bucket
+   * itself, for deletion. Prefers the snapshot taken when the backup was created, which survives
+   * deletion of the universe and its provider; falls back to the live universe for backups taken
+   * before the snapshot existed. No-op for a config that is not federated.
+   */
+  public void applyCrossCloudFederationFromBackup(
+      CustomerConfigStorageData configData, Backup backup) {
+    String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
+    String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
+    if (configData instanceof CustomerConfigStorageGCSData
+        && ((CustomerConfigStorageGCSData) configData).useGcpIam) {
+      if (StringUtils.isNotBlank(snapshotAudience)) {
+        ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience = snapshotAudience;
+        return;
+      }
+    } else if (configData instanceof CustomerConfigStorageS3Data
+        && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
+      if (StringUtils.isNotBlank(snapshotAudience) && StringUtils.isNotBlank(snapshotRoleArn)) {
+        CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+        s3.crossCloudFederationAudience = snapshotAudience;
+        s3.crossCloudFederationRoleArn = snapshotRoleArn;
+        return;
+      }
+    } else {
+      return;
+    }
+    Universe.maybeGet(backup.getUniverseUUID())
+        .ifPresent(u -> applyCrossCloudFederationAudience(configData, u));
   }
 
   /**
    * Snapshots the cross-cloud federation identity onto the backup request, so the backup can still
    * be deleted once its universe - and with it the provider link - is gone. Every path that submits
    * a {@code CreateBackup} task must call this; scheduled backups do not go through {@link
-   * #createBackupTask}. The role ARN is set only for the S3-on-GCP direction.
+   * #createBackupTask}. The role ARN is set only when the bucket is on AWS.
    */
   public void applyCrossCloudFederationSnapshot(
       BackupRequestParams taskParams, @Nullable Universe universe) {
-    taskParams.crossCloudFederationAudience = resolveCrossCloudFederationAudience(universe);
-    taskParams.crossCloudFederationRoleArn = resolveCrossCloudFederationRoleArn(universe);
+    CrossCloudFederationTarget target =
+        resolveCrossCloudFederationTarget(
+            universe,
+            targetCloudForStorageConfig(taskParams.customerUUID, taskParams.storageConfigUUID));
+    if (target == null) {
+      return;
+    }
+    taskParams.crossCloudFederationAudience = target.audience;
+    taskParams.crossCloudFederationRoleArn = target.roleArn;
   }
 
   /**
-   * Resolves the provider-level GCP Workload Identity Federation audience for a universe, or null
-   * when cross-cloud federation is disabled, no universe context is available, or the provider has
-   * no audience configured.
+   * Cloud the backup's bucket lives on, or null for a storage type that is not a supported
+   * federation target.
+   *
+   * <p>A backup targets one bucket, so the storage type alone says which cloud the nodes need
+   * access to; whether that needs federation depends on the cloud each node runs on, which is
+   * decided per node when federation is configured.
    */
   @Nullable
-  public String resolveCrossCloudFederationAudience(@Nullable Universe universe) {
-    if (universe == null) {
-      return null;
-    }
+  private CloudType targetCloudForStorageConfig(UUID customerUUID, UUID storageConfigUUID) {
     try {
-      Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-      // Only universes whose nodes are configured for federation (federationConfigured) need the
-      // audience for YBA-side WIF (preflight/delete); the audience itself comes from the provider.
-      if (primaryCluster == null
-          || primaryCluster.userIntent == null
-          || !primaryCluster.userIntent.isFederationConfigured()) {
-        return null;
+      CustomerConfig config =
+          customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
+      if (CustomerConfigConsts.NAME_S3.equals(config.getName())) {
+        return CloudType.aws;
       }
-      if (primaryCluster.userIntent.isMulticloudSupport()) {
-        // The snapshot carries one audience/role ARN per backup, so a cluster spanning providers
-        // cannot be resolved correctly here. Say so rather than silently using whichever provider
-        // userIntent.provider happens to hold. Per-node resolution is tracked in PLAT-22612.
-        log.warn(
-            "Cross-cloud federation resolves from the primary cluster's provider; universe {}"
-                + " spans multiple providers, which is not supported yet.",
-            universe.getUniverseUUID());
+      if (CustomerConfigConsts.NAME_GCS.equals(config.getName())) {
+        return CloudType.gcp;
       }
-      Provider provider =
-          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
-      return CloudInfoInterface.getCrossCloudFederationAudience(provider);
+      return null;
     } catch (Exception e) {
-      log.warn("Could not resolve cross-cloud federation audience: {}", e.getMessage());
+      log.warn("Could not resolve the storage config to pick a federation target cloud", e);
       return null;
     }
   }
 
   /**
-   * Resolves the provider-level AWS role ARN assumed via AssumeRoleWithWebIdentity for S3-on-GCP
-   * federation, or null when disabled, no universe context, or not configured. GCP providers only.
+   * Provider-level federation settings for reaching {@code targetCloud} from this universe, or null
+   * when federation is off, there is no universe context, or the provider has nothing configured
+   * for that cloud.
    */
   @Nullable
-  public String resolveCrossCloudFederationRoleArn(@Nullable Universe universe) {
-    if (universe == null) {
+  CrossCloudFederationTarget resolveCrossCloudFederationTarget(
+      @Nullable Universe universe, @Nullable CloudType targetCloud) {
+    if (universe == null || targetCloud == null) {
       return null;
     }
     try {
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      // Only universes whose nodes are configured for federation (federationConfigured) need these
+      // settings for YBA-side WIF (preflight/delete); they themselves come from the provider.
       if (primaryCluster == null
           || primaryCluster.userIntent == null
           || !primaryCluster.userIntent.isFederationConfigured()) {
         return null;
       }
-      if (primaryCluster.userIntent.isMulticloudSupport()) {
-        // The snapshot carries one audience/role ARN per backup, so a cluster spanning providers
-        // cannot be resolved correctly here. Say so rather than silently using whichever provider
-        // userIntent.provider happens to hold. Per-node resolution is tracked in PLAT-22612.
-        log.warn(
-            "Cross-cloud federation resolves from the primary cluster's provider; universe {}"
-                + " spans multiple providers, which is not supported yet.",
-            universe.getUniverseUUID());
-      }
+      // A multi-provider cluster cannot reach here with federation configured: that combination
+      // is rejected when the universe is created or edited, and by the v2 enable API. So
+      // userIntent.provider is the cluster's only provider, not an arbitrary one.
       Provider provider =
           Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
-      return CloudInfoInterface.getCrossCloudFederationRoleArn(provider);
+      return CloudInfoInterface.getCrossCloudFederationTarget(provider, targetCloud);
     } catch (Exception e) {
-      log.warn("Could not resolve cross-cloud federation role ARN: {}", e.getMessage());
+      log.warn("Could not resolve cross-cloud federation settings: {}", e.getMessage());
       return null;
     }
   }
@@ -1043,9 +1082,10 @@ public class BackupHelper {
 
     UUID backupUUID = preflightParams.getBackupUUID();
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
-    return restorePreflightWithBackupObject(customerUUID, backup, preflightParams).toBuilder()
-        .loggingID(loggingID)
-        .build();
+    RestorePreflightResponse preflightResponse =
+        restorePreflightWithBackupObject(customerUUID, backup, preflightParams);
+    BackupUtil.validateRestoreFipsMode(preflightResponse.getFipsEnabled(), universe);
+    return preflightResponse.toBuilder().loggingID(loggingID).build();
   }
 
   public RestorePreflightResponse generateAdvancedRestorePreflightAPIResponse(
@@ -1063,10 +1103,10 @@ public class BackupHelper {
     CustomerConfig storageConfig =
         customerConfigService.getOrBadRequest(customerUUID, preflightParams.getStorageConfigUUID());
 
-    return restorePreflightWithoutBackupObject(customerUUID, preflightParams, storageConfig, true)
-        .toBuilder()
-        .loggingID(loggingID)
-        .build();
+    RestorePreflightResponse preflightResponse =
+        restorePreflightWithoutBackupObject(customerUUID, preflightParams, storageConfig, true);
+    BackupUtil.validateRestoreFipsMode(preflightResponse.getFipsEnabled(), universe);
+    return preflightResponse.toBuilder().loggingID(loggingID).build();
   }
 
   /**
@@ -1109,6 +1149,11 @@ public class BackupHelper {
 
     // Whether backup has KMS history
     preflightResponseBuilder.hasKMSHistory(restorableBackup.isHasKMSHistory());
+
+    preflightResponseBuilder.fipsEnabled(
+        BackupUtil.getBackupFipsMode(
+            restorableBackup.getBackupInfo().fipsEnabled,
+            Collections.singletonList(restorableBackup.getUniverseUUID())));
 
     // Whether selective restore would be supported for this Universe
     boolean selectiveRestoreYbcCheck = false;
@@ -1206,7 +1251,12 @@ public class BackupHelper {
               .generateYBBackupRestorePreflightResponseWithoutBackupObject(
                   preflightParams, storageConfig.getDataObject());
     }
-    return preflightResponse;
+    return preflightResponse.toBuilder()
+        .fipsEnabled(
+            BackupUtil.getBackupFipsMode(
+                preflightResponse.getFipsEnabled(),
+                BackupUtil.getSourceUniverseUUIDs(preflightParams.getBackupLocations())))
+        .build();
   }
 
   /**

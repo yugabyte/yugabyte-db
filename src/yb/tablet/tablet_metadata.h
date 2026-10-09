@@ -286,6 +286,9 @@ struct KvStoreInfo {
   // ever reopening the DB. Persisted in the superblock at tablet creation.
   std::vector<TierPathInfo> tier_paths;
 
+  // Tiered storage: capture placement intent. Empty means no preference.
+  std::string target_storage_tier;
+  uint32_t target_tier_path_id = 0;
   // Optional inclusive lower bound and exclusive upper bound for keys served by this KV-store.
   // See docdb::KeyBounds.
   std::string lower_bound_key;
@@ -327,6 +330,12 @@ struct RaftGroupMetadataData {
   std::vector<SnapshotScheduleId> snapshot_schedules;
   std::unordered_set<StatefulServiceKind> hosted_services;
   std::vector<TableInfoPtr> colocated_tables_infos = {};
+
+  // Tiered storage: storage tier label (e.g. "ssd", "hdd") this tablet should be created on,
+  // derived from the storage_tier of the tablespace the tablet's table belongs to. Empty means
+  // no preference. If non-empty, persisted as target_storage_tier with target_tier_path_id = 0,
+  // since the home directory (path_id 0) is where a brand-new tablet's data already lives.
+  std::string target_storage_tier = {};
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -435,6 +444,19 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
   const std::vector<TierPathInfo>& tier_paths() const { return kv_store_.tier_paths; }
+
+  std::string target_storage_tier() const EXCLUDES(data_mutex_);
+  uint32_t target_tier_path_id() const EXCLUDES(data_mutex_);
+
+  // Persists target_storage_tier/target_tier_path_id together.
+  // Flushes the superblock before returning.
+  Status SetTargetTier(const std::string& target_tier, uint32_t target_path_id)
+      EXCLUDES(data_mutex_);
+
+  // Clears the persisted target_tier_path_id while leaving target_storage_tier untouched. Used
+  // by remote bootstrap: the source's cached path_id names a disk on the *source* node and is
+  // meaningless here, but the tier policy itself should still apply on this replica.
+  Status ClearTargetTierPathId() EXCLUDES(data_mutex_);
 
   void TEST_SetTierPaths(std::vector<TierPathInfo> paths) EXCLUDES(data_mutex_);
 
@@ -859,6 +881,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   }
 
   void ResetMinUnflushedChangeMetadataOpIdUnlocked() REQUIRES(data_mutex_);
+
+  // Applies the CDC SDK checkpoint and the derived replication flag; returns whether anything
+  // changed.
+  bool SetCdcSdkMinCheckpointOpIdUnlocked(const OpId& cdc_min_checkpoint_op_id)
+      REQUIRES(data_mutex_);
 
   void SetLastAppliedChangeMetadataOperationOpIdUnlocked(const OpId& op_id) REQUIRES(data_mutex_);
 

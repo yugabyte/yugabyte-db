@@ -57,7 +57,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -175,7 +174,6 @@ using consensus::StateChangeReason;
 using log::Log;
 using log::LogAnchorRegistry;
 using rpc::Messenger;
-using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
 // ============================================================================
@@ -586,7 +584,7 @@ void TabletPeer::CompleteShutdown() {
 
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
   LOG_SLOW_EXECUTION(WARNING, 1000,
-      Substitute("TabletPeer: tablet $0: Waiting for Operations to complete", tablet_id())) {
+      Format("TabletPeer: tablet $0: Waiting for Operations to complete", tablet_id())) {
     operation_tracker_.WaitForAllToFinish();
   }
 
@@ -717,8 +715,8 @@ bool TabletPeer::IsShutdownStarted() const {
 Status TabletPeer::CheckShutdownOrNotStarted() const {
   RaftGroupStatePB value = state_.load(std::memory_order_acquire);
   if (value != RaftGroupStatePB::SHUTDOWN && value != RaftGroupStatePB::NOT_STARTED) {
-    return STATUS(IllegalState, Substitute("The tablet is not in a shutdown state: $0",
-                                           RaftGroupStatePB_Name(value)));
+    return STATUS(IllegalState, Format("The tablet is not in a shutdown state: $0",
+                                       RaftGroupStatePB_Name(value)));
   }
 
   return Status::OK();
@@ -733,8 +731,8 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
     RaftGroupStatePB cached_state = state_.load(std::memory_order_acquire);
     if (cached_state == RaftGroupStatePB::QUIESCING || cached_state == RaftGroupStatePB::SHUTDOWN) {
       return STATUS(IllegalState,
-          Substitute("The tablet is already shutting down or shutdown. State: $0",
-                     RaftGroupStatePB_Name(cached_state)));
+          Format("The tablet is already shutting down or shutdown. State: $0",
+                 RaftGroupStatePB_Name(cached_state)));
     }
     if (cached_state == RUNNING && has_consensus_.load(std::memory_order_acquire) &&
         VERIFY_RESULT(GetRaftConsensus())->IsRunning()) {
@@ -743,8 +741,8 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
     MonoTime now(MonoTime::Now());
     MonoDelta elapsed(now.GetDeltaSince(start));
     if (elapsed.MoreThan(timeout)) {
-      return STATUS(TimedOut, Substitute("Consensus is not running after waiting for $0. State; $1",
-                                         elapsed.ToString(), RaftGroupStatePB_Name(cached_state)));
+      return STATUS(TimedOut, Format("Consensus is not running after waiting for $0. State; $1",
+                                     elapsed.ToString(), RaftGroupStatePB_Name(cached_state)));
     }
     SleepFor(MonoDelta::FromMilliseconds(1 << backoff_exp));
     backoff_exp = std::min(backoff_exp + 1, kMaxBackoffExp);
@@ -961,9 +959,9 @@ string TabletPeer::HumanReadableState() const {
   RaftGroupStatePB state = this->state();
   // If failed, any number of things could have gone wrong.
   if (state == RaftGroupStatePB::FAILED) {
-    return Substitute("$0 ($1): $2", RaftGroupStatePB_Name(state),
-                      TabletDataState_Name(data_state),
-                      error_.get()->ToString());
+    return Format("$0 ($1): $2", RaftGroupStatePB_Name(state),
+                  TabletDataState_Name(data_state),
+                  error_.get()->ToString());
   // If it's remotely bootstrapping, or tombstoned, that is the important thing
   // to show.
   } else if (!CanServeTabletData(data_state)) {
@@ -1813,7 +1811,7 @@ size_t TabletPeer::GetNumLogSegments() const {
 }
 
 std::string TabletPeer::LogPrefix() const {
-  return Substitute("T $0 P $1 [state=$2]: ",
+  return Format("T $0 P $1 [state=$2]: ",
       tablet_id_, permanent_uuid_, RaftGroupStatePB_Name(state()));
 }
 
@@ -2163,7 +2161,9 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
         NotFound, TransactionError(TransactionErrorCode::kAborted),
         "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
         "term $2 is $3). Retry the transaction.",
-        tablet_id(), op_id, leader_state.term, first_index);
+        tablet_id(), op_id, leader_state.term, first_index)
+        .CloneAndAddErrorCode(
+            tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
   }
 
   // Two or more terms ago - we can't verify presence without a log lookup.
@@ -2171,7 +2171,9 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
       NotFound, TransactionError(TransactionErrorCode::kAborted),
       "Tablet $0: tablet leader moved more than once since async write $1 was issued "
       "(write from term $2, current term is $3). Retry the transaction.",
-      tablet_id(), op_id, op_id.term, leader_state.term);
+      tablet_id(), op_id, op_id.term, leader_state.term)
+      .CloneAndAddErrorCode(
+          tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
 }
 
 Status TabletPeer::VerifyAsyncWriteCompletion(const OpId& op_id) {

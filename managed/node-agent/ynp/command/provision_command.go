@@ -14,6 +14,7 @@ import (
 	"node-agent/ynp/module/provision/configurecoredump"
 	"node-agent/ynp/module/provision/configurefips"
 	"node-agent/ynp/module/provision/configureos"
+	"node-agent/ynp/module/provision/configurerootcgroups"
 	"node-agent/ynp/module/provision/configureruntimecgroups"
 	"node-agent/ynp/module/provision/configuresudoers"
 	"node-agent/ynp/module/provision/configurethp"
@@ -43,6 +44,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -85,6 +87,19 @@ func (e *ScriptExitError) Error() string {
 func (e *ScriptExitError) Unwrap() error {
 	return e.Err
 }
+
+// Both patterns match text that buildScript itself puts in the generated scripts: the module
+// failure line echoed by addExitCodeCheck and the results JSON emitted by addResultHelper.
+var (
+	moduleFailurePattern = regexp.MustCompile(`^Module (\S+) failed with code \d+$`)
+	// add_result does not escape quotes in the message, so the message runs to the last quote
+	// on its line rather than to the first one.
+	precheckFailurePattern = regexp.MustCompile(
+		`(?m)"check": "([^"]*)",\s*"result": "(FAIL|FATAL)",\s*"message": "(.*)"$`)
+)
+
+// Number of trailing output lines reported back with a failure.
+const failureTailLines = 5
 
 type ProvisionCommand struct {
 	ctx            context.Context
@@ -204,6 +219,7 @@ func (pc *ProvisionCommand) RegisterModules() error {
 	pc.registerModule(sshd.NewConfigureSshD(modulesPath))
 	pc.registerModule(systemd.NewConfigureSystemd(modulesPath))
 	pc.registerModule(configureruntimecgroups.NewConfigureRuntimeCgroups(modulesPath))
+	pc.registerModule(configurerootcgroups.NewConfigureRootCgroups(modulesPath))
 	pc.registerModule(updateos.NewUpdateOS(modulesPath))
 	pc.registerModule(ybmami.NewConfigureYBMAMI(modulesPath))
 	pc.registerModule(yugabyte.NewCreateYugabyteUser(modulesPath))
@@ -442,17 +458,64 @@ func (pc *ProvisionCommand) runScript(name, scriptPath string) error {
 		util.FileLogger().Errorf(pc.ctx, "%s(%s) Error: %v", name, scriptPath, err)
 	}
 	if exitCode != 0 {
+		msg := fmt.Sprintf("Script %s(%s) failed with exit code %d", name, scriptPath, exitCode)
+		if reason := scriptFailureReason(string(out)); reason != "" {
+			msg += ": " + reason
+		}
 		return &ScriptExitError{
 			ExitCode: exitCode,
-			Err: fmt.Errorf(
-				"Script %s(%s) failed with exit code %d",
-				name,
-				scriptPath,
-				exitCode,
-			),
+			Err:      errors.New(msg),
 		}
 	}
 	return nil
+}
+
+// scriptFailureReason extracts why a generated script failed from its output. The full output
+// only reaches the log file on the node; the error returned to the caller (YBA over SSH) must
+// carry the reason itself, otherwise the task shows nothing but the exit code.
+//
+// For the run phase, each failed module is reported with the last lines it printed before
+// addExitCodeCheck echoed its failure; for the precheck phase, the FAIL and FATAL results are
+// reported. Output with neither, such as bash failing to run the script at all, is reported by
+// its last lines. Returns "" only for empty output.
+func scriptFailureReason(output string) string {
+	reasons := []string{}
+	reported := map[string]bool{}
+	tail := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "+ ") /* set -x trace */ {
+			continue
+		}
+		if strings.HasPrefix(line, "Executing module ") {
+			tail = tail[:0]
+			continue
+		}
+		if m := moduleFailurePattern.FindStringSubmatch(line); m != nil {
+			// The summary at the end of the script echoes every failure a second time.
+			if !reported[m[1]] {
+				reported[m[1]] = true
+				reason := line
+				if len(tail) > 0 {
+					reason += ": " + strings.Join(tail, " ")
+				}
+				reasons = append(reasons, reason)
+			}
+			tail = tail[:0]
+			continue
+		}
+		tail = append(tail, line)
+		if len(tail) > failureTailLines {
+			tail = tail[1:]
+		}
+	}
+	for _, m := range precheckFailurePattern.FindAllStringSubmatch(output, -1) {
+		reasons = append(reasons, fmt.Sprintf("%s check %s: %s", m[1], m[2], m[3]))
+	}
+	if len(reasons) == 0 {
+		return strings.Join(tail, " ")
+	}
+	return strings.Join(reasons, "; ")
 }
 
 // prepareGenerateTemplate performs any preparation needed before generating templates.

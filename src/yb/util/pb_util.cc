@@ -67,6 +67,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"
@@ -100,7 +101,6 @@ using std::string;
 using std::unordered_set;
 using std::vector;
 using std::ostream;
-using strings::Substitute;
 using strings::Utf8SafeCEscape;
 
 using yb::operator""_KB;
@@ -225,23 +225,9 @@ void ByteSizeConsistencyError(size_t byte_size_before_serialization,
 
 string InitializationErrorMessage(const char* action,
                                   const MessageLite& message) {
-  // Note:  We want to avoid depending on strutil in the lite library, otherwise
-  //   we'd use:
-  //
-  // return strings::Substitute(
-  //   "Can't $0 message of type \"$1\" because it is missing required "
-  //   "fields: $2",
-  //   action, message.GetTypeName(),
-  //   message.InitializationErrorString());
-
-  string result;
-  result += "Can't ";
-  result += action;
-  result += " message of type \"";
-  result += message.GetTypeName();
-  result += "\" because it is missing required fields: ";
-  result += message.InitializationErrorString();
-  return result;
+  return Format(
+      "Can't $0 message of type \"$1\" because it is missing required fields: $2",
+      action, message.GetTypeName(), message.InitializationErrorString());
 }
 
 uint8_t* GetUInt8Ptr(const char* buffer) {
@@ -553,16 +539,16 @@ Status ReadablePBContainerFile::Init() {
   Slice header;
   std::unique_ptr<uint8_t[]> scratch;
   RETURN_NOT_OK_PREPEND(ValidateAndRead(kPBContainerHeaderLen, EOF_NOT_OK, &header, &scratch),
-                        Substitute("Could not read header for proto container file $0",
-                                   reader_->filename()));
+                        Format("Could not read header for proto container file $0",
+                               reader_->filename()));
 
   // Validate magic number.
   if (PREDICT_FALSE(!strings::memeq(kPBContainerMagic, header.data(), kPBContainerMagicLen))) {
     string file_magic(reinterpret_cast<const char*>(header.data()), kPBContainerMagicLen);
     return STATUS(Corruption, "Invalid magic number",
-                              Substitute("Expected: $0, found: $1",
-                                         Utf8SafeCEscape(kPBContainerMagic),
-                                         Utf8SafeCEscape(file_magic)));
+                              Format("Expected: $0, found: $1",
+                                     Utf8SafeCEscape(kPBContainerMagic),
+                                     Utf8SafeCEscape(file_magic)));
   }
 
   // Validate container file version.
@@ -570,13 +556,13 @@ Status ReadablePBContainerFile::Init() {
   if (PREDICT_FALSE(version != kPBContainerVersion)) {
     // We only support version 1.
     return STATUS(NotSupported,
-        Substitute("Protobuf container has version $0, we only support version $1",
-                   version, kPBContainerVersion));
+        Format("Protobuf container has version $0, we only support version $1",
+               version, kPBContainerVersion));
   }
 
   // Read the supplemental header.
   ContainerSupHeaderPB sup_header;
-  RETURN_NOT_OK_PREPEND(ReadNextPB(&sup_header), Substitute(
+  RETURN_NOT_OK_PREPEND(ReadNextPB(&sup_header), Format(
       "Could not read supplemental header from proto container file $0",
       reader_->filename()));
   protos_.reset(sup_header.release_protos());
@@ -593,16 +579,16 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   Slice size;
   std::unique_ptr<uint8_t[]> size_scratch;
   RETURN_NOT_OK_PREPEND(ValidateAndRead(sizeof(uint32_t), EOF_OK, &size, &size_scratch),
-                        Substitute("Could not read data size from proto container file $0",
-                                   reader_->filename()));
+                        Format("Could not read data size from proto container file $0",
+                               reader_->filename()));
   uint32_t data_size = DecodeFixed32(size.data());
 
   // Read body into buffer for checksum & parsing.
   Slice body;
   std::unique_ptr<uint8_t[]> body_scratch;
   RETURN_NOT_OK_PREPEND(ValidateAndRead(data_size, EOF_NOT_OK, &body, &body_scratch),
-                        Substitute("Could not read body from proto container file $0",
-                                   reader_->filename()));
+                        Format("Could not read body from proto container file $0",
+                               reader_->filename()));
 
   // Read checksum.
   uint32_t expected_checksum = 0;
@@ -611,8 +597,8 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
     std::unique_ptr<uint8_t[]> encoded_checksum_scratch;
     RETURN_NOT_OK_PREPEND(ValidateAndRead(kPBContainerChecksumLen, EOF_NOT_OK,
                                           &encoded_checksum, &encoded_checksum_scratch),
-                          Substitute("Could not read checksum from proto container file $0",
-                                     reader_->filename()));
+                          Format("Could not read checksum from proto container file $0",
+                                 reader_->filename()));
     expected_checksum = DecodeFixed32(encoded_checksum.data());
   }
 
@@ -623,8 +609,8 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   crc32c->Compute(size.data(), size.size(), &actual_checksum);
   crc32c->Compute(body.data(), body.size(), &actual_checksum);
   if (PREDICT_FALSE(actual_checksum != expected_checksum)) {
-    return STATUS(Corruption, Substitute("Incorrect checksum of file $0: actually $1, expected $2",
-                                         reader_->filename(), actual_checksum, expected_checksum));
+    return STATUS(Corruption, Format("Incorrect checksum of file $0: actually $1, expected $2",
+                                     reader_->filename(), actual_checksum, expected_checksum));
   }
 
   // The checksum is correct. Time to decode the body.
@@ -654,7 +640,7 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
   SimpleDescriptorDatabase db;
   for (int i = 0; i < protos()->file_size(); i++) {
     if (!db.Add(protos()->file(i))) {
-      return STATUS(Corruption, "Descriptor not loaded", Substitute(
+      return STATUS(Corruption, "Descriptor not loaded", Format(
           "Could not load descriptor for PB type $0 referenced in container file",
           pb_type()));
     }
@@ -662,14 +648,14 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
   DescriptorPool pool(&db);
   const Descriptor* desc = pool.FindMessageTypeByName(pb_type());
   if (!desc) {
-    return STATUS(NotFound, "Descriptor not found", Substitute(
+    return STATUS(NotFound, "Descriptor not found", Format(
         "Could not find descriptor for PB type $0 referenced in container file",
         pb_type()));
   }
   DynamicMessageFactory factory;
   const Message* prototype = factory.GetPrototype(desc);
   if (!prototype) {
-    return STATUS(NotSupported, "Descriptor not supported", Substitute(
+    return STATUS(NotSupported, "Descriptor not supported", Format(
         "Descriptor $0 referenced in container file not supported",
         pb_type()));
   }
@@ -710,7 +696,7 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
         return STATUS(EndOfFile, "Reached end of file");
       case EOF_NOT_OK:
         return STATUS(Corruption, "File size not large enough to be valid",
-                                  Substitute("Proto container file $0: "
+                                  Format("Proto container file $0: "
                                       "tried to read $1 bytes at offset "
                                       "$2 but file size is only $3",
                                       reader_->filename(), length,
@@ -727,7 +713,7 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
 
   // Sanity check the result.
   if (PREDICT_FALSE(s.size() < length)) {
-    return STATUS(Corruption, "Unexpected short read", Substitute(
+    return STATUS(Corruption, "Unexpected short read", Format(
         "Proto container file $0: tried to read $1 bytes; got $2 bytes",
         reader_->filename(), length, s.size()));
   }
@@ -751,7 +737,7 @@ Status ReadPBContainer(
   if (pb_type_name && pb_file.pb_type() != *pb_type_name) {
     WARN_NOT_OK(pb_file.Close(), "Could not Close() PB container file");
     return STATUS(InvalidArgument,
-                  Substitute("Wrong PB type: $0, expected $1", pb_file.pb_type(), *pb_type_name));
+                  Format("Wrong PB type: $0, expected $1", pb_file.pb_type(), *pb_type_name));
   }
 
   RETURN_NOT_OK(pb_file.ReadNextPB(msg));
@@ -778,7 +764,7 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
                "msg_type", msg.GetTypeName());
 
   if (create == NO_OVERWRITE && env->FileExists(path)) {
-    return STATUS(AlreadyPresent, Substitute("File $0 already exists", path));
+    return STATUS(AlreadyPresent, Format("File $0 already exists", path));
   }
 
   const string tmp_template = MakeTempPath(path);

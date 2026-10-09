@@ -108,6 +108,20 @@ FROM pg_stat_activity
 WHERE backend_type = 'yb-conn-mgr worker connection';
 ```
 
+## Control connections in pg_stat_activity
+
+Available in v2026.1.2 and later.
+
+When authentication passthrough is enabled ([ysql_conn_mgr_use_auth_backend](../ycm-setup/#configure) is false), Connection Manager reuses a pool of control backends for authentication. Those backends appear in [pg_stat_activity](../../../explore/observability/pg-stat-activity/) with `backend_type` set to `yb-conn-mgr control connection`, separate from worker backends (`yb-conn-mgr worker connection`) that run client transactions.
+
+To list control connections:
+
+```plpgsql
+SELECT pid, usename, state, query
+FROM pg_stat_activity
+WHERE backend_type = 'yb-conn-mgr control connection';
+```
+
 ## Logging
 
 Connection Manager provides the following log levels that you can set using the `ysql_conn_mgr_log_settings` flag:

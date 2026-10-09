@@ -104,6 +104,12 @@ import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUs
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
+import {
+  buildFederationTargets,
+  federationFormValuesFromProvider,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION
+} from '../components/CrossCloudFederatedIamFields';
 
 interface AWSProviderEditFormProps {
   editProvider: EditProvider;
@@ -116,8 +122,12 @@ export interface AWSProviderEditFormFieldValues {
   dbNodePublicInternetAccess: boolean;
   editAccessKey: boolean;
   editSSHKeypair: boolean;
-  enableFederatedIam: boolean;
-  federatedIamAudience: string;
+  enableFederatedIam?: boolean;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
   enableHostedZone: boolean;
   hostedZoneId: string;
   ntpServers: string[];
@@ -141,6 +151,7 @@ export interface AWSProviderEditFormFieldValues {
 }
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -188,10 +199,6 @@ const VALIDATION_SCHEMA = object().shape({
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
-  }),
-  federatedIamAudience: string().when('enableFederatedIam', {
-    is: true,
-    then: string().required('Federated IAM audience is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
@@ -387,7 +394,6 @@ export const AWSProviderEditForm = ({
   ];
   const currentProviderVersion = formMethods.watch('version', defaultValues.version);
   const enableHostedZone = formMethods.watch('enableHostedZone');
-  const enableFederatedIam = formMethods.watch('enableFederatedIam');
   const keyPairManagement = formMethods.watch('sshKeypairManagement');
   const editAccessKey = formMethods.watch('editAccessKey', defaultValues.editAccessKey);
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
@@ -560,40 +566,12 @@ export const AWSProviderEditForm = ({
                   />
                 </FormField>
               )}
-              <FormField>
-                <FieldLabel
-                  infoTitle="Federated IAM"
-                  infoContent="Enable GCS-on-AWS cross-cloud federated IAM for this provider's DB nodes. When on, provide the GCP Workload Identity Federation audience."
-                >
-                  Enable Federated IAM
-                </FieldLabel>
-                <YBToggleField
-                  name="enableFederatedIam"
-                  control={formMethods.control}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AWS,
-                    'enableFederatedIam',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
-                />
-              </FormField>
-              {enableFederatedIam && (
-                <FormField>
-                  <FieldLabel>Federated IAM Audience</FieldLabel>
-                  <YBInputField
-                    control={formMethods.control}
-                    name="federatedIamAudience"
-                    disabled={getIsFieldDisabled(
-                      ProviderCode.AWS,
-                      'federatedIamAudience',
-                      isFormDisabled,
-                      isProviderInUse
-                    )}
-                    fullWidth
-                  />
-                </FormField>
-              )}
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+                providerCloud="aws"
+              />
+
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -922,8 +900,7 @@ const constructDefaultFormValues = (
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   editAccessKey: false,
   editSSHKeypair: false,
-  enableFederatedIam: !!providerConfig.details.cloudInfo.aws.enableFederatedIam,
-  federatedIamAudience: providerConfig.details.cloudInfo.aws.federatedIamAudience ?? '',
+  ...federationFormValuesFromProvider(providerConfig.details.cloudInfo.aws, 'aws'),
   enableHostedZone: !!providerConfig.details.cloudInfo.aws.awsHostedZoneId,
   hostedZoneId: providerConfig.details.cloudInfo.aws.awsHostedZoneId,
   ntpServers: providerConfig.details.ntpServers,
@@ -1017,7 +994,7 @@ const constructProviderPayload = async (
           ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
           enableFederatedIam: formValues.enableFederatedIam,
           ...(formValues.enableFederatedIam && {
-            federatedIamAudience: formValues.federatedIamAudience
+            crossCloudFederationTargets: buildFederationTargets(formValues)
           })
         }
       },

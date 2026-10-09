@@ -37,6 +37,7 @@
 #include <limits>
 #include <set>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/common/common.pb.h"
@@ -57,7 +58,6 @@
 #include "yb/gutil/hash/hash.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/status_format.h"
 
@@ -71,7 +71,6 @@ using std::vector;
 using std::max;
 
 using google::protobuf::RepeatedPtrField;
-using strings::Substitute;
 
 // The encoded size of a hash bucket in a partition key.
 static const size_t kEncodedBucketSize = sizeof(uint32_t);
@@ -1011,8 +1010,8 @@ Status PartitionSchema::DecodeRangeKey(Slice* encoded_key,
                                              is_last,
                                              arena,
                                              cont_row.mutable_cell_ptr(column_idx)),
-                          Substitute("Error decoding partition key range component '$0'",
-                                     column.name()));
+                          Format("Error decoding partition key range component '$0'",
+                                 column.name()));
     // Mark the column as set.
     BitmapSet(row->isset_bitmap_, column_idx);
   }
@@ -1029,8 +1028,8 @@ Status PartitionSchema::DecodeHashBuckets(Slice* encoded_key,
   size_t hash_components_size = kEncodedBucketSize * hash_bucket_schemas_.size();
   if (encoded_key->size() < hash_components_size) {
     return STATUS(InvalidArgument,
-        Substitute("expected encoded hash key to be at least $0 bytes (only found $1)",
-                   hash_components_size, encoded_key->size()));
+        Format("expected encoded hash key to be at least $0 bytes (only found $1)",
+               hash_components_size, encoded_key->size()));
   }
   for (const auto& schema : hash_bucket_schemas_) {
     (void) schema; // quiet unused variable warning
@@ -1100,7 +1099,7 @@ string PartitionSchema::PartitionDebugString(
   if (!partition.hash_buckets().empty()) {
     vector<string> components;
     for (int32_t bucket : partition.hash_buckets()) {
-      components.push_back(Substitute("$0", bucket));
+      components.push_back(Format("$0", bucket));
     }
     s.append("hash buckets: (");
     s.append(JoinStrings(components, ", "));
@@ -1126,7 +1125,7 @@ string PartitionSchema::PartitionDebugString(
       AppendRangeDebugStringComponentsOrString(start_row, "<start>", &start_components);
       s.append(JoinStrings(start_components, ", "));
     } else {
-      s.append(Substitute("<decode-error: $0>", status.ToString()));
+      s.append(Format("<decode-error: $0>", status.ToString()));
     }
     s.append(", ");
 
@@ -1137,7 +1136,7 @@ string PartitionSchema::PartitionDebugString(
       AppendRangeDebugStringComponentsOrString(end_row, "<end>", &end_components);
       s.append(JoinStrings(end_components, ", "));
     } else {
-      s.append(Substitute("<decode-error: $0>", status.ToString()));
+      s.append(Format("<decode-error: $0>", status.ToString()));
     }
     s.append(")");
   }
@@ -1203,9 +1202,9 @@ string PartitionSchema::RowDebugString(const ConstContiguousRow& row) const {
     int32_t bucket;
     Status s = BucketForRow(row, hash_bucket_schema, &bucket);
     if (s.ok()) {
-      components.push_back(Substitute("bucket=$0", bucket));
+      components.push_back(Format("bucket=$0", bucket));
     } else {
-      components.push_back(Substitute("<bucket-error: $0>", s.ToString()));
+      components.push_back(Format("<bucket-error: $0>", s.ToString()));
     }
   }
 
@@ -1230,9 +1229,9 @@ string PartitionSchema::RowDebugString(const YBPartialRow& row) const {
     int32_t bucket;
     Status s = BucketForRow(row, hash_bucket_schema, &bucket);
     if (s.ok()) {
-      components.push_back(Substitute("bucket=$0", bucket));
+      components.push_back(Format("bucket=$0", bucket));
     } else {
-      components.push_back(Substitute("<bucket-error: $0>", s.ToString()));
+      components.push_back(Format("<bucket-error: $0>", s.ToString()));
     }
   }
 
@@ -1253,7 +1252,7 @@ string PartitionSchema::PartitionKeyDebugString(const string& key, const Schema&
         if (key.empty()) {
           return "hash_code: NaN";
         } else {
-          return Substitute("hash_code: $0", DecodeMultiColumnHashValue(key));
+          return Format("hash_code: $0", DecodeMultiColumnHashValue(key));
         }
       case YBHashSchema::kPgsqlHash:
         return "Pgsql Hash";
@@ -1264,10 +1263,10 @@ string PartitionSchema::PartitionKeyDebugString(const string& key, const Schema&
     vector<int32_t> buckets;
     Status s = DecodeHashBuckets(&encoded_key, &buckets);
     if (!s.ok()) {
-      return Substitute("<hash-decode-error: $0>", s.ToString());
+      return Format("<hash-decode-error: $0>", s.ToString());
     }
     for (int32_t bucket : buckets) {
-      components.push_back(Substitute("bucket=$0", bucket));
+      components.push_back(Format("bucket=$0", bucket));
     }
   }
 
@@ -1277,7 +1276,7 @@ string PartitionSchema::PartitionKeyDebugString(const string& key, const Schema&
 
     Status s = DecodeRangeKey(&encoded_key, &row, &arena);
     if (!s.ok()) {
-      return Substitute("<range-decode-error: $0>", s.ToString());
+      return Format("<range-decode-error: $0>", s.ToString());
     }
 
     AppendRangeDebugStringComponentsOrMin(row, &components);
@@ -1311,7 +1310,7 @@ string PartitionSchema::DebugString(const Schema& schema) const {
         string component = "Multi Column Hash Partition. Partition columns: ";
         const std::vector<ColumnSchema>& cols = schema.columns();
         for (size_t idx = 0; idx < schema.num_hash_key_columns(); idx++) {
-          component.append(Substitute("$0($1)  ", cols[idx].name(), cols[idx].type_info()->name));
+          component.append(Format("$0($1)  ", cols[idx].name(), cols[idx].type_info()->name));
         }
         component_types.push_back(component);
         break;
@@ -1325,21 +1324,21 @@ string PartitionSchema::DebugString(const Schema& schema) const {
     vector<string> hash_components;
     for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
       string component;
-      component.append(Substitute("(bucket count: $0", hash_bucket_schema.num_buckets));
+      component.append(Format("(bucket count: $0", hash_bucket_schema.num_buckets));
       if (hash_bucket_schema.seed != 0) {
-        component.append(Substitute(", seed: $0", hash_bucket_schema.seed));
+        component.append(Format(", seed: $0", hash_bucket_schema.seed));
       }
-      component.append(Substitute(", columns: [$0])",
-                                  ColumnIdsToColumnNames(schema, hash_bucket_schema.column_ids)));
+      component.append(Format(", columns: [$0])",
+                              ColumnIdsToColumnNames(schema, hash_bucket_schema.column_ids)));
       hash_components.push_back(component);
     }
-    component_types.push_back(Substitute("hash bucket components: [$0]",
-                                         JoinStrings(hash_components, ", ")));
+    component_types.push_back(Format("hash bucket components: [$0]",
+                                     JoinStrings(hash_components, ", ")));
   }
 
   if (!range_schema_.column_ids.empty()) {
-    component_types.push_back(Substitute("range columns: [$0]",
-                                         ColumnIdsToColumnNames(schema, range_schema_.column_ids)));
+    component_types.push_back(Format("range columns: [$0]",
+                                     ColumnIdsToColumnNames(schema, range_schema_.column_ids)));
   }
   return JoinStrings(component_types, ", ");
 }

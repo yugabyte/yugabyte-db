@@ -1946,6 +1946,14 @@ public class Util {
     }
   }
 
+  // True on the first start after a YBA restore, until CustomerTaskManager.handleRestoreTask
+  // deletes the files.
+  public static boolean restoreTaskInfoExists() {
+    return Files.exists(Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE))
+        && Files.exists(
+            Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE));
+  }
+
   // Helper method to throw unchecked exception.
   public static URL toURL(String addr) {
     try {
@@ -2110,7 +2118,7 @@ public class Util {
       SetMultimap<Object, UUID> mmap =
           valuesTracker.computeIfAbsent(property, (x) -> HashMultimap.create());
       mmap.put(value, p.getUuid());
-      if (mmap.keys().size() > 1) {
+      if (mmap.keySet().size() > 1) {
         List<String> list =
             mmap.entries().stream()
                 .map(e -> e.getValue().toString() + " has " + e.getKey())

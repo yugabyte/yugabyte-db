@@ -237,6 +237,9 @@ class CloneStateManagerTest : public YBTest {
       auto lock = target_table_->LockForWrite();
       lock.mutable_data()->pb.set_namespace_id(kTargetNamespaceId);
       lock.mutable_data()->pb.set_namespace_name(kTargetNamespaceName);
+      auto* index = lock.mutable_data()->pb.add_indexes();
+      index->set_table_id(kTargetIndexId);
+      index->set_indexed_table_id(kTargetTableId);
       lock.Commit();
     }
 
@@ -437,6 +440,7 @@ class CloneStateManagerTest : public YBTest {
   const TxnSnapshotRestorationId kRestorationId = TxnSnapshotRestorationId::GenerateRandom();
   const TableId kSourceTableId = "source_table_id";
   const TableId kTargetTableId = "target_table_id";
+  const TableId kTargetIndexId = "target_index_id";
   const int kNumTablets = 2;
   const HybridTime kRestoreTime = HybridTime(12345);
   const LeaderEpoch kEpoch = LeaderEpoch(123 /* term */);
@@ -519,6 +523,7 @@ TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
     *expected_req.mutable_target_schema() = target_table_->LockForRead()->schema();
     *expected_req.mutable_target_partition_schema() =
         target_table_->LockForRead()->pb.partition_schema();
+    *expected_req.mutable_target_indexes() = target_table_->LockForRead()->pb.indexes();
 
     EXPECT_CALL(MockFuncs(), GetTabletInfo(source_tablets_[i]->id()))
         .WillOnce(Return(source_tablets_[i]));

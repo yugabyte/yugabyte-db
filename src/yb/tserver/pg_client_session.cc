@@ -91,6 +91,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/pb_util.h"
@@ -210,7 +211,7 @@ namespace yb::tserver {
 namespace {
 
 YB_DEFINE_ENUM(PgClientSessionKind,
-    (kPlain)(kAutonomousDdl)(kLegacyCatalog)(kSequence)(kPgSession));
+    (kPlain)(kAutonomousDdl)(kLegacyCatalog)(kSequence)(kPgSession)(kHistoricalRead));
 YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
 
 void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
@@ -1412,6 +1413,10 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         });
       }
     } else {
+      RSTATUS_DCHECK(
+          !req->options().use_historical_read_session(), InvalidArgument,
+          "Write operations are not allowed in a historical read session");
+
       auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, arena, *sidecars, &write);
@@ -1663,6 +1668,9 @@ class PgClientSession::Impl {
         read_point_history_(PrefixLogger(id_, pid_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
+  [[nodiscard]] pid_t pid() const { return pid_; }
+
+  PgOid TEST_database_oid() const { return database_oid_.load(std::memory_order_acquire); }
 
   void SetupSharedData(const PgClientSession::SharedDataDescriptor& descriptor) {
     if (object_lock_shared_state_) {
@@ -2433,13 +2441,13 @@ class PgClientSession::Impl {
     int64_t row_count;
     PgDocData::LoadCache(context->sidecars().GetFirst(), &row_count, &cursor);
     if (row_count != 2) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         InternalError, "Invalid row count has been fetched from sequence $0", req.seq_oid());
     }
 
     // Get the range start
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
-      return STATUS_SUBSTITUTE(InternalError,
+      return STATUS_FORMAT(InternalError,
                               "Invalid value range start has been fetched from sequence $0",
                               req.seq_oid());
     }
@@ -2447,7 +2455,7 @@ class PgClientSession::Impl {
 
     // Get the range end
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
-      return STATUS_SUBSTITUTE(InternalError,
+      return STATUS_FORMAT(InternalError,
                               "Invalid value range end has been fetched from sequence $0",
                               req.seq_oid());
     }
@@ -2518,16 +2526,16 @@ class PgClientSession::Impl {
     int64_t row_count = 0;
     PgDocData::LoadCache(context->sidecars().GetFirst(), &row_count, &cursor);
     if (row_count == 0) {
-      return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+      return STATUS_FORMAT(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
     }
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
-      return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+      return STATUS_FORMAT(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
     }
     auto last_val = PgDocData::ReadNumber<int64_t>(&cursor);
     resp->set_last_val(last_val);
 
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
-      return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
+      return STATUS_FORMAT(NotFound, "Unable to find relation for sequence $0", req.seq_oid());
     }
     auto is_called = PgDocData::ReadNumber<bool>(&cursor);
     resp->set_is_called(is_called);
@@ -3069,13 +3077,17 @@ class PgClientSession::Impl {
       lock->set_object_sub_oid(entry.lock_oid().object_sub_oid());
       lock->set_lock_type(static_cast<TableLockType>(entry.lock_mode()));
     }
+    auto deadline = context->GetClientDeadline();
     auto& background_session_data = GetSessionData(PgClientSessionKind::kPgSession);
     if (background_session_data.transaction) {
-      auto txn_id = background_session_data.transaction->id();
-      master_req.set_background_transaction_id(txn_id.data(), txn_id.size());
+      auto txn_meta_res = background_session_data.transaction->GetMetadata(deadline).get();
+      RETURN_NOT_OK(txn_meta_res);
+      const auto& txn_meta = *txn_meta_res;
+      master_req.set_background_transaction_id(
+          txn_meta.transaction_id.data(), txn_meta.transaction_id.size());
+      master_req.set_background_transaction_status_tablet(txn_meta.status_tablet);
     }
 
-    auto deadline = context->GetClientDeadline();
     client_.WaitForLockersMultipleGlobalAsync(
         master_req,
         [resp, context](const Status& status) {
@@ -3315,28 +3327,52 @@ class PgClientSession::Impl {
         txn, used_session_kind, deadline, is_ddl, GlobalObjectLocksReleaseMode::kSync);
   }
 
+  static bool MayBeAutomaticTarget(XClusterNamespaceInfoPB::XClusterRole role) {
+    // The role is UNAVAILABLE when this TServer does not hold a current xCluster-guarded
+    // information lease, so it cannot tell whether the database is an automatic-mode target; fail
+    // closed by treating it as if it could be an automatic target.
+    return role == XClusterNamespaceInfoPB::AUTOMATIC_TARGET ||
+           role == XClusterNamespaceInfoPB::UNAVAILABLE;
+  }
+
+  // Precondition: MayBeAutomaticTarget(role).
+  static Status MakeForbiddenOnAutomaticTargetStatus(
+      XClusterNamespaceInfoPB::XClusterRole role, const char* operations) {
+    CHECK(MayBeAutomaticTarget(role));
+    if (role == XClusterNamespaceInfoPB::UNAVAILABLE) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "$0 are forbidden because the xCluster role of the database is currently unavailable; "
+          "retry later",
+          operations);
+    }
+    return STATUS_FORMAT(
+        IllegalState,
+        "$0 are forbidden on a database that is the target of automatic mode xCluster replication",
+        operations);
+  }
+
   template <class DataPtr, class Options>
   Status ValidateRequestForXCluster(const Options& options, const DataPtr& data) {
     if (options.yb_non_ddl_txn_for_sys_tables_allowed() || !xcluster_context()) {
       return Status::OK();
     }
-    bool is_automatic_target = xcluster_context()->GetXClusterRole(options.namespace_id()) ==
-                               XClusterNamespaceInfoPB::AUTOMATIC_TARGET;
-    if (is_automatic_target && FLAGS_xcluster_target_manual_override) {
+    const auto role = xcluster_context()->GetXClusterRole(options.namespace_id());
+    const bool may_be_automatic_target = MayBeAutomaticTarget(role);
+    if (may_be_automatic_target && FLAGS_xcluster_target_manual_override) {
       return Status::OK();
     }
 
     if (options.ddl_mode()) {
       // In xCluster Automatic mode, DDLs are not allowed on the target database unless it is run
       // via the target poller or in forced manual mode.
-      if (is_automatic_target && !options.xcluster_target_ddl_bypass()) {
+      if (may_be_automatic_target && !options.xcluster_target_ddl_bypass()) {
         // Force catalog modifications is set for temp table, and in-place materialized view
         // refresh. These DDLs are safe to perform on xCluster target in automatic mode.
         for (const auto& op : data->req.ops()) {
-          SCHECK(
-              !op.has_write(), IllegalState,
-              "DDL operations are forbidden on a database that is the target of automatic mode "
-              "xCluster replication");
+          if (op.has_write()) {
+            return MakeForbiddenOnAutomaticTargetStatus(role, "DDL operations");
+          }
         }
       }
 
@@ -3348,7 +3384,7 @@ class PgClientSession::Impl {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
           TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
-          // Only DDLs and index backfill is allowed in xcluster read only mode.
+          // Only DDLs and index backfill is allowed in xCluster read-only mode.
           return STATUS(
               IllegalState,
               "Data modification is forbidden on database that is the target of a transactional "
@@ -3361,16 +3397,13 @@ class PgClientSession::Impl {
   }
 
   Status ValidateSequenceModificationFunctionForXCluster(int64_t db_oid) {
-    if (FLAGS_xcluster_target_manual_override) {
+    if (!xcluster_context() || FLAGS_xcluster_target_manual_override) {
       return Status::OK();
     }
-    if (xcluster_context() &&
-        xcluster_context()->GetXClusterRole(GetPgsqlNamespaceId(narrow_cast<uint32_t>(db_oid))) ==
-            XClusterNamespaceInfoPB::AUTOMATIC_TARGET) {
-      return STATUS(
-          IllegalState,
-          "Sequence manipulation functions are forbidden on a database that is the target of "
-          "automatic mode xCluster replication");
+    const auto role =
+        xcluster_context()->GetXClusterRole(GetPgsqlNamespaceId(narrow_cast<uint32_t>(db_oid)));
+    if (MayBeAutomaticTarget(role)) {
+      return MakeForbiddenOnAutomaticTargetStatus(role, "Sequence manipulation functions");
     }
     return Status::OK();
   }
@@ -3385,9 +3418,12 @@ class PgClientSession::Impl {
       bool is_ddl = options.ddl_mode();
       bool is_regular_transaction_block = options.ddl_use_regular_transaction_block();
       bool is_legacy_catalog = options.use_legacy_catalog_session();
+      bool is_historical_read = options.use_historical_read_session();
       ss << LogPrefix() << " ";
       if (is_ddl && !is_regular_transaction_block) {
         ss << "Autonomous DDL op: ";
+      } else if (is_historical_read) {
+        ss << "Historical read op: ";
       } else if (is_legacy_catalog) {
         ss << "Legacy catalog op: ";
       } else {
@@ -3411,6 +3447,17 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(ValidateRequestForXCluster(options, data));
 
     MaybePauseReadWithPagingStateForTesting(data->req);
+
+    const auto database_oid = EnsureSessionDatabase(options);
+    // Only the session's own exchange thread may be moved into the database's cgroup, never an RPC
+    // worker thread, which is shared by every session.  A Perform runs on the exchange thread
+    // exactly when it arrived through the shared memory exchange, which is the only path that
+    // calls DoPerform without an RpcContext; Performs arriving over TCP (shared memory exchange
+    // off, or not yet set up for this session) run on worker threads and must not move.
+    if (database_oid && !moved_to_database_cgroup_ && context == nullptr) {
+      moved_to_database_cgroup_ = true;
+      WARN_NOT_OK(MoveSessionToDatabaseCgroup(*database_oid), "Setting cgroup of PgClientSession");
+    }
 
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
@@ -3510,7 +3557,8 @@ class PgClientSession::Impl {
     if (VLOG_IS_ON(2) || options.trace_requested()) {
       const auto& read_point = *session->read_point();
       const char* session_kind_str =
-          options.use_legacy_catalog_session()                                   ? "kLegacyCatalog"
+          options.use_historical_read_session()                                  ? "kHistoricalRead"
+          : options.use_legacy_catalog_session()                                 ? "kLegacyCatalog"
           : (options.ddl_mode() && !options.ddl_use_regular_transaction_block()) ? "kAutonomousDdl"
                                                                                  : "kPlain";
       std::vector<std::string> op_summaries;
@@ -3665,17 +3713,54 @@ class PgClientSession::Impl {
     return session_data;
   }
 
+  // Attaches the transaction the historical read should be performed in to the historical read
+  // session. The transaction is fabricated from the id provided by the caller and is treated as
+  // committed by the participants, so that the DDL's own intents are visible to the read.
+  template <class OptionsPB>
+  Status EnsureHistoricalReadTxnIfNecessary(
+      const OptionsPB& options, CoarseTimePoint deadline, const ThreadSafeArenaPtr& arena) {
+    constexpr auto kSessionKind = PgClientSessionKind::kHistoricalRead;
+    auto& session = EnsureSession(kSessionKind, deadline, arena);
+    auto& txn = GetSessionData(kSessionKind).transaction;
+
+    if (options.historical_read_transaction_id().empty()) {
+      if (txn) {
+        VLOG_WITH_PREFIX(2) << "Detaching historical read transaction " << txn->id();
+        txn = nullptr;
+        session->SetTransaction(nullptr);
+      }
+      return Status::OK();
+    }
+
+    const auto read_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+        options.historical_read_transaction_id()));
+    if (txn && txn->id() == read_txn_id) {
+      return Status::OK();
+    }
+
+    TransactionMetadata metadata;
+    metadata.transaction_id = read_txn_id;
+    metadata.isolation = IsolationLevel::SNAPSHOT_ISOLATION;
+    metadata.is_read_only_historical_committed_txn = true;
+    txn = client::YBTransaction::Fabricate(&context_.transaction_manager_provider(), metadata);
+    txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
+    session->SetTransaction(txn);
+    VLOG_WITH_PREFIX(2) << "Fabricated historical read transaction " << read_txn_id;
+    return Status::OK();
+  }
+
   template <class OptionsPB>
   Result<SetupSessionResult> SetupSession(
       const OptionsPB& options, CoarseTimePoint deadline, const ThreadSafeArenaPtr& arena,
       HybridTime in_txn_limit = {},
       TransactionFullLocality locality = TransactionFullLocality::RegionLocal()) {
-    if (!options.namespace_id().empty()) {
-      WARN_NOT_OK(EnsureClientSessionCgroup(options.namespace_id()),
-                  "Setting cgroup of PgClientSession");
-    }
+    EnsureSessionDatabase(options);
     auto kind = PgClientSessionKind::kPlain;
-    if (options.use_legacy_catalog_session()) {
+    if (options.use_historical_read_session()) {
+      kind = PgClientSessionKind::kHistoricalRead;
+      EnsureSession(kind, deadline, arena);
+      RETURN_NOT_OK(EnsureHistoricalReadTxnIfNecessary(options, deadline, arena));
+    } else if (options.use_legacy_catalog_session()) {
       SCHECK(!options.read_from_followers(),
           InvalidArgument, "Reading catalog from followers is not allowed");
       kind = PgClientSessionKind::kLegacyCatalog;
@@ -3706,7 +3791,9 @@ class PgClientSession::Impl {
 
     session.SetDeadline(deadline);
 
-    if (txn) {
+    // Fabricated historical-read txns are read-only and do not participate in subtransactions or
+    // session-level advisory locking.
+    if (txn && kind != PgClientSessionKind::kHistoricalRead) {
       RSTATUS_DCHECK_GE(
           options.active_sub_transaction_id(), kMinSubTransactionId,
           InvalidArgument,
@@ -3736,6 +3823,11 @@ class PgClientSession::Impl {
     const auto read_time_serial_no = read_time_options.read_time_serial_no();
     const auto skip_read_time =
         read_time_serial_no == kInvalidReadTimeSerialNo && kind == PgClientSessionKind::kPlain;
+
+    RSTATUS_DCHECK(
+        kind != PgClientSessionKind::kHistoricalRead ||
+            (read_time_options.has_read_time() && read_time_options.read_time().has_read_ht()),
+        IllegalState, "Historical read session must have a read time");
 
     if (read_time_options.restart_transaction()) {
       VLOG_WITH_PREFIX(3) << "Restarting transaction";
@@ -3855,7 +3947,8 @@ class PgClientSession::Impl {
     // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
     // cause any issue, but should we reset for safety?
     if (!(options.ddl_mode() && !options.ddl_use_regular_transaction_block()) &&
-        !options.use_legacy_catalog_session()) {
+        !options.use_legacy_catalog_session() &&
+        !options.use_historical_read_session()) {
       txn_serial_no_ = txn_serial_no;
       if (!skip_read_time) {
         read_time_serial_no_ = read_time_serial_no;
@@ -3991,6 +4084,7 @@ class PgClientSession::Impl {
   Status SetupSessionForDdl(
       bool use_regular_transaction_block, const PgPerformOptionsPB& options,
       CoarseTimePoint deadline) {
+    EnsureSessionDatabase(options);
     if (!use_regular_transaction_block) {
       // Separate DDL transactions do not need to setup the session. They will create the
       // transaction in GetDdlTransactionMetadata().
@@ -4591,13 +4685,24 @@ class PgClientSession::Impl {
     return shared_this_.lock();
   }
 
-  Status EnsureClientSessionCgroup(NamespaceIdView namespace_id) {
-    if (database_oid_.load(std::memory_order_relaxed) != kInvalidOid) {
-      return Status::OK();
+  // Records the backend's database from the request if not yet recorded.  Returns the recorded
+  // database, or nullopt while it is unknown (template1 backends stay unrecorded).
+  template <class OptionsPB>
+  std::optional<PgOid> EnsureSessionDatabase(const OptionsPB& options) {
+    if (const auto recorded = database_oid_.load(std::memory_order_relaxed);
+        recorded != kInvalidOid) {
+      return recorded;
     }
-    const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    const auto database_oid = options.connected_database_oid();
+    if (database_oid == kInvalidOid || database_oid == kTemplate1Oid) {
+      return std::nullopt;
+    }
     // Release: lock-free GetDbHistoryRetentionPin acquires this before attributing a pin HT.
     database_oid_.store(database_oid, std::memory_order_release);
+    return database_oid;
+  }
+
+  Status MoveSessionToDatabaseCgroup(PgOid database_oid) {
 #ifdef __linux__
     if (context_.cgroup_manager && FLAGS_enable_qos) {
       auto& cgroup = VERIFY_RESULT_REF(context_.cgroup_manager->CgroupForDb(database_oid));
@@ -4645,6 +4750,10 @@ class PgClientSession::Impl {
 
   // Written once under the session lock; read lock-free by the heartbeat pin path.
   std::atomic<PgOid> database_oid_{kInvalidOid};
+  // Whether a Perform has moved this session's thread into the database's cgroup; see DoPerform.
+  // Only accessed under the session lock.
+  bool moved_to_database_cgroup_ = false;
+
   std::optional<SubTransactionId> subtxn_with_session_object_locks_;
 
   std::atomic<uint64_t> history_retention_pin_read_time_{0};
@@ -4672,6 +4781,14 @@ PgClientSession::~PgClientSession() = default;
 
 uint64_t PgClientSession::id() const {
   return impl_->id();
+}
+
+pid_t PgClientSession::pid() const {
+  return impl_->pid();
+}
+
+PgOid PgClientSession::TEST_database_oid() const {
+  return impl_->TEST_database_oid();
 }
 
 void PgClientSession::SetupSharedData(const SharedDataDescriptor& descriptor) {

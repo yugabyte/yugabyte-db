@@ -1,3 +1,5 @@
+// Copyright (c) YugabyteDB, Inc.
+
 package util
 
 import (

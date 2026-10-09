@@ -44,6 +44,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
@@ -186,7 +187,7 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
   LWWriteResponsePB resp(&arena);
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
-  string new_string_val(strings::Substitute("mutated$0", row_idx));
+  string new_string_val(Format("mutated$0", row_idx));
 
   AddTestRowUpdate(row_idx, new_val, new_string_val, &req);
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
@@ -259,7 +260,7 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
         if (!string_field_defined) {
           AddTestRowInsert(j, j, &req);
         } else {
-          AddTestRowInsert(j, j, strings::Substitute("original$0", j), &req);
+          AddTestRowInsert(j, j, Format("original$0", j), &req);
         }
       }
       CHECK_OK(DCHECK_NOTNULL(proxy)->Write(req, &resp, &controller));
@@ -326,7 +327,7 @@ void TabletServerTestBase::BuildTestRow(int index, QLWriteRequestPB* req) {
   column_value = req->add_column_values();
   column_value->set_column_id(kFirstColumnId + 2);
   column_value->mutable_expr()->mutable_value()->set_string_value(
-      StringPrintf("hello %d", index));
+      Format("hello $0", index));
 }
 
 void TabletServerTestBase::ShutdownTablet() {

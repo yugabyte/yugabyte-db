@@ -39,6 +39,12 @@ type: indexpage
     icon="fa-thin fa-monitor-waveform">}}
 
   {{<index/item
+    title="Tablet metadata"
+    body="Look up local and cluster-wide tablet placement and leadership."
+    href="tablet-metadata/"
+    icon="fa-thin fa-table-cells">}}
+
+  {{<index/item
     title="YSQL Distributed Tracing"
     body="Export OpenTelemetry traces for YSQL query execution and view them in Jaeger or other backends."
     href="ysql-distributed-tracing/"

@@ -189,11 +189,11 @@ std::unordered_set<TableId> TgInfo::ChildTableIds() const {
 }
 
 std::string TgInfo::ToString() const {
-  return strings::Substitute("{ id: $0, db_id: $1, tablet_id: $2, tables: $3 }",
-                             tablegroup_id_, database_id_, tablet_->id(),
-                             CollectionToString(table_map_.left, [](const auto& entry) {
-                               return entry.first;
-                             }));
+  return Format("{ id: $0, db_id: $1, tablet_id: $2, tables: $3 }",
+                tablegroup_id_, database_id_, tablet_->id(),
+                CollectionToString(table_map_.left, [](const auto& entry) {
+                  return entry.first;
+                }));
 }
 
 } // namespace master

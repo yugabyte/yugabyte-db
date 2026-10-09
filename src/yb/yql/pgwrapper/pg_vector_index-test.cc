@@ -19,7 +19,9 @@
 #include "yb/client/schema.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 
@@ -63,10 +65,10 @@
 #include "yb/vector_index/vector_lsm.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
@@ -75,7 +77,6 @@ DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(TEST_disable_wal_retention_time);
@@ -237,10 +238,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     // uncommitted transaction still holds intents on the indexed table. Object-locking-based DDL
     // serialization, which defaults on in release builds, would make CREATE INDEX wait for that
     // transaction to finish, so disable it to keep behavior consistent across build types.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    // ysql_enable_concurrent_ddl requires enable_object_locking_for_table_locks, so keep the two
-    // consistent instead of leaving a combination that flag validation rejects.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
 
     PgMiniTestBase::SetUp();
 
@@ -2143,6 +2141,95 @@ TEST_P(PgVectorIndexColocationOnlyTest, SnapshotScheduleRestoreBeforeVectorColum
   ASSERT_EQ(
       kNumRows,
       make_unsigned(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"))));
+}
+
+// After clone, the child's TS-side index_map must list the cloned vector index, not the source
+// Restore does not rewrite those IDs for vector indexes.
+TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr auto kSourceDb = "source_db";
+  constexpr auto kCloneDb = "clone_db";
+  constexpr size_t kNumRows = 8;
+  dimensions_ = 3;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  if (IsColocated()) {
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 COLOCATION = true", kSourceDb));
+  } else {
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0", kSourceDb));
+  }
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  const auto create_suffix = IsColocated() ? " WITH (COLOCATED = 1)" : " SPLIT INTO 1 TABLETS";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))$0", create_suffix));
+  for (size_t i = 1; i <= kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+  }
+  ASSERT_OK(CreateIndex(conn));
+
+  auto find_table_id = [this](const std::string& namespace_name,
+                              const std::string& table_name) -> Result<TableId> {
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.has_table() && table.table_name() == table_name &&
+          table.namespace_name() == namespace_name) {
+        return table.table_id();
+      }
+    }
+    return STATUS_FORMAT(
+        NotFound, "Didn't find table $0 in namespace $1", table_name, namespace_name);
+  };
+
+  const auto source_table_id = ASSERT_RESULT(find_table_id(kSourceDb, "test"));
+  const auto source_index_id = ASSERT_RESULT(find_table_id(kSourceDb, kVectorIndexName));
+
+  // Retention must outlive the clone, which takes minutes under sanitizers; otherwise the source
+  // snapshot is GC'd before the clone is applied.
+  ASSERT_OK(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kSourceDb,
+      client::WaitSnapshot::kTrue, 10s * kTimeMultiplier, 1h));
+
+  ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
+
+  const auto clone_table_id = ASSERT_RESULT(find_table_id(kCloneDb, "test"));
+  const auto clone_index_id = ASSERT_RESULT(find_table_id(kCloneDb, kVectorIndexName));
+  ASSERT_NE(clone_table_id, source_table_id);
+  ASSERT_NE(clone_index_id, source_index_id);
+
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(clone_table_id));
+    std::string index_ids;
+    for (const auto& [id, _] : *table_info->index_map) {
+      if (!index_ids.empty()) {
+        index_ids += ", ";
+      }
+      index_ids += id;
+    }
+    ASSERT_NE(table_info->index_map->find(clone_index_id), table_info->index_map->end())
+        << "cloned tablet " << peer->tablet_id() << " index_map: " << index_ids;
+    ASSERT_EQ(table_info->index_map->find(source_index_id), table_info->index_map->end())
+        << "cloned tablet " << peer->tablet_id()
+        << " still has source index " << source_index_id
+        << " index_map: " << index_ids;
+  }
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), kNumRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
+          "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
+      1);
 }
 
 class PgDistributedVectorIndexTest
@@ -4344,6 +4431,191 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingDumpFormatV1) {
   ASSERT_EQ(v1_meta_values, 1);
 }
 
+// ysql_dump recreates the table from the surviving columns, so DocDB assigns those columns dense
+// ids. The ybhnsw index records that dense id. ImportSnapshot puts the source column ids back on
+// the master catalog. Restore merges the snapshot superblock, which still has the source
+// vector_idx_options, onto the tablet. Search has to use that id: the restored graph was built
+// against it.
+class PgVectorIndexBackupRestoreTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV1;
+  }
+
+  Result<TableId> GetTableId(const std::string& db, const std::string& name) {
+    master::GetNamespaceInfoResponsePB ns;
+    RETURN_NOT_OK(client_->GetNamespaceInfo(db, YQL_DATABASE_PGSQL, &ns));
+    const auto& namespace_id = ns.namespace_().id();
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.has_table() && table.table_name() == name && table.namespace_id() == namespace_id) {
+        return table.table_id();
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Didn't find $0.$1", db, name);
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexBackupRestoreTest);
+
+TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
+  }
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  constexpr auto kSourceDb = "vec_restore_db";
+  constexpr auto kRestoredDb = "vec_restored_db";
+  constexpr auto kTable = "t";
+  constexpr auto kIndex = "v_idx";
+
+  auto column_id = [this, kTable](
+      const std::string& db, const std::string& column) -> Result<int32_t> {
+    auto table = VERIFY_RESULT(client_->OpenTable(VERIFY_RESULT(GetTableId(db, kTable))));
+    const auto& schema = table->schema();
+    const auto& columns = schema.columns();
+    for (size_t i = 0; i < columns.size(); ++i) {
+      if (columns[i].name() == column) {
+        return schema.ColumnId(i);
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Column $0 not found in $1.$2", column, db, kTable);
+  };
+
+  {
+    auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(admin.ExecuteFormat(
+        "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+    auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id int PRIMARY KEY, embedding vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN extra vector(3)", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN extra", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v vector(3)", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
+    ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (7, '[1, 0, 0]', '[0, 1, 0]')", kTable));
+  }
+  const auto source_v_column_id = ASSERT_RESULT(column_id(kSourceDb, "v"));
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
+
+  const auto restored_v_column_id = ASSERT_RESULT(column_id(kRestoredDb, "v"));
+  ASSERT_EQ(restored_v_column_id, source_v_column_id);
+  auto index = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kIndex))));
+  ASSERT_TRUE(index->index_info().is_vector_index());
+  ASSERT_EQ(index->index_info().vector_idx_options().column_id(), source_v_column_id);
+
+  // The tablet skips opening a vector index whose column id is not in the schema.
+  size_t num_restored_indexes = 0;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      if (vector_index->table_id() != index->id()) {
+        continue;
+      }
+      ++num_restored_indexes;
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index->id()));
+      ASSERT_EQ(table_info->doc_read_context->vector_idx_options->column_id(), source_v_column_id);
+    }
+  }
+  ASSERT_EQ(num_restored_indexes, 1);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
+  // One row is otherwise a sequential scan plus a sort, which never opens the vector index.
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT id FROM $0 ORDER BY v <-> '[0, 1, 0]' LIMIT 1", kTable)));
+  ASSERT_EQ(rows, (std::vector<int32_t>{7}));
+}
+
+// CREATE INDEX on restore takes the backend and store_payload from the restore cluster's flags,
+// but the restored chunk files were written with the source's. Restore has to apply the source
+// options.
+TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
+  }
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  constexpr auto kSourceDb = "vec_restore_db";
+  constexpr auto kRestoredDb = "vec_restored_db";
+  constexpr auto kTable = "t";
+  constexpr auto kIndex = "v_idx";
+  constexpr int kNumRows = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  {
+    auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(admin.ExecuteFormat(
+        "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+    auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id int PRIMARY KEY, v vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
+    ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
+        kNumRows));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto source_index =
+      ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kSourceDb, kIndex))));
+  const auto source_options = source_index->index_info().vector_idx_options();
+  ASSERT_TRUE(source_options.store_payload());
+  ASSERT_EQ(source_options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
+
+  auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
+    ASSERT_EQ(options.store_payload(), source_options.store_payload());
+    ASSERT_EQ(options.hnsw().backend(), source_options.hnsw().backend());
+    ASSERT_EQ(options.id(), source_options.id());
+  };
+
+  auto index = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kIndex))));
+  ASSERT_NO_FATALS(check_options(index->index_info().vector_idx_options()));
+  auto table = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kTable))));
+  const auto* index_in_table = ASSERT_RESULT(table->index_map().FindIndex(index->id()));
+  ASSERT_NO_FATALS(check_options(index_in_table->vector_idx_options()));
+
+  size_t num_restored_indexes = 0;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      if (vector_index->table_id() != index->id()) {
+        continue;
+      }
+      ++num_restored_indexes;
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index->id()));
+      ASSERT_NO_FATALS(check_options(*table_info->doc_read_context->vector_idx_options));
+    }
+  }
+  ASSERT_EQ(num_restored_indexes, 1);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT id FROM $0 ORDER BY v <-> '[0, 0, 0]' LIMIT 3", kTable)));
+  ASSERT_EQ(rows, (std::vector<int32_t>{1, 2, 3}));
+}
+
 // Covers table-owned V1 reverse-mapping packing GC across packing modes.
 class PgVectorIndexReverseMappingCompactionGcTestBase
     : public PgVectorIndexSingleServerDumpTestBase {
@@ -4898,7 +5170,8 @@ class PgVectorValueFormatTest :
   // Dumps table SST files and collects type prefixes for the vector column.
   // Table must have only one vector column.
   Result<std::vector<char>> CollectTypePrefixes(
-      const std::string& table_name, const std::string& vector_column_name) {
+      const std::string& table_name, const std::string& vector_column_name,
+      PackingMode packing_mode) {
     const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
     const auto yb_table = VERIFY_RESULT(client_->OpenTable(table_id));
     ColumnId vector_column_id = kInvalidColumnId;
@@ -4931,18 +5204,25 @@ class PgVectorValueFormatTest :
       if (!value) {
         continue;
       }
-      prefixes.push_back(ParseTypePrefixFromValueDump(*value, GetParam()));
+      prefixes.push_back(ParseTypePrefixFromValueDump(*value, packing_mode));
     }
     return prefixes;
   }
 
   Status ValidateVectorColumnPrefixes(const std::string& table_name, size_t expected_count) {
+    return ValidateVectorColumnPrefixes(table_name, expected_count, GetParam());
+  }
+
+  // packing_mode - packed row version the vector values are expected to be stored in.
+  Status ValidateVectorColumnPrefixes(
+      const std::string& table_name, size_t expected_count, PackingMode packing_mode) {
     RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
     RETURN_NOT_OK(cluster_->FlushTablets());
 
-    const auto prefixes = VERIFY_RESULT(CollectTypePrefixes(table_name, kVectorColumn));
+    const auto prefixes = VERIFY_RESULT(CollectTypePrefixes(
+        table_name, kVectorColumn, packing_mode));
 
-    const auto expected_prefix = GetParam() == PackingMode::kV2
+    const auto expected_prefix = packing_mode == PackingMode::kV2
         ? kNoTypePrefix : table_name == kLegacyTable ? kLegacyPrefix : kTypedPrefix;
     return CheckTypePrefixes(prefixes, expected_prefix, expected_count);
   }
@@ -4996,6 +5276,83 @@ TEST_P(PgVectorValueFormatTest, TableOwnedEncodingSurvivesClusterRestart) {
   };
   ASSERT_EQ(2, ASSERT_RESULT(get_count(kLegacyTable)));
   ASSERT_EQ(1, ASSERT_RESULT(get_count(kTypedTable)));
+}
+
+// Compaction merges column updates older than the history cutoff into the packed row and packs
+// the result with the version ysql_use_packed_row_v2 selects at that moment. Columns the update
+// did not touch are carried over from the old packed row, so flipping the flag between the insert
+// and the compaction converts the stored vector value from one version to the other (DB-23864).
+TEST_P(PgVectorValueFormatTest, RepackOnVersionSwitch) {
+  constexpr int kNumRows = 10;
+  constexpr int kRetentionIntervalSec = 2;
+
+  if (GetParam() == PackingMode::kNone) {
+    GTEST_SKIP() << "Requires packed rows";
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      kRetentionIntervalSec;
+
+  const std::vector<std::string> tables = {kLegacyTable, kTypedTable};
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  for (const auto& table : tables) {
+    // The vector value format is chosen at table creation.
+    const auto typed = table == kTypedTable;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = typed;
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id INT PRIMARY KEY, $1 vector(3), value INT) SPLIT INTO 1 TABLETS",
+        table, kVectorColumn));
+    ASSERT_EQ(ASSERT_RESULT(TableOwnsVectorReverseMapping(table)), typed);
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, ARRAY[i, i * 2, i * 3]::vector, 0 FROM generate_series(1, $1) i",
+        table, kNumRows));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto fetch = [&conn](const std::string& table) {
+    return conn.FetchRows<int32_t, std::string>(
+        Format("SELECT id, $0::text FROM $1 ORDER BY id", kVectorColumn, table));
+  };
+  std::vector<std::decay_t<decltype(*fetch(""))>> expected;
+  for (const auto& table : tables) {
+    expected.push_back(ASSERT_RESULT(fetch(table)));
+    ASSERT_EQ(expected.back().size(), kNumRows);
+  }
+
+  const auto new_packing_mode =
+      GetParam() == PackingMode::kV2 ? PackingMode::kV1 : PackingMode::kV2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = new_packing_mode == PackingMode::kV2;
+  for (const auto& table : tables) {
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value = 1", table));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  // Separate column entries are gone only when the update was merged into the packed rows, which
+  // happens once the history cutoff passes the update.
+  ASSERT_OK(WaitFor([this, &tables]() -> Result<bool> {
+    RETURN_NOT_OK(cluster_->CompactTablets());
+    for (const auto& table : tables) {
+      auto dump = VERIFY_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), table));
+      for (const auto& line : dump) {
+        // Reverse mapping values also mention ColumnId.
+        if (line.find("ColumnId(") != std::string::npos &&
+            line.find("MetaKey(VectorId(") == std::string::npos) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Merge updates into packed rows"));
+
+  for (size_t i = 0; i != tables.size(); ++i) {
+    SCOPED_TRACE(tables[i]);
+    ASSERT_EQ(ASSERT_RESULT(fetch(tables[i])), expected[i]);
+    // The V1 reader accepts either type byte, so check the stored one.
+    ASSERT_OK(ValidateVectorColumnPrefixes(tables[i], kNumRows, new_packing_mode));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -5122,9 +5479,9 @@ TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
     sync_point->ClearTrace();
   });
 
-  // Retry as soon as possible: a retry that lands while the truncate still holds the pause just
-  // reschedules itself.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backfill_retry_delay_ms) = 100 * kTimeMultiplier;
+  // Retry rapidly, so that retries land all over the truncate: while it still holds the pause, and
+  // in the window where it has torn the vector indexes down and not re-opened them yet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backfill_retry_delay_ms) = 10 * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
@@ -5152,6 +5509,99 @@ TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
   ASSERT_GT(num_indexes, 0);
 
   ASSERT_OK(WaitForVectorIndexBackfills(num_indexes, "Backfill done after truncate"));
+}
+
+// VectorLSM::Insert counts its tasks on the mutable chunk before allocating them in the insert
+// registry. When the allocation failed because the registry was already shut down, the count
+// stayed elevated, so a chunk that a flush had meanwhile handed to the save path never saved and
+// the shutdown waited for it forever (GH#34199). Only an index removal can shut the registry down
+// under a running insert: a tablet shutdown drains the operations first.
+TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
+  constexpr size_t kNumRows = 64;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+
+  // Park a follower's backfill insert before it allocates its tasks. CREATE INDEX waits for the
+  // leader's backfill only, so the leader proceeds and the DROP INDEX below can run. The follower
+  // is picked once the index is registered on the tablets, so every insert first waits for that
+  // choice.
+  std::string parked_dir;
+  CountDownLatch follower_picked{1};
+  CountDownLatch insert_parked{1};
+  CountDownLatch resume_insert{1};
+  CountDownLatch registries_stopped{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::Insert:BeforeAllocateTasks", [&](void* arg) {
+    ASSERT_TRUE(follower_picked.WaitFor(60s * kTimeMultiplier));
+    if (*static_cast<const std::string*>(arg) != parked_dir) {
+      return;
+    }
+    insert_parked.CountDown();
+    ASSERT_TRUE(resume_insert.WaitFor(60s * kTimeMultiplier));
+  });
+  sync_point->SetCallBack("VectorLSM::CompleteShutdown:RegistriesStopped", [&](void* arg) {
+    if (*static_cast<const std::string*>(arg) == parked_dir) {
+      registries_stopped.CountDown();
+    }
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+
+  // Keep only a weak reference to the parked index: the removal destroys it once its shutdown
+  // completes, which is what the test waits for.
+  std::weak_ptr<docdb::DocVectorIndex> weak_index;
+  ASSERT_OK(WaitFor([this, &weak_index, &parked_dir] {
+    auto indexes = ListVectorIndexes(cluster_.get(), ListPeersFilter::kNonLeaders);
+    if (indexes.empty()) {
+      return false;
+    }
+    weak_index = indexes.front();
+    parked_dir = indexes.front()->path();
+    return true;
+  }, 60s * kTimeMultiplier, "Vector index registered on a follower"));
+  follower_picked.CountDown();
+
+  ASSERT_TRUE(insert_parked.WaitFor(60s * kTimeMultiplier)) << "Backfill insert did not park";
+  threads.JoinAll();
+
+  // Let the other replicas finish their backfills, so the removal below overtakes the parked insert
+  // only.
+  ASSERT_OK(WaitFor([this, &parked_dir] {
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      if (index->path() != parked_dir && !index->BackfillDone()) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Other replicas backfilled"));
+
+  // The removal shuts the insert registry down, then waits for all chunks to save. Resume the
+  // insert only after that, so its allocation fails. The drop runs off the main thread in case it
+  // waits for the parked replica.
+  threads.AddThreadFunctor([this] {
+    auto drop_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(drop_conn.ExecuteFormat("DROP INDEX $0", kVectorIndexName));
+  });
+  ASSERT_TRUE(registries_stopped.WaitFor(60s * kTimeMultiplier))
+      << "Index removal did not reach the registry shutdown";
+  resume_insert.CountDown();
+
+  ASSERT_OK(WaitFor([&weak_index] { return weak_index.expired(); }, 30s * kTimeMultiplier,
+                    "Index removal hung waiting for the chunk of the failed insert"));
+  threads.JoinAll();
 }
 
 }  // namespace yb::pgwrapper

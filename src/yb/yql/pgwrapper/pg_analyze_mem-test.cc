@@ -62,10 +62,24 @@ class PgAnalyzeMemTest : public PgMiniTestBase {
         "SELECT count(*) FROM pg_stats WHERE tablename = 'wide'"));
     return std::make_pair(after_mb - before_mb, stat_rows);
   }
+
+  // Peak RSS growth, in MB, of "ANALYZE t" in a new connection.
+  Result<int64_t> AnalyzeGrowthMb(bool width_skip) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "SET yb_enable_analyze_width_skip = $0", width_skip ? "on" : "off"));
+    // A fetch batch holds its rows in full, so keep it small next to the sample.
+    RETURN_NOT_OK(conn.Execute("SET yb_fetch_row_limit = 10"));
+    const auto pid = VERIFY_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    const auto before_mb = VERIFY_RESULT(PeakRssMb(pid));
+    RETURN_NOT_OK(conn.Execute("ANALYZE t"));
+    return VERIFY_RESULT(PeakRssMb(pid)) - before_mb;
+  }
 };
 
-// the memory growth should be < 175 MB on 114 MB sample
-constexpr int64_t kMaxAnalyzeGrowthMb = 175;
+// On the 114 MB sample above, measured growth is ~24 MB with width skipping and
+// ~136 MB without, so this bound also fails if ANALYZE stops skipping wide values.
+constexpr int64_t kMaxAnalyzeGrowthMb = 75;
 
 TEST_F(PgAnalyzeMemTest, YB_DISABLE_TEST_ON_MACOS(AnalyzeWideTableStaysBounded)) {
   const auto [growth_mb, stat_rows] = ASSERT_RESULT(AnalyzeRssGrowthMbAndStats());
@@ -76,7 +90,53 @@ TEST_F(PgAnalyzeMemTest, YB_DISABLE_TEST_ON_MACOS(AnalyzeWideTableStaysBounded))
       << "ANALYZE produced no statistics -- the workload did not run, so the "
          "bound below would pass without testing anything";
   ASSERT_LT(growth_mb, kMaxAnalyzeGrowthMb)
-      << "ANALYZE spiked -- fetched sample values are not released per row";
+      << "ANALYZE spiked -- fetched sample values are not released per row, or "
+         "wide values are no longer skipped";
+}
+
+// The "skip applies" rows of the #31506 behavior table: ANALYZE keeps only the
+// size of each wide value, so skipping must save most of the values' memory.
+TEST_F(PgAnalyzeMemTest, YB_DISABLE_TEST_ON_MACOS(WidthSkipSavesMemory)) {
+  struct Case {
+    const char* name;
+    const char* type;   // of the wide column v
+    const char* value;  // of row g
+    int rows;           // ~40 MB of values
+    const char* ddl;    // an index or statistics object that must not stop the skip
+  };
+  const Case kCases[] = {
+      {"text, has = and <", "text", "repeat('x', 4000) || g", 10000, nullptr},
+      {"xid[], has = but no <", "xid[]", "array_fill(g::text::xid, ARRAY[1000])", 10000,
+       nullptr},
+      {"json, has no = or <", "json", "to_json(repeat('x', 4000) || g)", 10000, nullptr},
+      {"text[] over 64 KB", "text[]", "ARRAY[repeat('x', 70000) || g]", 600, nullptr},
+      {"text in mcv and dependencies statistics", "text", "repeat('x', 4000) || g", 10000,
+       "CREATE STATISTICS t_s (mcv, dependencies) ON k, v FROM t"},
+      {"text with a plain index", "text", "repeat('x', 4000) || g", 10000,
+       "CREATE INDEX ON t (v)"},
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  for (const auto& c : kCases) {
+    SCOPED_TRACE(c.name);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t (k int PRIMARY KEY, v $0)", c.type));
+    if (c.ddl) {
+      ASSERT_OK(conn.Execute(c.ddl));
+    }
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t SELECT g, $0 FROM generate_series(1, $1) g", c.value, c.rows));
+    const auto data_mb = ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT sum(pg_column_size(v)) / (1024 * 1024) FROM t"));
+    const auto off_mb = ASSERT_RESULT(AnalyzeGrowthMb(false));
+    const auto on_mb = ASSERT_RESULT(AnalyzeGrowthMb(true));
+    LOG(INFO) << c.name << ": ANALYZE of " << data_mb << " MB of values grew peak RSS by "
+              << off_mb << " MB with width skipping off, " << on_mb << " MB with it on";
+    // Skipping must save more than half the values' size. On ~38 MB of values,
+    // measured growth is ~50 MB with width skipping off and ~12 MB on: ~38 MB
+    // saved against a ~19 MB bar.
+    EXPECT_GT(off_mb - on_mb, data_mb / 2) << "ANALYZE kept wide values it should skip";
+    ASSERT_OK(conn.Execute("DROP TABLE t"));
+  }
 }
 
 }  // namespace yb::pgwrapper

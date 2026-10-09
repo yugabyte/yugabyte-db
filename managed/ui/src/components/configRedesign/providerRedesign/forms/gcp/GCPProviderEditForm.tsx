@@ -92,6 +92,12 @@ import {
   ImageBundle
 } from '../../types';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
+import {
+  buildFederationTargets,
+  federationFormValuesFromProvider,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION
+} from '../components/CrossCloudFederatedIamFields';
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
@@ -123,9 +129,12 @@ export interface GCPProviderEditFormFieldValues {
   version: number;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
-  enableFederatedIam: boolean;
-  federatedIamAudience: string;
-  federatedIamRoleArn: string;
+  enableFederatedIam?: boolean;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
 }
 
 const ProviderCredentialType = {
@@ -137,6 +146,7 @@ type ProviderCredentialType = typeof ProviderCredentialType[keyof typeof Provide
 const YB_VPC_NAME_BASE = 'yb-gcp-network';
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -380,7 +390,6 @@ export const GCPProviderEditForm = ({
     'editCloudCredentials',
     defaultValues.editCloudCredentials
   );
-  const enableFederatedIam = formMethods.watch('enableFederatedIam');
   const serviceAccountIdentifer = providerConfig.details.cloudInfo.gcp.useHostCredentials
     ? 'YBA Host Instance'
     : providerConfig.details.cloudInfo.gcp.gceApplicationCredentials?.client_email;
@@ -519,58 +528,12 @@ export const GCPProviderEditForm = ({
                   </FormField>
                 </>
               )}
-              <FormField>
-                <FieldLabel
-                  infoTitle="Federated IAM"
-                  infoContent="Enable S3-on-GCP cross-cloud federated IAM for this provider's DB nodes. When on, provide the AWS role ARN to assume and the GCP web-identity audience."
-                >
-                  Enable Federated IAM
-                </FieldLabel>
-                <YBToggleField
-                  name="enableFederatedIam"
-                  control={formMethods.control}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.GCP,
-                    'enableFederatedIam',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
-                />
-              </FormField>
-              {enableFederatedIam && (
-                <>
-                  <FormField>
-                    <FieldLabel>Federated IAM Role ARN</FieldLabel>
-                    <YBInputField
-                      control={formMethods.control}
-                      name="federatedIamRoleArn"
-                      disabled={getIsFieldDisabled(
-                        ProviderCode.GCP,
-                        'federatedIamRoleArn',
-                        isFormDisabled,
-                        isProviderInUse
-                      )}
-                      placeholder="arn:aws:iam::<account>:role/<role>"
-                      fullWidth
-                    />
-                  </FormField>
-                  <FormField>
-                    <FieldLabel>Federated IAM Audience</FieldLabel>
-                    <YBInputField
-                      control={formMethods.control}
-                      name="federatedIamAudience"
-                      disabled={getIsFieldDisabled(
-                        ProviderCode.GCP,
-                        'federatedIamAudience',
-                        isFormDisabled,
-                        isProviderInUse
-                      )}
-                      placeholder="//iam.googleapis.com/projects/.../providers/..."
-                      fullWidth
-                    />
-                  </FormField>
-                </>
-              )}
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+                providerCloud="gcp"
+              />
+
               <FormField>
                 <FieldLabel>VPC Setup</FieldLabel>
                 <YBRadioGroupField
@@ -904,9 +867,7 @@ const constructDefaultFormValues = (
 ): Partial<GCPProviderEditFormFieldValues> => ({
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   destVpcId: providerConfig.details.cloudInfo.gcp.destVpcId ?? '',
-  enableFederatedIam: !!providerConfig.details.cloudInfo.gcp.enableFederatedIam,
-  federatedIamAudience: providerConfig.details.cloudInfo.gcp.federatedIamAudience ?? '',
-  federatedIamRoleArn: providerConfig.details.cloudInfo.gcp.federatedIamRoleArn ?? '',
+  ...federationFormValuesFromProvider(providerConfig.details.cloudInfo.gcp, 'gcp'),
   editCloudCredentials: false,
   editSSHKeypair: false,
   ntpServers: providerConfig.details.ntpServers,
@@ -1064,8 +1025,7 @@ const constructProviderPayload = async (
           ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags }),
           enableFederatedIam: formValues.enableFederatedIam,
           ...(formValues.enableFederatedIam && {
-            federatedIamAudience: formValues.federatedIamAudience,
-            federatedIamRoleArn: formValues.federatedIamRoleArn
+            crossCloudFederationTargets: buildFederationTargets(formValues)
           })
         }
       },

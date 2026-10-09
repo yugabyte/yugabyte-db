@@ -77,6 +77,7 @@
 | "Enable K8s Support Bundle" | "yb.support_bundle.k8s_enabled" | "GLOBAL" | "This config lets you enable support bundle creation on k8s universes." | "Boolean" |
 | "Enable On Prem Support Bundle" | "yb.support_bundle.onprem_enabled" | "GLOBAL" | "This config lets you enable support bundle creation for onprem universes." | "Boolean" |
 | "Allow collection of cores in Support Bundle" | "yb.support_bundle.allow_cores_collection" | "GLOBAL" | "This global config allows you to disable collection of cores in support bundle, even if it is passed as a component while creating." | "Boolean" |
+| "Enable Support Bundle V2 API in UI" | "yb.support_bundle.ui_v2_enabled" | "GLOBAL" | "When true, the YBA UI uses the v2 support bundle API (support_bundle_v2 table). When false, the UI continues to use the v1 support bundle API. V1 and v2 bundles are stored separately; toggling this flag switches which bundles appear in the UI list." | "Boolean" |
 | "Application Logs Regex Pattern" | "yb.support_bundle.application_logs_regex_pattern" | "GLOBAL" | "Regex pattern used to filter application log files when creating support bundles." | "Raw String" |
 | "Application Logs SDF Pattern" | "yb.support_bundle.application_logs_sdf_pattern" | "GLOBAL" | "SimpleDateFormat pattern used to parse dates from application log file names when creating support bundles." | "String" |
 | "Snapshot creation max attempts" | "yb.snapshot_creation.max_attempts" | "GLOBAL" | "Max attempts while waiting for AWS Snapshot Creation" | "Integer" |
@@ -211,6 +212,7 @@
 | "Allow Rollback of Edit Universe Tasks" | "yb.task.allow_edit_universe_rollback" | "GLOBAL" | "Allow rolling back a failed edit universe task (VM and Kubernetes) via the task rollback API" | "Boolean" |
 | "Allow Rollback of Add Node Tasks" | "yb.task.allow_add_node_rollback" | "GLOBAL" | "Allow rolling back a failed add-node-to-universe task via the task rollback API. Rollback is limited to the window before tserver start / raft join; Kubernetes is out of scope." | "Boolean" |
 | "Allow Rollback of Resize Node Tasks" | "yb.task.allow_resize_node_rollback" | "GLOBAL" | "Allow rolling back a failed resize node task via the task rollback API. Kubernetes and disk-size shrink are out of scope; IOPS/throughput revert during the cloud disk-modify cooldown window is rejected." | "Boolean" |
+| "Enable Cross-Cloud Federated IAM" | "yb.ui.feature_flags.enable_cross_cloud_federated_iam" | "GLOBAL" | "Exposes the cross-cloud federated IAM fields on the provider and backup storage configuration pages. Off by default while the feature is in preview; a provider or storage config that already has it set keeps working regardless." | "Boolean" |
 | "Enable S3 Backup Proxy" | "yb.ui.feature_flags.enable_s3_backup_proxy" | "GLOBAL" | "Enable proxy configuration for S3 backup storage" | "Boolean" |
 | "Allow YBA Restore With Universes" | "yb.yba_backup.allow_restore_with_universes" | "GLOBAL" | "Allow YBA restore from one time restore or continuous backup when existing universes are present" | "Boolean" |
 | "Allow YBA Restore With Old Backup" | "yb.yba_backup.allow_restore_with_old_backup" | "GLOBAL" | "Allow YBA restore from one time restore or continuous backup when backup file is more than 1 day old" | "Boolean" |
@@ -229,6 +231,7 @@
 | "Enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Enable new universe experience for all users" | "Boolean" |
 | "Node Agent Max Describe Output Buffer Lines" | "yb.node_agent.max_describe_output_buffer_lines" | "GLOBAL" | "Maximum number of lines to buffer in memory for node agent describe output" | "Integer" |
 | "Task Executor Shutdown Max Wait Time" | "yb.task_executor.shutdown_max_wait_time" | "GLOBAL" | "Maximum time to wait for task executor to shutdown gracefully before forcefully terminating it" | "Duration" |
+| "Node Agent Health Checker Disabled" | "yb.node_agent.health_checker.disabled" | "GLOBAL" | "Node agent checker offloaded to run asynchronously on its own schedule" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |

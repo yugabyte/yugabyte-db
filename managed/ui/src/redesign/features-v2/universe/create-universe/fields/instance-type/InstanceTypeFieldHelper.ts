@@ -6,7 +6,8 @@ import {
   InstanceTypeWithGroup,
   Placement,
   RunTimeConfigEntry,
-  Region
+  Region,
+  VolumeType
 } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { useMemo } from 'react';
 import { useQuery } from 'react-query';
@@ -97,6 +98,27 @@ export const isEphemeralAwsStorageInstance = (instance: InstanceType) => {
   );
 };
 
+export const isEphemeralOciStorageInstance = (instance?: InstanceType | null) => {
+  if (!instance) {
+    return false;
+  }
+  // DenseIO / HPC names are OCI-only. Do not require providerCode — some list
+  // payloads omit it, and the backend already keys off the shape name.
+  if (instance.providerCode && instance.providerCode !== CloudType.oci) {
+    return false;
+  }
+  const volumeType = instance.instanceTypeDetails?.volumeDetailsList?.[0]?.volumeType;
+  if (volumeType === VolumeType.NVME) {
+    return true;
+  }
+  const code = instance.instanceTypeCode ?? '';
+  return /DenseIO|HPC/.test(code);
+};
+
+export const isEphemeralStorageInstance = (instance?: InstanceType | null) =>
+  !!instance &&
+  (isEphemeralAwsStorageInstance(instance) || isEphemeralOciStorageInstance(instance));
+
 // Edit universe: keep the current storage config when only the instance type changes.
 export const mergeDeviceInfoPreservingStorage = (
   fromInstance: DeviceInfo | null,
@@ -104,7 +126,7 @@ export const mergeDeviceInfoPreservingStorage = (
   instance: InstanceType
 ): DeviceInfo | null => {
   if (!fromInstance) return null;
-  if (!current?.storageType || isEphemeralAwsStorageInstance(instance)) return fromInstance;
+  if (!current?.storageType || isEphemeralStorageInstance(instance)) return fromInstance;
   return {
     ...fromInstance,
     storageType: current.storageType,

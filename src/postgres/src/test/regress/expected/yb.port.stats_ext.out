@@ -3316,6 +3316,33 @@ SELECT * FROM tststats.priv_test_parent_tbl t
 (0 rows)
 
 DELETE FROM tststats.priv_test_parent_tbl WHERE a <<< 0 AND b <<< 0; -- Should not leak
+-- CREATE STATISTICS checks for CREATE on the schema
+RESET SESSION AUTHORIZATION;
+CREATE SCHEMA sts_sch1 CREATE TABLE sts_sch1.tbl (a INT, b INT);
+ERROR:  CREATE SCHEMA with elements not supported yet
+LINE 1: CREATE SCHEMA sts_sch1 CREATE TABLE sts_sch1.tbl (a INT, b I...
+                               ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+-- YB: CREATE SCHEMA with schema elements is not supported yet; create them separately
+CREATE SCHEMA sts_sch1;
+CREATE TABLE sts_sch1.tbl (a INT, b INT);
+GRANT USAGE ON SCHEMA sts_sch1 TO regress_stats_user1;
+ALTER TABLE sts_sch1.tbl OWNER TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS sts_sch1.fail ON a, b FROM sts_sch1.tbl;
+ERROR:  permission denied for schema sts_sch1
+RESET SESSION AUTHORIZATION;
+GRANT CREATE ON SCHEMA sts_sch1 TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS sts_sch1.pass ON a, b FROM sts_sch1.tbl;
+-- re-creating statistics via ALTER TABLE bypasses checks for CREATE on schema
+RESET SESSION AUTHORIZATION;
+REVOKE CREATE ON SCHEMA sts_sch1 FROM regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+ALTER TABLE sts_sch1.tbl ALTER COLUMN a TYPE SMALLINT;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 -- Tidy up
 DROP OPERATOR <<< (int, int);
 DROP FUNCTION op_leak(int, int);
@@ -3327,4 +3354,6 @@ NOTICE:  drop cascades to 3 other objects
 DETAIL:  drop cascades to table tststats.priv_test_parent_tbl
 drop cascades to table tststats.priv_test_tbl
 drop cascades to view tststats.priv_test_view
+DROP SCHEMA sts_sch1 CASCADE;
+NOTICE:  drop cascades to table sts_sch1.tbl
 DROP USER regress_stats_user1;

@@ -100,6 +100,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.common.rollback.TaskRollbackModule;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -135,6 +136,7 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -153,6 +155,8 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -295,6 +299,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ThirdpartySoftwareUpgrade,
           TaskType.CertsRotate,
           TaskType.TlsToggle,
+          TaskType.TlsToggleKubernetes,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
           TaskType.PauseUniverse,
@@ -343,6 +348,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EnableNodeAgentInUniverse,
           TaskType.UpdateYbcThrottleFlags,
           TaskType.UpdateK8sYbcThrottleFlags);
+
+  /**
+   * Same as {@link #SAFE_TO_RUN_IF_UNIVERSE_BROKEN} but for a universe locked by a rollback task
+   * that itself failed. Re-provisioning nodes is not offered there; destroying the universe and
+   * reinstalling the node agent stay.
+   */
+  private static final Set<TaskType> SAFE_TO_RUN_IF_ROLLBACK_FAILED =
+      Sets.difference(
+              SAFE_TO_RUN_IF_UNIVERSE_BROKEN, ImmutableSet.of(TaskType.ProvisionUniverseNodes))
+          .immutableCopy();
 
   private static final Set<TaskType> SKIP_CONSISTENCY_CHECK_TASKS =
       ImmutableSet.of(
@@ -639,7 +654,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         AllowedTasks.builder().lockedTaskType(lockedTaskType);
     if (PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
       builder.restricted(true);
-      builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
+      builder.taskTypes(
+          TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.containsValue(lockedTaskType)
+              ? SAFE_TO_RUN_IF_ROLLBACK_FAILED
+              : SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
       if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
         builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
       }
@@ -3483,6 +3501,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  // The amp controller opens yb_storage at startup, so it must exist before the universe is
+  // handed over.
+  public void checkAndCreateYbStorageDatabaseTask(Cluster primaryCluster) {
+    if (primaryCluster.userIntent.enableYSQL
+        && confGetter.getGlobalConf(GlobalConfKeys.createYbStorageDb)) {
+      SubTaskGroup subTaskGroup =
+          createSubTaskGroup(
+              CreateYbStorageDatabase.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
+      CreateYbStorageDatabase task = createTask(CreateYbStorageDatabase.class);
+      CreateYbStorageDatabase.Params params = new CreateYbStorageDatabase.Params();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
   public SubTaskGroup createUpdateConsistencyCheckTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateConsistencyCheckTable");
     UpdateConsistencyCheck task = createTask(UpdateConsistencyCheck.class);
@@ -5727,6 +5762,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     // Get load balancers for each cluster
     for (Cluster cluster : clusters) {
+      if (ManagedLoadBalancerUtil.isEnabled(cluster)) {
+        // Validation keeps load balancer names out of a universe with managed load balancers.
+        addManagedLoadBalancers(taskParams, cluster, loadBalancerMap, nodesToIgnore, nodesToAdd);
+        continue;
+      }
       Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(cluster);
       if (cluster.userIntent.enableLB) {
 
@@ -5750,6 +5790,67 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     }
     return loadBalancerMap;
+  }
+
+  /**
+   * Adds one entry per load balancer that the cluster calls for, with the cluster's active tservers
+   * in the zones it serves. The names are fixed by the plan, so a task can plan node registration
+   * before the load balancer exists. A load balancer that an edit drops from the plan gets no
+   * entry: the edit deletes it with the target groups, so there is nothing left to deregister from.
+   */
+  private void addManagedLoadBalancers(
+      UniverseDefinitionTaskParams taskParams,
+      Cluster cluster,
+      Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap,
+      Set<NodeDetails> nodesToIgnore,
+      Set<NodeDetails> nodesToAdd) {
+    // A load balancer whose last node is being removed keeps its entry, so that the node is
+    // deregistered.
+    Map<UUID, LoadBalancerConfig> configByZone = new HashMap<>();
+    for (ManagedLoadBalancer lb : ManagedLoadBalancerUtil.planLoadBalancers(cluster)) {
+      Region region = Region.getOrBadRequest(lb.getRegionUuid());
+      LoadBalancerConfig config =
+          loadBalancerMap.computeIfAbsent(
+              new LoadBalancerPlacement(
+                  region.getProvider().getUuid(), region.getCode(), lb.getName()),
+              p -> new LoadBalancerConfig(lb.getName()));
+      lb.getAzUuids().forEach(azUuid -> configByZone.put(azUuid, config));
+    }
+    Stream<NodeDetails> nodes =
+        taskParams.getNodesInCluster(cluster.uuid).stream()
+            .filter(n -> n.isActive() && n.isTserver)
+            .filter(n -> nodesToIgnore == null || !nodesToIgnore.contains(n));
+    if (nodesToAdd != null) {
+      nodes =
+          Stream.concat(
+              nodes, nodesToAdd.stream().filter(n -> cluster.uuid.equals(n.placementUuid)));
+    }
+    nodes.forEach(
+        node -> {
+          LoadBalancerConfig config = configByZone.get(node.azUuid);
+          if (config != null) {
+            config.addNodes(
+                AvailabilityZone.getOrBadRequest(node.azUuid), Collections.singleton(node));
+          }
+        });
+  }
+
+  /**
+   * Applies the change to the saved managed load balancer state. A missing state is created first,
+   * and a state left empty is removed.
+   */
+  protected void updateManagedLoadBalancerState(Consumer<ManagedLoadBalancerState> updater) {
+    saveUniverseDetails(
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          ManagedLoadBalancerState state = details.getManagedLoadBalancerState();
+          if (state == null) {
+            state = new ManagedLoadBalancerState();
+          }
+          updater.accept(state);
+          details.setManagedLoadBalancerState(state.isEmpty() ? null : state);
+          u.setUniverseDetails(details);
+        });
   }
 
   private void initLoadBalancerConfig(

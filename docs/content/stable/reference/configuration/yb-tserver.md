@@ -710,7 +710,7 @@ Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-ena
 Default: `off`
 {{% /tags/wrap %}}
 
-Extends [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) to explicit transaction blocks. Requires that setting to be on, [transactional DDL](../../../explore/transactions/transactional-ddl/) to be enabled, and [Read Committed isolation](../../../explore/transactions/isolation-levels/#read-committed-isolation).
+Extends [yb_enable_new_relation_fastpath_write](#yb-enable-new-relation-fastpath-write) to explicit transaction blocks. Requires that setting to be on, [transactional DDL](../../../architecture/transactions/transactional-ddl/) to be enabled, and [Read Committed isolation](../../../architecture/transactions/read-committed/).
 
 Do not enable this setting through [ysql_pg_conf_csv](#ysql-pg-conf-csv) while transactional DDL is off: the setting reads back as on, but writes continue on the normal path and no error is reported. Use the [--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks](#ysql-yb-enable-new-relation-fastpath-write-in-txn-blocks) flag instead, which is validated at startup.
 
@@ -999,6 +999,17 @@ Default: `1`
 {{% /tags/wrap %}}
 
 When [--durable_wal_write](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
+
+##### --export_drive_io_metrics
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Enables [per-drive write I/O metrics](../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#per-drive-write-i-o). When `false`, those metrics are not exported.
 
 ##### --log_min_seconds_to_retain
 
@@ -1481,6 +1492,25 @@ Default: `14400` (4 hours)
 {{% /tags/wrap %}}
 
 Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+##### --cdc_skip_unqualified_tables_for_polling
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2026.1.2.0 and later.
+
+When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed by this slot.
+
+When this flag is `false` (the default), VWAL refuses to add the unqualified tablet to the polling list and returns `Cannot add tablet: <id> to the polling list as it has been unqualified for stream: <id>`. The tablet is not polled.
+
+
+A table is unqualified if its tablets have expired (not polled within [--cdc_intent_retention_ms](#cdc-intent-retention-ms)) or are not of interest (not polled within [--cdcsdk_tablet_not_of_interest_timeout_secs](#cdcsdk-tablet-not-of-interest-timeout-secs) of stream or slot creation).
+
+For more information, refer to [Limitations](../../../additional-features/change-data-capture/using-logical-replication/#limitations).
 
 ##### --timestamp_syscatalog_history_retention_interval_sec
 

@@ -205,7 +205,8 @@ public class AWSUtil implements CloudUtil {
       return true;
     }
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-    if (isCrossCloudFederationConfig(s3Data) && StringUtils.isBlank(s3Data.federationAudience)) {
+    if (isCrossCloudFederationConfig(s3Data)
+        && StringUtils.isBlank(s3Data.crossCloudFederationAudience)) {
       // Cross-cloud federation with no audience resolved (config validation / no universe context):
       // only the GCP node's own identity can reach the bucket, never YBA. Defer to the node/YBC.
       return true;
@@ -242,7 +243,7 @@ public class AWSUtil implements CloudUtil {
       CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {
     CustomerConfigStorageS3Data configS3Data = (CustomerConfigStorageS3Data) configData;
     if (isCrossCloudFederationConfig(configS3Data)
-        && StringUtils.isBlank(configS3Data.federationAudience)) {
+        && StringUtils.isBlank(configS3Data.crossCloudFederationAudience)) {
       // No audience resolved: YBA can't list the bucket; node-side YBC validation covers it.
       return;
     }
@@ -950,8 +951,8 @@ public class AWSUtil implements CloudUtil {
     var builder = S3Client.builder();
 
     if (isCrossCloudFederationConfig(s3Data)
-        && StringUtils.isNotBlank(s3Data.federationRoleArn)
-        && StringUtils.isNotBlank(s3Data.federationAudience)) {
+        && StringUtils.isNotBlank(s3Data.crossCloudFederationRoleArn)
+        && StringUtils.isNotBlank(s3Data.crossCloudFederationAudience)) {
       // Cross-cloud federation (S3-on-GCP): YBA (on GCP) exchanges its GCE identity token for
       // temporary AWS creds via AssumeRoleWithWebIdentity, using the role/audience resolved from
       // the provider. Only reached at backup/delete time, once those transients are stamped. Let a
@@ -1202,7 +1203,7 @@ public class AWSUtil implements CloudUtil {
   }
 
   private AwsCredentials getCrossCloudFederationCredentials(CustomerConfigStorageS3Data s3Data) {
-    String token = fetchGcpIdentityToken(s3Data.federationAudience);
+    String token = fetchGcpIdentityToken(s3Data.crossCloudFederationAudience);
     try (StsClient sts =
         StsClient.builder()
             .region(Region.AWS_GLOBAL)
@@ -1212,7 +1213,7 @@ public class AWSUtil implements CloudUtil {
       AssumeRoleWithWebIdentityResponse resp =
           sts.assumeRoleWithWebIdentity(
               AssumeRoleWithWebIdentityRequest.builder()
-                  .roleArn(s3Data.federationRoleArn)
+                  .roleArn(s3Data.crossCloudFederationRoleArn)
                   .webIdentityToken(token)
                   .roleSessionName("yba-cross-cloud-federation")
                   .build());
@@ -1445,7 +1446,7 @@ public class AWSUtil implements CloudUtil {
 
     CustomerConfigStorageS3Data fedCheckData = (CustomerConfigStorageS3Data) configData;
     if (isCrossCloudFederationConfig(fedCheckData)
-        && StringUtils.isBlank(fedCheckData.federationAudience)) {
+        && StringUtils.isBlank(fedCheckData.crossCloudFederationAudience)) {
       // Federation backups are always YBC and validated node-side; report present.
       return true;
     }
@@ -1782,6 +1783,16 @@ public class AWSUtil implements CloudUtil {
   public void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
       throws Exception {
     CustomerConfigStorageS3Data s3data = (CustomerConfigStorageS3Data) configData;
+    if (isCrossCloudFederationConfig(s3data)
+        && StringUtils.isBlank(s3data.crossCloudFederationAudience)) {
+      // Cross-cloud federation with no audience resolved. The audience and role ARN are stamped
+      // from the universe's provider at backup/delete time, so they are absent whenever the config
+      // itself is being saved - there is no universe to resolve them from. YBA therefore cannot
+      // mint the web-identity credential here, and falling through would drop into the default AWS
+      // chain and fail on a YBA that is not on AWS. The node/YBC does the authoritative check.
+      log.info("Skipping YBA-side validation of a cross-cloud federation S3 config");
+      return;
+    }
     if (StringUtils.isEmpty(s3data.awsAccessKeyId)
         || StringUtils.isEmpty(s3data.awsSecretAccessKey)) {
       if (!s3data.isIAMInstanceProfile) {

@@ -328,6 +328,13 @@ extern YbObjectLockMode YBGetObjectLockMode();
  */
 extern bool YbNeedAdditionalCatalogTables();
 
+/* yb_test_catalog_preload_cache_list, implemented in relcache.c. */
+extern bool yb_check_test_catalog_preload_cache_list(char **newval, void **extra,
+													 GucSource source);
+extern void yb_assign_test_catalog_preload_cache_list(const char *newval,
+													  void *extra);
+extern bool YbCatalogPreloadCacheListIsSet(void);
+
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
  * in an atomic fashion, it is possible that we could have a table existing in
@@ -928,6 +935,24 @@ extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
 
+extern int	yb_ddl_wait_for_master_prefetch_drain_ms;
+
+/*
+ * Mirrors YsqlCatalogPrefetchLoadPB in master_heartbeat.proto, naming every value it can carry
+ * even where the code only compares against some of them. The master sends a value in the
+ * heartbeat response, the tserver stores it in this node's shared memory, and backends read it
+ * from there.
+ */
+typedef enum YbCatalogPrefetchLoad
+{
+	YB_CATALOG_PREFETCH_LOAD_UNKNOWN = 0,
+	YB_CATALOG_PREFETCH_LOAD_LOW = 1,
+	YB_CATALOG_PREFETCH_LOAD_BUSY = 2,
+	YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY = 3,
+} YbCatalogPrefetchLoad;
+
+extern void YbWaitForMasterCatalogPrefetchDrain(void);
+
 /*
  * Enable parallel query for different relation sharding types
  */
@@ -995,6 +1020,8 @@ extern bool yb_silence_advisory_locks_not_supported_error;
  * GUC to indicate DDL executed in a Automatic xCluster mode target universe.
  */
 extern bool yb_xcluster_automatic_mode_target_ddl;
+
+extern bool yb_enable_xcluster_analyze_replication;
 
 extern bool yb_user_ddls_preempt_auto_analyze;
 
@@ -1615,6 +1642,18 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 															char replident);
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
+
+extern void YBCSetHistoricalReadContext(uint64_t read_time_ht,
+										uint64_t in_txn_limit_ht,
+										const char *docdb_txn_id);
+
+extern void YBCInvalidateCachesForHistoricalReadContext(void);
+
+extern void YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
+															 uint64_t in_txn_limit_ht,
+															 const char *docdb_txn_id);
+
+extern void YBCResetHistoricalReadContextAndInvalidateRelcache(void);
 
 extern void YBCResetYbReadTimeAndInvalidateRelcache();
 

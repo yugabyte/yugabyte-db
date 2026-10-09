@@ -34,6 +34,7 @@
 #include "yb/master/catalog_manager-test_base.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/util/format.h"
 
 namespace yb {
 namespace master {
@@ -42,7 +43,6 @@ using std::shared_ptr;
 using std::make_shared;
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 // Test of the tablet assignment algorithm for splits done at table creation time.
 // This tests that when we define a split, the tablet lands on the expected
@@ -68,7 +68,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
     // Calculate the tablet id and start key.
     const string& start_key = (i == 0) ? "" : split_keys[i - 1];
     const string& end_key = (i == kNumSplits) ? "" : split_keys[i];
-    string tablet_id = Substitute("tablet-$0-$1", start_key, end_key);
+    string tablet_id = Format("tablet-$0-$1", start_key, end_key);
 
     // Query using the start key.
     GetTableLocationsRequestPB req;

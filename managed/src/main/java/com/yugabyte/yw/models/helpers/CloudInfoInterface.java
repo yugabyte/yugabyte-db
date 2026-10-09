@@ -4,6 +4,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -31,9 +32,12 @@ import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import play.libs.Json;
 
 public interface CloudInfoInterface {
@@ -58,52 +62,51 @@ public interface CloudInfoInterface {
     return get(provider, false);
   }
 
-  /**
-   * Returns the cross-cloud federated IAM audience configured on the provider, or null when
-   * federation is not enabled or incompletely configured. AWS/on-prem (AWS-backed) providers carry
-   * a GCP Workload Identity Federation audience (GCS-on-AWS); GCP providers carry the audience used
-   * for the web-identity token (S3-on-GCP), which is only usable together with a role ARN, so the
-   * GCP audience is treated as resolvable only when the role ARN is also set. This keeps callers'
-   * "audience != null" federation check correct across both directions.
-   */
-  public static String getCrossCloudFederationAudience(Provider provider) {
-    CloudType cloud = provider.getCloudCode();
-    String audience = null;
-    if (cloud == CloudType.aws) {
-      AWSCloudInfo info = get(provider);
-      if (info != null && info.enableFederatedIam) {
-        audience = info.federatedIamAudience;
-      }
-    } else if (cloud == CloudType.onprem) {
-      OnPremCloudInfo info = get(provider);
-      if (info != null && info.enableFederatedIam) {
-        audience = info.federatedIamAudience;
-      }
-    } else if (cloud == CloudType.gcp) {
-      GCPCloudInfo info = get(provider);
-      if (info != null
-          && info.isEnableFederatedIam()
-          && info.getFederatedIamRoleArn() != null
-          && !info.getFederatedIamRoleArn().trim().isEmpty()) {
-        audience = info.getFederatedIamAudience();
-      }
-    }
-    return (audience == null || audience.trim().isEmpty()) ? null : audience;
+  /** Whether cross-cloud federated IAM is switched on for this provider. */
+  @JsonIgnore
+  default boolean isFederatedIamEnabled() {
+    return false;
   }
 
   /**
-   * Returns the AWS role ARN assumed via AssumeRoleWithWebIdentity for S3-on-GCP federation on a
-   * GCP provider, or null when not enabled / not set. There is no analog for AWS/on-prem:
-   * GCS-on-AWS binds the node's identity directly to the bucket, with no intermediate role.
+   * Storage clouds this provider's nodes can be given federated access to, before usability
+   * filtering. Implementations fold their deprecated flat fields in here, so callers never see the
+   * legacy shape.
    */
-  public static String getCrossCloudFederationRoleArn(Provider provider) {
-    if (provider.getCloudCode() != CloudType.gcp) {
+  @JsonIgnore
+  default List<CrossCloudFederationTarget> getEffectiveFederationTargets() {
+    return Collections.emptyList();
+  }
+
+  /**
+   * Every storage cloud this provider has usable cross-cloud federated IAM settings for, empty when
+   * it is off or incompletely configured.
+   *
+   * <p>Only an on-prem provider is expected to return more than one today, because its nodes may
+   * run on different clouds. The shape is the same for every provider, so a native provider gains
+   * nothing special when a third storage cloud is supported.
+   */
+  public static List<CrossCloudFederationTarget> getCrossCloudFederationTargets(Provider provider) {
+    CloudInfoInterface info = get(provider);
+    if (info == null || !info.isFederatedIamEnabled()) {
+      return Collections.emptyList();
+    }
+    return info.getEffectiveFederationTargets().stream()
+        .filter(t -> t != null && t.isUsable())
+        .collect(Collectors.toList());
+  }
+
+  /** Settings for one storage cloud, or null when this provider has none usable for it. */
+  @Nullable
+  public static CrossCloudFederationTarget getCrossCloudFederationTarget(
+      Provider provider, @Nullable CloudType targetCloud) {
+    if (targetCloud == null) {
       return null;
     }
-    GCPCloudInfo info = get(provider);
-    String roleArn =
-        (info != null && info.isEnableFederatedIam()) ? info.getFederatedIamRoleArn() : null;
-    return (roleArn == null || roleArn.trim().isEmpty()) ? null : roleArn;
+    return getCrossCloudFederationTargets(provider).stream()
+        .filter(t -> targetCloud == t.targetCloud)
+        .findFirst()
+        .orElse(null);
   }
 
   public static <T extends CloudInfoInterface> T get(Region region) {
