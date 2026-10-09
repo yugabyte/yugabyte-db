@@ -35,8 +35,8 @@ namespace trace = opentelemetry::trace;
 // OTel service.name for the ysql (postgres backend) process, passed to DistTrace::Init at startup.
 inline constexpr char kYsqlServiceName[] = "ysql";
 
-// Process-wide distributed-tracing surface over the OTel SDK. Static-only: the tracer provider is
-// a process singleton, and the state here is set once at startup from gflags and DistTrace::Init.
+// Static-only surface over the OTel SDK: the tracer provider is a process singleton. enabled_
+// follows the collector-endpoint flag at runtime; pending_rpc_attrs_ is per-thread scratch.
 class DistTrace {
  public:
   DistTrace() = delete;
