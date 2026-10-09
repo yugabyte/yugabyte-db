@@ -52,8 +52,9 @@ class InitialSysCatalogSnapshotWriter {
   std::vector<tablet::ChangeMetadataRequestPB> initdb_metadata_changes_;
 };
 
-// Merges consecutive add_table changes for the same tablet and database into add_multiple_tables
-// changes, preserving order.
+// Merges consecutive add_table changes with the same tablet, database and
+// only_abort_txns_not_using_table_locks into add_multiple_tables changes, preserving order. Only
+// those fields of an add_table change are kept; other changes are returned unchanged.
 std::vector<tablet::ChangeMetadataRequestPB> MergeAddTableChanges(
     tserver::ExportedTabletMetadataChanges&& changes);
 
