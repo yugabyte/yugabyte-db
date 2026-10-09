@@ -7972,6 +7972,7 @@ PostgresMain(const char *dbname, const char *username)
 						enable_timeout_after(STATEMENT_TIMEOUT,
 											 AuthenticationTimeout * 1000);
 
+						YbResetAuthPassthroughConnectionWarnings();
 						ClientAuthentication(MyProcPort);
 
 						/*

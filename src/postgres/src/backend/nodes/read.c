@@ -35,8 +35,9 @@
 static const char *pg_strtok_ptr = NULL;
 
 /* State flag that determines how readfuncs.c should treat location fields */
+/* YB: per-thread, same as pg_strtok's pointer. */
 #ifdef DEBUG_NODE_TESTS_ENABLED
-bool		restore_location_fields = false;
+YB_THREAD_LOCAL bool restore_location_fields = false;
 #endif
 
 static const char *

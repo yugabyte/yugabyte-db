@@ -856,7 +856,12 @@ retry:
 
 		YBCGetReplicationSlot(name, &yb_replication_slot, /* if_exists */ false);
 
-		s = palloc(sizeof(ReplicationSlot));
+		/*
+		 * palloc0, not palloc: the fields below are set individually, so any
+		 * field upstream adds to ReplicationSlot would otherwise be garbage
+		 * here (e.g. data.invalidated, which logical decoding asserts on).
+		 */
+		s = palloc0(sizeof(ReplicationSlot));
 		namestrcpy(&s->data.name, yb_replication_slot->slot_name);
 		namestrcpy(&s->data.plugin, yb_replication_slot->output_plugin);
 		s->data.database = yb_replication_slot->database_oid;
@@ -946,11 +951,24 @@ retry:
 		 */
 		CreateSlotOnDisk(s);
 
+		/*
+		 * YB: AllocationLock is the outer lock and covers this whole sequence.
+		 * CheckPointReplicationSlots reads in_use under it. ControlLock is
+		 * taken only to publish in_use.
+		 */
+		LWLockAcquire(ReplicationSlotAllocationLock, LW_EXCLUSIVE);
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
 
 		if (!slot_for_array)
 		{
-			for (int i = 0; i < *YBCGetGFlags()->ysql_max_replication_slots; i++)
+			/*
+			 * YB: ysql_max_replication_slots is independent of the GUCs that size
+			 * replication_slots. Stop at the end of the array.
+			 */
+			const int	yb_nslots = Min((int) *YBCGetGFlags()->ysql_max_replication_slots,
+										max_replication_slots + max_repack_replication_slots);
+
+			for (int i = 0; i < yb_nslots; i++)
 			{
 				ReplicationSlot *temp_s = &ReplicationSlotCtl->replication_slots[i];
 
@@ -960,14 +978,25 @@ retry:
 					break;
 				}
 			}
+
+			if (!slot_for_array)
+				ereport(ERROR,
+						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+						 errmsg("all replication slots are in use"),
+						 errhint("Free one or increase \"ysql_max_replication_slots\""
+								 " and/or \"max_replication_slots\".")));
+
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 			namestrcpy(&slot_for_array->data.name, name);
 			pgstat_create_replslot(slot_for_array);
 		}
 
+		LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
 		slot_for_array->in_use = true;
-		pgstat_acquire_replslot(slot_for_array);
+		LWLockRelease(ReplicationSlotControlLock);
 
+		pgstat_acquire_replslot(slot_for_array);
+		LWLockRelease(ReplicationSlotAllocationLock);
 		return;
 	}
 
@@ -1240,7 +1269,7 @@ restart:
 		found_valid_logicalslot |=
 			(SlotIsLogical(s) && s->data.invalidated == RS_INVAL_NONE);
 
-		if ((s->active_proc == proc->pid &&
+		if ((s->active_proc == GetNumberFromPGProc(proc) &&
 			 (!synced_only || s->data.synced)))
 		{
 			Assert(s->data.persistency == RS_TEMPORARY);
@@ -1311,14 +1340,27 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 			YBCDropReplicationSlot(name, yb_if_exists);
 		}
 
+		/*
+		 * YB: AllocationLock covers the whole drop. in_use is cleared before
+		 * pgstat_drop_replslot, under ControlLock, so a scan cannot observe
+		 * the slot after its stats entry is gone. pgstat_drop_replslot finds
+		 * that entry by slot index, so the index must not be reused until
+		 * AllocationLock is released.
+		 */
+		LWLockAcquire(ReplicationSlotAllocationLock, LW_EXCLUSIVE);
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
 
 		if (slot_for_array)
 		{
-			pgstat_drop_replslot(slot_for_array);
+			LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
 			slot_for_array->in_use = false;
+			LWLockRelease(ReplicationSlotControlLock);
+
+			pgstat_drop_replslot(slot_for_array);
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 		}
+
+		LWLockRelease(ReplicationSlotAllocationLock);
 
 		/*
 		 * Release only after the cleanup, so no other session can acquire the
