@@ -35,7 +35,7 @@ Status MasterClusterClient::UnBlacklistHost(const HostPortPB& hp) const {
       std::remove_if(hosts->begin(), hosts->end(), [&hp](const auto& current_hp) -> bool {
         return current_hp.host() == hp.host() && current_hp.port() == hp.port();
       });
-  (void)new_end;
+  hosts->erase(new_end, hosts->end());
   return ChangeMasterClusterConfig(std::move(config));
 }
 
