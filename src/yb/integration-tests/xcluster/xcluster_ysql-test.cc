@@ -42,8 +42,6 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
@@ -998,7 +996,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
                                      .GetLoadedStatusTabletsVersion();
           return current_version == version;
         },
-        30s, strings::Substitute(error, version)));
+        30s, Format(error, version)));
   };
   const auto run_write_verify_delete_test = [&]() {
     const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);

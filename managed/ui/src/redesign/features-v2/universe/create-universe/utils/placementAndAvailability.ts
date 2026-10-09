@@ -233,10 +233,36 @@ export type ExpertNodesStepDefaultPlacement = {
 };
 
 const EXPERT_SINGLE_REGION_DEFAULT_RF = 3;
-const EXPERT_DEFAULT_RFS = [3, 5, 7] as const;
+const EXPERT_RF_OPTIONS_BASE = [1, 3, 5, 7] as const;
+const EXPERT_DEFAULT_RFS_BASE = [3, 5, 7] as const;
+const EXPERT_RF_9 = 9;
 
-function expertMultiRegionRfAndAzCount(regionCount: number): { rf: number; azCount: number } | null {
-  const rf = EXPERT_DEFAULT_RFS.find((v) => v >= regionCount);
+/** Expert RF segmented-control options. Keeps RF 9 visible when current RF is 9 even if the flag is off. */
+export function getExpertRfOptions(enablePrimaryRf9: boolean, currentRf?: number): number[] {
+  const options: number[] = enablePrimaryRf9
+    ? [...EXPERT_RF_OPTIONS_BASE, EXPERT_RF_9]
+    : [...EXPERT_RF_OPTIONS_BASE];
+  if (currentRf === EXPERT_RF_9 && !options.includes(EXPERT_RF_9)) {
+    options.push(EXPERT_RF_9);
+  }
+  return options;
+}
+
+/** Multi-region default RF ladder used by expert empty-zone placement. */
+export function getExpertDefaultRfs(enablePrimaryRf9: boolean): readonly number[] {
+  return enablePrimaryRf9 ? [...EXPERT_DEFAULT_RFS_BASE, EXPERT_RF_9] : EXPERT_DEFAULT_RFS_BASE;
+}
+
+export function maxExpertRfOption(enablePrimaryRf9: boolean, currentRf?: number): number {
+  const options = getExpertRfOptions(enablePrimaryRf9, currentRf);
+  return options[options.length - 1] ?? 7;
+}
+
+function expertMultiRegionRfAndAzCount(
+  regionCount: number,
+  enablePrimaryRf9: boolean
+): { rf: number; azCount: number } | null {
+  const rf = getExpertDefaultRfs(enablePrimaryRf9).find((v) => v >= regionCount);
   if (rf === undefined) return null;
   const azCount = regionCount === 2 ? rf : regionCount;
   return { rf, azCount };
@@ -387,7 +413,8 @@ export function reduceExpertNodeCountsToAtMostRf(
  * Returns null when defaults do not apply.
  */
 export function getExpertNodesStepDefaultPlacement(
-  resilience: ResilienceAndRegionsProps
+  resilience: ResilienceAndRegionsProps,
+  enablePrimaryRf9 = false
 ): ExpertNodesStepDefaultPlacement | null {
   if (resilience[RESILIENCE_FORM_MODE] !== ResilienceFormMode.EXPERT_MODE) {
     return null;
@@ -445,7 +472,7 @@ export function getExpertNodesStepDefaultPlacement(
     };
   }
 
-  const spec = expertMultiRegionRfAndAzCount(regions.length);
+  const spec = expertMultiRegionRfAndAzCount(regions.length, enablePrimaryRf9);
   if (!spec) {
     return null;
   }
@@ -478,10 +505,11 @@ export function toExpertResilienceForDefaults(
  * When expert tables do not apply, returns empty zones with the given RF.
  */
 export function getExpertAvailabilityZonesOrEmpty(
-  resilience: ResilienceAndRegionsProps
+  resilience: ResilienceAndRegionsProps,
+  enablePrimaryRf9 = false
 ): ExpertNodesStepDefaultPlacement {
   const expertResilience = toExpertResilienceForDefaults(resilience);
-  const placement = getExpertNodesStepDefaultPlacement(expertResilience);
+  const placement = getExpertNodesStepDefaultPlacement(expertResilience, enablePrimaryRf9);
   if (placement) {
     return placement;
   }

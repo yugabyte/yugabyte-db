@@ -22,6 +22,7 @@
 #include "yb/master/master_cluster.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
 using std::string;
@@ -310,18 +311,18 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
         if (FLAGS_allow_leader_balancing_dead_node) {
           allow_only_leader_balancing_ = true;
           YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 3)
-              << strings::Substitute("Master leader not received heartbeat from ts $0. "
-                                     "Only performing leader balancing for tables with replicas"
-                                     " in this TS.", ts_uuid);
+              << Format("Master leader not received heartbeat from ts $0. "
+                        "Only performing leader balancing for tables with replicas"
+                        " in this TS.", ts_uuid);
         } else {
-          return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
+          return STATUS_FORMAT(LeaderNotReadyToServe, "Master leader has not yet received "
               "heartbeat from ts $0. Aborting load balancing.", ts_uuid);
         }
       } else {
         YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 3)
-            << strings::Substitute("Master leader not received heartbeat from ts $0 but it is "
-                                   "blacklisted. Continuing LB operations for tables with replicas"
-                                   " in this TS.", ts_uuid);
+            << Format("Master leader not received heartbeat from ts $0 but it is "
+                      "blacklisted. Continuing LB operations for tables with replicas"
+                      " in this TS.", ts_uuid);
       }
     }
 
@@ -936,8 +937,8 @@ Status PerTableLoadState::MoveLeader(const TabletId& tablet_id,
   SCHECK_NE(&per_tablet_meta_[tablet_id].leader_uuid, &from_ts, InvalidArgument,
       "from_ts should not be a reference to the leader_uuid in per_tablet_meta_");
   if (per_tablet_meta_[tablet_id].leader_uuid != from_ts) {
-    return STATUS_SUBSTITUTE(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
-                              tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
+    return STATUS_FORMAT(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
+                          tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
   }
   per_tablet_meta_[tablet_id].leader_uuid = to_ts;
   RETURN_NOT_OK(RemoveLeaderTablet(tablet_id, from_ts));
@@ -1015,7 +1016,7 @@ int PerTableLoadState::AdjustLeaderBalanceThreshold(int zone_set_size) {
                             : static_cast<int>(std::ceil(
                                   static_cast<double>(per_tablet_meta_.size()) / zone_set_size));
     if (adjusted_leader_balance_threshold < min_threshold) {
-      LOG(WARNING) << strings::Substitute(
+      LOG(WARNING) << Format(
           "leader_balance_threshold flag is set to $0 but is too low for the current "
           "configuration. Adjusting it to $1.",
           adjusted_leader_balance_threshold, min_threshold);

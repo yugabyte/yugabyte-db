@@ -60,14 +60,14 @@ DEFINE_RUNTIME_int32(master_max_concurrent_ysql_catalog_prefetches, -1,
     "generously if you set it by hand: a limit below what the leader can actually serve makes "
     "callers wait out their deadline and fail rather than merely queue.");
 
-DEFINE_RUNTIME_uint32(master_new_ysql_catalog_prefetch_pct, 50,
+DEFINE_RUNTIME_uint32(master_new_ysql_catalog_prefetch_percent, 50,
     "Percentage of master_max_concurrent_ysql_catalog_prefetches available to prefetches that are "
     "just starting. A prefetch is a long sequence of paged reads, so admitting new ones only up to "
     "a lower watermark leaves room for sequences already under way to finish, instead of many "
     "connections each completing part of their pages and then timing out. At least one new "
     "prefetch is always admissible, whatever this works out to.");
 
-DEFINE_validator(master_new_ysql_catalog_prefetch_pct,
+DEFINE_validator(master_new_ysql_catalog_prefetch_percent,
     FLAG_COND_VALIDATOR(_value <= 100, "Must be a percentage, so at most 100"));
 
 METRIC_DEFINE_gauge_int64(server, ysql_catalog_prefetches_in_progress,
@@ -81,13 +81,18 @@ METRIC_DEFINE_counter(server, ysql_catalog_prefetch_rejections,
                       "master_max_concurrent_ysql_catalog_prefetches was exceeded");
 
 DEFINE_test_flag(int32, ysql_catalog_prefetch_rejections_to_inject, 0,
-    "Reject about this many YSQL catalog prefetches with the same retryable error the concurrency "
-    "limit produces, independently of master_max_concurrent_ysql_catalog_prefetches, counting "
-    "down as they are injected. Lets a test verify that a client retries a rejected prefetch "
+    "Reject exactly this many YSQL catalog prefetches with the same retryable error the "
+    "concurrency limit produces, independently of "
+    "master_max_concurrent_ysql_catalog_prefetches. Lets a test verify that a client retries a "
+    "rejected prefetch "
     "rather than failing the connection, and get a bounded number of rejections rather than a "
     "probabilistic one -- a prefetch small enough to fit in a single request would otherwise be "
-    "rejected or not on the toss of a coin. The countdown is a plain decrement, so prefetches "
-    "arriving together can take it past zero and inject one or two more than asked.");
+    "rejected or not on the toss of a coin.");
+
+DEFINE_test_flag(int32, ysql_catalog_prefetch_load_override, -1,
+    "Report this YsqlCatalogPrefetchLoadPB value to tservers instead of the one derived from "
+    "admission state. Lets a test drive the DDL-side wait without generating enough prefetch "
+    "load on the master to reach a given level for real.");
 
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
     "Reject specified percentage of writes to the YSQL catalog tables.");
@@ -100,11 +105,50 @@ using namespace std::chrono_literals;
 namespace yb {
 namespace master {
 
+namespace {
+
+// Admissions currently held. This rather than the gauge decides admission, because taking a slot
+// has to be a single operation and the gauge cannot report what an increment returned. It is
+// process-wide rather than per-service: a yb-master hosts one service, and in a test process
+// hosting several masters only the leader serves catalog prefetches, so the bound still applies
+// per leader either way.
+std::atomic<int32_t> prefetches_in_flight{0};
+
+// The share of the limit available to prefetches that are just starting. Admission decides by it
+// and the heartbeat reports a load level derived from it, so it is defined once: a load level
+// computed from a different threshold than the one enforced would have a DDL waiting for a state
+// the master never reaches.
+[[nodiscard]] int32_t NewPrefetchLimit(int32_t limit) {
+  return std::max<int32_t>(
+      1, narrow_cast<int32_t>(
+             static_cast<int64_t>(limit) * FLAGS_master_new_ysql_catalog_prefetch_percent / 100));
+}
+
+}  // namespace
+
 // Only SysTablet 0 is bootstrapped on all master peers, and only the master leader
 // reads other sys tablets. We check only for tablet 0 so as to have same readiness
 // level across all masters.
 // Note: If this value changes, then IsTabletServerReady has to be revisited.
 constexpr int NUM_TABLETS_SYS_CATALOG = 1;
+
+YsqlCatalogPrefetchLoadPB GetYsqlCatalogPrefetchLoad() {
+  if (PREDICT_FALSE(FLAGS_TEST_ysql_catalog_prefetch_load_override >= 0)) {
+    return static_cast<YsqlCatalogPrefetchLoadPB>(
+        FLAGS_TEST_ysql_catalog_prefetch_load_override);
+  }
+  const auto limit = FLAGS_master_max_concurrent_ysql_catalog_prefetches;
+  if (limit <= 0) {
+    return YSQL_CATALOG_PREFETCH_LOAD_UNKNOWN;
+  }
+  const auto value = prefetches_in_flight.load(std::memory_order_acquire);
+  if (value >= limit) {
+    return YSQL_CATALOG_PREFETCH_LOAD_SUPER_BUSY;
+  }
+  return value >= NewPrefetchLimit(limit)
+      ? YSQL_CATALOG_PREFETCH_LOAD_BUSY
+      : YSQL_CATALOG_PREFETCH_LOAD_LOW;
+}
 
 void MasterTabletServiceImpl::AutoInitCatalogPrefetchLimit() {
   if (FLAGS_master_max_concurrent_ysql_catalog_prefetches >= 0) {
@@ -137,58 +181,37 @@ MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Mas
 
 namespace {
 
-// Admissions currently held. This rather than the gauge decides admission, because taking a slot
-// has to be a single operation and the gauge cannot report what an increment returned. It is
-// process-wide rather than per-service: a yb-master hosts one service, and in a test process
-// hosting several masters only the leader serves catalog prefetches, so the bound still applies
-// per leader either way.
-std::atomic<int32_t> prefetches_in_flight{0};
+// Injections made so far, against the number the test flag asks for. The count lives here rather
+// than being counted down on the flag itself: a gflag is configuration, not a place to keep
+// changing state, and an atomic is exact where decrementing the flag could inject twice when two
+// prefetches arrive together. Nothing resets it, so a second test in the same binary setting the
+// flag would find the quota already spent; one test uses it today.
+std::atomic<int32_t> rejections_injected{0};
 
-// Only catalog prefetches are bounded. A catalog cache miss, a relcache build and a systable scan
-// cost a fraction of a prefetch and run inside a query that is already executing, so delaying them
-// would add latency where it is most visible -- and would let prefetches crowd out the cheap reads
-// they contend with.
 [[nodiscard]] bool IsCatalogPrefetch(const tserver::ReadRequestMsg& req) {
   return std::ranges::any_of(req.pgsql_batch(), [](const auto& op) {
     return op.catalog_prefetch_kind() != YSQL_CATALOG_PREFETCH_NONE;
   });
 }
 
-// Whether this prefetch is one that something is already blocked on: a backend refreshing its
-// catalog cache, which cannot run anything until it completes, or the relcache-init backend, whose
-// file every new connection on its node waits for. A connection that is still starting up has
-// nothing invested and can afford to wait, so these are admitted on the same footing as work
-// already under way.
 [[nodiscard]] bool IsCacheRefreshPrefetch(const tserver::ReadRequestMsg& req) {
   return std::ranges::any_of(req.pgsql_batch(), [](const auto& op) {
     return op.catalog_prefetch_kind() == YSQL_CATALOG_PREFETCH_CACHE_REFRESH;
   });
 }
 
-// Whether an operation carries a paging state at any nesting level. PgsqlReadOp::PrepareNextRequest
-// walks to the innermost request before copying the paging state onto it, so for a table read
-// through an index -- which is most of what the prefetcher registers -- the state of a continuation
-// sits on index_request rather than on the operation itself.
+// PgsqlReadOp::PrepareNextRequest copies the paging state onto the innermost request, so a read
+// through an index carries it on index_request rather than on the operation itself.
 [[nodiscard]] bool HasPagingState(const LWPgsqlReadRequestPB& op) {
-  for (const auto* req = &op; ; req = &req->index_request()) {
+  const auto* req = &op;
+  for (; req->has_index_request(); req = &req->index_request()) {
     if (req->has_paging_state()) {
       return true;
     }
-    if (!req->has_index_request()) {
-      return false;
-    }
   }
+  return req->has_paging_state();
 }
 
-// Whether any operation is resuming a prefetch that is already under way. Only the first request
-// of a sequence carries no paging state; the prefetcher drops operations as they finish, so later
-// requests carry one on every surviving operation. The kind is checked as well so that this holds
-// on its own, rather than only where the caller has already established that this is a prefetch.
-//
-// The two fields sit at opposite ends of a nested request: the prefetcher sets the kind on the
-// top-level request only, while PrepareNextRequest puts the paging state on the innermost one only.
-// That is why the kind is read off the operation directly and the paging state through
-// HasPagingState.
 [[nodiscard]] bool IsPrefetchContinuation(const tserver::ReadRequestMsg& req) {
   return std::ranges::any_of(req.pgsql_batch(), [](const auto& op) {
     return op.catalog_prefetch_kind() != YSQL_CATALOG_PREFETCH_NONE && HasPagingState(op);
@@ -199,25 +222,28 @@ std::atomic<int32_t> prefetches_in_flight{0};
 
 Result<std::shared_ptr<void>> MasterTabletServiceImpl::AdmitRead(
     const tserver::ReadRequestMsg& req) {
+  // Only prefetches are bounded. A catalog cache miss, a relcache build and a systable scan cost a
+  // fraction of a prefetch and run inside a query that is already executing, so delaying them would
+  // add latency where it is most visible.
   if (!FLAGS_enable_ysql_catalog_prefetch_admission || !IsCatalogPrefetch(req)) {
     return std::shared_ptr<void>();
   }
 
   // Both rejection paths go through here, so an injected rejection is indistinguishable from a
-  // real one to the client -- which is the point of the test flag.
+  // real one to the client.
   const auto reject = [this](const std::string& reason) {
     ysql_catalog_prefetch_rejections_->Increment();
-    return STATUS_FORMAT(ServiceUnavailable, "Rejecting catalog prefetch: $0", reason);
+    auto status = STATUS_FORMAT(ServiceUnavailable, "Rejecting catalog prefetch: $0", reason);
+    // Throttled the way the write path throttles its own rejections. Without a line here the only
+    // evidence that the leader is shedding prefetches is a metric, which is not where anyone
+    // looks first; the suppressed-message count the macro appends gives the rate.
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << status;
+    return status;
   };
 
-  // Two prefetches can be in AdmitRead at once, so this countdown can fire once more than it was
-  // asked for. The test asserts at least one rejection rather than exactly one, which is cheaper
-  // than making the flag atomic.
-  if (PREDICT_FALSE(FLAGS_TEST_ysql_catalog_prefetch_rejections_to_inject > 0)) {
-    // Plain assignment: with annotations enabled the macro yields a writer object that has no
-    // compound-assignment operator, so -= would not compile under TSAN.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_catalog_prefetch_rejections_to_inject) =
-        FLAGS_TEST_ysql_catalog_prefetch_rejections_to_inject - 1;
+  if (PREDICT_FALSE(FLAGS_TEST_ysql_catalog_prefetch_rejections_to_inject > 0) &&
+      rejections_injected.fetch_add(1, std::memory_order_relaxed) <
+          FLAGS_TEST_ysql_catalog_prefetch_rejections_to_inject) {
     return reject("injected by TEST_ysql_catalog_prefetch_rejections_to_inject");
   }
 
@@ -233,10 +259,7 @@ Result<std::shared_ptr<void>> MasterTabletServiceImpl::AdmitRead(
   // limit (<= 0) would admit nothing at all.
   const auto effective_limit = (IsPrefetchContinuation(req) || IsCacheRefreshPrefetch(req))
       ? limit
-      : std::max<int32_t>(
-            1, narrow_cast<int32_t>(
-                   static_cast<int64_t>(limit) *
-                   FLAGS_master_new_ysql_catalog_prefetch_pct / 100));
+      : NewPrefetchLimit(limit);
 
   class Admission {
    public:

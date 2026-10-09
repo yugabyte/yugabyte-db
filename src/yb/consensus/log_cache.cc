@@ -85,7 +85,6 @@ TAG_FLAG(global_log_cache_size_limit_percentage, advanced);
 DEFINE_test_flag(bool, log_cache_skip_eviction, false,
                  "Don't evict log entries in tests.");
 
-using strings::Substitute;
 
 METRIC_DEFINE_gauge_int64(tablet, log_cache_num_ops, "Log Cache Operation Count",
                           yb::MetricUnit::kOperations,
@@ -145,9 +144,9 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
 MemTrackerPtr LogCache::GetServerMemTracker(const MemTrackerPtr& server_tracker) {
   CHECK(FLAGS_global_log_cache_size_limit_percentage > 0 &&
         FLAGS_global_log_cache_size_limit_percentage <= 100)
-    << Substitute("Flag FLAGS_global_log_cache_size_limit_percentage must be between 0 and 100. ",
-                  "Current value: $0",
-                  FLAGS_global_log_cache_size_limit_percentage);
+    << Format("Flag FLAGS_global_log_cache_size_limit_percentage must be between 0 and 100. "
+              "Current value: $0",
+              FLAGS_global_log_cache_size_limit_percentage);
 
   int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
   int64_t root_mem_limit = MemTracker::GetRootTracker()->limit();
@@ -348,7 +347,7 @@ Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
     // the local node. In that case, don't try to read the op from the
     // log reader, since it might actually race against the writing of the op.
     if (op_index >= next_sequential_op_index_) {
-      return STATUS(Incomplete, Substitute("Op with index $0 is ahead of the local log "
+      return STATUS(Incomplete, Format("Op with index $0 is ahead of the local log "
                                           "(next sequential op: $1)",
                                           op_index, next_sequential_op_index_));
     }
@@ -612,10 +611,10 @@ string LogCache::StatsString() const {
 }
 
 string LogCache::StatsStringUnlocked() const REQUIRES(lock_) {
-  return Substitute("LogCacheStats(num_ops=$0, bytes=$1, disk_reads=$2)",
-                    metrics_.num_ops->value(),
-                    metrics_.size->value(),
-                    metrics_.disk_reads->value());
+  return Format("LogCacheStats(num_ops=$0, bytes=$1, disk_reads=$2)",
+                metrics_.num_ops->value(),
+                metrics_.size->value(),
+                metrics_.disk_reads->value());
 }
 
 std::string LogCache::ToString() const {
@@ -624,9 +623,9 @@ std::string LogCache::ToString() const {
 }
 
 std::string LogCache::ToStringUnlocked() const REQUIRES(lock_) {
-  return Substitute("Pinned index: $0, $1",
-                    min_pinned_op_index_,
-                    StatsStringUnlocked());
+  return Format("Pinned index: $0, $1",
+                min_pinned_op_index_,
+                StatsStringUnlocked());
 }
 
 std::string LogCache::LogPrefix() const {
@@ -653,10 +652,10 @@ void LogCache::DumpToStrings(vector<string>* lines) const {
   for (const auto& entry : cache_) {
     const ReplicateMsgPtr msg = entry.second.msg;
     lines->push_back(
-      Substitute("Message[$0] $1.$2 : REPLICATE. Type: $3, Size: $4",
-                 counter++, msg->id().term(), msg->id().index(),
-                 OperationType_Name(msg->op_type()),
-                 msg->SerializedSize()));
+      Format("Message[$0] $1.$2 : REPLICATE. Type: $3, Size: $4",
+             counter++, msg->id().term(), msg->id().index(),
+             OperationType_Name(msg->op_type()),
+             msg->SerializedSize()));
   }
 }
 
@@ -671,11 +670,11 @@ void LogCache::DumpToHtml(std::ostream& out) const {
   int counter = 0;
   for (const auto& entry : cache_) {
     const ReplicateMsgPtr msg = entry.second.msg;
-    out << Substitute("<tr><th>$0</th><th>$1.$2</th><td>REPLICATE $3</td>"
-                      "<td>$4</td><td>$5</td></tr>",
-                      counter++, msg->id().term(), msg->id().index(),
-                      OperationType_Name(msg->op_type()),
-                      msg->SerializedSize(), msg->id().ShortDebugString()) << endl;
+    out << Format("<tr><th>$0</th><th>$1.$2</th><td>REPLICATE $3</td>"
+                  "<td>$4</td><td>$5</td></tr>",
+                  counter++, msg->id().term(), msg->id().index(),
+                  OperationType_Name(msg->op_type()),
+                  msg->SerializedSize(), msg->id().ShortDebugString()) << endl;
   }
   out << "</table>";
 }

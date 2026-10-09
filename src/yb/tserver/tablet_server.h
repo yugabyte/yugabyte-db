@@ -126,8 +126,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.
-  static const uint16_t kDefaultPort = 9100;
-  static const uint16_t kDefaultWebPort = 9000;
+  static constexpr uint16_t kDefaultPort = 9100;
+  static constexpr uint16_t kDefaultWebPort = 9000;
 
   // Default tserver and consensus RPC queue length per service.
   static constexpr uint32_t kDefaultSvcQueueLength = 5000;
@@ -283,6 +283,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetYsqlDBCatalogInvalMessagesUnlocked(
       const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       uint64_t debug_id) REQUIRES(lock_);
+  void SetYsqlCatalogPrefetchLoad(uint32_t load);
+
   void SetYsqlDBCatalogVersionsWithInvalMessages(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
       const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
@@ -290,18 +292,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void ResetCatalogVersionsFingerprint() EXCLUDES(lock_) override;
   void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
-  uint32_t get_oid_cache_invalidations_count() const override {
-    return oid_cache_invalidations_count_.load();
-  }
-
-  void set_oid_cache_invalidations_count(uint32_t oid_cache_invalidations_count) {
-    uint32_t old_value = oid_cache_invalidations_count_.load();
-    if (old_value < oid_cache_invalidations_count) {
-      LOG(INFO) << "Received higher oid_cache_invalidations_count value ("
-                << oid_cache_invalidations_count << " > " << old_value << ")";
-      oid_cache_invalidations_count_.store(oid_cache_invalidations_count);
-    }
-  }
+  void UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count);
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version,
@@ -598,10 +589,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
-
-  // Highest value of SysClusterConfigEntryPB.oid_cache_invalidations_count received from the
-  // master.  This value is bumped to invalidate all the TServer OID caches.
-  std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
 
   // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
   // ApplyXClusterGuardedInfoIfNewer RPCs, and guards the version below.

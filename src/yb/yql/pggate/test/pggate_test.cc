@@ -255,7 +255,7 @@ void PggateTest::CommitDDLTransaction() {
 }
 
 void PggateTest::BeginTransaction() {
-  CHECK_YBC_STATUS(YBCPgBeginTransaction(0));
+  CHECK_YBC_STATUS(YBCPgBeginTransaction(/*start_time=*/0, /*origination_time=*/0));
 }
 
 void PggateTest::CommitTransaction() {

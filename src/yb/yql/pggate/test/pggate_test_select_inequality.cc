@@ -16,6 +16,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/value.messages.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/test/pggate_test.h"
@@ -74,12 +75,12 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
   YbcPgExpr expr_id;
-  string h_str = strings::Substitute("$0", h);
+  string h_str = Format("$0", h);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, h_str.c_str(), false, &expr_id));
   YbcPgExpr expr_r1;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, r, false, &expr_r1));
   YbcPgExpr expr_val;
-  string val = strings::Substitute("$0-$1", h, r);
+  string val = Format("$0-$1", h, r);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, val.c_str(), false, &expr_val));
 
   // Set column value to be inserted.
@@ -105,10 +106,10 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
       // Update the constant expresions to insert the next row.
       // TODO(neil) When we support binds, we can also call UpdateBind here.
-      h_str = strings::Substitute("$0", h);
+      h_str = Format("$0", h);
       CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_id, h_str.c_str(), false));
       CHECK_YBC_STATUS(YBCPgUpdateConstInt8(expr_r1, r, false));
-      val = strings::Substitute("$0-$1", h, r);
+      val = Format("$0-$1", h, r);
       CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_val, val.c_str(), false));
     }
   }
@@ -139,7 +140,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   // SELECT ... WHERE hash = 0 AND id = seed.
   h = 1;
   int A = 10, B = 20;
-  h_str = strings::Substitute("$0", h);
+  h_str = Format("$0", h);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, h_str.c_str(), false, &expr_id));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_id));
   YbcPgExpr expr_r1_A;
@@ -175,7 +176,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     int col_index = 0;
 
     string selected_id = reinterpret_cast<char*>(values[col_index++]);
-    string expected_id = strings::Substitute("$0", h);
+    string expected_id = Format("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
     int64_t r1 = values[col_index++];  // h : int64
@@ -183,7 +184,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     CHECK_GE(B, r1);
 
     string selected_val = reinterpret_cast<char*>(values[col_index++]);
-    string expected_val = strings::Substitute("$0-$1", h, r1);
+    string expected_val = Format("$0-$1", h, r1);
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
@@ -210,7 +211,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   h = 1;
   A = 10;
   B = r_count - 1;
-  h_str = strings::Substitute("$0", h);
+  h_str = Format("$0", h);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, h_str.c_str(), false, &expr_id));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_id));
   expr_r1_A = nullptr;
@@ -243,7 +244,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     int col_index = 0;
 
     string selected_id = reinterpret_cast<char*>(values[col_index++]);
-    string expected_id = strings::Substitute("$0", h);
+    string expected_id = Format("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
     int64_t r1 = values[col_index++];  // h : int64
@@ -251,7 +252,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     CHECK_GE(B, r1);
 
     string selected_val = reinterpret_cast<char*>(values[col_index++]);
-    string expected_val = strings::Substitute("$0-$1", h, r1);
+    string expected_val = Format("$0-$1", h, r1);
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
@@ -278,7 +279,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   h = 1;
   A = 0;
   B = 20;
-  h_str = strings::Substitute("$0", h);
+  h_str = Format("$0", h);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, h_str.c_str(), false, &expr_id));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_id));
   expr_r1_B = nullptr;
@@ -311,7 +312,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     int col_index = 0;
 
     string selected_id = reinterpret_cast<char*>(values[col_index++]);
-    string expected_id = strings::Substitute("$0", h);
+    string expected_id = Format("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
     int64_t r1 = values[col_index++];  // h : int64
@@ -319,7 +320,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     CHECK_GE(B, r1);
 
     string selected_val = reinterpret_cast<char*>(values[col_index++]);
-    string expected_val = strings::Substitute("$0-$1", h, r1);
+    string expected_val = Format("$0-$1", h, r1);
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
@@ -346,7 +347,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   h = 1;
   A = 10;
   B = 10;
-  h_str = strings::Substitute("$0", h);
+  h_str = Format("$0", h);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, h_str.c_str(), false, &expr_id));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_id));
   expr_r1_A = nullptr;
@@ -381,7 +382,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     int col_index = 0;
 
     string selected_id = reinterpret_cast<char*>(values[col_index++]);
-    string expected_id = strings::Substitute("$0", h);
+    string expected_id = Format("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
     int64_t r1 = values[col_index++];  // h : int64
@@ -389,7 +390,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     CHECK_GE(B, r1);
 
     string selected_val = reinterpret_cast<char*>(values[col_index++]);
-    string expected_val = strings::Substitute("$0-$1", h, r1);
+    string expected_val = Format("$0-$1", h, r1);
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";

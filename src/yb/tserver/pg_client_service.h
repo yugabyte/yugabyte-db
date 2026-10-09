@@ -187,6 +187,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
   // Non-owning. The mock must outlive this service.
   void TEST_SetMockService(PgClientServiceMockImpl* mock);
 
+  PgTableCache& TEST_TableCache();
+
   void Shutdown() override;
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \

@@ -675,7 +675,7 @@ storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUser
       storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
-bool DocVectorIndex::BackfillDone() {
+Result<bool> DocVectorIndex::BackfillDone() {
   if (backfill_done_cache_.load()) {
     return true;
   }
@@ -684,7 +684,16 @@ bool DocVectorIndex::BackfillDone() {
     backfill_done_cache_.store(true);
     return true;
   }
+  std::lock_guard lock(backfill_status_mutex_);
+  if (!backfill_status_.ok()) {
+    return backfill_status_;
+  }
   return false;
+}
+
+void DocVectorIndex::SetBackfillStatus(const Status& status) {
+  std::lock_guard lock(backfill_status_mutex_);
+  backfill_status_ = status;
 }
 
 bool DocVectorIndex::ParentDataCompacted() {

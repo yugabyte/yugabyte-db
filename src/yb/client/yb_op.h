@@ -39,6 +39,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/origination_info.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/pgsql_protocol.messages.h"
 
@@ -507,6 +508,9 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   uint32_t XreplOriginId() const { return xrepl_origin_id_; }
   void SetXreplOriginId(uint32_t value) { xrepl_origin_id_ = value; }
 
+  const OriginationInfo& origination_info() const { return origination_info_; }
+  void SetOriginationInfo(const OriginationInfo& value) { origination_info_ = value; }
+
   Status GetPartitionKey(std::string* partition_key) const override;
 
   static YBPgsqlWriteOpPtr NewInsert(
@@ -529,6 +533,7 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   bool is_single_row_txn_ = false;
   HybridTime write_time_;
   uint32_t xrepl_origin_id_ = 0;
+  OriginationInfo origination_info_;
 };
 
 class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {

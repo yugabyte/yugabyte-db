@@ -27,6 +27,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
@@ -111,13 +112,13 @@ uint64_t GeoTransactionsTestBase::GetCurrentVersion() {
 void GeoTransactionsTestBase::CreateTransactionTable(int region) {
   auto current_version = GetCurrentVersion();
 
-  std::string name = strings::Substitute("transactions_region$0", region);
+  std::string name = Format("transactions_region$0", region);
   ReplicationInfoPB replication_info;
   auto replicas = replication_info.mutable_live_replicas();
   replicas->set_num_replicas(1);
   auto pb = replicas->add_placement_blocks();
   pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-  pb->mutable_cloud_info()->set_placement_region(strings::Substitute("region$0", region));
+  pb->mutable_cloud_info()->set_placement_region(Format("region$0", region));
   pb->mutable_cloud_info()->set_placement_zone("zone");
   pb->set_min_num_replicas(1);
   ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
@@ -155,7 +156,7 @@ void GeoTransactionsTestBase::WaitForDeleteTransactionTableToFinish(std::string_
 void GeoTransactionsTestBase::CreateMultiRegionTransactionTable() {
   auto current_version = GetCurrentVersion();
 
-  std::string name = strings::Substitute("transactions_multiregion");
+  std::string name = Format("transactions_multiregion");
   ReplicationInfoPB replication_info;
   auto replicas = replication_info.mutable_live_replicas();
   replicas->set_num_replicas(3);
@@ -256,7 +257,7 @@ void GeoTransactionsTestBase::WaitForStatusTabletsVersion(uint64_t version) {
   ASSERT_OK(WaitFor(
       [this, version] { return GetCurrentVersion() == version; },
       kStatusTabletCacheRefreshTimeout,
-      strings::Substitute(error, version)));
+      Format(error, version)));
 }
 
 uint64_t GeoTransactionsTestBase::WaitForStatusTabletsVersionForCreate(

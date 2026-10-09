@@ -12,6 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/pggate/pg_value.h"
 
 #include "yb/common/ql_value.h"
@@ -83,9 +84,9 @@ Status PgValueToDatum(const YbcPgTypeEntity *type_entity,
     case YB_YQL_DATA_TYPE_DECIMAL: {
       util::Decimal yb_decimal;
       if (!yb_decimal.DecodeFromComparable(value.decimal_value()).ok()) {
-        return STATUS_SUBSTITUTE(InternalError,
-                                  "Failed to deserialize DECIMAL from $1",
-                                  value.decimal_value().ToDebugHexString());
+        return STATUS_FORMAT(InternalError,
+                              "Failed to deserialize DECIMAL from $0",
+                              value.decimal_value().ToDebugHexString());
       }
       auto plaintext = yb_decimal.ToString();
       auto val = const_cast<char *>(plaintext.c_str());
@@ -97,7 +98,7 @@ Status PgValueToDatum(const YbcPgTypeEntity *type_entity,
 
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
     YB_PG_INVALID_TYPES_IN_SWITCH:
-      return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
+      return STATUS_FORMAT(InternalError, "unsupported type $0", type_entity->yb_type);
   }
 
   return Status::OK();
@@ -216,7 +217,7 @@ Status PBToDatum(const YbcPgTypeEntity *type_entity,
 
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
     YB_PG_INVALID_TYPES_IN_SWITCH:
-      return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
+      return STATUS_FORMAT(InternalError, "unsupported type $0", type_entity->yb_type);
   }
 
   return Status::OK();
@@ -349,7 +350,7 @@ Status DoPgValueToPB(const YbcPgTypeEntity *type_entity,
     }
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
     YB_PG_INVALID_TYPES_IN_SWITCH:
-      return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
+      return STATUS_FORMAT(InternalError, "unsupported type $0", type_entity->yb_type);
   }
   return Status::OK();
 }

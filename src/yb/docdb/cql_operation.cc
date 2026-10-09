@@ -238,7 +238,7 @@ Status FindMemberForIndex(const QLColumnValueMsg& column_value,
     array_index = VERIFY_RESULT(varint.ToInt64());
 
     if (array_index >= document->GetArray().Size() || array_index < 0) {
-      return STATUS_SUBSTITUTE(QLError, "Array index out of bounds: ", array_index);
+      return STATUS_FORMAT(QLError, "Array index out of bounds: ", array_index);
     }
     *valueit = document->Begin();
     std::advance(*valueit, array_index);
@@ -248,7 +248,7 @@ Status FindMemberForIndex(const QLColumnValueMsg& column_value,
       auto status = varint.DecodeFromComparable(it->operand().value().varint_value());
       if (status.ok()) {
         array_index = VERIFY_RESULT(varint.ToInt64());
-        return STATUS_SUBSTITUTE(QLError, "Cannot use array index $0 to access object",
+        return STATUS_FORMAT(QLError, "Cannot use array index $0 to access object",
             array_index);
       }
     }
@@ -292,7 +292,7 @@ Status FindMemberForIndex(const QLColumnValueMsg& column_value,
       return STATUS_FORMAT(QLError, "Could not find member: ", member);
     }
   } else {
-    return STATUS_SUBSTITUTE(QLError, "JSON field is invalid", column_value.ShortDebugString());
+    return STATUS_FORMAT(QLError, "JSON field is invalid", column_value.ShortDebugString());
   }
   return Status::OK();
 }
@@ -776,7 +776,7 @@ Status QLWriteOperation::ApplyForJsonOperators(
         RETURN_NOT_OK(jsonb.ToRapidJson(&document));
       } else {
         if (!is_insert && column_value.json_args_size() > 1) {
-          return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
+          return STATUS_FORMAT(QLError, "JSON path depth should be 1 for upsert",
             column_value.ShortDebugString());
         }
         auto& column = existing_row->AllocColumn(column_value.column_id());

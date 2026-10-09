@@ -935,6 +935,24 @@ extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
 
+extern int	yb_ddl_wait_for_master_prefetch_drain_ms;
+
+/*
+ * Mirrors YsqlCatalogPrefetchLoadPB in master_heartbeat.proto, naming every value it can carry
+ * even where the code only compares against some of them. The master sends a value in the
+ * heartbeat response, the tserver stores it in this node's shared memory, and backends read it
+ * from there.
+ */
+typedef enum YbCatalogPrefetchLoad
+{
+	YB_CATALOG_PREFETCH_LOAD_UNKNOWN = 0,
+	YB_CATALOG_PREFETCH_LOAD_LOW = 1,
+	YB_CATALOG_PREFETCH_LOAD_BUSY = 2,
+	YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY = 3,
+} YbCatalogPrefetchLoad;
+
+extern void YbWaitForMasterCatalogPrefetchDrain(void);
+
 /*
  * Enable parallel query for different relation sharding types
  */
@@ -1383,6 +1401,13 @@ void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
+
+extern uint64_t yb_origination_time;
+extern void YbRefreshOriginationTime(void);
+extern bool yb_check_origination_time_override(char **newval, void **extra,
+											   GucSource source);
+extern void yb_assign_origination_time_override(const char *newval,
+												void *extra);
 
 /* GUC assign hook for max_replication_slots */
 extern void yb_assign_max_replication_slots(int newval, void *extra);

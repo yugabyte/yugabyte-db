@@ -38,6 +38,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -80,9 +81,9 @@ TEST_F(CreateTableITest, DISABLED_TestCreateRedisTable) {
   const string zone = "a";
 
   const int kNumReplicas = 3;
-  vector<string> flags = {Substitute("--placement_cloud=$0", cloud),
-                          Substitute("--placement_region=$0", region),
-                          Substitute("--placement_zone=$0", zone)};
+  vector<string> flags = {Format("--placement_cloud=$0", cloud),
+                          Format("--placement_region=$0", region),
+                          Format("--placement_zone=$0", zone)};
   ASSERT_NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
   ReplicationInfoPB replication_info;
@@ -106,9 +107,9 @@ TEST_F(CreateTableITest, DISABLED_TestCreateWithPlacement) {
   const string zone = "a";
 
   const int kNumReplicas = 3;
-  vector<string> flags = {Substitute("--placement_cloud=$0", cloud),
-                          Substitute("--placement_region=$0", region),
-                          Substitute("--placement_zone=$0", zone)};
+  vector<string> flags = {Format("--placement_cloud=$0", cloud),
+                          Format("--placement_region=$0", region),
+                          Format("--placement_zone=$0", zone)};
   ASSERT_NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
   ReplicationInfoPB replication_info;

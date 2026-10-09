@@ -52,7 +52,6 @@
 #include "yb/gutil/linux_syscall_support.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/singleton.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/numbers.h"
 
 #include "yb/util/enums.h"
@@ -132,7 +131,7 @@ std::string GetStackTrace(StackTraceLineFormat stack_trace_line_format,
         backtrace_state, /* skip = */ num_top_frames_to_skip + 1,
         libbacktrace::BacktraceFullCallback, libbacktrace::BacktraceErrorCallback, &context);
     if (backtrace_full_rv != 0) {
-      StringAppendF(&buf, "Error: backtrace_full return value is %d", backtrace_full_rv);
+      buf += Format("Error: backtrace_full return value is $0", backtrace_full_rv);
     }
     return buf;
   }
@@ -168,8 +167,9 @@ int DynamcLibraryListCallback(struct dl_phdr_info *info, size_t size, void *data
     // We can't use LOG(...) yet because Google Logging might not be initialized.
     // It is also important to write the entire line at once so that it is less likely to be
     // interleaved with pieces of similar lines from other processes.
-    std::cerr << StringPrintf(
-        "Shared library '%s' loaded at address 0x%" PRIx64 "\n", info->dlpi_name, info->dlpi_addr);
+    std::cerr << Format(
+        "Shared library '$0' loaded at address 0x$1\n", info->dlpi_name,
+        HexString(info->dlpi_addr));
   }
   return 0;
 }

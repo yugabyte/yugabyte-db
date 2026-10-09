@@ -121,7 +121,6 @@ using std::string;
 using std::set;
 using std::vector;
 using std::ostream;
-using strings::Substitute;
 
 namespace yb {
 // ==========================================================================
@@ -253,7 +252,7 @@ Status FsManager::Init() {
   for (const string& wal_root : wal_fs_roots_) {
     auto [path, tier] = ParseDataDirSpec(wal_root);
     if (path != wal_root) {
-      return STATUS(InvalidArgument, Substitute(
+      return STATUS(InvalidArgument, Format(
           "Storage-tier annotation \":$0\" is not allowed in --fs_wal_dirs "
           "(WAL should always use the fastest available storage). "
           "Remove the tier suffix from: $1",
@@ -280,14 +279,14 @@ Status FsManager::Init() {
     }
     if (root[0] != '/') {
       return STATUS(IOError,
-          Substitute("Relative path $0 provided for filesystem root", root));
+          Format("Relative path $0 provided for filesystem root", root));
     }
     {
       string root_copy = root;
       StripWhiteSpace(&root_copy);
       if (root != root_copy) {
         return STATUS(IOError,
-                  Substitute("Filesystem root $0 contains illegal whitespace", root));
+                  Format("Filesystem root $0 contains illegal whitespace", root));
       }
     }
 
@@ -297,7 +296,7 @@ Status FsManager::Init() {
     Status s = env_->Canonicalize(DirName(root), &canonicalized);
     if (!s.ok()) {
       return STATUS(
-          InvalidArgument, strings::Substitute(
+          InvalidArgument, Format(
           "Cannot create directory for YB data, please check the --fs_data_dirs parameter "
           "(Passed: $0). Path does not exist: $1\nDetails: $2",
           FLAGS_fs_data_dirs, root, s.ToString()));
@@ -334,7 +333,7 @@ Status FsManager::Init() {
     }
 
     if (!IsValidStorageTier(tier)) {
-      return STATUS(InvalidArgument, Substitute(
+      return STATUS(InvalidArgument, Format(
           "Invalid storage tier \"$0\" for data dir \"$1\" in --fs_data_dirs. "
           "Valid storage tiers are: $2",
           tier, raw_root, JoinStrings(ValidStorageTiers(), ", ")));
@@ -395,7 +394,7 @@ Status FsManager::ReadAutoFlagsConfig(Message* msg) {
 
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(env_, auto_flags_config_path_, msg),
-      Substitute("Could not load AutoFlag config from $0", auto_flags_config_path_));
+      Format("Could not load AutoFlag config from $0", auto_flags_config_path_));
 
   return Status::OK();
 }
@@ -490,7 +489,7 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
         return STATUS(Corruption, "Empty UUID from filesystem root", root);
       }
     } else if (pb->uuid() != metadata_->uuid()) {
-      return STATUS(Corruption, Substitute(
+      return STATUS(Corruption, Format(
           "Mismatched UUIDs across filesystem roots: $0 vs. $1",
           metadata_->uuid(), pb->uuid()));
     }
@@ -569,7 +568,7 @@ Status FsManager::DeleteFileSystemLayout(ShouldDeleteLogs also_delete_logs) {
       // empty, and neither file is matched by the exact-path removals in this list.
       WARN_NOT_OK(
           DeleteFsRootPinFile(env_, GetFsRootPinPath(root)),
-          Substitute("Unable to remove the data root pin under $0", root));
+          Format("Unable to remove the data root pin under $0", root));
     }
     auto data_dirs = GetDataRootDirs();
     removal_list.insert(removal_list.begin(), data_dirs.begin(), data_dirs.end());
@@ -686,7 +685,7 @@ Status FsManager::CreateFileSystemRoots(const InstanceMetadataPB& metadata,
   for (const auto& dir : GetAncillaryDirs()) {
     bool created;
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
-                          Substitute("Unable to create directory $0", dir));
+                          Format("Unable to create directory $0", dir));
     if (created) {
       delete_on_failure.emplace_front(env_, dir);
       to_sync.insert(DirName(dir));
@@ -697,7 +696,7 @@ Status FsManager::CreateFileSystemRoots(const InstanceMetadataPB& metadata,
   if (FLAGS_enable_data_block_fsync) {
     for (const string& dir : to_sync) {
       RETURN_NOT_OK_PREPEND(env_->SyncDir(dir),
-                            Substitute("Unable to synchronize directory $0", dir));
+                            Format("Unable to synchronize directory $0", dir));
     }
   }
 
@@ -737,7 +736,7 @@ void FsManager::CreateInstanceMetadata(InstanceMetadataPB* metadata) {
   if (!GetHostname(&hostname).ok()) {
     hostname = "<unknown host>";
   }
-  metadata->set_format_stamp(Substitute("Formatted at $0 on $1", time_str, hostname));
+  metadata->set_format_stamp(Format("Formatted at $0 on $1", time_str, hostname));
   metadata->set_initdb_done_set_after_sys_catalog_restore(true);
 }
 
@@ -833,9 +832,9 @@ Status FsManager::CreateDirIfMissing(const string& path, bool* created) {
 
 Status FsManager::CreateDirIfMissingAndSync(const std::string& path, bool* created) {
   RETURN_NOT_OK_PREPEND(CreateDirIfMissing(path, created),
-                        Substitute("Failed to create directory $0", path));
+                        Format("Failed to create directory $0", path));
   RETURN_NOT_OK_PREPEND(env_->SyncDir(DirName(path)),
-                        Substitute("Failed to sync root directory $0", DirName(path)));
+                        Format("Failed to sync root directory $0", DirName(path)));
   return Status::OK();
 }
 
@@ -975,7 +974,7 @@ Result<std::vector<std::string>> FsManager::ListTabletIds(
   std::unordered_set<std::string> tablet_ids;
   for (const auto& dir : GetRaftGroupMetadataDirs()) {
     std::vector<std::string> children = VERIFY_RESULT_PREPEND(ListDir(dir),
-        Substitute("Couldn't list tablets in metadata directory $0", dir));
+        Format("Couldn't list tablets in metadata directory $0", dir));
 
     for (const auto& child : children) {
       if (!CheckTabletId(cleanup_temporary_files ? env_ : nullptr, dir, child)) {
@@ -1016,7 +1015,7 @@ Result<std::map<std::string, std::vector<std::string>>> FsManager::ListTabletIds
       continue;
     }
     std::vector<std::string> children = VERIFY_RESULT_PREPEND(
-        ListDir(dir), Substitute("Couldn't list tablets in metadata directory $0", dir));
+        ListDir(dir), Format("Couldn't list tablets in metadata directory $0", dir));
     for (const auto& child : children) {
       // Pass a null Env so that temp files are ignored rather than deleted: this path must stay
       // read-only, it is what the offline survey runs.
@@ -1153,7 +1152,7 @@ Status FsManager::ApplyFsRootPinReport(const FsRootPinReport& report, bool may_w
     const auto pin_path = GetFsRootPinPath(root);
     RETURN_NOT_OK_PREPEND(
         WriteFsRootPinFile(env_, pin_path, pin),
-        Substitute("Unable to pin data root $0", root));
+        Format("Unable to pin data root $0", root));
     const auto* verdict = report.FindRoot(root);
     LOG(INFO) << "Pinned data root " << root << " at " << pin_path << " (filesystem UUID "
               << (pin.filesystem_uuid.empty() ? "unknown" : pin.filesystem_uuid)
@@ -1260,8 +1259,8 @@ std::string FsManager::GetFirstTabletWalDirOrDie(const std::string& table_id,
                                                  const std::string& tablet_id) const {
   auto wal_root_dirs = GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No WAL directories specified";
-  auto table_wal_dir = JoinPathSegments(wal_root_dirs[0], Substitute("table-$0", table_id));
-  return JoinPathSegments(table_wal_dir, Substitute("tablet-$0", tablet_id));
+  auto table_wal_dir = JoinPathSegments(wal_root_dirs[0], Format("table-$0", table_id));
+  return JoinPathSegments(table_wal_dir, Format("tablet-$0", tablet_id));
 }
 
 std::string FsManager::GetTabletWalRecoveryDir(const string& tablet_wal_path) {
@@ -1275,7 +1274,7 @@ const auto kWalFileNameFullPrefix = std::string(FsManager::kWalFileNamePrefix) +
 } // namespace
 
 std::string FsManager::GetWalSegmentFileName(uint64_t sequence_number) {
-  return Format("$0$1", kWalFileNameFullPrefix, StringPrintf("%09" PRIu64, sequence_number));
+  return Format("$0$1", kWalFileNameFullPrefix, ZeroPadded(sequence_number, 9));
 }
 
 bool FsManager::IsWalSegmentFileName(const std::string& file_name) {

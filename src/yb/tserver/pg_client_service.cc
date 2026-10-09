@@ -1035,6 +1035,12 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
           ready = false;
           break;
         }
+        for (const auto& failure : status_resp.tablet_status().vector_index_failed_backfills()) {
+          if (failure.table_id() == req.table_id()) {
+            return StatusFromPB(failure.status()).CloneAndPrepend(
+                Format("Vector index backfill failed on tablet $0", tablet->tablet_id()));
+          }
+        }
         bool tablet_ready = false;
         VLOG_WITH_FUNC(4)
             << "Finished on " << tablet->tablet_id() << ": "
@@ -1133,8 +1139,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       oid_chunk.allocated_from_secondary_space = use_secondary_space;
       oid_chunk.oid_cache_invalidations_count = 0;
     }
-    uint32_t highest_received_invalidations_count =
-        tablet_server_.get_oid_cache_invalidations_count();
+    // The master process has no xCluster context and nothing to invalidate its OID cache.
+    const auto* xcluster_context = session_context_.xcluster_context;
+    const uint32_t highest_received_invalidations_count =
+        xcluster_context ? VERIFY_RESULT_PREPEND(
+                               xcluster_context->GetOidCacheInvalidationsCount(),
+                               "Cannot allocate a new object identifier")
+                         : 0;
     while (oid_chunk.oid_count == 0 ||
            oid_chunk.oid_cache_invalidations_count < highest_received_invalidations_count) {
       // We don't have any valid OIDs left so fetch more.
@@ -3022,6 +3033,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     session_context_.TEST_mock_service = mock;
   }
 
+  PgTableCache& TEST_TableCache() { return table_cache_; }
+
  private:
   client::YBClient& client() { return *client_future_.get(); }
 
@@ -3248,6 +3261,8 @@ size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
 void PgClientServiceImpl::TEST_SetMockService(PgClientServiceMockImpl* mock) {
   impl_->TEST_SetMockService(mock);
 }
+
+PgTableCache& PgClientServiceImpl::TEST_TableCache() { return impl_->TEST_TableCache(); }
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/ciphertrust"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/gcp"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/hashicorp"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/oci"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
@@ -36,7 +37,10 @@ func init() {
 	EARCmd.AddCommand(gcp.GCPEARCmd)
 	EARCmd.AddCommand(hashicorp.HashicorpVaultEARCmd)
 
-	util.PreviewCommand(EARCmd, []*cobra.Command{ciphertrust.CipherTrustEARCmd})
+	util.PreviewCommand(EARCmd, []*cobra.Command{
+		ciphertrust.CipherTrustEARCmd,
+		oci.OCIEARCmd,
+	})
 
 	EARCmd.AddGroup(&cobra.Group{
 		ID:    "action",

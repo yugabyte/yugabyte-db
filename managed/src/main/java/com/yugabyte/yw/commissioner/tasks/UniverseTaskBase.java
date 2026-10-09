@@ -349,6 +349,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.UpdateYbcThrottleFlags,
           TaskType.UpdateK8sYbcThrottleFlags);
 
+  /**
+   * Same as {@link #SAFE_TO_RUN_IF_UNIVERSE_BROKEN} but for a universe locked by a rollback task
+   * that itself failed. Re-provisioning nodes is not offered there; destroying the universe and
+   * reinstalling the node agent stay.
+   */
+  private static final Set<TaskType> SAFE_TO_RUN_IF_ROLLBACK_FAILED =
+      Sets.difference(
+              SAFE_TO_RUN_IF_UNIVERSE_BROKEN, ImmutableSet.of(TaskType.ProvisionUniverseNodes))
+          .immutableCopy();
+
   private static final Set<TaskType> SKIP_CONSISTENCY_CHECK_TASKS =
       ImmutableSet.of(
           TaskType.CreateBackup,
@@ -644,7 +654,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         AllowedTasks.builder().lockedTaskType(lockedTaskType);
     if (PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
       builder.restricted(true);
-      builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
+      builder.taskTypes(
+          TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.containsValue(lockedTaskType)
+              ? SAFE_TO_RUN_IF_ROLLBACK_FAILED
+              : SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
       if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
         builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
       }

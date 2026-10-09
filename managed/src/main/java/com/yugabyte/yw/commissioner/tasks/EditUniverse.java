@@ -168,6 +168,11 @@ public class EditUniverse extends EditUniverseTaskBase {
           && !Objects.equals(
               universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {
         createUpdateUniverseCommunicationPortsTask(taskParams().communicationPorts);
+        // The load balancers were reconciled above with the old ports.
+        for (Cluster cluster : clusters) {
+          createEnsureManagedLoadBalancerTasks(cluster);
+        }
+        createManageLoadBalancerTasks(createLoadBalancerMap(taskParams(), null, null, null));
       }
       if (primaryRFChanged.get()) {
         createMasterLeaderStepdownTask();

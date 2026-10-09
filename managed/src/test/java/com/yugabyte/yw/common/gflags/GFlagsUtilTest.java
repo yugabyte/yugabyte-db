@@ -29,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -996,5 +997,101 @@ public class GFlagsUtilTest extends FakeDBApplication {
     assertEquals(
         "FIPS enabled YBAnywhere only supports FIPS enabled universe",
         exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyRejectsHelmOverridesDisablingTheFipsGFlag() {
+    // Helm overrides are merged over the generated gflags, so they are checked like specificGFlags.
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.kubernetes;
+    userIntent.universeOverrides = "gflags:\n  master:\n    openssl_require_fips: \"false\"\n";
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+    assertEquals(
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
+            + " set master openssl_require_fips to false",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesChecksAzOverridesAndYamlBooleans() {
+    // A YAML boolean is as much a way to turn the flag off as the quoted string is.
+    Map<String, String> azOverrides =
+        Map.of("az-1", "gflags:\n  tserver:\n    openssl_require_fips: false\n");
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancyOfHelmOverrides("", azOverrides, true));
+    assertEquals(
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
+            + " set tserver openssl_require_fips to false",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesRejectsUnparseableYaml() {
+    // Overrides the check cannot read are not accepted, since the flag could be hidden in them.
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancyOfHelmOverrides("not: [valid", null, true));
+    assertTrue(
+        exception.getLocalizedMessage(),
+        exception.getLocalizedMessage().startsWith("Kubernetes overrides are not valid YAML: "));
+    // Only a FIPS universe is checked.
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides("not: [valid", null, false);
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesAllowsOtherOverrides() {
+    String universeOverrides =
+        "gflags:\n  master:\n    openssl_require_fips: \"true\"\n"
+            + "  tserver:\n    ysql_enable_auth: \"true\"\n"
+            + "tserver:\n  podLabels:\n    env: test\n";
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(universeOverrides, null, true);
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(null, null, true);
+    // Nothing is checked on a non-FIPS YBA.
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
+        "gflags:\n  master:\n    openssl_require_fips: \"false\"\n", null, false);
+  }
+
+  private static Cluster lbCluster(Common.CloudType cloud, boolean enableLB, boolean managedLb) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = cloud;
+    userIntent.enableLB = enableLB;
+    if (managedLb) {
+      ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+      config.setEnablePrivate(true);
+      userIntent.setManagedLoadBalancer(config);
+    }
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
+  @Test
+  public void testGcpProxiesListenOnEveryAddressWithUserCreatedLoadBalancer() {
+    assertTrue(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, true, false)));
+  }
+
+  @Test
+  public void testGcpProxiesListenOnEveryAddressWithManagedLoadBalancer() {
+    assertTrue(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, false, true)));
+  }
+
+  @Test
+  public void testGcpProxiesKeepPrivateIpWithoutLoadBalancer() {
+    assertFalse(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, false, false)));
+  }
+
+  @Test
+  public void testAwsProxiesKeepPrivateIpWithLoadBalancers() {
+    assertFalse(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.aws, true, true)));
   }
 }

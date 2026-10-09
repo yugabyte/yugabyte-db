@@ -38,7 +38,6 @@
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"

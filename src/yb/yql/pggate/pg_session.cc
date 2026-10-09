@@ -1157,6 +1157,8 @@ void PgSession::SetupPerformOptionsForSeparateDdlTxn(
     options->mutable_read_time_options()->set_defer_read_point(true);
   }
   options->set_connected_database_oid(pg_txn_manager_->connected_database_oid());
+  // The RPC may be what creates the separate DDL transaction.
+  options->set_origination_ht(pg_txn_manager_->GetOriginationHt());
 }
 
 void PgSession::SetTransactionHasWrites() {

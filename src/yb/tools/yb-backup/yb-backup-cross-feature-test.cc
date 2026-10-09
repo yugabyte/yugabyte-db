@@ -3869,6 +3869,13 @@ TEST_F_EX(
     YBBackupTestAutoAnalyze) {
   ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "pg_auto_analyze_service=5"));
   const int num_tables = 20;
+  auto wait_for_analyze = [](pgwrapper::PGConn& conn, int table_idx) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<float>(Format(
+              "SELECT reltuples FROM pg_class WHERE relname = 'tbl_$0'", table_idx))) == 3;
+        }, 30s * kTimeMultiplier, Format("Waiting for auto analyze of tbl_$0", table_idx));
+  };
   for (int i = 0; i < num_tables; ++i) {
     ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", i)));
     ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", i), 3));
@@ -3878,18 +3885,12 @@ TEST_F_EX(
   // run ANALYZEs aggressively.
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_threshold", "1"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_scale_factor", "0.1"));
-  SleepFor(3s * kTimeMultiplier);
 
   // Verify that the auto analyze service is running.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT reltuples FROM pg_class WHERE relname = 'tbl_0'",
-      R"#(
-         reltuples
-        -----------
-                 3
-        (1 row)
-      )#"
-  ));
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+    ASSERT_OK(wait_for_analyze(conn, 0));
+  }
 
   // Backup and restore to a new database.
   const string backup_dir = GetTempDir("backup");
@@ -3902,16 +3903,9 @@ TEST_F_EX(
   SetDbName("db2");
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", num_tables)));
   ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", num_tables), 3));
-  SleepFor(3s * kTimeMultiplier);
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SELECT reltuples FROM pg_class WHERE relname = 'tbl_$0'", num_tables),
-      R"#(
-         reltuples
-        -----------
-                 3
-        (1 row)
-      )#"
-  ));
+  // The service may first spend seconds analyzing db2's catalog tables modified by the restore.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("db2"));
+  ASSERT_OK(wait_for_analyze(conn, num_tables));
 }
 
 // Starts each base table with a single hash tablet so that we can drive

@@ -27,13 +27,13 @@
 #include <sys/syscall.h>
 #endif // __linux__
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/drive_io_stats.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
@@ -602,7 +602,7 @@ Status PosixWritableFile::Sync() {
   // is still actionable: a slow sync of a lot of bytes is a big flush, a slow sync of a few
   // bytes is a slow device. The path names the drive.
   const auto pending_bytes = unsynced_bytes_.load(std::memory_order_relaxed);
-  LOG_SLOW_EXECUTION(WARNING, 1000, strings::Substitute(
+  LOG_SLOW_EXECUTION(WARNING, 1000, Format(
       "sync call for $0 ($1 unsynced bytes)", filename_, pending_bytes)) {
     if (pending_sync_) {
       pending_sync_ = false;

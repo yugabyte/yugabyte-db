@@ -540,4 +540,6 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 | `username` and `password` | Used to authenticate with PostgreSQL. | |
 | `pg_dump_path`<br/>`pg_restore_path` | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install. | |
 
+The PostgreSQL instance must already have a database named `yugaware`. If Performance Advisor is enabled, YBA Installer also creates its database, `ts`, on the same instance, which requires the user to have the `CREATEDB` privilege; otherwise, create the `ts` database in advance.
+
 {{<icon/partial>}} You can't change this setting after installation.

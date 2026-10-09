@@ -215,6 +215,10 @@ public class AppInit {
         }
         // yb.fixPaths has a specific, limited use case. This should run always.
         releasesUtils.releaseUploadPathFixup();
+        // Must run before importLocalReleases picks up restored uploads in the releases dir.
+        if (Util.restoreTaskInfoExists()) {
+          releasesUtils.restoredUploadPathFixup();
+        }
 
         boolean ywFileDataSynced =
             Boolean.parseBoolean(

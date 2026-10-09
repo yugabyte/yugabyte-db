@@ -19,7 +19,8 @@ import {
   useVolumeControls
 } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
 import {
-  isEphemeralAwsStorageInstance,
+  isEphemeralOciStorageInstance,
+  isEphemeralStorageInstance,
   useGetZones
 } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
@@ -210,12 +211,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   if (![VolumeType.EBS, VolumeType.SSD, VolumeType.NVME].includes(volumeType)) return null;
 
+  const isOciNvme = isEphemeralOciStorageInstance(instance);
   const storageTypeSelectVisible =
-    isStorageTypeSelectableCloudType(provider?.code) ||
+    (isStorageTypeSelectableCloudType(provider?.code) && !isOciNvme) ||
     (volumeType === VolumeType.EBS && provider?.code === CloudType.aws);
 
   const showEphemeralStorageWarning =
-    (provider?.code === CloudType.aws && isEphemeralAwsStorageInstance(instance)) ||
+    isEphemeralStorageInstance(instance) ||
     (provider?.code === CloudType.gcp && fieldValue?.storageType === StorageType.Scratch);
 
   const renderVolumeInfo = () => {
@@ -231,8 +233,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       ![CloudType.kubernetes, ...StorageTypeSelectableCloudTypes].includes(provider.code);
 
     // Ephemeral instances volume information cannot be resized, refer to PLAT-16118
-    const isEphemeralStorage =
-      provider?.code === CloudType.aws && isEphemeralAwsStorageInstance(instance);
+    const isEphemeralStorage = isEphemeralStorageInstance(instance);
 
     return (
       <Box display="flex" flexDirection="column">
@@ -302,10 +303,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const renderStorageType = () => {
-    if (
-      isStorageTypeSelectableCloudType(provider?.code) ||
-      (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
-    ) {
+    if (storageTypeSelectVisible) {
       const isPremiumV2Storage = fieldValue?.storageType === StorageType.PremiumV2_LRS;
       const isHyperdisk =
         fieldValue?.storageType === StorageType.Hyperdisk_Balanced ||
@@ -378,6 +376,23 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               </YBHelper>
             </Box>
           )}
+        </Box>
+      );
+    }
+
+    if (showEphemeralStorageWarning) {
+      return (
+        <Box mt={1}>
+          <YBHelper variant={YBHelperVariants.WARNING}>
+            <Trans>
+              {t('createUniverseV2.instanceSettings.ephemeralStorageWarning')}
+              <StyledLink
+                underline="always"
+                href="https://docs.yugabyte.com/stable/deploy/checklist/#ephemeral-disks"
+                target="_blank"
+              ></StyledLink>
+            </Trans>
+          </YBHelper>
         </Box>
       );
     }

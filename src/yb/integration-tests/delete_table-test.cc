@@ -50,7 +50,6 @@
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
@@ -78,6 +77,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
@@ -103,7 +103,6 @@ using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::TabletServerErrorPB;
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 using namespace std::literals;
 
@@ -459,8 +458,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   // 4) The master 'dump-entities' page should not list the deleted table or tablets.
   EasyCurl c;
   faststring entities_buf;
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/dump-entities",
-                                  cluster_->master()->bound_http_hostport().ToString()),
+  ASSERT_OK(c.FetchURL(Format("http://$0/dump-entities",
+                              cluster_->master()->bound_http_hostport().ToString()),
                        &entities_buf));
   ASSERT_TRUE(entities_buf.ToString().find(
       TestWorkloadOptions::kDefaultTableName.table_name()) == std::string::npos);
@@ -560,7 +559,7 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
   for (int i = 0; i < n_iters; i++) {
     TestYcqlWorkload workload(cluster_.get());
     workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace",
-        Substitute("table-$0", i)));
+        Format("table-$0", i)));
 
     // We'll delete the table underneath the writers, so we expcted
     // a NotFound error during the writes.
@@ -1172,7 +1171,7 @@ vector<const string*> Grep(const string& needle, const vector<string>& haystack)
 }
 
 vector<string> ListOpenFiles(pid_t pid) {
-  string cmd = strings::Substitute("export PATH=$$PATH:/usr/bin:/usr/sbin; lsof -n -p $0", pid);
+  string cmd = Format("export PATH=$$PATH:/usr/bin:/usr/sbin; lsof -n -p $0", pid);
   vector<string> argv = { "bash", "-c", cmd };
   string out;
   CHECK_OK(Subprocess::Call(argv, &out));

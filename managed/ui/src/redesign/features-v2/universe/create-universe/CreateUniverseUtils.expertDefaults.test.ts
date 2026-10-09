@@ -8,6 +8,7 @@ import {
   getInferredOutageCount,
   getExpertAvailabilityZonesOrEmpty,
   getExpertNodesStepDefaultPlacement,
+  getExpertRfOptions,
   getGuidedNodesStepReplicationFactor,
   getNodeCount,
   getNodeSpec,
@@ -73,6 +74,20 @@ function expertBaseRegionLevel(regions: Region[], resilienceFactor = 1) {
   };
 }
 
+describe('getExpertRfOptions', () => {
+  it('returns base options when flag is off', () => {
+    expect(getExpertRfOptions(false)).toEqual([1, 3, 5, 7]);
+  });
+
+  it('includes 9 when flag is on', () => {
+    expect(getExpertRfOptions(true)).toEqual([1, 3, 5, 7, 9]);
+  });
+
+  it('preserves RF 9 in options when current RF is 9 and flag is off', () => {
+    expect(getExpertRfOptions(false, 9)).toEqual([1, 3, 5, 7, 9]);
+  });
+});
+
 describe('getExpertNodesStepDefaultPlacement', () => {
   it('returns null for guided mode', () => {
     expect(
@@ -112,9 +127,33 @@ describe('getExpertNodesStepDefaultPlacement', () => {
     expect(out!.replicationFactor).toBe(3);
   });
 
-  it('returns null when region count is outside Figma table (e.g. 8)', () => {
+  it('returns null when region count is outside Figma table (e.g. 8) without RF9 flag', () => {
     const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 4));
     expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any)).toBeNull();
+    expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any, false)).toBeNull();
+  });
+
+  it('8 regions with RF9 flag: RF 9, 8 AZs, total nodes >= 9', () => {
+    const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true);
+    expect(out).not.toBeNull();
+    expect(out!.replicationFactor).toBe(9);
+    expect(getAZCount(out!.availabilityZones)).toBe(8);
+    expect(getNodeCount(out!.availabilityZones)).toBeGreaterThanOrEqual(9);
+  });
+
+  it('9 regions with RF9 flag: RF 9, 9 AZs, total nodes >= 9', () => {
+    const regions = Array.from({ length: 9 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true);
+    expect(out).not.toBeNull();
+    expect(out!.replicationFactor).toBe(9);
+    expect(getAZCount(out!.availabilityZones)).toBe(9);
+    expect(getNodeCount(out!.availabilityZones)).toBeGreaterThanOrEqual(9);
+  });
+
+  it('returns null for 10 regions even with RF9 flag', () => {
+    const regions = Array.from({ length: 10 }, (_, i) => makeRegion(`r${i}`, 2));
+    expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true)).toBeNull();
   });
 
   it('1 region, >2 AZs: RF 3, up to 3 AZs, total nodes >= 3', () => {
@@ -246,11 +285,18 @@ describe('toExpertResilienceForDefaults / getExpertAvailabilityZonesOrEmpty', ()
     expect(out.replicationFactor).toBe(3);
   });
 
-  it('returns empty zones when expert tables do not apply (e.g. 8 regions)', () => {
+  it('returns empty zones when expert tables do not apply (e.g. 8 regions without RF9 flag)', () => {
     const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 4));
     const out = getExpertAvailabilityZonesOrEmpty(expertBase(regions, 7) as any);
     expect(out.availabilityZones).toEqual({});
     expect(out.replicationFactor).toBe(7);
+  });
+
+  it('fills 8-region defaults when RF9 flag is on', () => {
+    const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertAvailabilityZonesOrEmpty(expertBase(regions, 7) as any, true);
+    expect(out.replicationFactor).toBe(9);
+    expect(getAZCount(out.availabilityZones)).toBe(8);
   });
 
   it('getPlacementRegions without zones skips guided assign in expert mode', () => {

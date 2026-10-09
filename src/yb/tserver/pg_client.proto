@@ -266,10 +266,16 @@ message PgBackfillIndexRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+
   // When transactional DDL is enabled (ysql_yb_ddl_transaction_block_enabled), the CREATE INDEX
   // backend uses the kPlain session transaction rather than an autonomous kDDL transaction.
   // This flag must match the DDL mode so GetDdlTransactionMetadata fetches from the right txn.
   bool use_regular_transaction_block = 4;
+
+  // Origination time (HybridTime value) for the DDL transaction this RPC may create: CREATE INDEX
+  // starts the transaction it holds across the backfill right before issuing this RPC, so this is
+  // what stamps that transaction's writes and commit.  0 means none.
+  fixed64 origination_ht = 5;
 }
 
 message PgBackfillIndexResponsePB {
@@ -903,6 +909,9 @@ message PgPerformOptionsPB {
 
   // OID of the database the backend is connected to; 0 until the backend knows it.
   uint32 connected_database_oid = 37;
+
+  // Origination time of the current PG transaction (see OriginationInfoPB); 0 when unknown.
+  fixed64 origination_ht = 38;
 }
 
 message PgRequestSequenceNumPB {
@@ -1000,6 +1009,7 @@ message PgInsertSequenceTupleRequestPB {
   int64 last_val = 5;
   bool is_called = 6;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 9;
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -1018,6 +1028,7 @@ message PgUpdateSequenceTupleRequestPB {
   int64 expected_last_val = 8;
   bool expected_is_called = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 12;
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -1041,6 +1052,7 @@ message PgFetchSequenceTupleRequestPB {
   int64 max_value = 8;
   bool cycle = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 12;
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -1070,6 +1082,7 @@ message PgDeleteSequenceTupleRequestPB {
   int64 db_oid = 2;
   int64 seq_oid = 3;
   reserved 4; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 5;
 }
 
 message PgDeleteSequenceTupleResponsePB {
@@ -1080,6 +1093,7 @@ message PgDeleteDBSequencesRequestPB {
   uint64 session_id = 1;
   int64 db_oid = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 4;
 }
 
 message PgDeleteDBSequencesResponsePB {

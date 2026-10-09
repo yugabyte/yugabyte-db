@@ -70,7 +70,6 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/qlexpr/index.h"
@@ -124,6 +123,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
@@ -338,6 +338,13 @@ DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
 DEFINE_test_flag(uint32, pause_remote_pg_query_execution_ms, 0,
     "Used in tests to sleep before executing a remote PG query.");
 
+DEFINE_test_flag(uint64, persistence_reject_stamped_before_ht, 0,
+    "When nonzero, reject writes and transaction commits whose origination stamp has an "
+    "origination hybrid time below this value. Unstamped ones pass.");
+
+DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
+    "DFATAL on a YSQL write without an origination stamp to a table outside template1.");
+
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
 
@@ -386,7 +393,6 @@ using rpc::RpcContext;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using strings::Substitute;
 using tablet::ChangeMetadataOperation;
 using tablet::CloneTabletRequestPB;
 using tablet::OnlyAbortTxnsNotUsingTableLocks;
@@ -398,6 +404,35 @@ using tablet::TabletStatusPB;
 using tablet::TruncateOperation;
 
 namespace {
+
+template <class OriginationInfo>
+Status CheckPersistenceTestRejection(const OriginationInfo& origination_info) {
+  const auto threshold = FLAGS_TEST_persistence_reject_stamped_before_ht;
+  if (PREDICT_TRUE(threshold == 0) || origination_info.origination_ht() >= threshold) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      Expired,
+      "TEST: persistence rejected op with connected database $0 with origination time $1 < $2",
+      origination_info.database_oid(), HybridTime(origination_info.origination_ht()),
+      HybridTime(threshold));
+}
+
+void CheckPersistenceStampPresent(const WriteRequestMsg& req) {
+  if (PREDICT_TRUE(!FLAGS_TEST_persistence_dfatal_unstamped_pgsql_write) ||
+      req.has_origination_info()) {
+    return;
+  }
+  for (const auto& pg_req : req.pgsql_write_batch()) {
+    auto db_oid = GetPgsqlDatabaseOidByTableId(pg_req.table_id().ToBuffer());
+    // Template1 backends write unstamped, and can only write tables of database 1.
+    if (!db_oid.ok() || *db_oid != kTemplate1Oid) {
+      LOG(DFATAL) << "YSQL write without origination stamp to table " << pg_req.table_id()
+                  << " of database " << db_oid << ": " << req.ShortDebugString();
+      return;
+    }
+  }
+}
 
 Result<std::shared_ptr<consensus::RaftConsensus>> GetConsensus(const TabletPeerPtr& tablet_peer) {
   auto result = tablet_peer->GetRaftConsensus();
@@ -954,7 +989,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       *resp->add_failed_index_ids() = index_table_id;
       SetupErrorAndRespond(
           resp->mutable_error(),
-          STATUS_SUBSTITUTE(
+          STATUS_FORMAT(
               InvalidArgument, "Index $0 not found in index_map. Current schema is $1",
               index_table_id, our_schema_version),
           TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
@@ -981,7 +1016,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       DCHECK_NE(our_schema_version, their_schema_version);
       SetupErrorAndRespond(
           resp->mutable_error(),
-          STATUS_SUBSTITUTE(
+          STATUS_FORMAT(
               InvalidArgument,
               "Tablet has a different schema $0 vs $1. "
               "Requested index is not ready to backfill. IndexMap: $2",
@@ -1170,7 +1205,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
                  << "\n request-schema=" << req_schema.ToString();
     SetupErrorAndRespond(
         resp->mutable_error(),
-        STATUS_SUBSTITUTE(
+        STATUS_FORMAT(
             InvalidArgument, "Tablet has a newer schema Tab $0. Req $1 vs Existing version : $2",
             req->tablet_id(), req->schema_version(), schema_version),
         TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, &context);
@@ -1440,6 +1475,14 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   }
   if (!tablet) {
     return;
+  }
+
+  if (txn_status == TransactionStatus::COMMITTED && req->state().has_origination_info()) {
+    auto status = CheckPersistenceTestRejection(req->state().origination_info());
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, &context);
+      return;
+    }
   }
 
   auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
@@ -2209,6 +2252,137 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   context.RespondSuccess();
 }
 
+namespace {
+
+TierMigrationStatusPB::State ToTierMigrationStatePB(tablet::TierMigrationStatus::State state) {
+  switch (state) {
+    case tablet::TierMigrationStatus::State::kNone:
+      return TierMigrationStatusPB::NONE;
+    case tablet::TierMigrationStatus::State::kInProgress:
+      return TierMigrationStatusPB::IN_PROGRESS;
+    case tablet::TierMigrationStatus::State::kDone:
+      return TierMigrationStatusPB::DONE;
+    case tablet::TierMigrationStatus::State::kFailed:
+      return TierMigrationStatusPB::FAILED;
+  }
+  FATAL_INVALID_ENUM_VALUE(tablet::TierMigrationStatus::State, state);
+}
+
+void FillTierMigrationStatusPB(
+    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
+  pb->set_state(ToTierMigrationStatePB(status.state));
+  pb->set_pass_in_flight(status.pass_in_flight);
+  pb->set_files_total(status.files_total);
+  pb->set_files_moved(status.files_moved);
+  pb->set_files_failed(status.files_failed);
+  pb->set_files_deferred(status.files_deferred);
+  pb->set_obsoleted(status.obsoleted);
+  pb->set_consecutive_failed_passes(status.consecutive_failed_passes);
+  if (!status.last_error.ok()) {
+    pb->set_last_error(status.last_error.ToString());
+  }
+}
+
+}  // namespace
+
+void TabletServiceAdminImpl::AlterTabletTier(
+    const AlterTabletTierRequestPB* req,
+    AlterTabletTierResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterTabletTier", req, resp,
+                               &context)) {
+    return;
+  }
+
+  auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+  const auto& tablet = peer_tablet.tablet;
+  if (!tablet) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "Tablet not available"), &context);
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Processing AlterTabletTier for tablet " << req->tablet_id()
+                        << " -> tier " << req->target_tier() << " from "
+                        << context.requestor_string();
+
+  const auto meta = peer_tablet.tablet_peer->tablet_metadata();
+
+  // Keep the disk already resolved for this tier when the tier is unchanged. Re-running the
+  // least-loaded-disk policy could pick a different disk within the same tier purely because the
+  // first call changed the load counts, forcing a pointless rewrite of every SST.
+  Result<uint32_t> path_id = meta->target_storage_tier() == req->target_tier()
+      ? server_->tablet_manager()->ResolveTargetTierPathId(meta)
+      : server_->tablet_manager()->SelectPathIdForTier(
+            *meta, meta->table_id(), req->target_tier());
+  if (!path_id.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), path_id.status(), &context);
+    return;
+  }
+
+  auto status = tablet->AlterTabletTier(req->target_tier(), *path_id);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status.status(), &context);
+    return;
+  }
+
+  FillTierMigrationStatusPB(*status, resp->mutable_migration());
+  context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::GetTabletTierInfo(
+    const GetTabletTierInfoRequestPB* req,
+    GetTabletTierInfoResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "GetTabletTierInfo", req, resp,
+                               &context)) {
+    return;
+  }
+
+  auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+  const auto& tablet = peer_tablet.tablet;
+  if (!tablet) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "Tablet not available"), &context);
+    return;
+  }
+
+  auto info = tablet->GetTierInfo();
+  if (!info.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), info.status(), &context);
+    return;
+  }
+
+  resp->set_tablet_id(req->tablet_id());
+  if (!info->current_tier.empty()) {
+    resp->set_current_tier(info->current_tier);
+  }
+  if (!info->target_tier.empty()) {
+    resp->set_target_tier(info->target_tier);
+    resp->set_target_tier_path_id(info->target_tier_path_id);
+  }
+  resp->set_wal_dir(info->wal_dir);
+  resp->set_unmatched_sst_count(info->unmatched_sst_count);
+
+  if (info->migration.state != tablet::TierMigrationStatus::State::kNone) {
+    FillTierMigrationStatusPB(info->migration, resp->mutable_migration());
+  }
+
+  for (const auto& stats : info->tier_paths) {
+    auto* tp_pb = resp->add_tier_paths();
+    tp_pb->set_path_id(stats.path_id);
+    tp_pb->set_tier(stats.tier);
+    tp_pb->set_path(stats.path);
+    tp_pb->set_is_home(stats.is_home);
+    tp_pb->set_sst_count(stats.sst_count);
+    tp_pb->set_total_bytes(stats.total_bytes);
+  }
+
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::CountIntents(
     const CountIntentsRequestPB* req,
     CountIntentsResponsePB* resp,
@@ -2665,6 +2839,11 @@ Status TabletServiceImpl::PerformWrite(
     return STATUS(
         NotFound, "Tablet not found", req->tablet_id(),
         TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
+  }
+
+  CheckPersistenceStampPresent(*req);
+  if (req->has_origination_info()) {
+    RETURN_NOT_OK(CheckPersistenceTestRejection(req->origination_info()));
   }
 
   if (PREDICT_FALSE(req->has_write_batch() && !req->has_external_hybrid_time() &&
@@ -3202,8 +3381,8 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
   ConsensusConfigType type = req->type();
   if (PREDICT_FALSE(type != CONSENSUS_CONFIG_ACTIVE && type != CONSENSUS_CONFIG_COMMITTED)) {
     HandleErrorResponse(resp, &context,
-        STATUS(InvalidArgument, Substitute("Unsupported ConsensusConfigType $0 ($1)",
-                                           ConsensusConfigType_Name(type), type)));
+        STATUS(InvalidArgument, Format("Unsupported ConsensusConfigType $0 ($1)",
+                                       ConsensusConfigType_Name(type), type)));
     return;
   }
   LeaderLeaseStatus leader_lease_status;

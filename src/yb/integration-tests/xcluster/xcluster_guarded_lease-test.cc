@@ -15,6 +15,7 @@
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 
@@ -25,7 +26,10 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
@@ -59,6 +63,8 @@ class XClusterGuardedLeaseTest : public PgMiniTestBase {
   virtual MonoDelta GetLeaseDuration() const { return {10s}; }
   static constexpr auto kUnavailableErrorMsg =
       "forbidden because the xCluster role of the database is currently unavailable";
+  static constexpr auto kOidCountUnavailableErrorMsg =
+      "The OID cache invalidation count is unavailable";
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) =
@@ -138,15 +144,48 @@ TEST_F(XClusterGuardedLeaseTest, DdlsBlockedWithoutLease) {
   // because DDLs that need to create a table cannot complete without heartbeats.
   ASSERT_OK(
       conn.Execute("SET yb_xcluster_ddl_replication.TEST_replication_role_override TO 'TARGET'"));
-  for (const auto& ddl :
-       {"ALTER TABLE tbl ADD COLUMN b int", "CREATE SEQUENCE seq2", "DROP SEQUENCE seq"}) {
+  for (const auto& ddl : {"ALTER TABLE tbl ADD COLUMN b int", "DROP SEQUENCE seq"}) {
     LOG(INFO) << "Executing: " << ddl;
     ASSERT_NOK_STR_CONTAINS(conn.Execute(ddl), kUnavailableErrorMsg);
   }
+  // A DDL that needs a new OID fails even earlier, when allocating it.
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("CREATE SEQUENCE seq2"), kOidCountUnavailableErrorMsg);
   ASSERT_OK(conn.Execute("RESET yb_xcluster_ddl_replication.TEST_replication_role_override"));
 
   ASSERT_OK(RegainLease(namespace_id));
   ASSERT_OK(conn.Execute("ALTER TABLE tbl ADD COLUMN b int"));
+}
+
+TEST_F(XClusterGuardedLeaseTest, OidAllocationBlockedWithoutLease) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto namespace_id = ASSERT_RESULT(GetCurrentNamespaceId(conn));
+  const auto db_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id));
+
+  // Call the PG client service directly: every SQL statement that allocates an OID is a DDL, which
+  // the DDL check would reject first.
+  tserver::PgClientServiceProxy proxy(
+      &client_->proxy_cache(),
+      HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
+  auto get_new_object_id = [&]() -> Status {
+    tserver::PgGetNewObjectIdRequestPB req;
+    req.set_db_oid(db_oid);
+    tserver::PgGetNewObjectIdResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s * kTimeMultiplier);
+    RETURN_NOT_OK(proxy.GetNewObjectId(req, &resp, &controller));
+    return resp.has_status() ? StatusFromPB(resp.status()) : Status::OK();
+  };
+
+  ASSERT_OK(get_new_object_id());
+
+  // Only heartbeats stop, so master stays reachable, and the call above left OIDs in the TServer's
+  // cache, so this call needs nothing from master.  It can therefore fail only because the TServer
+  // no longer holds a lease.
+  ASSERT_OK(LoseLease(namespace_id));
+  ASSERT_NOK_STR_CONTAINS(get_new_object_id(), kOidCountUnavailableErrorMsg);
+
+  ASSERT_OK(RegainLease(namespace_id));
+  ASSERT_OK(get_new_object_id());
 }
 
 class XClusterPropagateGuardedInfoTest : public XClusterGuardedLeaseTest {};
@@ -164,13 +203,16 @@ TEST_F_EX(XClusterPropagateGuardedInfoTest, PropagatesWithoutHeartbeats,
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
   auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
   const auto& tservers = cluster_->mini_tablet_servers();
+  auto get_oid_cache_invalidations_count = [](const auto& tserver) {
+    return tserver->server()->GetXClusterContext().GetOidCacheInvalidationsCount();
+  };
 
   // Stop heartbeats, and let any in flight finish, so that the RPC is the only way new
   // information can reach the TServers.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
   SleepFor(FLAGS_heartbeat_interval_ms * 2ms * kTimeMultiplier);
   const auto old_oid_invalidations_count =
-      tservers[0]->server()->get_oid_cache_invalidations_count();
+      ASSERT_RESULT(get_oid_cache_invalidations_count(tservers[0]));
 
   ASSERT_OK(xcluster_manager->SetXClusterRole(
       catalog_manager.GetLeaderEpochInternal(), namespace_id,
@@ -181,7 +223,8 @@ TEST_F_EX(XClusterPropagateGuardedInfoTest, PropagatesWithoutHeartbeats,
     EXPECT_EQ(
         tserver->server()->GetXClusterContext().GetXClusterRole(namespace_id),
         XClusterNamespaceInfoPB::NOT_AUTOMATIC_MODE);
-    EXPECT_EQ(tserver->server()->get_oid_cache_invalidations_count(), old_oid_invalidations_count);
+    EXPECT_EQ(
+        ASSERT_RESULT(get_oid_cache_invalidations_count(tserver)), old_oid_invalidations_count);
   }
 
   ASSERT_OK(xcluster_manager->PropagateXClusterGuardedInfo(
@@ -192,7 +235,8 @@ TEST_F_EX(XClusterPropagateGuardedInfoTest, PropagatesWithoutHeartbeats,
         tserver->server()->GetXClusterContext().GetXClusterRole(namespace_id),
         XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
     EXPECT_EQ(
-        tserver->server()->get_oid_cache_invalidations_count(), old_oid_invalidations_count + 1);
+        ASSERT_RESULT(get_oid_cache_invalidations_count(tserver)),
+        old_oid_invalidations_count + 1);
   }
 }
 

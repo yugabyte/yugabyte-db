@@ -103,7 +103,6 @@ public class PreflightNodeCheck extends NodeTaskBase {
             .build();
     YnpPreflightCheckOutput checkOutput =
         nodeAgentClient.runYnpPreflightCheck(nodeAgent, checkParams, null /* custom user */);
-    log.info("YNP preflight check for universe node {} ran successfully", taskParams().nodeName);
     if (checkOutput.getExitCode() != 0) {
       String errMsg =
           String.format(
@@ -112,6 +111,7 @@ public class PreflightNodeCheck extends NodeTaskBase {
       log.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+    log.info("YNP preflight check for universe node {} ran successfully", taskParams().nodeName);
   }
 
   @Override

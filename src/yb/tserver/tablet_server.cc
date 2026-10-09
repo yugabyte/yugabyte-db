@@ -60,8 +60,6 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 
@@ -109,6 +107,7 @@
 #include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -458,9 +457,9 @@ TabletServer::~TabletServer() {
 }
 
 std::string TabletServer::ToString() const {
-  return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
-                             yb::ToString(first_rpc_address()),
-                             fs_manager_->uuid());
+  return Format("TabletServer : rpc=$0, uuid=$1",
+                yb::ToString(first_rpc_address()),
+                fs_manager_->uuid());
 }
 
 MonoDelta TabletServer::default_client_timeout() {
@@ -1172,7 +1171,7 @@ Status GetDynamicUrlTile(
   }
   hp.set_port(port);
 
-  *url = strings::Substitute("http://$0$1", hp.ToString(), path);
+  *url = Format("http://$0$1", hp.ToString(), path);
   return Status::OK();
 }
 
@@ -1592,6 +1591,10 @@ void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " failed: " << status;
   }
   RelcacheInitConnectionDone(dbname, status);
+}
+
+void TabletServer::SetYsqlCatalogPrefetchLoad(uint32_t load) {
+  shared_object()->SetYsqlCatalogPrefetchLoad(load);
 }
 
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
@@ -2500,6 +2503,10 @@ Status TabletServer::ClusterConfigHandleMasterHeartbeatResponse(
   return Status::OK();
 }
 
+void TabletServer::UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count) {
+  xcluster_context_->UpdateOidCacheInvalidationsCount(oid_cache_invalidations_count);
+}
+
 void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info) {
   const auto& version = info.xcluster_guarded_info_version();
   const std::pair<int64_t, uint64_t> term_and_count{version.term(), version.count()};
@@ -2514,7 +2521,7 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
 
   xcluster_context_->UpdateXClusterInfoPerNamespace(info.xcluster_info_per_namespace());
   if (info.has_oid_cache_invalidations_count()) {
-    set_oid_cache_invalidations_count(info.oid_cache_invalidations_count());
+    UpdateOidCacheInvalidationsCount(info.oid_cache_invalidations_count());
   }
 }
 

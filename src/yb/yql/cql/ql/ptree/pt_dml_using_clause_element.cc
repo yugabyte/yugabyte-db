@@ -11,11 +11,10 @@
 // under the License.
 //
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause_element.h"
 
 #include "yb/common/ql_type.h"
-
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/status.h"
 
@@ -57,15 +56,15 @@ Status PTDmlUsingClauseElement::Analyze(SemContext *sem_context) {
   if (strcmp(name_->c_str(), kTtl) != 0 && strcmp(name_->c_str(), kTimestamp) != 0) {
     return sem_context->Error(
         this,
-        strings::Substitute("Invalid parameter $0, only $1 and $2 are supported",
-                            name_->c_str(), kTtl, kTimestamp).c_str(),
+        Format("Invalid parameter $0, only $1 and $2 are supported",
+               name_->c_str(), kTtl, kTimestamp).c_str(),
         ErrorCode::INVALID_ARGUMENTS);
   }
 
   if (value_ == nullptr) {
     return sem_context->Error(
         this,
-        strings::Substitute("Invalid value for parameter $0", name_->c_str()).c_str(),
+        Format("Invalid value for parameter $0", name_->c_str()).c_str(),
         ErrorCode::INVALID_ARGUMENTS);
   }
 

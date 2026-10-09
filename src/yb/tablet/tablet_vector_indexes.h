@@ -144,7 +144,8 @@ class TabletVectorIndexes :
 
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
-  std::optional<google::protobuf::RepeatedPtrField<std::string>> FinishedBackfills();
+  // Adds finished and failed vector index backfills to the tablet status.
+  void FillBackfillStatus(TabletStatusPB& tablet_status);
 
   docdb::DocVectorIndexPtr IndexForTable(
       const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);
