@@ -3,6 +3,7 @@ import { Link as MUILink } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 
+import { PollingIntervalMs } from '@app/components/xcluster/constants';
 import { YBButton } from '@app/redesign/components';
 import { DbUpgradeFinalizeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeFinalizeModal';
 import { DbUpgradeManagementSidePanel } from '@app/redesign/features/universe/universe-actions/software-upgrade/upgrade-management/DbUpgradeManagementSidePanel';
@@ -13,17 +14,28 @@ import { getUniverse, precheckSoftwareUpgrade } from '@app/v2/api/universe/unive
 import { UniverseInfoSoftwareUpgradeState } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
-import { getIsDbUpgradeTask } from '../../TaskUtils';
+import {
+  getIsDbUpgradeTask,
+  isTaskCompletedWithinDays,
+  SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS
+} from '../../TaskUtils';
 import { Task, TaskState } from '../../dtos';
 import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';
-import { PollingIntervalMs } from '@app/components/xcluster/constants';
 
 interface DbUpgradeTaskBannerProps {
   task: Task;
   universeUuid: string;
+  /** When set, the upgrade-completed (Ready) success banner can be dismissed. */
+  isUpgradeCompletedBannerDismissed?: boolean;
+  onDismissUpgradeCompletedBanner?: () => void;
 }
 
-export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerProps) => {
+export const DbUpgradeTaskBanner = ({
+  task,
+  universeUuid,
+  isUpgradeCompletedBannerDismissed = false,
+  onDismissUpgradeCompletedBanner
+}: DbUpgradeTaskBannerProps) => {
   const [isDbUpgradeManagementSidePanelOpen, setIsDbUpgradeManagementSidePanelOpen] =
     useState(false);
   const [isDbUpgradeRollBackModalOpen, setIsDbUpgradeRollBackModalOpen] = useState(false);
@@ -135,7 +147,9 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
         );
       } else if (
         universeDetailsQuery.data?.info?.software_upgrade_state ===
-        UniverseInfoSoftwareUpgradeState.Ready
+          UniverseInfoSoftwareUpgradeState.Ready &&
+        !isUpgradeCompletedBannerDismissed &&
+        isTaskCompletedWithinDays(task, SOFTWARE_UPGRADE_COMPLETED_BANNER_MAX_AGE_DAYS)
       ) {
         bannerComponent = (
           <ClusterOperationBanner
@@ -157,6 +171,7 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
                 }}
               />
             }
+            onDismiss={onDismissUpgradeCompletedBanner}
           />
         );
       }
