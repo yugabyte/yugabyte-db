@@ -45,10 +45,23 @@ namespace {
 
 const MonoDelta kRpcTimeout = 20s * kTimeMultiplier;
 
+// Fastdebug builds run against a fastdebug build of the old version when builds.xml has one, so
+// that the old version's DCHECKs and PG assertions run too. Otherwise the old version is a release
+// build: debug builds are on-disk compatible with release builds, and a debug (-O0) build of the
+// old version makes the tests several times slower.
+bool UseFastdebugOldVersion(const BuildInfo& info) {
+#if defined(FASTDEBUG) && defined(__linux__) && defined(__x86_64__)
+  return !info.linux_fastdebug_x86_url.empty();
+#else
+  return false;
+#endif
+}
+
 // Returns the URL for the current os platform. Returns empty string if a valid URL does not exist.
-// The old version is always a release build, whatever the build type of the current version: debug
-// builds are on-disk compatible with release builds, and customers only run release builds.
 std::string GetRelevantUrl(const BuildInfo& info) {
+  if (UseFastdebugOldVersion(info)) {
+    return info.linux_fastdebug_x86_url;
+  }
 #if defined(__APPLE__) && defined(__aarch64__)
   return info.darwin_release_arm64_url;
 #elif defined(__linux__) && defined(__x86_64__)
@@ -73,6 +86,17 @@ std::string GetXmlPathAsString(const T& node, const std::string& key) {
   return value;
 }
 
+// Same as GetXmlPathAsString, but returns an empty string if the key does not exist.
+template <typename T>
+std::string GetOptionalXmlPathAsString(const T& node, const std::string& key) {
+  auto value = node.template get_optional<std::string>(key);
+  if (!value) {
+    return "";
+  }
+  boost::trim(*value);
+  return *value;
+}
+
 // Gets the build info for the given version from the builds.xml file.
 Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
   const auto sub_dir = "upgrade_test_builds";
@@ -90,6 +114,8 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
         build_info.version = version;
         build_info.build_number = GetXmlPathAsString(node, "build_number");
         build_info.linux_release_x86_url = GetXmlPathAsString(node, "linux_release_x86");
+        build_info.linux_fastdebug_x86_url =
+            GetOptionalXmlPathAsString(node, "linux_fastdebug_x86");
         build_info.linux_release_aarch64_url = GetXmlPathAsString(node, "linux_release_aarch64");
         build_info.darwin_release_arm64_url = GetXmlPathAsString(node, "darwin_release_arm64");
         return build_info;
@@ -113,7 +139,7 @@ Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
   arch = "darwin";
   tar_bin = "gtar";
 #endif
-  arch += "_release";
+  arch += UseFastdebugOldVersion(build_info) ? "_fastdebug" : "_release";
 
   auto env = Env::Default();
   const std::string build_root =
