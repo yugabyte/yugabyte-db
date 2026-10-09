@@ -1987,6 +1987,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const Schema& schema,
                                           const LeaderEpoch& epoch,
                                           YQLVirtualTable* vtable) {
+  TableCommitLockAssertSuppression no_table_commit_assert;
+
   std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
@@ -4413,6 +4415,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    const LeaderEpoch& epoch) {
   DVLOG(3) << __PRETTY_FUNCTION__ << " Begin. " << orig_req->DebugString();
 
+  TableCommitLockAssertSuppression no_table_commit_assert;
+
   const bool is_pg_table = orig_req->table_type() == PGSQL_TABLE_TYPE;
   const bool is_pg_catalog_table = is_pg_table && orig_req->is_pg_catalog_table();
   if (!is_pg_catalog_table || !FLAGS_hide_pg_catalog_table_creation_logs) {
@@ -4835,15 +4839,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         lock.unlock();
 
         auto& table_pb = table->mutable_metadata()->mutable_dirty()->pb;
-        for (auto& tablet : tablets) {
-          tablet->mutable_metadata()->StartMutation();
-          auto& tablet_pb = tablet->mutable_metadata()->mutable_dirty()->pb;
+        for (const auto& tablet : tablets) {
+          auto tablet_lock = tablet->LockForRead();
           if (table_pb.parent_table_id().empty()) {
-            table_pb.set_parent_table_id(tablet_pb.table_id());
+            table_pb.set_parent_table_id(tablet_lock->pb.table_id());
           } else {
-            RSTATUS_DCHECK_EQ(table_pb.parent_table_id(), tablet_pb.table_id(), RuntimeError,
+            RSTATUS_DCHECK_EQ(table_pb.parent_table_id(), tablet_lock->pb.table_id(), RuntimeError,
                               "Different table ids in tablets");
           }
+          RETURN_NOT_OK(table->AddTablet(tablet, tablet_lock.data()));
         }
 
         CHECK_NE(colocation_id, kColocationIdNotSet);
@@ -4854,12 +4858,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
           LOG(INFO) << "Partition list version is set to " << table_pb.partition_list_version();
         }
 
-        // TODO(zdrudi): In principle if the hosted_tables_mapped_by_parent_id field is set we could
-        // avoid writing the tablets and even avoid any tablet mutations here at all. However
-        // table->AddTablet assumes the tablet has a write in progress and checkfails if it doesn't.
-        for (const auto& tablet : tablets) {
-          RETURN_NOT_OK(table->AddTablet(tablet));
-        }
       }
     }
   }
@@ -4926,19 +4924,23 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
+  const TabletInfos no_tablets;
+  const TabletInfos& created_tablets = joining_colocation_group ? no_tablets : tablets;
+
   // if test flag to abort create table is set and this is to create
   // test table, fake abort the table creation.
   // case 1: fakes the case where the Upsert failed.
   s = TEST_MaybeFakeAbortTableCreation(1, req.name());
   if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(table.get(), tablets, s, resp, &indexed_table);
+    return AbortTableCreation(table.get(), created_tablets, s, resp, &indexed_table);
   }
 
-  s = sys_catalog_->Upsert(epoch, table, tablets);
+  s = sys_catalog_->Upsert(epoch, table, created_tablets);
   if (PREDICT_FALSE(!s.ok())) {
     return AbortTableCreation(
-        table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting to sys-tablets"),
-        resp, &indexed_table);
+        table.get(), created_tablets,
+        s.CloneAndPrepend("An error occurred while inserting to sys-tablets"), resp,
+        &indexed_table);
   }
   VLOG(3) << "SysTablesEntryPB after CreateTable: " << table->metadata().dirty().pb.DebugString();
   TRACE("Wrote table and tablets to system table");
@@ -4964,14 +4966,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // on the indexed table.
     s = TEST_MaybeFakeAbortTableCreation(2, req.name());
     if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(table.get(), tablets, s, resp, &indexed_table);
+      return AbortTableCreation(table.get(), created_tablets, s, resp, &indexed_table);
     }
 
     s = AddIndexInfoToTable(indexed_table, index_info, epoch, resp);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(
-          table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting index info"),
-          resp, &indexed_table);
+          table.get(), created_tablets,
+          s.CloneAndPrepend("An error occurred while inserting index info"), resp, &indexed_table);
     }
     // if test flag to abort create table is set and this is to create
     // test table, fake abort the table creation.
@@ -4980,7 +4982,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // the COW lock on the indexed table.
     s = TEST_MaybeFakeAbortTableCreation(3, req.name());
     if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(table.get(), tablets, s, resp, &indexed_table);
+      return AbortTableCreation(table.get(), created_tablets, s, resp, &indexed_table);
     }
   }
 
@@ -4988,10 +4990,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   table->mutable_metadata()->CommitMutation();
 
   for (const auto& tablet : tablets) {
-    tablet->mutable_metadata()->CommitMutation();
     // Add the table id to the in-memory vector of table ids on TabletInfo.
     if (joining_colocation_group) {
       tablet->AddTableId(table->id());
+    } else {
+      tablet->mutable_metadata()->CommitMutation();
     }
   }
 
@@ -5463,9 +5466,11 @@ Status CatalogManager::AddTransactionStatusTablet(
   auto old_tablet_lock = VERIFY_RESULT(
       table->AddStatusTabletViaSplitPartition(old_tablet, left_partition, new_tablet));
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablet, old_tablet));
-  write_lock.Commit();
+  // Release tablet locks before table lock otherwise we may deadlock with heartbeats.
+  // Note that in-mem datastructures have already been updated by this point.
   old_tablet_lock.Commit();
   new_tablet->mutable_metadata()->CommitMutation();
+  write_lock.Commit();
   TRACE("Wrote table to system table");
 
   // Increment transaction status version if needed.
