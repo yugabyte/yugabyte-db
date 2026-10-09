@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <regex>
 #include <set>
 #include <thread>
@@ -93,6 +94,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -147,6 +149,7 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
 DECLARE_bool(enable_metacache_partial_refresh);
+DECLARE_bool(follower_reads_avoid_leader_blacklisted_tservers);
 
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 
@@ -2371,6 +2374,88 @@ TEST_F(ClientTest, TestReadFromFollower) {
       ASSERT_EQ(key * 3, row.column(3).int32_value());
     }
   }
+}
+
+// CONSISTENT_PREFIX reads skip tservers on the leader blacklist when
+// --follower_reads_avoid_leader_blacklisted_tservers is set, unless every replica of the tablet is
+// blacklisted. The blacklist is pushed into the client directly here; the heartbeat path that feeds
+// a tserver's embedded client is covered by PgMiniTest.FollowerReadsAvoidLeaderBlacklistedTServers.
+TEST_F(ClientTest, FollowerReadsAvoidLeaderBlacklistedTServers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_reads_avoid_leader_blacklisted_tservers) = true;
+
+  // One tablet, so each tserver hosts exactly one replica of it.
+  const YBTableName kTable(YQL_DATABASE_CQL, kKeyspaceName, "FollowerReadsBlacklist");
+  TableHandle table;
+  ASSERT_NO_FATALS(CreateTable(kTable, /* num_tablets = */ 1, &table));
+  ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
+  // A follower that has not heard from the leader rejects the read as stale and the client retries
+  // at the leader, which would make the per-tserver counts below ambiguous.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 10s * kTimeMultiplier));
+
+  const auto num_tservers = cluster_->num_tablet_servers();
+  std::vector<std::string> ts_uuids;
+  for (size_t i = 0; i < num_tservers; ++i) {
+    ts_uuids.push_back(cluster_->mini_tablet_server(i)->server()->permanent_uuid());
+  }
+
+  // consistent_prefix_read_requests of the table's replica on each tserver.
+  auto count_follower_reads = [&]() -> std::vector<uint64_t> {
+    std::vector<uint64_t> counts(num_tservers);
+    for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table->id())) {
+      auto it = std::find(ts_uuids.begin(), ts_uuids.end(), peer->permanent_uuid());
+      CHECK(it != ts_uuids.end());
+      counts[it - ts_uuids.begin()] = CHECK_RESULT(peer->shared_tablet())->metrics()->Get(
+          tablet::TabletCounters::kConsistentPrefixReadRequests);
+    }
+    return counts;
+  };
+
+  constexpr int kNumReads = 5;
+  auto run_reads = [&](std::vector<uint64_t>* delta) {
+    auto before = count_follower_reads();
+    for (int i = 0; i < kNumReads; ++i) {
+      ASSERT_EQ(
+          CountRowsFromClient(table, YBConsistencyLevel::CONSISTENT_PREFIX, kNoBound, kNoBound),
+          implicit_cast<size_t>(FLAGS_test_scan_num_rows));
+    }
+    auto after = count_follower_reads();
+    for (size_t i = 0; i < num_tservers; ++i) {
+      (*delta)[i] = after[i] - before[i];
+    }
+    LOG(INFO) << "Follower reads per tserver: " << AsString(*delta);
+  };
+  auto total = [](const std::vector<uint64_t>& delta) {
+    return std::accumulate(delta.begin(), delta.end(), uint64_t{0});
+  };
+
+  // Blacklist each tserver in turn: it gets none of the reads, the others get all of them.
+  for (size_t blacklisted = 0; blacklisted < num_tservers; ++blacklisted) {
+    client_->UpdateLeaderBlacklistedTServers({ts_uuids[blacklisted]});
+    std::vector<uint64_t> delta(num_tservers);
+    ASSERT_NO_FATALS(run_reads(&delta));
+    ASSERT_EQ(delta[blacklisted], 0) << "ts" << blacklisted << " is leader blacklisted";
+    ASSERT_GE(total(delta), kNumReads);
+  }
+
+  // With every replica blacklisted the reads still have to be served by someone.
+  client_->UpdateLeaderBlacklistedTServers(ts_uuids);
+  {
+    std::vector<uint64_t> delta(num_tservers);
+    ASSERT_NO_FATALS(run_reads(&delta));
+    ASSERT_GE(total(delta), kNumReads);
+  }
+
+  // With the flag off the blacklist is ignored: all replicas are equally close to this client, so
+  // the reads are spread across them, blacklisted or not.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_reads_avoid_leader_blacklisted_tservers) = false;
+  uint64_t reads_on_blacklisted = 0;
+  for (size_t blacklisted = 0; blacklisted < num_tservers; ++blacklisted) {
+    client_->UpdateLeaderBlacklistedTServers({ts_uuids[blacklisted]});
+    std::vector<uint64_t> delta(num_tservers);
+    ASSERT_NO_FATALS(run_reads(&delta));
+    reads_on_blacklisted += delta[blacklisted];
+  }
+  ASSERT_GT(reads_on_blacklisted, 0);
 }
 
 TEST_F(ClientTest, TestCreateTableWithRangePartition) {
