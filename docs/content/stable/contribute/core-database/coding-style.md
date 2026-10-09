@@ -610,7 +610,7 @@ Result<int> foo();
 
 ### String formatting
 
-Use the `Format` function to produce formatted strings, rather than the older `Substitute` and `StringPrintf` functions.
+Use the `Format` function to produce formatted strings, rather than the older `Substitute` function.
 
 While the two functions have similar syntax, with inline substitution parameters `$0`, `$1`, and so on, `Format` has several advantages:
 
@@ -624,7 +624,6 @@ In new code, use the following utilities rather than the legacy forms that do th
 
 | Use | Instead of |
 | --- | --- |
-| `Format` (see [String formatting](#string-formatting)) | `Substitute`, `StringPrintf` |
 | `CheckedStol`, `CheckedStoll`, `CheckedStoInt` and the other `CheckedSto*` functions in `yb/util/stol_utils.h`, which return a `Result` instead of throwing | `std::sto*`, `safe_strto*` |
 | `std::function` | `boost::function` |
 | `std::optional` | `boost::optional` |
