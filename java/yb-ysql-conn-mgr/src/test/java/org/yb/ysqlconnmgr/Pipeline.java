@@ -24,6 +24,8 @@ import static org.yb.ysqlconnmgr.PgWireProtocol.BE_EMPTY_QUERY_RESPONSE;
 import static org.yb.ysqlconnmgr.PgWireProtocol.BE_ERROR_RESPONSE;
 import static org.yb.ysqlconnmgr.PgWireProtocol.BE_FUNCTION_CALL_RESPONSE;
 import static org.yb.ysqlconnmgr.PgWireProtocol.BE_NOTICE_RESPONSE;
+import static org.yb.ysqlconnmgr.PgWireProtocol.BE_NO_DATA;
+import static org.yb.ysqlconnmgr.PgWireProtocol.BE_PARAMETER_DESCRIPTION;
 import static org.yb.ysqlconnmgr.PgWireProtocol.BE_PARAMETER_STATUS;
 import static org.yb.ysqlconnmgr.PgWireProtocol.BE_READY_FOR_QUERY;
 import static org.yb.ysqlconnmgr.PgWireProtocol.BE_ROW_DESCRIPTION;
@@ -53,8 +55,11 @@ import org.yb.ysqlconnmgr.PgWireProtocol.PgMessage;
  * Step                                   Sends  Expects
  * parse(sql) / parse(name, sql, oids)    P      1
  * bind() / bind(stmt, params...)         B      2
- * execute()                              E      D* C
- * closeStmt(name)                        C      3
+ * bind(portal, stmt, params...)          B      2
+ * execute() / execute(portal)            E      D* C
+ * describeStmt(name)                     D      t (T | n)
+ * describePortal(name)                   D      T | n
+ * closeStmt(name) / closePortal(name)    C      3
  * sync()                                 S      Z
  * query(sql)                             Q      (T? D* C | I)+ Z
  * functionCall(oid)                      F      V Z
@@ -87,7 +92,8 @@ public class Pipeline {
   private static final Logger LOG = LoggerFactory.getLogger(Pipeline.class);
 
   private enum Kind {
-    PARSE, BIND, EXECUTE, CLOSE, SYNC, QUERY, FUNCTION_CALL, COPY_DATA, COPY_DONE, COPY_FAIL, PAUSE
+    PARSE, BIND, DESCRIBE, EXECUTE, CLOSE, SYNC, QUERY, FUNCTION_CALL, COPY_DATA, COPY_DONE,
+    COPY_FAIL, PAUSE
   }
 
   private enum CopyOverride { NONE, COPY_IN, COPY_OUT, IGNORED }
@@ -108,6 +114,10 @@ public class Pipeline {
     boolean expectsError;
     String errSqlState;
     String errSubstring;
+    // null: either origin accepted. TRUE/FALSE: the ConnMgr prefix must be present/absent.
+    Boolean errFromConnMgr;
+
+    char describeKind;
 
     CopyOverride copy = CopyOverride.NONE;
     int copyOutRows;
@@ -164,13 +174,43 @@ public class Pipeline {
         bytes(() -> PgWireProtocol.buildBind(stmtName, params)));
   }
 
+  public Pipeline bindPortal(String portalName, String stmtName, String... params) {
+    return add(Kind.BIND, "B(" + portalName + ":" + stmtName + ")",
+        "bindPortal(" + portalName + ", " + stmtName + ")",
+        bytes(() -> PgWireProtocol.buildBind(portalName, stmtName, params)));
+  }
+
   public Pipeline execute() {
     return add(Kind.EXECUTE, "E", "execute()", bytes(() -> PgWireProtocol.buildExecute()));
+  }
+
+  public Pipeline executePortal(String portalName) {
+    return add(Kind.EXECUTE, "E(" + portalName + ")", "executePortal(" + portalName + ")",
+        bytes(() -> PgWireProtocol.buildExecute(portalName)));
+  }
+
+  public Pipeline describeStmt(String stmtName) {
+    add(Kind.DESCRIBE, "D(S:" + stmtName + ")", "describeStmt(" + stmtName + ")",
+        bytes(() -> PgWireProtocol.buildDescribe('S', stmtName)));
+    last().describeKind = 'S';
+    return this;
+  }
+
+  public Pipeline describePortal(String portalName) {
+    add(Kind.DESCRIBE, "D(P:" + portalName + ")", "describePortal(" + portalName + ")",
+        bytes(() -> PgWireProtocol.buildDescribe('P', portalName)));
+    last().describeKind = 'P';
+    return this;
   }
 
   public Pipeline closeStmt(String stmtName) {
     return add(Kind.CLOSE, "C(S:" + stmtName + ")", "closeStmt(" + stmtName + ")",
         bytes(() -> PgWireProtocol.buildClose('S', stmtName)));
+  }
+
+  public Pipeline closePortal(String portalName) {
+    return add(Kind.CLOSE, "C(P:" + portalName + ")", "closePortal(" + portalName + ")",
+        bytes(() -> PgWireProtocol.buildClose('P', portalName)));
   }
 
   public Pipeline sync() {
@@ -243,6 +283,21 @@ public class Pipeline {
 
   public Pipeline expectError(String substring) {
     return expectError(null, substring);
+  }
+
+  // Expects an error raised by ConnMgr itself rather than by the backend,
+  // recognised by the prefix YbThrowError handling adds to the message.
+  public Pipeline expectConnMgrError(String sqlState, String substring) {
+    expectError(sqlState, substring);
+    last().errFromConnMgr = true;
+    return this;
+  }
+
+  // Expects an error the backend raised on its own, carrying no ConnMgr prefix.
+  public Pipeline expectBackendError(String sqlState, String substring) {
+    expectError(sqlState, substring);
+    last().errFromConnMgr = false;
+    return this;
   }
 
   public Pipeline expectError(String sqlState, String substring) {
@@ -389,6 +444,14 @@ public class Pipeline {
         throw failure(step, "expected an error containing \"" + step.errSubstring
             + "\", got " + error);
       }
+      if (step.errFromConnMgr != null) {
+        boolean fromConnMgr = error.message() != null
+            && error.message().startsWith(ErrorResponse.CONN_MGR_PREFIX);
+        if (fromConnMgr != step.errFromConnMgr) {
+          throw failure(step, "expected the error to be raised by "
+              + (step.errFromConnMgr ? "ConnMgr" : "the backend") + ", got " + error);
+        }
+      }
       if (step.kind == Kind.QUERY || step.kind == Kind.FUNCTION_CALL) {
         expect(step, BE_READY_FOR_QUERY);
       }
@@ -403,6 +466,12 @@ public class Pipeline {
         break;
       case BIND:
         expect(step, PgWireProtocol.BE_BIND_COMPLETE);
+        break;
+      case DESCRIBE:
+        if (step.describeKind == 'S') {
+          expect(step, BE_PARAMETER_DESCRIPTION);
+        }
+        expect(step, BE_ROW_DESCRIPTION, BE_NO_DATA);
         break;
       case CLOSE:
         expect(step, PgWireProtocol.BE_CLOSE_COMPLETE);
@@ -635,6 +704,7 @@ public class Pipeline {
     switch (step.kind) {
       case PARSE: return "1";
       case BIND: return "2";
+      case DESCRIBE: return step.describeKind == 'S' ? "t T|n" : "T|n";
       case CLOSE: return "3";
       case EXECUTE:
         if (step.copy == CopyOverride.COPY_IN) {
@@ -735,6 +805,7 @@ public class Pipeline {
     switch (kind) {
       case PARSE:
       case BIND:
+      case DESCRIBE:
       case EXECUTE:
       case CLOSE:
         return true;
