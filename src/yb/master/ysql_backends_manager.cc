@@ -97,6 +97,14 @@ Status CheckLeadership(
     resp->mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     return l->first_failed_status();
   }
+  // The wait lets tservers leased by an earlier leader show up.  Only a leader that finished
+  // loading the sys catalog, which persists the cluster config, grants YSQL leases, and a tserver
+  // without one has no backends, so the leader that created the universe can skip it.  The catalog
+  // lease does not keep backends from running, so it gets no such shortcut.
+  if (FLAGS_enable_ysql_operation_lease &&
+      catalog_manager->CreatedUniverseInTerm(l->epoch().leader_term)) {
+    return Status::OK();
+  }
   const auto lease_ms = FLAGS_enable_ysql_operation_lease ?
       FLAGS_master_ysql_operation_lease_ttl_ms :
       FLAGS_master_ts_ysql_catalog_lease_ms;

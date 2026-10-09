@@ -212,6 +212,26 @@ TEST_F(PgBackendsTest, FutureVersion) {
   ASSERT_TRUE(msg.find("Requested catalog version is too high") != std::string::npos) << s;
 }
 
+class PgBackendsTestLongLease : public PgBackendsTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        Format("--master_ysql_operation_lease_ttl_ms=$0", kLongYsqlLeaseSec * 1000));
+  }
+
+ protected:
+  static constexpr int kLongYsqlLeaseSec = 120;
+};
+
+// The master leader that created the universe need not wait out the lease period.
+TEST_F_EX(PgBackendsTest, FirstLeaderSkipsLeaseWait, PgBackendsTestLongLease) {
+  ASSERT_OK(BumpCatalogVersion(1));
+  const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
+  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
+      "yugabyte", cat_ver, MonoDelta::FromSeconds(kLongYsqlLeaseSec / 4))));
+}
+
 // If usable cached version is not found but usable cached job is, a new job should not be created.
 TEST_F(PgBackendsTest, CachedJob) {
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
@@ -612,6 +632,20 @@ TEST_F_EX(PgBackendsTest, CacheLost, PgBackendsTestRf3) {
       client_->WaitForYsqlBackendsCatalogVersion("yugabyte", master_catalog_version));
   ASSERT_EQ(1, num_backends);
   CheckJobCount(1, original_master_leader);
+}
+
+// Only the leader term that created the universe skips the lease wait, so the creating master
+// waits once it is elected again.
+TEST_F_EX(PgBackendsTest, LaterLeaderWaitsOutLease, PgBackendsTestRf3) {
+  auto* creator = cluster_->GetLeaderMaster();
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  const auto start = MonoTime::Now();
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader(creator->uuid()));
+
+  ASSERT_OK(BumpCatalogVersion(1));
+  const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
+  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver)));
+  ASSERT_GE(MonoTime::Now() - start, MonoDelta::FromSeconds(kYsqlLeaseSec));
 }
 
 // Waiting should be on all tservers' backends.
