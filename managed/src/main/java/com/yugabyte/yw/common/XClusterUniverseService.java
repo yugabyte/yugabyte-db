@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import com.google.common.net.HostAndPort;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -494,6 +495,45 @@ public class XClusterUniverseService {
       return cdcStreamsResponse.getStreams().stream().collect(Collectors.toSet());
     } catch (Exception e) {
       log.error("XClusterUniverseService.getCDCStreams hit error : {}", e.getMessage());
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Returns the IDs of the tables with an xCluster WAL anchor stream on the given source universe.
+   * In automatic DDL mode, the source creates one for each new table and deletes it once the target
+   * has committed the table's CREATE TABLE.
+   *
+   * @return The table IDs, or empty if the universe doesn't create WAL anchor streams.
+   */
+  public Optional<Set<String>> getXClusterWalAnchorTableIds(
+      YBClientService ybClientService, Universe sourceUniverse) {
+    try (YBClientApi client = ybClientService.getUniverseClient(sourceUniverse)) {
+      HostAndPort masterLeader = client.getLeaderMasterHostAndPort();
+      // getFlag returns an empty string for flags that don't exist on older versions; the infra
+      // flag is an AutoFlag that's only true once it's promoted
+      for (String flag :
+          List.of("enable_xcluster_wal_anchor_stream_infra", "enable_xcluster_wal_anchor_stream")) {
+        if (!"true".equals(client.getFlag(masterLeader, flag))) {
+          return Optional.empty();
+        }
+      }
+
+      ListCDCStreamsResponse cdcStreamsResponse = client.listCDCStreams(null, null, null);
+      if (cdcStreamsResponse.hasError()) {
+        throw new RuntimeException(
+            String.format(
+                "Error listing cdc streams for universe %s. Error: %s",
+                sourceUniverse.getName(), cdcStreamsResponse.errorMessage()));
+      }
+      return Optional.of(
+          cdcStreamsResponse.getStreams().stream()
+              .filter(CDCStreamInfo::isXClusterWalAnchor)
+              .flatMap(stream -> stream.getTableIds().stream())
+              .collect(Collectors.toSet()));
+    } catch (Exception e) {
+      log.error(
+          "XClusterUniverseService.getXClusterWalAnchorTableIds hit error : {}", e.getMessage());
       throw new RuntimeException(e);
     }
   }

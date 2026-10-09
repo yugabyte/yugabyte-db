@@ -64,7 +64,8 @@ export const XClusterReplicationStatusError = {
   ERROR_UNINITIALIZED: 'Uninitialized',
   AUTO_FLAG_CONFIG_MISMATCH: 'Auto flag config mismatch',
   SOURCE_UNREACHABLE: 'Source unreachable',
-  SYSTEM_ERROR: 'System error'
+  SYSTEM_ERROR: 'System error',
+  DDL_QUEUE_PAUSED: 'DDL replication paused'
 } as const;
 export type XClusterReplicationStatusError = typeof XClusterReplicationStatusError[keyof typeof XClusterReplicationStatusError];
 

@@ -1640,6 +1640,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Interval at which the XCluster Sync Scheduler runs",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xClusterDdlInProgressMaxSafeTimeLag =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.automatic_ddl.ddl_in_progress_max_safe_time_lag",
+          ScopeType.GLOBAL,
+          "Max safe time lag for a DDL in progress in automatic DDL mode",
+          "In automatic DDL mode, a DB with tables that only exist on one side because the target"
+              + " hasn't replayed a DDL yet is reported as Updating instead of Error until its safe"
+              + " time lag exceeds this value",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterMetricsSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_metrics_scheduler_interval",
