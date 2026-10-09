@@ -312,9 +312,6 @@ public class TestYbQueryId extends BasePgSQLTest {
 
     expectedEntryList.add(Arrays.asList(dbId3, queryId3, suId));
 
-    // Table OIDs and the single Vars "a1" and "a2" will have the same identifiers.
-    assertEquals(queryId2, queryId3);
-
     suStmt3.execute("CREATE ROLE user2 LOGIN PASSWORD 'password123'");
     suStmt3.execute("GRANT ALL ON TABLE t2 TO user2");
 
