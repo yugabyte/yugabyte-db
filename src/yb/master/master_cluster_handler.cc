@@ -241,10 +241,13 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   // If we are starting up and don't find any load on the tservers, return progress as 0.
   // We expect that by blacklist_progress_initial_delay_secs time, this should go away and if the
   // load is reported as 0 on the blacklisted tservers after this time then it means that
-  // the transfer is successfully complete.
+  // the transfer is successfully complete. The replica maps are rebuilt from tablet reports after
+  // an election, so also hold at 0 until every live tserver has reported, in case the load took
+  // long enough to eat the grace period or the reports take longer than it.
   if (blacklist_replicas == 0 &&
-      catalog_manager_->TimeSinceElectedLeader() <=
-          MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs)) {
+      (catalog_manager_->TimeSinceElectedLeader() <=
+           MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs) ||
+       !catalog_manager_->ReplicaMapsTrusted())) {
     LOG(INFO) << "Master leadership has changed. Reporting progress as 0 until the catalog "
               << "manager gets the correct estimates of the remaining load on the blacklisted"
               << "tservers.";
