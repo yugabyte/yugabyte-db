@@ -103,6 +103,7 @@
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
@@ -2765,6 +2766,18 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
 
 void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
   client()->MarkTServersAsFollowers(ts_uuids);
+}
+
+void TabletServer::UpdateLeaderBlacklistedTServers(const std::vector<std::string>& ts_uuids) {
+  // Do not block the heartbeat thread on a client that is still initializing: the master resends
+  // the full set on every heartbeat, so a skipped update is applied on the next one.
+  const auto& future = client_future();
+  if (!IsReady(future)) {
+    return;
+  }
+  if (auto* shared_client = future.get()) {
+    shared_client->UpdateLeaderBlacklistedTServers(ts_uuids);
+  }
 }
 
 Status TabletServer::ClearYCQLMetaDataCache() {
