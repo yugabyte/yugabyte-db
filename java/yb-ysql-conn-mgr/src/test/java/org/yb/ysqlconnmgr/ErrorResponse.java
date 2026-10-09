@@ -16,6 +16,9 @@ package org.yb.ysqlconnmgr;
 import java.util.Map;
 
 public class ErrorResponse {
+  // Prefix that YbThrowError handling in postgres.c puts on a ConnMgr-raised message.
+  public static final String CONN_MGR_PREFIX = "ConnMgr originated error: ";
+
   private final Map<Character, String> fields;
 
   private ErrorResponse(Map<Character, String> fields) {
