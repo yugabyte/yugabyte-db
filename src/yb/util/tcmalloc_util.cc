@@ -306,7 +306,7 @@ namespace {
 
 // Linux 6.19.0 through 7.0.13 do not rewrite rseq cpu_id_start on every return to user space, which
 // TCMalloc per-CPU caches rely on, so they can crash or corrupt memory there.
-bool IsKernelUnsafeForTCMallocPerCpuCaches(const std::string& kernel_version) {
+bool KernelBreaksTCMallocRseq(const std::string& kernel_version) {
   int major = 0, minor = 0, patch = 0;
   if (sscanf(kernel_version.c_str(), "%d.%d.%d", &major, &minor, &patch) < 2) {
     return false;
@@ -339,7 +339,7 @@ void CheckTCMallocPerCpuCaches() {
       return;
     }
     const auto kernel_version = UpstreamKernelVersion(uts.release);
-    if (IsKernelUnsafeForTCMallocPerCpuCaches(kernel_version)) {
+    if (KernelBreaksTCMallocRseq(kernel_version)) {
       LOG(WARNING) << "TCMalloc per-CPU caches are active on Linux " << uts.release
                    << " (upstream version " << kernel_version << "). They can crash or corrupt "
                    << "memory on Linux 6.19.0 through 7.0.13. Upgrade the kernel to 7.0.14 or "
