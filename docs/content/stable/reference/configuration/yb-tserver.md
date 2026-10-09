@@ -1882,6 +1882,17 @@ Default: `true`
 
 Failed followers will be evicted from the Raft group and the data will be re-replicated.
 
+##### --follower_reads_avoid_leader_blacklisted_tservers
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+When set, [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) are not routed to YB-TServers on the leader blacklist (see [change_leader_blacklist](../../../admin/yb-admin/#change-leader-blacklist)), as long as the tablet has a replica elsewhere. Use this when you leader blacklist a node before taking it down for maintenance, so that follower reads stop going to the node as soon as it is blacklisted rather than only after it is down. Retries are not affected and go to the leader.
+
+Set this flag on all YB-TServers; each YB-TServer routes the follower reads of the clients connected to it.
+
 ##### --leader_failure_max_missed_heartbeat_periods
 
 {{% tags/wrap %}}
