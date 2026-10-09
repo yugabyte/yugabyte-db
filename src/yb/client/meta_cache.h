@@ -32,11 +32,13 @@
 // This module is internal to the client and not a public API.
 #pragma once
 
+#include <atomic>
 #include <shared_mutex>
 #include <map>
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/variant.hpp>
@@ -165,6 +167,16 @@ class RemoteTabletServer {
 
   std::string TEST_PlacementZone() const;
 
+  // Set while the master names this tserver as blacklisted and hosting no tablets (see
+  // MetaCache::UpdateDrainedTServers). Checked when a replica on it is constructed.
+  bool drained() const {
+    return drained_.load(std::memory_order_acquire);
+  }
+
+  void set_drained(bool drained) {
+    drained_.store(drained, std::memory_order_release);
+  }
+
  private:
   mutable rw_spinlock mutex_;
   const std::string uuid_;
@@ -176,6 +188,7 @@ class RemoteTabletServer {
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<EventStats> dns_resolve_stats_;
+  std::atomic<bool> drained_{false};
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };
@@ -188,13 +201,21 @@ struct RemoteReplica {
   MonoTime last_failed_time = MonoTime::kUninitialized;
   // A permanent failure is never retried after retry_failed_replica_ms. It is set when the master
   // reports that the tserver hosts no tablets, so the only thing that can make this replica valid
-  // again is a master or Raft refresh replacing the tablet's replica list.
+  // again is a master or Raft refresh replacing the tablet's replica list with one built from
+  // metadata that no longer lists the tserver as drained.
   bool permanent_failure = false;
   // The state of this replica. Only updated after calling GetTabletStatus.
   tablet::RaftGroupStatePB state = tablet::RaftGroupStatePB::UNKNOWN;
 
+  // A replica on a drained tserver is born failed: a tablet-location response or Raft config that
+  // was built before the drain completed can arrive after the sweep that marked the tserver's
+  // replicas, and must not resurrect it as a routable replica.
   RemoteReplica(RemoteTabletServer* ts_, PeerRole role_)
-      : ts(ts_), role(role_) {}
+      : ts(ts_), role(role_) {
+    if (ts_->drained()) {
+      MarkFailed(PermanentFailure::kTrue);
+    }
+  }
 
   void MarkFailed(PermanentFailure permanent = PermanentFailure::kFalse) {
     last_failed_time = MonoTime::Now();
@@ -661,11 +682,16 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // leader-blacklisted tservers.
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
-  // For each tserver UUID in the given list, mark any replicas hosted by that tserver as
-  // permanently failed across all cached tablets. Used when the master reports that a blacklisted
-  // tserver hosts no tablets, so cached replicas pointing at it are stale by definition. UUIDs
-  // not present in the cache, and the local tserver, are ignored.
-  void MarkTServersAsFailed(const std::vector<std::string>& ts_uuids);
+  // Apply the master's heartbeat hint. 'drained' names the blacklisted tservers that host no
+  // tablets, so cached replicas pointing at them are stale by definition; 'live' names the
+  // tservers the master currently counts as alive. A tserver that enters the drained set has its
+  // replicas marked permanently failed across all cached tablets, and replicas constructed for it
+  // afterwards start out failed. It leaves the set only once the hint drops it AND the master
+  // reports it live: a tserver that has been stopped or removed stays drained, so the empty hint
+  // the master sends while rebuilding its state after a failover cannot let a late metadata
+  // refresh route to a dead address. The local tserver is never drained.
+  void UpdateDrainedTServers(
+      const std::vector<std::string>& drained, const std::vector<std::string>& live);
 
   // Acquire or release a permit to perform a (slow) master lookup.
   //
@@ -828,6 +854,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // evict entries from this map until the MetaCache is destructed. So, no need to use
   // shared_ptr, etc.
   TabletServerMap ts_cache_ GUARDED_BY(mutex_);
+
+  // Tservers the master's hint currently names as drained, including ones not (yet) in ts_cache_;
+  // see UpdateDrainedTServers. Mirrored into RemoteTabletServer::drained() for the ones cached.
+  std::unordered_set<std::string> drained_tserver_uuids_ GUARDED_BY(mutex_);
 
   // Local tablet server.
   RemoteTabletServer* local_tserver_ = nullptr;

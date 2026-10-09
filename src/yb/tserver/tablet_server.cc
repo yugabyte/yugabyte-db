@@ -2764,21 +2764,18 @@ void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uu
   client()->MarkTServersAsFollowers(ts_uuids);
 }
 
-bool TabletServer::MarkTServersAsFailed(const std::vector<std::string>& ts_uuids) {
+void TabletServer::UpdateDrainedTServers(
+    const std::vector<std::string>& drained, const std::vector<std::string>& live) {
   // Only the shared client routes to this universe's tservers; xCluster consumer clients point at
   // the source universe, so a hint from the local master does not apply to them. Do not block the
-  // heartbeat thread on a client that is still initializing; the caller retries on the next
-  // heartbeat.
+  // heartbeat thread on a client that is still initializing.
   const auto& future = client_future();
   if (!IsReady(future)) {
-    return false;
+    return;
   }
-  auto* shared_client = future.get();
-  if (!shared_client) {
-    return false;
+  if (auto* shared_client = future.get()) {
+    shared_client->UpdateDrainedTServers(drained, live);
   }
-  shared_client->MarkTServersAsFailed(ts_uuids);
-  return true;
 }
 
 Status TabletServer::ClearYCQLMetaDataCache() {

@@ -275,15 +275,16 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   LOG(INFO) << "Blacklisted count " << blacklist_replicas << " across " << state.hosts_size()
             << " servers, with initial load " << initial_load;
 
-  // Case when a blacklisted servers did not have any starting load.
+  // Case when a blacklisted servers did not have any starting load. Zero load is still a drain
+  // the hint has to announce, e.g. a tserver that died and lost its replicas before it was
+  // blacklisted, so fall through to the waits below rather than returning here.
   if (initial_load == 0) {
     resp->set_percent(100);
-    return Status::OK();
+  } else {
+    resp->set_percent(100 - (static_cast<double>(blacklist_replicas) * 100 / initial_load));
+    resp->set_remaining(blacklist_replicas);
+    resp->set_total(initial_load);
   }
-
-  resp->set_percent(100 - (static_cast<double>(blacklist_replicas) * 100 / initial_load));
-  resp->set_remaining(blacklist_replicas);
-  resp->set_total(initial_load);
 
   // The waits for the server blacklist only make sense while the master is sending the hint they
   // confirm the delivery of.

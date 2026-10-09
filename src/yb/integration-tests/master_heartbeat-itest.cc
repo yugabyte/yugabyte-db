@@ -646,6 +646,53 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHintWaitsForTabletR
   ASSERT_TRUE(new_catalog_mgr.GetDrainedBlacklistedTServers().empty());
 }
 
+// A tserver blacklisted after it already hosts nothing, e.g. one that died and was evicted from
+// its tablets before the operator got to it, has no initial load, so the move is complete at once.
+// Completion is the operator's cue to remove the tserver, which also takes it out of the hint, so
+// the hint must have been derived and delivered before completion is reported.
+TEST_F(MasterHeartbeatITest, LoadMoveCompletionWithNoInitialLoadWaitsForHint) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 0;
+  // The scan that names the tserver runs on the next background tick, so a completion request
+  // sent right after blacklisting precedes it.
+  CreateTable();
+  ASSERT_OK(mini_cluster_->AddTabletServer());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  auto& catalog_mgr = mini_master->catalog_manager_impl();
+  auto table = table_name();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+  master::TSDescriptorPtr drained_ts;
+  for (const auto& ts : mini_master->catalog_manager().GetAllLiveNotBlacklistedTServers()) {
+    if (!tablet->GetReplicaLocations()->contains(ts->permanent_uuid())) {
+      drained_ts = ts;
+    }
+  }
+  ASSERT_NE(drained_ts, nullptr);
+  ASSERT_OK(WaitFor(
+      [&catalog_mgr] { return catalog_mgr.ReplicaMapsTrusted(); }, 30s * kTimeMultiplier,
+      "Replica maps trusted"));
+
+  master::MasterClusterClient cluster_client(master::MasterClusterProxy(
+      proxy_cache_.get(), mini_master->bound_rpc_addr()));
+  ASSERT_OK(cluster_client.BlacklistHost(
+      HostPortPB(drained_ts->GetRegistration().private_rpc_addresses(0))));
+  master::MasterClusterProxy proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
+  master::GetLoadMovePercentRequestPB req;
+  master::GetLoadMovePercentResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s * kTimeMultiplier);
+  ASSERT_OK(proxy.GetLoadMoveCompletion(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_EQ(resp.percent(), 100);
+  ASSERT_EQ(
+      catalog_mgr.GetDrainedBlacklistedTServers(),
+      std::vector<std::string>{drained_ts->permanent_uuid()});
+}
+
 // Verifies the timed-lock heartbeat path (ProcessTabletReportBatch, #10304). When the master cannot
 // acquire a tablet's write lock within the heartbeat's deadline, it returns TryAgain without
 // applying the report. The test verifies that the tserver retries this heartbeat and it is
