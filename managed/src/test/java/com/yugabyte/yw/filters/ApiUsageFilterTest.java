@@ -40,6 +40,12 @@ public class ApiUsageFilterTest {
 
     @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0.0")
     public void newApi() {}
+
+    @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
+    public void overloaded(String name) {}
+
+    @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0.0")
+    public void overloaded(boolean flag) {}
   }
 
   @Before
@@ -55,12 +61,17 @@ public class ApiUsageFilterTest {
   }
 
   private static HandlerDef handlerDef(String method, String path, List<String> modifiers) {
+    return handlerDef(method, List.of(), path, modifiers);
+  }
+
+  private static HandlerDef handlerDef(
+      String method, List<Class<?>> parameterTypes, String path, List<String> modifiers) {
     return new HandlerDef(
         ApiUsageFilterTest.class.getClassLoader(),
         "router",
         FakeController.class.getName(),
         method,
-        CollectionConverters.asScala(List.<Class<?>>of()).toSeq(),
+        CollectionConverters.asScala(parameterTypes).toSeq(),
         "POST",
         path,
         "",
@@ -145,6 +156,34 @@ public class ApiUsageFilterTest {
                     handlerDef("newApi", "/api/v1/customers/$cUUID<[^/]+>/new", List.of())),
             200);
     assertEquals(1, snapshot.deprecatedApis().size());
+  }
+
+  @Test
+  public void testDeprecatedOverload() {
+    // Only the overload the route resolves to counts; the route's boxed Boolean matches boolean.
+    Snapshot snapshot =
+        apply(
+            new Http.RequestBuilder()
+                .uri("/api/v1/flag")
+                .attr(
+                    Router.Attrs.HANDLER_DEF,
+                    handlerDef("overloaded", List.of(Boolean.class), "/api/v1/flag", List.of())),
+            200);
+    assertTrue(snapshot.deprecatedApis().isEmpty());
+
+    snapshot =
+        apply(
+            new Http.RequestBuilder()
+                .uri("/api/v1/name")
+                .attr(
+                    Router.Attrs.HANDLER_DEF,
+                    handlerDef("overloaded", List.of(String.class), "/api/v1/name", List.of())),
+            200);
+    assertEquals(
+        new Counts(1, 0, 0),
+        snapshot
+            .deprecatedApis()
+            .get(new DeprecatedApiKey("v1", "POST", "/api/v1/name", "unknown")));
   }
 
   @Test

@@ -10,13 +10,16 @@ import static com.yugabyte.yw.controllers.TokenAuthenticator.COOKIE_AUTH_TOKEN;
 import static com.yugabyte.yw.controllers.TokenAuthenticator.COOKIE_PLAY_SESSION;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.primitives.Primitives;
 import com.yugabyte.yw.common.ApiUsageCollector;
 import com.yugabyte.yw.common.ApiUsageCollector.ClientKey;
 import com.yugabyte.yw.common.ApiUsageCollector.DeprecatedApiKey;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YWErrorHandler;
 import com.yugabyte.yw.models.common.YbaApi;
+import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -147,18 +150,36 @@ public class ApiUsageFilter extends Filter {
       return true;
     }
     return v1DeprecatedCache.computeIfAbsent(
-        hd.controller() + "." + hd.method(), k -> hasDeprecatedYbaApi(hd));
+        hd.controller() + "." + hd.method() + hd.getParameterTypes(), k -> hasDeprecatedYbaApi(hd));
   }
 
   private static boolean hasDeprecatedYbaApi(HandlerDef hd) {
     try {
       Class<?> controller = Class.forName(hd.controller(), false, hd.classLoader());
+      List<Class<?>> routeTypes = hd.getParameterTypes();
       return Arrays.stream(controller.getMethods())
-          .filter(m -> m.getName().equals(hd.method()))
+          .filter(m -> m.getName().equals(hd.method()) && parametersMatch(m, routeTypes))
+          .findFirst()
           .map(m -> m.getAnnotation(YbaApi.class))
-          .anyMatch(a -> a != null && a.visibility() == YbaApi.YbaApiVisibility.DEPRECATED);
+          .map(a -> a.visibility() == YbaApi.YbaApiVisibility.DEPRECATED)
+          .orElse(false);
     } catch (ClassNotFoundException | LinkageError e) {
       return false;
     }
+  }
+
+  // Routes may declare a boxed type (java.lang.Boolean ?= false) for a primitive method parameter,
+  // so compare types after boxing.
+  private static boolean parametersMatch(Method method, List<Class<?>> routeTypes) {
+    Class<?>[] methodTypes = method.getParameterTypes();
+    if (methodTypes.length != routeTypes.size()) {
+      return false;
+    }
+    for (int i = 0; i < methodTypes.length; i++) {
+      if (Primitives.wrap(methodTypes[i]) != Primitives.wrap(routeTypes.get(i))) {
+        return false;
+      }
+    }
+    return true;
   }
 }
