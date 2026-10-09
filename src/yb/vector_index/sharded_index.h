@@ -90,6 +90,15 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Vector();  // Return an empty vector if not found.
   }
 
+  Result<std::vector<VectorId>> VectorIds() const override {
+    std::vector<VectorId> result;
+    for (const auto& index : indexes_) {
+      auto ids = VERIFY_RESULT(index->VectorIds());
+      result.insert(result.end(), ids.begin(), ids.end());
+    }
+    return result;
+  }
+
   // TODO(vector_index): define begin and end methods to iterate over all shareded indexes.
   std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<Vector>>> BeginImpl() const override {
     CHECK(!indexes_.empty());

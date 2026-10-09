@@ -13,6 +13,7 @@
 
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include <algorithm>
 #include <memory>
 #include <semaphore>
 
@@ -270,6 +271,16 @@ class UsearchIndex :
     return result;
   }
 
+  Result<std::vector<VectorId>> VectorIds() const override {
+    // export_keys reads the key lookup under its own lock. Size the buffer by capacity rather than
+    // size(), so keys inserted concurrently cannot push existing ones past the limit, and trim the
+    // unused tail: vector ids are never nil.
+    std::vector<VectorId> result(index_.limits().members, VectorId::Nil());
+    index_.export_keys(result.data(), /* offset= */ 0, result.size());
+    result.erase(std::find(result.begin(), result.end(), VectorId::Nil()), result.end());
+    return result;
+  }
+
   static std::string StatsToStringHelper(const IndexImpl::stats_t& stats) {
     return Format(
         "$0 nodes, $1 edges, $2 average edges per node",
@@ -366,10 +377,6 @@ class UsearchIndexTraits :
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
     return IndexImpl::estimate_num_vectors_for_bytes(
         bytes_limit, metric_, CreateIndexDenseConfig(options_));
-  }
-
-  bool StoresPayloadInSeparateFile() const override {
-    return true;
   }
 
  private:

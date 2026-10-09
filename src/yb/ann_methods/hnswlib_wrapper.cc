@@ -326,6 +326,20 @@ class HnswlibIndex :
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
   }
 
+  Result<std::vector<VectorId>> VectorIds() const override {
+    std::vector<VectorId> result;
+    if (!hnsw_) {
+      return result;
+    }
+    // addPoint registers the label under label_lookup_lock before it writes the element.
+    std::lock_guard lock(hnsw_->label_lookup_lock);
+    result.reserve(hnsw_->label_lookup_.size());
+    for (const auto& [vector_id, _] : hnsw_->label_lookup_) {
+      result.push_back(vector_id);
+    }
+    return result;
+  }
+
   static std::string StatsToStringHelper(const Stats& stats) {
     return Format(
         "$0 nodes, $1 edges, $2 average edges per node",
@@ -461,10 +475,6 @@ class HnswlibIndexTraits :
     return HNSWImpl::estimateNumVectorsForBytes(
         bytes_limit, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
         options_.dimensions * sizeof(Scalar));
-  }
-
-  bool StoresPayloadInSeparateFile() const override {
-    return true;
   }
 
  private:

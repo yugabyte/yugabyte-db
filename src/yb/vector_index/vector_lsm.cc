@@ -1644,9 +1644,8 @@ Result<std::unordered_set<vector_index::VectorId>>
   auto indexes = VERIFY_RESULT(AllIndexes());
   std::unordered_set<vector_index::VectorId> result;
   for (const auto& index : indexes) {
-    for (const auto& entry : *index) {
-      result.insert(entry.vector_id);
-    }
+    auto ids = VERIFY_RESULT(index->VectorIds());
+    result.insert(ids.begin(), ids.end());
   }
   return result;
 }

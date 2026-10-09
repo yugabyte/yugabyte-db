@@ -32,6 +32,7 @@
 #include "yb/dockv/value_type.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -55,6 +56,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -2215,6 +2217,51 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
       ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
           "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
       1);
+}
+
+// Snapshot import keeps the snapshot's vector index options, so a snapshot of an index without a
+// block-based backend (here: no backend set, as in indexes that predate the backend field) must be
+// rejected before the import creates anything.
+TEST_P(PgVectorIndexColocationOnlyTest, ImportRejectsDeprecatedBackend) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto schedule_snapshot = ASSERT_RESULT(snapshot_util.WaitScheduleSnapshot(schedule_id));
+  auto snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(schedule_snapshot.id()));
+  auto snapshots = ASSERT_RESULT(snapshot_util.ListSnapshots(
+      snapshot_id, client::ListDeleted::kFalse, client::PrepareForBackup::kTrue));
+  ASSERT_EQ(snapshots.size(), 1);
+  auto snapshot = snapshots[0];
+
+  size_t num_vector_indexes = 0;
+  for (auto& backup_entry : *snapshot.mutable_backup_entries()) {
+    auto& entry = *backup_entry.mutable_entry();
+    if (entry.type() != master::SysRowEntryType::TABLE) {
+      continue;
+    }
+    auto meta = ASSERT_RESULT(pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data()));
+    if (!meta.has_index_info() || !meta.index_info().has_vector_idx_options()) {
+      continue;
+    }
+    auto& options = *meta.mutable_index_info()->mutable_vector_idx_options();
+    ASSERT_EQ(options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
+    options.mutable_hnsw()->clear_backend();
+    entry.set_data(meta.SerializeAsString());
+    ++num_vector_indexes;
+  }
+  ASSERT_EQ(num_vector_indexes, 1);
+
+  auto import_result = snapshot_util.StartImportSnapshot(snapshot);
+  ASSERT_NOK(import_result);
+  ASSERT_TRUE(import_result.status().IsNotSupported()) << import_result.status();
+  ASSERT_STR_CONTAINS(import_result.status().ToString(), "no longer supported");
 }
 
 class PgDistributedVectorIndexTest

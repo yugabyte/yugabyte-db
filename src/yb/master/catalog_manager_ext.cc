@@ -169,6 +169,33 @@ namespace {
 Status PrepareVectorIndexesIfNecessary(
     CatalogManager& catalog_manager, const TableInfoPtr& table, bool is_clone,
     const LeaderEpoch& epoch);
+
+// Tablets cannot open a vector index with a deprecated (non-block-based) backend, see HnswBackend.
+// Import keeps the snapshot's vector index options, so reject such a snapshot before anything is
+// created instead of restoring tablets that fail to open.
+Status ValidateSnapshotVectorIndexBackends(const SnapshotInfoPB& snapshot_pb) {
+  for (const auto& backup_entry : snapshot_pb.backup_entries()) {
+    const auto& entry = backup_entry.entry();
+    if (entry.type() != SysRowEntryType::TABLE) {
+      continue;
+    }
+    auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+    if (!meta.has_index_info() || !meta.index_info().has_vector_idx_options() ||
+        meta.index_info().vector_idx_options().idx_type() != PgVectorIndexType::HNSW) {
+      continue;
+    }
+    const auto backend = meta.index_info().vector_idx_options().hnsw().backend();
+    if (backend == HnswBackend::YB_HNSW_USEARCH || backend == HnswBackend::YB_HNSW_HNSWLIB) {
+      continue;
+    }
+    return STATUS(
+        NotSupported,
+        Format("Vector index $0 in the snapshot uses backend $1, which is no longer supported",
+               meta.name(), HnswBackend_Name(backend)),
+        MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Result<TableDescription> TableWithTabletsEntries::DescribeTable(
@@ -961,6 +988,8 @@ Status CatalogManager::DoImportSnapshotMeta(
         InternalError, "Expected snapshot data prepared for backup", snapshot_pb.ShortDebugString(),
         MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
+
+  RETURN_NOT_OK(ValidateSnapshotVectorIndexBackends(snapshot_pb));
 
   bool is_clone = clone_target_namespace_name.has_value();
   bool use_relfilenode =

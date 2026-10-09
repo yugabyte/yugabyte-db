@@ -96,6 +96,10 @@ class VectorIndexReaderIf {
   // Returns the vector with the given id or NotFound error when vector is not found.
   virtual Result<Vector> GetVector(VectorId vector_id) const = 0;
 
+  // Returns the ids of all vectors in the index without reading the vectors themselves. Safe to
+  // call concurrently with inserts.
+  virtual Result<std::vector<VectorId>> VectorIds() const = 0;
+
   virtual std::unique_ptr<AbstractIterator<IteratorValue>> BeginImpl() const = 0;
   virtual std::unique_ptr<AbstractIterator<IteratorValue>> EndImpl()   const = 0;
   virtual std::string IndexStatsStr() const { return "N/A"; }
