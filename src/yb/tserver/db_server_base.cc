@@ -13,6 +13,9 @@
 
 #include <sys/utsname.h>
 
+#include <fstream>
+#include <string>
+
 #include "yb/tserver/db_server_base.h"
 
 #include "yb/client/client.h"
@@ -78,6 +81,16 @@ static std::string GetUnameInfo() {
   }
   return Format("uname unavailable (errno=$0: $1)", errno, ErrnoToString(errno));
 }
+
+// Ubuntu kernels report the upstream version they are based on only in /proc/version_signature.
+static std::string GetVersionSignatureInfo() {
+  std::ifstream file("/proc/version_signature");
+  std::string signature;
+  if (!std::getline(file, signature)) {
+    return "";
+  }
+  return Format(", version_signature: '$0'", signature);
+}
 }  // namespace
 
 Status DbServerBase::Start() {
@@ -89,10 +102,10 @@ Status DbServerBase::Start() {
 
   std::string node_info = Format(
       "Node information: { hostname: '$0', rpc_ip: '$1', webserver_ip: '$2', uuid: '$3', uname: "
-      "'$4' }",
+      "'$4'$5 }",
       host_name, yb::ToString(first_rpc_address().address()),
       yb::ToString(VERIFY_RESULT(first_http_address()).address()), fs_manager_->uuid(),
-      GetUnameInfo());
+      GetUnameInfo(), GetVersionSignatureInfo());
   LOG(INFO) << node_info;
 
   SetGLogHeader("\n" + node_info);

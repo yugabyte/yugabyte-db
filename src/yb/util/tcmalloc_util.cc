@@ -315,7 +315,7 @@ bool KernelBreaksTCMallocRseq(const std::string& kernel_version) {
   return version >= std::make_tuple(6, 19, 0) && version < std::make_tuple(7, 0, 14);
 }
 
-// Ubuntu kernels keep the patch level at 0 in the release (7.0.0-38-generic) and report the
+// Ubuntu kernels keep the patch level at 0 in the release (7.0.0-NN-generic) and report the
 // upstream version they are based on as the last field of /proc/version_signature, for example
 // "Ubuntu 6.8.0-1069.77~22.04.1-gcp 6.8.12".
 std::string UpstreamKernelVersion(const char* kernel_release) {
