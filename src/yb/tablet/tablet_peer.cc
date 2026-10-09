@@ -2173,13 +2173,19 @@ Status TabletPeer::VerifyAsyncWriteReceived(
     if (log_op_id.ok() && *log_op_id == op_id) {
       return Status::OK();
     }
-    // A failed lookup (e.g. the entry was GCed) means the write can't be confirmed either.
-    return STATUS_EC_FORMAT(
-        NotFound, TransactionError(TransactionErrorCode::kAborted),
-        "Tablet $0: async write $1 is not in the log of the term $2 leader (found $3). Retry the "
-        "transaction.",
-        tablet_id(), op_id, leader_state.term,
-        log_op_id.ok() ? AsString(*log_op_id) : log_op_id.status().ToString())
+    auto status = log_op_id.ok()
+        ? STATUS_FORMAT(
+              NotFound,
+              "Tablet $0: async write $1 was overwritten by term $2 (found $3). Retry the "
+              "transaction.",
+              tablet_id(), op_id, log_op_id->term, *log_op_id)
+        // E.g. the entry was GCed, so the write may have committed but can't be confirmed.
+        : STATUS_FORMAT(
+              NotFound,
+              "Tablet $0: async write $1 could not be verified from the log: $2. Retry the "
+              "transaction.",
+              tablet_id(), op_id, log_op_id.status().message().ToBuffer());
+    return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted))
         .CloneAndAddErrorCode(
             tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
   }

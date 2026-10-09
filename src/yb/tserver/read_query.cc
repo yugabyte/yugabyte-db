@@ -78,6 +78,7 @@ DEFINE_test_flag(bool, disable_index_birth_time_check, false,
     "If set, don't reject reads at ysql index when read time < index birth time.");
 
 DECLARE_bool(backfill_index_check_snapshot_too_old);
+DECLARE_uint32(max_pending_async_write_checks_per_tablet);
 
 namespace yb {
 namespace tserver {
@@ -409,6 +410,14 @@ Status ReadQuery::DoPerform() {
 
     // The client had in-flight async write(s) on this tablet - verify this leader has them.
     if (!req_->pending_async_write_op_ids().empty()) {
+      const auto max_checks = FLAGS_max_pending_async_write_checks_per_tablet;
+      if (req_->pending_async_write_op_ids().size() > max_checks) {
+        return STATUS_EC_FORMAT(
+            InvalidArgument, TransactionError(TransactionErrorCode::kAborted),
+            "Tablet $0: read carries $1 pending async write checks, more than the maximum of $2",
+            leader_peer_.peer->tablet_id(), req_->pending_async_write_op_ids().size(), max_checks)
+            .CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::ASYNC_WRITE_LOST));
+      }
       for (const auto& op_id : req_->pending_async_write_op_ids()) {
         RETURN_NOT_OK(leader_peer_.peer->VerifyAsyncWriteReceived(OpId::FromPB(op_id)));
       }

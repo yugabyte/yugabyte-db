@@ -120,6 +120,10 @@ DEFINE_RUNTIME_bool(disable_heartbeat_send_involved_tablets, false,
                     "transactions. This behavior is needed to support fetching old transactions "
                     "and their involved tablets in order to support yb_lock_status/pg_locks.");
 
+DEFINE_RUNTIME_uint32(max_pending_async_write_checks_per_tablet, 1000,
+    "Maximum number of pending async write checks a read can carry for one tablet, one per leader "
+    "term with pending writes. A transaction that exceeds it is aborted.");
+
 namespace yb {
 namespace client {
 
@@ -1391,7 +1395,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  OpIds GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const
+  Result<OpIds> GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const
       EXCLUDES(async_write_query_mutex_) {
     OpIds result;
     std::lock_guard l(async_write_query_mutex_);
@@ -1401,7 +1405,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     // Get the last op per term, since a later leader may have overwritten an earlier term's writes.
     const auto& op_ids = write_query->op_ids;
+    const auto max_checks = FLAGS_max_pending_async_write_checks_per_tablet;
     for (auto it = op_ids.begin(); it != op_ids.end();) {
+      if (result.size() == max_checks) {
+        write_pipelining_abort_ = true;
+        return STATUS_EC_FORMAT(
+            IllegalState, TransactionError(TransactionErrorCode::kAborted),
+            "Tablet $0: async writes are pending in more than $1 leader terms", tablet_id,
+            max_checks);
+      }
       auto next_term_begin = op_ids.lower_bound(OpId(it->term + 1, 0));
       result.push_back(*std::prev(next_term_begin));
       it = next_term_begin;
@@ -3073,7 +3085,7 @@ void YBTransaction::RecordAsyncWriteCompletion(
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
 }
 
-OpIds YBTransaction::GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const {
+Result<OpIds> YBTransaction::GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const {
   return impl_->GetAsyncWriteOpIdsForReadCheck(tablet_id);
 }
 

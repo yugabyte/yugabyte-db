@@ -239,7 +239,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void RecordAsyncWriteCompletion(
       const TabletId& tablet_id, const OpId& op_id, const Status& status);
   // Last pending async write of each term, for the server to verify before serving a read.
-  OpIds GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const;
+  Result<OpIds> GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const;
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
   void SetOriginId(uint32_t origin_id);
 
