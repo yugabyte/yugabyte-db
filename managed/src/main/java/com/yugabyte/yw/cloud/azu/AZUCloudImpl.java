@@ -10,7 +10,9 @@ import com.azure.core.credential.TokenCredential;
 import com.azure.core.management.SubResource;
 import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.resourcemanager.compute.fluent.models.DiskInner;
 import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
+import com.azure.resourcemanager.compute.models.DataDisk;
 import com.azure.resourcemanager.compute.models.NetworkInterfaceReference;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.FrontendIpConfigurationInner;
@@ -31,6 +33,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import java.util.ArrayList;
@@ -41,6 +44,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -324,7 +328,8 @@ public class AZUCloudImpl implements CloudAPI {
    * Method to update existing backend pools, as well as create the missing backend pools. This
    * methods leads to the creation of the pools on Azure cloud as well The vms that are a part of
    * the backend pool, all need to be a part of the same virtual network in which the existing
-   * backend pool is already a part of
+   * backend pool is already a part of. An empty node list empties the primary backend pool
+   * (detach).
    *
    * @param apiClient Azure API client to communicate with the Azure cloud
    * @param lbName Name of the load balancer to which the backend pools belong
@@ -332,7 +337,8 @@ public class AZUCloudImpl implements CloudAPI {
    * @param nodes List of nodes that need to be present in the backend pools
    * @return Updated list of backend pools
    */
-  private List<BackendAddressPoolInner> ensureBackends(
+  @VisibleForTesting
+  protected List<BackendAddressPoolInner> ensureBackends(
       AZUResourceGroupApiClient apiClient,
       String lbName,
       List<BackendAddressPoolInner> backends,
@@ -347,19 +353,29 @@ public class AZUCloudImpl implements CloudAPI {
                 Collectors.toMap(
                     entry -> entry.getKey().privateIpAddress(),
                     entry -> CloudAPI.getResourceNameFromResourceUrl(entry.getValue().id())));
-    Set<String> subnetIds =
-        ipToVm.keySet().stream()
-            .map(ipConfig -> ipConfig.subnet().id())
-            .collect(Collectors.toSet());
     try {
+      // Assumption: The backend pool at 0th index is primary backend pool, and we only change this
+      // pool
+      if (ipToVmName.isEmpty()) {
+        // Detach: no member subnets to derive vnet from (onlyElement() below throws on empty
+        // set); vnet unused when writing an empty address list.
+        if (backends == null || backends.isEmpty()) {
+          return backends == null ? new ArrayList<>() : backends;
+        }
+        backends.set(
+            0, apiClient.updateIPsInBackendPool(lbName, ipToVmName, backends.get(0), null));
+        return backends;
+      }
+      Set<String> subnetIds =
+          ipToVm.keySet().stream()
+              .map(ipConfig -> ipConfig.subnet().id())
+              .collect(Collectors.toSet());
       SubResource virtualNetwork =
           (new SubResource())
               .withId(
                   subnetIds.stream()
                       .map(subnet -> subnet.split("/subnets")[0])
                       .collect(onlyElement()));
-      // Assumption: The backend pool at 0th index is primary backend pool, and we only change this
-      // pool
       if (backends == null || backends.size() == 0) {
         return Arrays.asList(
             apiClient.createNewBackendPoolForIPs(lbName, ipToVmName, virtualNetwork));
@@ -372,8 +388,15 @@ public class AZUCloudImpl implements CloudAPI {
       }
       return backends;
     } catch (Exception exception) {
+      log.error("Error updating backend pools for load balancer {}", lbName, exception);
+      // getMessage() can be null (e.g. NoSuchElementException); fall back to toString() so the
+      // task error is not reported as "null".
+      String errorDetail =
+          StringUtils.isNotBlank(exception.getMessage())
+              ? exception.getMessage()
+              : exception.toString();
       throw new PlatformServiceException(
-          BAD_REQUEST, "Error updating backend pools: " + exception.getMessage());
+          BAD_REQUEST, "Error updating backend pools: " + errorDetail);
     }
   }
 
@@ -512,5 +535,59 @@ public class AZUCloudImpl implements CloudAPI {
         azureCloudInfo.getAzuClientId(),
         azureCloudInfo.getAzuClientSecret(),
         azureCloudInfo.getAzuTenantId());
+  }
+
+  /**
+   * Current VM size plus IOPS/throughput/size of data disks. ARM disks have no last-resize field,
+   * so {@code lastModificationStart} is always null; the cooldown gate uses local clocks when a
+   * modify would actually run.
+   */
+  @Override
+  public Optional<CloudAPI.NodeDiskSpec> describeNodeDataDiskSpec(
+      Provider provider, NodeDetails node) {
+    if (node == null || StringUtils.isBlank(node.nodeName)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Azure node is missing a name");
+    }
+    AzureCloudInfo azureCloudInfo = CloudInfoInterface.get(provider);
+    AZUResourceGroupApiClient apiClient = new AZUResourceGroupApiClient(azureCloudInfo);
+    VirtualMachineInner vm = apiClient.getVirtulMachineDetailsByName(node.nodeName);
+    if (vm.storageProfile() == null || vm.storageProfile().dataDisks() == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Azure VM " + node.nodeName + " has no data disks");
+    }
+    List<CloudAPI.NodeDiskSpec> perDisk = new ArrayList<>();
+    for (DataDisk dataDisk : vm.storageProfile().dataDisks()) {
+      String diskId = dataDisk.managedDisk() == null ? null : dataDisk.managedDisk().id();
+      String diskName = diskNameFromId(diskId);
+      if (StringUtils.isBlank(diskName)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Azure data disk on " + node.nodeName + " has no managed disk id");
+      }
+      DiskInner disk = apiClient.getDiskByName(diskName);
+      perDisk.add(
+          new CloudAPI.NodeDiskSpec(
+              null,
+              toInt(disk.diskIopsReadWrite()),
+              toInt(disk.diskMBpsReadWrite()),
+              disk.diskSizeGB(),
+              null));
+    }
+    String instanceType =
+        vm.hardwareProfile() == null || vm.hardwareProfile().vmSize() == null
+            ? null
+            : vm.hardwareProfile().vmSize().toString();
+    return Optional.of(CloudAPI.NodeDiskSpec.mergeDataDisks(instanceType, perDisk));
+  }
+
+  private static String diskNameFromId(String diskId) {
+    if (StringUtils.isBlank(diskId)) {
+      return null;
+    }
+    int slash = diskId.lastIndexOf('/');
+    return slash < 0 ? diskId : diskId.substring(slash + 1);
+  }
+
+  private static Integer toInt(Long value) {
+    return value == null ? null : Math.toIntExact(value);
   }
 }

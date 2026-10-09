@@ -2,4 +2,6 @@ third-party
 build
 generated
 resources/ynp/configs/config.ini
+# Staged from managed/src/main/resources/federation by build.sh (single source shared with YBA).
+resources/templates/server/gcp-fed-creds.json.j2
 pywheels

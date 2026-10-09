@@ -55,30 +55,39 @@ public class PlatformScheduler {
     final Object lock = new Object();
     Runnable wrappedRunnable =
         () -> {
-          boolean shouldRun = false;
-          synchronized (lock) {
-            // Synchronized block in shutdown and this should be serialized.
-            shouldRun =
-                !shutdownHookHandler.isShutdown()
-                    && (runOnFollower || !HighAvailabilityConfig.isFollower())
-                    && isRunning.compareAndSet(false, true);
-          }
-          if (shouldRun) {
-            try {
-              runnable.run();
-            } finally {
-              isRunning.set(false);
-              if (shutdownHookHandler.isShutdown()) {
-                synchronized (lock) {
-                  lock.notify();
+          try {
+            boolean shouldRun = false;
+            synchronized (lock) {
+              // Synchronized block in shutdown and this should be serialized.
+              // Nothing scheduled runs during a switchover, runOnFollower included: the
+              // restore behind it drops and recreates every table, leaving open sessions
+              // unable to run their cached plans, and queries in flight hold the locks its
+              // DROP SCHEMA waits for.
+              shouldRun =
+                  !shutdownHookHandler.isShutdownInitiated()
+                      && !HighAvailabilityConfig.isSwitchOverInProgress()
+                      && (runOnFollower || !HighAvailabilityConfig.isFollower())
+                      && isRunning.compareAndSet(false, true);
+            }
+            if (shouldRun) {
+              try {
+                runnable.run();
+              } finally {
+                isRunning.set(false);
+                if (shutdownHookHandler.isShutdownInitiated()) {
+                  synchronized (lock) {
+                    lock.notify();
+                  }
                 }
               }
+            } else {
+              log.warn(
+                  "Previous run of scheduler {} is in progress, is being shut down, or YBA is in"
+                      + " follower mode or a switchover.",
+                  name);
             }
-          } else {
-            log.warn(
-                "Previous run of scheduler {} is in progress, is being shut down, or YBA is in"
-                    + " follower mode.",
-                name);
+          } catch (Throwable t) {
+            log.error("Scheduler run '{}' failed; it will be retried on the next tick.", name, t);
           }
         };
     Cancellable cancellable = scheduleFactory.apply(wrappedRunnable);

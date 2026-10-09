@@ -1,4 +1,5 @@
 [toolchain]
-channel = "1.88.0"
+# YB: bumped 1.88.0 -> 1.96.0 to match the toolchain required by the vendored pgrx 0.18.1.
+channel = "1.96.0"
 profile = "minimal"
 components = ["rustfmt", "clippy", "cargo"]

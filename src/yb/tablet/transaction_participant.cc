@@ -135,6 +135,7 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(clear_deadlocked_txns_info_older_than_heartbeats);
 
 DECLARE_bool(use_bootstrap_intent_ht_filter);
+DECLARE_bool(consistent_restore);
 
 METRIC_DEFINE_simple_counter(
     tablet, transaction_not_found, "Total number of missing transactions during load",
@@ -433,6 +434,12 @@ class TransactionParticipant::Impl
       RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
       return CreateAbortedStatus("Transaction was recently aborted: $0", metadata.transaction_id);
     }
+    // Do not (re)create a transaction that started at or before a restore boundary.
+    if (metadata.start_time <= ignore_all_transactions_started_before_) {
+      return CreateAbortedStatus(
+          "Transaction $0 started at $1, which is at or before the restore boundary $2",
+          metadata.transaction_id, metadata.start_time, ignore_all_transactions_started_before_);
+    }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
 
     VLOG_WITH_PREFIX(3) << "Adding a new transaction txn_id: " << metadata.transaction_id
@@ -530,6 +537,11 @@ class TransactionParticipant::Impl
 
   template <class PB>
   Result<TransactionMetadata> PrepareMetadata(const PB& pb) {
+    // If this is a historical read, we don't need to check the transaction status.
+    if (pb.is_read_only_historical_committed_txn()) {
+      return TransactionMetadata::FromPB(pb);
+    }
+
     if (pb.has_isolation()) {
       auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(pb));
       std::unique_lock<std::mutex> lock(mutex_);
@@ -1347,6 +1359,10 @@ class TransactionParticipant::Impl
     // committed/applied, aborted or we realize that transaction was not committed at
     // resolve_at.
     for (;;) {
+      // Committed transactions are no longer applied once shutdown starts, so waiting for them
+      // below would block until the deadline and stall shutdown of the calling RPC handler thread.
+      RETURN_NOT_OK(CheckClosing());
+
       TransactionStatusResolver resolver(
           &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
           [this, resolve_at, &recheck_ids, &committed_ids](
@@ -2177,7 +2193,8 @@ class TransactionParticipant::Impl
       UniqueLock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
-        if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
+        if (FLAGS_consistent_restore &&
+            (**it).start_ht() <= ignore_all_transactions_started_before_) {
           YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
               << "Ignore transaction for '" << reason << "' because of limit: "
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);

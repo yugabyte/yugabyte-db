@@ -91,6 +91,8 @@ int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
 
 int yb_walsender_poll_sleep_duration_empty_ms = 10;
 
+int yb_reorderbuffer_max_memory_kb = 4096;
+
 int yb_reorderbuffer_max_changes_in_memory = 4096;
 
 int yb_explicit_row_locking_batch_size = 1;
@@ -147,8 +149,6 @@ bool yb_mixed_mode_saop_pushdown = false;
 bool yb_use_internal_auto_analyze_service_conn = false;
 
 bool yb_ddl_transaction_block_enabled = kEnableDdlTransactionBlocks;
-
-bool yb_disable_ddl_transaction_block_for_read_committed = false;
 
 int yb_fk_references_cache_limit = 65535;
 

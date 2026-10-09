@@ -29,7 +29,7 @@ public class TestPgRegressYbIndexCheck extends BasePgRegressTest {
 
   @Test
   public void testPgRegressYbIndexCheck() throws Exception {
-    runPgRegressTest("yb_index_check_schedule");
+    runPgRegressTest("yb_index_check_multi_snapshot_schedule");
   }
 
   @Override

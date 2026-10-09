@@ -328,6 +328,13 @@ extern YbObjectLockMode YBGetObjectLockMode();
  */
 extern bool YbNeedAdditionalCatalogTables();
 
+/* yb_test_catalog_preload_cache_list, implemented in relcache.c. */
+extern bool yb_check_test_catalog_preload_cache_list(char **newval, void **extra,
+													 GucSource source);
+extern void yb_assign_test_catalog_preload_cache_list(const char *newval,
+													  void *extra);
+extern bool YbCatalogPreloadCacheListIsSet(void);
+
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
  * in an atomic fashion, it is possible that we could have a table existing in
@@ -879,6 +886,11 @@ extern double yb_test_delay_next_ddl;
 extern int	yb_test_reset_retry_counts;
 
 /*
+ * If set to true, the walsender sends a keepalive after every decoded record.
+ */
+extern bool yb_test_walsender_keepalive_after_each_record;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -922,6 +934,24 @@ extern bool yb_enable_invalidation_messages;
 extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
+
+extern int	yb_ddl_wait_for_master_prefetch_drain_ms;
+
+/*
+ * Mirrors YsqlCatalogPrefetchLoadPB in master_heartbeat.proto, naming every value it can carry
+ * even where the code only compares against some of them. The master sends a value in the
+ * heartbeat response, the tserver stores it in this node's shared memory, and backends read it
+ * from there.
+ */
+typedef enum YbCatalogPrefetchLoad
+{
+	YB_CATALOG_PREFETCH_LOAD_UNKNOWN = 0,
+	YB_CATALOG_PREFETCH_LOAD_LOW = 1,
+	YB_CATALOG_PREFETCH_LOAD_BUSY = 2,
+	YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY = 3,
+} YbCatalogPrefetchLoad;
+
+extern void YbWaitForMasterCatalogPrefetchDrain(void);
 
 /*
  * Enable parallel query for different relation sharding types
@@ -991,6 +1021,8 @@ extern bool yb_silence_advisory_locks_not_supported_error;
  */
 extern bool yb_xcluster_automatic_mode_target_ddl;
 
+extern bool yb_enable_xcluster_analyze_replication;
+
 extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
@@ -1043,6 +1075,9 @@ extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetCurrentStmtDdlNodeTag();
 extern bool YBIsCurrentStmtDdl();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
+extern CommandTag YBGetTopLevelStmtDdlCommandTag();
+extern CommandTag YBGetGlobalDdlCommandTag();
+extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
 
 /*
@@ -1406,6 +1441,14 @@ extern bool YbIsCommitStatsCollectionEnabled();
  */
 extern void YbRecordCommitLatency(uint64_t latency_us);
 
+/*
+ * Returns the running total of main table rows scanned by DocDB for this
+ * session.  Unlike the number of rows returned to the query layer, this
+ * includes rows that DocDB filtered out while evaluating a pushed down
+ * expression.
+ */
+extern uint64_t YbGetTableRowsScanned();
+
 /**
  * Update the global flag indicating what metric changes to capture and return
  * from the tserver to PG.
@@ -1600,6 +1643,18 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
+extern void YBCSetHistoricalReadContext(uint64_t read_time_ht,
+										uint64_t in_txn_limit_ht,
+										const char *docdb_txn_id);
+
+extern void YBCInvalidateCachesForHistoricalReadContext(void);
+
+extern void YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
+															 uint64_t in_txn_limit_ht,
+															 const char *docdb_txn_id);
+
+extern void YBCResetHistoricalReadContextAndInvalidateRelcache(void);
+
 extern void YBCResetYbReadTimeAndInvalidateRelcache();
 
 extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
@@ -1745,8 +1800,7 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
-extern bool YbCanSkipIntentsWrite(Relation rel);
-extern void YbDisableSkipIntentsIfModifyingCTE(struct QueryDesc *queryDesc);
+extern YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoWrite(Relation rel);
 extern void YbEnableSkipIntentsForNewTransaction();
 extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
 

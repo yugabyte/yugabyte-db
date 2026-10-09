@@ -32,32 +32,32 @@
 
 #include "yb/master/ts_descriptor.h"
 
-#include <vector>
+#include <algorithm>
 
-#include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_cluster.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
+#include "yb/master/master_ysql_lease.pb.h"
 
-#include "yb/util/atomic.h"
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_uint32(xcluster_guarded_lease_duration_ms);
+DECLARE_uint64(max_clock_skew_usec);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 bool PersistentTServerInfo::IsLive() const { return pb.state() == SysTabletServerEntryPB::LIVE; }
+
+bool PersistentTServerInfo::MaybeHasXClusterGuardedLease() const {
+  return pb.xcluster_guarded_lease_state() != SysTabletServerEntryPB::DEFINITELY_NO_LEASE;
+}
 
 bool PersistentTServerInfo::IsBlacklisted(const BlacklistSet& blacklist) const {
   return yb::master::IsBlacklisted(pb.registration(), blacklist);
@@ -153,6 +153,11 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   l.mutable_data()->pb.set_state(
       registered_through_heartbeat ? SysTabletServerEntryPB::LIVE
                                    : SysTabletServerEntryPB::UNRESPONSIVE);
+  // A TServer registered from a Raft config has not heartbeated to any master leader whose registry
+  // we loaded, so it cannot hold a lease.  This relies on persist_tserver_registry.
+  l.mutable_data()->pb.set_xcluster_guarded_lease_state(
+      registered_through_heartbeat ? SysTabletServerEntryPB::MAYBE_HAS_LEASE
+                                   : SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
@@ -176,8 +181,8 @@ std::string TSDescriptor::placement_id() const {
   return placement_id_;
 }
 
-Status TSDescriptor::UpdateFromHeartbeat(const TSHeartbeatRequestPB& req,
-                                         const TSDescriptor::WriteLock& lock) {
+Status TSDescriptor::UpdateFromHeartbeat(
+    const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock) {
   DCHECK_GE(req.num_live_tablets(), 0);
   DCHECK_GE(req.leader_count(), 0);
   {
@@ -193,8 +198,7 @@ Status TSDescriptor::UpdateFromHeartbeat(const TSHeartbeatRequestPB& req,
     hybrid_time_ = HybridTime::FromPB(req.ts_hybrid_time());
     heartbeat_rtt_ = MonoDelta::FromMicroseconds(req.rtt_us());
     if (req.has_tablet_report()) {
-      latest_report_seqno_ =
-          std::max(latest_report_seqno_, req.tablet_report().sequence_number());
+      latest_report_seqno_ = std::max(latest_report_seqno_, req.tablet_report().sequence_number());
     }
     if (req.has_faulty_drive()) {
       has_faulty_drive_ = req.faulty_drive();
@@ -208,6 +212,7 @@ Status TSDescriptor::UpdateFromHeartbeat(const TSHeartbeatRequestPB& req,
         ts_ysql_db_oldest_pinned_read_times_.emplace(static_cast<PgOid>(db_oid), pin_ht);
       }
     }
+    has_ysql_db_pins_ = true;
   }
   if (lock->pb.state() == SysTabletServerEntryPB::REMOVED) {
     return STATUS_FORMAT(
@@ -216,6 +221,7 @@ Status TSDescriptor::UpdateFromHeartbeat(const TSHeartbeatRequestPB& req,
   if (lock->pb.state() != SysTabletServerEntryPB::LIVE) {
     lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::LIVE);
   }
+  lock.mutable_data()->pb.set_xcluster_guarded_lease_state(SysTabletServerEntryPB::MAYBE_HAS_LEASE);
   return Status::OK();
 }
 
@@ -232,6 +238,17 @@ MonoTime TSDescriptor::LastHeartbeatTime() const {
 DbOidToHybridTimeMap TSDescriptor::GetYsqlDbOldestPinnedReadTimes() const {
   SharedLock<decltype(mutex_)> l(mutex_);
   return ts_ysql_db_oldest_pinned_read_times_;
+}
+
+bool TSDescriptor::has_ysql_db_pins() const {
+  SharedLock<decltype(mutex_)> l(mutex_);
+  return has_ysql_db_pins_;
+}
+
+void TSDescriptor::ResetYsqlDbPins() {
+  std::lock_guard l(mutex_);
+  ts_ysql_db_oldest_pinned_read_times_.clear();
+  has_ysql_db_pins_ = false;
 }
 
 int64_t TSDescriptor::latest_seqno() const {
@@ -412,9 +429,9 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.path_metrics.clear();
   for (const auto& path_metric : metrics.path_metrics()) {
     ts_metrics_.path_metrics[path_metric.path_id()] = {
-        path_metric.used_space(),
-        path_metric.total_space(),
-        path_metric.has_storage_tier() ? path_metric.storage_tier() : std::string(),
+        .used_space = path_metric.used_space(),
+        .total_space = path_metric.total_space(),
+        .storage_tier = path_metric.has_storage_tier() ? path_metric.storage_tier() : std::string(),
     };
   }
   ts_metrics_.disable_tablet_split_if_default_ttl = metrics.disable_tablet_split_if_default_ttl();
@@ -506,6 +523,10 @@ std::size_t TSDescriptor::NumTasks() const {
 
 bool TSDescriptor::IsLive() const { return LockForRead()->IsLive(); }
 
+bool TSDescriptor::MaybeHasXClusterGuardedLease() const {
+  return LockForRead()->MaybeHasXClusterGuardedLease();
+}
+
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
 }
@@ -532,19 +553,61 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
 std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
   auto proto_lock = LockForWrite();
   std::lock_guard<decltype(mutex_)> transient_lock(mutex_);
-  if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
-      time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
-          FLAGS_tserver_unresponsive_timeout_ms) {
+  // Unset only for a TServer registered from a Raft config that has not heartbeated since; such a
+  // TServer is already not LIVE (UNRESPONSIVE, or REPLACED) and DEFINITELY_NO_LEASE.
+  if (!last_heartbeat_) {
+    DCHECK_NE(proto_lock->pb.state(), SysTabletServerEntryPB::LIVE);
+    DCHECK_EQ(
+        proto_lock->pb.xcluster_guarded_lease_state(), SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
+    return std::nullopt;
+  }
+  const auto since_last_heartbeat = time.GetDeltaSince(last_heartbeat_);
+  const auto ms_since_last_heartbeat = since_last_heartbeat.ToMilliseconds();
+  bool changed = false;
+
+  if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE &&
+      ms_since_last_heartbeat > FLAGS_tserver_unresponsive_timeout_ms) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
     // Force a full tablet report on recovery.
     set_has_tablet_report_unlocked(false);
     const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
-    LOG(WARNING) << "Marking tserver " << permanent_uuid()
-                 << " (" << addr.host() << ":" << addr.port() << ")"
-                 << " as UNRESPONSIVE: no heartbeat received for "
-                 << time.GetDeltaSince(last_heartbeat_).ToMilliseconds() << "ms"
-                 << " (threshold: " << FLAGS_tserver_unresponsive_timeout_ms
-                 << "ms)";
+    LOG(WARNING) << "Marking tserver " << permanent_uuid() << " (" << addr.host() << ":"
+                 << addr.port() << ")"
+                 << " as UNRESPONSIVE: no heartbeat received for at least "
+                 << ms_since_last_heartbeat << "ms"
+                 << " (threshold: " << FLAGS_tserver_unresponsive_timeout_ms << "ms)";
+    changed = true;
+  }
+
+  // A xCluster lease from a previous master leader must start before last_heartbeat_: this
+  // master loads descriptors (setting last_heartbeat_ to the load time) and serves heartbeats only
+  // once it holds its Raft leader lease, which implies the previous leader's Raft lease has
+  // expired.  Leaders do not grant xCluster leases unless they have a Raft lease.  This relies on
+  // persist_tserver_registry; without it the previous leader's descriptors are not loaded.
+  //
+  // Account for possible clock drift between master and TServer: NTP slewing moves CLOCK_MONOTONIC
+  // (which MonoTime uses) along with the wall clock, so as long as wall clocks stay within
+  // max_clock_skew_usec of each other (which hybrid time already requires), two monotonic clocks
+  // can drift apart by at most twice that over any interval.
+  const auto drift_slack = MonoDelta::FromMicroseconds(2 * FLAGS_max_clock_skew_usec);
+  const auto lease_duration =
+      MonoDelta::FromMilliseconds(FLAGS_xcluster_guarded_lease_duration_ms);
+  if (proto_lock->pb.xcluster_guarded_lease_state() !=
+          SysTabletServerEntryPB::DEFINITELY_NO_LEASE &&
+      since_last_heartbeat - drift_slack > lease_duration) {
+    proto_lock.mutable_data()->pb.set_xcluster_guarded_lease_state(
+        SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
+    const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
+    LOG(WARNING) << "Marking tserver " << permanent_uuid() << " (" << addr.host() << ":"
+                 << addr.port()
+                 << ") as definitely not having a xCluster-guarded information lease: "
+                 << "no heartbeat received for at least " << since_last_heartbeat.ToString()
+                 << " (threshold: " << lease_duration.ToString() << " plus "
+                 << drift_slack.ToString() << " clock drift slack)";
+    changed = true;
+  }
+
+  if (changed) {
     return std::move(proto_lock);
   }
   return std::nullopt;
@@ -557,5 +620,4 @@ RefreshYsqlLeaseInfoPB YsqlLeaseUpdate::ToPB() {
   return pb;
 }
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

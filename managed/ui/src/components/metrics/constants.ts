@@ -71,6 +71,7 @@ export const MetricTypesWithOperations = {
       'network_packets',
       'network_bytes',
       'network_errors',
+      'network_tcp_retransmits',
       'system_load_over_time',
       'node_clock_skew'
     ]
@@ -83,6 +84,8 @@ export const MetricTypesWithOperations = {
       'process_virtual_memory',
       'process_resident_memory',
       'process_proportional_memory',
+      'postgres_worker_pss_max',
+      'postgres_worker_pss_p95',
       'process_io_read',
       'process_io_write',
       'process_open_files'
@@ -136,7 +139,8 @@ export const MetricTypesWithOperations = {
       'tserver_yb_rpc_connections',
       'tserver_live_tablet_peers',
       'raft_leader',
-      'tserver_max_follower_lag'
+      'tserver_max_follower_lag',
+      'docdb_keys_found'
     ]
   },
   master: {
@@ -288,6 +292,7 @@ export const MetricTypesWithOperations = {
       'table_rocksdb_stalls',
       'table_rocksdb_flush_size',
       'table_docdb_transaction',
+      'table_docdb_keys_found',
       'table_block_cache_hit_miss',
       'table_rocksdb_blooms_checked_and_useful',
       'table_mem_tracker_db_memtable',
@@ -316,6 +321,7 @@ export const MetricTypesWithOperations = {
       'table_rocksdb_stalls',
       'table_rocksdb_flush_size',
       'table_docdb_transaction',
+      'table_docdb_keys_found',
       'table_rocksdb_total_sst_per_node',
       'table_block_cache_hit_miss',
       'table_rocksdb_blooms_checked_and_useful',

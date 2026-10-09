@@ -177,12 +177,13 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSessionPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params,
-    const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read) {
+    const YbcPgTableLocalityInfo& locality_info,
+    const YbcPgSkipIntentsOptimizationInfo& skip_intents_info) {
   if (params && params->index_only_scan) {
-    return PgSelectIndex::Make(pg_session, index_id, locality_info, skip_intents_read);
+    return PgSelectIndex::Make(pg_session, index_id, locality_info, skip_intents_info);
   }
   return PgSelect::Make(
-      pg_session, table_id, locality_info, skip_intents_read, MakeIndexQueryInfo(index_id, params));
+      pg_session, table_id, locality_info, skip_intents_info, MakeIndexQueryInfo(index_id, params));
 }
 
 std::vector<size_t> GetColIndexToInput(
@@ -766,8 +767,8 @@ PgApiImpl::PgApiImpl(
       pg_callbacks_(callbacks),
       wait_event_watcher_(
           [starter = pg_callbacks_.PgstatReportWaitStart](
-              ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
-            return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
+              ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc, uint32_t aux) {
+            return PgWaitEventWatcher{starter, wait_event, pggate_rpc, aux};
       }),
       is_parallel_worker_(init_postgres_info.parallel_leader_session_id != nullptr),
       pg_shared_data_(*init_postgres_info.shared_data, !is_parallel_worker_),
@@ -810,6 +811,10 @@ void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
     }
   }
 #endif
+}
+
+void PgApiImpl::SetConnectedDatabaseOid(YbcPgOid dboid) {
+  pg_txn_manager_->SetConnectedDatabaseOid(dboid);
 }
 
 void PgApiImpl::Interrupt() {
@@ -1512,11 +1517,9 @@ Status PgApiImpl::DmlBindHashCode(
   return Status::OK();
 }
 
-Status PgApiImpl::DmlApplyParallelRange(
-    PgStatement* handle, Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound,
-    bool upper_bound_inclusive) {
+Status PgApiImpl::DmlApplyParallelRange(PgStatement* handle, Slice lower_bound, Slice upper_bound) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).ApplyParallelRange(
-      lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
+      lower_bound, upper_bound);
 }
 
 Status PgApiImpl::DmlBindBounds(
@@ -1631,7 +1634,8 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 Result<PgStatement*> PgApiImpl::NewInsertBlock(
     const PgObjectId& table_id,
     const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting, bool skip_intents_write) {
+    YbcPgTransactionSetting transaction_setting,
+    const YbcPgSkipIntentsOptimizationInfo& skip_intents_info) {
   if (!FLAGS_ysql_pack_inserted_value) {
     return nullptr;
   }
@@ -1639,7 +1643,7 @@ Result<PgStatement*> PgApiImpl::NewInsertBlock(
   PgStatement *result = nullptr;
   RETURN_NOT_OK(AddToCurrentPgMemctx(
       VERIFY_RESULT(PgInsert::Make(
-          pg_session_, table_id, locality_info, transaction_setting, skip_intents_write,
+          pg_session_, table_id, locality_info, transaction_setting, skip_intents_info,
           /* packed= */ true)),
       &result));
   return result;
@@ -1647,12 +1651,13 @@ Result<PgStatement*> PgApiImpl::NewInsertBlock(
 
 Status PgApiImpl::NewInsert(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
+    YbcPgTransactionSetting transaction_setting,
+    const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
     PgStatement **handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
     VERIFY_RESULT(PgInsert::Make(
-        pg_session_, table_id, locality_info, transaction_setting, skip_intents_write,
+        pg_session_, table_id, locality_info, transaction_setting, skip_intents_info,
         /* packed= */ false)),
     handle);
 }
@@ -1679,12 +1684,13 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement* handle, bool is_backfill)
 
 Status PgApiImpl::NewUpdate(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
+    YbcPgTransactionSetting transaction_setting,
+    const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
     PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, locality_info, transaction_setting,
-                                   skip_intents_write)),
+                                   skip_intents_info)),
       handle);
 }
 
@@ -1696,12 +1702,13 @@ Status PgApiImpl::ExecUpdate(PgStatement* handle) {
 
 Status PgApiImpl::NewDelete(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
+    YbcPgTransactionSetting transaction_setting,
+    const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
     PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, locality_info, transaction_setting,
-                                   skip_intents_write)),
+                                   skip_intents_info)),
       handle);
 }
 
@@ -1711,12 +1718,13 @@ Status PgApiImpl::ExecDelete(PgStatement* handle) {
 
 Status PgApiImpl::NewSample(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-    bool skip_intents_read, int targrows, const SampleRandomState& rand_state,
+    const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
+    int targrows, const SampleRandomState& rand_state,
     PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgSample::Make(
-          pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state, clock_)),
+          pg_session_, table_id, locality_info, skip_intents_info, targrows, rand_state, clock_)),
       handle);
 }
 
@@ -1760,7 +1768,7 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement* handle) {
 Status PgApiImpl::NewSelect(
     const PgObjectId& table_id, const PgObjectId& index_id,
     const YbcPgPrepareParameters* prepare_params, const YbcPgTableLocalityInfo& locality_info,
-    bool skip_intents_read,
+    const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
     PgStatement** handle) {
   DCHECK(index_id.IsValid() || table_id.IsValid());
   DCHECK(!(prepare_params && prepare_params->index_only_scan) || index_id.IsValid());
@@ -1768,7 +1776,7 @@ Status PgApiImpl::NewSelect(
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(MakeSelectStatement(
-          pg_session_, table_id, index_id, prepare_params, locality_info, skip_intents_read)),
+          pg_session_, table_id, index_id, prepare_params, locality_info, skip_intents_info)),
       handle);
 }
 
@@ -2043,6 +2051,10 @@ void PgApiImpl::ReplicationInfoSnapshot::Refresh() {
     .num_affinitized_leaders = num_affinitized_leaders,
     .affinitized_leaders = num_affinitized_leaders ? (data + num_live_replicas) : nullptr
   };
+}
+
+uint32_t PgApiImpl::GetSharedYsqlCatalogPrefetchLoad() const {
+  return tserver_shared_object_.ysql_catalog_prefetch_load();
 }
 
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
@@ -2333,12 +2345,25 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
+bool PgApiImpl::IsTableLockingEnabledForCurrentTxn() const {
+  return pg_txn_manager_->IsTableLockingEnabledForCurrentTxn();
+}
+
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
   return pg_session_->CurrentTransactionUsesFastPath();
 }
 
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
+}
+
+void PgApiImpl::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, const char* transaction_id) {
+  pg_session_->SetHistoricalReadContext(read_time, transaction_id ? transaction_id : "");
+}
+
+void PgApiImpl::ResetHistoricalReadContext() {
+  pg_session_->ResetHistoricalReadContext();
 }
 
 ReadHybridTime PgApiImpl::GetCatalogReadTime() const {
@@ -2818,7 +2843,7 @@ Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
   return AddToCurrentPgMemctx(std::make_unique<PgGlobalViewRead>(), handle);
 }
 
-YbcPgResultPB PgApiImpl::ExecGlobalViewScan(
+YbcPgGvScanResult PgApiImpl::ExecGlobalViewScan(
     PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
     std::string_view tserver_uuid) {
   return handle->ExecScan(pg_client_, database_name, query, tserver_uuid);

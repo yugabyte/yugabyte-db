@@ -39,14 +39,20 @@ extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   Expr *expr,
 									   int indexcol,
 									   int *merge_scan_cardinality,
-									   List **merge_scan_saop_cols);
+									   List **merge_scan_stream_cols);
 
 extern void yb_get_sort_info_from_pathkeys(List *tlist,
 										   List *pathkeys,
 										   Relids relids,
-										   Bitmapset *saop_col_idxs,
+										   Bitmapset *stream_col_idxs,
 										   int *p_numsortkeys,
 										   AttrNumber **p_sortColIdx,
 										   Oid **p_sortOperators,
 										   Oid **p_collations,
 										   bool **p_nullsFirst);
+
+extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
+												Relids relids,
+												List *stream_cols,
+												List *indexclauses,
+												List *pathkeys);

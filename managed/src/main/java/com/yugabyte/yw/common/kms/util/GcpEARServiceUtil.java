@@ -26,6 +26,7 @@ import com.google.api.services.iam.v1.IamScopes;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
+import com.google.cloud.ServiceOptions;
 import com.google.cloud.kms.v1.CryptoKey;
 import com.google.cloud.kms.v1.CryptoKey.CryptoKeyPurpose;
 import com.google.cloud.kms.v1.CryptoKeyName;
@@ -43,6 +44,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -67,6 +69,13 @@ public class GcpEARServiceUtil {
   // All fields in Google KMS authConfig object sent from UI
   public enum GcpKmsAuthConfigField {
     GCP_CONFIG("GCP_CONFIG", true, false),
+    // Authenticate as the YBA host (attached service account, workload identity, or
+    // GOOGLE_APPLICATION_CREDENTIALS) instead of with a key file. Mutually exclusive with
+    // GCP_CONFIG.
+    USE_GCP_IAM("USE_GCP_IAM", true, false),
+    // Project that owns the key ring. Optional: defaults to the key file's project_id, or to the
+    // host's project under USE_GCP_IAM.
+    GCP_PROJECT_ID("GCP_PROJECT_ID", false, true),
     LOCATION_ID("LOCATION_ID", false, true),
     PROTECTION_LEVEL("PROTECTION_LEVEL", false, false),
     GCP_KMS_ENDPOINT("GCP_KMS_ENDPOINT", false, false),
@@ -109,14 +118,37 @@ public class GcpEARServiceUtil {
     return EncryptionAtRestUtil.getAuthConfig(configUUID);
   }
 
+  /** True when the config authenticates as the YBA host instead of with a key file. */
+  public static boolean isUseGcpIam(ObjectNode authConfig) {
+    return authConfig != null
+        && authConfig.path(GcpKmsAuthConfigField.USE_GCP_IAM.fieldName).asBoolean(false);
+  }
+
   /**
-   * Creates the credentials provider object with the GCP config given by the service account JSON.
+   * Application default credentials of the YBA host: the attached service account on GCE, workload
+   * identity on GKE, or GOOGLE_APPLICATION_CREDENTIALS. Instance method so tests can stub it.
+   */
+  public GoogleCredentials getHostCredentials() throws IOException {
+    return GoogleCredentials.getApplicationDefault();
+  }
+
+  /** Project of the host identity, from the metadata server or the gcloud environment. */
+  public String getHostProjectId() {
+    return ServiceOptions.getDefaultProjectId();
+  }
+
+  /**
+   * Creates the credentials provider from the service account JSON, or from the host identity when
+   * USE_GCP_IAM is set.
    *
    * @param authConfig the config object containing service account details, keyRing resource name,
    *     etc.
    * @return the created credentials provider object
    */
-  public CredentialsProvider getCredentialsProvider(ObjectNode authConfig) {
+  public CredentialsProvider getCredentialsProvider(ObjectNode authConfig) throws IOException {
+    if (isUseGcpIam(authConfig)) {
+      return FixedCredentialsProvider.create(getHostCredentials());
+    }
     CredentialsProvider credentialsProvider = null;
     if (authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
         && !StringUtils.isBlank(
@@ -160,19 +192,33 @@ public class GcpEARServiceUtil {
   }
 
   /**
-   * Gets the project ID from the config object.
+   * Gets the project that owns the key ring: GCP_PROJECT_ID when set, else the host's project under
+   * USE_GCP_IAM, else the key file's project_id.
    *
    * @param authConfig the gcp auth config object
-   * @return the project ID
+   * @return the project ID, or null when it cannot be determined
    */
   public String getConfigProjectId(ObjectNode authConfig) {
+    String projectId = authConfig.path(GcpKmsAuthConfigField.GCP_PROJECT_ID.fieldName).asText();
+    if (!StringUtils.isBlank(projectId)) {
+      return projectId;
+    }
+    if (isUseGcpIam(authConfig)) {
+      projectId = getHostProjectId();
+      if (StringUtils.isBlank(projectId)) {
+        log.error(
+            "Could not get GCP config project ID. 'GCP_PROJECT_ID' not set and the host has no"
+                + " default project.");
+        return null;
+      }
+      return projectId;
+    }
     if (authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
         && authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).has("project_id")) {
       return authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).get("project_id").asText();
-    } else {
-      log.error("Could not get GCP config project ID. 'GCP_CONFIG.project_id' not found.");
-      return null;
     }
+    log.error("Could not get GCP config project ID. 'GCP_CONFIG.project_id' not found.");
+    return null;
   }
 
   /**
@@ -696,11 +742,14 @@ public class GcpEARServiceUtil {
 
   public CloudResourceManager createCloudResourceManagerService(ObjectNode authConfig)
       throws IOException, GeneralSecurityException {
-    String credentials = authConfig.path(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).toString();
-
-    GoogleCredentials credential =
-        GoogleCredentials.fromStream(new ByteArrayInputStream(credentials.getBytes()))
-            .createScoped(Collections.singleton(IamScopes.CLOUD_PLATFORM));
+    GoogleCredentials credential;
+    if (isUseGcpIam(authConfig)) {
+      credential = getHostCredentials();
+    } else {
+      String credentials = authConfig.path(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).toString();
+      credential = GoogleCredentials.fromStream(new ByteArrayInputStream(credentials.getBytes()));
+    }
+    credential = credential.createScoped(Collections.singleton(IamScopes.CLOUD_PLATFORM));
 
     return new CloudResourceManager.Builder(
             GoogleNetHttpTransport.newTrustedTransport(),
@@ -711,18 +760,22 @@ public class GcpEARServiceUtil {
   }
 
   /**
-   * Checks if the required fields exist in the request body of the API call.
+   * Checks if the required fields exist in the request body of the API call. GCP_CONFIG is required
+   * unless USE_GCP_IAM is set.
    *
    * @param formData
    * @return true if all required fields present, else false.
    */
   public boolean checkFieldsExist(ObjectNode formData) {
     List<String> fieldsList =
-        Arrays.asList(
-            GcpKmsAuthConfigField.GCP_CONFIG.fieldName,
-            GcpKmsAuthConfigField.LOCATION_ID.fieldName,
-            GcpKmsAuthConfigField.KEY_RING_ID.fieldName,
-            GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName);
+        new ArrayList<>(
+            Arrays.asList(
+                GcpKmsAuthConfigField.LOCATION_ID.fieldName,
+                GcpKmsAuthConfigField.KEY_RING_ID.fieldName,
+                GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName));
+    if (!isUseGcpIam(formData)) {
+      fieldsList.add(GcpKmsAuthConfigField.GCP_CONFIG.fieldName);
+    }
     for (String fieldKey : fieldsList) {
       if (!formData.has(fieldKey) || StringUtils.isBlank(formData.path(fieldKey).toString())) {
         return false;
@@ -738,10 +791,18 @@ public class GcpEARServiceUtil {
    * @throws Exception
    */
   public void validateKMSProviderConfigFormData(ObjectNode formData) throws Exception {
-    // Verify GCP config, location ID, key ring id, and crypto key id are present. Required
-    // fields.
+    if (isUseGcpIam(formData) && formData.hasNonNull(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)) {
+      throw new Exception("Must pass only one of 'GCP_CONFIG' or 'USE_GCP_IAM'.");
+    }
+    // Verify GCP config (unless USE_GCP_IAM), location ID, key ring id, and crypto key id are
+    // present. Required fields.
     if (!checkFieldsExist(formData)) {
       throw new Exception("Invalid config, location id, keyring id, or crypto key id");
+    }
+    if (StringUtils.isBlank(getConfigProjectId(formData))) {
+      throw new Exception(
+          "Could not determine the GCP project: set GCP_PROJECT_ID, or use a service account key"
+              + " that has a project_id.");
     }
     // Try to create a KMS client with specified fields / options
     try (KeyManagementServiceClient client = getKMSClient(formData)) {

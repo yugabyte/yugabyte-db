@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/numbered_deque.h"
@@ -43,6 +45,7 @@ struct MinRetainLogIndexInfo;
 
 using LogAnchorRegistryPtr = scoped_refptr<LogAnchorRegistry>;
 using LogPtr = scoped_refptr<Log>;
+using LogReaderPtr = std::shared_ptr<LogReader>;
 using MinStartHTRunningTxnsCallback = std::function<HybridTime(void)>;
 using PreLogRolloverCallback = std::function<void()>;
 using ReadableLogSegmentPtr = scoped_refptr<ReadableLogSegment>;

@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -198,10 +199,14 @@ public class CloudBootstrap extends CloudTaskBase {
         perRegionMetadata.vpcId = region.getVnetName();
         perRegionMetadata.architecture =
             region.getArchitecture() != null ? region.getArchitecture() : Architecture.x86_64;
-        // Instance templates are currently only implemented for GCP.
+        // Instance templates are implemented for GCP (name) and OCI (Instance Configuration
+        // display name).
         if (region.getProviderCloudCode().equals(Common.CloudType.gcp)) {
           GCPRegionCloudInfo g = CloudInfoInterface.get(region);
           perRegionMetadata.instanceTemplate = g.instanceTemplate;
+        } else if (region.getProviderCloudCode().equals(Common.CloudType.oci)) {
+          OCIRegionCloudInfo o = CloudInfoInterface.get(region);
+          perRegionMetadata.instanceTemplate = o.instanceTemplate;
         }
         if (region.getProviderCloudCode() == CloudType.azu) {
           AzureRegionCloudInfo cloudInfo = CloudInfoInterface.get(region);

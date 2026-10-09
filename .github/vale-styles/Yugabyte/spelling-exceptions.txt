@@ -102,6 +102,8 @@ canonicalized
 captcha
 CentOS
 Certbot
+cgroup
+cgroups
 chai
 changeset
 changesets
@@ -123,6 +125,7 @@ Cobertura
 Codepen
 Cognito
 Cohesity
+cooldown
 colocated
 colocating
 colocation
@@ -217,6 +220,7 @@ Elasticsearch
 enablement
 enqueued
 enqueues
+Entra
 enum
 enums
 ETag
@@ -240,6 +244,7 @@ firewalled
 firewalling
 fixup
 Flawfinder
+Flink
 Flowdock
 Fluentd
 Flycheck
@@ -426,6 +431,7 @@ Monokai
 monorepo
 monorepos
 multiline
+multitenancy
 mutex
 nameserver
 nameservers
@@ -473,6 +479,8 @@ pgaudit
 PgBouncer
 pgLoader
 pgvector
+pg_dump
+pg_dumpall
 pg_hint_plan
 pg_partman
 pg_stat_activity
@@ -549,6 +557,10 @@ reauthenticate
 reauthenticated
 reauthenticates
 reauthenticating
+rebalance
+rebalanced
+rebalancer
+rebalances
 rebalancing
 rebar
 rebase

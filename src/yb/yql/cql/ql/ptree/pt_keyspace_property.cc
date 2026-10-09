@@ -13,6 +13,7 @@
 
 #include <set>
 #include "yb/client/schema.h"
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_keyspace_property.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
@@ -26,7 +27,6 @@ using std::vector;
 namespace yb {
 namespace ql {
 
-using strings::Substitute;
 
 PTKeyspaceProperty::PTKeyspaceProperty(MemoryContext *memctx,
                                        YBLocation::SharedPtr loc,
@@ -84,7 +84,7 @@ Status PTKeyspacePropertyListNode::Analyze(SemContext *sem_context) {
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(tnode->Analyze(sem_context));
     } else {
       return sem_context->Error(this,
-                                Substitute("Invalid property $0", property_name).c_str(),
+                                Format("Invalid property $0", property_name).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
     }
   }
@@ -134,8 +134,8 @@ Status PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
 
   if (*class_name != "SimpleStrategy" && *class_name != "NetworkTopologyStrategy") {
     return sem_context->Error(this,
-        Substitute("Unable to find replication strategy class 'org.apache.cassandra.locator.$0",
-                   *class_name).c_str(),
+        Format("Unable to find replication strategy class 'org.apache.cassandra.locator.$0",
+               *class_name).c_str(),
         ErrorCode::INVALID_ARGUMENTS);
   }
   if (*class_name == "NetworkTopologyStrategy") {
@@ -153,7 +153,7 @@ Status PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
   } else {
     if (!other_subproperties.empty()) {
       return sem_context->Error(this,
-                                Substitute(
+                                Format(
                                     "Unrecognized strategy option $0 passed to SimpleStrategy",
                                     other_subproperties.front()->lhs()->c_str()).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);

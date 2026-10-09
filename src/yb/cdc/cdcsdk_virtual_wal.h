@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <optional>
 #include <queue>
 #include <unordered_set>
 
@@ -50,7 +51,6 @@ class CDCSDKVirtualWAL {
       {Status::Code::kNotFound, "Not leader for"},
       {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
       {Status::Code::kNotFound, "Footer for segment"},
-      {Status::Code::kNotFound, "Log index cache entry for op index"},
       {Status::Code::kIllegalState, "LogReader is not initialized"}};
 
   Status InitVirtualWALInternal(
@@ -81,6 +81,7 @@ class CDCSDKVirtualWAL {
   struct GetChangesRequestInfo {
     uint64_t safe_hybrid_time;
     int32_t wal_segment_index;
+    int64_t max_index_in_sort_window;
 
     // The following fields will be used to populate from_cdc_sdk_checkpoint object of the next
     // GetChanges RPC call.
@@ -211,6 +212,11 @@ class CDCSDKVirtualWAL {
 
   Status CheckHashRangeConstraints(const CDCStateTableEntry& slot_entry);
 
+  // Validates that the tablets in the response jointly cover every partition key the slot is
+  // responsible for (either the whole key space or slot_hash_range_).
+  Status ValidateTabletListCoverage(
+      const TableId& table_id, const GetTabletListToPollForCDCResponsePB& resp) const;
+
   Status ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordID& popped_record);
 
   Status UpdateRestartTimeIfRequired();
@@ -219,6 +225,16 @@ class CDCSDKVirtualWAL {
       const RecordInfo& record_info, bool* explicit_alter_publication_detected);
 
   bool IsCatalogTableEligibleForCDC(const TableId& table_id) const;
+
+  bool IsDmlOnPgCatalogTableForDetectingDDL(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record) const;
+
+  Result<std::optional<uint32_t>> GetPublishedTableOidFromPgCatalogRecord(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record) const;
+
+  Status AddSyntheticDDLRecordFromCatalogDML(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record, GetConsistentChangesResponsePB* resp,
+      GetConsistentChangesRespMetadata* metadata, uint64_t* resp_records_size);
 
   bool ShouldPopulateExplicitCheckpoint();
 
@@ -361,6 +377,10 @@ class CDCSDKVirtualWAL {
   // The table ID of pg_class catalog table for the database on which virtual WAL is polling.
   TableId pg_class_table_id_;
 
+  // The table ID of pg_attribute catalog table for the database on which virtual WAL is polling.
+  // Only populated when TEST_ysql_yb_enable_replication_slot_transactional_ddl is enabled.
+  TableId pg_attribute_table_id_;
+
   // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is
   // polling.
   TableId pg_publication_rel_table_id_;
@@ -370,6 +390,9 @@ class CDCSDKVirtualWAL {
 
   // The table ID of pg_publication catalog table for the database on which virtual WAL is polling.
   TableId pg_publication_table_id_;
+
+  // The PG database OID for the namespace on which this virtual WAL is polling.
+  uint32_t pg_database_oid_ = 0;
 
   // The list of publication OIDs that are being polled by the virtual WAL.
   std::unordered_set<uint32_t> publications_list_;

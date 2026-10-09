@@ -12197,8 +12197,10 @@
 
 { oid => '8090', descr => 'checks whether the index is consistent with its base relation',
   proname => 'yb_index_check', provolatile => 'v', proisstrict => 'f',
-  prorettype => 'void', proargtypes => 'oid bool',
-  proargnames => '{indexrelid,single_snapshot_mode}',
+  proretset => 't', prorettype => 'record', proargtypes => 'oid bool int4',
+  proallargtypes => '{oid,bool,int4,oid,oid,bytea,jsonb,bytea,jsonb,text}',
+  proargmodes => '{i,i,i,t,t,t,t,t,t,t}',
+  proargnames => '{indexrelid,single_snapshot_mode,log_num_errors,tablerelid,indexrelid,ybctid,table_cols,ybbasectid,index_cols,error_category}',
   prosrc => 'yb_index_check'},
 
 # Statistics Import

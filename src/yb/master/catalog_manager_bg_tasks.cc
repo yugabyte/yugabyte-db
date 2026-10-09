@@ -230,10 +230,10 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   // Cleanup old tasks from tracker.
   catalog_manager_->tasks_tracker_->CleanupOldTasks();
 
-  // Mark unresponsive tservers.
+  // Mark unresponsive TServers.
   WARN_NOT_OK(
       catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers(epoch),
-      "Failed to update sys catalog with unresponsive tservers");
+      "Failed to update sys catalog with unresponsive TServers");
 
   TabletInfos to_delete;
   TableToTabletInfos to_process;
@@ -287,6 +287,8 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
 
   WARN_NOT_OK(master_->clone_state_manager().Run(), "Failed to run CloneStateManager: ");
 
+  catalog_manager_->RemoveDeletedTabletsFromTables(to_delete);
+
   if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
     catalog_manager_->CleanUpDeletedTables(epoch);
   }
@@ -316,6 +318,10 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   if (FLAGS_autoscale_transaction_tables) {
     ScaleUpTransactionStatusTablesIfNeeded(epoch);
   }
+
+  WARN_NOT_OK(
+      catalog_manager_->PersistYsqlHistoryRetentionPin(epoch),
+      "Failed to publish the ysql catalog history retention pin");
 }
 
 void CatalogManagerBgTasks::MaybeRunClusterBalancer(
@@ -350,6 +356,9 @@ void CatalogManagerBgTasks::Run() {
         master_->ysql_backends_manager()->AbortAllJobs();
         was_leader_ = false;
       }
+      WARN_NOT_OK(
+          catalog_manager_->RefreshYsqlHistoryRetentionPin(),
+          "Failed to refresh the ysql catalog history retention pin");
     }
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add

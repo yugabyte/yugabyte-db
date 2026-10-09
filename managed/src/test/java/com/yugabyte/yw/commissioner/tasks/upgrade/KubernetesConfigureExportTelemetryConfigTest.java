@@ -6,6 +6,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -89,7 +90,7 @@ public class KubernetesConfigureExportTelemetryConfigTest extends KubernetesUpgr
 
     // Helm upgrade is invoked at least once (one POD_INFO + multiple HELM_UPGRADE per AZ).
     verify(mockKubernetesManager, atLeastOnce())
-        .helmUpgrade(any(UUID.class), any(), any(), any(), any(), any());
+        .helmUpgrade(any(UUID.class), any(), any(), any(), any(), any(), isNull());
 
     // The persist subtask must be in the resulting subtask DAG.
     boolean persistRan =

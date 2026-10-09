@@ -46,6 +46,11 @@ type postgresDirectories struct {
 	dataDir             string
 	PgBin               string
 	LogFile             string
+	// OpenSSL config and module dir the server runs with in FIPS mode; see setUpFipsProvider.
+	OpenSSLConf    string
+	OpenSSLModules string
+	// Host CA bundle for LDAP auth over TLS; "" if none was found.
+	CACertFile string
 }
 
 func newPostgresDirectories() postgresDirectories {
@@ -57,6 +62,9 @@ func newPostgresDirectories() postgresDirectories {
 		dataDir:             common.GetBaseInstall() + "/data/postgres",
 		PgBin:               common.GetSoftwareRoot() + "/pgsql/bin",
 		LogFile:             common.GetBaseInstall() + "/data/logs/postgresql",
+		OpenSSLConf:         common.GetSoftwareRoot() + "/pgsql/ssl/openssl-fips.cnf",
+		OpenSSLModules:      common.GetSoftwareRoot() + "/pgsql/lib/ossl-modules",
+		CACertFile:          common.SystemCABundle(),
 	}
 }
 
@@ -107,6 +115,9 @@ func (pg Postgres) Install() error {
 	log.Info("Starting Postgres install")
 	template.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
+		return err
+	}
+	if err := pg.setUpFipsProvider(); err != nil {
 		return err
 	}
 	log.Info("Finished Postgres install")
@@ -372,6 +383,9 @@ func (pg Postgres) UpgradeMajorVersion() error {
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
+	if err := pg.setUpFipsProvider(); err != nil {
+		return err
+	}
 
 	if err := pg.createFilesAndDirs(); err != nil {
 		return err
@@ -404,6 +418,9 @@ func (pg Postgres) Upgrade() error {
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
+	if err := pg.setUpFipsProvider(); err != nil {
+		return err
+	}
 
 	if err := pg.copyConfFiles(); err != nil {
 		return err
@@ -427,6 +444,9 @@ func (pg Postgres) MigrateFromReplicated() error {
 	template.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return fmt.Errorf("Error extracting postgres package: %s", err.Error())
+	}
+	if err := pg.setUpFipsProvider(); err != nil {
+		return err
 	}
 
 	if err := pg.createFilesAndDirs(); err != nil {
@@ -554,6 +574,8 @@ func (pg Postgres) modifyPostgresConf() error {
 		{Key: "log_filename", Value: "postgresql-%Y-%m-%d_%H%M%S.log", Quotes: true},
 		{Key: "log_rotation_age", Value: "1d", Quotes: false},
 		{Key: "log_rotation_size", Value: "10MB", Quotes: false},
+		// The FIPS provider has no MD5, so an MD5 setting would make every password change fail.
+		{Key: "password_encryption", Value: "scram-sha-256", Quotes: true},
 	}
 
 	updater := common.ConfUpdater{Entries: entries}
@@ -754,4 +776,122 @@ func (pg Postgres) Reconfigure() error {
 	return nil
 }
 
-func (pg Postgres) PreUpgrade() error { return nil }
+// PreUpgrade re-hashes MD5 role passwords while the previous postgres is still running, before
+// the upgrade restarts it on the FIPS provider.
+func (pg Postgres) PreUpgrade() error {
+	if !viper.GetBool("fips.enabled") || !viper.GetBool("postgres.install.enabled") {
+		return nil
+	}
+	status, err := pg.Status()
+	if err != nil {
+		return err
+	}
+	if status.Status != common.StatusRunning {
+		log.Warn("postgres is not running, so MD5 role passwords cannot be checked before the " +
+			"upgrade. Any role with one will fail password authentication until it is reset.")
+		return nil
+	}
+	return pg.rehashMd5Passwords(filepath.Join(common.GetActiveSymlink(), "pgsql/bin/psql"))
+}
+
+// setUpFipsProvider writes the OpenSSL config that the postgres service uses in FIPS mode
+// (OPENSSL_CONF in its unit). fipsinstall has to run on every host the module is installed on:
+// it self-tests the module and records its checksum, so the result can't ship in the package.
+func (pg Postgres) setUpFipsProvider() error {
+	if !viper.GetBool("fips.enabled") {
+		return nil
+	}
+	module := filepath.Join(pg.OpenSSLModules, "fips.so")
+	if _, err := os.Stat(module); err != nil {
+		return fmt.Errorf("this postgres package has no OpenSSL FIPS provider at %s: %w", module, err)
+	}
+	sslDir := filepath.Dir(pg.OpenSSLConf)
+	if err := common.MkdirAll(sslDir, 0755); err != nil {
+		return fmt.Errorf("failed to create %s: %w", sslDir, err)
+	}
+	fipsModuleCnf := filepath.Join(sslDir, "fipsmodule.cnf")
+	out := shell.Run(filepath.Join(pg.PgBin, "openssl"), "fipsinstall", "-pedantic",
+		"-module", module, "-out", fipsModuleCnf)
+	if !out.SucceededOrLog() {
+		return fmt.Errorf("openssl fipsinstall failed: %w: %s", out.Error, out.StderrString())
+	}
+	if err := os.WriteFile(pg.OpenSSLConf,
+		[]byte(common.PostgresOpenSSLFipsConfig(fipsModuleCnf)), 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", pg.OpenSSLConf, err)
+	}
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		if err := common.Chown(sslDir, userName, userName, true); err != nil {
+			return fmt.Errorf("failed to change ownership of %s: %w", sslDir, err)
+		}
+	}
+	log.Info("Configured postgres to run on the OpenSSL FIPS provider via " + pg.OpenSSLConf)
+	return nil
+}
+
+// rehashMd5Passwords stores the install user's password as SCRAM-SHA-256 if it is still an MD5
+// hash, which installs from the postgres 9.6/10 days or migrated from Replicated can hold. The FIPS
+// provider can't verify an MD5 hash, so password logins for such a role would fail. Only that
+// password is known (yba-ctl.yml); other roles with MD5 hashes are reported for a manual reset.
+func (pg Postgres) rehashMd5Passwords(psql string) error {
+	connArgs := []string{
+		"-d", "postgres",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"-qAtX",
+	}
+	out := shell.Run(psql, append(connArgs,
+		"-c", "SELECT rolname FROM pg_authid WHERE rolpassword LIKE 'md5%' ORDER BY rolname")...)
+	if !out.SucceededOrLog() {
+		return fmt.Errorf("failed to list roles with MD5 passwords: %w", out.Error)
+	}
+	var unresolved []string
+	for _, role := range strings.Fields(out.StdoutString()) {
+		password := viper.GetString("postgres.install.password")
+		if role != pg.getPgUserName() {
+			unresolved = append(unresolved, role)
+			continue
+		}
+		if password == "" {
+			log.Warn("postgres role " + role + " has an MD5 password hash, but postgres.install.password " +
+				"is empty in yba-ctl.yml, so it cannot be re-hashed. Set the password there and reset it " +
+				"(as SCRAM-SHA-256) for password logins to keep working in FIPS mode.")
+			continue
+		}
+		log.Info("Re-hashing the MD5 password of postgres role " + role + " as SCRAM-SHA-256")
+		sql := fmt.Sprintf("SET password_encryption = 'scram-sha-256';\nALTER ROLE %s PASSWORD %s;\n",
+			common.PgQuoteIdent(role), common.PgQuoteLiteral(password))
+		if err := runPsqlFile(psql, connArgs, sql); err != nil {
+			return fmt.Errorf("failed to re-hash the password of postgres role %s: %w", role, err)
+		}
+	}
+	if len(unresolved) > 0 {
+		log.Warn(fmt.Sprintf("postgres roles %s have MD5 password hashes, which FIPS mode can't "+
+			"verify. Reset their passwords (as SCRAM-SHA-256) for password logins to keep working.",
+			strings.Join(unresolved, ", ")))
+	}
+	return nil
+}
+
+// runPsqlFile runs sql from a private temp file rather than -c, so that a password in it reaches
+// neither the process list nor the command logged by shell.Run.
+func runPsqlFile(psql string, connArgs []string, sql string) error {
+	f, err := os.CreateTemp("", "yba-ctl-*.sql")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(sql); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	out := shell.Run(psql, append(connArgs, "-v", "ON_ERROR_STOP=1", "-f", f.Name())...)
+	if !out.Succeeded() {
+		return fmt.Errorf("%w: %s", out.Error, out.StderrString())
+	}
+	return nil
+}

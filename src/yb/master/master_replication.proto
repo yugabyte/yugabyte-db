@@ -78,6 +78,9 @@ message CDCStreamInfoPB {
 
   // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
   optional bool xcluster_use_target_applied_filter = 18 [default = false];
+
+  // See SysCDCStreamEntryPB.xcluster_is_wal_anchor.
+  optional bool xcluster_is_wal_anchor = 19 [default = false];
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -632,15 +635,6 @@ message XClusterReportNewAutoFlagConfigVersionResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB {
-  optional bytes stream_id = 1;
-  optional string cdcsdk_ysql_replication_slot_name = 2;
-}
-
-message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
-  optional MasterErrorPB error = 1;
-}
-
 message XClusterCreateOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
   repeated string namespace_ids = 2;
@@ -714,6 +708,10 @@ message GetXClusterStreamsRequestPB {
   // Only one of the following fields should be set. If both are empty, return all tables.
   repeated TableInfo table_infos = 3;
   repeated bytes source_table_ids = 4;
+
+  // Creates a new stream if no stream is found and a WAL_ANCHOR stream exists for this table.
+  // Requires source_table_ids to be set as well.
+  optional bool create_stream_if_missing = 5;
 }
 
 message GetXClusterStreamsResponsePB {
@@ -801,6 +799,15 @@ message RepairOutboundXClusterReplicationGroupRemoveTableResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message DeleteXClusterWalAnchorStreamsRequestPB {
+  optional string replication_group_id = 1;
+  repeated bytes source_table_ids = 2;
+}
+
+message DeleteXClusterWalAnchorStreamsResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetXClusterOutboundReplicationGroupsRequestPB {
   optional string namespace_id = 1;
 }
@@ -843,7 +850,8 @@ message GetUniverseReplicationInfoResponsePB {
   optional MasterErrorPB error = 1;
 
   optional XClusterReplicationType replication_type = 2;
-  optional string source_master_addresses = 3;
+  optional string DEPRECATED_source_master_addresses = 3;
+  repeated HostPortPB source_master_addrs = 7;
 
   message TableInfoPB {
     required string target_table_id = 1;
@@ -886,6 +894,29 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
   optional MasterErrorPB error = 1;
   repeated string updated_tablet_entries = 2 [ deprecated = true ];
   repeated string deleted_tablet_entries = 3;
+}
+
+message CleanupStaleCDCStreamsRequestPB {
+  optional bool dry_run = 1 [default = false];
+}
+
+message CleanupStaleCDCStreamsResponsePB {
+  message StaleEntryPB {
+    message TablePB {
+      optional bytes table_id = 1;
+      optional string table_name = 2;
+    }
+
+    optional string tablet_id = 1;
+    optional bytes stream_id = 2;
+    optional bytes colocated_table_id = 3;
+    optional string reason = 4;
+    repeated TablePB tables = 5;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated StaleEntryPB stale_entries = 2;
+  repeated StaleEntryPB deleted_entries = 3;
 }
 
 message RemoveTablesFromCDCSDKStreamRequestPB {
@@ -994,11 +1025,6 @@ service MasterReplication {
       XClusterReportNewAutoFlagConfigVersionRequestPB)
       returns (XClusterReportNewAutoFlagConfigVersionResponsePB);
 
-  // Backfill a replication slot name to an existing CDCSDK stream.
-  rpc YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB)
-      returns (YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB);
-
   // xClusterOutboundReplicationGroup RPCs.
   rpc XClusterCreateOutboundReplicationGroup(
       XClusterCreateOutboundReplicationGroupRequestPB)
@@ -1024,6 +1050,8 @@ service MasterReplication {
   rpc RepairOutboundXClusterReplicationGroupRemoveTable(
       RepairOutboundXClusterReplicationGroupRemoveTableRequestPB)
       returns (RepairOutboundXClusterReplicationGroupRemoveTableResponsePB);
+  rpc DeleteXClusterWalAnchorStreams(DeleteXClusterWalAnchorStreamsRequestPB)
+      returns (DeleteXClusterWalAnchorStreamsResponsePB);
   rpc GetXClusterOutboundReplicationGroups(
       GetXClusterOutboundReplicationGroupsRequestPB)
       returns (GetXClusterOutboundReplicationGroupsResponsePB);
@@ -1051,6 +1079,8 @@ service MasterReplication {
   rpc ValidateAndSyncCDCStateEntriesForCDCSDKStream(
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB)
       returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
+  rpc CleanupStaleCDCStreams(CleanupStaleCDCStreamsRequestPB)
+      returns (CleanupStaleCDCStreamsResponsePB);
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);

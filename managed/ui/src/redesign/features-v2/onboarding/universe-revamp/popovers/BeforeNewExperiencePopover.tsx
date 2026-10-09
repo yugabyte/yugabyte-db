@@ -1,20 +1,23 @@
 import { FC, RefObject, useCallback, useRef, useState } from 'react';
-import { Trans, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { mui, TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
-import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
+import { TourStep, dismissTourStep, isTourStepDismissed } from '../tour-progress';
 import { OnboardingTourPopper } from './OnboardingTourPopper';
 
-const { Box, Link, Typography, styled } = mui;
+const { Typography, styled } = mui;
 
 const POPOVER_OFFSET: [number, number] = [0, 12];
 
-export const BEFORE_NEW_EXPERIENCE_POPOVER_DISMISS_KEY =
-  'yb_before_new_experience_popover_dismissed';
+/** Figma PLG/Purple 300 — primary CTA on this spotlight. */
+const SEE_WHATS_CHANGED_BUTTON_BG = '#7879F1';
 
 interface BeforeNewExperiencePopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
+  /** Permanent Hide Tip. */
   onClose: () => void;
+  /** Transient click-away close. */
+  onClickAway: () => void;
   onSeeWhatsChanged: () => void;
 }
 
@@ -23,52 +26,36 @@ const GradientTitle = styled(Typography)(() => ({
   fontWeight: 600,
   lineHeight: '20px',
   backgroundImage:
-    'linear-gradient(-83deg, #ED35EC 5.14%, #ED35C5 38.93%, #7879F1 75.17%, #5E60F0 98.9%)',
+    'linear-gradient(-56deg, #ED35EC 5.14%, #ED35C5 38.93%, #7879F1 75.17%, #5E60F0 98.9%)',
   WebkitBackgroundClip: 'text',
   backgroundClip: 'text',
   color: 'transparent'
 }));
 
-const BodyText = styled(Typography)(({ theme }) => ({
-  fontSize: 13,
-  fontWeight: 400,
-  lineHeight: '20px',
-  color: theme.palette.grey[700],
-  margin: 0
-}));
-
-const BoldText = styled('span')(() => ({
-  fontWeight: 600
-}));
-
-const SeeWhatsChangedLink = styled(Link)(({ theme }) => ({
-  display: 'inline-block',
-  marginTop: 8,
-  fontSize: 13,
-  fontWeight: 400,
-  lineHeight: '20px',
-  color: theme.palette.primary[600],
-  textDecoration: 'underline',
-  cursor: 'pointer',
-  '&:hover': {
-    color: theme.palette.primary[600],
-    textDecoration: 'underline'
-  }
-}));
-
 const WideSpotlight = styled(YBTourSpotlight)(() => ({
   '&&': {
+    // Figma node 17648:65548
     width: 337,
-    minHeight: 'unset',
-    maxWidth: 'calc(100vw - 32px)'
+    height: 184,
+    minHeight: 184,
+    maxWidth: 'calc(100vw - 32px)',
+    boxSizing: 'border-box'
+  },
+  [`& [data-testid="before-new-experience-popover-spotlight-next"]`]: {
+    backgroundColor: SEE_WHATS_CHANGED_BUTTON_BG,
+    borderColor: SEE_WHATS_CHANGED_BUTTON_BG,
+    '&:hover, &:focus': {
+      backgroundColor: SEE_WHATS_CHANGED_BUTTON_BG,
+      borderColor: SEE_WHATS_CHANGED_BUTTON_BG
+    }
   }
 }));
 
 export const isBeforeNewExperiencePopoverDismissed = (): boolean =>
-  localStorage.getItem(BEFORE_NEW_EXPERIENCE_POPOVER_DISMISS_KEY) === 'true';
+  isTourStepDismissed(TourStep.BeforeExp);
 
 export const dismissBeforeNewExperiencePopover = (): void => {
-  localStorage.setItem(BEFORE_NEW_EXPERIENCE_POPOVER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.BeforeExp);
 };
 
 export const useBeforeNewExperiencePopover = () => {
@@ -91,7 +78,8 @@ export const useBeforeNewExperiencePopover = () => {
     setOpen,
     anchorRef,
     openPopover,
-    handleClose
+    handleClose,
+    handleClickAway: handleClose
   };
 };
 
@@ -99,33 +87,12 @@ export const BeforeNewExperiencePopover: FC<BeforeNewExperiencePopoverProps> = (
   open,
   anchorRef,
   onClose,
+  onClickAway,
   onSeeWhatsChanged
 }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'onBoarding.beforeNewExperiencePopover'
   });
-
-  const body = (
-    <Box>
-      <BodyText>{t('bodyLine1')}</BodyText>
-      <BodyText sx={{ mt: 1 }}>
-        <Trans
-          t={t}
-          i18nKey="bodyLine2"
-          values={{ runtimeConfig: RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI }}
-          components={{ bold: <BoldText /> }}
-        />
-      </BodyText>
-      <SeeWhatsChangedLink
-        component="button"
-        type="button"
-        onClick={onSeeWhatsChanged}
-        data-testid="before-new-experience-see-whats-changed"
-      >
-        {t('seeWhatsChanged')}
-      </SeeWhatsChangedLink>
-    </Box>
-  );
 
   return (
     <OnboardingTourPopper
@@ -133,15 +100,18 @@ export const BeforeNewExperiencePopover: FC<BeforeNewExperiencePopoverProps> = (
       anchorEl={anchorRef.current}
       placement={TourPlacement.BottomStart}
       offset={POPOVER_OFFSET}
+      onClickAway={onClickAway}
     >
       <WideSpotlight
         title={<GradientTitle component="span">{t('title')}</GradientTitle>}
-        body={body}
+        body={t('body')}
         badgeLabel=""
-        showNext={false}
+        showNext
+        nextLabel={t('seeWhatsChanged')}
         dismissLabel={t('hideTip')}
         placement={TourPlacement.BottomStart}
         dataTestId="before-new-experience-popover-spotlight"
+        onNext={onSeeWhatsChanged}
         onDismiss={onClose}
       />
     </OnboardingTourPopper>

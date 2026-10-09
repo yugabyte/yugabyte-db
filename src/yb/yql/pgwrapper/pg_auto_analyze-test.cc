@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_value.h"
 #include "yb/gutil/integral_types.h"
 
@@ -71,7 +72,6 @@ DECLARE_bool(TEST_sort_auto_analyze_target_table_ids);
 DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
 DECLARE_int64(TEST_delay_after_table_analyze_ms);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_user_ddls_preempt_auto_analyze);
 DECLARE_uint64(TEST_ysql_auto_analyze_max_history_entries);
 DECLARE_int32(ysql_auto_analyze_max_retry_backoff);
@@ -1626,6 +1626,65 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_LT(start_time, history_event["timestamp"].GetInt64());
   // cooldown value is stored in microseconds and its flag value is in unit of miliseconds.
   ASSERT_EQ(1000 * cooldown_value, history_event["cooldown"].GetInt64());
+
+  // Auto-analyze on this node should publish last_autoanalyze, not last_analyze.
+  auto [has_last_analyze, has_last_autoanalyze, analyze_count, autoanalyze_count] =
+      ASSERT_RESULT((conn.FetchRow<bool, bool, PGUint64, PGUint64>(
+          Format("SELECT last_analyze IS NOT NULL, last_autoanalyze IS NOT NULL, "
+                 "analyze_count, autoanalyze_count "
+                 "FROM pg_stat_user_tables WHERE schemaname = '$0' AND relname = '$1'",
+                 schema_name, table_name))));
+  ASSERT_FALSE(has_last_analyze);
+  ASSERT_TRUE(has_last_autoanalyze);
+  ASSERT_EQ(0, analyze_count);
+  ASSERT_GE(autoanalyze_count, 1);
+}
+
+// yb_stat_auto_analyze must keep reporting pg_class.oid after a rewrite, when
+// the service table key is the new relfilenode.
+TEST_F(PgAutoAnalyzeTest, StatAutoAnalyzeAfterTableRewrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+
+  const std::string table_name = "rewrite_obs";
+  const int num_rows = 80;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k int)", table_name));
+
+  const auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT '$0'::regclass::oid", table_name)));
+  const auto relfilenode_before = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE oid = $0", table_oid)));
+  ASSERT_EQ(table_oid, relfilenode_before);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1, $1)", table_name, num_rows));
+  ASSERT_OK(WaitFor([&conn, table_oid, table_name]() -> Result<bool> {
+    auto row = conn.FetchRow<std::string>(
+        Format("SELECT relname FROM yb_stat_auto_analyze() WHERE relid = $0", table_oid));
+    return row.ok() && *row == table_name;
+  }, 30s * kTimeMultiplier, "table appears in yb_stat_auto_analyze"));
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN k TYPE bigint", table_name));
+
+  const auto oid_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", table_name)));
+  const auto relfilenode_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE oid = $0", table_oid)));
+  ASSERT_EQ(table_oid, oid_after);
+  ASSERT_NE(relfilenode_after, table_oid);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1, $1)", table_name, num_rows));
+  ASSERT_OK(WaitFor([&conn, table_oid, table_name]() -> Result<bool> {
+    auto row = conn.FetchRow<std::string>(
+        Format("SELECT relname FROM yb_stat_auto_analyze() WHERE relid = $0", table_oid));
+    return row.ok() && *row == table_name;
+  }, 30s * kTimeMultiplier, "rewritten table still visible by oid"));
+
+  const auto row_count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_stat_auto_analyze() WHERE relid = $0", table_oid)));
+  ASSERT_EQ(row_count, 1);
 }
 
 // Verify that setting yb_auto_analyze_enabled=false on a table prevents auto analyze from running
@@ -1784,19 +1843,8 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back("--ysql_yb_user_ddls_preempt_auto_analyze=true");
     // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
     // prevents this so we're disabling it to keep the test's original intent.
-    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-
-    // The test is specifically written for cases when txn ddl is disabled.
-    // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
@@ -1998,24 +2046,7 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
     ts2->Shutdown(SafeShutdown::kFalse);
 }
 
-class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
- protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
-  }
-};
-
-TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeTxnDDLMode) {
-  testConcurrentDDLAnalyze();
-}
-
-TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeMultiTable) {
+TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLAnalyzeMultiTable) {
   auto* ts1 = cluster_->tserver_daemons()[0];
   auto* ts2 = cluster_->tserver_daemons()[1];
 
@@ -2080,8 +2111,13 @@ TEST_F(PgAnalyzeReadBufferLimitTest, AnalyzeWithBigResponse) {
       .port = ts1->ysql_port(),
     }).Connect());
     ASSERT_OK(conn1.Execute("CREATE TABLE test (k INT PRIMARY KEY, v TEXT)"));
+    // With the default batch size the setup INSERT sends ~2.5MB write requests, which the 4MB read
+    // buffer limit can reject. A rejected call gets no response, so the backend would block on it
+    // until the RPC timeout.
+    ASSERT_OK(conn1.Execute("SET ysql_session_max_batch_size = 512"));
     ASSERT_OK(conn1.Execute("INSERT INTO test SELECT s, repeat('abcdefg', 100) || '-' || s::TEXT "
                             "FROM generate_series(1, 10000) AS s"));
+    ASSERT_OK(conn1.Execute("RESET ysql_session_max_batch_size"));
     ASSERT_OK(conn1.Execute("ANALYZE test"));
 }
 

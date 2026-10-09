@@ -8,7 +8,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigAlertsPreferencesData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import javax.inject.Inject;
-import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.EmailValidator;
 
 public class CustomerConfigAlertsPreferencesValidator extends ConfigDataValidator {

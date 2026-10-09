@@ -288,6 +288,8 @@ interface AWSCloudInfoBase {
   awsAccessKeyID?: string;
   awsAccessKeySecret?: string;
   awsHostedZoneId?: string;
+  enableFederatedIam?: boolean;
+  federatedIamAudience?: string;
 }
 type AWSCloudInfoMutation = AWSCloudInfoBase;
 interface AWSCloudInfo extends AWSCloudInfoBase {
@@ -325,6 +327,9 @@ interface GCPCloudInfoBase {
   gceProject?: string;
   sharedVPCProject?: string;
   destVpcId?: string;
+  enableFederatedIam?: boolean;
+  federatedIamAudience?: string;
+  federatedIamRoleArn?: string;
 }
 interface GCPCloudInfoMutation extends GCPCloudInfoBase {
   gceApplicationCredentials?: {};
@@ -551,6 +556,7 @@ type GCPRegionCloudInfo = GCPRegionCloudInfoBase;
 
 interface OCIRegionCloudInfoBase {
   vnet?: string;
+  instanceTemplate?: string;
 }
 type OCIRegionCloudInfoMutation = OCIRegionCloudInfoBase;
 interface OCIRegionCloudInfo extends OCIRegionCloudInfoBase {

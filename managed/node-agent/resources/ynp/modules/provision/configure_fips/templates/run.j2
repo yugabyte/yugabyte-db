@@ -1,0 +1,85 @@
+# Puts the node into FIPS mode. Only rendered for a FIPS enabled universe (configure_fips).
+#
+# Kernel FIPS mode is reported by /proc/sys/crypto/fips_enabled, which has three meaningful
+# states: absent means the kernel was not built with CONFIG_CRYPTO_FIPS and this image can never
+# run FIPS; 0 means supported but off; 1 means on. Turning it on is distro specific and only the
+# RHEL family has an unattended path, so anything else is detected and reported rather than
+# changed.
+#
+# Note that enabling takes effect on reboot. This script only prepares the node and records that a
+# reboot is owed; YugabyteDB Anywhere reboots it before the database starts.
+
+FIPS_KERNEL_FLAG="/proc/sys/crypto/fips_enabled"
+# The marker lives on /run, which systemd mounts as tmpfs, so it cannot outlive the reboot it
+# asks for. That matters because prechecks also run on their own, long after provisioning
+# (RunPreflightChecks generates and runs only the precheck script): a marker on disk would still
+# be there on a node where FIPS was configured but never actually took effect, and the precheck
+# would report that node as compliant. Keep this path in step with run.j2/precheck.j2.
+FIPS_REBOOT_MARKER="/run/.fips-reboot-required"
+
+enable_fips_redhat() {
+  if ! command -v fips-mode-setup >/dev/null 2>&1; then
+    # crypto-policies-scripts ships fips-mode-setup on el8 and el9.
+    if [[ "{{ is_airgap }}" == "True" ]]; then
+      echo "fips-mode-setup is missing and this is an airgapped install, so the package cannot" \
+        "be fetched. Bake crypto-policies-scripts into the image."
+      return 1
+    fi
+    echo "Installing crypto-policies-scripts to get fips-mode-setup"
+    if command -v dnf >/dev/null 2>&1; then
+      dnf install -y crypto-policies-scripts
+    else
+      yum install -y crypto-policies-scripts
+    fi
+  fi
+
+  echo "Enabling FIPS mode"
+  # Rewrites the crypto policy and adds fips=1 to the kernel command line. Takes effect on reboot.
+  fips-mode-setup --enable
+}
+
+configure_fips() {
+  # Cleared first, so the marker only ever describes this pass. The reboot itself is handled by
+  # /run being tmpfs; this covers a second pass in the same boot, which must not inherit the
+  # previous one's answer if it now fails before reaching the enable step.
+  rm -f "$FIPS_REBOOT_MARKER"
+
+  if [[ ! -f "$FIPS_KERNEL_FLAG" ]]; then
+    echo "$FIPS_KERNEL_FLAG does not exist, so this kernel was not built with CONFIG_CRYPTO_FIPS" \
+      "and cannot run in FIPS mode. Use an image whose kernel supports FIPS."
+    return 1
+  fi
+
+  local kernel_fips
+  kernel_fips=$(cat "$FIPS_KERNEL_FLAG")
+  if [[ "$kernel_fips" == "1" ]]; then
+    echo "Kernel FIPS mode is already enabled."
+    return 0
+  fi
+
+  echo "Kernel FIPS mode is off (${FIPS_KERNEL_FLAG}=${kernel_fips})."
+
+  # Only from here on is the node changed, so this is where root is needed. Checking earlier would
+  # fail a non-root pass over a node that is already in FIPS mode, which is exactly the case
+  # manual on-prem provisioning has to be able to confirm.
+  if [[ $(id -u) -ne 0 ]]; then
+    echo "Enabling FIPS mode needs root, and provisioning is not running as root."
+    return 1
+  fi
+
+  if [[ "{{ os_family }}" != "RedHat" ]]; then
+    # Ubuntu needs an Ubuntu Pro entitlement (pro enable fips-updates) that we do not hold, and
+    # SUSE needs its own repositories, so no amount of privilege lets us turn it on here.
+    echo "Automatic enablement is only supported on the RHEL family, and this node is" \
+      "{{ os_distribution }} ({{ os_family }}). Provide an image that already has FIPS mode on."
+    return 1
+  fi
+
+  enable_fips_redhat || return 1
+  touch "$FIPS_REBOOT_MARKER"
+  echo "FIPS mode will be active after the node reboots."
+}
+
+if ! configure_fips; then
+  exit 1
+fi

@@ -12,6 +12,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -37,6 +38,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
@@ -402,32 +404,35 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ybcOverrides.put("useYBDBImage", defaultUserIntent.isUseYbdbInbuiltYbc());
     expectedOverrides.put("ybc", ybcOverrides);
 
+    UUID providerUUID = defaultUserIntent.maybeGetSingleProviderUUID().get();
+    DeviceInfo defaultDeviceInfo = defaultUserIntent.getBaseDeviceInfo(providerUUID);
+
     Map<String, Object> storageOverrides =
         (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
-    if (defaultUserIntent.deviceInfo != null) {
+    if (defaultDeviceInfo != null) {
       Map<String, Object> tserverDiskSpecs =
           (Map<String, Object>) storageOverrides.getOrDefault("tserver", new HashMap<>());
       Map<String, Object> masterDiskSpecs =
           (Map<String, Object>) storageOverrides.getOrDefault("master", new HashMap<>());
 
-      if (defaultUserIntent.deviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
+      if (defaultDeviceInfo.numVolumes != null) {
+        tserverDiskSpecs.put("count", defaultDeviceInfo.numVolumes);
       }
-      if (defaultUserIntent.deviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
+      if (defaultDeviceInfo.volumeSize != null) {
+        tserverDiskSpecs.put("size", String.format("%dGi", defaultDeviceInfo.volumeSize));
       }
-      if (defaultUserIntent.deviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+      if (defaultDeviceInfo.storageClass != null) {
+        tserverDiskSpecs.put("storageClass", defaultDeviceInfo.storageClass);
       }
 
+      DeviceInfo defaultMasterDeviceInfo =
+          defaultUserIntent.getBaseDeviceInfo(providerUUID, ServerType.MASTER);
       // For master
-      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
-        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
+      if (defaultMasterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", defaultMasterDeviceInfo.numVolumes);
       }
-      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
-        masterDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
+      if (defaultMasterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put("size", String.format("%dGi", defaultMasterDeviceInfo.volumeSize));
       }
       if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
         masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
@@ -1100,6 +1105,52 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallOverridesCannotDisableFipsOnFipsUniverse() throws IOException {
+    // Overrides saved before the API rejected them are still in the database, so the generated
+    // values must put the FIPS gflag back regardless of where the override came from.
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", "gflags:\n  master:\n    openssl_require_fips: false");
+    defaultAZ.updateConfig(azConfig);
+    defaultAZ.save();
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides =
+        HelmUtils.convertYamlToMap("gflags:\n  tserver:\n    openssl_require_fips: \"false\"");
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> gflags = (Map<String, Object>) overrides.get("gflags");
+    assertEquals("true", ((Map<String, Object>) gflags.get("master")).get("openssl_require_fips"));
+    assertEquals("true", ((Map<String, Object>) gflags.get("tserver")).get("openssl_require_fips"));
+  }
+
+  @Test
   public void testHelmInstallResourceOverrideMerge() throws IOException {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put("OVERRIDES", "resource:\n  master:\n    limits:\n      cpu: 650m");
@@ -1186,8 +1237,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithStorageClass() throws IOException {
-    defaultUserIntent.deviceInfo = new DeviceInfo();
-    defaultUserIntent.deviceInfo.storageClass = "foo";
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.storageClass = "foo";
+    TestUtils.existingProviderInitializer(defaultUserIntent).setDeviceInfo(deviceInfo);
     Universe u =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -1795,7 +1847,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             eq(config),
             eq(defaultUniverse.getUniverseDetails().nodePrefix),
             eq(namespace),
-            any(String.class));
+            any(String.class),
+            isNull());
   }
 
   @Test

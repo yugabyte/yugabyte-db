@@ -42,6 +42,19 @@ class ReadTabletProvider {
       YBConsistencyLevel consistency_level, AllowSplitTablet allow_split_tablet,
       ReadResponseMsg* resp) = 0;
 
+  // Called once per read before any work is done, so that an implementation can bound how many
+  // reads it serves at a time. The returned token is held for the rest of the read and releases
+  // the admission when it is destroyed, so it covers the asynchronous part of the read as well.
+  //
+  // Returning a failed Result rejects the read and sends that status to the client, so it must be
+  // one the client retries. A bare ServiceUnavailable reaches the client as ERROR_SERVER_TOO_BUSY,
+  // which RpcRetrier retries against the same peer under its own backoff policy.
+  //
+  // The default admits everything.
+  virtual Result<std::shared_ptr<void>> AdmitRead(const ReadRequestMsg& req) {
+    return std::shared_ptr<void>();
+  }
+
   virtual ~ReadTabletProvider() = default;
 };
 

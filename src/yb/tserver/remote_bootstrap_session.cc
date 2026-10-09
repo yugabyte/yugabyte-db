@@ -39,7 +39,6 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
 
 #include "yb/tablet/tablet.h"
@@ -53,6 +52,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
@@ -90,7 +90,6 @@ using std::vector;
 using std::string;
 
 using consensus::MinimumOpId;
-using strings::Substitute;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
 
@@ -252,7 +251,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   // attempt had to ship strictly more data than the last. Registering at rbs_min_op_idx (the
   // earliest op index any consumer still needs) breaks that cycle: GC can continue reclaiming
   // everything strictly below this floor while the session is alive.
-  string anchor_owner_token = Substitute("RemoteBootstrap-$0", session_id_);
+  string anchor_owner_token = Format("RemoteBootstrap-$0", session_id_);
   tablet_peer_->log_anchor_registry()->Register(
       rbs_min_op_idx, anchor_owner_token, &log_anchor_);
 
@@ -631,7 +630,7 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
     }
     default:
       info->error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
+      return STATUS_FORMAT(InvalidArgument, "Invalid request type $0", data_id.type());
   }
   DCHECK(info->client_maxlen == 0 ||
          info->data.size() <= implicit_cast<size_t>(info->client_maxlen))
@@ -650,7 +649,7 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDat
     info->data_size = opened_log_segment_file_size_;
     file = opened_log_segment_file_;
   }
-  RETURN_NOT_OK(ReadFileChunkToBuf(file.get(), Substitute("log segment $0", segment_seqno), info));
+  RETURN_NOT_OK(ReadFileChunkToBuf(file.get(), Format("log segment $0", segment_seqno), info));
 
   // Note: We do not eagerly close log segment files, since we share ownership
   // of the LogSegment objects with the Log itself.
@@ -675,8 +674,8 @@ Status RemoteBootstrapSession::GetFilePiece(
   auto file_path = JoinPathSegments(path, file_name);
   if (!env->FileExists(file_path)) {
     info->error_code = RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND;
-    return STATUS(NotFound, Substitute("Unable to find RocksDB file $0 in directory $1",
-                                       file_name, path));
+    return STATUS(NotFound, Format("Unable to find RocksDB file $0 in directory $1",
+                                   file_name, path));
   }
 
   std::unique_ptr<RandomAccessFile> readable_file;
@@ -689,7 +688,7 @@ Status RemoteBootstrapSession::GetFilePiece(
           << ", inode: " << inode;
 
   RETURN_NOT_OK(ReadFileChunkToBuf(
-      readable_file.get(), Substitute("rocksdb file $0", file_name), info));
+      readable_file.get(), Format("rocksdb file $0", file_name), info));
 
   return Status::OK();
 }
@@ -722,7 +721,7 @@ Status RemoteBootstrapSession::ReadSuperblockFromDisk(tablet::RaftGroupReplicaSu
   RETURN_NOT_OK(metadata->Flush(tablet::OnlyIfDirty::kTrue));
   RETURN_NOT_OK_PREPEND(
       metadata->ReadSuperBlockFromDisk(out ? out : &tablet_superblock_),
-      Substitute("Unable to access superblock for tablet $0", tablet_id));
+      Format("Unable to access superblock for tablet $0", tablet_id));
 
   return Status::OK();
 }

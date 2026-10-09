@@ -89,7 +89,6 @@
 
 /* YB includes */
 #include "access/sysattr.h"
-#include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "catalog/pg_database.h"
 #include "executor/ybModifyTable.h"

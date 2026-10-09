@@ -23,7 +23,6 @@
 #include "yb/client/table.h"
 
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/load_generator.h"

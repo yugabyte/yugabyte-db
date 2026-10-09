@@ -381,6 +381,12 @@ message GetChangesRequestPB {
 
   // If true, update the cdc_state checkpoint as part of this request.
   optional bool force_update_cdc_state_checkpoint = 17;
+
+  // This is the max index that was part of the sort window in the previous GetChanges call.
+  // Subsequent GetChanges call keeps reading WAL segments until the maximum op-index it has read
+  // is >= this value, so that all peers reconstruct an identical sort window regardless of their
+  // segment boundaries.
+  optional int64 max_index_in_sort_window = 18 [default = 0];
 }
 
 message KeyValuePairPB {
@@ -612,6 +618,9 @@ message GetChangesResponsePB {
   optional uint32 auto_flags_config_version = 12;
 
   optional yb.tserver.TabletConsensusInfoPB tablet_consensus_info = 13;
+
+  // Maximum WAL op-index read while building the commit-time sort window for this response.
+  optional int64 max_index_in_sort_window = 14 [default = 0];
 }
 
 message GetCheckpointRequestPB {
@@ -650,6 +659,13 @@ message UpdateCdcReplicatedIndexRequestPB {
   repeated fixed64 cdc_sdk_safe_times = 11;
   // Is this an initial retention barrier setting request
   optional bool initial_retention_barrier = 12;
+  // When set, this request must NOT move the corresponding retention barrier. Absent, as sent by
+  // older versions, means move all three barriers together. Only set once the
+  // cdcsdk_enable_selective_retention_barrier_revision AutoFlag is promoted, since a receiver that
+  // ignores these fields moves all three barriers.
+  optional bool skip_moving_wal_retention_barrier = 13;
+  optional bool skip_moving_intents_retention_barrier = 14;
+  optional bool skip_moving_history_retention_barrier = 15;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {

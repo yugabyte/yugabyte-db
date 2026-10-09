@@ -47,6 +47,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.DB;
 import io.swagger.annotations.ApiModel;
@@ -75,6 +76,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
@@ -84,6 +86,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
@@ -97,6 +100,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import javax.annotation.Nullable;
@@ -123,8 +127,12 @@ import play.libs.Json;
 public class Util {
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
+  private static final Pattern FSTAB_UUID_LINE =
+      Pattern.compile("^UUID=([^\\s]+)\\s+([^\\s]+)\\s+");
+
   public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   public static final String YSQL_PASSWORD_KEYWORD = "PASSWORD";
+  public static final String REDACTED_YSQL_QUERY = "<YSQL query>";
   public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
   public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
   public static final String DEFAULT_YSQL_ADMIN_ROLE_NAME = "yb_superuser";
@@ -171,6 +179,12 @@ public class Util {
    * a schema rule -- it must not be relaxed without auditing every interpolation site.
    */
   public static final Pattern SHELL_SAFE_IDENTIFIER = Pattern.compile("[A-Za-z0-9._-]+");
+
+  public static final int POSTGRES_PASSWORD_LENGTH = 20;
+
+  /** Safe-set of characters for generated Postgres passwords. */
+  public static final String POSTGRES_PASSWORD_ALLOWED_CHARS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@^*0123456789";
 
   public static final double EPSILON = 0.000001d;
 
@@ -263,6 +277,11 @@ public class Util {
   @VisibleForTesting
   public static void resetYbaShutdownStarted() {
     YBA_SHUTDOWN_STARTED = false;
+  }
+
+  @VisibleForTesting
+  public static void setYbaShutdownStarted(boolean started) {
+    YBA_SHUTDOWN_STARTED = started;
   }
 
   /**
@@ -868,15 +887,26 @@ public class Util {
     return "";
   }
 
+  /**
+   * Private IP from {@code node}, or from the on-disk universe row if the passed details have none.
+   * Returns {@code null} when unresolved (blank IP, or node already removed from universe details).
+   */
   public static String getNodeIp(Universe universe, NodeDetails node) {
-    String ip = null;
-    if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
-      NodeDetails onDiskNode = universe.getNode(node.nodeName);
-      ip = onDiskNode.cloudInfo.private_ip;
-    } else {
-      ip = node.cloudInfo.private_ip;
+    if (node != null
+        && node.cloudInfo != null
+        && StringUtils.isNotBlank(node.cloudInfo.private_ip)) {
+      return node.cloudInfo.private_ip;
     }
-    return ip;
+    if (universe == null || node == null || node.nodeName == null) {
+      return null;
+    }
+    NodeDetails onDiskNode = universe.getNode(node.nodeName);
+    if (onDiskNode != null
+        && onDiskNode.cloudInfo != null
+        && StringUtils.isNotBlank(onDiskNode.cloudInfo.private_ip)) {
+      return onDiskNode.cloudInfo.private_ip;
+    }
+    return null;
   }
 
   public static String getIpToUse(Universe universe, String nodeName, boolean cloudEnabled) {
@@ -1022,6 +1052,10 @@ public class Util {
     }
   }
 
+  public static boolean checkAnyProviderMatches(Cluster cluster, Predicate<CloudType> predicate) {
+    return cluster.userIntent.getAllCloudTypes().stream().anyMatch(predicate);
+  }
+
   public static boolean checkAnyProviderMatches(
       UniverseDefinitionTaskParams params, Predicate<Provider> predicate) {
     return params.clusters.stream()
@@ -1073,6 +1107,14 @@ public class Util {
               Cluster cluster = clusterMap.get(n.placementUuid);
               return cluster.getProviderCloudType(n) == expectedType;
             })
+        .collect(Collectors.toSet());
+  }
+
+  public static Collection<Provider> getAllProviders(UniverseDefinitionTaskParams taskParams) {
+    return taskParams.clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .distinct()
+        .map(Provider::getOrBadRequest)
         .collect(Collectors.toSet());
   }
 
@@ -1314,6 +1356,24 @@ public class Util {
     }
   }
 
+  public static boolean isLocal(Cluster cluster) {
+    return isLocal(cluster.userIntent);
+  }
+
+  public static boolean isLocal(UserIntent userIntent) {
+    // Local should be the only cloud type.
+    return userIntent.getAllCloudTypes().contains(CloudType.local);
+  }
+
+  public static boolean isKubernetesBased(Cluster cluster) {
+    return isKubernetesBased(cluster.userIntent);
+  }
+
+  public static boolean isKubernetesBased(UserIntent userIntent) {
+    // Kubernetes should be the only cloud type.
+    return userIntent.getAllCloudTypes().contains(CloudType.kubernetes);
+  }
+
   public static boolean isKubernetesBasedUniverse(Universe universe) {
     return isKubernetesBasedUniverse(universe.getUniverseDetails());
   }
@@ -1321,12 +1381,10 @@ public class Util {
   public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
     boolean isKubernetesUniverse = false;
     if (params.getPrimaryCluster() != null) {
-      isKubernetesUniverse =
-          params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+      isKubernetesUniverse = isKubernetesBased(params.getPrimaryCluster());
     }
     for (Cluster cluster : params.getReadOnlyClusters()) {
-      isKubernetesUniverse =
-          isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
+      isKubernetesUniverse = isKubernetesUniverse || isKubernetesBased(cluster);
     }
     return isKubernetesUniverse;
   }
@@ -1362,8 +1420,7 @@ public class Util {
    * @param cluster
    * @return
    */
-  public static Function<NodeDetails, Provider> getProviderGetter(
-      UniverseDefinitionTaskParams.Cluster cluster) {
+  public static Function<NodeDetails, Provider> getProviderGetter(Cluster cluster) {
     // Caching by AZ.
     Map<UUID, Provider> providerMap = new HashMap<>();
     return (n) -> providerMap.computeIfAbsent(n.azUuid, uuid -> getProviderForNode(n, cluster));
@@ -1588,6 +1645,18 @@ public class Util {
     return AvailabilityZone.getOrBadRequest(azUuid).getProvider();
   }
 
+  public static Map<UUID, List<NodeDetails>> splitTserversByProviders(Universe universe) {
+    Map<UUID, List<NodeDetails>> byProvider = new HashMap<>();
+    for (NodeDetails nodeDetails : universe.getTServers()) {
+      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+      UUID providerUUID = cluster.getProviderUUIDForNode(nodeDetails);
+      List<NodeDetails> lst = byProvider.getOrDefault(providerUUID, new ArrayList<>());
+      lst.add(nodeDetails);
+      byProvider.put(providerUUID, lst);
+    }
+    return byProvider;
+  }
+
   /**
    * Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
    *
@@ -1607,7 +1676,7 @@ public class Util {
       // creation itself.
       // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
       try {
-        String mountPoints = cluster.userIntent.getDeviceInfoForNode(node).mountPoints;
+        String mountPoints = cluster.userIntent.evaluateDeviceInfoForNode(node).mountPoints;
         dataDirPath = mountPoints.split(",")[0];
       } catch (Exception e) {
         log.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
@@ -1858,9 +1927,8 @@ public class Util {
   }
 
   public static String getPostgresCompatiblePassword() {
-    String allowedCharsInPassword =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@$^*0123456789";
-    return RandomStringUtils.secureStrong().next(20, allowedCharsInPassword);
+    return RandomStringUtils.secureStrong()
+        .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
   }
 
   public static void writeRestoreTaskInfo(CustomerTask customerTask, TaskInfo taskInfo) {
@@ -1876,6 +1944,14 @@ public class Util {
     } catch (IOException e) {
       log.warn("Could not write restore task info, will not show up in task info.");
     }
+  }
+
+  // True on the first start after a YBA restore, until CustomerTaskManager.handleRestoreTask
+  // deletes the files.
+  public static boolean restoreTaskInfoExists() {
+    return Files.exists(Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE))
+        && Files.exists(
+            Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE));
   }
 
   // Helper method to throw unchecked exception.
@@ -2042,7 +2118,7 @@ public class Util {
       SetMultimap<Object, UUID> mmap =
           valuesTracker.computeIfAbsent(property, (x) -> HashMultimap.create());
       mmap.put(value, p.getUuid());
-      if (mmap.keys().size() > 1) {
+      if (mmap.keySet().size() > 1) {
         List<String> list =
             mmap.entries().stream()
                 .map(e -> e.getValue().toString() + " has " + e.getKey())
@@ -2069,5 +2145,93 @@ public class Util {
         DeltaEvaluator.buildDeltaJsonTree(
             universe.getUniverseDetails(), dbTaskParams, new NodeDetailsArrayComparator());
     return DeltaEvaluator.generateOnlyDelta(deltaTree);
+  }
+
+  public static List<String> getMountPoints(DeviceInfo deviceInfo) {
+    if (deviceInfo.mountPoints != null) {
+      return Arrays.asList(deviceInfo.mountPoints.split(","));
+    } else {
+      return IntStream.range(0, deviceInfo.numVolumes)
+          .boxed()
+          .map(i -> "/mnt/d" + i)
+          .collect(Collectors.toList());
+    }
+  }
+
+  public static Map<String, String> parseFstabPathToUUID(String fstabContents) {
+    Map<String, String> pathToUUID = new HashMap<>();
+    if (StringUtils.isBlank(fstabContents)) {
+      return pathToUUID;
+    }
+    for (String line : fstabContents.split("\\R")) {
+      String trimmed = line.trim();
+      if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+        continue;
+      }
+      Matcher m = FSTAB_UUID_LINE.matcher(trimmed);
+      if (m.find()) {
+        pathToUUID.put(m.group(2), m.group(1));
+      }
+    }
+    return pathToUUID;
+  }
+
+  /**
+   * Creates a provider initializer for userIntent which should already have some reference to some
+   * provider (for multicloud case that could be different provider)
+   *
+   * @param userIntent
+   * @param providerUUID
+   * @return
+   */
+  public static ProviderInitializer providerInitializerForExistingIntent(
+      UserIntent userIntent, UUID providerUUID) {
+    if (userIntent.isMulticloudSupport()) {
+      return new SpecificationProviderInitializer(userIntent, providerUUID);
+    } else {
+      if (userIntent.provider == null
+          || !Objects.equals(userIntent.provider, providerUUID.toString())) {
+        throw new IllegalStateException(
+            "UserIntent already has a provider different from "
+                + "provided one: "
+                + userIntent.provider
+                + " vs "
+                + providerUUID);
+      }
+      return new IntentProviderInitializer(userIntent, providerUUID);
+    }
+  }
+
+  /**
+   * Creates a provider initializer for an empty userIntent.
+   *
+   * @param providerUUID
+   * @param userIntent
+   * @param confGetter
+   * @return
+   */
+  public static ProviderInitializer newProviderInitializer(
+      UserIntent userIntent, UUID providerUUID, CloudType cloudType, RuntimeConfGetter confGetter) {
+    if (userIntent.provider != null
+        || CollectionUtils.isNotEmpty(userIntent.providerSpecifications)) {
+      throw new IllegalStateException("Expected userIntent to have no provider references");
+    }
+    if (isMulticloudEnabled(confGetter, cloudType)) {
+      return new SpecificationProviderInitializer(userIntent, providerUUID)
+          .setProviderType(cloudType);
+    }
+    return new IntentProviderInitializer(userIntent, providerUUID).setProviderType(cloudType);
+  }
+
+  public static boolean isMulticloudEnabled(RuntimeConfGetter confGetter, CloudType cloudType) {
+    // Later will be added a config to guard this.
+    return false;
+  }
+
+  public static NodeDetails findByName(Collection<NodeDetails> nodes, String nodeName) {
+    if (nodeName == null || nodes == null) {
+      return null;
+    }
+    return nodes.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
   }
 }

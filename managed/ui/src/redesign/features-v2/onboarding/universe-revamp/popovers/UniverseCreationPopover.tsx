@@ -1,25 +1,33 @@
-import { FC, MouseEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { FC, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import {
+  TourStep,
+  dismissTourStep,
+  isTourStepDismissed,
+  subscribeTourProgressReady
+} from '../tour-progress';
 import { OnboardingTourPopper } from './OnboardingTourPopper';
 
 /** Skidding shifts the left-placed popover downward along the anchor. */
 const POPOVER_OFFSET: [number, number] = [30, 0];
 
-export const UNIVERSE_CREATION_POPOVER_DISMISS_KEY = 'yb_universe_creation_popover_dismissed';
 const UNIVERSE_CREATION_POPOVER_OPEN_EVENT = 'yb-universe-creation-popover-open';
 
 interface UniverseCreationPopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
+  /** Permanent Hide Tip. */
   onClose: () => void;
+  /** Transient click-away close. */
+  onClickAway: () => void;
 }
 
 export const isUniverseCreationPopoverDismissed = (): boolean =>
-  localStorage.getItem(UNIVERSE_CREATION_POPOVER_DISMISS_KEY) === 'true';
+  isTourStepDismissed(TourStep.UnivCreate);
 
 export const dismissUniverseCreationPopover = (): void => {
-  localStorage.setItem(UNIVERSE_CREATION_POPOVER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.UnivCreate);
 };
 
 /** Opens the Create Universe tip when it has not been dismissed yet. */
@@ -29,13 +37,6 @@ export const requestOpenUniverseCreationPopover = (): void => {
   }
   window.dispatchEvent(new CustomEvent(UNIVERSE_CREATION_POPOVER_OPEN_EVENT));
 };
-
-/**
- * Intercepts Create Universe navigation until the tip is dismissed.
- * Returns false when the click was handled (caller should preventDefault).
- */
-export const shouldInterceptUniverseCreationClick = (): boolean =>
-  !isUniverseCreationPopoverDismissed();
 
 export const useUniverseCreationPopover = () => {
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -48,17 +49,19 @@ export const useUniverseCreationPopover = () => {
       }
     };
     window.addEventListener(UNIVERSE_CREATION_POPOVER_OPEN_EVENT, handleOpenRequest);
+
+    // After tip already permanently dismissed → show Create tip on its own on load.
+    const tryAutoOpen = () => {
+      if (isTourStepDismissed(TourStep.AfterExp) && !isUniverseCreationPopoverDismissed()) {
+        setOpen(true);
+      }
+    };
+    const unsub = subscribeTourProgressReady(tryAutoOpen);
+
     return () => {
       window.removeEventListener(UNIVERSE_CREATION_POPOVER_OPEN_EVENT, handleOpenRequest);
+      unsub();
     };
-  }, []);
-
-  const handleCreateUniverseClick = useCallback((event: MouseEvent) => {
-    if (!shouldInterceptUniverseCreationClick()) {
-      return;
-    }
-    event.preventDefault();
-    setOpen(true);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -69,15 +72,16 @@ export const useUniverseCreationPopover = () => {
   return {
     open,
     anchorRef,
-    handleCreateUniverseClick,
-    handleClose
+    handleClose,
+    handleClickAway: handleClose
   };
 };
 
 export const UniverseCreationPopover: FC<UniverseCreationPopoverProps> = ({
   open,
   anchorRef,
-  onClose
+  onClose,
+  onClickAway
 }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'onBoarding.universeCreationPopover'
@@ -90,6 +94,7 @@ export const UniverseCreationPopover: FC<UniverseCreationPopoverProps> = ({
       placement={TourPlacement.Left}
       offset={POPOVER_OFFSET}
       zIndex={(theme) => theme.zIndex.modal}
+      onClickAway={onClickAway}
     >
       <YBTourSpotlight
         title={t('title')}

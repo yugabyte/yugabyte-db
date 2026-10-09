@@ -163,10 +163,11 @@ export const UniverseView = (props) => {
   const {
     open: isUniverseCreationPopoverOpen,
     anchorRef: createUniverseAnchorRef,
-    handleCreateUniverseClick,
-    handleClose: handleUniverseCreationPopoverClose
+    handleClose: handleUniverseCreationPopoverClose,
+    handleClickAway: handleUniverseCreationPopoverClickAway
   } = useUniverseCreationPopover();
-  const isOnboardingExperienceEnabled = useOnboardingNewExperienceEnabled();
+  // Re-render when SuperAdmin banner toggle flips (in-memory feature mirror).
+  useOnboardingNewExperienceEnabled();
 
   const {
     universe: { universeList },
@@ -595,8 +596,7 @@ export const UniverseView = (props) => {
   }
   const isNewV2CreateUniverseUIEnabled = isUniverseRevampExperienceEnabled(
     runtimeConfigs?.data,
-    currentUser?.role,
-    isOnboardingExperienceEnabled
+    currentUser?.role
   );
   return (
     <React.Fragment>
@@ -633,15 +633,15 @@ export const UniverseView = (props) => {
             isControl
           >
             <span ref={createUniverseAnchorRef} style={{ display: 'inline-block' }}>
-              <Link
-                to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}
-                onClick={isNewV2CreateUniverseUIEnabled ? handleCreateUniverseClick : undefined}
-              >
+              <Link to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}>
                 <YBButton
                   btnClass="universe-button btn btn-lg btn-orange"
-                  disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                  disabled={
+                    isDisabled(currentCustomer.data.features, 'universe.create') ||
+                    !isDefinedNotNull(isNewV2CreateUniverseUIEnabled)
+                  }
                   btnText="Create Universe"
-                  btnIcon="fa fa-plus"
+                  btnIcon={`fa ${isDefinedNotNull(isNewV2CreateUniverseUIEnabled) ? 'fa-plus' : 'fa-spinner fa-pulse'}`}
                   data-testid="UniverseList-CreateUniverse"
                 />
               </Link>
@@ -654,6 +654,7 @@ export const UniverseView = (props) => {
           open={isUniverseCreationPopoverOpen}
           anchorRef={createUniverseAnchorRef}
           onClose={handleUniverseCreationPopoverClose}
+          onClickAway={handleUniverseCreationPopoverClickAway}
         />
       )}
       <div className="universes-stats-container">

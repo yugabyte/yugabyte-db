@@ -10,6 +10,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
+import com.google.inject.Provider;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
@@ -23,7 +24,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.annotation.Transactional;
 import java.time.Duration;
@@ -42,6 +44,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -56,7 +59,6 @@ import java.util.function.Predicate;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
-import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 
 @Singleton
@@ -101,24 +103,24 @@ public class Commissioner {
 
   private final RuntimeConfGetter runtimeConfGetter;
 
-  private final GFlagsValidation gFlagsValidation;
+  // Provider breaks Guice cycle: some computers -> handlers -> Commissioner.
+  private final Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers;
 
   @Inject
   public Commissioner(
-      ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
       TaskExecutor taskExecutor,
       TaskQueue taskQueue,
       ProviderEditRestrictionManager providerEditRestrictionManager,
       RuntimeConfGetter runtimeConfGetter,
-      GFlagsValidation gFlagsValidation) {
+      Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
     this.taskQueue = taskQueue;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
     this.runtimeConfGetter = runtimeConfGetter;
-    this.gFlagsValidation = gFlagsValidation;
+    this.taskRollbackComputers = taskRollbackComputers;
     this.executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     log.info("Started Commissioner TaskPool");
   }
@@ -360,6 +362,16 @@ public class Commissioner {
     }
     responseJson.put("userEmail", task.getUserEmail());
 
+    // Root of the retry/rollback chain when stored on task params (no previousTaskUUID fallback:
+    // that would surface the immediate predecessor and contradict root semantics).
+    JsonNode taskParams = taskInfo.getTaskParams();
+    if (taskParams != null) {
+      JsonNode originalNode = taskParams.get("originalTaskUUID");
+      if (originalNode != null && !originalNode.isNull() && !originalNode.asText().isEmpty()) {
+        responseJson.put("originalTaskUUID", originalNode.asText());
+      }
+    }
+
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;
     Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskInfo.getUuid());
@@ -419,7 +431,17 @@ public class Commissioner {
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
-    responseJson.put("canRollback", canTaskRollback(taskInfo));
+    // Listing hint: @CanRollback + error state + optional moreCondition (ownership), same pattern
+    // as retryable. Submit uses canTaskRollbackDetailed (universe checkpoint when present).
+    boolean canRollback =
+        canTaskRollback(
+            taskInfo,
+            tf -> {
+              Set<String> taskUuidsToAllowRollback =
+                  updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
+              return taskUuidsToAllowRollback.contains(tf.getUuid().toString());
+            });
+    responseJson.put("canRollback", canRollback);
     if (isTaskPaused(taskInfo.getUuid())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
@@ -472,9 +494,104 @@ public class Commissioner {
     return false;
   }
 
+  /**
+   * Whether the failed task may be rolled back, with an optional extra predicate (same pattern as
+   * {@link #isTaskRetryable(TaskInfo, Predicate)}).
+   *
+   * <p>Checks {@code @CanRollback} + error state + feature flag ({@link
+   * TaskRollbackComputer#isEnabled()}), then {@code moreCondition}. Listing passes
+   * placement/updating ownership without loading the universe. Submit uses {@link
+   * #canTaskRollbackDetailed(TaskInfo)}.
+   */
+  public boolean canTaskRollback(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
+    if (canTaskTypeRollback(taskInfo.getTaskType())
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())
+        && isRollbackFeatureEnabled(taskInfo.getTaskType())) {
+      return moreCondition.test(taskInfo);
+    }
+    return false;
+  }
+
+  /**
+   * Listing-path overload with no extra condition (annotation + error state + feature flag). Prefer
+   * {@link #canTaskRollback(TaskInfo, Predicate)} when ownership or universe checks apply.
+   */
   public boolean canTaskRollback(TaskInfo taskInfo) {
-    return canTaskTypeRollback(taskInfo.getTaskType())
-        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState());
+    return canTaskRollback(taskInfo, t -> true);
+  }
+
+  /**
+   * Whether the matching {@link TaskRollbackComputer} considers rollback feature-enabled. No bound
+   * computer -> true (annotation-only tasks). Flag-gated computers (e.g. EditUniverse) return false
+   * when their runtime config is off so listing does not advertise Rollback.
+   */
+  private boolean isRollbackFeatureEnabled(TaskType taskType) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskType);
+    return computer == null || computer.isEnabled();
+  }
+
+  /**
+   * Whether rollback of this task type replays a {@code state_transition_details} checkpoint (edit
+   * universe / add node). Such rollbacks are ineligible when no checkpoint was captured.
+   */
+  private boolean rollbackRequiresStateTransitionDetails(TaskType taskType) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskType);
+    return computer != null && computer.requiresStateTransitionDetails();
+  }
+
+  /**
+   * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
+   * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
+   * safety gate.
+   *
+   * <p>When {@code state_transition_details} is present (edit-universe style checkpoint), the
+   * failed task must still own {@code placementModificationTaskUuid} and the delta must be {@code
+   * rollbackSafe}. Ownership intentionally transfers to {@link TaskType#RollbackEditUniverse} on
+   * freeze so that task can be retried; the original edit is then no longer start-rollback
+   * eligible.
+   */
+  public boolean canTaskRollbackDetailed(TaskInfo taskInfo) {
+    return canTaskRollback(taskInfo, this::canRollbackTaskOnUniverse);
+  }
+
+  /**
+   * Universe-aware rollback gate. If there is no {@code state_transition_details}, returns true
+   * (software-upgrade style). When details are present, requires placement ownership and a safe
+   * delta (including refusing dedicatedNodes flips).
+   */
+  private boolean canRollbackTaskOnUniverse(TaskInfo taskInfo) {
+    try {
+      JsonNode params = taskInfo.getTaskParams();
+      if (params == null || params.path("universeUUID").isMissingNode()) {
+        return true;
+      }
+      UUID universeUUID = UUID.fromString(params.get("universeUUID").asText());
+      Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
+      if (!universeOpt.isPresent()) {
+        return false;
+      }
+      Universe universe = universeOpt.get();
+      StateTransitionDetails details = universe.getStateTransitionDetails();
+      if (details == null) {
+        // Checkpoint-based rollbacks (edit universe / add node) need a captured delta; a task with
+        // none - e.g. aborted at precheck, before the freeze/checkpoint - is not rollbackable, so
+        // submit stays consistent with listing (which requires placement ownership the task never
+        // took). Non-checkpoint rollbacks (software upgrade) do not use state_transition_details.
+        return !rollbackRequiresStateTransitionDetails(taskInfo.getTaskType());
+      }
+      // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
+      if (!Objects.equals(
+          universe.getUniverseDetails().placementModificationTaskUuid, taskInfo.getUuid())) {
+        return false;
+      }
+      return details.isRollbackSafe() && !details.isDedicatedNodesChanged();
+    } catch (Exception e) {
+      log.warn(
+          "canRollbackTaskOnUniverse check failed for task {}: {}",
+          taskInfo.getUuid(),
+          e.getMessage());
+      return false;
+    }
   }
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {

@@ -65,7 +65,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslHandler;
-import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
@@ -637,6 +637,50 @@ public class AsyncYBClient implements AutoCloseable {
       long safeHybridTime,
       int walSegmentIndex,
       Long getchangesRespMaxSizeBytes) {
+    return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
+        needSchemaInfo, explicitCheckpoint, safeHybridTime, walSegmentIndex,
+        getchangesRespMaxSizeBytes, 0);
+  }
+
+  /**
+   * Get changes for a given tablet and stream, forwarding the sort window bound from the previous
+   * response.
+   *
+   * @param table the table to get changes for.
+   * @param streamId the stream to get changes for.
+   * @param tabletId the tablet to get changes for.
+   * @param term the leader term to start getting changes for.
+   * @param index the log index to start get changes for.
+   * @param key the key to start get changes for.
+   * @param time the time to start get changes for.
+   * @param needSchemaInfo request schema from the response.
+   * @param explicitCheckpoint checkpoint works in explicit mode.
+   * @param safeHybridTime safe hybrid time received from the previous get changes call.
+   * @param walSegmentIndex wal segment index received from the previous get changes call.
+   * @param getchangesRespMaxSizeBytes when non-null, overrides the tserver flag
+   *     cdc_stream_records_threshold_size_bytes for this request. Honoured only when the tserver
+   *     flag enable_cdcsdk_setting_get_changes_response_byte_limit is true (the default).
+   * @param maxIndexInSortWindow the max index in sort window received from the previous get changes
+   *     call. The tserver keeps reading WAL segments until the maximum op-index it has read is
+   *     &gt;= this value, so that all peers reconstruct an identical sort window regardless of
+   *     their segment boundaries. Pass 0 to disable the mechanism.
+   * @return a deferred object for the response from server.
+   */
+  public Deferred<GetChangesResponse> getChangesCDCSDK(
+      YBTable table,
+      String streamId,
+      String tabletId,
+      long term,
+      long index,
+      byte[] key,
+      int write_id,
+      long time,
+      boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint,
+      long safeHybridTime,
+      int walSegmentIndex,
+      Long getchangesRespMaxSizeBytes,
+      long maxIndexInSortWindow) {
     checkIsClosed();
     GetChangesRequest rpc =
         new GetChangesRequest(
@@ -653,7 +697,8 @@ public class AsyncYBClient implements AutoCloseable {
             table.getTableId(),
             safeHybridTime,
             walSegmentIndex,
-            getchangesRespMaxSizeBytes);
+            getchangesRespMaxSizeBytes,
+            maxIndexInSortWindow);
     rpc.maxAttempts = this.maxAttempts;
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(
@@ -1366,7 +1411,7 @@ public class AsyncYBClient implements AutoCloseable {
    * Validates a batch of flags directly against a specific master or tserver process.
    *
    * @param hp  the host and port of the tserver (port 9100) or master (port 7100)
-   * @param flags  map of flag name → value to validate; all sent in a single RPC
+   * @param flags  map of flag name to value to validate; all sent in a single RPC
    * @return a Deferred object that will contain the response of the gflag validation request.
    */
   public Deferred<ValidateFlagValueResponse> validateFlagValues(
@@ -3065,6 +3110,12 @@ public class AsyncYBClient implements AutoCloseable {
     }
   }
 
+  /** Whether {@code client} still has an entry in the disconnect-tracking map. */
+  @VisibleForTesting
+  boolean isClientInClient2Tablets(TabletClient client) {
+    return client2tablets.containsKey(client);
+  }
+
   /**
    * This method first clears tabletsCache and then tablet2client without any regards for calls to
    * {@link #discoverTablets}. Call only when AsyncYBClient is in a steady state.
@@ -3672,12 +3723,17 @@ public class AsyncYBClient implements AutoCloseable {
                         }
                       }
                       if (defaultSocketReadTimeoutMs > 0) {
+                        // All-idle (no read *and* no write) rather than read-only idle: a request
+                        // written on a connection that has been idle for almost the whole timeout
+                        // must still get a full timeout window to receive its response, otherwise
+                        // the idle timer kills the connection right after the write and the RPC
+                        // fails with a spurious ConnectionResetException.
                         channel
                             .pipeline()
                             .addLast(
                                 "timeout-handler",
-                                new ReadTimeoutHandler(
-                                    defaultSocketReadTimeoutMs, TimeUnit.MILLISECONDS));
+                                new IdleStateHandler(
+                                    0, 0, defaultSocketReadTimeoutMs, TimeUnit.MILLISECONDS));
                       }
                       channel.pipeline().addLast("yb-handler", newClient);
                       channel
@@ -3685,8 +3741,13 @@ public class AsyncYBClient implements AutoCloseable {
                           .addListener(f -> AsyncYBClient.this.handleClose(newClient, channel));
                     }
                   });
-
-      ip2client.put(hostport, newClient); // This is guaranteed to return null.
+      // Client is guaranteed to be put if it is not already in the cache irrespective of whether
+      // the connection is established or not. Clean-up must be performed irrespective.
+      // client2tablets must be registered under the same lock and before connect starts, otherwise
+      // a fast connect failure can remove from both maps and this put would re-insert a stale
+      // entry for a dead client.
+      ip2client.put(hostport, newClient);
+      client2tablets.put(newClient, new ArrayList<RemoteTablet>());
       LOG.debug("Created client for {}", hostport);
     }
     InetSocketAddress remoteAddress = new InetSocketAddress(host, port);
@@ -3707,7 +3768,6 @@ public class AsyncYBClient implements AutoCloseable {
                 LOG.debug("Client {} connected", hostport);
               }
             });
-    this.client2tablets.put(newClient, new ArrayList<RemoteTablet>());
     return newClient;
   }
 
@@ -3877,35 +3937,48 @@ public class AsyncYBClient implements AutoCloseable {
    * Removes all the cache entries referred to the given client.
    *
    * @param client The client for which we must invalidate everything.
-   * @param remote The address of the remote peer, if known, or null.
+   * @param remote The address of the remote peer, if known, or {@code null} to look up the cache
+   *     key by object identity (used when there is no Channel / connect never completed).
    */
-  private void removeClientFromCache(final TabletClient client, final SocketAddress remote) {
-
-    if (remote == null) {
-      return; // Can't continue without knowing the remote address.
-    }
-
-    String hostport;
+  void removeClientFromCache(final TabletClient client, final SocketAddress remote) {
+    String hostport = null;
     if (remote instanceof InetSocketAddress) {
       final InetSocketAddress sock = (InetSocketAddress) remote;
       final InetAddress addr = sock.getAddress();
       if (addr == null) {
         LOG.error("Unresolved IP for " + remote + ". This shouldn't happen.");
-        return;
       } else {
         hostport = addr.getHostAddress() + ':' + sock.getPort();
       }
-    } else {
+    } else if (remote != null) {
       LOG.error("Found a non-InetSocketAddress remote: " + remote + ". This shouldn't happen.");
-      return;
     }
-
-    TabletClient old;
+    TabletClient existingClient = null;
     synchronized (ip2client) {
-      old = ip2client.remove(hostport);
+      // SocketAddress hostport can be null if the connection was not established successfully.
+      if (hostport != null && ip2client.get(hostport) == client) {
+        existingClient = ip2client.remove(hostport);
+      }
+      // Fall back to identity when remote is unknown, or when the address-derived hostport does
+      // not match the key used at newClient insert time (e.g. hostname vs resolved IP).
+      if (existingClient == null) {
+        String identityHostport = null;
+        for (final Map.Entry<String, TabletClient> e : ip2client.entrySet()) {
+          // Reference check to find the same instance in the cache.
+          if (e.getValue() == client) {
+            identityHostport = e.getKey();
+            break;
+          }
+        }
+        if (identityHostport != null) {
+          hostport = identityHostport;
+          existingClient = ip2client.remove(hostport);
+        }
+      }
     }
-    LOG.debug("Removed from IP cache: {" + hostport + "} -> {" + client + "}");
-    if (old == null) {
+    if (existingClient != null) {
+      LOG.debug("Removed from IP cache: {" + hostport + "} -> {" + client + "}");
+    } else if (remote != null) {
       // Currently we're seeing this message when masters are disconnected and the hostport we got
       // above is different than the one the user passes (that we use to populate ip2client). At
       // worst this doubles the entries for masters, which has an insignificant impact.
@@ -3921,6 +3994,9 @@ public class AsyncYBClient implements AutoCloseable {
               + ".  This shouldn't happen.");
     }
 
+    // Safe outside the ip2client lock: newClient registers this client in client2tablets under
+    // that lock before connect, so a remover that has already dropped the ip2client entry cannot
+    // race ahead of the put. ConcurrentHashMap handles the remove itself.
     ArrayList<RemoteTablet> tablets = client2tablets.remove(client);
     if (tablets != null) {
       // Make a copy so we don't need to synchronize on it while iterating.

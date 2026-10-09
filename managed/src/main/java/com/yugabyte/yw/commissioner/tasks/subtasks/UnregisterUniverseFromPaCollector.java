@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.pa.PerfAdvisorEndpointService;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -25,12 +26,16 @@ import lombok.extern.slf4j.Slf4j;
 public class UnregisterUniverseFromPaCollector extends UniverseTaskBase {
 
   private final PerfAdvisorService perfAdvisorService;
+  private final PerfAdvisorEndpointService endpointService;
 
   @Inject
   protected UnregisterUniverseFromPaCollector(
-      BaseTaskDependencies baseTaskDependencies, PerfAdvisorService perfAdvisorService) {
+      BaseTaskDependencies baseTaskDependencies,
+      PerfAdvisorService perfAdvisorService,
+      PerfAdvisorEndpointService endpointService) {
     super(baseTaskDependencies);
     this.perfAdvisorService = perfAdvisorService;
+    this.endpointService = endpointService;
   }
 
   public static class Params extends UniverseTaskParams {}
@@ -54,11 +59,22 @@ public class UnregisterUniverseFromPaCollector extends UniverseTaskBase {
         return;
       }
 
+      UUID paEndpointUuid = universe.getUniverseDetails().getPaEndpointUuid();
       PACollector collector =
           perfAdvisorService.getOrBadRequest(customer.getUuid(), paCollectorUuid);
       perfAdvisorService.deleteUniverse(collector, universe);
       Universe.saveDetails(
-          taskParams().getUniverseUUID(), u -> u.getUniverseDetails().setPaCollectorUuid(null));
+          taskParams().getUniverseUUID(),
+          u -> {
+            u.getUniverseDetails().setPaCollectorUuid(null);
+            u.getUniverseDetails().setPaEndpointUuid(null);
+          });
+      // Now that this universe is gone from the collector, the destination it was using may have
+      // no reason to stay there. Best effort - the collector refuses while another universe still
+      // names it, and PACollectorSync retries the rest.
+      if (paEndpointUuid != null) {
+        endpointService.removeIfUnused(collector, paEndpointUuid);
+      }
       log.info(
           "Unregistered universe {} from PA Collector {}",
           universe.getUniverseUUID(),
@@ -70,9 +86,13 @@ public class UnregisterUniverseFromPaCollector extends UniverseTaskBase {
           e.getMessage());
       try {
         Universe.saveDetails(
-            taskParams().getUniverseUUID(), u -> u.getUniverseDetails().setPaCollectorUuid(null));
+            taskParams().getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().setPaCollectorUuid(null);
+              u.getUniverseDetails().setPaEndpointUuid(null);
+            });
       } catch (Exception e2) {
-        log.warn("Failed to clear paCollectorUuid from universe details: {}", e2.getMessage());
+        log.warn("Failed to clear PA fields from universe details: {}", e2.getMessage());
         throw new RuntimeException(getName() + " failed: " + e.getMessage(), e);
       }
     }

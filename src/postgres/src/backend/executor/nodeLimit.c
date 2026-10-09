@@ -58,15 +58,6 @@ ExecLimit(PlanState *pstate)
 	outerPlan = outerPlanState(node);
 
 	/*
-	 * YB: Initialize LIMIT count and offset.
-	 */
-	if (IsYugaByteEnabled())
-	{
-		pstate->state->yb_exec_params.limit_count = node->count;
-		pstate->state->yb_exec_params.limit_offset = node->offset;
-	}
-
-	/*
 	 * The main logic is a simple state machine.
 	 */
 	switch (node->lstate)
@@ -81,25 +72,10 @@ ExecLimit(PlanState *pstate)
 			 */
 			recompute_limits(node);
 
-			/*
-			 * YB: Update LIMIT count and offset after recomputing.
-			 */
-			if (IsYugaByteEnabled())
-			{
-				pstate->state->yb_exec_params.limit_count = node->count;
-				pstate->state->yb_exec_params.limit_offset = node->offset;
-			}
-
 			/* FALL THRU */
 			yb_switch_fallthrough();
 
 		case LIMIT_RESCAN:
-			/*
-			 * YB: If the limit is invalid (i.e. noCount = true), we need to
-			 * use the default limit in yb. Otherwise, we don't use the default
-			 * yb limit and use the one prescribed by this node.
-			 */
-			pstate->state->yb_exec_params.limit_use_default = node->noCount;
 
 			/*
 			 * If backwards scan, just return NULL without changing state.
@@ -115,6 +91,15 @@ ExecLimit(PlanState *pstate)
 				node->lstate = LIMIT_EMPTY;
 				return NULL;
 			}
+
+			/*
+			 * YB: If the limit is invalid (i.e. noCount = true), we need to
+			 * use the default limit in yb. Otherwise, we use the one
+			 * prescribed by this node.
+			 */
+			if (IsYugaByteEnabled())
+				pstate->state->yb_exec_params.plan_limit =
+					node->noCount ? 0 : node->count + node->offset;
 
 			/*
 			 * Fetch rows from subplan until we reach position > offset.

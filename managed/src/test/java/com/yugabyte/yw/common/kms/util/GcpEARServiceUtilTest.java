@@ -12,6 +12,10 @@
 package com.yugabyte.yw.common.kms.util;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
@@ -167,5 +171,40 @@ public class GcpEARServiceUtilTest extends FakeDBApplication {
   public void testCreateKeyRing() throws IOException {
     KeyRing keyRing = mockGcpEARServiceUtil.createKeyRing(fakeAuthConfig);
     assertEquals(keyRing, mockKeyRing);
+  }
+
+  @Test
+  public void testHostIdentityDropsKeyFileRequirement() {
+    fakeAuthConfig.remove("GCP_CONFIG");
+    assertFalse(mockGcpEARServiceUtil.checkFieldsExist(fakeAuthConfig));
+    fakeAuthConfig.put("USE_GCP_IAM", true);
+    assertTrue(mockGcpEARServiceUtil.checkFieldsExist(fakeAuthConfig));
+  }
+
+  @Test
+  public void testProjectIdPrecedence() {
+    // Explicit project wins over the key file's project_id.
+    fakeAuthConfig.put("GCP_PROJECT_ID", "kms-project");
+    assertEquals("kms-project", mockGcpEARServiceUtil.getConfigProjectId(fakeAuthConfig));
+
+    // Host identity without an explicit project falls back to the host's project.
+    fakeAuthConfig.remove("GCP_PROJECT_ID");
+    fakeAuthConfig.remove("GCP_CONFIG");
+    fakeAuthConfig.put("USE_GCP_IAM", true);
+    doReturn("host-project").when(mockGcpEARServiceUtil).getHostProjectId();
+    assertEquals("host-project", mockGcpEARServiceUtil.getConfigProjectId(fakeAuthConfig));
+
+    doReturn(null).when(mockGcpEARServiceUtil).getHostProjectId();
+    assertNull(mockGcpEARServiceUtil.getConfigProjectId(fakeAuthConfig));
+  }
+
+  @Test
+  public void testValidateRejectsKeyFileTogetherWithHostIdentity() {
+    fakeAuthConfig.put("USE_GCP_IAM", true);
+    Exception e =
+        assertThrows(
+            Exception.class,
+            () -> mockGcpEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig));
+    assertEquals("Must pass only one of 'GCP_CONFIG' or 'USE_GCP_IAM'.", e.getMessage());
   }
 }

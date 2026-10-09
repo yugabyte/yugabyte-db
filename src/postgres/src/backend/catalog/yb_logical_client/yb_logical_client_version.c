@@ -12,7 +12,7 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/schemapg.h"
@@ -87,7 +87,7 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 								  YBLogicalClientVersionRelationId,
 								  NULL /* prepare_params */ ,
 								  YbBuildSystemTableLocalityInfo(YBLogicalClientVersionRelationId),
-								  false /* skip_intents_read */ ,
+								  YB_SKIP_INTENTS_OPTIMIZATION_INFO_NONE,
 								  &ybc_stmt));
 
 	Datum		oid_datum = Int32GetDatum(db_oid);

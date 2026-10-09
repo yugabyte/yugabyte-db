@@ -7,7 +7,7 @@ test: yb.orig.lake_io_restrictions
 test: yb.orig.pg_duckdb_crash_guards
 test: yb.orig.pgaudit_duckdb
 
-# Guard for #32655 (backend FATAL when DuckDB scans a YB table on a worker thread via an ORDER BY
-# export). Runs at duckdb.threads=1 (see the test) so it stays green until #32655 is fixed; drop the
-# SET there once the fix lands to widen the guard.
+# Guard for the fixed #32655 backend FATAL (YBCCheckForInterrupts off the main thread when DuckDB
+# scans a YB table on a worker thread via an ORDER BY export). Runs at the default (multi-threaded)
+# duckdb.threads so the off-main-thread path stays covered.
 test: yb.orig.issue_32655

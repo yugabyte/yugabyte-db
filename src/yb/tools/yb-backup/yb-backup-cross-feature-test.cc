@@ -17,6 +17,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/ql-dml-test-base.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/master/master_client.pb.h"
 
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
@@ -723,6 +724,11 @@ TEST_F_EX(YBBackupTest,
       static_cast<double>(expected_num_tablets) / GetNumTabletServers());
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_shard_count_per_node",
                                        IntToString(low_phase_shard_count_per_node)));
+  // Splitting sizes a tablet by its leader's on-disk SST files. A load balancer leader move can
+  // hand leadership to a replica that was still catching up during the flush below and so flushed
+  // nothing: its data stays in an unflushed memtable, the tablet reports no SST bytes and, with no
+  // further writes to trigger a flush, never becomes a split candidate.
+  ASSERT_OK(cluster_->SetFlagOnMasters("load_balancer_max_concurrent_moves", "0"));
 
   const string table_name = "mytbl";
 
@@ -1550,29 +1556,25 @@ ALTER TABLE employees_hash ADD CONSTRAINT employees_hash_unique_id UNIQUE (id, a
       "SELECT yb_index_check('t1_b_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t2_c_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t3_b_c_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t4_b_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   // Validate indexes by performing index-only scans
   RunPsqlCommand(
@@ -3037,10 +3039,8 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
     // Disable table locks to avoid issues during SuccessfulDdlAtomicityTest
     // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
     // being released. Hence blocking the following statements from failing to acquire locks.
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
     pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
   }
 
@@ -3869,6 +3869,13 @@ TEST_F_EX(
     YBBackupTestAutoAnalyze) {
   ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "pg_auto_analyze_service=5"));
   const int num_tables = 20;
+  auto wait_for_analyze = [](pgwrapper::PGConn& conn, int table_idx) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<float>(Format(
+              "SELECT reltuples FROM pg_class WHERE relname = 'tbl_$0'", table_idx))) == 3;
+        }, 30s * kTimeMultiplier, Format("Waiting for auto analyze of tbl_$0", table_idx));
+  };
   for (int i = 0; i < num_tables; ++i) {
     ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", i)));
     ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", i), 3));
@@ -3878,18 +3885,12 @@ TEST_F_EX(
   // run ANALYZEs aggressively.
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_threshold", "1"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_scale_factor", "0.1"));
-  SleepFor(3s * kTimeMultiplier);
 
   // Verify that the auto analyze service is running.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT reltuples FROM pg_class WHERE relname = 'tbl_0'",
-      R"#(
-         reltuples
-        -----------
-                 3
-        (1 row)
-      )#"
-  ));
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+    ASSERT_OK(wait_for_analyze(conn, 0));
+  }
 
   // Backup and restore to a new database.
   const string backup_dir = GetTempDir("backup");
@@ -3902,16 +3903,9 @@ TEST_F_EX(
   SetDbName("db2");
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", num_tables)));
   ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", num_tables), 3));
-  SleepFor(3s * kTimeMultiplier);
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SELECT reltuples FROM pg_class WHERE relname = 'tbl_$0'", num_tables),
-      R"#(
-         reltuples
-        -----------
-                 3
-        (1 row)
-      )#"
-  ));
+  // The service may first spend seconds analyzing db2's catalog tables modified by the restore.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("db2"));
+  ASSERT_OK(wait_for_analyze(conn, num_tables));
 }
 
 // Starts each base table with a single hash tablet so that we can drive

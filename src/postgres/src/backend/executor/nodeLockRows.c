@@ -30,7 +30,7 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_lockrows.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
 static bool
@@ -253,7 +253,7 @@ lnext:
 		Assert(IsYBBackedRelation(erm->relation) == yb_mode);
 		if (yb_mode)
 		{
-			if (!YbCanSkipIntentsWrite(erm->relation))
+			if (!YbGetSkipIntentsOptimizationInfoWrite(erm->relation).skip_intents)
 				test = YBCLockTuple(erm->relation, datum, erm->markType, erm->waitPolicy, estate,
 									handle);
 			else

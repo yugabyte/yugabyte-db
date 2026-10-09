@@ -16,6 +16,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -33,12 +34,15 @@
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 
+#include "yb/util/monotime.h"
+
 namespace yb {
 
 class MemTracker;
 
 namespace tserver {
 
+class PgClientServiceMockImpl;
 class PgMutationCounter;
 class TserverXClusterContextIf;
 
@@ -171,9 +175,19 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
   size_t TEST_SessionsCount();
 
+  // The database recorded by the session of the backend with the given pid: kInvalidOid if the
+  // session has recorded none yet, nullopt if no session belongs to that pid.
+  std::optional<PgOid> TEST_SessionDatabaseOid(pid_t pid);
+
   // Cumulative number of worker threads ever created by the shared memory exchange thread pool.
   // Used to verify that the pool reuses threads across postgres connections.
   size_t TEST_ExchangeThreadPoolWorkersCreated();
+
+  // Allows shared-memory RPCs to consult the same mock registry as the network path.
+  // Non-owning. The mock must outlive this service.
+  void TEST_SetMockService(PgClientServiceMockImpl* mock);
+
+  PgTableCache& TEST_TableCache();
 
   void Shutdown() override;
 
@@ -213,13 +227,29 @@ class PgClientServiceImpl : public PgClientServiceIf {
     YB_PG_CLIENT_ASYNC_LW_METHODS \
     /**/
 
+// "After" mocks are only wired for Perform and AcquireObjectLock methods currently.
+#define YB_PG_CLIENT_AFTER_MOCKABLE_LW_METHODS \
+    (Perform) \
+    (AcquireObjectLock) \
+    /**/
+
+// Context passed to PgClientService mock callbacks.
+// Network RPCs populate `rpc`. Shared-memory mocks populate only `deadline`.
+struct PgClientMockCallContext {
+  CoarseTimePoint deadline = CoarseTimePoint::max();
+  rpc::RpcContext* rpc = nullptr;
+
+  CoarseTimePoint GetClientDeadline() const;
+  void CloseConnection();
+};
+
 // PgClientServiceMockImpl implements the PgClientService interface to allow for mocking of tserver
 // responses in MiniCluster tests. This implementation defaults to forwarding calls to
 // PgClientServiceImpl if a suitable mock is not available. Usage of this implementation can be
 // toggled via the test tserver gflag 'FLAGS_TEST_enable_pg_client_mock'.
 class PgClientServiceMockImpl : public PgClientServiceIf {
  public:
-  using Functor = std::function<Status(const void*, void*, rpc::RpcContext*)>;
+  using Functor = std::function<Status(const void*, void*, PgClientMockCallContext*)>;
   using SharedFunctor = std::shared_ptr<Functor>;
 
   PgClientServiceMockImpl(const scoped_refptr<MetricEntity>& entity, PgClientServiceIf* impl);
@@ -235,7 +265,7 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
   [[nodiscard]] Handle BOOST_PP_CAT(Mock, method)( \
       const std::function<Status( \
           const YB_PG_CLIENT_METHOD_ARG(data, method, Request)*, \
-          YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, rpc::RpcContext*)>& mock);
+          YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, PgClientMockCallContext*)>& mock);
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, BOOST_PP_NIL, YB_PG_CLIENT_MOCKABLE_METHODS);
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
@@ -244,6 +274,28 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
   BOOST_PP_SEQ_FOR_EACH(
       YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
 
+#define YB_PG_CLIENT_MOCK_BEFORE_SETTER_DECLARE(r, data, method) \
+  [[nodiscard]] Handle BOOST_PP_CAT(BOOST_PP_CAT(Mock, method), Before)( \
+      const std::function<Status( \
+          const YB_PG_CLIENT_METHOD_ARG(data, method, Request)*, \
+          YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, PgClientMockCallContext*)>& before);
+
+  BOOST_PP_SEQ_FOR_EACH(
+      YB_PG_CLIENT_MOCK_BEFORE_SETTER_DECLARE, BOOST_PP_NIL, YB_PG_CLIENT_MOCKABLE_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+      YB_PG_CLIENT_MOCK_BEFORE_SETTER_DECLARE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
+
+  // "After" mocks run after the real method work completes and before the response is sent.
+  // Only Perform and AcquireObjectLock are supported.
+#define YB_PG_CLIENT_MOCK_AFTER_SETTER_DECLARE(r, data, method) \
+  [[nodiscard]] Handle BOOST_PP_CAT(BOOST_PP_CAT(Mock, method), After)( \
+      const std::function<Status( \
+          const YB_PG_CLIENT_METHOD_ARG(data, method, Request)*, \
+          YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, PgClientMockCallContext*)>& after);
+
+  BOOST_PP_SEQ_FOR_EACH(
+      YB_PG_CLIENT_MOCK_AFTER_SETTER_DECLARE, (LW), YB_PG_CLIENT_AFTER_MOCKABLE_LW_METHODS);
+
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
       const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) override {
     return STATUS(NotSupported, "Mocking PollVectorIndexReady is not supported");
@@ -251,13 +303,15 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
 
   void UnsetMock(const std::string& method);
 
+  // Returns true if a mock handled the call, false if no mock is registered.
+  Result<bool> DispatchMock(
+      const std::string& method, const void* req, void* resp, PgClientMockCallContext* context);
+
  private:
   PgClientServiceIf* impl_;
   std::unordered_map<std::string, SharedFunctor::weak_type> mocks_;
   rw_spinlock mutex_;
 
-  Result<bool> DispatchMock(
-      const std::string& method, const void* req, void* resp, rpc::RpcContext* context);
   Handle SetMock(const std::string& method, SharedFunctor&& mock);
 };
 

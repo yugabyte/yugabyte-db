@@ -15,6 +15,8 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -156,7 +158,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(intent, "c5.4xlarge");
           for (NodeDetails n : univ.getUniverseDetails().getNodesInCluster(primaryUuid)) {
             n.cloudInfo.instance_type = "c5.4xlarge";
           }
@@ -177,7 +179,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         universeUuid,
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(intent, "c5.4xlarge");
           List<NodeDetails> nodes =
               univ.getUniverseDetails().getNodesInCluster(primaryUuid).stream()
                   .collect(Collectors.toList());
@@ -211,7 +213,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
-          primary.userIntent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(primary.userIntent, "c5.4xlarge");
           UserIntentOverrides overrides = new UserIntentOverrides();
           AZOverrides azOverrides = new AZOverrides();
           azOverrides.setInstanceType("c5.9xlarge");
@@ -239,7 +241,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         universeUuid,
         univ -> {
           Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
-          primary.userIntent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(primary.userIntent, "c5.4xlarge");
           UserIntentOverrides overrides = new UserIntentOverrides();
           AZOverrides azOverrides = new AZOverrides();
           azOverrides.setInstanceType("c5.9xlarge");
@@ -274,8 +276,8 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
-          intent.masterInstanceType = "m5.2xlarge";
+          TestUtils.updateInstanceType(intent, "c5.4xlarge");
+          TestUtils.updateInstanceType(intent, ServerType.MASTER, "m5.2xlarge");
           intent.dedicatedNodes = true;
           NodeDetails master = nodes.get(0);
           master.nodeName = "host-master";
@@ -305,7 +307,8 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "small";
+          TestUtils.updateInstanceType(intent, "small");
+
           for (NodeDetails n : univ.getUniverseDetails().getNodesInCluster(primaryUuid)) {
             n.cloudInfo.instance_type = "huge";
           }
@@ -409,7 +412,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         u.getUniverseUUID(),
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.updateInstanceType(intent, "c5.4xlarge");
           NodeDetails live =
               univ.getUniverseDetails().getNodesInCluster(primaryUuid).iterator().next();
           live.nodeName = "host-live";
@@ -575,18 +578,90 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     assertNull(azOverrides.get(az2.getUuid()));
   }
 
+  // PLAT-21736: use_memory_defaults_optimized_for_ysql must be set on both Master and TServer,
+  // since the two processes rely on agreeing on this flag to negotiate available memory.
+  @Test
+  public void maybeSetNewInstallGflags_setsMemoryFlagOnBothMasterAndTserver() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", false, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    Map<String, String> masterFlags = universe.getNewInstallGFlags(ServerType.MASTER);
+    Map<String, String> tserverFlags = universe.getNewInstallGFlags(ServerType.TSERVER);
+    assertEquals("true", masterFlags.get("use_memory_defaults_optimized_for_ysql"));
+    assertEquals("true", tserverFlags.get("use_memory_defaults_optimized_for_ysql"));
+    // Sanity check the sibling flags from the same eligibility bucket are still master-only.
+    assertEquals("true", masterFlags.get("enforce_tablet_replica_limits"));
+    assertEquals("true", masterFlags.get("split_respects_tablet_replica_limits"));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagWhenYsqlDisabled() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", false, false);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    Map<String, String> masterFlags = universe.getNewInstallGFlags(ServerType.MASTER);
+    Map<String, String> tserverFlags = universe.getNewInstallGFlags(ServerType.TSERVER);
+    assertTrue(!masterFlags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    assertTrue(!tserverFlags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    // Non-memory flags in this bucket are unaffected by enableYSQL.
+    assertEquals("true", masterFlags.get("enforce_tablet_replica_limits"));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagBelowVersionThreshold() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.1.0.0", false, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    assertTrue(universe.getNewInstallGFlags(ServerType.MASTER).isEmpty());
+    assertTrue(universe.getNewInstallGFlags(ServerType.TSERVER).isEmpty());
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_noMemoryFlagForDedicatedNodes() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2024.2.1.0", true, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    assertTrue(
+        !universe
+            .getNewInstallGFlags(ServerType.MASTER)
+            .containsKey("use_memory_defaults_optimized_for_ysql"));
+    assertTrue(
+        !universe
+            .getNewInstallGFlags(ServerType.TSERVER)
+            .containsKey("use_memory_defaults_optimized_for_ysql"));
+  }
+
+  private Cluster newInstallGflagsCluster(
+      String ybSoftwareVersion, boolean dedicatedNodes, boolean enableYSQL) {
+    UserIntent userIntent = testIntent();
+    userIntent.ybSoftwareVersion = ybSoftwareVersion;
+    userIntent.dedicatedNodes = dedicatedNodes;
+    userIntent.enableYSQL = enableYSQL;
+    userIntent.providerType = Common.CloudType.aws;
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
   private UniverseConfigureTaskParams buildConfigureTaskParams(
       boolean dedicatedNodes, boolean setMasterDeviceInfo, boolean setMasterInstanceType) {
     UserIntent userIntent = new UserIntent();
     userIntent.dedicatedNodes = dedicatedNodes;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    ProviderInitializer pi =
+        TestUtils.getProviderInitializerForTests(userIntent, UUID.randomUUID())
+            .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
     if (setMasterDeviceInfo) {
-      userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 50);
+      pi.setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 50));
     }
     if (setMasterInstanceType) {
-      userIntent.masterInstanceType = "m5.large";
+      pi.setMasterInstanceType("m5.large");
     }
-
     Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
     UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
     taskParams.currentClusterType = ClusterType.PRIMARY;

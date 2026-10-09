@@ -95,8 +95,9 @@ class PgDmlRead : public PgDml {
   // Limit scan to specific ybctid range for parallel scan.
   // Sets underlying request's bounds to specified values, also resets any psql operations
   // remaining from the previous range scan.
-  Status ApplyParallelRange(
-      Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive);
+  // Parallel range always has inclusive lower bound and exclusive upper bound, hence there are no
+  // parameters for the inclusivity flags.
+  Status ApplyParallelRange(Slice lower_bound, Slice upper_bound);
 
   void BindBounds(
       const Slice lower_bound, bool lower_bound_inclusive, const Slice upper_bound,
@@ -120,8 +121,10 @@ class PgDmlRead : public PgDml {
 
   // Execute.
   Status Exec(const YbcPgExecParameters* exec_params);
-  void SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids);
-  void SetRequestedYbctids(const YbctidGenerator& generator);
+  // keep_order requests that rows are returned in the order the ybctids are provided in.
+  void SetRequestedYbctids(
+      std::reference_wrapper<const std::vector<Slice>> ybctids, bool keep_order = false);
+  void SetRequestedYbctids(const YbctidGenerator& generator, bool keep_order = false);
 
   Status ANNBindVector(PgExpr* vector);
   Status ANNSetPrefetchSize(int32_t prefetch_size);

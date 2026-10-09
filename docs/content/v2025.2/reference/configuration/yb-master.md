@@ -952,10 +952,14 @@ Limits the number of total outstanding tablet splits. Limitation is disabled if 
 
 {{% tags/wrap %}}
 
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
-Limits the number of outstanding tablet splits per node. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
+Limits the number of outstanding tablet splits per node. Limit includes tablets that are performing post-split compactions.
+
+- `-1` (default): the limit is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise).
+- `0`: limitation is disabled.
+- A positive value is used as-is.
 
 ##### --enable_tablet_split_of_pitr_tables
 
@@ -1552,7 +1556,7 @@ Default: `-1000` (use the built-in recommended value; commonly `0` when [--use_m
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 ### Raft and consistency/timing flags
 
@@ -1775,10 +1779,12 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+If the value is `-1` (default) or `0`, the thread count is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise). A positive value is used as-is.
 
 ##### --auto_compact_check_interval_sec
 
@@ -2378,6 +2384,7 @@ When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 

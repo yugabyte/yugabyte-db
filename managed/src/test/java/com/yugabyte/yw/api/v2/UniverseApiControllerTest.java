@@ -44,6 +44,9 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -240,12 +243,13 @@ public class UniverseApiControllerTest extends UniverseTestBase {
                       ? regions.stream().map(r -> r.getUuid()).toList()
                       : new ArrayList<>();
               // Volumes
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
-                  ApiUtils.getDummyDeviceInfo(2, 150);
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.masterInstanceType =
-                  "c5.4xlarge";
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo =
-                  ApiUtils.getDummyDeviceInfo(1, 50);
+              ProviderInitializer pi =
+                  TestUtils.existingProviderInitializer(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent)
+                      .setDeviceInfo(ApiUtils.getDummyDeviceInfo(2, 150))
+                      .setMasterInstanceType("c5.4xlarge")
+                      .setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 50));
+
               PerProcessDetails tserverDetails = new PerProcessDetails();
               tserverDetails.setInstanceType("c5.2xlarge");
               tserverDetails.setDeviceInfo(ApiUtils.getDummyDeviceInfo(2, 200));
@@ -257,11 +261,9 @@ public class UniverseApiControllerTest extends UniverseTestBase {
                   .userIntent
                   .setUserIntentOverrides(userIntentOverrides);
               // instanceTags
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
-                  Map.of("tag1", "value1", "tag2", "value2");
+              pi.setInstanceTags(Map.of("tag1", "value1", "tag2", "value2"));
               // instanceType
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType =
-                  ApiUtils.UTIL_INST_TYPE;
+              pi.setInstanceType(ApiUtils.UTIL_INST_TYPE);
               // GFlags
               universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
                   SpecificGFlags.construct(
@@ -379,7 +381,8 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     azTserverNode.azUuid = azUUID;
     azTserverNode.dedicatedTo = ServerType.TSERVER;
     assertEquals("c5.2xlarge", userIntent.getInstanceTypeForNode(azTserverNode));
-    assertEquals(Integer.valueOf(300), userIntent.getDeviceInfoForNode(azTserverNode).volumeSize);
+    assertEquals(
+        Integer.valueOf(300), userIntent.evaluateDeviceInfoForNode(azTserverNode).volumeSize);
 
     validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
   }
@@ -550,6 +553,35 @@ public class UniverseApiControllerTest extends UniverseTestBase {
 
     nodeSpec.getStorageSpec().numVolumes(100);
     checkResizeOptionsResp = api.checkResizeOptions(customer.getUuid(), uUUID, spec);
+    assertThat(
+        new HashSet<>(checkResizeOptionsResp.getOptions()),
+        is(Set.of(ResizeUpdateOption.FULL_MOVE)));
+  }
+
+  @Test
+  public void testGetResizeOptionsK8s() throws ApiException, IOException {
+    // Kubernetes universes never do a smart resize; hardware/volume edits are applied by
+    // recreating the StatefulSet pods. getUpdateOptions reports this as UPDATE (which is not a
+    // ResizeUpdateOption), so the v2 endpoint must surface it as FULL_MOVE.
+    Provider k8sProvider = ModelFactory.newProvider(customer, Common.CloudType.kubernetes);
+    k8sProvider.setConfigMap(Map.of("KUBECONFIG", "foo"));
+    k8sProvider.save();
+    Universe universe =
+        createFromConfig(k8sProvider, "ExistingK8s", "r1-z1r1-3-2;r1-z2r1-3-2;r1-z3r1-3-1");
+    UUID uUUID = universe.getUniverseUUID();
+    UniverseApi api = new UniverseApi();
+    com.yugabyte.yba.v2.client.models.Universe universeResp =
+        api.getUniverse(customer.getUuid(), uUUID);
+    ClusterSpec clusterSpec = universeResp.getSpec().getClusters().get(0);
+    ClusterNodeSpec nodeSpec = clusterSpec.getNodeSpec();
+    // Volume expansion is classified by getUpdateOptions as a (k8s) UPDATE.
+    nodeSpec.getStorageSpec().volumeSize(nodeSpec.getStorageSpec().getVolumeSize() + 100);
+
+    CheckResizeOptionsSpec spec =
+        new CheckResizeOptionsSpec().nodeSpec(nodeSpec).clusterUuid(clusterSpec.getUuid());
+
+    CheckResizeOptionsResp checkResizeOptionsResp =
+        api.checkResizeOptions(customer.getUuid(), uUUID, spec);
     assertThat(
         new HashSet<>(checkResizeOptionsResp.getOptions()),
         is(Set.of(ResizeUpdateOption.FULL_MOVE)));

@@ -8,10 +8,10 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 //! Provides a safe wrapper around Postgres' `pg_sys::TupleDescData` struct
-use crate::{pg_sys, regtypein, void_mut_ptr, PgBox, PgRelation};
+use crate::{PgBox, PgRelation, pg_sys, regtypein, void_mut_ptr};
 
-use pgrx_pg_sys::errcodes::PgSqlErrorCode;
 use pgrx_pg_sys::PgTryBuilder;
+use pgrx_pg_sys::errcodes::PgSqlErrorCode;
 use std::ops::Deref;
 
 /// This struct is passed around within the backend to describe the structure
@@ -142,7 +142,7 @@ impl<'a> PgTupleDesc<'a> {
     }
 
     /// wrap the `pg_sys::TupleDesc` contained by the specified `PgRelation`
-    pub fn from_relation(parent: &PgRelation) -> PgTupleDesc {
+    pub fn from_relation(parent: &PgRelation) -> PgTupleDesc<'_> {
         PgTupleDesc {
             // SAFETY:  `parent` is a Rust reference, and as such its rd_att attribute will be property initialized
             tupdesc: Some(unsafe { PgBox::from_pg(parent.rd_att) }),
@@ -232,7 +232,7 @@ impl<'a> PgTupleDesc<'a> {
     }
 
     /// Iterate over our attributes
-    pub fn iter(&self) -> TupleDescIterator {
+    pub fn iter(&self) -> TupleDescIterator<'_> {
         TupleDescIterator { tupdesc: self, curr: 0 }
     }
 
@@ -243,7 +243,7 @@ impl<'a> PgTupleDesc<'a> {
     }
 }
 
-impl<'a> Deref for PgTupleDesc<'a> {
+impl Deref for PgTupleDesc<'_> {
     type Target = PgBox<pg_sys::TupleDescData>;
 
     fn deref(&self) -> &Self::Target {
@@ -251,7 +251,7 @@ impl<'a> Deref for PgTupleDesc<'a> {
     }
 }
 
-impl<'a> Clone for PgTupleDesc<'a> {
+impl Clone for PgTupleDesc<'_> {
     fn clone(&self) -> Self {
         let tupdesc = self.tupdesc.as_ref().expect("PgTupleDesc.tupdesc was None");
         // SAFETY: We assume the previous tupdesc is valid and
@@ -263,7 +263,7 @@ impl<'a> Clone for PgTupleDesc<'a> {
     }
 }
 
-impl<'a> Drop for PgTupleDesc<'a> {
+impl Drop for PgTupleDesc<'_> {
     fn drop(&mut self) {
         if self.tupdesc.is_some() {
             let tupdesc = self.tupdesc.take().unwrap();
@@ -299,6 +299,19 @@ fn tupdesc_get_attr(
     &atts[attno]
 }
 
+/// `attno` is 0-based
+#[cfg(feature = "pg18")]
+#[inline]
+fn tupdesc_get_attr(
+    tupdesc: &PgBox<pg_sys::TupleDescData>,
+    attno: usize,
+) -> &pg_sys::FormData_pg_attribute {
+    let att_pointer =
+        unsafe { tupdesc.compact_attrs.as_ptr().add(tupdesc.natts.try_into().unwrap()).cast() };
+    let atts = unsafe { std::slice::from_raw_parts(att_pointer, tupdesc.natts as usize) };
+    &atts[attno]
+}
+
 pub struct TupleDescIterator<'a> {
     tupdesc: &'a PgTupleDesc<'a>,
     curr: usize,
@@ -328,7 +341,7 @@ impl<'a> IntoIterator for PgTupleDesc<'a> {
     }
 }
 
-impl<'a> Iterator for TupleDescDataIntoIterator<'a> {
+impl Iterator for TupleDescDataIntoIterator<'_> {
     type Item = pg_sys::FormData_pg_attribute;
 
     fn next(&mut self) -> Option<Self::Item> {

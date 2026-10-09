@@ -49,11 +49,10 @@ public class UpdateAndPersistKubernetesImmutableYbc extends UniverseTaskBase {
                 log.error(msg);
                 throw new RuntimeException(msg);
               }
-              if (!taskParams().useYbdbInbuiltYbc) {
-                universeDetails.setYbcSoftwareVersion(stableYbcVersion);
-              } else {
-                universeDetails.setYbcSoftwareVersion(null /* ybcSoftwareVersion */);
-              }
+              // Kept in sync with CreateKubernetesUniverse, which records the stable version
+              // regardless of useYbdbInbuiltYbc. Consumers must branch on useYbdbInbuiltYbc
+              // rather than on this being unset.
+              universeDetails.setYbcSoftwareVersion(stableYbcVersion);
               UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
               userIntent.setUseYbdbInbuiltYbc(taskParams().useYbdbInbuiltYbc);
               universe.setUniverseDetails(universeDetails);

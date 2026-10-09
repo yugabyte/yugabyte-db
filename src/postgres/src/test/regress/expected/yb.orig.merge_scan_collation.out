@@ -17,6 +17,10 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
+-- Small response pages make the execution metrics of the plan variants
+-- distinct without growing the tables: at the default page size their rows
+-- come back in one read request either way.
+SET yb_fetch_row_limit = 16;
 -- The explicit "C" collation on the index column differs from the default
 -- collation of the underlying t column, so a query clause on t matches the
 -- index expression while its comparison collation may not match the index
@@ -56,11 +60,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          ->  Index Scan using idx on public.tv_tbl (actual rows=1493 loops=1)
                Output: i2, i4, n, t
                Index Cond: ((tv_tbl.t)::text = ANY ('{0,1,2}'::text[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 27
+               Storage Table Read Requests: 95
+               Storage Table Read Ops: 694
                Storage Table Rows Scanned: 1493
-               Storage Index Read Requests: 1
-               Storage Index Read Ops: 3
+               Storage Index Read Requests: 33
+               Storage Index Read Ops: 95
                Storage Index Rows Scanned: 1493
 (15 rows)
 
@@ -76,8 +80,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          ->  Seq Scan on public.tv_tbl (actual rows=1493 loops=1)
                Output: i2, i4, n, t
                Storage Filter: (tv_tbl.t = ANY ('{0,1,2}'::text[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 22
+               Storage Table Read Ops: 98
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -93,8 +97,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          ->  Seq Scan on public.tv_tbl (actual rows=1493 loops=1)
                Output: i2, i4, n, t
                Storage Filter: ((tv_tbl.t)::text = ANY ('{0,1,2}'::text[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 22
+               Storage Table Read Ops: 98
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -135,8 +139,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          ->  Seq Scan on public.tv_tbl (actual rows=1493 loops=1)
                Output: i2, i4, n, t
                Storage Filter: (tv_tbl.t = ANY ('{0,1,2}'::text[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 22
+               Storage Table Read Ops: 98
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -152,8 +156,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          ->  Seq Scan on public.tv_tbl (actual rows=1493 loops=1)
                Output: i2, i4, n, t
                Storage Filter: ((tv_tbl.t)::text = ANY ('{0,1,2}'::text[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 22
+               Storage Table Read Ops: 98
                Storage Table Rows Scanned: 5048
 (12 rows)
 

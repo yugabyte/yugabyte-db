@@ -48,19 +48,26 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon 
 This tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](/stable/quick-start/macos/).
-- installed Go version 1.13 or later.
+- installed Go version 1.19 or later.
 
 ## Install the Yugabyte Go Driver for YCQL
 
-To install the [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) locally, run the following command:
+Create a directory for the sample application and initialize a Go module in it:
 
 ```sh
-$ go get github.com/yugabyte/gocql
+$ mkdir ybcql_hello_world && cd ybcql_hello_world
+$ go mod init ybcql_hello_world
+```
+
+To install the [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) in the module, run the following command:
+
+```sh
+$ go get github.com/yugabyte/gocql/v2
 ```
 
 ## Write the YCQL sample application
 
-Create a file `ybcql_hello_world.go` and copy the contents below into it.
+In the `ybcql_hello_world` directory, create a file `ybcql_hello_world.go` and copy the following into it.
 
 ```go
 package main;
@@ -70,7 +77,7 @@ import (
     "log"
     "time"
 
-    "github.com/yugabyte/gocql"
+    "github.com/yugabyte/gocql/v2"
 )
 
 func main() {

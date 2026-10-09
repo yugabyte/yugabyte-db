@@ -1,0 +1,15 @@
+# Copyright 2026 YugabyteDB, Inc. and Contributors
+# Kustomization driving the Helm post-renderer that injects the pg_data ownership reconcile.
+# See PgDataOwnershipPostRenderer and pgdata-ownership-patch.yaml.template.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - manifest.yaml
+patches:
+  - path: patch.yaml
+    target:
+      group: apps
+      version: v1
+      kind: StatefulSet
+      labelSelector: "{{TSERVER_APP_LABEL}}=yb-tserver"

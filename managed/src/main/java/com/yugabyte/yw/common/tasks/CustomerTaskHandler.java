@@ -69,6 +69,24 @@ public class CustomerTaskHandler {
     this.customerTaskManager = customerTaskManager;
   }
 
+  /** Retries a previously failed, retry-capable customer task. */
+  public YBATask retryTask(UUID customerUUID, UUID taskUUID) {
+    // Surface V2-appropriate status codes: NOT_FOUND when the customer or task does not exist, and
+    // FORBIDDEN when the task exists but is not eligible for retry. The underlying
+    // CustomerTaskManager.retryCustomerTask returns BAD_REQUEST for these cases (relied upon by
+    // the V1 API), so the mapping is done here for the V2 API.
+    Customer.getOrNotFound(customerUUID);
+    CustomerTask customerTask = CustomerTask.get(customerUUID, taskUUID);
+    if (customerTask == null) {
+      throw new PlatformServiceException(NOT_FOUND, "Cannot find task with uuid " + taskUUID);
+    }
+    if (!customerTaskManager.isTaskRetryable(customerTask, customerTask.getTaskInfo())) {
+      throw new PlatformServiceException(FORBIDDEN, "Task " + taskUUID + " cannot be retried");
+    }
+    CustomerTask retryTask = customerTaskManager.retryCustomerTask(customerUUID, taskUUID);
+    return new YBATask().taskUuid(retryTask.getTaskUUID()).resourceUuid(retryTask.getTargetUUID());
+  }
+
   /** Rolls back a previously failed, rollback-capable customer task. */
   public YBATask rollbackTask(UUID customerUUID, UUID taskUUID) {
     // Surface V2-appropriate status codes: NOT_FOUND when the customer or task does not exist, and
@@ -80,7 +98,7 @@ public class CustomerTaskHandler {
     if (customerTask == null) {
       throw new PlatformServiceException(NOT_FOUND, "Cannot find task with uuid " + taskUUID);
     }
-    if (!commissioner.canTaskRollback(customerTask.getTaskInfo())) {
+    if (!commissioner.canTaskRollbackDetailed(customerTask.getTaskInfo())) {
       throw new PlatformServiceException(FORBIDDEN, "Task " + taskUUID + " cannot be rolled back");
     }
     CustomerTask rollbackTask = customerTaskManager.rollbackCustomerTask(customerUUID, taskUUID);
@@ -226,6 +244,9 @@ public class CustomerTaskHandler {
       taskData.abortable = taskProgress.get("abortable").asBoolean();
       taskData.retryable = taskProgress.get("retryable").asBoolean();
       taskData.canRollback = taskProgress.get("canRollback").asBoolean();
+      if (taskProgress.hasNonNull("originalTaskUUID")) {
+        taskData.originalTaskUUID = UUID.fromString(taskProgress.get("originalTaskUUID").asText());
+      }
       taskData.id = task.getTaskUUID();
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();

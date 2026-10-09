@@ -47,8 +47,8 @@ yugabyte=#  CREATE SERVER my_server FOREIGN DATA WRAPPER my_wrapper OPTIONS (hos
 
 ## See also
 
-- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper/)
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table/)
-- [`CREATE USER MAPPING`](../ddl_create_user_mapping/)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema/)
-- [`ALTER SERVER`](../ddl_alter_server/)
+- [CREATE FOREIGN DATA WRAPPER](../ddl_create_foreign_data_wrapper/)
+- [CREATE FOREIGN TABLE](../ddl_create_foreign_table/)
+- [CREATE USER MAPPING](../ddl_create_user_mapping/)
+- [IMPORT FOREIGN SCHEMA](../ddl_import_foreign_schema/)
+- [ALTER SERVER](../ddl_alter_server/)

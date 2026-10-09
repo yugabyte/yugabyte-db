@@ -9809,7 +9809,7 @@ ATExecAddStatistics(AlteredTableInfo *tab, Relation rel,
 	/* The CreateStatsStmt has already been through transformStatsStmt */
 	Assert(stmt->transformed);
 
-	address = CreateStatistics(stmt);
+	address = CreateStatistics(stmt, !is_rebuild);
 
 	return address;
 }
@@ -15341,6 +15341,23 @@ TryReuseIndex(Oid oldId, IndexStmt *stmt, bool *yb_reuse_index)
 			stmt->oldCreateSubid = irel->rd_createSubid;
 			stmt->oldFirstRelfilenodeSubid = irel->rd_firstRelfilenodeSubid;
 		}
+		index_close(irel, NoLock);
+	}
+	else if (IsYugaByteEnabled())
+	{
+		/*
+		 * YB: The index is not reusable, so its DocDB table will be dropped
+		 * and re-created.  Record the old relfilenode on the IndexStmt so
+		 * that the master can apply its table rewrite guardrails (e.g., for
+		 * non-automatic mode xCluster replication) to the new index's
+		 * CreateTable request.
+		 */
+		Relation	irel = index_open(oldId, NoLock);
+
+		/* Partitioned indexes have no DocDB table of their own. */
+		if (irel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX &&
+			IsYBRelation(irel))
+			stmt->yb_index_old_relfilenode = YbGetRelfileNodeId(irel);
 		index_close(irel, NoLock);
 	}
 }
@@ -21576,7 +21593,11 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 		stmt = YbGenerateClonedExtStatsStmt(new_rel, old_relid,
 											stat_ext_form->oid, attmap);
 		stmt->defnames = stringToQualifiedNameList(orig_stats_name);
-		CreateStatistics(stmt);
+		/*
+		 * Re-creating statistics during a rewrite must not require CREATE on
+		 * the schema, matching the !is_rebuild case in ATExecAddStatistics.
+		 */
+		CreateStatistics(stmt, false /* check_rights */ );
 	}
 	systable_endscan(scan);
 	table_close(pg_statistic_ext, RowExclusiveLock);
@@ -22874,7 +22895,8 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	 * checking all the constraints.
 	 */
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
-	scan = heap_beginscan(old_rel, snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN);
+	scan = heap_beginscan(old_rel, snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN,
+						  NULL);	/* yb_options */
 
 	/*
 	 * Switch to per-tuple memory context and reset it for each tuple

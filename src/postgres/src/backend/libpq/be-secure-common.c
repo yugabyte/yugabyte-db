@@ -35,6 +35,12 @@
  * The result will be put in buffer buf, which is of size size.  The return
  * value is the length of the actual result.
  */
+/*
+ * YB: A Conn Mgr copy lives in
+ * src/odyssey/third_party/machinarium/sources/yb_pg_tls_link_support.h.
+ * Keep that copy in sync if you change this function. It is also used in
+ * be-secure-openssl.c.
+ */
 int
 run_ssl_passphrase_command(const char *prompt, bool is_server_start, char *buf, int size)
 {
@@ -127,6 +133,11 @@ error:
 
 /*
  * Check permissions for SSL key files.
+ */
+/*
+ *YB: A Conn Mgr copy lives in
+ * src/odyssey/third_party/machinarium/sources/yb_pg_tls_link_support.h.
+ * Keep that copy in sync if you change this function.
  */
 bool
 check_ssl_key_file_permissions(const char *ssl_key_file, bool isServerStart)

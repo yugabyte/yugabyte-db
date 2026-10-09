@@ -608,7 +608,7 @@ This parameter can only be configured during cluster startup, and adjusting this
 Default: `0`
 {{% /tags/wrap %}}
 
-Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
+Enables [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
 
 To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
@@ -945,6 +945,17 @@ Default: `1`
 {{% /tags/wrap %}}
 
 When [--durable_wal_write](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
+
+##### --export_drive_io_metrics
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2025.2.7.0 and later.
+
+Enables [per-drive write I/O metrics](../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#per-drive-write-i-o). When `false`, those metrics are not exported.
 
 ##### --log_min_seconds_to_retain
 
@@ -1375,6 +1386,24 @@ Default: `14400` (4 hours)
 
 Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
 
+##### --cdc_skip_unqualified_tables_for_polling
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2025.2.7.0 and later.
+
+When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed by this slot.
+
+When this flag is `false` (the default), VWAL refuses to add the unqualified tablet to the polling list and returns `Cannot add tablet: <id> to the polling list as it has been unqualified for stream: <id>`. The tablet is not polled.
+
+A table is unqualified if its tablets have expired (not polled within [--cdc_intent_retention_ms](#cdc-intent-retention-ms)) or are not of interest (not polled within [--cdcsdk_tablet_not_of_interest_timeout_secs](#cdcsdk-tablet-not-of-interest-timeout-secs) of stream or slot creation).
+
+For more information, refer to [Limitations](../../../additional-features/change-data-capture/using-logical-replication/#limitations).
+
 ##### --timestamp_syscatalog_history_retention_interval_sec
 
 {{% tags/wrap %}}
@@ -1719,7 +1748,7 @@ The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memo
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 ### Raft and consistency/timing flags
 
@@ -1950,10 +1979,12 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+If the value is `-1` (default) or `0`, the thread count is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise). A positive value is used as-is.
 
 ##### --auto_compact_check_interval_sec
 
@@ -2034,6 +2065,90 @@ Default: `50`
 {{% /tags/wrap %}}
 
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
+
+### Vector Index LSM compaction flags
+
+Use these flags to control background compaction of Vector LSM chunk files used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
+
+##### --vector_index_num_compactions_limit
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Maximum number of concurrent Vector LSM compactions per tablet server. Set to `0` for no per-tserver limit.
+
+##### --vector_index_files_number_compaction_trigger
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Number of Vector LSM chunk files that triggers a background compaction.
+
+##### --vector_index_compaction_always_include_size_threshold
+
+{{% tags/wrap %}}
+
+Default: `67108864` (64MB)
+{{% /tags/wrap %}}
+
+Always include Vector LSM chunks of this size or smaller in a compaction by size ratio.
+
+##### --vector_index_compaction_size_ratio_percent
+
+{{% tags/wrap %}}
+
+Default: `20`
+{{% /tags/wrap %}}
+
+Percentage used to decide whether a larger Vector LSM chunk is included in a background compaction by size ratio. A succeeding chunk is included when it is at most this percentage larger than the running total of chunks already picked. For example, with the default of `20`, the next chunk is included if it is at most 20% larger than the running total.
+
+Set to `-100` to disable size-ratio compactions.
+
+Chunks at or below [`--vector_index_compaction_always_include_size_threshold`](#vector-index-compaction-always-include-size-threshold) are always included without applying this check.
+
+##### --vector_index_compaction_size_ratio_min_merge_width
+
+{{% tags/wrap %}}
+
+Default: `4`
+{{% /tags/wrap %}}
+
+Minimum number of Vector LSM chunks in a single background compaction by size ratio. The effective minimum is at least `2`.
+
+##### --vector_index_compaction_size_ratio_max_merge_width
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of Vector LSM chunks in a single background compaction by size ratio. When set to `0` (the default), there is no limit. If you set a value lower than [`--vector_index_compaction_size_ratio_min_merge_width`](#vector-index-compaction-size-ratio-min-merge-width), the minimum merge width is used instead.
+
+##### --vector_index_compaction_size_amp_max_percent
+
+{{% tags/wrap %}}
+
+Default: `200`
+{{% /tags/wrap %}}
+
+Maximum size amplification for Vector LSM background compaction, as a percentage. Size amplification is the total size of newer chunks relative to the earliest on-disk chunk. When newer chunks are at least this percentage of the base chunk size, a size-amplification compaction is triggered. For example, with the default of `200`, compaction is triggered when newer chunks total 200% of the earliest chunk size.
+
+Set to `-1` to disable size-amplification compactions.
+
+Size-amplification compaction is considered before size-ratio compaction when picking chunks for background compaction.
+
+##### --vector_index_compaction_size_amp_max_merge_width
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of Vector LSM chunks in a single background compaction by size amplification. When set to `0` (the default), there is no limit. A size-amplification compaction always includes at least 2 chunks.
 
 ### Concurrency control flags
 
@@ -2259,6 +2374,25 @@ Default: `false`
 {{% /tags/wrap %}}
 
 Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
+
+### Explicit row locking flags
+
+To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+
+##### --ysql_yb_explicit_row_locking_batch_size
+
+{{% tags/wrap %}}
+
+Default: `1024`
+{{% /tags/wrap %}}
+
+Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. A larger batch size can improve throughput by reducing round-trips, but may consume more memory.
+
+This flag can be set dynamically using:
+
+```sql
+SET yb_explicit_row_locking_batch_size = 512;
+```
 
 ### Advisory lock flags
 
@@ -2700,6 +2834,7 @@ When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 

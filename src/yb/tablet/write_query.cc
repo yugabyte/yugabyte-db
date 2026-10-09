@@ -13,6 +13,8 @@
 
 #include "yb/tablet/write_query.h"
 
+#include <algorithm>
+
 #include "yb/ash/wait_state.h"
 
 #include <boost/logic/tribool.hpp>
@@ -27,6 +29,7 @@
 
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/txn_error_injection.h"
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
@@ -121,6 +124,20 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
     out_request->set_xrepl_origin_id(client_request.xrepl_origin_id());
   }
   out_request->set_batch_idx(client_request.batch_idx());
+  // Lift the ops' write fence into the replicated message, which is all RaftConsensus sees. The
+  // earliest fence wins; the ops share a hybrid time, so they cannot be fenced apart.
+  HybridTime ignore_after_hybrid_time;
+  for (const auto& op : client_request.pgsql_write_batch()) {
+    const auto fence = HybridTime::FromPB(op.ignore_after_hybrid_time());
+    if (!fence) {  // Not set for this op.
+      continue;
+    }
+    ignore_after_hybrid_time =
+        ignore_after_hybrid_time ? std::min(ignore_after_hybrid_time, fence) : fence;
+  }
+  if (ignore_after_hybrid_time) {
+    out_request->set_ignore_after_hybrid_time(ignore_after_hybrid_time.ToPB());
+  }
   // Actually, in production code, we could check for external hybrid time only when there are
   // no ql, pgsql, redis operations.
   // But in CDCServiceTest we have ql write batch with external time.
@@ -1129,6 +1146,15 @@ Status WriteQuery::DoCompleteExecute() {
         doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
         scoped_read_operation_, &write_batch, init_marker_behavior,
         tablet->monotonic_counter(), &read_restart_data_, tablet->metadata()->table_name()));
+
+    if (!read_restart_data_.is_valid() &&
+        ShouldInjectReadRestart(read_operation_data.read_time)) {
+      const auto safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+      read_restart_data_ = ReadRestartData{
+          InjectedReadRestartTime(read_operation_data.read_time, safe_time), {}};
+      VLOG(3) << "Injected read restart " << read_restart_data_.restart_time
+              << " into write reading at " << read_operation_data.read_time;
+    }
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.

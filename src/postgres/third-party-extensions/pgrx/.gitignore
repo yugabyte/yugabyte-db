@@ -11,3 +11,7 @@ cmake*/
 pgrx-examples/*/target
 /bin
 rustup-init.sh
+.claude/
+.codex/
+.agents/
+tmp/

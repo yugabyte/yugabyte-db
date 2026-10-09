@@ -37,6 +37,7 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/debug/leakcheck_disabler.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
@@ -76,7 +77,7 @@ static void RunWithManyThreads(std::function<void()>* f, int num_threads) {
   vector<scoped_refptr<yb::Thread> > threads;
   for (int i = 0; i < num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", StringPrintf("thread%d", i),
+    CHECK_OK(yb::Thread::Create("test", Format("thread$0", i),
           *f, &new_thread));
     threads.push_back(new_thread);
   }
@@ -112,7 +113,7 @@ void MultiThreadedMetricsTest::RegisterCounters(
     // are typically static.
     ScopedLeakCheckDisabler disabler;
 
-    string name = strings::Substitute("$0_$1_$2", name_prefix, tid, i);
+    string name = Format("$0_$1_$2", name_prefix, tid, i);
     auto proto = new CounterPrototype(MetricPrototype::CtorArgs(
         "test_entity", strdup(name.c_str()), "Test Counter",
         MetricUnit::kOperations, "test counter",

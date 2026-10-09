@@ -15,6 +15,11 @@
 
 #pragma once
 
+#include <concepts>
+#include <string>
+#include <string_view>
+#include <type_traits>
+
 #include "yb/util/tostring.h" // for ToString
 
 namespace yb {
@@ -101,6 +106,33 @@ class FormatValue<T, std::enable_if_t<std::is_convertible<T, const char*>::value
  private:
   const char *value_;
   const size_t len_;
+};
+
+// Strings are referenced in place rather than copied. The referenced object outlives the
+// FormatValue, which only exists for the duration of a single Format() call.
+template <class T>
+class FormatValue<T, std::enable_if_t<std::is_same_v<T, std::string> ||
+                                      std::is_same_v<T, std::string_view>>> {
+ public:
+  explicit FormatValue(std::string_view value) : value_(value) {}
+
+  FormatValue(const FormatValue& rhs) = delete;
+  void operator=(const FormatValue& rhs) = delete;
+
+  size_t Add(size_t position) const {
+    return position + value_.size();
+  }
+
+  char* Add(char* position) const {
+    // An empty string_view may have a null data(), which memcpy must not be given.
+    if (!value_.empty()) {
+      memcpy(position, value_.data(), value_.size());
+    }
+    return position + value_.size();
+  }
+
+ private:
+  std::string_view value_;
 };
 
 template <class T>
@@ -231,6 +263,42 @@ inline std::string Format(std::string format) {
 
 inline std::string Format(const char* format) {
   return format;
+}
+
+// Helpers for printf-style field formatting, which Format() does not support. They return strings
+// to be passed as Format() arguments, e.g. Format("$0 ms", FixedPoint(elapsed_ms, 3)).
+
+// Same as printf("%.<precision>f", value).
+std::string FixedPoint(double value, int precision);
+
+// Same as printf("%.<precision>E", value).
+std::string Scientific(double value, int precision = 6);
+
+// Pads str on the left with fill up to width characters, like printf("%<width>s").
+std::string PadLeft(std::string_view str, size_t width, char fill = ' ');
+
+// Pads str on the right with fill up to width characters, like printf("%-<width>s").
+std::string PadRight(std::string_view str, size_t width, char fill = ' ');
+
+// Same as printf("%0<width>d", value).
+template <std::integral T>
+std::string ZeroPadded(T value, size_t width) {
+  auto str = ToString(value);
+  if (str.front() == '-') {
+    return "-" + PadLeft(std::string_view(str).substr(1), width > 0 ? width - 1 : 0, '0');
+  }
+  return PadLeft(str, width, '0');
+}
+
+// Same as printf("%0<width>x", value): lower case hex digits, no 0x prefix. A negative value is
+// printed as the two's complement bit pattern of its own type, e.g. HexString(int8_t(-1)) is "ff".
+namespace internal {
+std::string HexString(uint64_t bits, size_t width);
+} // namespace internal
+
+template <std::integral T>
+std::string HexString(T value, size_t width = 0) {
+  return internal::HexString(static_cast<std::make_unsigned_t<T>>(value), width);
 }
 
 } // namespace yb

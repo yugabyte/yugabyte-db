@@ -16,6 +16,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/value.messages.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/test/pggate_test.h"
@@ -73,7 +74,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   LOG(INFO) << "Test SELECTing from empty table";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -111,7 +112,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -127,7 +128,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   YbcPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YbcPgExpr expr_job;
-  string job = strings::Substitute("Job_title_$0", seed);
+  string job = Format("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   // Set column value to be inserted.
@@ -155,7 +156,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_depcnt, seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
-    job = strings::Substitute("Job_title_$0", seed);
+    job = Format("Job_title_$0", seed);
     CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_job, job.c_str(), false));
   }
 
@@ -165,7 +166,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   LOG(INFO) << "Test SELECTing from partitioned table WITH specifying RANGE column";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -228,7 +229,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
     CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    string expected_job_name = Format("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
   }
   CHECK_EQ(select_row_count, 1) << "Unexpected row count";
@@ -240,7 +241,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   LOG(INFO) << "Test SELECTing from partitioned table WITHOUT specifying RANGE column";
   CHECK_YBC_STATUS(YBCPgNewSelect(
       kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-      false /* skip_intents_read */, &pg_stmt));
+      {} /* skip_intents_info */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -289,7 +290,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
     CHECK_GE(salary, id + 1.0*id/10.0 - 0.01); // float
 
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    string expected_job_name = Format("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
   }
   CommitTransaction();

@@ -29,6 +29,7 @@
 #include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 namespace yb::pggate {
 
@@ -189,6 +190,309 @@ TEST_F(PgReadRangeTest, HashKeyEquals) {
 
   r1.SetDocKeyBound(k2, false, false);
   EXPECT_EQ(r1, r2);
+}
+
+namespace {
+  enum class HashCodeKeySuffix {
+    NONE, // Bare hash code
+    LOWEST, // hash code +0
+    HIGHEST // (hash code + 1) -0
+  };
+  dockv::KeyBytes MakeHashCodeKey(uint16_t hash_code, HashCodeKeySuffix suffix) {
+    dockv::KeyBytes key;
+    key.AppendKeyEntryType(dockv::KeyEntryType::kUInt16Hash);
+    key.AppendUInt16(hash_code);
+    switch (suffix) {
+      case HashCodeKeySuffix::NONE:
+        break;
+      case HashCodeKeySuffix::LOWEST:
+        key.AppendKeyEntryType(dockv::KeyEntryType::kLowest);
+        break;
+      case HashCodeKeySuffix::HIGHEST:
+        key.AppendKeyEntryType(dockv::KeyEntryType::kHighest);
+        break;
+    }
+    return key;
+  }
+} // namespace
+
+TEST_F(PgReadRangeTest, HashCodeKeyRepresentations) {
+  uint16_t hash_code = 100;
+
+  auto h_base = MakeHashCodeKey(hash_code, HashCodeKeySuffix::NONE);
+  auto h_minus_0 = MakeHashCodeKey(hash_code - 1, HashCodeKeySuffix::HIGHEST);
+  auto h_plus_0 = MakeHashCodeKey(hash_code, HashCodeKeySuffix::LOWEST);
+  // Use the bound value set by the SetHashCodeBound as the reference.
+  PgReadRange expected_lower(hash_table_);
+  expected_lower.SetHashCodeBound(hash_code, /* is_inclusive = */ true, /* is_lower = */ true);
+  PgReadRange expected_upper(hash_table_);
+  expected_upper.SetHashCodeBound(hash_code, /* is_inclusive = */ false, /* is_lower = */ false);
+
+  // Lower bound tests.
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    EXPECT_EQ(r1, expected_lower);
+    EXPECT_EQ(r2, expected_lower);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    EXPECT_EQ(r1, expected_lower);
+    EXPECT_EQ(r2, expected_lower);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    EXPECT_EQ(r1, expected_lower);
+    EXPECT_EQ(r2, expected_lower);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    EXPECT_EQ(r1, expected_lower);
+    EXPECT_EQ(r2, expected_lower);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    EXPECT_EQ(r1, expected_lower);
+    EXPECT_EQ(r2, expected_lower);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    EXPECT_EQ(r1, expected_lower);
+    EXPECT_EQ(r2, expected_lower);
+    EXPECT_EQ(r1, r2);
+  }
+
+  // Upper bound tests.
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r2.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    EXPECT_EQ(r1, expected_upper);
+    EXPECT_EQ(r2, expected_upper);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r2.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    EXPECT_EQ(r1, expected_upper);
+    EXPECT_EQ(r2, expected_upper);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    EXPECT_EQ(r1, expected_upper);
+    EXPECT_EQ(r2, expected_upper);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r2.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    EXPECT_EQ(r1, expected_upper);
+    EXPECT_EQ(r2, expected_upper);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    EXPECT_EQ(r1, expected_upper);
+    EXPECT_EQ(r2, expected_upper);
+    EXPECT_EQ(r1, r2);
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    EXPECT_EQ(r1, expected_upper);
+    EXPECT_EQ(r2, expected_upper);
+    EXPECT_EQ(r1, r2);
+  }
+
+  // Intersect tests.
+  // Two ranges with the same hash code as respectively lower and upper bound should not intersect.
+  // If bound is a valid hash code, is_inclusive is ignored.
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ false);
+    EXPECT_FALSE(r1.Intersects(r2));
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ false);
+    EXPECT_FALSE(r1.Intersects(r2));
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_base.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ false);
+    EXPECT_FALSE(r1.Intersects(r2));
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ false);
+    EXPECT_FALSE(r1.Intersects(r2));
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_minus_0.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ false);
+    EXPECT_FALSE(r1.Intersects(r2));
+  }
+
+  {
+    PgReadRange r1(hash_table_);
+    PgReadRange r2(hash_table_);
+
+    r1.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ true);
+    r2.SetDocKeyBound(h_plus_0.AsSlice(), /* is_inclusive = */ true, /* is_lower = */ false);
+    EXPECT_FALSE(r1.Intersects(r2));
+  }
+}
+
+TEST_F(PgReadRangeTest, HashCodeKeyRepresentationsEdgeCases) {
+  // Hash code 0 (minimum)
+  {
+    // [kUInt16Hash, 0] = 0
+    auto h_key1 = MakeHashCodeKey(0, HashCodeKeySuffix::NONE);
+    // [kUInt16Hash, 0, kLowest] = 0+0
+    auto h_key2 = MakeHashCodeKey(0, HashCodeKeySuffix::LOWEST);
+    // [kUInt16Hash, 0, kHighest] = 1-0
+    auto h_key3 = MakeHashCodeKey(0, HashCodeKeySuffix::HIGHEST);
+    // There's no possible representation for 0-0
+
+    PgReadRange expected_lower_0(hash_table_);
+    expected_lower_0.SetHashCodeBound(0, /* is_inclusive = */ true, /* is_lower = */ true);
+    PgReadRange expected_lower_1(hash_table_);
+    expected_lower_1.SetHashCodeBound(1, /* is_inclusive = */ true, /* is_lower = */ true);
+    PgReadRange expected_upper_1(hash_table_);
+    expected_upper_1.SetHashCodeBound(1, /* is_inclusive = */ false, /* is_lower = */ false);
+    PgReadRange r1l(hash_table_);
+    PgReadRange r2l(hash_table_);
+    PgReadRange r3l(hash_table_);
+    PgReadRange r1u(hash_table_);
+    PgReadRange r2u(hash_table_);
+    PgReadRange r3u(hash_table_);
+    r1l.SetDocKeyBound(h_key1.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r2l.SetDocKeyBound(h_key2.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r3l.SetDocKeyBound(h_key3.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r1u.SetDocKeyBound(h_key1.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r2u.SetDocKeyBound(h_key2.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r3u.SetDocKeyBound(h_key3.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    EXPECT_EQ(r1l, expected_lower_0);
+    EXPECT_EQ(r2l, expected_lower_0);
+    EXPECT_EQ(r3l, expected_lower_1);
+    // Bare 0 or 0+kLowest upper bound makes the range empty.
+    EXPECT_TRUE(r1u.IsEmpty());
+    EXPECT_TRUE(r2u.IsEmpty());
+    EXPECT_EQ(r3u, expected_upper_1);
+  }
+
+  // Hash code 65535 (maximum)
+  {
+    // [kUInt16Hash, 0xffff] = 0xffff
+    auto h_key1 = MakeHashCodeKey(65535, HashCodeKeySuffix::NONE);
+    // [kUInt16Hash, 0xffff, kLowest] = 0xffff+0
+    auto h_key2 = MakeHashCodeKey(65535, HashCodeKeySuffix::LOWEST);
+    // [kUInt16Hash, 0xffff, kHighest] = not a hcode
+    auto h_key3 = MakeHashCodeKey(65535, HashCodeKeySuffix::HIGHEST);
+    PgReadRange expected_lower_ffff(hash_table_);
+    expected_lower_ffff.SetHashCodeBound(65535, /* is_inclusive = */ true, /* is_lower = */ true);
+    PgReadRange expected_upper_ffff(hash_table_);
+    expected_upper_ffff.SetHashCodeBound(65535, /* is_inclusive = */ false, /* is_lower = */ false);
+    PgReadRange r1l(hash_table_);
+    PgReadRange r2l(hash_table_);
+    PgReadRange r3l(hash_table_);
+    PgReadRange r1u(hash_table_);
+    PgReadRange r2u(hash_table_);
+    PgReadRange r3u(hash_table_);
+    r1l.SetDocKeyBound(h_key1.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r2l.SetDocKeyBound(h_key2.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r3l.SetDocKeyBound(h_key3.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ true);
+    r1u.SetDocKeyBound(h_key1.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r2u.SetDocKeyBound(h_key2.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    r3u.SetDocKeyBound(h_key3.AsSlice(), /* is_inclusive = */ false, /* is_lower = */ false);
+    EXPECT_EQ(r1l, expected_lower_ffff);
+    EXPECT_EQ(r2l, expected_lower_ffff);
+    // 0xffff+kHighest is not an encoded hash partition key. It represents functionally equivalent,
+    // but different bound.
+    EXPECT_NE(r3l, expected_lower_ffff);
+    EXPECT_EQ(r1u, expected_upper_ffff);
+    EXPECT_EQ(r2u, expected_upper_ffff);
+    // 0xffff+kHighest is not an encoded hash partition key. It represents functionally equivalent,
+    // but different bound.
+    EXPECT_NE(r3u, expected_upper_ffff);
+  }
 }
 
 TEST_F(PgReadRangeTest, HashCodeIntersectsBasic) {
@@ -874,6 +1178,102 @@ TEST_F(PgReadRangeTest, ApplyBoundsToRequest) {
     EXPECT_TRUE(range3.IsEmpty());
     EXPECT_FALSE(range3.ApplyBounds(req));
   }
+
+  // Apply bounds where only inclusivity changes.
+  {
+    ThreadSafeArena arena;
+    LWPgsqlReadRequestPB req(&arena);
+
+    auto k0 = MakeRangeDocKey(0, 10, 20);
+    auto k1 = MakeRangeDocKey(10, 20, 30);
+
+    PgReadRange range1(range_table_);
+    range1.SetDocKeyBound(k0, true, true);
+    range1.SetDocKeyBound(k1, true, false);
+    PgReadRange range2(range_table_);
+    range2.SetDocKeyBound(k0, false, true);
+    range2.SetDocKeyBound(k1, false, false);
+
+    EXPECT_TRUE(range1.ApplyBounds(req));
+    PgReadRange result1(range_table_);
+    result1.SetRequestBounds(req);
+    EXPECT_EQ(result1, range1);
+
+    // Exclusive to inclusive gives exclusive
+    EXPECT_TRUE(range2.ApplyBounds(req));
+    PgReadRange result2(range_table_);
+    result2.SetRequestBounds(req);
+    EXPECT_EQ(result2, range2);
+
+    // Inclusive to exclusive gives exclusive
+    EXPECT_TRUE(range1.ApplyBounds(req));
+    PgReadRange result3(range_table_);
+    result3.SetRequestBounds(req);
+    EXPECT_EQ(result3, range2);
+  }
+
+  {
+    ThreadSafeArena arena;
+    LWPgsqlReadRequestPB req(&arena);
+
+    auto k0 = MakeHashDocKey(0, 0, 0, 0, 0);
+    auto k1 = MakeHashDocKey(100, 10, 0, 10, 0);
+
+    PgReadRange range1(hash_table_);
+    range1.SetDocKeyBound(k0, true, true);
+    range1.SetDocKeyBound(k1, true, false);
+    PgReadRange range2(hash_table_);
+    range2.SetDocKeyBound(k0, false, true);
+    range2.SetDocKeyBound(k1, false, false);
+
+    EXPECT_TRUE(range1.ApplyBounds(req));
+    PgReadRange result1(hash_table_);
+    result1.SetRequestBounds(req);
+    EXPECT_EQ(result1, range1);
+
+    // Exclusive to inclusive gives exclusive
+    EXPECT_TRUE(range2.ApplyBounds(req));
+    PgReadRange result2(hash_table_);
+    result2.SetRequestBounds(req);
+    EXPECT_EQ(result2, range2);
+
+    // Inclusive to exclusive gives exclusive
+    EXPECT_TRUE(range1.ApplyBounds(req));
+    PgReadRange result3(hash_table_);
+    result3.SetRequestBounds(req);
+    EXPECT_EQ(result3, range2);
+  }
+}
+
+TEST_F(PgReadRangeTest, ConvertBoundsToHashCode) {
+  ThreadSafeArena arena;
+  LWPgsqlReadRequestPB req1(&arena);
+  LWPgsqlReadRequestPB req2(&arena);
+
+  constexpr const char* lower_bound_key = "UU"; // 0x5555
+  constexpr const char* upper_bound_key = "ww"; // 0x7777
+  constexpr uint16_t lower_hash_code =
+      static_cast<uint16_t>(lower_bound_key[0]) * 256 + static_cast<uint16_t>(lower_bound_key[1]);
+  constexpr uint16_t upper_hash_code =
+      static_cast<uint16_t>(upper_bound_key[0]) * 256 + static_cast<uint16_t>(upper_bound_key[1]);
+
+  yb_allow_dockey_bounds = false;
+  PgReadRange range1(hash_table_);
+  range1.SetHashCodeBound(lower_hash_code, /* is_inclusive = */ true, /* is_lower = */ true);
+  range1.SetHashCodeBound(upper_hash_code, /* is_inclusive = */ true, /* is_lower = */ false);
+  EXPECT_TRUE(range1.ApplyBounds(req1));
+  EXPECT_OK(PgReadRange::ConvertBoundsToHashCode(req1));
+  EXPECT_EQ(req1.lower_bound().key(), Slice(lower_bound_key));
+  EXPECT_EQ(req1.upper_bound().key(), Slice(upper_bound_key));
+
+  PgReadRange range2(hash_table_);
+  auto k1 = MakeHashDocKey(100, 10, 0, 10, 0);
+  auto k2 = MakeHashDocKey(200, 20, 0, 20, 0);
+  range2.SetDocKeyBound(k1, true, true);
+  range2.SetDocKeyBound(k2, false, false);
+  EXPECT_TRUE(range2.ApplyBounds(req2));
+  EXPECT_NOK(PgReadRange::ConvertBoundsToHashCode(req2));
+  yb_allow_dockey_bounds = true;
 }
 
 TEST_F(PgReadRangeTest, SetPartitionBoundsHash) {

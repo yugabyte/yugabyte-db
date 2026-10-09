@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.Map;
 
 import org.junit.Test;
@@ -58,10 +60,33 @@ public class TestPgRegressPgAsync extends BasePgRegressTestPorted {
   @BypassConnMgr(reason = UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testIsolationPgRegress() throws Exception {
     BasePgListenNotifyTest.waitForNotificationsTableReady(connection, getConnectionBuilder());
+    warmUpNotificationDelivery();
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
       "yb_pg_async_isolation_schedule",
       0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
+  }
+
+  /**
+   * Performs one LISTEN/NOTIFY round trip on a throwaway connection.
+   *
+   * The first notification on a fresh cluster creates the cluster-wide cdc_state table and its
+   * tablets, and the first virtual WAL poll has to drain the master's sys_catalog tablet before it
+   * ships any record. That costs seconds, far more than the per-step wait isolationtester allows
+   * for a self-notify, so the very first permutation reported its notifications too late.
+   *
+   * Only the cdc_state creation persists: closing this connection removes the node's last listener,
+   * which tears down the poller and the replication slot (ybCleanupListenState), and every
+   * permutation's UNLISTEN * does the same. Closing is still deliberate - an extra listener would
+   * hold back the notification queue tail during the test.
+   */
+  private void warmUpNotificationDelivery() throws Exception {
+    try (Connection conn = getConnectionBuilder().connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("LISTEN yb_warmup");
+      stmt.execute("NOTIFY yb_warmup, 'warmup'");
+      BasePgListenNotifyTest.waitForNotification(conn, "yb_warmup", "warmup");
+    }
   }
 
   @Override
@@ -71,8 +96,9 @@ public class TestPgRegressPgAsync extends BasePgRegressTestPorted {
     // In YB, it takes longer to deliver the notifications. In order to match the
     // PG's expected output for isolation test async-notify, introduce a sleep in
     // isolationtester.c after completing execution of each step and before
-    // checking for notifications.
-    envs.put("YB_ISOLATION_TEST_WAIT_FOR_NOTIFS_MS", "500");
+    // checking for notifications. The observed round trip is a few hundred ms, so
+    // keep enough headroom for a loaded machine.
+    envs.put("YB_ISOLATION_TEST_WAIT_FOR_NOTIFS_MS", "1000");
     return envs;
   }
 }

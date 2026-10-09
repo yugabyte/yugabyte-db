@@ -16,9 +16,6 @@ import {
 
 const { Box, Typography } = mui;
 
-export const BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY =
-  'yb_before_proceed_with_new_modal_dismissed';
-
 interface BeforeProceedWithNewModalProps {
   open: boolean;
   onClose: () => void;
@@ -50,7 +47,8 @@ export const BeforeProceedWithNewModal: FC<BeforeProceedWithNewModalProps> = ({
 
   const handleClose = useCallback(() => {
     onClose();
-    requestOpenDetailSettingsPopover();
+    // Defer so the close click does not immediately click-away the Settings tip.
+    window.setTimeout(() => requestOpenDetailSettingsPopover(), 0);
   }, [onClose]);
 
   return (
@@ -94,7 +92,7 @@ export const BeforeProceedWithNewModal: FC<BeforeProceedWithNewModalProps> = ({
       <Typography
         sx={{
           fontSize: '13px',
-          fontWeight: 600,
+          fontWeight: 400,
           lineHeight: '26px',
           color: 'grey.900'
         }}
@@ -103,7 +101,7 @@ export const BeforeProceedWithNewModal: FC<BeforeProceedWithNewModalProps> = ({
           t={t}
           i18nKey="note"
           components={{
-            settings: <Box component="span" sx={{ color: '#735AF5', fontWeight: 600 }} />
+            settings: <Box component="span" sx={{ color: 'grey.900', fontWeight: 600 }} />
           }}
         />
       </Typography>
@@ -139,11 +137,16 @@ export const BeforeProceedWithNewModal: FC<BeforeProceedWithNewModalProps> = ({
                 whiteSpace: 'nowrap'
               }}
             >
-              {t('settings')}
+              <Box component="span" sx={{ fontWeight: 600 }}>
+                {t('settings')}
+              </Box>
               <Box component="span" sx={{ color: 'grey.700' }}>
                 {'  '}
               </Box>
-              {`/  ${t(row.nowPathKey)}`}
+              {'/  '}
+              <Box component="span" sx={{ color: '#735AF5', fontWeight: 600 }}>
+                {t(row.nowPathKey)}
+              </Box>
             </Typography>
           </PathMappingRow>
         ))}

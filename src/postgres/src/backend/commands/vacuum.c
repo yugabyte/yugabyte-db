@@ -63,6 +63,7 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 
 /*
@@ -275,6 +276,10 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel)
 
 	/* user-invoked vacuum uses VACOPT_VERBOSE instead of log_min_duration */
 	params.log_min_duration = -1;
+
+	/* YB: Auto Analyze uses SQL rather than an autovacuum worker. */
+	if (yb_use_internal_auto_analyze_service_conn)
+		params.log_min_duration = Log_autovacuum_min_duration;
 
 	/* Now go through the common routine */
 	vacuum(vacstmt->rels, &params, NULL, isTopLevel);

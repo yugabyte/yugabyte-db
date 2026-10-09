@@ -60,7 +60,7 @@ uint32	   *my_wait_event_info = &local_my_wait_event_info;
 static YbcWaitEventInfo yb_local_my_wait_event_info;
 YbcWaitEventInfoPtr yb_my_wait_event_info = {
 	&yb_local_my_wait_event_info.wait_event,
-	&yb_local_my_wait_event_info.rpc_code,
+	&yb_local_my_wait_event_info.aux,
 };
 static const char *yb_not_applicable =
 "Inherited from PostgreSQL. Check "
@@ -96,8 +96,8 @@ pgstat_reset_wait_event_storage(void)
 
 /*
  * Configure wait event reporting to report wait events to MyProc->wait_event_info,
- * and Pggate RPC enum reporting to report Pggate RPC enums to MyProc->yb_rpc_code
- * MyProc->wait_event_info and MyProc->yb_rpc_code needs to be valid until
+ * and the auxiliary value of the wait event to MyProc->yb_wait_event_aux.
+ * MyProc->wait_event_info and MyProc->yb_wait_event_aux needs to be valid until
  * yb_pgstat_reset_wait_event_storage() is called.
  *
  * Expected to be called during backend startup, to point my_wait_event_info
@@ -109,7 +109,7 @@ yb_pgstat_set_wait_event_storage(PGPROC *proc)
 	yb_my_wait_event_info = (YbcWaitEventInfoPtr)
 	{
 		&proc->wait_event_info,
-			&proc->yb_rpc_code,
+			&proc->yb_wait_event_aux,
 	};
 
 	/* pgstat_report_wait_start updates my_wait_event_info */
@@ -117,7 +117,7 @@ yb_pgstat_set_wait_event_storage(PGPROC *proc)
 }
 
 /*
- * Reset RPC enum storage location.
+ * Reset the auxiliary value storage location.
  *
  * Expected to be called during backend shutdown, before the location set up
  * yb_pgstat_set_wait_event_storage() becomes invalid.
@@ -128,7 +128,7 @@ yb_pgstat_reset_wait_event_storage(void)
 	yb_my_wait_event_info = (YbcWaitEventInfoPtr)
 	{
 		&yb_local_my_wait_event_info.wait_event,
-			&yb_local_my_wait_event_info.rpc_code,
+			&yb_local_my_wait_event_info.aux,
 	};
 
 	my_wait_event_info = &local_my_wait_event_info;

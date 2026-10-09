@@ -19,8 +19,6 @@
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/read_hybrid_time.h"
 
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -134,6 +132,12 @@ class PgsqlReadOp : public PgsqlOp {
 
   std::string RequestToString() const override;
 
+  // Prepare the "next page" request. Most importantly, copy paging info from the response.
+  // Optionally update the row limit. First page may use "plan limit", while subsequent pages
+  // should return to default.
+  // Returns false if there's no next page (response has no paging info).
+  bool PrepareNextRequest(std::optional<uint64_t> row_limit = std::nullopt);
+
  private:
   Status InitPartitionKey(const PgTableDesc& table) override;
 
@@ -183,9 +187,6 @@ class PgsqlWriteOp : public PgsqlOp {
   bool need_transaction_;
   HybridTime write_time_;
 };
-
-
-Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op);
 
 inline auto GetSharedArena(const PgsqlOpPtr& op) {
   return std::shared_ptr<ThreadSafeArena>(op, &op->arena());

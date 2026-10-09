@@ -128,7 +128,7 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 
   {{< sections/3-box-card
     title="Point-in-time recovery"
-    description="Recover your database at a specific point in time."
+    description="Recover from logical errors using Inspect, Clone, Rewind, or Restore."
     buttonText="PITR"
     buttonUrl="cluster-management/point-in-time-recovery-ysql/"
   >}}

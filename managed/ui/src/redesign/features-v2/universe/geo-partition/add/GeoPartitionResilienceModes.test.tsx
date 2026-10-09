@@ -14,7 +14,11 @@ import {
   createUniverseFormProps,
   StepsRef
 } from '../../create-universe/CreateUniverseContext';
-import { FaultToleranceType, ResilienceFormMode, ResilienceType } from '../../create-universe/steps/resilence-regions/dtos';
+import {
+  FaultToleranceType,
+  ResilienceFormMode,
+  ResilienceType
+} from '../../create-universe/steps/resilence-regions/dtos';
 import {
   REGIONS_FIELD,
   RESILIENCE_FACTOR,
@@ -42,8 +46,9 @@ vi.mock(
     useGuidedExpertModePopover: () => ({
       open: false,
       anchorRef: { current: null },
-      handleGuidedExpertModeClick: () => undefined,
-      handleClose: () => undefined
+      handleOpen: () => undefined,
+      handleClose: () => undefined,
+      handleClickAway: () => undefined
     })
   })
 );
@@ -102,8 +107,7 @@ function getContextValue(overrides?: {
       moveToNextPage: () => mockMoveToNextPage(),
       saveResilienceAndRegionsSettings: (data: unknown) =>
         mockSaveResilienceAndRegionsSettings(data),
-      saveNodesAvailabilitySettings: (data: unknown) =>
-        mockSaveNodesAvailabilitySettings(data),
+      saveNodesAvailabilitySettings: (data: unknown) => mockSaveNodesAvailabilitySettings(data),
       moveToPreviousPage: () => mockMoveToPreviousPage(),
       setResilienceType: (t: ResilienceType) => mockSetResilienceType(t)
     }
@@ -114,7 +118,10 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } }
 });
 
-function renderGeoResilience(contextValue: ReturnType<typeof getContextValue>, triggerNext = false) {
+function renderGeoResilience(
+  contextValue: ReturnType<typeof getContextValue>,
+  triggerNext = false
+) {
   const ref = createRef<StepsRef>();
   render(
     <QueryClientProvider client={queryClient}>

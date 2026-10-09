@@ -72,9 +72,10 @@ typedef enum InstrumentOption
 typedef struct YbPgRpcStats
 {
 	double		count;			/* # of RPCs */
+	double		ops_count;		/* # of operations */
 	double		rows_scanned;	/* # of rows scanned by RPCs */
+	double		rows_received;	/* # of rows received from RPCs */
 	double		wait_time;		/* RPC wait time (ns) */
-  double		rows_received; /* # of rows received from RPCs */
 } YbPgRpcStats;
 
 typedef struct YbInstrumentation
@@ -83,9 +84,6 @@ typedef struct YbInstrumentation
 	YbPgRpcStats index_reads;
 	YbPgRpcStats catalog_reads;
 	YbPgRpcStats write_flushes;
-	double		tbl_read_ops;
-	double		index_read_ops;
-	double		catalog_read_ops;
 	double		tbl_writes;
 	double		index_writes;
 	double		catalog_writes;

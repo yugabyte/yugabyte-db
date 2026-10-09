@@ -75,6 +75,20 @@ class XClusterManager : public XClusterManagerIf,
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
+  Status FillXClusterGuardedInfo(int64_t leader_term, XClusterGuardedInfoPB& info) override
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
+  // Ensures that on successful return no TServer will ever give out xCluster-guarded information
+  // less recent than master had when this was called.  For example, after SetXClusterRole followed
+  // by a successful call to this method, no TServer will ever again give out the previous role.
+  //
+  // TServers that have not heartbeated for longer than the xCluster lease duration do not slow this
+  // down; those unresponsive for less than that can make it fail by timing out.  This method may
+  // also fail if master leadership changes during the call; callers wanting to survive that should
+  // retry.  Safe to call concurrently.
+  Status PropagateXClusterGuardedInfo(MonoTime deadline)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
   Status SetXClusterRole(
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       XClusterNamespaceInfoPB_XClusterRole role);
@@ -231,6 +245,10 @@ class XClusterManager : public XClusterManagerIf,
       const RepairOutboundXClusterReplicationGroupRemoveTableRequestPB* req,
       RepairOutboundXClusterReplicationGroupRemoveTableResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+  Status DeleteXClusterWalAnchorStreams(
+      const DeleteXClusterWalAnchorStreamsRequestPB* req,
+      DeleteXClusterWalAnchorStreamsResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
   Status GetXClusterOutboundReplicationGroups(
       const GetXClusterOutboundReplicationGroupsRequestPB* req,
       GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,
@@ -264,6 +282,8 @@ class XClusterManager : public XClusterManagerIf,
 
   Status ClearXClusterFieldsAfterYsqlDDL(
       TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) override;
+
+  void MarkWalAnchorDeletionPending(const TableId& table_id) override;
 
   void NotifyAutoFlagsConfigChanged() override;
 
@@ -330,6 +350,7 @@ class XClusterManager : public XClusterManagerIf,
  private:
   void ProcessCleanupTablesPeriodically();
 
+  Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
 
@@ -338,6 +359,13 @@ class XClusterManager : public XClusterManagerIf,
   bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
+
+  // Guards the version counter below and serializes copies of the xCluster-guarded information so
+  // that a copy with a higher version never carries older information.  Lock order: this mutex,
+  // then XClusterConfig::mutex_ or the cluster config COW lock.  Never held across RPCs.
+  std::mutex xcluster_guarded_info_version_mutex_;
+  // Number of copies made by this process; see XClusterGuardedInfoVersionPB.
+  uint64_t xcluster_guarded_info_copy_count_ GUARDED_BY(xcluster_guarded_info_version_mutex_) = 0;
 
   CoarseTimePoint time_of_last_clean_tables_task_run_;
 

@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/fs/fs_manager.h"
@@ -73,8 +74,6 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_bool(ysql_enable_write_pipelining);
@@ -111,13 +110,29 @@ class PgWaitQueuesTest : public PgMiniTestBase {
 
   Result<std::future<Status>> ExpectBlockedAsync(
       pgwrapper::PGConn* conn, const std::string& query) {
-    auto status = std::async(std::launch::async, [&conn, query]() {
+    // libpq's PGconn is not thread safe, so conn belongs to the async thread alone once it is
+    // handed over. Submission is observed on a separate connection instead.
+    const auto pid = VERIFY_RESULT(conn->FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    auto observer = VERIFY_RESULT(Connect());
+    const auto is_active = Format(
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND state = 'active'", pid);
+    // Warm up the observer's catalog caches, so that the first poll below is not slow enough to
+    // miss a query that the query layer rejects right away.
+    RETURN_NOT_OK(observer.FetchRow<int64_t>(is_active));
+
+    auto status = std::async(std::launch::async, [conn, query]() {
       return conn->Execute(query);
     });
 
-    RETURN_NOT_OK(WaitFor([&conn] () {
-      return conn->IsBusy();
-    }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+    // A finished future also proves the query reached the query layer. Some callers expect it to be
+    // rejected right away, e.g. by the deadlock detector, so it need not still be running.
+    RETURN_NOT_OK(WaitFor([&observer, &status, &is_active] {
+      if (status.wait_for(0s) == std::future_status::ready) {
+        return true;
+      }
+      auto active = observer.FetchRow<int64_t>(is_active);
+      return active.ok() && *active == 1;
+    }, 10s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
     return status;
   }
 
@@ -134,9 +149,7 @@ class PgWaitQueuesTestWithoutObjectLocking : public PgWaitQueuesTest {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
   }
 };
 
@@ -1218,7 +1231,7 @@ class PgWaitQueuesTestWithObjectLocking : public PgWaitQueuesTest {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
   }
 };
 
@@ -1322,11 +1335,34 @@ void PgWaitQueuesTest::TestParallelUpdatesDetectDeadlock() const {
   }
 }
 
-TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock)) {
+// A status tablet leader move discards the deadlock detector's in-memory wait-for edges, and the
+// tservers only re-report them on the next full update (send_wait_for_report_interval_ms, 60s by
+// default). Load balancing right after cluster startup moves those leaders while the first
+// iteration is already waiting, delaying detection past the deadline asserted by both
+// TestParallelUpdatesDetectDeadlock fixtures below.
+class PgWaitQueuesNoLoadBalancingTest : public PgWaitQueuesTest {
+ protected:
+  void InitFlags() override {
+    PgWaitQueuesTest::InitFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  }
+};
+
+TEST_F_EX(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock),
+          PgWaitQueuesNoLoadBalancingTest) {
   TestParallelUpdatesDetectDeadlock();
 }
 
-TEST_F(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock)) {
+class PgWaitQueuesMaxBatchSize1NoLoadBalancingTest : public PgWaitQueuesMaxBatchSize1Test {
+ protected:
+  void InitFlags() override {
+    PgWaitQueuesMaxBatchSize1Test::InitFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  }
+};
+
+TEST_F_EX(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock),
+          PgWaitQueuesMaxBatchSize1NoLoadBalancingTest) {
   TestParallelUpdatesDetectDeadlock();
 }
 
@@ -1701,9 +1737,7 @@ class PgWaitQueueRF1TestWithoutObjectLocking : public PgWaitQueueRF1Test {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
   }
 };
 
@@ -1969,9 +2003,7 @@ class PgWaitQueuesWithRetriesTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_debug_log_internal_restarts=true";
     // TODO(#24877): Remove the below once we enable query layer retries for object locking.
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     PgMiniTestBase::SetUp();
   }
 };

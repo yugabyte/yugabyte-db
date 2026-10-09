@@ -99,6 +99,18 @@ def get_firewall_tags():
     return os.environ.get('YB_FIREWALL_TAGS', YB_FIREWALL_TARGET_TAGS).split(',')
 
 
+def get_instance_template_to_read(args):
+    """Returns the instance template we are allowed to read, or None.
+
+    Reading a template needs compute.instanceTemplates.get, which providers that only pass the
+    template to instances().insert() as a source do not have. YBA therefore passes
+    --read_instance_template only when yb.gcp.read_instance_template is on.
+    """
+    if not getattr(args, "read_instance_template", False):
+        return None
+    return getattr(args, "instance_template", None)
+
+
 class GcpMetadata():
     METADATA_URL_BASE = "http://metadata.google.internal/computeMetadata/v1"
     CUSTOM_HEADERS = {
@@ -560,6 +572,9 @@ class GoogleCloudAdmin():
 
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
+        # Memoizes instance template name -> (boot disk key, data disk key), to avoid refetching
+        # the template for every disk we create during a single invocation.
+        self.template_kms_keys = {}
 
     def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None,
                 create_new_vpc=False):
@@ -590,6 +605,44 @@ class GoogleCloudAdmin():
     def get_full_image_name(self, name, preemptible=False):
         return IMAGE_NAME_PREFIX + name.upper() + \
                (IMAGE_NAME_PREEMPTIBLE_SUFFIX if preemptible else "")
+
+    def get_instance_template(self, name):
+        return self.compute.instanceTemplates().get(
+            project=self.project, instanceTemplate=name).execute()
+
+    def get_template_disk_kms_keys(self, template_name):
+        """Returns the (boot disk, data disk) CMEK keys declared on an instance template.
+
+        instances().insert() replaces the template's whole "disks" list with ours rather than
+        merging into it, so the template's diskEncryptionKey is dropped unless we copy it onto
+        every disk we build. The data disks we create are identical, so the template's first data
+        disk key applies to all of them. Returns (None, None) for a falsy template_name, so
+        callers that are not allowed to read the template can pass None instead of branching.
+        """
+        if not template_name:
+            return (None, None)
+        if template_name in self.template_kms_keys:
+            return self.template_kms_keys[template_name]
+        try:
+            template = self.get_instance_template(template_name)
+        except HttpError as e:
+            raise YBOpsRuntimeError("Failed to read instance template {}: {}".format(
+                template_name, e))
+        boot_key = None
+        data_key = None
+        for disk in template.get("properties", {}).get("disks", []):
+            disk_key = disk.get("diskEncryptionKey", {}).get("kmsKeyName")
+            if not disk_key:
+                continue
+            if disk.get("boot"):
+                boot_key = disk_key
+            elif data_key is None:
+                data_key = disk_key
+        if boot_key or data_key:
+            logging.info("[app] Instance template {} CMEK keys: boot disk {}, data disks {}".format(
+                template_name, boot_key, data_key))
+        self.template_kms_keys[template_name] = (boot_key, data_key)
+        return (boot_key, data_key)
 
     def create_disk(self, zone, instance_tags, body):
         if instance_tags is not None:
@@ -994,15 +1047,20 @@ class GoogleCloudAdmin():
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
                         auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
-                        gcp_instance_template=None, disk_iops=None, disk_throughput=None, capacity_reservation=None):
+                        gcp_instance_template=None, disk_iops=None, disk_throughput=None, capacity_reservation=None,
+                        instance_template_to_read=None):
         # Name of the project that target VPC network belongs to.
         shared_vpc_project = self.get_shared_vpc_project()
+        boot_disk_kms_key, data_disk_kms_key = self.get_template_disk_kms_keys(
+            instance_template_to_read)
 
         boot_disk_json = {
             "autoDelete": auto_delete_boot_disk,
             "boot": True,
             "index": 0,
         }
+        if boot_disk_kms_key:
+            boot_disk_json["diskEncryptionKey"] = {"kmsKeyName": boot_disk_kms_key}
         boot_disk_init_params = {}
         boot_disk_init_params["sourceImage"] = machine_image
         if boot_disk_size_gb is not None:
@@ -1145,6 +1203,14 @@ class GoogleCloudAdmin():
             "type": volume_type,
             "initializeParams": initial_params
         }
+        if data_disk_kms_key:
+            if volume_type == GCP_SCRATCH:
+                # Local SSDs only support Google-owned and managed keys.
+                logging.warning("[app] Local SSD data disks for VM {} cannot use CMEK key {}; "
+                                "they stay encrypted with Google-managed keys".format(
+                                    instance_name, data_disk_kms_key))
+            else:
+                disk_config["diskEncryptionKey"] = {"kmsKeyName": data_disk_kms_key}
 
         if tags is not None:
             tags_dict = json.loads(tags)

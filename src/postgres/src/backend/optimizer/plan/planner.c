@@ -60,6 +60,7 @@
 #include "partitioning/partdesc.h"
 #include "rewrite/rewriteManip.h"
 #include "storage/dsm_impl.h"
+#include "utils/acl.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
@@ -776,6 +777,8 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		parent_root ? parent_root->yb_cur_batched_relids : NULL;
 	root->yb_cur_unbatched_relids =
 		parent_root ? parent_root->yb_cur_unbatched_relids : NULL;
+	root->yb_cur_batched_groups =
+		parent_root ? parent_root->yb_cur_batched_groups : NIL;
 	root->yb_availBatchedRelids =
 		parent_root ? parent_root->yb_availBatchedRelids : NULL;
 	root->yb_cur_batch_no = -1;
@@ -917,6 +920,35 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		if (!rte->inh)
 			root->leaf_result_relids =
 				bms_make_singleton(parse->resultRelation);
+	}
+
+	/*
+	 * This would be a convenient time to check access permissions for all
+	 * relations mentioned in the query, since it would be better to fail now,
+	 * before doing any detailed planning.  However, for historical reasons,
+	 * we leave this to be done at executor startup.
+	 *
+	 * Note, however, that we do need to check access permissions for any view
+	 * relations mentioned in the query, in order to prevent information being
+	 * leaked by selectivity estimation functions, which only check view owner
+	 * permissions on underlying tables (see all_rows_selectable() and its
+	 * callers).  This is a little ugly, because it means that access
+	 * permissions for views will be checked twice, which is another reason
+	 * why it would be better to do all the ACL checks here.
+	 */
+	foreach(l, parse->rtable)
+	{
+		RangeTblEntry *rte = lfirst_node(RangeTblEntry, l);
+
+		if (rte->relkind == RELKIND_VIEW)
+		{
+			bool		result;
+
+			result = ExecCheckRTEPerms(rte);
+			if (!result)
+				aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_VIEW,
+							   get_rel_name(rte->relid));
+		}
 	}
 
 	/*
@@ -1607,6 +1639,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		if (count_est > 0 && offset_est >= 0)
 			limit_tuples = (double) count_est + (double) offset_est;
 	}
+
+	/* YB: keep the bound for the scan first-fetch trim; see PlannerInfo */
+	root->yb_limit_tuples = limit_tuples;
 
 	/* Make tuple_fraction accessible to lower-level routines */
 	root->tuple_fraction = tuple_fraction;
@@ -6454,7 +6489,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 									  NIL, NIL, NIL, NIL, NIL,
 									  ForwardScanDirection, false,
 									  NULL, 1.0, false,
-									  NULL);	/* yb_merge_scan_saop_cols */
+									  NULL);	/* yb_merge_scan_stream_cols */
 
 	return (seqScanAndSortPath.total_cost < indexScanPath->path.total_cost);
 }

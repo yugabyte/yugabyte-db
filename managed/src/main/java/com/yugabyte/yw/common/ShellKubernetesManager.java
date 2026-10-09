@@ -594,7 +594,14 @@ public class ShellKubernetesManager extends KubernetesManager {
     ShellResponse response =
         execCommand(config, commandList, false).processErrors("Unable to get StatefulSet status");
 
-    String[] statefulSetNames = response.getMessage().trim().split(" ");
+    String trimmedOutput = response.getMessage().trim();
+    // Note: "".split(" ") returns {""} (length 1), so guard against an empty result explicitly
+    // instead of relying solely on the array length below.
+    if (trimmedOutput.isEmpty()) {
+      throw new RuntimeException(
+          "Error: No StatefulSets found for the provided label selector: " + labelSelector);
+    }
+    String[] statefulSetNames = trimmedOutput.split(" ");
     if (statefulSetNames.length != 1) {
       throw new RuntimeException(
           "Error: Multiple or no StatefulSets found for the provided label selector.");

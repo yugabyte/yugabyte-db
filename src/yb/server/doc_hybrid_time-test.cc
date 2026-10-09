@@ -19,8 +19,6 @@
 
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/format.h"
 #include "yb/util/string_trim.h"
@@ -34,7 +32,6 @@ using std::endl;
 
 using yb::server::HybridClock;
 using yb::util::sgn;
-using strings::Substitute;
 
 namespace yb {
 
@@ -201,17 +198,17 @@ TEST(DocHybridTimeTest, TestExactByteRepresentation) {
       if (micros == kYugaEpoch) {
         micros_str = "kYugaEpoch";
       } else if (micros > kYugaEpoch) {
-        micros_str = Substitute("kYugaEpoch + $0", micros - kYugaByteMicrosecondEpoch);
+        micros_str = Format("kYugaEpoch + $0", micros - kYugaByteMicrosecondEpoch);
       } else {
-        micros_str = Substitute("kYugaEpoch - $0", kYugaByteMicrosecondEpoch - micros);
+        micros_str = Format("kYugaEpoch - $0", kYugaByteMicrosecondEpoch - micros);
       }
     } else {
       micros_str = std::to_string(micros) + "LL";
     }
-    cout << Substitute("TestDesc{ R\"#($0)#\",\n"
-                       "          $1, $2, $3 },\n",
-                       t.ActualFormattedByteStr(), micros_str, t.logical,
-                       t.write_id == kMinWriteId ? "kMinWriteId" : std::to_string(t.write_id))
+    cout << Format("TestDesc{ R\"#($0)#\",\n"
+                   "          $1, $2, $3 },\n",
+                   t.ActualFormattedByteStr(), micros_str, t.logical,
+                   t.write_id == kMinWriteId ? "kMinWriteId" : std::to_string(t.write_id))
          << endl;
   }
 

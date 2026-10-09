@@ -2147,10 +2147,10 @@ pgss_store(const char *query, uint64 queryId,
 			{
 				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
 					yb_stats->tbl_reads.count + yb_stats->index_reads.count;
+				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
+					yb_stats->tbl_reads.ops_count + yb_stats->index_reads.ops_count;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS] +=
 					yb_stats->write_flushes.count;
-				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
-					yb_stats->tbl_read_ops + yb_stats->index_read_ops;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS] +=
 					yb_stats->tbl_writes + yb_stats->index_writes;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=

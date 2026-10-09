@@ -1,5 +1,5 @@
 # pgrx-tests
 
-Test framework for [`pgrx`](https://crates.io/crates/pgrx/).  
+Test harness for [`pgrx`](https://crates.io/crates/pgrx/) extension tests.
 
-Meant to be used as one of your `[dev-dependencies]` when using `pgrx`.
+Use this as a `[dev-dependencies]` crate when your extension uses `#[pg_test]`.

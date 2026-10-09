@@ -78,7 +78,7 @@ select * from cron.job_run_details order by start_time desc limit 5;
 
 ### Set up a periodic cleanup task
 
-Create a periodoc cleaning task for the `cron.job_run_details` table using pg_cron similar to the following example:
+Create a periodic cleaning task for the `cron.job_run_details` table using pg_cron similar to the following example:
 
 ```sql
 -- Delete old cron.job_run_details records of the current user every day at noon
@@ -96,7 +96,7 @@ For more information on xCluster limitations, refer to [Limitations](../../../ar
 
 ## Examples
 
-The following examples decribe various ways pg_cron can be used to automate and improve database management tasks. The tool can help maintain database performance, consistency, and reliability through scheduled jobs.
+The following examples describe various ways pg_cron can be used to automate and improve database management tasks. The tool can help maintain database performance, consistency, and reliability through scheduled jobs.
 
 ### Monitor and identify slow queries
 

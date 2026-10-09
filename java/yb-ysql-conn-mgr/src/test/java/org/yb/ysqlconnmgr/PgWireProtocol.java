@@ -19,6 +19,10 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +35,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class PgWireProtocol {
   private static final Logger LOG = LoggerFactory.getLogger(PgWireProtocol.class);
+
+  private static final int MAX_MESSAGE_LENGTH = 64 * 1024 * 1024;
 
   private PgWireProtocol() {}
 
@@ -51,6 +57,10 @@ public final class PgWireProtocol {
   public static final char BE_COPY_DONE = 'c';
   public static final char BE_NOTICE_RESPONSE = 'N';
   public static final char BE_ROW_DESCRIPTION = 'T';
+  public static final char BE_PARAMETER_DESCRIPTION = 't';
+  public static final char BE_NO_DATA = 'n';
+  public static final char BE_FUNCTION_CALL_RESPONSE = 'V';
+  public static final char BE_EMPTY_QUERY_RESPONSE = 'I';
 
   // ---- Tiny record for a backend message ------------------------------------
   public static class PgMessage {
@@ -70,6 +80,12 @@ public final class PgWireProtocol {
         case 'Z': return "ReadyForQuery";
         case '1': return "ParseComplete";
         case '2': return "BindComplete";
+        case '3': return "CloseComplete";
+        case 't': return "ParameterDescription";
+        case 'n': return "NoData";
+        case 's': return "PortalSuspended";
+        case 'V': return "FunctionCallResponse";
+        case 'I': return "EmptyQueryResponse";
         case 'D': return "DataRow";
         case 'C': return "CommandComplete";
         case 'E': return "ErrorResponse";
@@ -91,7 +107,8 @@ public final class PgWireProtocol {
 
   // ---- Wire helpers: building frontend messages -----------------------------
 
-  public static byte[] buildStartupMessage(String user, String database) throws IOException {
+  public static byte[] buildStartupMessage(
+      String user, String database, Map<String, String> parameters) throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
     d.writeInt(0); // placeholder for length
@@ -100,6 +117,12 @@ public final class PgWireProtocol {
     writeString(d, user);
     writeString(d, "database");
     writeString(d, database);
+    if (parameters != null) {
+      for (Map.Entry<String, String> entry : parameters.entrySet()) {
+        writeString(d, entry.getKey());
+        writeString(d, entry.getValue());
+      }
+    }
     d.writeByte(0); // terminator
     d.flush();
     byte[] msg = buf.toByteArray();
@@ -140,31 +163,29 @@ public final class PgWireProtocol {
   }
 
   public static byte[] buildBind() throws IOException {
-    ByteArrayOutputStream buf = new ByteArrayOutputStream();
-    DataOutputStream d = new DataOutputStream(buf);
-    d.writeByte('B');
-    d.writeInt(0); // placeholder
-    d.writeByte(0); // unnamed portal
-    d.writeByte(0); // unnamed statement
-    d.writeShort(0); // num format codes
-    d.writeShort(0); // num parameters
-    d.writeShort(0); // num result format codes
-    d.flush();
-    byte[] msg = buf.toByteArray();
-    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
-    return msg;
+    return buildBind("", new String[0]);
   }
 
+  /** Binds the unnamed portal; a null entry in {@code textParams} is sent as SQL NULL. */
   public static byte[] buildBind(String stmtName, String[] textParams) throws IOException {
+    return buildBind("", stmtName, textParams);
+  }
+
+  public static byte[] buildBind(String portalName, String stmtName, String[] textParams)
+      throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
     d.writeByte('B');
     d.writeInt(0); // placeholder
-    d.writeByte(0); // unnamed portal
+    writeString(d, portalName);
     writeString(d, stmtName);
     d.writeShort(0); // num format codes (all text)
     d.writeShort(textParams.length);
     for (String param : textParams) {
+      if (param == null) {
+        d.writeInt(-1);
+        continue;
+      }
       byte[] paramBytes = param.getBytes(StandardCharsets.UTF_8);
       d.writeInt(paramBytes.length);
       d.write(paramBytes);
@@ -177,30 +198,16 @@ public final class PgWireProtocol {
   }
 
   public static byte[] buildExecute() throws IOException {
+    return buildExecute("");
+  }
+
+  public static byte[] buildExecute(String portalName) throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
     d.writeByte('E');
     d.writeInt(0); // placeholder
-    d.writeByte(0); // unnamed portal
+    writeString(d, portalName);
     d.writeInt(0); // max rows (0 = unlimited)
-    d.flush();
-    byte[] msg = buf.toByteArray();
-    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
-    return msg;
-  }
-
-  /**
-   * Builds a Close ('C') message for a prepared statement (kind = 'S')
-   * with the given statement name. An empty name closes the unnamed prepared
-   * statement.
-   */
-  public static byte[] buildClosePreparedStatement(String stmtName) throws IOException {
-    ByteArrayOutputStream buf = new ByteArrayOutputStream();
-    DataOutputStream d = new DataOutputStream(buf);
-    d.writeByte('C');
-    d.writeInt(0); // placeholder
-    d.writeByte('S'); // close kind: prepared statement
-    writeString(d, stmtName);
     d.flush();
     byte[] msg = buf.toByteArray();
     ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
@@ -285,9 +292,86 @@ public final class PgWireProtocol {
     return buf.toByteArray();
   }
 
+  public static byte[] buildClose(char kind, String name) throws IOException {
+    return buildDescribeOrClose('C', kind, name);
+  }
+
+  public static byte[] buildDescribe(char kind, String name) throws IOException {
+    return buildDescribeOrClose('D', kind, name);
+  }
+
+  private static byte[] buildDescribeOrClose(char msgType, char kind, String name)
+      throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte(msgType);
+    d.writeInt(0); // placeholder
+    d.writeByte(kind);
+    writeString(d, name);
+    d.flush();
+    byte[] msg = buf.toByteArray();
+    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
+    return msg;
+  }
+
+  // Builds a message of an arbitrary type, for packets no well-formed client sends.
+  public static byte[] buildRaw(char type, byte[] body) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte(type);
+    d.writeInt(4 + (body == null ? 0 : body.length));
+    if (body != null) {
+      d.write(body);
+    }
+    d.flush();
+    return buf.toByteArray();
+  }
+
   public static void writeString(DataOutputStream d, String s) throws IOException {
     d.write(s.getBytes(StandardCharsets.UTF_8));
     d.writeByte(0);
+  }
+
+  // ---- Wire helpers: decoding backend message bodies ------------------------
+
+  public static Map<Character, String> parseErrorResponse(byte[] body) {
+    Map<Character, String> fields = new LinkedHashMap<>();
+    int i = 0;
+    while (i < body.length && body[i] != 0) {
+      char fieldType = (char) body[i];
+      int start = ++i;
+      while (i < body.length && body[i] != 0) {
+        i++;
+      }
+      fields.put(fieldType, new String(body, start, i - start, StandardCharsets.UTF_8));
+      i++;
+    }
+    return fields;
+  }
+
+  public static List<String> parseDataRow(byte[] body) {
+    ByteBuffer bb = ByteBuffer.wrap(body);
+    int numCols = bb.getShort() & 0xffff;
+    List<String> columns = new ArrayList<>(numCols);
+    for (int i = 0; i < numCols; i++) {
+      int len = bb.getInt();
+      if (len < 0) {
+        columns.add(null);
+        continue;
+      }
+      byte[] data = new byte[len];
+      bb.get(data);
+      columns.add(new String(data, StandardCharsets.UTF_8));
+    }
+    return columns;
+  }
+
+  public static String parseCommandComplete(byte[] body) {
+    int len = body.length;
+    while (len > 0 && body[len - 1] == 0) {
+      len--;
+    }
+    return new String(body, 0, len, StandardCharsets.UTF_8);
   }
 
   // ---- Wire helpers: reading backend messages -------------------------------
@@ -295,23 +379,15 @@ public final class PgWireProtocol {
   public static PgMessage readMessage(DataInputStream in) throws IOException {
     char type = (char) in.readUnsignedByte();
     int len = in.readInt(); // includes self (4 bytes) but not the type byte
+    // A desynchronized stream reads a length out of whatever bytes come next; report that as a
+    // read failure rather than blowing up the heap.
+    if (len < 4 || len > MAX_MESSAGE_LENGTH) {
+      throw new IOException("Implausible length " + len + " for a '" + type + "' message;"
+          + " the response stream is out of sync");
+    }
     byte[] body = new byte[len - 4];
     in.readFully(body);
     return new PgMessage(type, body);
-  }
-
-  /**
-   * Reads the next backend message, silently skipping any NoticeResponse
-   * messages. NoticeResponse is an asynchronous informational message that
-   * can appear at any point in the stream.
-   */
-  public static PgMessage readMessageSkipNotice(DataInputStream in) throws IOException {
-    for (;;) {
-      PgMessage msg = readMessage(in);
-      if (msg.type != BE_NOTICE_RESPONSE)
-        return msg;
-      LOG.info("Skipping NoticeResponse: " + msg);
-    }
   }
 
   /**

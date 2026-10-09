@@ -4,11 +4,12 @@ const path = require('path');
 module.exports = {
   context: path.join(__dirname, 'src'),
   entry: {
-    site: './index.js',
+    kapaAi: './kapa-ai.js',
     search: './algolia-search.js',
-    trackUtm: './track-utm.js',
     searchBanner: './search-banner.js',
     sidebarTree: './sidebar-tree.js',
+    site: './index.js',
+    trackUtm: './track-utm.js',
   },
   output: {
     path: path.join(__dirname, 'static/js'),

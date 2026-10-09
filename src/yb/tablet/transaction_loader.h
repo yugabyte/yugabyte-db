@@ -13,9 +13,10 @@
 
 #pragma once
 
-#include <condition_variable>
+#include <map>
 #include <optional>
 #include <thread>
+#include <vector>
 
 #include "yb/common/transaction.h"
 
@@ -29,6 +30,7 @@ namespace yb {
 
 class OneWayBitmap;
 class RWOperationCounter;
+class Synchronizer;
 class Thread;
 
 namespace tablet {
@@ -109,14 +111,24 @@ class TransactionLoader {
 
   void FinishLoad(Status status);
 
+  // Removes and returns the waiters that 'last_loaded_' has reached. The caller releases them
+  // after unlocking 'mutex_'.
+  [[nodiscard]] std::vector<Synchronizer*> ExtractReachedWaiters() REQUIRES(mutex_);
+
+  void SetFinalStateAndReleaseWaiters(TransactionLoaderState state, const Status& status)
+      EXCLUDES(mutex_);
+
   TransactionLoaderContext& context_;
   const scoped_refptr<MetricEntity> entity_;
 
   std::unique_ptr<Executor> executor_;
 
   std::mutex mutex_;
-  std::condition_variable load_cond_;
   TransactionId last_loaded_ GUARDED_BY(mutex_) = TransactionId::Nil();
+  // Points at Synchronizers owned by the stack frames blocked in WaitLoaded. The loader thread
+  // releases every entry before it exits, and a waiter does not leave WaitLoaded until it is
+  // released, so an entry never outlives its Synchronizer.
+  std::multimap<TransactionId, Synchronizer*> waiters_ GUARDED_BY(mutex_);
   Status load_status_ GUARDED_BY(mutex_);
   std::atomic<TransactionLoaderState> state_{TransactionLoaderState::kNotStarted};
   std::atomic<bool> shutdown_requested_{false};

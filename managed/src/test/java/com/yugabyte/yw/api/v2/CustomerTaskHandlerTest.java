@@ -35,8 +35,11 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.filters.TaskFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.Before;
@@ -88,6 +91,35 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
   }
 
   @Test
+  public void pageListTasks_mapsOriginalTaskUuid() {
+    UUID originalTaskUuid = UUID.randomUUID();
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("originalTaskUUID", originalTaskUuid.toString());
+    CustomerTask task =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Update,
+            TaskType.EditUniverse,
+            universe.getName(),
+            "Running",
+            10.0,
+            responseJson);
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
+
+    TaskPagedQuerySpec spec = new TaskPagedQuerySpec();
+    spec.offset(0).limit(10);
+
+    TaskPagedResp resp = handler.pageListTasks(customer.getUuid(), spec);
+
+    assertThat(resp.getEntities().size(), greaterThanOrEqualTo(1));
+    assertEquals(originalTaskUuid, resp.getEntities().get(0).getInfo().getOriginalTaskUuid());
+  }
+
+  @Test
   public void pageListTasks_returnsSoftwareUpgradeProgressWithAzUpgradeState() {
     UUID azUuid = UUID.randomUUID();
     UUID clusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -129,6 +161,96 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     assertEquals(clusterUuid, az.getClusterUuid());
     assertEquals(AZUpgradeState.ServerTypeEnum.MASTER, az.getServerType());
     assertEquals(AZUpgradeState.StatusEnum.IN_PROGRESS, az.getStatus());
+  }
+
+  @Test
+  public void createQueryByFilter_dateRangeAndStatus_doesNotThrowAmbiguousCreateTime() {
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask task =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Create,
+            TaskType.CreateUniverse,
+            universe.getName(),
+            "Success",
+            100.0,
+            responseJson);
+
+    Date start = new Date(task.getCreateTime().getTime() - 60_000L);
+    Date end = new Date(task.getCreateTime().getTime() + 60_000L);
+    // Status filtering joins task_info (also has create_time). The date predicate must qualify
+    // customer_task.create_time or Postgres rejects the query as ambiguous.
+    List<CustomerTask> found =
+        CustomerTask.createQueryByFilter(
+                TaskFilter.builder()
+                    .customerUUID(customer.getUuid())
+                    .dateRangeStart(start)
+                    .dateRangeEnd(end)
+                    .status(Collections.singleton(TaskInfo.State.Success))
+                    .build())
+            .findList();
+
+    assertThat(found.size(), greaterThanOrEqualTo(1));
+    assertEquals(task.getTaskUUID(), found.get(0).getTaskUUID());
+
+    // Start-only must also apply (open-ended upper bound), including with status join.
+    List<CustomerTask> foundStartOnly =
+        CustomerTask.createQueryByFilter(
+                TaskFilter.builder()
+                    .customerUUID(customer.getUuid())
+                    .dateRangeStart(start)
+                    .status(Collections.singleton(TaskInfo.State.Success))
+                    .build())
+            .findList();
+    assertThat(foundStartOnly.size(), greaterThanOrEqualTo(1));
+    assertEquals(
+        1, foundStartOnly.stream().filter(t -> t.getTaskUUID().equals(task.getTaskUUID())).count());
+  }
+
+  @Test
+  public void createQueryByFilter_completionDateRange_excludesNullCompletionTime() {
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask completed =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Create,
+            TaskType.CreateUniverse,
+            universe.getName(),
+            "Success",
+            100.0,
+            responseJson);
+    completed.markAsCompleted();
+    Date completedAt = completed.getCompletionTime();
+
+    CustomerTask inProgress =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Update,
+            TaskType.EditUniverse,
+            universe.getName(),
+            "Running",
+            50.0,
+            responseJson);
+    // Leave completion_time null (in-progress). ge/le must not match nulls.
+
+    Date start = new Date(completedAt.getTime() - 60_000L);
+    // Start-only: open-ended upper bound; still excludes null completion_time.
+    List<CustomerTask> found =
+        CustomerTask.createQueryByFilter(
+                TaskFilter.builder()
+                    .customerUUID(customer.getUuid())
+                    .completionDateRangeStart(start)
+                    .build())
+            .findList();
+
+    assertThat(found.size(), greaterThanOrEqualTo(1));
+    assertEquals(
+        1, found.stream().filter(t -> t.getTaskUUID().equals(completed.getTaskUUID())).count());
+    assertEquals(
+        0, found.stream().filter(t -> t.getTaskUUID().equals(inProgress.getTaskUUID())).count());
   }
 
   @Test
@@ -182,6 +304,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     taskInfo.setUuid(taskUUID);
     taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
+    taskInfo.setTaskState(TaskInfo.State.valueOf(status));
     taskInfo.save();
     CustomerTask task =
         CustomerTask.create(customer, targetUUID, taskUUID, targetType, taskType, targetName);
@@ -191,6 +314,100 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     responseJson.put("retryable", false);
     responseJson.put("canRollback", false);
     return task;
+  }
+
+  @Test
+  public void retryTask_failedEditUniverse_returnsRetryYBATask() {
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.clusters = universe.getUniverseDetails().clusters;
+    JsonNode paramsJson = Json.toJson(params);
+
+    UUID taskUUID = UUID.randomUUID();
+    TaskInfo failed = new TaskInfo(TaskType.EditUniverse, null);
+    failed.setUuid(taskUUID);
+    failed.setTaskParams(paramsJson);
+    failed.setOwner("");
+    failed.setYbaVersion(Util.getYbaVersion());
+    failed.setTaskState(TaskInfo.State.Failure);
+    failed.save();
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        universe.getName());
+    // Ownership: failed edit must own placement modification for retryability.
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().placementModificationTaskUuid = taskUUID;
+          u.getUniverseDetails().updateInProgress = false;
+        });
+
+    UUID retryTaskUUID = UUID.randomUUID();
+    TaskInfo retryInfo = new TaskInfo(TaskType.EditUniverse, null);
+    retryInfo.setUuid(retryTaskUUID);
+    retryInfo.setTaskParams(Json.newObject());
+    retryInfo.setOwner("");
+    retryInfo.setYbaVersion(Util.getYbaVersion());
+    retryInfo.setTaskState(TaskInfo.State.Created);
+    retryInfo.save();
+
+    when(mockCommissioner.getTaskParams(taskUUID)).thenReturn(paramsJson);
+    when(mockCommissioner.submit(eq(TaskType.EditUniverse), any())).thenReturn(retryTaskUUID);
+    // FakeDBApplication mocks Commissioner; retryability runs through this mock.
+    when(mockCommissioner.isTaskRetryable(any(), any())).thenReturn(true);
+
+    YBATask result = handler.retryTask(customer.getUuid(), taskUUID);
+
+    assertEquals(retryTaskUUID, result.getTaskUuid());
+    assertEquals(universe.getUniverseUUID(), result.getResourceUuid());
+  }
+
+  @Test
+  public void retryTask_customerNotFound_throwsNotFound() {
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.retryTask(UUID.randomUUID(), UUID.randomUUID()));
+    assertEquals(NOT_FOUND, ex.getHttpStatus());
+  }
+
+  @Test
+  public void retryTask_taskNotFound_throwsNotFound() {
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.retryTask(customer.getUuid(), UUID.randomUUID()));
+    assertEquals(NOT_FOUND, ex.getHttpStatus());
+  }
+
+  @Test
+  public void retryTask_notRetryable_throwsForbidden() {
+    UUID taskUUID = UUID.randomUUID();
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditUniverse, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskParams(
+        Json.newObject().put("universeUUID", universe.getUniverseUUID().toString()));
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    // Success is not an ERROR_STATE, so isTaskRetryable returns false.
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    taskInfo.save();
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        universe.getName());
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class, () -> handler.retryTask(customer.getUuid(), taskUUID));
+    assertEquals(FORBIDDEN, ex.getHttpStatus());
   }
 
   @Test
@@ -244,7 +461,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     rollbackInfo.setTaskState(TaskInfo.State.Created);
     rollbackInfo.save();
 
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(taskUUID)).thenReturn(paramsJson);
     when(mockCommissioner.submit(eq(TaskType.RollbackUpgrade), any())).thenReturn(rollbackTaskUUID);
 
@@ -289,7 +506,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Update,
         universe.getName());
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(false);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(false);
 
     PlatformServiceException ex =
         assertThrows(

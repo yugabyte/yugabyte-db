@@ -103,6 +103,8 @@ class IntentAwareIterator final {
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
 
+  ~IntentAwareIterator();
+
   void Revalidate(SeekFilter seek_filter);
 
   // Seek to the smallest key which is greater or equal than doc_key.

@@ -137,7 +137,9 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  disk_space_checker.cc
   dist_trace.cc
+  drive_io_stats.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -154,6 +156,7 @@ set(UTIL_SRCS
   flags/flag_tags.cc
   flags/flags.cc
   flags/flags_callback.cc
+  format.cc
   hdr_histogram.cc
   hexdump.cc
   html_print_helper.cc
@@ -361,6 +364,14 @@ if(NOT APPLE)
 endif()
 
 #######################################
+# yb_benchmark_main
+#######################################
+
+ADD_YB_TEST_LIBRARY(yb_benchmark_main
+                    SRCS benchmark_main.cc
+                    DEPS gbenchmark gflags glog yb_util)
+
+#######################################
 # Unit tests
 #######################################
 
@@ -388,6 +399,8 @@ ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(disk_space_checker-test)
+ADD_YB_TEST(drive_io_stats-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
@@ -453,6 +466,7 @@ ADD_YB_TEST(shmem/annotations-test)
 ADD_YB_TEST(shmem/reserved_address_segment-test)
 ADD_YB_TEST(shmem/robust_hash_map-test)
 ADD_YB_TEST(shmem/robust_intrusive_list-test)
+ADD_YB_TEST(shmem/robust_lent_object-test)
 ADD_YB_TEST(shmem/robust_mutex-test)
 ADD_YB_TEST(shmem/shared_mem_allocator-test)
 ADD_YB_TEST(slice-test)
@@ -530,3 +544,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
 
 ADD_YB_TEST(uint_set-test)
 YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)
+
+#######################################
+# Microbenchmarks
+#######################################
+
+ADD_YB_BENCHMARK(mutex-benchmark DEPS absl)

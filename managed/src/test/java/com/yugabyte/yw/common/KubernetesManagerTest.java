@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -48,7 +49,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -375,6 +378,43 @@ public class KubernetesManagerTest extends FakeDBApplication {
     boolean status =
         kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
     assertEquals(true, status);
+  }
+
+  // PLAT-21834: When the label selector matches no StatefulSet (e.g. querying yb-master on a
+  // read-only cluster, which has no master StatefulSets), the label query returns an empty
+  // string. Previously "".split(" ") produced {""} which slipped past the length check and led to
+  // `kubectl get statefulset ""` failing with "resource name may not be empty". Verify we now fail
+  // fast with a clear error instead.
+  @Test
+  public void testCheckStatefulSetStatus_emptyOutput_throws() {
+    ShellResponse emptyResponse = ShellResponse.create(0, "");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(emptyResponse);
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3));
+    assertTrue(thrown.getMessage().contains("No StatefulSets found"));
+    // Only the label query should have run; we must not attempt the second per-name lookup with an
+    // empty resource name.
+    Mockito.verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  // PLAT-21834: Whitespace-only output should also be treated as "no StatefulSet found".
+  @Test
+  public void testCheckStatefulSetStatus_whitespaceOutput_throws() {
+    ShellResponse whitespaceResponse = ShellResponse.create(0, "   ");
+    Map<String, String> testConfig = new HashMap<String, String>();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(whitespaceResponse);
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3));
+    assertTrue(thrown.getMessage().contains("No StatefulSets found"));
   }
 
   private void setupUniverse() {
@@ -750,7 +790,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
       // Note: execCommand uses the 5-parameter run method
       ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
       ArgumentCaptor<Map<String, String>> configCaptor = ArgumentCaptor.forClass(Map.class);
-      Mockito.verify(shellProcessHandler, times(2))
+      Mockito.verify(shellProcessHandler, times(3))
           .run(
               commandCaptor.capture(),
               configCaptor.capture(),
@@ -758,8 +798,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
               anyString(),
               any(RedactingService.RedactionTarget.class));
       List<List<String>> allCommands = commandCaptor.getAllValues();
-      // The second call should be helm install
-      List<String> installCommand = allCommands.get(1);
+      // Calls are: helm status, helm list, helm install.
+      List<String> installCommand = allCommands.get(2);
       assertTrue(
           "helm install command should contain --labels flag", installCommand.contains("--labels"));
       int labelsIndex = installCommand.indexOf("--labels");
@@ -822,7 +862,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
       // Verify helm install was called without --labels flag
       // Note: execCommand uses the 5-parameter run method
       ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
-      Mockito.verify(shellProcessHandler, times(2))
+      Mockito.verify(shellProcessHandler, times(3))
           .run(
               commandCaptor.capture(),
               anyMap(),
@@ -830,7 +870,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
               anyString(),
               any(RedactingService.RedactionTarget.class));
       List<List<String>> allCommands = commandCaptor.getAllValues();
-      List<String> installCommand = allCommands.get(1);
+      List<String> installCommand = allCommands.get(2);
       assertTrue(
           "helm install command should not contain --labels flag when no commonLabels present",
           !installCommand.contains("--labels"));
@@ -965,7 +1005,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
       // Verify helm install was called with --labels flag containing converted values
       // Note: execCommand uses the 5-parameter run method
       ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
-      Mockito.verify(shellProcessHandler, times(2))
+      Mockito.verify(shellProcessHandler, times(3))
           .run(
               commandCaptor.capture(),
               anyMap(),
@@ -973,7 +1013,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
               anyString(),
               any(RedactingService.RedactionTarget.class));
       List<List<String>> allCommands = commandCaptor.getAllValues();
-      List<String> installCommand = allCommands.get(1);
+      List<String> installCommand = allCommands.get(2);
       assertTrue(
           "helm install command should contain --labels flag", installCommand.contains("--labels"));
       int labelsIndex = installCommand.indexOf("--labels");
@@ -1034,7 +1074,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
       // Verify helm install was called without --labels flag when commonLabels is empty
       // Note: execCommand uses the 5-parameter run method
       ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
-      Mockito.verify(shellProcessHandler, times(2))
+      Mockito.verify(shellProcessHandler, times(3))
           .run(
               commandCaptor.capture(),
               anyMap(),
@@ -1042,7 +1082,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
               anyString(),
               any(RedactingService.RedactionTarget.class));
       List<List<String>> allCommands = commandCaptor.getAllValues();
-      List<String> installCommand = allCommands.get(1);
+      List<String> installCommand = allCommands.get(2);
       assertTrue(
           "helm install command should not contain --labels flag when commonLabels is empty",
           !installCommand.contains("--labels"));
@@ -1050,5 +1090,219 @@ public class KubernetesManagerTest extends FakeDBApplication {
       Files.deleteIfExists(overrideFile);
       helmChartFile.delete();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // helmInstall retry safety (PLAT-22307)
+  //
+  // A retried EditKubernetesUniverse re-runs HELM_INSTALL for AZs whose release the previous
+  // attempt already created. Uninstalling a healthy release there deletes pods that may be
+  // serving quorum masters, so only a release helm cannot converge on its own is recreated.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Stubs the shell handler that helmInstall/helmUpgrade go through, recording each command.
+   *
+   * @param helmListOutput what 'helm list --short' returns
+   * @param helmStatusJson what 'helm status -o json' returns, or null to fail the call the way helm
+   *     does for a release that does not exist
+   * @return the commands issued, in order
+   */
+  private List<List<String>> stubHelmShellCommands(String helmListOutput, String helmStatusJson) {
+    List<List<String>> issued = new ArrayList<>();
+    AtomicBoolean uninstalled = new AtomicBoolean(false);
+    when(shellProcessHandler.run(
+            anyList(),
+            anyMap(),
+            anyBoolean(),
+            anyString(),
+            any(RedactingService.RedactionTarget.class)))
+        .thenAnswer(
+            invocation -> {
+              List<String> cmd = invocation.getArgument(0);
+              issued.add(cmd);
+              if (cmd.contains("status")) {
+                return helmStatusJson == null
+                    ? ShellResponse.create(1, "Error: release: not found")
+                    : ShellResponse.create(0, helmStatusJson);
+              }
+              if (cmd.contains("list")) {
+                // A successful uninstall removes the release, so stop listing it afterwards.
+                return ShellResponse.create(0, uninstalled.get() ? "" : helmListOutput);
+              }
+              if (cmd.contains("uninstall")) {
+                uninstalled.set(true);
+              }
+              return ShellResponse.create(0, "ok");
+            });
+    return issued;
+  }
+
+  /** True if any issued command starts with the given words. */
+  private static boolean issuedCommand(List<List<String>> commands, String... prefix) {
+    List<String> expected = ImmutableList.copyOf(prefix);
+    return commands.stream()
+        .anyMatch(
+            cmd ->
+                cmd.size() >= expected.size() && cmd.subList(0, expected.size()).equals(expected));
+  }
+
+  /** Sets up the chart, config and file mocks helmInstall/helmUpgrade need. */
+  private File setUpHelmInstallTest() throws IOException {
+    File helmChartFile = new File(TMP_CHART_PATH, "yugabyte-2.7-helm-legacy.tar.gz");
+    helmChartFile.getParentFile().mkdirs();
+    helmChartFile.createNewFile();
+    setupKubernetesManagerForHelmTests();
+    when(mockAppConfig.getString("yb.helm.packagePath")).thenReturn(TMP_CHART_PATH);
+    when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(300L);
+    // helmUpgrade renders a template to disk before diffing.
+    when(fileHelperService.createTempFile("helm-template", ".output"))
+        .thenReturn(Files.createTempFile("helm-template", ".output"));
+    return helmChartFile;
+  }
+
+  private void runHelmInstall(Path overrideFile) {
+    kubernetesManager.helmInstall(
+        universe.getUniverseUUID(),
+        "2.7.0.0-b1", // version < 2.8.0.0 uses the legacy chart
+        configProvider,
+        defaultProvider.getUuid(),
+        "demo-universe",
+        "demo-namespace",
+        overrideFile.toString());
+  }
+
+  @Test
+  public void testHelmInstallUpgradesInPlaceWhenReleaseAlreadyDeployed() throws IOException {
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    Files.write(overrideFile, "replicas: 3\n".getBytes());
+    File helmChartFile = setUpHelmInstallTest();
+    try {
+      List<List<String>> commands =
+          stubHelmShellCommands(
+              "demo-universe\n", "{\"info\": {\"status\": \"deployed\"}, \"version\": 1}");
+
+      runHelmInstall(overrideFile);
+
+      assertFalse(
+          "a deployed release must never be uninstalled -- its pods may be quorum masters",
+          issuedCommand(commands, "helm", "uninstall"));
+      assertFalse(
+          "a deployed release must not be reinstalled", issuedCommand(commands, "helm", "install"));
+      assertTrue(
+          "expected the release to be converged with helm upgrade",
+          issuedCommand(commands, "helm", "upgrade", "demo-universe"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  @Parameters({"failed", "pending-install", "pending-upgrade", "unknown"})
+  public void testHelmInstallRecreatesReleaseNotInDeployedState(String status) throws IOException {
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    Files.write(overrideFile, "replicas: 3\n".getBytes());
+    File helmChartFile = setUpHelmInstallTest();
+    try {
+      List<List<String>> commands =
+          stubHelmShellCommands(
+              "demo-universe\n",
+              String.format("{\"info\": {\"status\": \"%s\"}, \"version\": 1}", status));
+
+      runHelmInstall(overrideFile);
+
+      // Helm cannot converge these states, so recreating the release is still the right recovery.
+      assertTrue(
+          "expected helm uninstall for a release in state " + status,
+          issuedCommand(commands, "helm", "uninstall", "demo-universe"));
+      assertTrue(
+          "expected helm install for a release in state " + status,
+          issuedCommand(commands, "helm", "install", "demo-universe"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmInstallInstallsWhenReleaseDoesNotExist() throws IOException {
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    Files.write(overrideFile, "replicas: 3\n".getBytes());
+    File helmChartFile = setUpHelmInstallTest();
+    try {
+      List<List<String>> commands = stubHelmShellCommands("", null /* helm status fails */);
+
+      runHelmInstall(overrideFile);
+
+      assertFalse("nothing to uninstall", issuedCommand(commands, "helm", "uninstall"));
+      assertTrue(
+          "expected helm install", issuedCommand(commands, "helm", "install", "demo-universe"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmInstallDoesNotMatchReleaseNameBySubstring() throws IOException {
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    Files.write(overrideFile, "replicas: 3\n".getBytes());
+    File helmChartFile = setUpHelmInstallTest();
+    try {
+      // 'helm list --short' prints one release per line. 'demo-universe-2' must not be read as
+      // 'demo-universe' being present, which used to send an uninstall for a release that does
+      // not exist and fail the subtask.
+      List<List<String>> commands =
+          stubHelmShellCommands("demo-universe-2\nsome-other-release\n", null);
+
+      runHelmInstall(overrideFile);
+
+      assertFalse(
+          "must not uninstall on a substring match", issuedCommand(commands, "helm", "uninstall"));
+      assertTrue(
+          "expected helm install", issuedCommand(commands, "helm", "install", "demo-universe"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmReleaseExistsMatchesWholeLinesOnly() {
+    setupKubernetesManagerForHelmTests();
+    stubHelmShellCommands("demo-universe-2\ndemo-universe\nunrelated\n", null);
+
+    assertTrue(kubernetesManager.helmReleaseExists(configProvider, "demo-universe", "demo-ns"));
+    assertTrue(kubernetesManager.helmReleaseExists(configProvider, "demo-universe-2", "demo-ns"));
+    assertFalse(kubernetesManager.helmReleaseExists(configProvider, "demo-univ", "demo-ns"));
+    assertFalse(kubernetesManager.helmReleaseExists(configProvider, "demo-universe-3", "demo-ns"));
+  }
+
+  @Test
+  public void testGetHelmReleaseStatus() {
+    setupKubernetesManagerForHelmTests();
+    stubHelmShellCommands("", "{\"info\": {\"status\": \"deployed\"}, \"version\": 3}");
+    assertEquals(
+        Optional.of("deployed"),
+        kubernetesManager.getHelmReleaseStatus(configProvider, "demo-universe", "demo-ns"));
+  }
+
+  @Test
+  public void testGetHelmReleaseStatusEmptyWhenReleaseMissing() {
+    setupKubernetesManagerForHelmTests();
+    stubHelmShellCommands("", null /* helm status fails */);
+    assertEquals(
+        Optional.empty(),
+        kubernetesManager.getHelmReleaseStatus(configProvider, "demo-universe", "demo-ns"));
+  }
+
+  @Test
+  public void testGetHelmReleaseStatusEmptyOnUnparseableOutput() {
+    setupKubernetesManagerForHelmTests();
+    stubHelmShellCommands("", "not json");
+    assertEquals(
+        Optional.empty(),
+        kubernetesManager.getHelmReleaseStatus(configProvider, "demo-universe", "demo-ns"));
   }
 }

@@ -203,6 +203,9 @@ void MiniTabletServer::Shutdown() {
   }
   if (started_) {
     if (shutdown_pg_) {
+      // The ysql lease threads call back into the PgSupervisor to restart or kill PG. Stop them
+      // first, since shutdown_pg_ destroys the PgSupervisor in the mini cluster.
+      server_->ShutdownYSQLLeaseManager();
       shutdown_pg_();
     }
     // Save bind address and port so we can later restart the server.
@@ -274,7 +277,10 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     if (!tablet) {
       return Status::OK();
     }
-    return tablet->ForceManualRocksDBCompact(skip_flush);
+    const auto status = tablet->ForceManualRocksDBCompact(skip_flush);
+    // A tablet whose RocksDB shutdown has already started, e.g. because it is being deleted
+    // concurrently, has nothing left to compact.
+    return status.IsShutdownInProgress() ? Status::OK() : status;
   });
 }
 

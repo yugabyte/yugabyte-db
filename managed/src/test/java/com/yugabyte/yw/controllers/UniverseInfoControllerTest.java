@@ -43,6 +43,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -235,7 +236,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
     UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
     String keyCode = "dummy_code";
-    ui.accessKeyCode = keyCode;
+    TestUtils.existingProviderInitializer(ui).setAccessCode(keyCode);
     UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
     Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
 

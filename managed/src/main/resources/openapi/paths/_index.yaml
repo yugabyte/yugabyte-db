@@ -131,6 +131,8 @@
     summary: List universe backups.
     description: |
       Returns universe backups for the specified customer with pagination and optional filters.
+      Only full (base) backups are returned. Use `pageListIncrementalBackups` to list incrementals
+      in a backup chain.
       WARNING: This is a preview API that could change.
     tags:
       - Backup and Restore
@@ -141,6 +143,62 @@
         $ref: "../components/responses/BackupPagedResp.yaml"
       '400':
         description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/backups/{bUUID}/increments/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bUUID
+      in: path
+      description: Backup UUID of any backup in the incremental chain
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListIncrementalBackups
+    summary: List incremental backups for a backup chain.
+    description: |
+      Returns backups in the incremental chain for the specified backup, including the full
+      (base) backup. Pass either the full backup UUID or any incremental backup UUID in the chain.
+      `pageListBackups` returns only full backups; use this API to retrieve incrementals.
+      Rows are ordered by create time. The order is descending by default.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Backup and Restore
+    requestBody:
+      $ref: "../components/requestBodies/IncrementalBackupPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/IncrementalBackupPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or backup not found
       '500':
         description: Server error
     security:
@@ -1095,6 +1153,233 @@
       noAuthz: true
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/perf-advisor-endpoints':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: listPerfAdvisorEndpoints
+    summary: List Perf Advisor Endpoints
+    description: List the external Perf Advisor destinations configured for this customer
+    tags:
+      - Perf Advisor Endpoint
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointListResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+  post:
+    operationId: createPerfAdvisorEndpoint
+    summary: Create Perf Advisor Endpoint
+    description: |
+      Create an external Perf Advisor destination. Both of its endpoints are probed from a
+      collector before the endpoint is stored, so a destination that cannot be reached or that
+      rejects these credentials is an error here rather than a registration that can only fail.
+    tags:
+      - Perf Advisor Endpoint
+    requestBody:
+      $ref: "../components/requestBodies/PerfAdvisorEndpointReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: PerfAdvisorEndpoint
+      auditTargetId: 'null'
+      auditActionType: CreatePerfAdvisorEndpoint
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/perf-advisor-endpoints/validate':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: validatePerfAdvisorEndpoint
+    summary: Validate a Perf Advisor Endpoint
+    description: |
+      Probe a destination's metrics and collection endpoints from a collector without storing
+      anything. Returns a result per endpoint so a caller can show each problem against the input
+      that caused it.
+    tags:
+      - Perf Advisor Endpoint
+    requestBody:
+      $ref: "../components/requestBodies/PerfAdvisorEndpointReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointValidationResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/perf-advisor-endpoints/{peUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: peUUID
+      in: path
+      description: Perf Advisor Endpoint UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getPerfAdvisorEndpoint
+    summary: Get a Perf Advisor Endpoint
+    description: Get one external Perf Advisor destination
+    tags:
+      - Perf Advisor Endpoint
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+  put:
+    operationId: editPerfAdvisorEndpoint
+    summary: Edit a Perf Advisor Endpoint
+    description: |
+      Edit an external Perf Advisor destination. The new settings are probed before they are
+      stored, and then pushed to every collector already holding this endpoint, so a universe
+      already sending here picks them up without waiting for the next sync.
+    tags:
+      - Perf Advisor Endpoint
+    requestBody:
+      $ref: "../components/requestBodies/PerfAdvisorEndpointReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: PerfAdvisorEndpoint
+      auditTargetId: peUUID.toString()
+      auditActionType: EditPerfAdvisorEndpoint
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: update
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: deletePerfAdvisorEndpoint
+    summary: Delete a Perf Advisor Endpoint
+    description: |
+      Delete an external Perf Advisor destination. Refused while any universe is still registered
+      against it, and the universes are named in the error.
+    tags:
+      - Perf Advisor Endpoint
+    responses:
+      '200':
+        description: successful operation
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: PerfAdvisorEndpoint
+      auditTargetId: peUUID.toString()
+      auditActionType: DeletePerfAdvisorEndpoint
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: delete
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/pitr-configs/page':
   parameters:
     - name: cUUID
@@ -1243,6 +1528,660 @@
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundle/components':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: listSupportBundleComponents
+    summary: List support bundle components
+    description: List all component types available for support bundle collection.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleComponentsResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createSupportBundle
+    summary: Create support bundle
+    description: Create a support bundle for the specified universe.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: SupportBundle
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: Create
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: debug
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListSupportBundles
+    summary: List support bundles (paged)
+    description: |
+      Returns support bundles for the specified universe with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundlePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundlePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or universe not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles/estimate-size':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: estimateSupportBundleSize
+    summary: Estimate support bundle size
+    description: Estimate support bundle size for the given payload on a universe.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleSizeEstimateResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles/{sbUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: sbUUID
+      in: path
+      description: Support bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getSupportBundle
+    summary: Get support bundle
+    description: Get a support bundle from a universe.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: deleteSupportBundle
+    summary: Delete support bundle
+    description: Delete a support bundle from a universe.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        description: OK
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '409':
+        description: Support bundle is still being collected
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: SupportBundle
+      auditTargetId: sbUUID.toString()
+      auditActionType: Delete
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+      - requiredPermission:
+          resourceType: other
+          action: delete
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles/{sbUUID}/download':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: sbUUID
+      in: path
+      description: Support bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: downloadSupportBundle
+    summary: Download support bundle
+    description: |
+      Download a completed support bundle archive.
+
+      The archive can be large, so generated clients hand back the raw HTTP response
+      instead of buffering it. Callers read the archive from the response body and are
+      responsible for closing it once done.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        description: Support bundle archive
+        content:
+          application/x-compressed:
+            schema:
+              type: string
+              format: binary
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-stream-response: true
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundles/yba':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createYbaSupportBundle
+    summary: Create YBA-only support bundle
+    description: Create a support bundle from YBA host script components (YBAComponent) without requiring a universe.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: SupportBundle
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: Create
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundles/yba/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListYbaSupportBundles
+    summary: List YBA-only support bundles (paged)
+    description: |
+      Returns support bundles collected from the YBA platform host without a universe, with
+      pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundlePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundlePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundles/yba/estimate-size':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: estimateYbaSupportBundleSize
+    summary: Estimate YBA-only support bundle size
+    description: Estimate support bundle size for YBA host script components without a universe.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleSizeEstimateResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/support-bundles/yba/{sbUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: sbUUID
+      in: path
+      description: Support bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getYbaSupportBundle
+    summary: Get YBA-only support bundle
+    description: Get a YBA-only support bundle by UUID.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: deleteYbaSupportBundle
+    summary: Delete YBA-only support bundle
+    description: Delete a YBA-only support bundle.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        description: OK
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '409':
+        description: Support bundle is still being collected
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: SupportBundle
+      auditTargetId: sbUUID.toString()
+      auditActionType: Delete
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: delete
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundles/yba/{sbUUID}/download':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: sbUUID
+      in: path
+      description: Support bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: downloadYbaSupportBundle
+    summary: Download YBA-only support bundle
+    description: |
+      Download a completed YBA-only support bundle archive.
+
+      The archive can be large, so generated clients hand back the raw HTTP response
+      instead of buffering it. Callers read the archive from the response body and are
+      responsible for closing it once done.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        description: Support bundle archive
+        content:
+          application/x-compressed:
+            schema:
+              type: string
+              format: binary
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-stream-response: true
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/tasks/page':
   parameters:
     - name: cUUID
@@ -1283,6 +2222,62 @@
           path: customers
           sourceType: endpoint
         checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/tasks/{tUUID}/retry':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: tUUID
+      in: path
+      description: Task UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: retryTask
+    summary: Retry a failed task
+    description: |
+      Queues a retry of a previously failed, retry-capable Universe or Provider task.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Task
+    requestBody:
+      $ref: "../components/requestBodies/TaskRetryReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: CustomerTask
+      auditTargetId: tUUID.toString()
+      auditActionType: Retry
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: task_params_universe_uuid
+          sourceType: db
+          dbClass: com.yugabyte.yw.models.TaskInfo.class
+          identifier: tasks
+          columnName: uuid
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/tasks/{tUUID}/rollback':
@@ -1452,6 +2447,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -1469,6 +2466,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
   delete:
@@ -1484,6 +2482,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -1501,6 +2501,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes':
@@ -1622,6 +2623,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -1639,6 +2642,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/clusters/{clsUUID}':
@@ -1688,6 +2692,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -1705,6 +2711,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/fetch-universe-resources':
@@ -1782,6 +2789,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -1800,6 +2809,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2.20.2.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software':
@@ -1835,6 +2845,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -1852,6 +2864,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/finalize':
@@ -1887,6 +2900,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -1904,6 +2919,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
   get:
@@ -1966,6 +2982,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -1983,7 +3001,66 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/node-agent':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: upgradeNodeAgent
+    summary: Upgrade node agents
+    description: |
+      Upgrade node agents in a universe. Optionally restrict the upgrade to a list of node names
+      and/or supply a certificate UUID. If node_names is omitted, all live nodes are upgraded.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Node Agent
+    requestBody:
+      $ref: "../components/requestBodies/NodeAgentUpgradeReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Upgrade
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
+    x-yba-api-since: 2025.2.7.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/rollback':
   parameters:
@@ -2018,6 +3095,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2035,6 +3114,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/resume-canary':
@@ -2070,6 +3150,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2087,6 +3169,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/precheck':
@@ -2122,6 +3205,8 @@
         $ref: "../components/responses/UniverseSoftwareUpgradePrecheckResponse.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2136,6 +3221,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/restart':
@@ -2171,6 +3257,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2188,6 +3276,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/systemd':
@@ -2227,6 +3316,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input or the universe is already is already using systemd services
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2244,6 +3335,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit':
@@ -2281,6 +3373,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2298,6 +3392,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit/rotate':
@@ -2333,6 +3428,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2350,6 +3447,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/kubernetes-overrides':
@@ -2391,6 +3489,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2408,6 +3508,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/detach':
@@ -2439,6 +3540,8 @@
         $ref: "../components/responses/DetachUniverseResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2454,6 +3557,7 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
   delete:
@@ -2481,6 +3585,8 @@
         description: Successfully rolled back detach universe operation
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2496,6 +3602,7 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/attach':
@@ -2527,6 +3634,8 @@
         description: Successfully attached universe.
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2542,6 +3651,7 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-block-operator-resource: universe
     x-yba-api-multipart: true
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
@@ -2572,6 +3682,8 @@
         description: Successfully deleted attach/detach metadata of universe
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2587,6 +3699,7 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/query-log-config':
@@ -2612,7 +3725,9 @@
   post:
     operationId: configureQueryLogging
     summary: Configure Query Log for YugabyteDB Universe
-    description: Configure Query Log for a YugabyteDB Universe.
+    description: |
+      Use the POST /customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs API instead.
+      Configure Query Log for a YugabyteDB Universe.
     tags:
       - Universe
     requestBody:
@@ -2622,6 +3737,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2639,6 +3756,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/metrics-export-config':
@@ -2659,8 +3777,10 @@
       required: true
   post:
     operationId: configureMetricsExport
-    summary: Configure metrics export
-    description: Configure metrics export from a universe to a metrics export telemetry provider
+    summary: Configure metrics export - deprecated
+    description: |
+      Use the POST /customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs API instead.
+      Configure metrics export from a universe to a metrics export telemetry provider.
     tags:
       - Universe
     requestBody:
@@ -2670,6 +3790,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2687,8 +3809,9 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
-    x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: preview
+    x-yba-api-block-operator-resource: universe
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: deprecated
 '/customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs':
   parameters:
     - name: cUUID
@@ -2721,6 +3844,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2738,8 +3863,9 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
-    x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-block-operator-resource: universe
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: preview
   get:
     operationId: getExportTelemetryConfig
     summary: Get configured export telemetry configs for a universe
@@ -2768,7 +3894,7 @@
           sourceType: endpoint
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.2.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/operator-import':
   parameters:
     - name: cUUID
@@ -2816,6 +3942,57 @@
           sourceType: ENDPOINT
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/cross-cloud-federation':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: manageCrossCloudFederation
+    summary: Enable or disable cross-cloud federated IAM on a universe
+    description: 'Configures (enable) or tears down (disable) cross-cloud federated IAM on all nodes of an existing universe. On enable, the universe''s provider must have federated IAM enabled with an audience set.'
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCrossCloudFederationReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ManageCrossCloudFederation
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
+    x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/operator-import/precheck':
   parameters:
@@ -2906,7 +4083,7 @@
       '400':
         description: Invalid input or feature not enabled
       '403':
-        description: Feature not enabled for this universe
+        description: 'Feature not enabled for this universe, or resource is controlled by the Kubernetes operator'
       '500':
         description: Server error
     security:
@@ -2919,6 +4096,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/file-collections':
@@ -2964,7 +4142,7 @@
       '400':
         description: Invalid input or feature not enabled
       '403':
-        description: Feature not enabled for this universe or not accessed from localhost
+        description: 'Feature not enabled for this universe or not accessed from localhost, or resource is controlled by the Kubernetes operator'
       '500':
         description: Server error
     security:
@@ -2981,6 +4159,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}/download':
@@ -3046,7 +4225,7 @@
       '400':
         description: Collection not found or already cleaned up
       '403':
-        description: 'Feature not enabled for this universe, or cleanup_db_nodes_after=true but not accessed from localhost'
+        description: 'Feature not enabled for this universe, or cleanup_db_nodes_after=true but not accessed from localhost, or resource is controlled by the Kubernetes operator'
       '404':
         description: Collection not found
       '500':
@@ -3065,6 +4244,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}':
@@ -3126,7 +4306,7 @@
       '400':
         description: Collection not found or already cleaned up
       '403':
-        description: API not called from localhost or feature not enabled
+        description: 'API not called from localhost or feature not enabled, or resource is controlled by the Kubernetes operator'
       '404':
         description: Collection not found
       '500':
@@ -3145,6 +4325,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/proxy-config':
@@ -3183,6 +4364,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '404':
         description: Customer or Universe or Cluster not found
       '500':
@@ -3202,6 +4385,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.2.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/resize-nodes':
@@ -3239,6 +4423,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3256,6 +4442,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/validate-kubernetes-overrides':
@@ -3350,6 +4537,61 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/vm-image':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: editVMImage
+    summary: Edit VM images for nodes.
+    description: Queues a task to edit VM images of a universe nodes
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseVMImageUpgradeReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeVmImage
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 /yba-info:

@@ -49,7 +49,6 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stringprintf.h"
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/connection.h"
@@ -253,7 +252,7 @@ Reactor::Reactor(Messenger* messenger,
                  int index,
                  const MessengerBuilder &bld)
     : messenger_(*messenger),
-      name_(StringPrintf("%s_R%03d", messenger->name().c_str(), index)),
+      name_(Format("$0_R$1", messenger->name(), ZeroPadded(index, 3))),
       log_prefix_(name_ + ": "),
       loop_(kDefaultLibEvFlags),
       connection_keepalive_time_(bld.connection_keepalive_time()),
@@ -789,6 +788,15 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     auto outbound_address = conn_id.remote().address().is_v6()
         ? messenger_.outbound_address_v6()
         : messenger_.outbound_address_v4();
+#if defined(__APPLE__)
+    // macOS picks the destination as the source for unbound loopback sockets (src == dst);
+    // bind to the loopback address like Linux does.
+    if (outbound_address.is_unspecified() && conn_id.remote().address().is_loopback()) {
+      outbound_address = conn_id.remote().address().is_v6()
+          ? IpAddress(boost::asio::ip::address_v6::loopback())
+          : IpAddress(boost::asio::ip::address_v4::loopback());
+    }
+#endif
     if (!outbound_address.is_unspecified()) {
       auto status = sock.SetReuseAddr(true);
       if (status.ok()) {

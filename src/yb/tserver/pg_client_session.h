@@ -113,6 +113,7 @@ struct PgClientSessionMetrics {
 struct PgClientSessionDbHistoryRetentionPin {
   PgOid db_oid = kPgInvalidOid;
   HybridTime read_time;
+  pid_t pid = -1;
 };
 
 struct PgClientSessionContext {
@@ -132,9 +133,12 @@ struct PgClientSessionContext {
 #ifdef __linux__
   TServerCgroupManager* cgroup_manager;
 #endif
+  // Set only when FLAGS_TEST_enable_pg_client_mock is on.
+  PgClientServiceMockImpl* TEST_mock_service = nullptr;
 };
 
-using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;
+using RequestProcessingPreconditionWaiter =
+    LWFunction<Status(const ::yb::tserver::LWPgRequestSequenceNumPB&, CoarseTimePoint)>;
 
 class PgClientSession final {
  private:
@@ -149,13 +153,18 @@ class PgClientSession final {
       TransactionBuilder&& transaction_builder, client::YBClient& client,
       std::reference_wrapper<const PgClientSessionContext> context,
       uint64_t id, pid_t pid, uint64_t lease_epoch,
-      tserver::TSLocalLockManagerPtr ts_local_lock_manager);
+      tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+      std::optional<docdb::ObjectLockSharedStateHolder> object_lock_shared_state);
   ~PgClientSession();
 
   uint64_t id() const;
+  pid_t pid() const;
+
+  // The database recorded for the session's backend; kInvalidOid if none yet.
+  PgOid TEST_database_oid() const;
 
   struct SharedDataDescriptor {
-    PgSessionLockOwnerTagShared& object_lock;
+    PgSessionObjectLockData& object_lock;
     std::atomic<uint64_t>& oldest_read_point_serial_no;
   };
 

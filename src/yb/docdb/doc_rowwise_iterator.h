@@ -235,6 +235,15 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   const DocDB doc_db_;
 
+  // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
+  // RocksDB does not get destroyed while the iterator is still in use.
+  // Must be declared before db_iter_, i.e. destroyed after it: a tablet shutdown parked on this
+  // counter resumes as soon as it is released and destroys the RocksDB instances, while tearing
+  // down the RocksDB iterators owned by db_iter_ still touches the DB (CleanupIteratorState ->
+  // DBImpl::PurgeObsoleteFiles). See issue #33496.
+  ScopedRWOperation pending_op_holder_;
+  const ScopedRWOperation& pending_op_ref_;
+
   // A copy of the bound key of the end of the scan range (if any). We stop scan if iterator
   // reaches this point. This is exclusive bound for forward scans and inclusive bound for
   // reverse scans.
@@ -243,11 +252,6 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   IntentAwareIteratorPtr db_iter_;
   std::unique_ptr<ScanChoices> scan_choices_;
-
-  // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
-  // RocksDB does not get destroyed while the iterator is still in use.
-  ScopedRWOperation pending_op_holder_;
-  const ScopedRWOperation& pending_op_ref_;
 
   // Indicates whether we've already finished iterating.
   bool done_ = false;

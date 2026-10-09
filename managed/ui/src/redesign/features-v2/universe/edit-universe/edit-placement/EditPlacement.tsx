@@ -1,4 +1,5 @@
 import { FC, useEffect, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { mui, Step, YBMultiLevelStepper } from '@yugabyte-ui-library/core';
 
 import { useTranslation } from 'react-i18next';
@@ -20,14 +21,17 @@ import {
   getNodesAvailabilityDefaultsForEditPlacement,
   getResilienceAndRegionsProps
 } from './EditPlacementUtils';
-import {
-  WhatNewInPlacement,
-  WHAT_NEW_IN_PLACEMENT_MODAL_DISMISS_KEY
-} from '@app/redesign/features-v2/onboarding/universe-revamp/modals/WhatNewInPlacement';
+import { WhatNewInPlacement } from '@app/redesign/features-v2/onboarding/universe-revamp/modals/WhatNewInPlacement';
 import {
   EDIT_PLACEMENT_OVERLAY_ID,
   setOnboardingFullscreenOverlayOpen
 } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
+import {
+  TourStep,
+  dismissTourStep,
+  isTourProgressReady,
+  isTourStepDismissed
+} from '@app/redesign/features-v2/onboarding/universe-revamp/tour-progress';
 
 const { styled, Grid2: Grid, Typography, Box } = mui;
 
@@ -81,6 +85,7 @@ export const EditPlacement: FC<EditPlacementProps> = ({
     editPlacementContext[1];
 
   const [showWhatNewInPlacement, setShowWhatNewInPlacement] = useState(false);
+  const tourUserUuid = useSelector((state: any) => state.customer.currentUser.data?.uuid);
 
   const steps = useMemo(() => {
     return [
@@ -140,7 +145,7 @@ export const EditPlacement: FC<EditPlacementProps> = ({
       setShowWhatNewInPlacement(false);
       return;
     }
-    if (localStorage.getItem(WHAT_NEW_IN_PLACEMENT_MODAL_DISMISS_KEY) === 'true') {
+    if (!isTourProgressReady() || isTourStepDismissed(TourStep.WhatNewPlacement)) {
       return;
     }
     const timer = window.setTimeout(() => {
@@ -149,7 +154,7 @@ export const EditPlacement: FC<EditPlacementProps> = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [visible]);
+  }, [visible, tourUserUuid]);
 
   if (!visible) {
     return null;
@@ -161,7 +166,7 @@ export const EditPlacement: FC<EditPlacementProps> = ({
   };
 
   const dismissWhatNewInPlacement = () => {
-    localStorage.setItem(WHAT_NEW_IN_PLACEMENT_MODAL_DISMISS_KEY, 'true');
+    dismissTourStep(TourStep.WhatNewPlacement);
     setShowWhatNewInPlacement(false);
   };
 

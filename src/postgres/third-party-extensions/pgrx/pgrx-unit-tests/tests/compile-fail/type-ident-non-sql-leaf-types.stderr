@@ -1,0 +1,170 @@
+error[E0277]: `MissingSqlType` has no representation in SQL
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:6:39
+  |
+6 | fn takes_optional_missing_sql(_value: Option<MissingSqlType>) {}
+  |                                       ^^^^^^^^^^^^^^^^^^^^^^ non-SQL type
+  |
+help: the trait `SqlTranslatable` is not implemented for `MissingSqlType`
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:3:1
+  |
+3 | struct MissingSqlType;
+  | ^^^^^^^^^^^^^^^^^^^^^
+  = help: the following other types implement trait `SqlTranslatable`:
+            &MemCx<'mcx>
+            &T
+            ()
+            *mut T
+            AnyArray
+            AnyElement
+            AnyNumeric
+            BOX
+          and $N others
+  = note: required for `Option<MissingSqlType>` to implement `SqlTranslatable`
+
+error[E0277]: `MissingSqlType` has no representation in SQL
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:9:36
+  |
+9 | fn returns_result_missing_sql() -> Result<MissingSqlType, std::io::Error> {
+  |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ non-SQL type
+  |
+help: the trait `SqlTranslatable` is not implemented for `MissingSqlType`
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:3:1
+  |
+3 | struct MissingSqlType;
+  | ^^^^^^^^^^^^^^^^^^^^^
+  = help: the following other types implement trait `SqlTranslatable`:
+            &MemCx<'mcx>
+            &T
+            ()
+            *mut T
+            AnyArray
+            AnyElement
+            AnyNumeric
+            BOX
+          and $N others
+  = note: required for `std::result::Result<MissingSqlType, std::io::Error>` to implement `SqlTranslatable`
+
+error[E0277]: `MissingSqlType` has no representation in SQL
+  --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:14:79
+   |
+14 | fn returns_table_with_missing_sql() -> TableIterator<'static, (name!(missing, MissingSqlType),)> {
+   |                                                                               ^^^^^^^^^^^^^^ non-SQL type
+   |
+help: the trait `SqlTranslatable` is not implemented for `MissingSqlType`
+  --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:3:1
+   |
+ 3 | struct MissingSqlType;
+   | ^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `SqlTranslatable`:
+             &MemCx<'mcx>
+             &T
+             ()
+             *mut T
+             AnyArray
+             AnyElement
+             AnyNumeric
+             BOX
+           and $N others
+
+error[E0277]: `MissingSqlType` cannot be passed into a Postgres function as a Datum
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:6:31
+  |
+  5 | #[pg_extern]
+    | ------------ in this attribute macro expansion
+  6 | fn takes_optional_missing_sql(_value: Option<MissingSqlType>) {}
+    |                               ^^^^^^ unsatisfied trait bound
+    |
+help: the trait `ArgAbi<'_>` is not implemented for `MissingSqlType`
+   --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:3:1
+    |
+  3 | struct MissingSqlType;
+    | ^^^^^^^^^^^^^^^^^^^^^
+    = help: the following other types implement trait `ArgAbi<'fcx>`:
+              &'fcx T
+              &'fcx [u8]
+              &'fcx str
+              &MemCx<'fcx>
+              *mut FunctionCallInfoBaseData
+              AnyArray
+              AnyElement
+              AnyNumeric
+            and $N others
+    = note: required for `Option<MissingSqlType>` to implement `ArgAbi<'_>`
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+   --> $WORKSPACE/pgrx/src/callconv.rs
+    |
+    |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+    |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+    = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `std::result::Result<MissingSqlType, std::io::Error>: pgrx::callconv::RetAbi` is not satisfied
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:9:36
+  |
+  9 | fn returns_result_missing_sql() -> Result<MissingSqlType, std::io::Error> {
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `pgrx::callconv::RetAbi` is not implemented for `std::result::Result<MissingSqlType, std::io::Error>`
+    |
+help: the trait `pgrx::callconv::RetAbi` is implemented for `std::result::Result<T, E>`
+   --> $WORKSPACE/pgrx/src/callconv.rs
+    |
+    | / unsafe impl<T, E> RetAbi for Result<T, E>
+    | | where
+    | |     T: RetAbi,
+    | |     T::Item: RetAbi,
+    | |     E: core::any::Any + core::fmt::Display,
+    | |___________________________________________^
+
+error[E0277]: the trait bound `std::result::Result<MissingSqlType, std::io::Error>: pgrx::callconv::RetAbi` is not satisfied
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:9:75
+  |
+  8 |   #[pg_extern]
+    |   ------------ in this attribute macro expansion
+  9 |   fn returns_result_missing_sql() -> Result<MissingSqlType, std::io::Error> {
+    |  ___________________________________________________________________________^
+ 10 | |     todo!()
+ 11 | | }
+    | |_^ the trait `pgrx::callconv::RetAbi` is not implemented for `std::result::Result<MissingSqlType, std::io::Error>`
+    |
+help: the trait `pgrx::callconv::RetAbi` is implemented for `std::result::Result<T, E>`
+   --> $WORKSPACE/pgrx/src/callconv.rs
+    |
+    | / unsafe impl<T, E> RetAbi for Result<T, E>
+    | | where
+    | |     T: RetAbi,
+    | |     T::Item: RetAbi,
+    | |     E: core::any::Any + core::fmt::Display,
+    | |___________________________________________^
+    = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `pgrx::prelude::TableIterator<'static, (MissingSqlType,)>: pgrx::callconv::RetAbi` is not satisfied
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:14:40
+  |
+ 14 | fn returns_table_with_missing_sql() -> TableIterator<'static, (name!(missing, MissingSqlType),)> {
+    |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `pgrx::callconv::RetAbi` is not implemented for `pgrx::prelude::TableIterator<'static, (MissingSqlType,)>`
+    |
+help: the trait `pgrx::callconv::RetAbi` is implemented for `pgrx::prelude::TableIterator<'_, Row>`
+   --> $WORKSPACE/pgrx/src/iter.rs
+    |
+    | / unsafe impl<Row> RetAbi for TableIterator<'_, Row>
+    | | where
+    | |     Row: RetAbi,
+    | |________________^
+
+error[E0277]: the trait bound `pgrx::prelude::TableIterator<'_, (MissingSqlType,)>: pgrx::callconv::RetAbi` is not satisfied
+ --> tests/compile-fail/type-ident-non-sql-leaf-types.rs:14:98
+  |
+ 13 |   #[pg_extern]
+    |   ------------ in this attribute macro expansion
+ 14 |   fn returns_table_with_missing_sql() -> TableIterator<'static, (name!(missing, MissingSqlType),)> {
+    |  __________________________________________________________________________________________________^
+ 15 | |     todo!()
+ 16 | | }
+    | |_^ the trait `pgrx::callconv::RetAbi` is not implemented for `pgrx::prelude::TableIterator<'_, (MissingSqlType,)>`
+    |
+help: the trait `pgrx::callconv::RetAbi` is implemented for `pgrx::prelude::TableIterator<'_, Row>`
+   --> $WORKSPACE/pgrx/src/iter.rs
+    |
+    | / unsafe impl<Row> RetAbi for TableIterator<'_, Row>
+    | | where
+    | |     Row: RetAbi,
+    | |________________^
+    = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

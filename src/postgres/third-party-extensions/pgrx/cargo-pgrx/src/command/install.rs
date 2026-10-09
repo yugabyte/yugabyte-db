@@ -7,16 +7,16 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+use crate::CommandExecute;
+use crate::cargo::CargoProfile;
 use crate::command::get::{find_control_file, get_property};
 use crate::command::sudo_install::SudoInstall;
-use crate::manifest::{display_version_info, PgVersionSource};
-use crate::profile::CargoProfile;
-use crate::CommandExecute;
+use crate::manifest::{PgVersionSource, display_version_info};
 use cargo_metadata::Message as CargoMessage;
 use cargo_toml::Manifest;
-use eyre::{eyre, WrapErr};
+use eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
-use pgrx_pg_config::{cargo::PgrxManifestExt, get_target_dir, PgConfig, Pgrx};
+use pgrx_pg_config::{PgConfig, Pgrx, cargo::PgrxManifestExt, get_target_dir};
 use std::collections::HashMap;
 use std::fs;
 use std::io::BufReader;
@@ -64,6 +64,7 @@ pub(crate) struct Install {
 impl CommandExecute for Install {
     #[tracing::instrument(level = "error", skip(self))]
     fn execute(mut self) -> eyre::Result<()> {
+        warn_if_pg_bench_enabled(&self.features, "install");
         if self.sudo {
             // user wishes to use `sudo` to install the extension
             // so we re-route through the `SudoInstall` type
@@ -71,11 +72,11 @@ impl CommandExecute for Install {
             return sudo_install.execute();
         }
 
-        let metadata = crate::metadata::metadata(&self.features, self.manifest_path.as_ref())
+        let metadata = crate::metadata::metadata(&self.features, self.manifest_path.as_deref())
             .wrap_err("couldn't get cargo metadata")?;
-        crate::metadata::validate(self.manifest_path.as_ref(), &metadata)?;
+        crate::metadata::validate(self.manifest_path.as_deref(), &metadata)?;
         let package_manifest_path =
-            crate::manifest::manifest_path(&metadata, self.package.as_ref())
+            crate::manifest::manifest_path(&metadata, self.package.as_deref())
                 .wrap_err("Couldn't get manifest path")?;
         let package_manifest =
             Manifest::from_path(&package_manifest_path).wrap_err("Couldn't parse manifest")?;
@@ -100,18 +101,33 @@ impl CommandExecute for Install {
 
         display_version_info(&pg_config, &PgVersionSource::PgConfig(pg_config.label()?));
         install_extension(
-            self.manifest_path.as_ref(),
-            self.package.as_ref(),
+            self.manifest_path.as_deref(),
+            self.package.as_deref(),
             &package_manifest_path,
             &pg_config,
             &profile,
             self.test,
             None,
             &self.features,
-            self.target.as_ref().map(|x| x.as_str()),
+            self.target.as_deref(),
         )?;
         Ok(())
     }
+}
+
+pub(crate) fn pg_bench_feature_enabled(features: &clap_cargo::Features) -> bool {
+    features.all_features || features.features.iter().any(|feature| feature == "pg_bench")
+}
+
+pub(crate) fn warn_if_pg_bench_enabled(features: &clap_cargo::Features, command: &str) {
+    if !pg_bench_feature_enabled(features) {
+        return;
+    }
+
+    eprintln!(
+        "{} building with feature `pg_bench`\nbenchmark functions and helper dependencies will be included in this `cargo pgrx {command}` build\nthis is usually not intended for packaged releases",
+        "WARNING:".red().bold()
+    );
 }
 
 #[tracing::instrument(skip_all, fields(
@@ -122,8 +138,8 @@ impl CommandExecute for Install {
     features = ?features.features,
 ))]
 pub(crate) fn install_extension(
-    user_manifest_path: Option<impl AsRef<Path>>,
-    user_package: Option<&String>,
+    user_manifest_path: Option<&Path>,
+    user_package: Option<&str>,
     package_manifest_path: &Path,
     pg_config: &PgConfig,
     profile: &CargoProfile,
@@ -134,13 +150,13 @@ pub(crate) fn install_extension(
 ) -> eyre::Result<Vec<PathBuf>> {
     let mut output_tracking = Vec::new();
 
-    let manifest = Manifest::from_path(&package_manifest_path)?;
-    let (control_file, extname) = find_control_file(&package_manifest_path)?;
+    let manifest = Manifest::from_path(package_manifest_path)?;
+    let (control_file, extname) = find_control_file(package_manifest_path)?;
 
-    let versioned_so = get_property(&package_manifest_path, "module_pathname")?.is_none();
+    let versioned_so = get_property(package_manifest_path, "module_pathname")?.is_none();
 
     let build_command_output =
-        build_extension(user_manifest_path.as_ref(), user_package, profile, features, target)?;
+        build_extension(user_manifest_path, user_package, profile, features, target)?;
     let build_command_bytes = build_command_output.stdout;
     let build_command_reader = BufReader::new(build_command_bytes.as_slice());
     let build_command_stream = CargoMessage::parse_stream(build_command_reader);
@@ -148,7 +164,7 @@ pub(crate) fn install_extension(
         build_command_stream.collect::<Result<Vec<_>, std::io::Error>>()?;
 
     println!("{} extension", "  Installing".bold().green());
-    let shlibpath = find_library_file(&manifest, &package_manifest_path, &build_command_messages)?;
+    let shlibpath = find_library_file(&manifest, package_manifest_path, &build_command_messages)?;
 
     let extdir = if let Some(base_directory) = base_directory.as_ref() {
         base_directory.join(make_relative_extdir(pg_config.extension_dir()?))
@@ -172,15 +188,14 @@ pub(crate) fn install_extension(
             dest,
             "control file",
             true,
-            &package_manifest_path,
+            package_manifest_path,
             &mut output_tracking,
-            pg_config,
         )?;
     }
 
     {
         let so_name = if versioned_so {
-            let extver = get_version(&package_manifest_path)?;
+            let extver = get_version(package_manifest_path)?;
             // note: versioned so-name format must agree with pgrx-utils
             format!("{extname}-{extver}")
         } else {
@@ -195,7 +210,7 @@ pub(crate) fn install_extension(
         };
         let filename = format!("{so_name}{so_suffix}");
 
-        let dest = pkglibdir.join(filename);
+        let dest = pkglibdir.join(&filename);
 
         // Remove the existing shared libraries if present. This is a workaround for an
         // issue highlighted by the following apple documentation:
@@ -215,17 +230,15 @@ pub(crate) fn install_extension(
             dest,
             "shared library",
             false,
-            &package_manifest_path,
+            package_manifest_path,
             &mut output_tracking,
-            pg_config,
         )?;
     }
 
     copy_sql_files(
         user_manifest_path,
         user_package,
-        &package_manifest_path,
-        pg_config,
+        package_manifest_path,
         profile,
         is_test,
         features,
@@ -244,9 +257,8 @@ fn copy_file(
     dest: PathBuf,
     msg: &str,
     do_filter: bool,
-    package_manifest_path: impl AsRef<Path>,
+    package_manifest_path: &Path,
     output_tracking: &mut Vec<PathBuf>,
-    pg_config: &PgConfig,
 ) -> eyre::Result<()> {
     let Some(dest_dir) = dest.parent() else {
         // what fresh hell could ever cause such an error?
@@ -268,11 +280,7 @@ fn copy_file(
         // we want to filter the contents of the file we're to copy
         let input = fs::read_to_string(src)
             .wrap_err_with(|| format!("failed to read `{}`", src.display()))?;
-        let mut input = filter_contents(package_manifest_path, input)?;
-
-        if src.display().to_string().ends_with(".control") {
-            input = filter_out_fields_in_control(pg_config, input)?;
-        }
+        let input = filter_contents(package_manifest_path, input)?;
 
         fs::write(&dest, input).wrap_err_with(|| {
             format!("failed writing `{}` to `{}`", src.display(), dest.display())
@@ -287,23 +295,29 @@ fn copy_file(
 
     Ok(())
 }
-
 pub(crate) fn build_extension(
-    user_manifest_path: Option<impl AsRef<Path>>,
-    user_package: Option<&String>,
+    user_manifest_path: Option<&Path>,
+    user_package: Option<&str>,
     profile: &CargoProfile,
     features: &clap_cargo::Features,
     target: Option<&str>,
 ) -> eyre::Result<std::process::Output> {
     let flags = std::env::var("PGRX_BUILD_FLAGS").unwrap_or_default();
 
-    let mut command = crate::env::cargo();
+    let mut command = crate::cargo::cargo();
+    // These `--config` args go before the subcommand. They retain `.pgrxsc`
+    // on non-macOS Unix cdylib links so schema generation can find it; safe
+    // here because this path only ever builds the cdylib (`--lib`). See
+    // `pgrx_cdylib_config_args` for the full rationale.
+    for arg in crate::cargo::pgrx_cdylib_config_args() {
+        command.arg(arg);
+    }
     command.arg("build");
     command.arg("--lib");
 
     if let Some(user_manifest_path) = user_manifest_path {
         command.arg("--manifest-path");
-        command.arg(user_manifest_path.as_ref());
+        command.arg(user_manifest_path);
     }
 
     if let Some(user_package) = user_package {
@@ -352,10 +366,9 @@ pub(crate) fn build_extension(
 }
 
 fn copy_sql_files(
-    user_manifest_path: Option<impl AsRef<Path>>,
-    user_package: Option<&String>,
-    package_manifest_path: impl AsRef<Path>,
-    pg_config: &PgConfig,
+    user_manifest_path: Option<&Path>,
+    user_package: Option<&str>,
+    package_manifest_path: &Path,
     profile: &CargoProfile,
     is_test: bool,
     features: &clap_cargo::Features,
@@ -364,31 +377,34 @@ fn copy_sql_files(
     skip_build: bool,
     output_tracking: &mut Vec<PathBuf>,
 ) -> eyre::Result<()> {
-    let (_, extname) = find_control_file(&package_manifest_path)?;
+    let (_, extname) = find_control_file(package_manifest_path)?;
     {
-        let version = get_version(&package_manifest_path)?;
+        let version = get_version(package_manifest_path)?;
         let filename = format!("{extname}--{version}.sql");
         let dest = extdir.join(filename);
 
         crate::command::schema::generate_schema(
-            pg_config,
             user_manifest_path,
             user_package,
-            &package_manifest_path,
+            package_manifest_path,
             profile,
             is_test,
             features,
             target,
             Some(&dest),
-            Option::<String>::None,
+            None,
             None,
             skip_build,
+            None,
+            // install scripts run inside CREATE EXTENSION and auto-attach;
+            // explicit ALTER EXTENSION would be redundant.
+            false,
             output_tracking,
         )?;
     }
 
     // now copy all the version upgrade files too
-    if let Ok(dir) = fs::read_dir(package_manifest_path.as_ref().parent().unwrap().join("sql/")) {
+    if let Ok(dir) = fs::read_dir(package_manifest_path.parent().unwrap().join("sql/")) {
         for sql in dir.flatten() {
             let filename = sql.file_name().into_string().unwrap();
 
@@ -402,9 +418,8 @@ fn copy_sql_files(
                     extdir.join(filename),
                     "extension schema upgrade file",
                     true,
-                    &package_manifest_path,
+                    package_manifest_path,
                     output_tracking,
-                    pg_config,
                 )?;
             }
         }
@@ -418,12 +433,10 @@ pub(crate) fn find_library_file(
     manifest_path: &Path,
     build_command_messages: &[CargoMessage],
 ) -> eyre::Result<PathBuf> {
-    use std::env::consts::{DLL_EXTENSION, DLL_SUFFIX};
+    use std::env::consts::DLL_EXTENSION;
 
-    // cargo sometimes decides to change whether targets are kebab-case or snake_case in metadata,
-    // so normalize away the difference
-    let target_name = manifest.target_name()?.replace('-', "_");
     let manifest_path = std::path::absolute(manifest_path)?;
+    let lib_filename = manifest.lib_filename()?;
 
     // no hard and fast rule for the lib.so output filename exists, so we implement this routine
     // which is essentially a cope for cargo's disinterest in writing down any docs so far.
@@ -448,7 +461,7 @@ pub(crate) fn find_library_file(
                 .map(|filename| filename.to_string())
         })
         .ok_or_else(|| {
-            eyre!("Could not get shared object file `{target_name}{DLL_SUFFIX}` from Cargo output.")
+            eyre!("Could not get shared object file `{lib_filename}` from Cargo output.",)
         })?;
     let library_file_path = PathBuf::from(library_file);
 
@@ -457,8 +470,8 @@ pub(crate) fn find_library_file(
 
 static CARGO_VERSION: OnceLock<MemoizeKeyValue> = OnceLock::new();
 
-pub(crate) fn get_version(manifest_path: impl AsRef<Path>) -> eyre::Result<String> {
-    let path_string = manifest_path.as_ref().to_owned();
+pub(crate) fn get_version(manifest_path: &Path) -> eyre::Result<String> {
+    let path_string = manifest_path.to_owned();
 
     if let Some(version) =
         CARGO_VERSION.get_or_init(Default::default).lock().unwrap().get(&path_string)
@@ -466,23 +479,27 @@ pub(crate) fn get_version(manifest_path: impl AsRef<Path>) -> eyre::Result<Strin
         return Ok(version.clone());
     }
 
-    let version = match get_property(&manifest_path, "default_version")? {
+    let version = match get_property(manifest_path, "default_version")? {
         Some(v) => {
             if v == "@CARGO_VERSION@" {
-                let metadata = crate::metadata::metadata(&Default::default(), Some(&manifest_path))
+                let metadata = crate::metadata::metadata(&Default::default(), Some(manifest_path))
                     .wrap_err("couldn't get cargo metadata")?;
                 crate::metadata::validate(Some(manifest_path), &metadata)?;
                 let manifest_path = crate::manifest::manifest_path(&metadata, None)
                     .wrap_err("Couldn't get manifest path")?;
-                let manifest = Manifest::from_path(manifest_path)
-                    .wrap_err("Couldn't parse manifest")?;
+                let manifest =
+                    Manifest::from_path(manifest_path).wrap_err("Couldn't parse manifest")?;
 
                 manifest.package_version()?
             } else {
                 v
             }
-        },
-        None => return Err(eyre!("cannot determine extension version number.  Is the `default_version` property declared in the control file?")),
+        }
+        None => {
+            return Err(eyre!(
+                "cannot determine extension version number.  Is the `default_version` property declared in the control file?"
+            ));
+        }
     };
 
     CARGO_VERSION
@@ -495,8 +512,8 @@ pub(crate) fn get_version(manifest_path: impl AsRef<Path>) -> eyre::Result<Strin
 
 static GIT_HASH: OnceLock<MemoizeKeyValue> = OnceLock::new();
 
-fn get_git_hash(manifest_path: impl AsRef<Path>) -> eyre::Result<String> {
-    let path_string = manifest_path.as_ref().to_owned();
+fn get_git_hash(manifest_path: &Path) -> eyre::Result<String> {
+    let path_string = manifest_path.to_owned();
 
     let mut mutex = GIT_HASH.get_or_init(Default::default).lock().unwrap();
     if let Some(hash) = mutex.get(&path_string) {
@@ -504,9 +521,11 @@ fn get_git_hash(manifest_path: impl AsRef<Path>) -> eyre::Result<String> {
     } else {
         let hash = match get_property(manifest_path, "git_hash")? {
             Some(hash) => hash,
-            None => return Err(eyre!(
-                "unable to determine git hash.  Is git installed and is this project a git repository?"
-            )),
+            None => {
+                return Err(eyre!(
+                    "unable to determine git hash.  Is git installed and is this project a git repository?"
+                ));
+            }
         };
 
         mutex.insert(path_string, hash.clone());
@@ -547,8 +566,7 @@ fn make_relative_extdir(_: PathBuf) -> PathBuf {
     "share/extension".into()
 }
 
-pub(crate) fn format_display_path(path: impl AsRef<Path>) -> eyre::Result<String> {
-    let path = path.as_ref();
+pub(crate) fn format_display_path(path: &Path) -> eyre::Result<String> {
     let out = path
         .strip_prefix(get_target_dir()?.parent().unwrap())
         .unwrap_or(path)
@@ -557,29 +575,15 @@ pub(crate) fn format_display_path(path: impl AsRef<Path>) -> eyre::Result<String
     Ok(out)
 }
 
-fn filter_contents(manifest_path: impl AsRef<Path>, mut input: String) -> eyre::Result<String> {
+fn filter_contents(manifest_path: &Path, mut input: String) -> eyre::Result<String> {
     if input.contains("@GIT_HASH@") {
         // avoid doing this if we don't actually have the token
         // the project might not be a git repo so running `git`
         // would fail
-        input = input.replace("@GIT_HASH@", &get_git_hash(&manifest_path)?);
+        input = input.replace("@GIT_HASH@", &get_git_hash(manifest_path)?);
     }
 
-    input = input.replace("@CARGO_VERSION@", &get_version(&manifest_path)?);
-
-    Ok(input)
-}
-
-// remove fields in control for versions not supported
-// `trusted`` in only supported in version 13 and above
-fn filter_out_fields_in_control(pg_config: &PgConfig, mut input: String) -> eyre::Result<String> {
-    if pg_config.major_version().unwrap() < 13 {
-        input = input
-            .lines()
-            .filter(|line| !line.starts_with("trusted"))
-            .collect::<Vec<_>>()
-            .join("\n");
-    }
+    input = input.replace("@CARGO_VERSION@", &get_version(manifest_path)?);
 
     Ok(input)
 }

@@ -45,6 +45,8 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertificateHelperTest;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
@@ -60,6 +62,9 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
@@ -663,8 +668,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              k8sProvider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(k8sProvider.getUuid());
         });
 
     ObjectNode providerJson = (ObjectNode) Json.toJson(p);
@@ -691,8 +697,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              k8sProvider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(k8sProvider.getUuid());
         });
 
     List<AvailabilityZone> zones = p.getRegions().get(0).getZones();
@@ -805,6 +812,215 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testK8sInUseZoneKubeConfigEditAllowed() throws InterruptedException {
+    // PLAT-21218: kubeconfig-only edits must succeed for in-use Kubernetes zones.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    AvailabilityZone zone = p.getRegions().get(0).getZones().get(0);
+    // Seed a zone-level kubeconfig before marking the AZ in use, then rotate it.
+    setZoneKubeConfig(zone, "seed.conf", "test-kubeconfig.conf");
+    UUID seedTask = doEditProvider(p, false);
+    assertEquals(TaskInfo.State.Success, waitForTask(seedTask).getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    zone = p.getRegions().get(0).getZones().get(0);
+    attachUniverseToZone(k8sProvider, zone);
+
+    KubernetesRegionInfo k8sRegInfo = zone.getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubeConfigName("rotated.conf");
+    k8sRegInfo.setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    k8sRegInfo =
+        p.getRegions().get(0).getZones().get(0).getDetails().getCloudInfo().getKubernetes();
+    assertNull(k8sRegInfo.getKubeConfigName());
+    assertNotNull(k8sRegInfo.getKubeConfig());
+    assertEquals("https://5.6.7.8", k8sRegInfo.getApiServerEndpoint());
+  }
+
+  @Test
+  public void testK8sInUseRegionKubeConfigEditAllowed() throws InterruptedException {
+    // PLAT-21218: kubeconfig-only edits must succeed for in-use Kubernetes regions.
+    // createK8sProvider(false) leaves region.cloudInfo null; seed region kubeconfig first.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    Region region = p.getRegions().get(0);
+    setRegionKubeConfig(region, "seed-region.conf", "test-kubeconfig.conf");
+    UUID seedTask = doEditProvider(p, false);
+    assertEquals(TaskInfo.State.Success, waitForTask(seedTask).getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    region = p.getRegions().get(0);
+    attachUniverseToZone(k8sProvider, region.getZones().get(0));
+
+    KubernetesRegionInfo k8sRegInfo = region.getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubeConfigName("rotated-region.conf");
+    k8sRegInfo.setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    k8sRegInfo = p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes();
+    assertNull(k8sRegInfo.getKubeConfigName());
+    assertNotNull(k8sRegInfo.getKubeConfig());
+    assertEquals("https://5.6.7.8", k8sRegInfo.getApiServerEndpoint());
+  }
+
+  @Test
+  public void testK8sInUseProviderKubeConfigEditAllowed() throws InterruptedException {
+    // PLAT-21218: provider-level kubeconfig rotation is allowed via @EditableInUseProvider.
+    Provider k8sProvider = createK8sProvider();
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    attachUniverseToZone(k8sProvider, p.getRegions().get(0).getZones().get(0));
+
+    p.getDetails().getCloudInfo().getKubernetes().setKubeConfigName("rotated-provider.conf");
+    p.getDetails()
+        .getCloudInfo()
+        .getKubernetes()
+        .setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    KubernetesInfo k8sInfo = CloudInfoInterface.get(p);
+    assertNull(k8sInfo.getKubeConfigName());
+    assertNotNull(k8sInfo.getKubeConfig());
+    assertEquals("https://5.6.7.8", k8sInfo.getApiServerEndpoint());
+  }
+
+  @Test
+  public void testK8sInUseZoneNonKubeConfigEditBlocked() {
+    // PLAT-21218: non-kubeconfig zone edits remain blocked when the AZ is in use.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    AvailabilityZone zone = p.getRegions().get(0).getZones().get(0);
+    attachUniverseToZone(k8sProvider, zone);
+
+    KubernetesRegionInfo k8sRegInfo = zone.getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubernetesStorageClass("new-storage-class");
+
+    verifyEditError(
+        p, false, "Modifying zone us-west1-a details is not allowed for providers in use.");
+  }
+
+  @Test
+  public void testK8sInUseZoneMixedKubeConfigAndStorageEditBlocked() throws InterruptedException {
+    // PLAT-21218: exemption is kubeconfig-only; mixed zone edits stay blocked.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    AvailabilityZone zone = p.getRegions().get(0).getZones().get(0);
+    setZoneKubeConfig(zone, "seed.conf", "test-kubeconfig.conf");
+    assertEquals(TaskInfo.State.Success, waitForTask(doEditProvider(p, false)).getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    zone = p.getRegions().get(0).getZones().get(0);
+    attachUniverseToZone(k8sProvider, zone);
+
+    KubernetesRegionInfo k8sRegInfo = zone.getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubeConfigName("rotated.conf");
+    k8sRegInfo.setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
+    k8sRegInfo.setKubernetesStorageClass("new-storage-class");
+
+    verifyEditError(
+        p, false, "Modifying zone us-west1-a details is not allowed for providers in use.");
+  }
+
+  @Test
+  public void testK8sInUseRegionNonKubeConfigEditBlocked() throws InterruptedException {
+    // PLAT-21218: non-kubeconfig region edits remain blocked when the region is in use.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    Region region = p.getRegions().get(0);
+    setRegionKubeConfig(region, "seed-region.conf", "test-kubeconfig.conf");
+    assertEquals(TaskInfo.State.Success, waitForTask(doEditProvider(p, false)).getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    region = p.getRegions().get(0);
+    attachUniverseToZone(k8sProvider, region.getZones().get(0));
+
+    region.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("new-sc");
+
+    verifyEditError(
+        p, false, "Modifying region us-west1 details is not allowed for providers in use.");
+  }
+
+  @Test
+  public void testK8sInUseProviderNonKubeConfigEditBlocked() {
+    // PLAT-21218: non-editable provider cloudInfo fields stay blocked when in use.
+    Provider k8sProvider = createK8sProvider();
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    attachUniverseToZone(k8sProvider, p.getRegions().get(0).getZones().get(0));
+
+    p.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("blocked-sc");
+
+    verifyEditError(p, false, "Kubernetes Storage Class cannot be modified for in-use providers.");
+  }
+
+  /** Places a node of a new universe in the given zone, marking the zone and region as in use. */
+  private void attachUniverseToZone(Provider provider, AvailabilityZone zone) {
+    Universe universe =
+        ModelFactory.createUniverse(
+            "k8s-in-use-" + zone.getCode() + "-" + UUID.randomUUID(),
+            UUID.randomUUID(),
+            defaultCustomer.getId(),
+            Common.CloudType.kubernetes);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          Cluster primaryCluster = details.getPrimaryCluster();
+          primaryCluster.userIntent.provider = provider.getUuid().toString();
+          primaryCluster.userIntent.providerType = Common.CloudType.kubernetes;
+          primaryCluster.userIntent.numNodes = 1;
+
+          NodeDetails node = new NodeDetails();
+          node.nodeName = "yb-tserver-0";
+          node.nodeIdx = 1;
+          node.azUuid = zone.getUuid();
+          node.placementUuid = primaryCluster.uuid;
+          node.state = NodeState.Live;
+          node.isTserver = true;
+          node.isMaster = true;
+          node.cloudInfo = new CloudSpecificInfo();
+          node.cloudInfo.cloud = Common.CloudType.kubernetes.name();
+          node.cloudInfo.region = zone.getRegion().getCode();
+          node.cloudInfo.az = zone.getCode();
+          details.nodeDetailsSet = new HashSet<>(Collections.singletonList(node));
+        });
+  }
+
+  private void setZoneKubeConfig(AvailabilityZone zone, String name, String resource) {
+    KubernetesRegionInfo k8sInfo = zone.getDetails().getCloudInfo().getKubernetes();
+    if (k8sInfo == null) {
+      k8sInfo = new KubernetesRegionInfo();
+      zone.getDetails().getCloudInfo().setKubernetes(k8sInfo);
+    }
+    k8sInfo.setKubeConfigName(name);
+    k8sInfo.setKubeConfigContent(TestUtils.readResource(resource));
+  }
+
+  private void setRegionKubeConfig(Region region, String name, String resource) {
+    // RegionDetails.cloudInfo is null until set (unlike AZ details which default an empty object).
+    if (region.getDetails().getCloudInfo() == null) {
+      region.getDetails().setCloudInfo(new RegionDetails.RegionCloudInfo());
+    }
+    if (region.getDetails().getCloudInfo().getKubernetes() == null) {
+      region.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    }
+    KubernetesRegionInfo k8sInfo = region.getDetails().getCloudInfo().getKubernetes();
+    k8sInfo.setKubeConfigName(name);
+    k8sInfo.setKubeConfigContent(TestUtils.readResource(resource));
+  }
+
+  @Test
   public void testK8sProviderConfigEditAtProviderLevel() throws InterruptedException {
     Provider k8sProvider = createK8sProvider();
 
@@ -909,6 +1125,64 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testInUseGcpImageBundleEditWithOmittedDestVpcId() throws InterruptedException {
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.gcp);
+    UUID providerUUID = p.getUuid();
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    p.getDetails().setCloudInfo(new ProviderDetails.CloudInfo());
+    GCPCloudInfo gcp = new GCPCloudInfo();
+    gcp.setDestVpcId("hostVpcId");
+    gcp.setHostVpcId("hostVpcId");
+    gcp.setGceProject("proj");
+    gcp.setUseHostVPC(true);
+    gcp.setUseHostCredentials(true);
+    gcp.setVpcType(CloudInfoInterface.VPCType.HOSTVPC);
+    p.getDetails().getCloudInfo().setGcp(gcp);
+    p.save();
+
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(Common.CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "hostVpcId").put("project", "proj"));
+
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    Universe universe = ModelFactory.createUniverse("gcp-in-use", defaultCustomer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          TestUtils.getProviderInitializerForTests(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent, providerUUID)
+              .setProviderUUID(providerUUID)
+              .setProviderType(Common.CloudType.gcp);
+        });
+    Result providerRes = getProvider(p.getUuid());
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ((ObjectNode) bodyJson.path("details").path("cloudInfo").path("gcp")).remove("destVpcId");
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ImageBundle ib = new ImageBundle();
+    ib.setName("ib-2");
+    ib.setProvider(p);
+    ib.setDetails(details);
+    List<ImageBundle> ibs = new ArrayList<>(p.getImageBundles());
+    ibs.add(ib);
+    p.setImageBundles(ibs);
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(2, p.getImageBundles().size());
+    assertEquals("hostVpcId", p.getDetails().getCloudInfo().getGcp().getDestVpcId());
+  }
+
+  @Test
   public void testWaitForFinishingTasksTimeout() throws InterruptedException {
     factory.globalRuntimeConf().setValue(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "50");
     factory
@@ -921,8 +1195,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              provider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(provider.getUuid());
         });
     params.setUniverseUUID(universe.getUniverseUUID());
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
@@ -956,8 +1231,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              provider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(provider.getUuid());
         });
     params.setUniverseUUID(universe.getUniverseUUID());
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
@@ -1020,6 +1296,49 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
     ImageBundleDetails.BundleInfo bInfo = ib1.getDetails().getRegions().get("us-west-2");
     assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
+  @Test
+  public void testOciProviderEditKeepsMarketplaceFlags() throws InterruptedException {
+    Provider ociProvider = ModelFactory.ociProvider(defaultCustomer);
+    Region.create(ociProvider, "us-ashburn-1", "us-ashburn-1", null);
+    Region.create(ociProvider, "us-phoenix-1", "us-phoenix-1", null);
+    ImageBundleDetails.BundleInfo info = new ImageBundleDetails.BundleInfo();
+    info.setYbImage("ocid1.image.oc1.iad.marketplace");
+    info.setIsImageMarketplaceBased(true);
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-ashburn-1", info);
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    ImageBundle.Metadata metadata = new ImageBundle.Metadata();
+    metadata.setType(ImageBundleType.YBA_ACTIVE);
+    ImageBundle bundle = ImageBundle.create(ociProvider, "oci-default", details, metadata, true);
+    when(mockOCICloudImpl.getImageOrBadRequest(any(), eq("us-phoenix-1"), eq("ybImage-default")))
+        .thenReturn(
+            com.oracle.bmc.core.model.Image.builder()
+                .compartmentId("publisherCompartment")
+                .build());
+
+    // Resend the bundle with a wrong flag; the edit also fills in us-phoenix-1 with the default.
+    Result providerRes = getProvider(ociProvider.getUuid());
+    Provider editReq = Json.fromJson(Json.parse(contentAsString(providerRes)), Provider.class);
+    editReq
+        .getImageBundles()
+        .get(0)
+        .getDetails()
+        .getRegions()
+        .get("us-ashburn-1")
+        .setIsImageMarketplaceBased(false);
+    TaskInfo taskInfo = waitForTask(doEditProvider(editReq, false));
+    assertEquals(Success, taskInfo.getTaskState());
+
+    Map<String, ImageBundleDetails.BundleInfo> stored =
+        ImageBundle.get(bundle.getUuid()).getDetails().getRegions();
+    assertEquals(true, stored.get("us-ashburn-1").getIsImageMarketplaceBased());
+    assertEquals("ybImage-default", stored.get("us-phoenix-1").getYbImage());
+    assertEquals(true, stored.get("us-phoenix-1").getIsImageMarketplaceBased());
+    verify(mockOCICloudImpl, times(1)).getImageOrBadRequest(any(), anyString(), anyString());
   }
 
   @Test

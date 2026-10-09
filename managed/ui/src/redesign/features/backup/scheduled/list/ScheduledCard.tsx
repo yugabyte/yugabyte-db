@@ -13,9 +13,10 @@ import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import clsx from 'clsx';
 import cronstrue from 'cronstrue';
-
 import { Grid, makeStyles, Typography } from '@material-ui/core';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
+import { YBTooltip } from '@yugabyte-ui-library/core';
+
 import { YBToggle } from '../../../../components';
 import { YBTag, YBTag_Types } from '../../../../../components/common/YBTag';
 import { YBConfirmModal } from '../../../../../components/modals';
@@ -24,6 +25,10 @@ import ScheduledBackupShowIntervalsModal from './ScheduledBackupShowIntervalsMod
 import ScheduledPolicyShowTables from './ScheduledPolicyShowTables';
 import { IBackupSchedule, IBackupScheduleStatus } from '../../../../../components/backupv2';
 import { convertMsecToTimeFrame } from '../../../../../components/backupv2/scheduled/ScheduledBackupUtils';
+import {
+  isK8OperatorApiBlocked,
+  RuntimeConfigEntry
+} from '../../../../helpers/k8OperatorResourceUtils';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
 import { RbacValidator } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
@@ -34,6 +39,7 @@ interface ScheduledCardProps {
   schedule: IBackupSchedule;
   universeUUID: string;
   storageConfig: Record<string, string> | undefined;
+  runtimeConfigEntries?: RuntimeConfigEntry[] | null;
 }
 const useStyles = makeStyles((theme) => ({
   card: {
@@ -136,7 +142,8 @@ type toogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'sch
 export const ScheduledCard: FC<ScheduledCardProps> = ({
   schedule,
   universeUUID,
-  storageConfig
+  storageConfig,
+  runtimeConfigEntries
 }) => {
   const classes = useStyles();
   const [showDeleteModal, setShowDeleteModal] = useState('');
@@ -146,6 +153,10 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
   const { t } = useTranslation('translation', {
     keyPrefix: 'backup.scheduled.list'
   });
+  const isPolicyLocked = isK8OperatorApiBlocked(
+    schedule.isKubernetesOperatorControlled,
+    runtimeConfigEntries
+  );
   let backupInterval = '';
 
   if (schedule.cronExpression) {
@@ -217,23 +228,35 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
           <YBTag type={YBTag_Types.YB_GRAY}>
             {TableTypeLabel[schedule.backupInfo.backupType ?? '-']}
           </YBTag>
-          <YBToggle
-            checked={isScheduleEnabled}
-            label={
-              isScheduleEnabled ? t('enabled') : isScheduleCreating ? t('creating') : t('disabled')
-            }
-            onClick={(e: any) => {
-              toggleSchedule.mutate({
-                scheduleUUID: schedule.scheduleUUID,
-                frequency: schedule.frequency,
-                cronExpression: schedule.cronExpression,
-                status: e.target.checked
-                  ? IBackupScheduleStatus.ACTIVE
-                  : IBackupScheduleStatus.STOPPED,
-                frequencyTimeUnit: schedule.frequencyTimeUnit
-              });
-            }}
-          />
+          <YBTooltip title={isPolicyLocked ? t('operatorControlledPolicy') : ''}>
+            <span>
+              <YBToggle
+                checked={isScheduleEnabled}
+                disabled={isPolicyLocked}
+                label={
+                  isScheduleEnabled
+                    ? t('enabled')
+                    : isScheduleCreating
+                    ? t('creating')
+                    : t('disabled')
+                }
+                onClick={(e: any) => {
+                  if (isPolicyLocked) {
+                    return;
+                  }
+                  toggleSchedule.mutate({
+                    scheduleUUID: schedule.scheduleUUID,
+                    frequency: schedule.frequency,
+                    cronExpression: schedule.cronExpression,
+                    status: e.target.checked
+                      ? IBackupScheduleStatus.ACTIVE
+                      : IBackupScheduleStatus.STOPPED,
+                    frequencyTimeUnit: schedule.frequencyTimeUnit
+                  });
+                }}
+              />
+            </span>
+          </YBTooltip>
         </Grid>
         <DropdownButton
           className="actions-btn"
@@ -252,13 +275,21 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
               display: 'unset'
             }}
           >
-            <MenuItem
-              onClick={() => {
-                setShowEditModal(true);
-              }}
-            >
-              <i className="fa fa-pencil"></i> {t('editPolicy')}
-            </MenuItem>
+            <YBTooltip title={isPolicyLocked ? t('operatorControlledPolicy') : ''}>
+              <span>
+                <MenuItem
+                  disabled={isPolicyLocked}
+                  onClick={() => {
+                    if (isPolicyLocked) {
+                      return;
+                    }
+                    setShowEditModal(true);
+                  }}
+                >
+                  <i className="fa fa-pencil"></i> {t('editPolicy')}
+                </MenuItem>
+              </span>
+            </YBTooltip>
           </RbacValidator>
           <RbacValidator
             accessRequiredOn={ApiPermissionMap.DELETE_SCHEDULE}
@@ -267,14 +298,22 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
               display: 'unset'
             }}
           >
-            <MenuItem
-              onClick={() => {
-                setShowDeleteModal(schedule.scheduleUUID);
-              }}
-              className="action-danger"
-            >
-              <i className="fa fa-trash"></i> {t('deletePolicy')}
-            </MenuItem>
+            <YBTooltip title={isPolicyLocked ? t('operatorControlledPolicy') : ''}>
+              <span>
+                <MenuItem
+                  disabled={isPolicyLocked}
+                  onClick={() => {
+                    if (isPolicyLocked) {
+                      return;
+                    }
+                    setShowDeleteModal(schedule.scheduleUUID);
+                  }}
+                  className="action-danger"
+                >
+                  <i className="fa fa-trash"></i> {t('deletePolicy')}
+                </MenuItem>
+              </span>
+            </YBTooltip>
           </RbacValidator>
         </DropdownButton>
       </div>

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
@@ -357,11 +358,33 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
   private CapacityReservationState capacityReservationState;
 
+  // Subtasks record a load balancer before the cloud call, so a retry or a destroy sees load
+  // balancers that a failed task created.
+  @Setter
+  @Getter
+  @ApiModelProperty(
+      hidden = true,
+      value = "YbaApi Internal. Load balancers that YBA created for this universe.")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  private ManagedLoadBalancerState managedLoadBalancerState;
+
   @Setter
   @Getter
   @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
   private UUID paCollectorUuid = null;
+
+  /**
+   * The Perf Advisor Endpoint this universe's collected data is forwarded to, set only for an
+   * ONLINE registration. Kept here rather than read back from the collector so the sync loop can
+   * work out what each collector needs without a round trip, and so an endpoint still in use cannot
+   * be deleted while its collector is unreachable.
+   */
+  @Getter
+  @Setter
+  @ApiModelProperty(value = "YbaApi Internal. Perf Advisor Endpoint UUID")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private UUID paEndpointUuid = null;
 
   @Data
   public static class UniverseSettings {
@@ -582,41 +605,48 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      * Check if instance tags are same as the passed in cluster.
      *
      * @param cluster another cluster to check against.
-     * @return true if the tag maps are same for aws provider, false otherwise. This is because
-     *     modify tags not implemented in devops for any cloud other than AWS.
+     * @return true if the tag maps are same for aws provider, for each provider that supports
+     *     modifying tags (aws, gcp and local currently).
      */
     public boolean areTagsSame(Cluster cluster) {
       if (cluster == null) {
         throw new IllegalArgumentException("Invalid cluster to compare.");
       }
-      if (userIntent.isMulticloudSupport()) {
-        for (ProviderSpecification providerSpecification : userIntent.providerSpecifications) {
-          if (!Provider.InstanceTagsModificationEnabledProviders.contains(
-              providerSpecification.providerType)) {
-            continue;
-          }
-          if (!Objects.equals(
-              providerSpecification.instanceTags,
-              cluster.userIntent.getInstanceTagsForProvider(providerSpecification.providerUUID))) {
-            return false;
-          }
+      for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
+        if (areTagsChanged(cluster, providerUUID)) {
+          return false;
         }
-        return true;
       }
-      if (!cluster.userIntent.providerType.equals(userIntent.providerType)) {
-        throw new IllegalArgumentException(
-            "Mismatched provider types, expected "
-                + userIntent.providerType.name()
-                + " but got "
-                + cluster.userIntent.providerType.name());
-      }
-      // Check if Provider supports instance tags and the instance tags match.
-      if (!Provider.InstanceTagsModificationEnabledProviders.contains(userIntent.providerType)
-          || userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
-        return true;
-      }
+      return true;
+    }
 
-      return false;
+    /**
+     * Check whether tags were changed for specific provider. If provider is not present in cluster
+     * returning false. If provider doesn't support tags at all returning false.
+     *
+     * @param cluster
+     * @param providerUUID
+     * @return true if tags are not the same.
+     */
+    public boolean areTagsChanged(Cluster cluster, UUID providerUUID) {
+      if (cluster == null) {
+        throw new IllegalArgumentException("Invalid cluster to compare.");
+      }
+      if (!cluster.userIntent.getAllProviderUUIDs().contains(providerUUID)) {
+        return false;
+      }
+      CloudType oldCloudType = cluster.userIntent.getProviderType(providerUUID);
+      CloudType cloudType = userIntent.getProviderType(providerUUID);
+      if (oldCloudType != cloudType) {
+        throw new IllegalArgumentException(
+            "Mismatched provider types, expected " + oldCloudType + " but got " + cloudType);
+      }
+      if (!Provider.InstanceTagsModificationEnabledProviders.contains(cloudType)) {
+        return false;
+      }
+      return !Objects.equals(
+          userIntent.getInstanceTagsForProvider(providerUUID),
+          cluster.userIntent.getInstanceTagsForProvider(providerUUID));
     }
 
     private void validateDeviceInfo(
@@ -853,8 +883,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               .forEach(
                   az -> {
                     int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
-                    PlacementInfoUtil.addPlacementZone(
-                        az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    PlacementInfo.PlacementAZ mergedAz =
+                        PlacementInfoUtil.addPlacementZone(
+                            az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    // AZs are disjoint across partitions, so each AZ is added exactly once
+                    // and it is safe to copy the K8s statefulset indices directly. These
+                    // indices must be preserved: master addresses and pod names computed
+                    // from the overall placement (e.g. during a K8s full move) rely on them,
+                    // and dropping them would generate stale/incorrect master addresses.
+                    mergedAz.masterStsIndex = az.masterStsIndex;
+                    mergedAz.tsStsIndex = az.tsStsIndex;
+                    // addPlacementZone does not set leaderPreference, so rankings would
+                    // otherwise reset to 0.
+                    mergedAz.leaderPreference = az.leaderPreference;
                   });
         }
         return result;
@@ -873,7 +914,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         if (!node.isInPlacement(cluster.uuid)) {
           continue;
         }
-        DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+        DeviceInfo deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
         Provider provider = providerGetter.apply(node);
         CloudType providerType = provider.getCloudCode();
         if (hasEphemeralStorage(providerType, node.cloudInfo.instance_type, deviceInfo)) {
@@ -1512,12 +1553,54 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         value = "WARNING: This is a preview API that could change. Multi-tenancy configuration")
     private MultiTenancyConfig multiTenancy;
 
+    @Data
+    @ApiModel(description = "Load balancers that YBA creates and manages for a cluster")
+    public static class ManagedLoadBalancerConfig {
+      @ApiModelProperty(value = "Create a private L4 load balancer in each region of the cluster")
+      private boolean enablePrivate = false;
+
+      @ApiModelProperty(
+          value =
+              "Create a public L4 load balancer in each region of the cluster. Not supported yet."
+                  + " Must be false.")
+      private boolean enablePublic = false;
+
+      @Override
+      public ManagedLoadBalancerConfig clone() {
+        ManagedLoadBalancerConfig newConfig = new ManagedLoadBalancerConfig();
+        newConfig.enablePrivate = enablePrivate;
+        newConfig.enablePublic = enablePublic;
+        return newConfig;
+      }
+    }
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.31.0.0")
+    @Getter
+    @Setter
+    @Nullable
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Load balancers that YBA creates,"
+                + " manages and deletes. Set when the universe is created. When set, it must"
+                + " enable at least one load balancer.")
+    private ManagedLoadBalancerConfig managedLoadBalancer;
+
     @ApiModelProperty(
         hidden = true,
         value = "YbaApi Internal. Universe provisioned with cpu cgroup")
     @Getter
     @Setter
     private boolean cpuCgroupConfigured;
+
+    // Source of truth for whether every node in this universe has cross-cloud federated IAM set up.
+    // Set only after the per-node fan-out succeeds on all nodes, so add-node/edit can key off it,
+    // never leaving the universe in a mixed (some-federated) state.
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. All nodes configured for cross-cloud federated IAM")
+    @Getter
+    @Setter
+    private boolean federationConfigured;
 
     @Getter
     @Setter
@@ -1537,6 +1620,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @JsonIgnore
     public boolean isQosEnabled() {
       return multiTenancy != null && multiTenancy.isEnableQos();
+    }
+
+    @JsonIgnore
+    public boolean isManagedLoadBalancerEnabled() {
+      return managedLoadBalancer != null
+          && (managedLoadBalancer.isEnablePrivate() || managedLoadBalancer.isEnablePublic());
     }
 
     @Override
@@ -1629,7 +1718,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (multiTenancy != null) {
         newUserIntent.multiTenancy = multiTenancy.clone();
       }
+      if (managedLoadBalancer != null) {
+        newUserIntent.managedLoadBalancer = managedLoadBalancer.clone();
+      }
       newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
+      newUserIntent.federationConfigured = federationConfigured;
       if (!CollectionUtils.isEmpty(providerSpecifications)) {
         newUserIntent.providerSpecifications = new ArrayList<>();
         for (ProviderSpecification providerSpecification : providerSpecifications) {
@@ -1654,6 +1747,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           .orElse(null);
     }
 
+    public ProviderSpecification getOrCreateProviderSpecification(UUID providerUUID) {
+      if (providerSpecifications == null) {
+        providerSpecifications = new ArrayList<>();
+      }
+      ProviderSpecification providerSpecification = getProviderSpecification(providerUUID);
+      if (providerSpecification == null) {
+        providerSpecification = new ProviderSpecification();
+        providerSpecification.setProviderUUID(providerUUID);
+        providerSpecifications.add(providerSpecification);
+      }
+      return providerSpecification;
+    }
+
     public String getAccessKeyCodeForProvider(UUID providerUUID) {
       return getProviderSpecProperty(
           providerUUID, spec -> spec.accessKeyCode, u -> u.accessKeyCode);
@@ -1666,6 +1772,37 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public Map<String, String> getInstanceTagsForProvider(UUID providerUUID) {
       return getProviderSpecProperty(providerUUID, spec -> spec.instanceTags, u -> u.instanceTags);
+    }
+
+    public Integer getCGroupSizeForProvider(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec tserverSpec =
+                spec.getNodesSpecs().getTserverSpecification();
+            return tserverSpec != null ? tserverSpec.getCgroupSize() : null;
+          },
+          UserIntent::getCgroupSize);
+    }
+
+    public CloudType getProviderType(UUID providerUUID) {
+      return getProviderSpecProperty(providerUUID, spec -> spec.providerType, u -> u.providerType);
+    }
+
+    public K8SNodeResourceSpec getTserverK8SNodeResourceSpec(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec tserverSpec =
+                spec.getNodesSpecs().getNodesSpec().getTserverSpecification();
+            return tserverSpec != null ? tserverSpec.getK8SNodeResourceSpec() : null;
+          },
+          u -> u.tserverK8SNodeResourceSpec);
+    }
+
+    public void setProviderInstanceTags(UUID providerUUID, Map<String, String> instanceTags) {
+      setProviderSpecProperty(
+          providerUUID, pc -> pc.instanceTags = instanceTags, u -> u.instanceTags = instanceTags);
     }
 
     public void setProviderAccessKey(UUID providerUUID, String newAccessKeyCode) {
@@ -1821,9 +1958,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return serverType;
     }
 
-    @JsonIgnore
-    public String getBaseInstanceType() {
-      return getInstanceType(null);
+    public String getBaseInstanceType(@NotNull UUID providerUUID) {
+      return getBaseInstanceType(providerUUID, ServerType.TSERVER);
+    }
+
+    public String getBaseInstanceType(
+        @NotNull UUID providerUUID, @Nullable UniverseTaskBase.ServerType serverType) {
+      serverType = ensureServerType(serverType);
+      if (isMulticloudSupport()) {
+        return getNodeSpecProperty(
+            providerUUID, null, serverType, HierarchicalNodesSpec.NodeSpec::getInstanceType);
+      }
+      return serverType == ServerType.MASTER && masterInstanceType != null
+          ? masterInstanceType
+          : instanceType;
     }
 
     public String getInstanceType(@Nullable UUID azUUID) {
@@ -1855,19 +2003,46 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getInstanceType(nodeDetails.dedicatedTo, nodeDetails.getAzUuid());
     }
 
+    /**
+     * Returns the base (provider-level) device info for the given provider, defaulting to tserver.
+     *
+     * <p>Under multicloud support this may return a defensive copy of the resolved node-spec device
+     * info, not the live stored value. Do not mutate the result in place; use setters / {@link
+     * com.yugabyte.yw.common.ProviderInitializer} instead.
+     *
+     * @param providerUUID provider whose base device info to resolve
+     * @return base device info, or {@code null} if unset
+     */
     public DeviceInfo getBaseDeviceInfo(UUID providerUUID) {
+      return getBaseDeviceInfo(providerUUID, ServerType.TSERVER);
+    }
+
+    /**
+     * Returns the base (provider-level) device info for the given provider and server type.
+     *
+     * <p>Under multicloud support this may return a defensive copy of the resolved node-spec device
+     * info, not the live stored value. Do not mutate the result in place; use setters / {@link
+     * com.yugabyte.yw.common.ProviderInitializer} instead. For legacy single-provider intents the
+     * returned reference is the stored {@code deviceInfo} / {@code masterDeviceInfo} field.
+     *
+     * @param providerUUID provider whose base device info to resolve
+     * @param serverType tserver or master; non-dedicated master falls back to tserver
+     * @return base device info, or {@code null} if unset
+     */
+    public DeviceInfo getBaseDeviceInfo(UUID providerUUID, ServerType serverType) {
+      serverType = ensureServerType(serverType);
       if (isMulticloudSupport()) {
         return getNodeSpecProperty(
-            providerUUID, null, ServerType.TSERVER, HierarchicalNodesSpec.NodeSpec::getDeviceInfo);
+            providerUUID, null, serverType, HierarchicalNodesSpec.NodeSpec::getDeviceInfo);
       }
-      return deviceInfo;
+      return serverType == ServerType.MASTER ? masterDeviceInfo : deviceInfo;
     }
 
-    public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
-      return getDeviceInfoForAz(nodeDetails.getAzUuid(), nodeDetails.dedicatedTo);
+    public DeviceInfo evaluateDeviceInfoForNode(NodeDetails nodeDetails) {
+      return evaluateDeviceInfoForAz(nodeDetails.getAzUuid(), nodeDetails.dedicatedTo);
     }
 
-    public DeviceInfo getDeviceInfoForAz(UUID azUUID, ServerType serverType) {
+    public DeviceInfo evaluateDeviceInfoForAz(UUID azUUID, ServerType serverType) {
       serverType = ensureServerType(serverType);
       if (isMulticloudSupport()) {
         return getNodeSpecProperty(
@@ -1893,10 +2068,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       OverridenDetails overridenDetails =
           getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
       if (overridenDetails.getDeviceInfo() != null) {
-        log.debug(
-            "Getting overriden device info {} for az {}",
-            Json.toJson(overridenDetails.getDeviceInfo()),
-            azUUID);
+        if (log.isTraceEnabled()) {
+          log.trace(
+              "Getting overriden device info {} for az {}",
+              Json.toJson(overridenDetails.getDeviceInfo()),
+              azUUID);
+        }
         return mergeDeviceInfos(deviceInfo, overridenDetails.getDeviceInfo());
       }
       return deviceInfo;
@@ -1912,9 +2089,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       JsonNode original = Json.toJson(deviceInfo);
       JsonNode overriden = Json.toJson(overridenDeviceInfo);
-      log.debug("Merging device info {} with {}", original, overriden);
+      // deepMerge only skips nulls, but `storageClass` defaults to "" instead of null. Every other
+      // DeviceInfo helper (mergeDeviceInfo/allNull/unsetFields) reads blank as "not overriden", so
+      // drop it here too - otherwise a partially populated override (e.g. the v2 resize API's
+      // per-process storage_spec, which carries only volume size) erases the storage class.
+      if (StringUtils.isBlank(overridenDeviceInfo.storageClass)) {
+        ((ObjectNode) overriden).remove("storageClass");
+      }
+      log.trace("Merging device info {} with {}", original, overriden);
       CommonUtils.deepMerge(original, overriden, true);
-      log.debug("Device info after merging {}", original);
+      log.trace("Device info after merging {}", original);
       return Json.fromJson(original, DeviceInfo.class);
     }
 
@@ -1992,10 +2176,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     private <T> List<T> getAllProviderProperties(
         Function<ProviderSpecification, T> getter, Function<UserIntent, T> oldGetter) {
+      return getAllProviderProperties(getter, oldGetter, false);
+    }
+
+    private <T> List<T> getAllProviderProperties(
+        Function<ProviderSpecification, T> getter,
+        Function<UserIntent, T> oldGetter,
+        boolean acceptNulls) {
+      List<T> result;
       if (isMulticloudSupport()) {
-        return providerSpecifications.stream().map(getter).collect(Collectors.toList());
+        result = providerSpecifications.stream().map(getter).collect(Collectors.toList());
+      } else {
+        result = Collections.singletonList(oldGetter.apply(this));
       }
-      return Collections.singletonList(oldGetter.apply(this));
+      if (!acceptNulls) {
+        return result.stream().filter(Objects::nonNull).collect(Collectors.toList());
+      }
+      return result;
     }
 
     @JsonIgnore
@@ -2414,8 +2611,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public Cluster getClusterByNodeName(String nodeName) {
-    NodeDetails node =
-        nodeDetailsSet.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
+    NodeDetails node = Util.findByName(nodeDetailsSet, nodeName);
     if (node == null) {
       return null;
     }

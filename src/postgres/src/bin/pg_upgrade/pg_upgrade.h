@@ -29,6 +29,13 @@
 #define GLOBALS_DUMP_FILE	"pg_upgrade_dump_globals.sql"
 #define DB_DUMP_FILE_MASK	"pg_upgrade_dump_%u.custom"
 
+/* YB: files written by --yb-collect-schema-dump, named to match the support runbook */
+#define YB_SCHEMA_DUMP_OUTPUTDIR		"schema_dump"
+#define YB_SCHEMA_DUMP_STAGING_SUFFIX	".tmp"
+#define YB_SCHEMA_DUMP_GLOBALS_FILE		"globals_dump.sql"
+#define YB_SCHEMA_DUMP_DATABASES_FILE	"all_databases_dump.sql"
+#define YB_SCHEMA_DUMP_VERSION_FILE		"version.txt"
+
 /*
  * Base directories that include all the files generated internally, from the
  * root path of the new cluster.  The paths are dynamically built as of
@@ -302,6 +309,7 @@ typedef struct
 	char	   *socketdir;		/* directory to use for Unix sockets */
 	bool		do_statistics;	/* carry over statistics from old cluster */
 	char	   *yb_working_dir;	/* YB: working directory for pg_upgrade */
+	bool		yb_collect_schema_dump; /* YB: collect a schema dump of the old cluster */
 } UserOpts;
 
 typedef struct
@@ -361,6 +369,9 @@ void		disable_old_cluster(void);
 /* dump.c */
 
 void		generate_old_dump(void);
+
+/* YB declarations */
+extern void yb_generate_schema_dump(void);
 
 
 /* exec.c */

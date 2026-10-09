@@ -26,6 +26,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -103,25 +104,50 @@ public class TestPgConcurrency extends BasePgSQLTest {
    * If implemented that way the worker can be stopped using the stop() method.
    * Before exiting the run method should assign the result field.
    * Object lifecycle is as follows:
-   *  - Constructor takes a ConnectionBuilder parameter, a thread is created upon construction;
+   *  - Constructor takes a ConnectionBuilder parameter, the connection is established and a thread
+   *    is created upon construction;
    *  - The start() method is called, which kicks off the thread executing the run method;
    *  - Optionally the stop() method is called;
    *  - The result method is called to return the result assigned in run(). The method waits until
    *    the thread is completed.
    */
   private static abstract class Worker<T> implements Runnable {
+    /* Number of connection attempts before giving up */
+    private static final int CONNECT_ATTEMPTS = 3;
+    /* Upper bound of the random backoff between the connection attempts, in milliseconds */
+    private static final int CONNECT_BACKOFF_MS = 1000;
+
     /* The internal thread should stop when convenient */
     private AtomicBoolean stopped = new AtomicBoolean(false);
     /* Worker execution result, assign it in run() */
     protected volatile T result;
-    /* The connection builder */
-    final private ConnectionBuilder connBldr;
+    /* The connection to run the queries, use it in run() and close when done */
+    final protected Connection connection;
     /* The thread */
     final private Thread thread = new Thread(this);
 
-    /* The constructor */
-    protected Worker(ConnectionBuilder connBldr) {
-      this.connBldr = connBldr;
+    /**
+     * The constructor. The connection is made here, in the calling thread, so workers created in a
+     * loop connect one at a time: the postmaster forks backends sequentially, and clients queued
+     * behind a burst of concurrent attempts may give up before their backend is ready.
+     */
+    protected Worker(ConnectionBuilder connBldr) throws Exception {
+      connection = connect(connBldr);
+    }
+
+    /* Make a connection, retrying with a random backoff, since the server may be busy */
+    private static Connection connect(ConnectionBuilder connBldr) throws Exception {
+      for (int attempt = 1; ; ++attempt) {
+        try {
+          return connBldr.connect();
+        } catch (Exception e) {
+          if (attempt >= CONNECT_ATTEMPTS) {
+            throw e;
+          }
+          LOG.warn("Connection attempt {} failed, retrying: {}", attempt, e.getMessage());
+          Thread.sleep(ThreadLocalRandom.current().nextInt(CONNECT_BACKOFF_MS));
+        }
+      }
     }
 
     /* Start the internal thread */
@@ -158,11 +184,6 @@ public class TestPgConcurrency extends BasePgSQLTest {
       }
       LOG.info("{} has finished, result: {}", getId(), result);
       return result;
-    }
-
-    /* Create new connection fron the connection builder */
-    protected Connection connect() throws Exception{
-      return connBldr.connect();
     }
   }
 
@@ -211,7 +232,8 @@ public class TestPgConcurrency extends BasePgSQLTest {
      * @param rowCount - number of rows to insert per statement
      * @param count - number of statements to run
      */
-    PseudoSingleRowInsertWorker(ConnectionBuilder connBldr, int rowCount, int count) {
+    PseudoSingleRowInsertWorker(ConnectionBuilder connBldr, int rowCount, int count)
+        throws Exception {
       super(connBldr);
       this.rowCount = rowCount;
       this.count = count;
@@ -225,7 +247,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
       // Init the counter
       int writeCount = 0;
       // Make a connection and a statement
-      try (Connection conn = connect();
+      try (Connection conn = connection;
           Statement statement = conn.createStatement()) {
         // Repeat specified number of times
         for (int i = 0; i < count && !isStopped(); ++i) {
@@ -247,7 +269,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
           }
         }
       } catch (Exception e) {
-        LOG.error("Connection failed: {}", e.getMessage());
+        LOG.error("Worker failed: {}", e.getMessage());
       }
       // Publish the result
       this.result = writeCount;
@@ -269,7 +291,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
      * @param connBldr - the connection builder
      * @param rowCount - the number of rows per statement, expected row count is a multiple of it
      */
-    CountAllChecker(ConnectionBuilder connBldr, int rowCount) {
+    CountAllChecker(ConnectionBuilder connBldr, int rowCount) throws Exception {
       super(connBldr);
       this.rowCount = rowCount;
     }
@@ -284,7 +306,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
       int failCount = 0;
 
       // Make a connection and a statement
-      try (Connection conn = connect();
+      try (Connection conn = connection;
           Statement statement = conn.createStatement()) {
         // Run until stopped
         while (!isStopped()) {
@@ -312,7 +334,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
           }
         }
       } catch (Exception e) {
-        LOG.error("Connection failed: {}", e.getMessage());
+        LOG.error("Worker failed: {}", e.getMessage());
       }
       // Publish the result
       this.result = new Pair(failCount, readCount);
@@ -379,7 +401,8 @@ public class TestPgConcurrency extends BasePgSQLTest {
      * @param rowCount - expected number of rows affected per statement
      * @param count - number of statements to run
      */
-    PseudoSingleRowUpdateWorker(ConnectionBuilder connBldr, int rowCount, int count) {
+    PseudoSingleRowUpdateWorker(ConnectionBuilder connBldr, int rowCount, int count)
+        throws Exception {
       super(connBldr);
       this.rowCount = rowCount;
       this.count = count;
@@ -393,7 +416,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
       // Init the counter
       int writeCount = 0;
       // Make a connection and a statement
-      try (Connection conn = connect();
+      try (Connection conn = connection;
           Statement statement = conn.createStatement()) {
         // Repeat specified number of times
         for (int i = 1; i <= count && !isStopped(); ++i) {
@@ -412,7 +435,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
           }
         }
       } catch (Exception e) {
-        LOG.error("Connection failed: {}", e.getMessage());
+        LOG.error("Worker failed: {}", e.getMessage());
       }
       // Publish the result
       this.result = writeCount;
@@ -434,7 +457,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
      * @param connBldr - the connection builder
      * @param rowCount - the number of rows in the table, expected sum is a multiple of it
      */
-    SumAllChecker(ConnectionBuilder connBldr, int rowCount) {
+    SumAllChecker(ConnectionBuilder connBldr, int rowCount) throws Exception {
       super(connBldr);
       this.rowCount = rowCount;
     }
@@ -448,7 +471,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
       int readCount = 0;
       int failCount = 0;
       // Make a connection and a statement
-      try (Connection conn = connect();
+      try (Connection conn = connection;
           Statement statement = conn.createStatement()) {
         // Run until stopped
         while (!isStopped()) {
@@ -476,7 +499,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
           }
         }
       } catch (Exception e) {
-        LOG.error("Connection failed: {}", e.getMessage());
+        LOG.error("Worker failed: {}", e.getMessage());
       }
       // Publish the result
       this.result = new Pair(failCount, readCount);
@@ -526,7 +549,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
      * @param rowCount - expected number of rows affected per statement
      * @param count - number of statements to run
      */
-    SequenceTestWorker(ConnectionBuilder connBldr, int count) {
+    SequenceTestWorker(ConnectionBuilder connBldr, int count) throws Exception {
       super(connBldr);
       this.count = count;
     }
@@ -538,7 +561,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
     public void run() {
       BitSet result = new BitSet();
       LOG.info("Begin work");
-      try (Connection conn = connect();
+      try (Connection conn = connection;
           Statement statement = conn.createStatement()) {
         // Run until stopped
         for (int i = 0; i < count; i++) {
@@ -556,7 +579,7 @@ public class TestPgConcurrency extends BasePgSQLTest {
           }
         }
       } catch (Exception e) {
-        LOG.error("Connection failed: {}", e.getMessage());
+        LOG.error("Worker failed: {}", e.getMessage());
       }
       LOG.info("End work");
       this.result = result;

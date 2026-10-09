@@ -64,7 +64,7 @@ message TabletStatusPB {
   optional TableType table_type = 16;
   // Is the tablet hidden.
   optional bool is_hidden = 17;
-  optional bool parent_data_compacted = 18; // See KvStoreInfoPB.
+  optional bool rocksdb_parent_data_compacted = 18; // See KvStoreInfoPB.
   // A list of all tables that are colocated on this tablet.
   repeated bytes colocated_table_ids = 19;
   optional string pgschema_name = 20;
@@ -84,6 +84,11 @@ message TabletStatusPB {
   optional uint32 pg_table_oid = 27;
   // Size on disk in bytes occupied by all vector indexes of this tablet.
   optional int64 vector_index_disk_size = 28;
+  // True if no post-split compaction is required for the co-hosted vector indexes: they have
+  // compacted inherited parent data for the tablet's current split generation, the tablet has no
+  // vector indexes, or vector index post-split compaction is disabled. Unset if the tablet is
+  // not available (e.g. bootstrapping or shutting down).
+  optional bool vector_indexes_parent_data_compacted = 29;
 }
 
 // Used to present the maintenance manager's internal state.

@@ -15,6 +15,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -141,6 +142,9 @@ public class CloudRegionHelper {
       if (region.getProvider().getCloudCode().equals(CloudType.gcp)) {
         GCPRegionCloudInfo g = CloudInfoInterface.get(region);
         g.setInstanceTemplate(instanceTemplate);
+      } else if (region.getProvider().getCloudCode().equals(CloudType.oci)) {
+        OCIRegionCloudInfo o = CloudInfoInterface.get(region);
+        o.setInstanceTemplate(instanceTemplate);
       }
       region.update();
     }

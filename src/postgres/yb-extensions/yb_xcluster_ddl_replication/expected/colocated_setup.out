@@ -36,6 +36,7 @@ CREATE OR REPLACE FUNCTION TEST_filtered_ddl_queue()
 $$
 DECLARE
   rec RECORD;
+  map_key TEXT;
   new_array JSONB;
   element JSONB;
   k TEXT;
@@ -44,24 +45,28 @@ BEGIN
   for rec in
         select * from yb_xcluster_ddl_replication.ddl_queue
     loop
-        if rec.yb_data->'new_rel_map' is null then
-            return next rec;
-            continue;
-        end if;
-        new_array := '[]'::jsonb;
-        for element in
-            select * from jsonb_array_elements(rec.yb_data->'new_rel_map')
+        foreach map_key in array
+            array['new_rel_map', 'sequence_info', 'type_info', 'enum_label_info']
         loop
-            for k, v in
-                select * from jsonb_each_text(element)
+            if rec.yb_data->map_key is null then
+                continue;
+            end if;
+            new_array := '[]'::jsonb;
+            for element in
+                select * from jsonb_array_elements(rec.yb_data->map_key)
             loop
-                if k = 'relfile_oid' or k = 'colocation_id' then
-                    element := jsonb_set(element, ('{' || k || '}')::text[], '"***"');
-                end if;
+                for k, v in
+                    select * from jsonb_each_text(element)
+                loop
+                    if k in ('relfile_oid', 'colocation_id', 'oid',
+                             'enum_oid', 'label_oid') then
+                        element := jsonb_set(element, ('{' || k || '}')::text[], '"***"');
+                    end if;
+                end loop;
+                new_array := new_array || element;
             end loop;
-            new_array := new_array || element;
+            rec.yb_data := jsonb_set(rec.yb_data, ('{' || map_key || '}')::text[], new_array);
         end loop;
-        rec.yb_data := jsonb_set(rec.yb_data, '{new_rel_map}', new_array);
         return next rec;
     end loop;
 END

@@ -66,7 +66,15 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
     }
   }
 
-  DCHECK_GT(ts_tablet_map.size(), 0);
+  // A freshly elected leader has no replica locations until the tablet servers report their
+  // tablets. Flushing nothing would look like success, so make the client retry instead.
+  if (ts_tablet_map.empty()) {
+    return SetupError(
+        resp->mutable_error(),
+        STATUS(LeaderNotReadyToServe,
+               "Master leader has no tablet replica locations for the requested tables, either it "
+               "just became leader or there is a network partition"));
+  }
 
   {
     std::lock_guard l(lock_);

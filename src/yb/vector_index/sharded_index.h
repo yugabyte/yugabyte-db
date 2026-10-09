@@ -26,11 +26,11 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
  public:
   using Base = VectorIndexIf<Vector, DistanceResult>;
 
-  ShardedVectorIndex(const VectorIndexFactory<Vector, DistanceResult>& factory,
-                     size_t num_shards)
+  ShardedVectorIndex(const VectorIndexTraitsPtr<Vector, DistanceResult>& index_traits,
+                     size_t num_shards, StoreVectorPayload store_vector_payload)
       : indexes_(num_shards), round_robin_counter_(0) {
     for (auto& index : indexes_) {
-      index = factory(FactoryMode::kCreate);
+      index = index_traits->Create(FactoryMode::kCreate, store_vector_payload);
     }
   }
 
@@ -74,9 +74,9 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   // Insert a vector into the current shard using round-robin.
-  Status Insert(VectorId vector_id, const Vector& vector) override {
+  Status Insert(VectorId vector_id, const Vector& vector, Slice payload) override {
     size_t current_index = round_robin_counter_.fetch_add(1) % indexes_.size();
-    return indexes_[current_index]->Insert(vector_id, vector);
+    return indexes_[current_index]->Insert(vector_id, vector, payload);
   }
 
   // Retrieve a vector from any shard.
@@ -91,12 +91,12 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   // TODO(vector_index): define begin and end methods to iterate over all shareded indexes.
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
+  std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<Vector>>> BeginImpl() const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->BeginImpl();
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
+  std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<Vector>>> EndImpl() const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->EndImpl();
   }
@@ -152,6 +152,34 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
  private:
   std::vector<VectorIndexIfPtr<Vector, DistanceResult>> indexes_;
   std::atomic<size_t> round_robin_counter_;  // Atomic counter for thread-safe round-robin insertion
+};
+
+// Traits that create ShardedVectorIndex instances over the specified underlying traits.
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class ShardedVectorIndexTraits : public VectorIndexTraitsIf<Vector, DistanceResult> {
+ public:
+  ShardedVectorIndexTraits(
+      VectorIndexTraitsPtr<Vector, DistanceResult> index_traits, size_t num_shards)
+      : index_traits_(std::move(index_traits)), num_shards_(num_shards) {}
+
+  VectorIndexIfPtr<Vector, DistanceResult> Create(
+      FactoryMode mode, StoreVectorPayload store_vector_payload) const override {
+    return std::make_shared<ShardedVectorIndex<Vector, DistanceResult>>(
+        index_traits_, num_shards_, store_vector_payload);
+  }
+
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
+    return index_traits_->Distance(lhs, rhs);
+  }
+
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    // The byte budget is shared across all shards, see ShardedVectorIndex.
+    return index_traits_->EstimateNumVectorsForBytes(bytes_limit / num_shards_) * num_shards_;
+  }
+
+ private:
+  const VectorIndexTraitsPtr<Vector, DistanceResult> index_traits_;
+  const size_t num_shards_;
 };
 
 }  // namespace yb::vector_index

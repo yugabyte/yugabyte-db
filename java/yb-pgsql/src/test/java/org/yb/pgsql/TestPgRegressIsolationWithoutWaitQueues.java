@@ -50,7 +50,7 @@ public class TestPgRegressIsolationWithoutWaitQueues extends BasePgRegressTest {
   // conflicting UPDATE fails to observe the first session's uncommitted row lock. This surfaces
   // as a session no longer seeing its own committed write and a spurious "transaction aborted,
   // data already sent" error in the READ COMMITTED check-constraint-locking permutation. Run on
-  // the Postgres port instead, like TestPgRegressIsolationWithTxnDdl and TestPgRegressLock.
+  // the Postgres port instead, like TestPgRegressLock.
   @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testPgRegressWithoutSkipPrefixLocks() throws Exception {
     runIsolationRegressTest("yb_without_wait_queues_schedule_skip_prefix_locks_off");

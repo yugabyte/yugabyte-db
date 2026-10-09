@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <memory>
 #include <regex>
 #include <vector>
@@ -43,7 +44,6 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
@@ -69,7 +69,6 @@ DECLARE_int32(memory_limit_soft_percentage);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(leader_memory_pressure_rejections);
 
-using strings::Substitute;
 using std::vector;
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
@@ -265,7 +264,7 @@ class ClientStressTest_LowMemory : public ClientStressTest {
     ExternalMiniClusterOptions opts;
 
     opts.extra_tserver_flags = {
-        Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes),
+        Format("--memory_limit_hard_bytes=$0", kMemLimitBytes),
         "--memory_limit_soft_percentage=0"s};
     // Turn off tablet guardrail otherwise we fail due to insufficient memory for tablets:
     opts.extra_master_flags = {"--tablet_replicas_per_gib_limit=0"s};
@@ -455,7 +454,11 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
   }
 
   static constexpr size_t kHardLimitBytes = 100_MB * RegularBuildVsSanitizers(5, 1);
-  const size_t kConsensusMaxBatchSizeBytes = 32_MB;
+  // The batch has to stay small relative to the hard limit. Otherwise the follower parks at a
+  // consumption where the next read buffer allocation is already refused by the hard limit while
+  // consumption is still under the soft limit, so the soft limit is never crossed again and
+  // inbound RPC throttling stops.
+  const size_t kConsensusMaxBatchSizeBytes = std::min<size_t>(32_MB, kHardLimitBytes / 12);
 };
 
 } // namespace

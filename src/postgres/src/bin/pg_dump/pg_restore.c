@@ -139,6 +139,7 @@ main(int argc, char **argv)
 		{"with-schema", no_argument, &with_schema, 1},
 		{"with-statistics", no_argument, &with_statistics, 1},
 		{"statistics-only", no_argument, &statistics_only, 1},
+		{"restrict-key", required_argument, NULL, 6},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -302,6 +303,10 @@ main(int argc, char **argv)
 				set_dump_section(optarg, &(opts->dumpSections));
 				break;
 
+			case 6:
+				opts->restrict_key = pg_strdup(optarg);
+				break;
+
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -337,7 +342,23 @@ main(int argc, char **argv)
 			pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 			exit_nicely(1);
 		}
+
+		if (opts->restrict_key)
+			pg_fatal("options -d/--dbname and --restrict-key cannot be used together");
+
 		opts->useDB = 1;
+	}
+	else
+	{
+		/*
+		 * If you don't provide a restrict key, one will be appointed for you.
+		 */
+		if (!opts->restrict_key)
+			opts->restrict_key = generate_restrict_key();
+		if (!opts->restrict_key)
+			pg_fatal("could not generate restrict key");
+		if (!valid_restrict_key(opts->restrict_key))
+			pg_fatal("invalid restrict key");
 	}
 
 	/* reject conflicting "-only" options */
@@ -526,6 +547,7 @@ usage(const char *progname)
 	printf(_("  --no-subscriptions           do not restore subscriptions\n"));
 	printf(_("  --no-table-access-method     do not restore table access methods\n"));
 	printf(_("  --no-tablespaces             do not restore tablespace assignments\n"));
+	printf(_("  --restrict-key=RESTRICT_KEY  use provided string as psql \\restrict key\n"));
 	printf(_("  --section=SECTION            restore named section (pre-data, data, or post-data)\n"));
 	printf(_("  --statistics-only            restore only the statistics, not schema or data\n"));
 	printf(_("  --strict-names               require table and/or schema include patterns to\n"

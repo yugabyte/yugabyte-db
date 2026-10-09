@@ -640,6 +640,9 @@ const constructProviderPayload = async (
           [ProviderCode.OCI]: {
             ...(regionFormValues.vnet && {
               vnet: regionFormValues.vnet
+            }),
+            ...(regionFormValues.instanceTemplate && {
+              instanceTemplate: regionFormValues.instanceTemplate
             })
           }
         }

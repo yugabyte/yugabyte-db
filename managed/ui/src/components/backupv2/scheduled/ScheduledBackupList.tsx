@@ -9,18 +9,26 @@
 
 import React, { FC, useMemo, useState } from 'react';
 import { Col, DropdownButton, MenuItem, OverlayTrigger, Popover, Row } from 'react-bootstrap';
+import { useTranslation } from 'react-i18next';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import cronstrue from 'cronstrue';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { find, keyBy } from 'lodash';
+import { YBTooltip } from '@yugabyte-ui-library/core';
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../actions/customers';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton, YBToggle } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { ScheduledBackupEmpty } from '../components/BackupEmpty';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
+import { api, runtimeConfigQueryKey } from '../../../redesign/helpers/api';
+import {
+  isK8OperatorApiBlocked,
+  RuntimeConfigEntry
+} from '../../../redesign/helpers/k8OperatorResourceUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { ITable } from '../common/IBackup';
 import {
@@ -100,6 +108,9 @@ export const ScheduledBackupList = ({
   const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
     [universeUUID, 'tables'],
     () => fetchTablesInUniverse(universeUUID!)
+  );
+  const runtimeConfigsQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE)
   );
 
   if (isLoading) {
@@ -192,6 +203,7 @@ export const ScheduledBackupList = ({
             storageConfig={storageConfigsMap[schedule.backupInfo.storageConfigUUID]}
             tablesInUniverse={tablesInUniverse?.data ?? []}
             universeUUID={universeUUID}
+            runtimeConfigEntries={runtimeConfigsQuery.data?.configEntries}
           />
         ))}
         {isFetchingNextPage && <YBLoading />}
@@ -220,6 +232,7 @@ interface ScheduledBackupCardProps {
   storageConfig: Record<string, string> | undefined;
   tablesInUniverse: ITable[];
   universeUUID: string;
+  runtimeConfigEntries?: RuntimeConfigEntry[] | null;
 }
 
 type toogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
@@ -229,10 +242,19 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
   doEditPolicy,
   storageConfig,
   tablesInUniverse,
-  universeUUID
+  universeUUID,
+  runtimeConfigEntries
 }) => {
   const queryClient = useQueryClient();
   const [showDeleteModal, setShowDeleteModal] = useState('');
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'backup.scheduled.list'
+  });
+  const isPolicyLocked = isK8OperatorApiBlocked(
+    schedule.isKubernetesOperatorControlled,
+    runtimeConfigEntries
+  );
+  const operatorControlledPolicyMsg = isPolicyLocked ? t('operatorControlledPolicy') : '';
 
   const toggleSchedule = useMutation(
     (val: toogleScheduleProps) => toggleScheduledBackupPolicy(universeUUID, val),
@@ -306,22 +328,32 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
               pointerEvents: 'none'
             }}
           >
-            <YBToggle
-              name="Enabled"
-              input={{
-                value: schedule.status === IBackupScheduleStatus.ACTIVE,
-                onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
-                  toggleSchedule.mutateAsync({
-                    scheduleUUID: schedule.scheduleUUID,
-                    frequency: schedule.frequency,
-                    cronExpression: schedule.cronExpression,
-                    status: e.target.checked
-                      ? IBackupScheduleStatus.ACTIVE
-                      : IBackupScheduleStatus.STOPPED,
-                    frequencyTimeUnit: schedule.frequencyTimeUnit
-                  })
-              }}
-            />
+            <YBTooltip title={operatorControlledPolicyMsg}>
+              <span>
+                <YBToggle
+                  name="Enabled"
+                  isReadOnly={isPolicyLocked}
+                  disableOnChange={isPolicyLocked}
+                  input={{
+                    value: schedule.status === IBackupScheduleStatus.ACTIVE,
+                    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                      if (isPolicyLocked) {
+                        return;
+                      }
+                      toggleSchedule.mutateAsync({
+                        scheduleUUID: schedule.scheduleUUID,
+                        frequency: schedule.frequency,
+                        cronExpression: schedule.cronExpression,
+                        status: e.target.checked
+                          ? IBackupScheduleStatus.ACTIVE
+                          : IBackupScheduleStatus.STOPPED,
+                        frequencyTimeUnit: schedule.frequencyTimeUnit
+                      });
+                    }
+                  }}
+                />
+              </span>
+            </YBTooltip>
           </RbacValidator>
           <span>{schedule.status === IBackupScheduleStatus.ACTIVE ? 'Enabled' : 'Disabled'}</span>
           {isTableMissingToDoBackup && (
@@ -359,13 +391,21 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
                 display: 'unset'
               }}
             >
-              <MenuItem
-                onClick={() => {
-                  doEditPolicy(schedule);
-                }}
-              >
-                <i className="fa fa-pencil"></i> Edit Policy
-              </MenuItem>
+              <YBTooltip title={operatorControlledPolicyMsg}>
+                <span>
+                  <MenuItem
+                    disabled={isPolicyLocked}
+                    onClick={() => {
+                      if (isPolicyLocked) {
+                        return;
+                      }
+                      doEditPolicy(schedule);
+                    }}
+                  >
+                    <i className="fa fa-pencil"></i> Edit Policy
+                  </MenuItem>
+                </span>
+              </YBTooltip>
             </RbacValidator>
             <RbacValidator
               accessRequiredOn={ApiPermissionMap.DELETE_SCHEDULE}
@@ -374,14 +414,22 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
                 display: 'unset'
               }}
             >
-              <MenuItem
-                onClick={() => {
-                  setShowDeleteModal(schedule.scheduleUUID);
-                }}
-                className="action-danger"
-              >
-                <i className="fa fa-trash"></i> Delete Policy
-              </MenuItem>
+              <YBTooltip title={operatorControlledPolicyMsg}>
+                <span>
+                  <MenuItem
+                    disabled={isPolicyLocked}
+                    onClick={() => {
+                      if (isPolicyLocked) {
+                        return;
+                      }
+                      setShowDeleteModal(schedule.scheduleUUID);
+                    }}
+                    className="action-danger"
+                  >
+                    <i className="fa fa-trash"></i> Delete Policy
+                  </MenuItem>
+                </span>
+              </YBTooltip>
             </RbacValidator>
           </DropdownButton>
         </Col>

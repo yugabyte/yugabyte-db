@@ -15,7 +15,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Fully manual provisioning is deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned this way continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -103,6 +103,8 @@ A local Network Time Protocol (NTP) server or equivalent must be available.
 
 Ensure an NTP-compatible time service client is installed in the node OS (chrony is installed by default in the standard AlmaLinux 8 instance used in this example). Then, configure the time service client to use the available time server. The procedure includes this step and assumes chrony is the installed client.
 
+For the settings that matter for clock skew, and how to verify synchronization, refer to [Set up time synchronization](../../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+
 ## Open incoming TCP/IP ports
 
 Database servers need incoming TCP/IP access enabled for communications between themselves and YugabyteDB Anywhere.
@@ -120,7 +122,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 1. Add the following line to the `/etc/chrony.conf` file:
 
     ```text
-    server <your-time-server-IP-address> prefer iburst
+    server <your-time-server-IP-address> prefer iburst minpoll 4 maxpoll 4
     ```
 
     Then run the following command:
@@ -258,7 +260,7 @@ sudo mkdir -p /new_tmp; sudo chown yugabyte:yugabyte -R /new_tmp
 
 In addition, after you create the [on-premises provider](../../../configure-yugabyte-platform/on-premises-provider/), set the [provider runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.filepaths.remoteTmpDirectory` to `/new_tmp`.
 
-Finally, when creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../manage-deployments/edit-config-flags/) `tmp_dir` to the custom `/new_tmp` directory.
+Finally, when creating universes using the provider, set YB-Master and YB-TServer [configuration flag](../../../scale-deployments/edit-config-flags/) `tmp_dir` to the custom `/new_tmp` directory.
 
 ## Install Prometheus Node Exporter
 

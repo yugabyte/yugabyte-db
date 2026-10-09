@@ -71,6 +71,12 @@ func (m *Manager) ServiceByName(name string) Service {
 	return service
 }
 
+// Enabled reports whether yba-ctl.yml makes the service called name part of the install.
+// ServiceByName also returns services that are registered but disabled.
+func (m *Manager) Enabled(name string) bool {
+	return slices.Contains(m.serviceOrder(), name)
+}
+
 func (m *Manager) servicesInOrder(reverse bool) iter.Seq[Service] {
 	return func(yield func(Service) bool) {
 		counter := 1
@@ -133,6 +139,8 @@ type Service interface {
 	Install() error
 	Uninstall(cleaData bool) error
 	PreUpgrade() error
+	// Upgrade moves an installed service to the version in this bundle. Services that yba-ctl.yml
+	// can enable after install must also handle Upgrade as their first install.
 	Upgrade() error
 	Status() (common.Status, error)
 	Start() error

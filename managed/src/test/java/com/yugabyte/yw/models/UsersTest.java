@@ -175,6 +175,28 @@ public class UsersTest extends FakeDBApplication {
   }
 
   @Test
+  public void testNoSensitiveDataInToString() {
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
+    u.upsertApiToken();
+    u.setOidcJwtAuthToken("test-oidc-jwt-auth-token");
+    u.save();
+
+    Users fetchUser = Users.getOrBadRequest(u.getUuid());
+    assertNotNull(fetchUser.getPasswordHash());
+    assertNotNull(fetchUser.getApiToken());
+    assertNotNull(fetchUser.getUnmakedOidcJwtAuthToken());
+
+    String asString = fetchUser.toString();
+    assertFalse(asString.contains("foo@foo.com"));
+    assertFalse(asString.contains(fetchUser.getPasswordHash()));
+    assertFalse(asString.contains(fetchUser.getApiToken()));
+    assertFalse(asString.contains(fetchUser.getUnmakedOidcJwtAuthToken()));
+    assertTrue(asString.contains(fetchUser.getUuid().toString()));
+    assertTrue(asString.contains("email=REDACTED"));
+    assertTrue(asString.contains("oidcJwtAuthToken=REDACTED"));
+  }
+
+  @Test
   public void testRoleUnion() {
     Role[] roles = {
       null, Role.ConnectOnly, Role.ReadOnly, Role.BackupAdmin, Role.Admin, Role.SuperAdmin

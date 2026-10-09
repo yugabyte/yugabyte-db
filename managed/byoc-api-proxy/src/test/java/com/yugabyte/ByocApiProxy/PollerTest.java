@@ -1,6 +1,7 @@
 package com.yugabyte.ByocApiProxy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,11 +32,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -65,7 +70,8 @@ class PollerTest {
   @BeforeEach
   void setUp() {
     executor =
-        Executors.newSingleThreadExecutor(
+        Executors.newFixedThreadPool(
+            8,
             r -> {
               Thread t = new Thread(r, "poller-test");
               t.setDaemon(true);
@@ -143,7 +149,8 @@ class PollerTest {
 
     ArgumentCaptor<PostQueuedHttpRequestResponseRequestSpec> specCaptor =
         ArgumentCaptor.forClass(PostQueuedHttpRequestResponseRequestSpec.class);
-    verify(requestApi).postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
+    verify(requestApi, timeout(5000))
+        .postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
     PostQueuedHttpRequestResponseRequestSpec spec = specCaptor.getValue();
     assertEquals(200, spec.getResponseStatusCode());
     assertEquals("{\"ok\":true}", spec.getResponseBody());
@@ -170,7 +177,8 @@ class PollerTest {
 
     ArgumentCaptor<PostQueuedHttpRequestResponseRequestSpec> specCaptor =
         ArgumentCaptor.forClass(PostQueuedHttpRequestResponseRequestSpec.class);
-    verify(requestApi).postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
+    verify(requestApi, timeout(5000))
+        .postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
     PostQueuedHttpRequestResponseRequestSpec spec = specCaptor.getValue();
     assertEquals(503, spec.getResponseStatusCode());
     assertEquals("unavailable", spec.getErrorMessage());
@@ -201,54 +209,84 @@ class PollerTest {
     poller.run();
 
     ArgumentCaptor<HttpRequest> reqCaptor = ArgumentCaptor.forClass(HttpRequest.class);
-    verify(httpClient).send(reqCaptor.capture(), any());
+    verify(httpClient, timeout(5000)).send(reqCaptor.capture(), any());
     HttpRequest built = reqCaptor.getValue();
     assertEquals("POST", built.method());
     assertEquals(URI.create("http://yba.test/post"), built.uri());
     assertTrue(built.headers().firstValue("Content-Type").orElse("").contains("application/json"));
+    assertEquals(Duration.ofSeconds(30), built.timeout().orElseThrow());
   }
 
   @Test
-  void run_ioExceptionFromHttp_skipsPost() throws Exception {
+  void run_ioExceptionFromHttp_postsBadGateway() throws Exception {
+    UUID requestId = UUID.randomUUID();
     QueuedHttpRequestData pendingItem =
-        new QueuedHttpRequestData()
-            .id(UUID.randomUUID())
-            .method("GET")
-            .uri("http://localhost/fail");
+        new QueuedHttpRequestData().id(requestId).method("GET").uri("http://localhost/fail");
     stubPending(List.of(pendingItem));
     when(httpClient.send(any(HttpRequest.class), any())).thenThrow(new IOException("boom"));
 
     poller.run();
 
-    verify(requestApi, never()).postQueuedHttpRequestResponse(any(), any());
+    ArgumentCaptor<PostQueuedHttpRequestResponseRequestSpec> specCaptor =
+        ArgumentCaptor.forClass(PostQueuedHttpRequestResponseRequestSpec.class);
+    verify(requestApi, timeout(5000))
+        .postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
+    assertEquals(502, specCaptor.getValue().getResponseStatusCode());
+    assertTrue(specCaptor.getValue().getErrorMessage().contains("boom"));
   }
 
   @Test
-  void run_interruptedHttp_setsInterruptedAndSkipsPost() throws Exception {
+  void run_httpTimeout_postsGatewayTimeout() throws Exception {
+    UUID requestId = UUID.randomUUID();
     QueuedHttpRequestData pendingItem =
-        new QueuedHttpRequestData()
-            .id(UUID.randomUUID())
-            .method("GET")
-            .uri("http://localhost/sleep");
+        new QueuedHttpRequestData().id(requestId).method("GET").uri("http://localhost/slow");
+    stubPending(List.of(pendingItem));
+    when(httpClient.send(any(HttpRequest.class), any()))
+        .thenThrow(new HttpTimeoutException("timed out"));
+
+    poller.run();
+
+    ArgumentCaptor<PostQueuedHttpRequestResponseRequestSpec> specCaptor =
+        ArgumentCaptor.forClass(PostQueuedHttpRequestResponseRequestSpec.class);
+    verify(requestApi, timeout(5000))
+        .postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
+    assertEquals(504, specCaptor.getValue().getResponseStatusCode());
+  }
+
+  @Test
+  void run_interruptedHttp_postsServiceUnavailable() throws Exception {
+    UUID requestId = UUID.randomUUID();
+    QueuedHttpRequestData pendingItem =
+        new QueuedHttpRequestData().id(requestId).method("GET").uri("http://localhost/sleep");
     stubPending(List.of(pendingItem));
     when(httpClient.send(any(HttpRequest.class), any())).thenThrow(new InterruptedException());
 
     poller.run();
 
-    verify(requestApi, never()).postQueuedHttpRequestResponse(any(), any());
-    assertTrue(Thread.interrupted(), "Poller should restore interrupt after interrupted dispatch");
+    ArgumentCaptor<PostQueuedHttpRequestResponseRequestSpec> specCaptor =
+        ArgumentCaptor.forClass(PostQueuedHttpRequestResponseRequestSpec.class);
+    verify(requestApi, timeout(5000))
+        .postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
+    assertEquals(503, specCaptor.getValue().getResponseStatusCode());
+    assertFalse(Thread.interrupted());
   }
 
   @Test
-  void run_joinCompletionExceptionWithApiExceptionCause_propagates() throws Exception {
+  void run_unexpectedHttpFailure_postsInternalErrorWithoutFailingRun() throws Exception {
+    UUID requestId = UUID.randomUUID();
     QueuedHttpRequestData pendingItem =
-        new QueuedHttpRequestData().id(UUID.randomUUID()).method("GET").uri("http://localhost/x");
+        new QueuedHttpRequestData().id(requestId).method("GET").uri("http://localhost/x");
     stubPending(List.of(pendingItem));
     ApiException apiEx = new ApiException(500, Map.of(), "body");
     when(httpClient.send(any(HttpRequest.class), any())).thenThrow(new CompletionException(apiEx));
 
-    ApiException thrown = assertThrows(ApiException.class, poller::run);
-    assertEquals(apiEx, thrown);
+    poller.run();
+
+    ArgumentCaptor<PostQueuedHttpRequestResponseRequestSpec> specCaptor =
+        ArgumentCaptor.forClass(PostQueuedHttpRequestResponseRequestSpec.class);
+    verify(requestApi, timeout(5000))
+        .postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
+    assertEquals(500, specCaptor.getValue().getResponseStatusCode());
   }
 
   @Test
@@ -275,7 +313,7 @@ class PollerTest {
 
     poller.run();
 
-    verify(requestApi).postQueuedHttpRequestResponse(any(), any());
+    verify(requestApi, timeout(5000).times(2)).postQueuedHttpRequestResponse(any(), any());
   }
 
   @Test
@@ -349,8 +387,120 @@ class PollerTest {
     poller.run();
 
     // Both posts are attempted; the second still succeeds despite the first failing.
-    verify(requestApi).postQueuedHttpRequestResponse(eq(idA), any());
-    verify(requestApi).postQueuedHttpRequestResponse(eq(idB), any());
+    verify(requestApi, timeout(5000)).postQueuedHttpRequestResponse(eq(idA), any());
+    verify(requestApi, timeout(5000)).postQueuedHttpRequestResponse(eq(idB), any());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void run_postsFastRequestWithoutWaitingForSlowBatchMate() throws Exception {
+    UUID slowId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+    UUID fastId = UUID.fromString("66666666-6666-6666-6666-666666666666");
+    CountDownLatch slowStarted = new CountDownLatch(1);
+    CountDownLatch releaseSlow = new CountDownLatch(1);
+    stubPending(
+        List.of(
+            new QueuedHttpRequestData().id(slowId).method("GET").uri("http://localhost/slow"),
+            new QueuedHttpRequestData().id(fastId).method("GET").uri("http://localhost/fast")));
+    when(httpClient.send(any(HttpRequest.class), any()))
+        .thenAnswer(
+            invocation -> {
+              HttpRequest request = invocation.getArgument(0);
+              if (request.uri().getPath().endsWith("/slow")) {
+                slowStarted.countDown();
+                assertTrue(releaseSlow.await(5, TimeUnit.SECONDS));
+              }
+              return okResponse(request.uri());
+            });
+
+    poller.run();
+
+    assertTrue(slowStarted.await(5, TimeUnit.SECONDS));
+    verify(requestApi, timeout(5000)).postQueuedHttpRequestResponse(eq(fastId), any());
+    verify(requestApi, never()).postQueuedHttpRequestResponse(eq(slowId), any());
+    releaseSlow.countDown();
+    verify(requestApi, timeout(5000)).postQueuedHttpRequestResponse(eq(slowId), any());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void run_skipsRequestAlreadyInFlight() throws Exception {
+    UUID requestId = UUID.fromString("99999999-9999-9999-9999-999999999999");
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    QueuedHttpRequestData pendingItem =
+        new QueuedHttpRequestData().id(requestId).method("GET").uri("http://localhost/dup");
+    stubPending(List.of(pendingItem));
+    when(httpClient.send(any(HttpRequest.class), any()))
+        .thenAnswer(
+            invocation -> {
+              started.countDown();
+              assertTrue(release.await(5, TimeUnit.SECONDS));
+              return okResponse(URI.create("http://localhost/dup"));
+            });
+
+    poller.run();
+    assertTrue(started.await(5, TimeUnit.SECONDS));
+    poller.run();
+    release.countDown();
+
+    verify(httpClient, timeout(5000).times(1)).send(any(HttpRequest.class), any());
+    verify(requestApi, timeout(5000).times(1)).postQueuedHttpRequestResponse(eq(requestId), any());
+  }
+
+  @Test
+  void run_expiredClientDeadline_posts408WithoutCallingYba() throws Exception {
+    UUID requestId = UUID.randomUUID();
+    QueuedHttpRequestData pendingItem =
+        new QueuedHttpRequestData()
+            .id(requestId)
+            .method("GET")
+            .uri("http://localhost/late")
+            .timeoutOn(OffsetDateTime.now().minusSeconds(1));
+    stubPending(List.of(pendingItem));
+
+    poller.run();
+
+    ArgumentCaptor<PostQueuedHttpRequestResponseRequestSpec> specCaptor =
+        ArgumentCaptor.forClass(PostQueuedHttpRequestResponseRequestSpec.class);
+    verify(requestApi, timeout(5000))
+        .postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
+    assertEquals(408, specCaptor.getValue().getResponseStatusCode());
+    verify(httpClient, never()).send(any(HttpRequest.class), any());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void run_honorsTimeoutOnRemainingDeadline() throws Exception {
+    UUID requestId = UUID.randomUUID();
+    OffsetDateTime timeoutOn = OffsetDateTime.now().plusSeconds(12);
+    QueuedHttpRequestData pendingItem =
+        new QueuedHttpRequestData()
+            .id(requestId)
+            .method("GET")
+            .uri("http://localhost/ns")
+            .timeoutOn(timeoutOn)
+            .headers(Map.of("X-REQUEST-ID", List.of("trace-1")));
+    stubPending(List.of(pendingItem));
+    when(httpClient.send(any(HttpRequest.class), any()))
+        .thenAnswer(invocation -> okResponse(URI.create("http://localhost/ns")));
+
+    poller.run();
+
+    ArgumentCaptor<HttpRequest> reqCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(httpClient, timeout(5000)).send(reqCaptor.capture(), any());
+    Duration timeout = reqCaptor.getValue().timeout().orElseThrow();
+    assertTrue(timeout.compareTo(Duration.ofSeconds(13)) <= 0);
+    assertTrue(timeout.compareTo(Duration.ofSeconds(1)) >= 0);
+  }
+
+  private static HttpResponse<String> okResponse(URI uri) {
+    HttpResponse<String> httpResponse = mock(HttpResponse.class);
+    when(httpResponse.statusCode()).thenReturn(200);
+    when(httpResponse.body()).thenReturn("ok");
+    when(httpResponse.uri()).thenReturn(uri);
+    when(httpResponse.headers()).thenReturn(mock(HttpHeaders.class));
+    return httpResponse;
   }
 
   private void stubPending(List<QueuedHttpRequestData> data) throws ApiException {

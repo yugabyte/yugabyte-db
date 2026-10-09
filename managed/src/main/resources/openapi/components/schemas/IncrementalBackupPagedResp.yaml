@@ -1,0 +1,6 @@
+title: IncrementalBackupPagedResp
+description: Paged list response for backups in an incremental backup chain.
+type: object
+x-data-container: PaginationResp
+x-data-item: Backup
+x-data-entities-description: Backups in the incremental chain for this page.

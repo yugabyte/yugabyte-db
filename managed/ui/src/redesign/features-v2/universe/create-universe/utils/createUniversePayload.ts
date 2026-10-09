@@ -17,7 +17,11 @@ import { SecuritySettingsProps, CertType } from '../steps/security-settings/dtos
 import { getEffectiveReplicationFactorForResilience } from './resilienceReplication';
 import { getNodeCount, getPlacementRegions } from './placementAndAvailability';
 import { effectiveUseDedicatedNodes, getNodeSpec } from './createUniverseNodeSpec';
-import { DEFAULT_CONNECTION_POOLING_PORTS } from '../helpers/syncConnectionPoolingPorts';
+import {
+  DEFAULT_CONNECTION_POOLING_PORTS,
+  shouldKeepCustomInternalYsqlPort
+} from '../helpers/syncConnectionPoolingPorts';
+import { DEFAULT_COMMUNICATION_PORTS } from '../helpers/constants';
 
 export const getCreateEITPayload = (
   securitySettings: SecuritySettingsProps,
@@ -27,6 +31,7 @@ export const getCreateEITPayload = (
     securitySettings;
   if (cloudType === CloudType.kubernetes) {
     return {
+      root_and_client_root_ca_same: true,
       enable_node_to_node_encrypt: securitySettings?.enableNodeToNodeEncryption ? true : false,
       enable_client_to_node_encrypt: securitySettings?.enableClientToNodeEncryption ? true : false,
       root_ca: securitySettings?.enableNodeToNodeEncryption
@@ -51,6 +56,7 @@ export const getCreateEITPayload = (
       certTypeNtoN
     } = securitySettings;
     return {
+      root_and_client_root_ca_same: useSameCertificate,
       enable_node_to_node_encrypt: useSameCertificate
         ? enableBothEncryption
           ? true
@@ -111,11 +117,12 @@ export const mapGFlags = (
     tserver: {}
   };
   gflags.forEach((gflag) => {
-    if (gflag.MASTER) {
-      gflagsMap.master[gflag.Name] = gflag.MASTER.toString();
+    // Keep falsy values (0, false, ""); truthy checks would drop them.
+    if (Object.hasOwn(gflag, 'MASTER')) {
+      gflagsMap.master[gflag.Name] = String(gflag.MASTER);
     }
-    if (gflag.TSERVER) {
-      gflagsMap.tserver[gflag.Name] = gflag.TSERVER.toString();
+    if (Object.hasOwn(gflag, 'TSERVER')) {
+      gflagsMap.tserver[gflag.Name] = String(gflag.TSERVER);
     }
   });
   return gflagsMap;
@@ -216,13 +223,19 @@ export const mapCreateUniversePayload = (
       networking_spec: {
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
-        communication_ports: mapCommunicationPorts({
-          ...otherAdvancedSettings,
-          // Custom Internal YSQL Port only applies when CP + override ports are enabled.
-          ...(!(databaseSettings.enableConnectionPooling && databaseSettings.overrideCPPorts) && {
-            internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
-          })
-        }),
+        communication_ports: mapCommunicationPorts(
+          // K8s does not support custom deployment ports — always send defaults.
+          providerType === CloudType.kubernetes
+            ? DEFAULT_COMMUNICATION_PORTS
+            : {
+                ...otherAdvancedSettings,
+                // Custom Internal YSQL applies while CP is on. Turning CP off resets it to default.
+                ...(!shouldKeepCustomInternalYsqlPort(databaseSettings, providerType) && {
+                  internalYsqlServerRpcPort:
+                    DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+                })
+              }
+        ),
         enable_ipv6: securitySettings.enableIPV6 ?? false
       },
       universe_settings: {
@@ -462,4 +475,23 @@ export const getAccessiblePorts = (
   ].filter((pg) => pg.visible);
 
   return PORT_GROUPS;
+};
+
+/** Port field names currently shown in Deployment Ports (same set the UI renders). */
+export const getCommunicationPortFieldIds = (
+  enableYSQL: boolean | undefined,
+  enableYCQL: boolean | undefined,
+  providerCode: string,
+  enableCP: boolean | undefined,
+  isEditMode = false
+): string[] => {
+  const identityT = ((key: string) => key) as TFunction;
+  return getAccessiblePorts(
+    enableYSQL,
+    enableYCQL,
+    providerCode,
+    enableCP,
+    identityT,
+    isEditMode
+  ).flatMap((pg) => pg.PORTS_LIST.map((port: { id: string }) => port.id));
 };

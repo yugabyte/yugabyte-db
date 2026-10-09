@@ -759,18 +759,18 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Merge Join
-   Merge Cond: (pctest2.k = pctest1.k)
+   Merge Cond: (pctest1.k = pctest2.k)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Sort
+               Sort Key: pctest1.k
+               ->  Parallel Index Scan using pctest1_c_idx on pctest1
+                     Index Cond: (c = 42)
    ->  Gather Merge
          Workers Planned: 2
          ->  Sort
                Sort Key: pctest2.k
                ->  Parallel Seq Scan on pctest2
-   ->  Sort
-         Sort Key: pctest1.k
-         ->  Gather
-               Workers Planned: 2
-               ->  Parallel Index Scan using pctest1_c_idx on pctest1
-                     Index Cond: (c = 42)
 (13 rows)
 
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */

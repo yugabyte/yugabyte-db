@@ -321,7 +321,6 @@ extern PGDLLIMPORT bool yb_enable_derived_equalities;
 extern PGDLLIMPORT bool yb_enable_listen_notify;
 extern PGDLLIMPORT bool yb_test_fatal_after_notifs_queue_write;
 extern PGDLLIMPORT int yb_test_notify_queue_max_pages;
-extern PGDLLIMPORT bool yb_conn_mgr_selective_deallocate;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
 extern PGDLLIMPORT bool yb_skip_ensure_read_time_in_parallel_execution;
@@ -422,8 +421,6 @@ extern void InitializeGUCOptions(void);
 extern void InitializeWalConsistencyChecking(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
 extern void ResetAllOptions();
-extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
-extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void AtStart_GUC(void);
 extern int	NewGUCNestLevel(void);
 extern void AtEOXact_GUC(bool isCommit, int nestLevel);
@@ -467,8 +464,6 @@ extern ArrayType *GUCArrayReset(ArrayType *array);
 extern void write_nondefault_variables(GucContext context);
 extern void read_nondefault_variables(void);
 #endif
-
-extern void YbSetParallelWorker();
 
 /* GUC serialization */
 extern Size EstimateGUCStateSpace(void);
@@ -518,5 +513,11 @@ extern void assign_xlog_sync_method(int new_sync_method, void *extra);
 /* in access/transam/xlogprefetcher.c */
 extern bool check_recovery_prefetch(int *new_value, void **extra, GucSource source);
 extern void assign_recovery_prefetch(int new_value, void *extra);
+
+/* YB declarations */
+extern void YbValidateConfigFile(const char *config_file);
+extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
+extern void YbResetYsqlConnMgrGucDefaults(void);
+extern void YbSetParallelWorker();
 
 #endif							/* GUC_H */

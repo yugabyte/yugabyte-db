@@ -28,9 +28,9 @@ The `START TRANSACTION` statement is simply an alternative spelling for the [`BE
 
 ## See also
 
-- [`ABORT`](../txn_abort)
-- [`BEGIN`](../txn_begin)
-- [`COMMIT`](../txn_commit)
-- [`END`](../txn_end)
-- [`ROLLBACK`](../txn_rollback)
-- [`SET TRANSACTION`](../txn_set)
+- [ABORT](../txn_abort)
+- [BEGIN](../txn_begin)
+- [COMMIT](../txn_commit)
+- [END](../txn_end)
+- [ROLLBACK](../txn_rollback)
+- [SET TRANSACTION](../txn_set)

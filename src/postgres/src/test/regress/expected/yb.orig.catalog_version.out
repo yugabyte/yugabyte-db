@@ -7,6 +7,11 @@
 -- update which may overload yb-master if there are a large number of active
 -- Postgres connections.
 --
+-- YB: The test has two expected outputs since the catalog version increments
+-- for CREATE INDEX varies with object locking enabled (4) vs disabled (3).
+-- yb.orig.catalog_version_1.out and yb.orig.catalog_version.out are the
+-- expected outputs with object locking enabled and disabled, respectively.
+--
 --
 \set template1_db_oid 1
 \set db_oid 'CASE WHEN (select count(*) from pg_yb_catalog_version) = 1 THEN :template1_db_oid ELSE (SELECT oid FROM pg_database WHERE datname = \'yugabyte\') END'

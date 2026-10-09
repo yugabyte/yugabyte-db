@@ -27,6 +27,11 @@ public class OCIRegionCloudInfo implements CloudInfoInterface {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0")
   public String ybImage;
 
+  @ApiModelProperty(
+      value = "The OCI Instance Configuration OCID to use for nodes created in this region.",
+      accessMode = AccessMode.READ_WRITE)
+  public String instanceTemplate;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();

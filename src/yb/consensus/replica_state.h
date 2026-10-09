@@ -238,7 +238,8 @@ class ReplicaState {
 
   // Checks if the term change is legal. If so, sets 'current_term'
   // to 'new_term' and sets 'has voted' to no for the current term.
-  Status SetCurrentTermUnlocked(int64_t new_term);
+  // Without flush the caller must flush the consensus metadata before acting on the new term.
+  Status SetCurrentTermUnlocked(int64_t new_term, FlushConsensusMeta flush);
 
   // Returns the term set in the last config change round.
   const int64_t GetCurrentTermUnlocked() const;
@@ -325,6 +326,9 @@ class ReplicaState {
   // Updates the last received operation from current leader.
   // This must be called under a lock.
   void UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const OpId& op_id);
+
+  // Same, but advances monotonically instead of only setting when empty. Call under a lock.
+  void UpdateLastReceivedOpIdFromCurrentLeaderMonotonicUnlocked(const OpId& op_id);
 
   // Returns the last received op id. This must be called under the lock.
   const OpId& GetLastReceivedOpIdUnlocked() const;

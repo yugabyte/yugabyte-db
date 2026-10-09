@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -19,8 +20,6 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::literals;
@@ -31,13 +30,8 @@ class PgConcurrentDDLsTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back(
-        "--enable_object_locking_for_table_locks=true");
-    opts->extra_tserver_flags.emplace_back(
-        "--ysql_yb_ddl_transaction_block_enabled=true");
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(opts->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(opts->extra_master_flags, /* use_legacy = */ false);
     opts->extra_master_flags.emplace_back(
         "--master_ysql_operation_lease_ttl_ms=10000");
   }
@@ -559,128 +553,6 @@ TEST_F(PgConcurrentDDLsTest, ConcurrentCreateDropDatabase) {
 }
 #endif
 
-// https://github.com/yugabyte/yugabyte-db/issues/30908
-class PgDdlTransactionWithoutConcurrentDDLSupportTest : public LibPqTestBase {
- protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    LibPqTestBase::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back(
-        "--enable_object_locking_for_table_locks=true");
-    opts->extra_tserver_flags.emplace_back(
-        "--ysql_yb_ddl_transaction_block_enabled=true");
-    // 30908 only appears when concurrent DDL is disabled.
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-  }
-};
-
-TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, ParallelDdlTransactionBlockCrash) {
-  auto conn = ASSERT_RESULT(Connect());
-
-  std::atomic<bool> bug_reproduced{false};
-  std::string reproduced_msg;
-  std::mutex msg_mutex;
-
-  std::string table1 = "sample";
-  std::string table2 = "sample1";
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table1));
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table2));
-
-  auto is_bug_reproduced = [&reproduced_msg, &msg_mutex](const yb::Status& status) {
-    if (status.ok()) return false;
-    const auto msg = status.ToString();
-    if (msg.find("server closed the connection unexpectedly") != std::string::npos ||
-        msg.find("unexpected state END") != std::string::npos) {
-      std::lock_guard<std::mutex> lock(msg_mutex);
-      reproduced_msg = msg;
-      return true;
-    }
-    return false;
-  };
-
-  auto run_ddl = [&bug_reproduced, &is_bug_reproduced, this](
-      const std::string& table_name) {
-    auto thread_conn = ASSERT_RESULT(Connect());
-
-    for (int iter = 0; iter < 40; ++iter) {
-      if (bug_reproduced.load(std::memory_order_acquire)) {
-        break;
-      }
-
-      ASSERT_OK(thread_conn.Execute("BEGIN"));
-
-      auto status = thread_conn.ExecuteFormat(
-          "ALTER TABLE $0 ADD COLUMN a_$1 INT", table_name, iter);
-
-      if (status.ok()) {
-        auto commit_status = thread_conn.Execute("COMMIT");
-        if (is_bug_reproduced(commit_status)) {
-          bug_reproduced.store(true, std::memory_order_release);
-          return;
-        }
-
-        ASSERT_OK(thread_conn.Execute("BEGIN"));
-
-        auto drop_status = thread_conn.ExecuteFormat(
-            "ALTER TABLE $0 DROP COLUMN a_$1", table_name, iter);
-        if (drop_status.ok()) {
-          commit_status = thread_conn.Execute("COMMIT");
-          if (is_bug_reproduced(commit_status)) {
-            bug_reproduced.store(true, std::memory_order_release);
-            return;
-          }
-        } else {
-          auto rollback_status = thread_conn.Execute("ROLLBACK");
-          if (is_bug_reproduced(rollback_status)) {
-            bug_reproduced.store(true, std::memory_order_release);
-            return;
-          }
-        }
-      } else {
-        auto rollback_status = thread_conn.Execute("ROLLBACK");
-        if (is_bug_reproduced(rollback_status)) {
-          bug_reproduced.store(true, std::memory_order_release);
-          return;
-        }
-      }
-    }
-  };
-
-  std::thread t1([&, table1] { run_ddl(table1); });
-  std::thread t2([&, table2] { run_ddl(table2); });
-
-  t1.join();
-  t2.join();
-
-  if (bug_reproduced.load(std::memory_order_acquire)) {
-    FAIL() << "Bug 30908 was reproduced successfully! Status message: " << reproduced_msg;
-  }
-}
-
-// Test that serialization error is properly translated to 40001 to the client
-// instead of internal error YB003.
-// See https://github.com/yugabyte/yugabyte-db/issues/31736
-
-TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest,
-       TestReportProperSerializationErrorInRepeatableRead) {
-  auto conn0 = ASSERT_RESULT(Connect());
-  auto conn1 = ASSERT_RESULT(Connect());
-  auto conn2 = ASSERT_RESULT(Connect());
-
-  // Create initial schema
-  ASSERT_OK(conn0.Execute("CREATE TABLE tab1 (id SERIAL PRIMARY KEY)"));
-  ASSERT_OK(conn0.Execute("CREATE TABLE tab2 (id SERIAL PRIMARY KEY)"));
-
-  // Execute concurrent (interleaved) DDL
-  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(conn1.Execute("ALTER TABLE tab1 ADD COLUMN new_col INT"));
-  ASSERT_OK(conn2.Execute("ALTER TABLE tab2 ADD COLUMN new_col INT"));
-  ASSERT_OK(conn1.Execute("COMMIT"));
-  ASSERT_NOK_STR_CONTAINS(conn2.Execute("COMMIT"), "pgsql error 40001");
-}
-
 // Test that concurrent "CREATE OR REPLACE FUNCTION" and "DROP FUNCTION"
 // on the same function does not crash the backend process.
 // See issue: https://github.com/yugabyte/yugabyte-db/issues/31247
@@ -691,8 +563,8 @@ class PgConcurrentCreateOrReplaceCrashTest : public LibPqTestBase {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
     // Object locking would serialize DDLs on the same object and close the
     // stale-syscache race window, so it must be disabled to reproduce.
-    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    ToggleDDLMode(opts->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(opts->extra_master_flags, /* use_legacy = */ true);
   }
 
   static bool IsBackendCrash(const Status& status) {

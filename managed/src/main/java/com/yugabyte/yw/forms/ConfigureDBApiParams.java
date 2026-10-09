@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -97,7 +98,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
             BAD_REQUEST, "Cannot enable YSQL if it was disabled earlier.");
       } else if ((communicationPorts.ysqlServerHttpPort != universePorts.ysqlServerHttpPort
               || communicationPorts.ysqlServerRpcPort != universePorts.ysqlServerRpcPort)
-          && userIntent.providerType.equals(CloudType.kubernetes)) {
+          && Util.isKubernetesBased(userIntent)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot change YSQL ports on k8s universe.");
       } else if ((enableYSQLAuth != userIntent.enableYSQLAuth)
@@ -308,11 +309,11 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
             "Current software version is below minimum supported DB version for multi-tenancy.");
       }
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        if (cluster.userIntent.providerType == CloudType.kubernetes) {
+        if (Util.isKubernetesBased(cluster)) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Multi-tenancy QoS is not supported for Kubernetes universes.");
         }
-        if (cluster.userIntent.providerType != CloudType.onprem
+        if (Util.checkAnyProviderMatches(cluster, providerType -> providerType != CloudType.onprem)
             && !cluster.userIntent.isCpuCgroupConfigured()) {
           throw new PlatformServiceException(
               BAD_REQUEST,

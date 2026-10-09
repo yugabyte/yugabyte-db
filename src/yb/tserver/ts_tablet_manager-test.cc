@@ -68,6 +68,7 @@
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
@@ -96,6 +97,7 @@ DECLARE_int32(num_cpus);
 DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
+DECLARE_int32(history_retention_pins_persist_interval_sec);
 
 namespace yb::tserver {
 
@@ -107,7 +109,6 @@ using docdb::RateLimiterSharingMode;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
 using master::TabletReportUpdatesPB;
-using strings::Substitute;
 using tablet::TabletPeer;
 using gflags::FlagSaver;
 
@@ -123,7 +124,7 @@ class TsTabletManagerTest : public YBTest {
   }
 
   string GetDrivePath(int index) {
-    return JoinPathSegments(test_data_root_, Substitute("drive-$0", index + 1));
+    return JoinPathSegments(test_data_root_, Format("drive-$0", index + 1));
   }
 
   virtual void CreateMiniTabletServer() {
@@ -843,7 +844,7 @@ TEST_F(TsTabletManagerTest, DataAndWalFilesLocations) {
   for (int i = 0; i < kDrivesNum; ++i) {
     tablet_manager_->GetAndRegisterDataAndWalDir(fs_manager_,
                                                  kTableId,
-                                                 Substitute("tablet-$0", i + 1),
+                                                 Format("tablet-$0", i + 1),
                                                  &data,
                                                  &wal);
     ASSERT_EQ(data.substr(0, drive_path_len), wal.substr(0, drive_path_len));
@@ -861,8 +862,8 @@ TEST_F(TsTabletManagerTest, EvenDriveSelection) {
     std::string prev_data_drive;
     for (size_t j = 0; j < kNumTablets; ++j) {
       tablet_manager_->GetAndRegisterDataAndWalDir(fs_manager_,
-                                                  Substitute("table-$0", i+ 1),
-                                                  Substitute("tablet-$0", j + 1),
+                                                  Format("table-$0", i+ 1),
+                                                  Format("tablet-$0", j + 1),
                                                   &data,
                                                   &wal);
       const auto chosen_data_drive = data.substr(0, drive_path_len);
@@ -902,7 +903,7 @@ class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
 
   // Index helpers: ssd drives are 0..(kSsdDrives-1), hdd drives are kSsdDrives..
   std::string GetTieredDrivePath(int index) {
-    return JoinPathSegments(test_data_root_, Substitute("tiered-drive-$0", index));
+    return JoinPathSegments(test_data_root_, Format("tiered-drive-$0", index));
   }
 
   // Overrides the parent's disk layout with 2 ssd + 2 hdd drives instead of the plain
@@ -1018,7 +1019,7 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
   // Directly register extra tablets on the heavier drive to skew load.
   for (int i = 0; i < 3; ++i) {
     tablet_manager_->RegisterDataAndWalDir(
-        fs_manager_, kTableId, Substitute("fake-tablet-hdd-$0", i),
+        fs_manager_, kTableId, Format("fake-tablet-hdd-$0", i),
         heavier_data_root, any_wal_root);
   }
 
@@ -1028,6 +1029,57 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
   ASSERT_EQ(second_pid, lighter_pid)
       << "Expected picker to prefer the lighter hdd drive (path_id " << lighter_pid
       << ") but got path_id " << second_pid;
+}
+
+// Tiered storage: ResolveTargetTierPathId is the validate/repair step run on every tablet open
+// (see TSTabletManager::OpenTablet) so a stale cached target_tier_path_id -- from e.g. a disk
+// that got removed from --fs_data_dirs -- doesn't silently point flushes/compactions at a
+// directory that no longer belongs to the intended tier.
+TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  // No target tier persisted yet -- must resolve to home (path_id 0) without persisting
+  // anything (i.e. still empty afterwards).
+  auto no_pref_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(no_pref_pid, 0u);
+  ASSERT_TRUE(meta->target_storage_tier().empty());
+
+  // A freshly-resolved, still-valid target must be reused as-is (not re-resolved to some other
+  // disk in the same tier).
+  auto hdd_pid = ASSERT_RESULT(tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_OK(meta->SetTargetTier("hdd", hdd_pid));
+  auto resolved_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(resolved_pid, hdd_pid);
+
+  // Simulate a stale cached path_id (as if this tablet's tier_paths changed under it, e.g. a
+  // relabeled disk) by pointing target_tier_path_id at an "ssd" disk while target_storage_tier
+  // still says "hdd". ResolveTargetTierPathId must detect the mismatch, re-resolve to a real
+  // "hdd" disk, and persist the repair.
+  uint32_t ssd_pid = 0;
+  bool found_ssd = false;
+  for (const auto& tp : meta->tier_paths()) {
+    if (tp.tier == "ssd") {
+      ssd_pid = tp.path_id;
+      found_ssd = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(found_ssd);
+  ASSERT_OK(meta->SetTargetTier("hdd", ssd_pid));
+
+  auto repaired_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  std::unordered_map<uint32_t, std::string> tier_by_path_id;
+  for (const auto& tp : meta->tier_paths()) {
+    tier_by_path_id[tp.path_id] = tp.tier;
+  }
+  ASSERT_EQ(tier_by_path_id.at(repaired_pid), "hdd")
+      << "Repaired path_id " << repaired_pid << " is not an hdd disk";
+
+  // The repair must be persisted, not just returned in-memory.
+  ASSERT_EQ(meta->target_storage_tier(), "hdd");
+  ASSERT_EQ(meta->target_tier_path_id(), repaired_pid);
 }
 
 namespace {
@@ -1315,7 +1367,7 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
 
     // Unblock AllowedHistoryCutoff's xCluster GetSafeTime early-return so the DB pin logic runs.
     ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
-        master::TSHeartbeatResponsePB()));
+        master::TSHeartbeatResponsePB(), MonoTime()));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_history_retention_pins) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kSafetyWindowSec;
@@ -1333,15 +1385,32 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
   }
 
   void SetClusterPin(HybridTime pin, PgOid db_oid = kDbOid) {
+    SetClusterPins({{db_oid, pin}});
+  }
+
+  void SetClusterPins(const std::unordered_map<PgOid, HybridTime>& pins) {
     master::TSHeartbeatResponsePB resp;
-    (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
-        .set_db_level_oldest_read_time(pin.ToPB());
+    resp.set_cluster_ysql_db_pins_ready(true);
+    for (const auto& [db_oid, pin] : pins) {
+      (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
+          .set_db_level_oldest_read_time(pin.ToPB());
+    }
     mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(resp);
   }
 
   void ClearClusterPins() {
-    mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(
-        master::TSHeartbeatResponsePB());
+    master::TSHeartbeatResponsePB resp;
+    resp.set_cluster_ysql_db_pins_ready(true);
+    mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(resp);
+  }
+
+  // Sends a cluster pin map that must not be applied (e.g. incomplete after master failover).
+  void SetClusterPinsNotReady(HybridTime pin, PgOid db_oid = kDbOid) {
+    master::TSHeartbeatResponsePB resp;
+    resp.set_cluster_ysql_db_pins_ready(false);
+    (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
+        .set_db_level_oldest_read_time(pin.ToPB());
+    mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(resp);
   }
 
   // Creates a running PGSQL tablet whose namespace_id encodes kDbOid.
@@ -1378,6 +1447,24 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
   HybridTime MidwayPin() const {
     return Now().AddSeconds(-(kSafetyWindowSec + kHardCapSec) / 2);
   }
+
+  // Restarts the tserver over the same data dirs. The in-memory cluster pin map is lost, so
+  // whatever the tserver applies afterwards came from the persisted pins file.
+  void RestartServer() {
+    ASSERT_NO_FATAL_FAILURE(Reload());
+    config_ = mini_server_->CreateLocalConfig();
+    ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
+        master::TSHeartbeatResponsePB(), /*lease_expiration_time=*/MonoTime()));
+  }
+
+  HybridTime ClusterPin(PgOid db_oid = kDbOid) const {
+    return mini_server_->server()->GetClusterYsqlDbOldestPinnedReadTime(db_oid);
+  }
+
+  bool PinsFileExists() const {
+    YsqlDbHistoryRetentionPinsPB pb;
+    return !mini_server_->server()->fs_manager()->ReadYsqlDbHistoryRetentionPins(&pb).IsNotFound();
+  }
 };
 
 // Without a pin the database is governed solely by the safety-window cutoff
@@ -1387,6 +1474,19 @@ TEST_F(ComputeDbHistoryRetentionPinCutoffTest, NoPinComputesSafetyWindow) {
   const auto now = Now();
 
   EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), SafetyWindowCutoff(now));
+}
+
+// A not-ready heartbeat must not replace the last applied cluster pin map, even if it carries
+// a different pin. Compaction continues to use the previous complete map.
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, PinsNotReadyKeepsPreviousClusterPins) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-pins-not-ready"));
+  const auto pin = MidwayPin();
+  SetClusterPin(pin);
+
+  SetClusterPinsNotReady(pin.AddSeconds(100));
+
+  EXPECT_EQ(DbPinCutoff(Now(), peer->tablet_metadata()), pin);
+  EXPECT_EQ(AllowedPrimaryCutoff(peer->tablet_metadata()), pin);
 }
 
 // A pin registered for a different database is not observed
@@ -1467,6 +1567,85 @@ TEST_F(ComputeDbHistoryRetentionPinCutoffTest, DisabledFeatureIgnoresPin) {
   SetClusterPin(MidwayPin());
 
   EXPECT_EQ(AllowedPrimaryCutoff(peer->tablet_metadata()), HybridTime::kMax);
+}
+
+class PersistedDbHistoryRetentionPinsTest : public ComputeDbHistoryRetentionPinCutoffTest {
+ protected:
+  void SetUp() override {
+    ComputeDbHistoryRetentionPinCutoffTest::SetUp();
+
+    // Long enough that only the first update of a test is ever persisted, which keeps what
+    // lands on disk explicit.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_retention_pins_persist_interval_sec) = 3600;
+  }
+};
+
+// A tserver applies the pins its previous run persisted, before any heartbeat response arrives.
+TEST_F(PersistedDbHistoryRetentionPinsTest, RestartAppliesPersistedPins) {
+  const auto pin = MidwayPin();
+  SetClusterPin(pin);
+  ASSERT_TRUE(PinsFileExists());
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+
+  EXPECT_EQ(ClusterPin(), pin);
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-restart-pin"));
+  EXPECT_EQ(DbPinCutoff(Now(), peer->tablet_metadata()), pin);
+}
+
+// Every database in the map survives the restart, and databases absent from it stay unpinned.
+TEST_F(PersistedDbHistoryRetentionPinsTest, RestartAppliesPersistedPinsForAllDatabases) {
+  const auto pin = MidwayPin();
+  const auto other_pin = pin.AddSeconds(50);
+  SetClusterPins({{kDbOid, pin}, {kDbOid + 7, other_pin}});
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+
+  EXPECT_EQ(ClusterPin(kDbOid), pin);
+  EXPECT_EQ(ClusterPin(kDbOid + 7), other_pin);
+  EXPECT_FALSE(ClusterPin(kDbOid + 99).is_valid());
+}
+
+// With nothing persisted, a restarted tserver falls back to the safety window rather than
+// blocking compaction.
+TEST_F(PersistedDbHistoryRetentionPinsTest, NoPersistedFileDoesNotBlockCompaction) {
+  ASSERT_FALSE(PinsFileExists());
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+
+  ASSERT_FALSE(PinsFileExists());
+  EXPECT_FALSE(ClusterPin().is_valid());
+
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-no-pins-file"));
+  const auto now = Now();
+  EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), SafetyWindowCutoff(now));
+}
+
+// Pins are written at most once per history_retention_pins_persist_interval_sec, so a
+// restart can come back with a map older than the one the tserver last had in memory.
+TEST_F(PersistedDbHistoryRetentionPinsTest, PersistIsRateLimited) {
+  const auto persisted = MidwayPin();
+  SetClusterPin(persisted);
+  const auto newer = persisted.AddSeconds(50);
+  SetClusterPin(newer);
+  ASSERT_EQ(ClusterPin(), newer);
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+
+  EXPECT_EQ(ClusterPin(), persisted);
+}
+
+// The persisted map only seeds startup: the first ready heartbeat after the restart replaces it.
+TEST_F(PersistedDbHistoryRetentionPinsTest, HeartbeatAfterRestartReplacesPersistedPins) {
+  const auto persisted = MidwayPin();
+  SetClusterPin(persisted);
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+  ASSERT_EQ(ClusterPin(), persisted);
+
+  const auto fresh = persisted.AddSeconds(50);
+  SetClusterPin(fresh);
+  EXPECT_EQ(ClusterPin(), fresh);
 }
 
 } // namespace yb::tserver

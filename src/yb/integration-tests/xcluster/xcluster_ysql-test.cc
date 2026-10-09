@@ -42,8 +42,6 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
@@ -78,7 +76,6 @@ using std::string;
 
 DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
-DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
@@ -999,7 +996,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
                                      .GetLoadedStatusTabletsVersion();
           return current_version == version;
         },
-        30s, strings::Substitute(error, version)));
+        30s, Format(error, version)));
   };
   const auto run_write_verify_delete_test = [&]() {
     const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
@@ -1011,7 +1008,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     ASSERT_OK(DeleteUniverseReplication());
   };
 
-  int producer_version = 1, consumer_version = 1;
+  // 1 for system.transaction, plus 1 for each of its tablets (1 per tserver).
+  uint64_t producer_version = 1 + 3;
+  uint64_t consumer_version = 1 + 3;
 
   // Keep same tablet count for normal tablets.
   ASSERT_OK(CreateClusterAndTable());
@@ -1020,7 +1019,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   auto global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(producer_client(), producer_transaction_table_name));
   ASSERT_OK(producer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(producer_cluster(), ++producer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(producer_cluster(), ++producer_version));
 
   LOG(INFO) << "First run, more txn tablets on producer.";
   ASSERT_OK(SetupReplicationAndWaitForValidSafeTime());
@@ -1037,9 +1036,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(consumer_client(), producer_transaction_table_name));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(consumer_cluster(), ++consumer_version));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(consumer_cluster(), ++consumer_version));
 
   ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
       consumer_table_->name().namespace_id(), /*is_read_only=*/false));
@@ -2316,7 +2315,6 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1));
 
   // 2. Setup replication.
@@ -2837,6 +2835,40 @@ TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_xcluster_replicated_table) = true;
     ASSERT_NOK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
   }
+}
+
+// Test that an ALTER COLUMN TYPE that recreate index is blocked, even when the main
+// table itself is not rewritten.
+TEST_F(XClusterYsqlTest, TestAlterColumnTypeIndexRewrite) {
+  ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
+  const auto table_name = producer_table_->name().table_name();
+
+  // Create the indexes on both universes before setting up replication
+  for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
+    auto conn = ASSERT_RESULT(cluster->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 ADD COLUMN c1 varchar(50), ADD COLUMN c2 varchar(50)", table_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX expr_idx ON $0 ((lower(c1)))", table_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX plain_idx ON $0 (c2)", table_name));
+  }
+
+  // Replicate the table along with its indexes.
+  auto tables = producer_tables_;
+  for (const auto& index_name : {"expr_idx", "plain_idx"}) {
+    const auto index_table_name =
+        ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", index_name));
+    ASSERT_OK(producer_client()->OpenTable(index_table_name, &tables.emplace_back()));
+  }
+  ASSERT_OK(SetupUniverseReplication(tables));
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  // The type change rewrites the index (but not the main table), so it must be
+  // blocked.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN c1 TYPE text", table_name),
+      "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.");
+  // The plain index is reused in place without a rewrite, so this should succeed.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN c2 TYPE varchar(255)", table_name));
 }
 
 TEST_F(XClusterYsqlTest, RandomFailuresAfterApply) {

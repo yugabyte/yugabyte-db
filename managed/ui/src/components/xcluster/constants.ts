@@ -1,6 +1,10 @@
 import { TableType } from '../../redesign/helpers/dtos';
 import { Metrics } from './XClusterTypes';
 
+// Type-only import: `src/actions/xClusterReplication` imports from this module's barrel, so a value
+// import here would introduce a cycle.
+import type { UniverseTableFilters } from '../../actions/xClusterReplication';
+
 //------------------------------------------------------------------------------------
 // XCluster Status Constants
 export const XClusterConfigStatus = {
@@ -320,9 +324,19 @@ export const XClusterModalName = {
   SYNC_XCLUSTER_CONFIG_WITH_DB: 'syncXClusterConfigWithDB'
 } as const;
 
-export const XCLUSTER_UNIVERSE_TABLE_FILTERS = {
-  xClusterSupportedOnly: true
-};
+/**
+ * Builds the universe table list filters used by every xCluster/DR table selection surface.
+ *
+ * `includeMatviewTables` must only be set when the replication config is in automatic DDL mode and
+ * both universes run a YBDB version that replicates materialized views. The value is part of the
+ * react-query key, so all consumers sharing a cache entry have to pass the same value.
+ */
+export const getXClusterUniverseTableFilters = (
+  includeMatviewTables = false
+): UniverseTableFilters => ({
+  xClusterSupportedOnly: true,
+  includeMatviewTables
+});
 
 /**
  * Standard input field width for all xCluster text fields and dropdowns.
@@ -343,6 +357,11 @@ export const DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE = '2024.1.3.0-b104';
 export const DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW = '2.23.0.0-b393';
 export const AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_STABLE = '2025.2.1.0-b0';
 export const AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_PREVIEW = '2.29.0.0-b0';
+
+// YBDB replicates materialized views only in automatic DDL mode, and only from these versions on.
+// Keep in sync with XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_{STABLE,PREVIEW}.
+export const MATVIEW_XCLUSTER_VERSION_THRESHOLD_STABLE = '2025.2.1.0-b124';
+export const MATVIEW_XCLUSTER_VERSION_THRESHOLD_PREVIEW = '2.29.0.0-b400';
 
 export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/';

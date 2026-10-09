@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.NodeManager;
@@ -19,7 +21,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -42,15 +50,87 @@ public class YNPProvisioning extends NodeTaskBase {
     public UUID customerUuid;
     public String nodeAgentInstallDir;
     public boolean isYbPrebuiltImage;
-    // True when re-provisioning a node of an existing universe (vs. provisioning a brand-new
-    // node). Propagated to the YNP config so configure_cgroup honors the persisted flag rather
-    // than the provider default for existing universes.
-    public boolean isReprovision;
+    // True when the node has YB software present on it.
+    public boolean isSoftwarePresent;
+    // True when the node has DB data present on it.
+    public boolean isDataPresent;
+
+    public Map<String, String> pathToUUIDMapping;
   }
 
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
+  }
+
+  private void validateAzureLunIndexes(NodeDetails node, Integer[] lunIndexes) {
+    Integer expectedLunCount =
+        Objects.requireNonNull(
+            taskParams().deviceInfo.numVolumes,
+            "Number of volumes is required to validate Azure LUN metadata");
+    Set<Integer> uniqueLunIndexes = new HashSet<>();
+    if (lunIndexes == null || lunIndexes.length != expectedLunCount) {
+      throw new IllegalStateException(
+          String.format(
+              "Invalid Azure LUN metadata for node %s: expected %d LUNs, found %s",
+              node.nodeName, expectedLunCount, Arrays.toString(lunIndexes)));
+    }
+    for (Integer lunIndex : lunIndexes) {
+      if (lunIndex == null || lunIndex < 0 || !uniqueLunIndexes.add(lunIndex)) {
+        throw new IllegalStateException(
+            String.format(
+                "Invalid Azure LUN metadata for node %s: LUNs must be unique, non-negative"
+                    + " integers, found %s",
+                node.nodeName, Arrays.toString(lunIndexes)));
+      }
+    }
+  }
+
+  private void ensureAzureLunIndexes(NodeDetails node, Provider provider) {
+    if (provider.getCloudCode() != CloudType.azu) {
+      return;
+    }
+
+    Integer[] lunIndexes = node.cloudInfo.lun_indexes;
+    Optional<List<Map<String, JsonNode>>> instanceDetails =
+        maybeGetInstancesDetails(taskParams(), true /* ensureSingleInstance */);
+    if (instanceDetails.isEmpty()) {
+      throw new IllegalStateException(
+          String.format("Cannot recover Azure LUN metadata: node %s was not found", node.nodeName));
+    }
+    JsonNode lunIndexesNode = instanceDetails.get().get(0).get("lun_indexes");
+    if (lunIndexesNode == null || !lunIndexesNode.isArray()) {
+      throw new IllegalStateException(
+          String.format(
+              "Cannot recover Azure LUN metadata for node %s from its VM attachments",
+              node.nodeName));
+    }
+
+    Integer[] discoveredLunIndexes = new Integer[lunIndexesNode.size()];
+    for (int i = 0; i < lunIndexesNode.size(); i++) {
+      if (!lunIndexesNode.get(i).isIntegralNumber()) {
+        throw new IllegalStateException(
+            String.format(
+                "Cannot recover Azure LUN metadata for node %s: invalid LUN value %s",
+                node.nodeName, lunIndexesNode.get(i)));
+      }
+      discoveredLunIndexes[i] = lunIndexesNode.get(i).asInt();
+    }
+    validateAzureLunIndexes(node, discoveredLunIndexes);
+    if (Arrays.equals(lunIndexes, discoveredLunIndexes)) {
+      return;
+    }
+
+    node.cloudInfo.lun_indexes = discoveredLunIndexes;
+    saveUniverseDetails(
+        universe -> {
+          universe.getNodeOrBadRequest(node.nodeName).cloudInfo.lun_indexes =
+              discoveredLunIndexes.clone();
+        });
+    log.info(
+        "Recovered Azure LUN metadata for node {}: {}",
+        node.nodeName,
+        Arrays.toString(discoveredLunIndexes));
   }
 
   @Override
@@ -73,7 +153,9 @@ public class YNPProvisioning extends NodeTaskBase {
             .universe(universe)
             .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
-            .isReprovision(taskParams().isReprovision)
+            .isSoftwarePresent(taskParams().isSoftwarePresent)
+            .isDataPresent(taskParams().isDataPresent)
+            .pathToUUIDMapping(taskParams().pathToUUIDMapping)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
   }
@@ -89,6 +171,17 @@ public class YNPProvisioning extends NodeTaskBase {
 
     Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
     Provider provider = Util.getProviderForNode(node, universe);
+    // Bound the remote provisioning command. The node-side script buffers its output until it
+    // exits, so a step that blocks on the node (PLAT-22154) produces neither output nor an exit
+    // status, and this subtask would otherwise hold the universe task open indefinitely.
+    shellContext =
+        shellContext.toBuilder()
+            .timeoutSecs(
+                confGetter
+                    .getConfForScope(provider, ProviderConfKeys.ynpProvisionTimeout)
+                    .toSeconds())
+            .build();
+    ensureAzureLunIndexes(node, provider);
 
     /*
      *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run
@@ -132,10 +225,6 @@ public class YNPProvisioning extends NodeTaskBase {
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
       Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
-    UserIntent userIntent =
-        taskUserIntent == null
-            ? universe.getCluster(node.placementUuid).userIntent
-            : taskUserIntent;
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
     fillSetupParamsForNode(ansibleParams, universe.getCluster(node.placementUuid), node);
     ansibleParams.sshUserOverride = node.sshUserOverride;

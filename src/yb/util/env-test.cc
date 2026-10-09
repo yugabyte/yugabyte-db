@@ -40,7 +40,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/alignment.h"
 #include "yb/util/stol_utils.h"
@@ -63,6 +62,8 @@ DECLARE_bool(TEST_simulate_fs_without_fallocate);
 
 #if !defined(__APPLE__)
 #include <linux/falloc.h>
+
+#include "yb/util/format.h"
 #endif  // !defined(__APPLE__)
 // Copied from falloc.h. Useful for older kernels that lack support for
 // hole punching; fallocate(2) will return EOPNOTSUPP.
@@ -205,7 +206,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
 
     srand(123);
 
-    const string test_descr = strings::Substitute(
+    const string test_descr = Format(
         "appending a vector of slices(number of slices=$0,size of slice=$1 b) $2 times",
         num_slices, slice_size, iterations);
     LOG_TIMING(INFO, test_descr)  {
@@ -945,7 +946,7 @@ TEST_F(TestEnv, TestGetFreeSpace) {
 
   // Minimum block size for MacOS is 512.
   constexpr int block_size = 512;
-  const string cmd = strings::Substitute(
+  const string cmd = Format(
       "(export BLOCKSIZE=$0; df $1 | tail -1 | awk '{print $$4}' | tr -d '\\n')", block_size, cwd);
 
   int success_count = 0;

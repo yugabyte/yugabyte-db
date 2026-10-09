@@ -12,6 +12,13 @@ public class AbstractTaskParams implements ITaskParams {
   @ApiModelProperty(value = "Previous task UUID of a retry")
   private UUID previousTaskUUID;
 
+  @ApiModelProperty(
+      value =
+          "UUID of the first task in the retry/rollback chain (clean universe state). Carried"
+              + " forward on retries and rollbacks. Distinct from previousTaskUUID, which is the"
+              + " immediate predecessor used for runtimeInfo inherit.")
+  private UUID originalTaskUUID;
+
   @ApiModelProperty(value = "Error message")
   private String errorString = null;
 
@@ -33,6 +40,16 @@ public class AbstractTaskParams implements ITaskParams {
   @Override
   public UUID getPreviousTaskUUID() {
     return previousTaskUUID;
+  }
+
+  @Override
+  public void setOriginalTaskUUID(UUID originalTaskUUID) {
+    this.originalTaskUUID = originalTaskUUID;
+  }
+
+  @Override
+  public UUID getOriginalTaskUUID() {
+    return originalTaskUUID;
   }
 
   @JsonIgnore

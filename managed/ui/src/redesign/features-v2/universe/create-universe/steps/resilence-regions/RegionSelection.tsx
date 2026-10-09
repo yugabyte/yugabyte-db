@@ -21,7 +21,12 @@ import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/u
 import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
-import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
+import {
+  FaultToleranceType,
+  ResilienceAndRegionsProps,
+  ResilienceFormMode,
+  ResilienceType
+} from './dtos';
 import {
   NODE_COUNT,
   REGIONS_FIELD,
@@ -34,6 +39,13 @@ import pluralize from 'pluralize';
 
 const { Box, MenuItem, styled, Typography } = mui;
 
+const getRegionOptionLabel = (region: string | Record<string, string>): string => {
+  if (typeof region === 'string') return region;
+  const flag = getFlagFromRegion(region.code);
+  const name = region.name ?? '';
+  return flag ? `${flag} ${name}` : name;
+};
+
 const StyledMenu = styled(MenuItem)({
   display: 'flex',
   flexDirection: 'row',
@@ -43,15 +55,14 @@ const StyledMenu = styled(MenuItem)({
   minHeight: '52px !important'
 });
 
-
 interface RegionSelectionProps {
   showErrorsAfterSubmit?: boolean;
 }
 
 export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectionProps) => {
-  const [{ generalSettings }] = (useContext(
+  const [{ generalSettings }] = useContext(
     CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  ) as unknown as CreateUniverseContextMethods;
 
   const providerUUID = generalSettings?.providerConfiguration?.uuid;
   const {
@@ -81,10 +92,13 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
   const resilienceType = watch(RESILIENCE_TYPE);
   const faultToleranceType = watch('faultToleranceType');
   const formMode = watch(RESILIENCE_FORM_MODE);
-  
+  const isCreateUniverseFlow = window.location.pathname.includes('create-universe');
+  const showExpertRegionIntro = isCreateUniverseFlow && formMode === ResilienceFormMode.EXPERT_MODE;
+
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const allowmultipleRegionsSelection =
-    canSelectMultipleRegions(resilienceType) && (faultToleranceType !== FaultToleranceType.NONE || formMode === ResilienceFormMode.EXPERT_MODE);
+    canSelectMultipleRegions(resilienceType) &&
+    (faultToleranceType !== FaultToleranceType.NONE || formMode === ResilienceFormMode.EXPERT_MODE);
 
   const mapCoordinates = useCallback(() => {
     const coordinates = regions?.map((region) => [region.latitude ?? [0], region.longitude ?? [0]]);
@@ -114,6 +128,18 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
     >
       <StyledHeader>{t('regions')}</StyledHeader>
       <StyledContent sx={{ gap: '24px' }}>
+        {showExpertRegionIntro && (
+          <Typography
+            variant="body2"
+            sx={{
+              lineHeight: '16px',
+              color: '#0B1117'
+            }}
+            data-testid="expert-region-intro"
+          >
+            {t('expertRegionIntro')}
+          </Typography>
+        )}
         <Box style={{ display: 'flex', flexDirection: 'column' }}>
           <YBLabel>{t('regions')}</YBLabel>
           <YBAutoComplete
@@ -124,9 +150,9 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
               dataTestId: 'region-selection-autocomplete'
             }}
             dataTestId="region-selection-autocomplete-parent"
-            options={((regionsList as unknown) as Record<string, string>[]) ?? []}
-            getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
-            filterSelectedOptions={true}
+            options={(regionsList as unknown as Record<string, string>[]) ?? []}
+            getOptionLabel={getRegionOptionLabel}
+            filterSelectedOptions
             isOptionEqualToValue={(option, value) => option.code === value.code}
             renderOption={(props, row) => {
               return (
@@ -136,10 +162,11 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
                       {getFlagFromRegion(row.code)}
                       <span style={{ marginLeft: '4px' }}>{row.name}</span>
                     </Box>
-                    <Typography variant='subtitle1' color='textSecondary'>
-                      {
-                        pluralize(t('availabilityZonesCount', { count: row.zones?.length ?? 0 }), row.zones?.length)
-                      }
+                    <Typography variant="subtitle1" color="textSecondary">
+                      {pluralize(
+                        t('availabilityZonesCount', { count: row.zones?.length ?? 0 }),
+                        row.zones?.length
+                      )}
                     </Typography>
                   </Box>
                 </StyledMenu>
@@ -154,16 +181,16 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
                 Array.isArray(option) ? option : option === null ? [] : [option],
                 'name'
               );
-              setValue(REGIONS_FIELD, (value as unknown) as Region[], {
+              setValue(REGIONS_FIELD, value as unknown as Region[], {
                 shouldValidate: true
               });
             }}
             value={
               allowmultipleRegionsSelection
-                ? ((regions as unknown) as Record<string, string>[])
+                ? (regions as unknown as Record<string, string>[])
                 : isEmpty(regions)
                   ? null
-                  : ((regions[0] as unknown) as Record<string, string>)
+                  : (regions[0] as unknown as Record<string, string>)
             }
           />
         </Box>
@@ -205,6 +232,7 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
               zoom: 2,
               center: [0, 0]
             }}
+            showBoundaries={false}
           >
             {
               regions?.map((region: Region) => {

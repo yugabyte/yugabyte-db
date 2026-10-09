@@ -62,6 +62,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/pgsql_utils.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -144,6 +145,37 @@ bool OpSkipIntents(const YBOperation& op) {
   }
   LOG(FATAL) << "Internal error: unknown operation: " << op.type();
   return false;
+}
+
+bool OpReadAtInTxnLimit(const YBOperation& op) {
+  switch (op.type()) {
+    case YBOperation::Type::PGSQL_READ:
+      return ReadAtInTxnLimit(down_cast<const YBPgsqlReadOp&>(op).request());
+    case YBOperation::Type::PGSQL_WRITE:
+      return ReadAtInTxnLimit(down_cast<const YBPgsqlWriteOp&>(op).request());
+    case YBOperation::Type::QL_READ:     [[fallthrough]];
+    case YBOperation::Type::QL_WRITE:    [[fallthrough]];
+    case YBOperation::Type::REDIS_READ:  [[fallthrough]];
+    case YBOperation::Type::REDIS_WRITE: [[fallthrough]];
+    case YBOperation::Type::PGSQL_LOCK:
+      return false;
+  }
+  LOG(FATAL) << "Internal error: unknown operation: " << op.type();
+  return false;
+}
+
+// Unlike skip_intents, which decides Batcher::transaction() and so must agree across every op in
+// the batcher, this only shifts the read time of one RPC, and each RPC builds its own request. A
+// group is one (tablet, op group) pair, so its ops share a table except on a colocated tablet --
+// and colocated relations never carry this flag. Checked below rather than assumed.
+Result<bool> GroupReadAtInTxnLimit(const InFlightOpsGroup& group) {
+  const auto result = OpReadAtInTxnLimit(*group.begin->yb_op);
+  for (auto it = group.begin; it != group.end; ++it) {
+    RSTATUS_DCHECK_EQ(
+        OpReadAtInTxnLimit(*it->yb_op), result, IllegalState,
+        Format("Ops of one group disagree on read_at_in_txn_limit: $0", group.ToString()));
+  }
+  return result;
 }
 
 }  // namespace
@@ -730,6 +762,7 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
     .skip_intents = SkipIntents(),
+    .read_at_in_txn_limit = VERIFY_RESULT(GroupReadAtInTxnLimit(group)),
     .arena = arena_,
     .ops = InFlightOps(group.begin, group.end),
     .need_metadata = group.need_metadata
@@ -796,8 +829,16 @@ void Batcher::Flushed(
   }
 
   if (--outstanding_rpcs_ == 0) {
+    // A failed operation aborts the transaction, so its siblings could fail with a kAborted error,
+    // which outranks the original failure. Restore the original failure for such operations.
+    const auto flush_abort_cause =
+        transaction ? transaction->batcher_if().FlushAbortCause() : Status::OK();
     for (auto& op : ops_queue_) {
       if (!op.error.ok()) {
+        if (!flush_abort_cause.ok() &&
+            TransactionError(op.error).value() == TransactionErrorCode::kAborted) {
+          op.error = flush_abort_cause;
+        }
         CombineError(op);
       }
     }

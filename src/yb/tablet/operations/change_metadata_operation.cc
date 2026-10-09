@@ -256,7 +256,8 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
       RETURN_NOT_OK(tablet->MarkBackfillDone(
-          id, request()->backfill_done_table_id().ToBuffer()));
+          id, request()->backfill_done_table_id().ToBuffer(),
+          request()->birth_time()));
       break;
     case MetadataChange::ADD_MULTIPLE_TABLES:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "

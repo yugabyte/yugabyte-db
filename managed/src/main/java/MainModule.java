@@ -66,6 +66,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.certmgmt.HostPreservingSSLSocketFactory;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -91,6 +92,7 @@ import com.yugabyte.yw.common.operator.YBInformerFactory;
 import com.yugabyte.yw.common.operator.YBReconcilerFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.TelemetryProviderCrConverter;
 import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
@@ -119,6 +121,7 @@ import java.security.SecureRandom;
 import java.security.Security;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -189,6 +192,11 @@ public class MainModule extends AbstractModule {
         }
       }
     }
+    // Netty prefers its bundled BoringSSL over JSSE (BCJSSE) whenever it can load it. This
+    // includes the copy shaded into grpc-netty-shaded, used by the node agent and YBC clients.
+    // Must be set before Netty's OpenSsl class initializes.
+    System.setProperty("io.netty.handler.ssl.noOpenSsl", "true");
+    System.setProperty("io.grpc.netty.shaded.io.netty.handler.ssl.noOpenSsl", "true");
     log.info("Adding BC-FIPS providers");
     Security.setProperty("ssl.KeyManagerFactory.algorithm", "PKIX");
     Security.setProperty("ssl.TrustManagerFactory.algorithm", "PKIX");
@@ -236,6 +244,9 @@ public class MainModule extends AbstractModule {
     System.setProperty("org.xerial.snappy.tempdir", snappyTempPath.toAbsolutePath().toString());
 
     TLSConfig.modifyTLSDisabledAlgorithms(config);
+    // After the BC providers and TLS properties are in place, so the default context is BCJSSE's.
+    HttpsURLConnection.setDefaultSSLSocketFactory(
+        HostPreservingSSLSocketFactory.wrap(HttpsURLConnection.getDefaultSSLSocketFactory()));
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     bind(RuntimeConfigCacheInvalidator.class).asEagerSingleton();
     install(new CustomerConfKeys());
@@ -344,6 +355,7 @@ public class MainModule extends AbstractModule {
     bind(KubernetesClientFactory.class).asEagerSingleton();
     bind(UniverseImporter.class).asEagerSingleton();
     bind(OperatorResourceRestorer.class).asEagerSingleton();
+    bind(TelemetryProviderCrConverter.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();
@@ -371,8 +383,10 @@ public class MainModule extends AbstractModule {
           SecureRandom secureRandom = new SecureRandom();
           SSLContext sslContext = SSLContext.getInstance("TLS");
           sslContext.init(null, ybaJavaTrustManagers, secureRandom);
-          HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
-          HTTPRequest.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+          SSLSocketFactory socketFactory =
+              HostPreservingSSLSocketFactory.wrap(sslContext.getSocketFactory());
+          HttpsURLConnection.setDefaultSSLSocketFactory(socketFactory);
+          HTTPRequest.setDefaultSSLSocketFactory(socketFactory);
         } catch (Exception e) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());

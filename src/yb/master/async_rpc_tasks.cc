@@ -28,6 +28,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
@@ -55,7 +56,6 @@ using std::string;
 using std::shared_ptr;
 using std::vector;
 
-using strings::Substitute;
 using consensus::RaftPeerPB;
 using server::MonitoredTaskState;
 using server::MonitoredTaskType;
@@ -672,6 +672,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
     req.set_tablet_id(tablet_->tablet_id());
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
     req.set_mark_backfill_done(true);
+    req.set_birth_time(birth_time_);
     schema_version_ = l->pb.version();
   }
 
@@ -960,8 +961,8 @@ std::string AsyncTryStepDown::description() const {
 }
 
 Status AsyncTryStepDown::PrepareRequest(int attempt) {
-  LOG_WITH_PREFIX(INFO) << Substitute("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
-                                      attempt, permanent_uuid(), change_config_ts_uuid_);
+  LOG_WITH_PREFIX(INFO) << Format("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
+                                  attempt, permanent_uuid(), change_config_ts_uuid_);
   if (attempt > 1) {
     return STATUS(RuntimeError, "Retry is not allowed");
   }
@@ -1005,7 +1006,7 @@ bool AsyncTryStepDown::SendRequest(int attempt) {
 void AsyncTryStepDown::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error on stepdown for tablet $0 with leader $1, attempt $2 and error $3",
         tablet_->tablet_id(), permanent_uuid(), attempt, rpc_.status().ToString());
 
@@ -1073,13 +1074,13 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
 }
 
 string AsyncAddTableToTablet::description() const {
-  return Substitute("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+  return Format("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
 }
 
 void AsyncAddTableToTablet::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error when adding table $0 to tablet $1, attempt $2 and error $3",
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;
@@ -1109,8 +1110,15 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     TransitionToFailedState(MonitoredTaskState::kRunning, tablets_running_result.status());
     return;
   }
-  LOG_IF(DFATAL, !*tablets_running_result)
-      << "Not all tablets are running while processing AddTableToTablet response";
+  if (!*tablets_running_result) {
+    // A vector index shares the indexed table's tablets, which may include split children the
+    // master has not yet seen RUNNING. Wait for them without resending the RPC: re-adding a
+    // vector index to a tablet is not idempotent.
+    LOG_WITH_PREFIX(INFO) << "Not all tablets are running yet, waiting before promoting table";
+    table_added_ = true;
+    TransitionToWaitingState(MonitoredTaskState::kRunning);
+    return;
+  }
   if (--*task_counter_ == 0) {
     VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
     Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
@@ -1126,9 +1134,19 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
   TransitionToCompleteState();
 }
 
+Status AsyncAddTableToTablet::PickReplica() {
+  // No RPC is sent once the table is added, so the tablet may already be gone (split parent).
+  return table_added_ ? Status::OK() : RetryingTSRpcTaskWithTable::PickReplica();
+}
+
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
   if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled)) {
     LOG_WITH_FUNC(WARNING) << "Causing the task to get stuck";
+    return true;
+  }
+  if (table_added_) {
+    // resp_ still holds the successful response, so HandleResponse only re-checks tablet states.
+    RpcCallback();
     return true;
   }
 
@@ -1162,13 +1180,13 @@ AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
 }
 
 string AsyncRemoveTableFromTablet::description() const {
-  return Substitute("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+  return Format("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
 }
 
 void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error when removing table $0 from tablet $1, attempt $2 and error $3",
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;
@@ -1191,6 +1209,7 @@ void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
 }
 
 bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
+  TEST_SYNC_POINT("AsyncRemoveTableFromTablet::SendRequest");
   ts_admin_proxy_->RemoveTableFromTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send RemoveTableFromTablet request (attempt " << attempt << "):\n"
                       << req_.DebugString();
@@ -1378,6 +1397,44 @@ bool AsyncUpdateTransactionTablesVersion::SendRequest(int attempt) {
 void AsyncUpdateTransactionTablesVersion::Finished(const Status& status) {
   callback_(status);
 }
+
+// ============================================================================
+//  Class AsyncApplyXClusterGuardedInfoIfNewer.
+// ============================================================================
+AsyncApplyXClusterGuardedInfoIfNewer::AsyncApplyXClusterGuardedInfoIfNewer(
+    Master* master, ThreadPool* callback_pool, const TabletServerId& ts_uuid,
+    std::shared_ptr<const XClusterGuardedInfoPB> info, MonoTime deadline,
+    StdStatusCallback callback)
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /*async_task_throttler=*/nullptr),
+      info_(std::move(info)),
+      callback_(std::move(callback)) {
+  deadline_ = deadline;
+}
+
+std::string AsyncApplyXClusterGuardedInfoIfNewer::description() const {
+  return Format(
+      "Apply xCluster-guarded info (version $0) if newer on TServer $1",
+      info_->xcluster_guarded_info_version().ShortDebugString(), permanent_uuid_);
+}
+
+void AsyncApplyXClusterGuardedInfoIfNewer::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    // Leave the task running so the framework retries until the deadline.
+    LOG(WARNING) << description() << " failed: " << StatusFromPB(resp_.error().status());
+    return;
+  }
+  TransitionToCompleteState();
+}
+
+bool AsyncApplyXClusterGuardedInfoIfNewer::SendRequest(int attempt) {
+  tserver::ApplyXClusterGuardedInfoIfNewerRequestPB req;
+  *req.mutable_xcluster_guarded_info() = *info_;
+  ts_admin_proxy_->ApplyXClusterGuardedInfoIfNewerAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent " << description();
+  return true;
+}
+
+void AsyncApplyXClusterGuardedInfoIfNewer::Finished(const Status& status) { callback_(status); }
 
 // ============================================================================
 //  Class AsyncTsTestRetry.

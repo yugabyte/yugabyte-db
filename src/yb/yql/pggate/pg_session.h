@@ -84,6 +84,10 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   void ResetCatalogReadPoint();
   [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
+  void SetHistoricalReadContext(
+      const ReadHybridTime& read_time, std::string transaction_id);
+  void ResetHistoricalReadContext();
+
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
   //------------------------------------------------------------------------------------------------
@@ -186,6 +190,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   Status SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options);
 
+  void SetupPerformOptionsForSeparateDdlTxn(tserver::PgPerformOptionsPB* options) const;
+
   void SetTransactionHasWrites();
   Result<bool> CurrentTransactionUsesFastPath() const;
 
@@ -196,7 +202,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
-  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
+  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux);
 
   Status AcquireAdvisoryLock(
       const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
@@ -280,6 +286,12 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   ReadHybridTime catalog_read_time_;
 
+  struct HistoricalReadContext {
+    ReadHybridTime read_time;
+    std::string transaction_id;
+  };
+  std::optional<HistoricalReadContext> historical_read_context_;
+
   // Execution status.
   Status status_;
   std::string errmsg_;
@@ -311,8 +323,11 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
 template<class PB>
 Status SetupPerformOptionsForDdlIfNeeded(PgSession& session, PB& req) {
-  return req.use_regular_transaction_block() ?
-    session.SetupPerformOptionsForDdl(req.mutable_options()) : Status::OK();
+  if (req.use_regular_transaction_block()) {
+    return session.SetupPerformOptionsForDdl(req.mutable_options());
+  }
+  session.SetupPerformOptionsForSeparateDdlTxn(req.mutable_options());
+  return Status::OK();
 }
 
 }  // namespace yb::pggate

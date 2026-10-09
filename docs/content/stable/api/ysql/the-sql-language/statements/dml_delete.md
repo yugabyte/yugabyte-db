@@ -23,8 +23,8 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
   returning_clause
 {{%/ebnf%}}
 
-{{< note title="Table inheritance is not yet supported" >}}
-The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+{{< note title="Table inheritance" >}}
+By default, `DELETE` on a table also updates matching rows in tables that inherit from it. Use `ONLY` before the table name to update the named table alone; `*` after it makes the default explicit. See [Table inheritance](../../ddl-inherit/).
 {{< /note >}}
 
 See the section [The WITH clause and common table expressions](../../with-clause/) for more information about the semantics of the `common_table_expression` grammar rule.
@@ -110,6 +110,6 @@ DELETE 1
 
 ## See also
 
-- [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select/)
-- [`UPDATE`](../dml_update/)
+- [INSERT](../dml_insert)
+- [SELECT](../dml_select/)
+- [UPDATE](../dml_update/)

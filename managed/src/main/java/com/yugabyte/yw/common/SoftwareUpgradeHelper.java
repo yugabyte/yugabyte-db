@@ -4,7 +4,6 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -63,11 +62,11 @@ public class SoftwareUpgradeHelper {
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     return gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
+        && primaryCluster.userIntent.enableYSQL
         && (primaryCluster.userIntent.enableYSQLAuth
             || primaryCluster.userIntent.enableNodeToNodeEncrypt
             || primaryCluster.userIntent.enableClientToNodeEncrypt)
-        && (primaryCluster.userIntent.dedicatedNodes
-            || primaryCluster.userIntent.providerType.equals(CloudType.kubernetes));
+        && (primaryCluster.userIntent.dedicatedNodes || Util.isKubernetesBased(primaryCluster));
   }
 
   public boolean checkUpgradeRequireFinalize(String currentVersion, String newVersion) {

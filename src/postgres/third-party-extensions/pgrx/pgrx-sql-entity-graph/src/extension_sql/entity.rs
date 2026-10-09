@@ -17,6 +17,7 @@
 
 */
 use crate::extension_sql::SqlDeclared;
+use crate::metadata::{SqlMapping, SqlTranslatable, TypeOrigin};
 use crate::pgrx_sql::PgrxSql;
 use crate::positioning_ref::PositioningRef;
 use crate::to_sql::ToSql;
@@ -26,32 +27,32 @@ use std::fmt::Display;
 
 /// The output of a [`ExtensionSql`](crate::ExtensionSql) from `quote::ToTokens::to_tokens`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ExtensionSqlEntity {
-    pub module_path: &'static str,
-    pub full_path: &'static str,
-    pub sql: &'static str,
-    pub file: &'static str,
+pub struct ExtensionSqlEntity<'a> {
+    pub module_path: &'a str,
+    pub full_path: &'a str,
+    pub sql: &'a str,
+    pub file: &'a str,
     pub line: u32,
-    pub name: &'static str,
+    pub name: &'a str,
     pub bootstrap: bool,
     pub finalize: bool,
     pub requires: Vec<PositioningRef>,
     pub creates: Vec<SqlDeclaredEntity>,
 }
 
-impl ExtensionSqlEntity {
+impl ExtensionSqlEntity<'_> {
     pub fn has_sql_declared_entity(&self, identifier: &SqlDeclared) -> Option<&SqlDeclaredEntity> {
         self.creates.iter().find(|created| created.has_sql_declared_entity(identifier))
     }
 }
 
-impl From<ExtensionSqlEntity> for SqlGraphEntity {
-    fn from(val: ExtensionSqlEntity) -> Self {
+impl<'a> From<ExtensionSqlEntity<'a>> for SqlGraphEntity<'a> {
+    fn from(val: ExtensionSqlEntity<'a>) -> Self {
         SqlGraphEntity::CustomSql(val)
     }
 }
 
-impl SqlGraphIdentifier for ExtensionSqlEntity {
+impl SqlGraphIdentifier for ExtensionSqlEntity<'_> {
     fn dot_identifier(&self) -> String {
         format!("sql {}", self.name)
     }
@@ -59,7 +60,7 @@ impl SqlGraphIdentifier for ExtensionSqlEntity {
         self.name.to_string()
     }
 
-    fn file(&self) -> Option<&'static str> {
+    fn file(&self) -> Option<&str> {
         Some(self.file)
     }
 
@@ -68,7 +69,7 @@ impl SqlGraphIdentifier for ExtensionSqlEntity {
     }
 }
 
-impl ToSql for ExtensionSqlEntity {
+impl ToSql for ExtensionSqlEntity<'_> {
     fn to_sql(&self, _context: &PgrxSql) -> eyre::Result<String> {
         let ExtensionSqlEntity { file, line, sql, creates, requires, .. } = self;
         let creates = if !creates.is_empty() {
@@ -109,36 +110,35 @@ impl ToSql for ExtensionSqlEntity {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
-pub struct SqlDeclaredEntityData {
-    sql: String,
-    name: String,
-    option: String,
-    vec: String,
-    vec_option: String,
-    option_vec: String,
-    option_vec_option: String,
-    array: String,
-    option_array: String,
-    varlena: String,
-    pg_box: Vec<String>,
+pub struct SqlDeclaredTypeEntityData {
+    pub(crate) sql: String,
+    pub(crate) name: String,
+    pub(crate) type_ident: String,
 }
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
+pub struct SqlDeclaredFunctionEntityData {
+    pub(crate) sql: String,
+    pub(crate) name: String,
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub enum SqlDeclaredEntity {
-    Type(SqlDeclaredEntityData),
-    Enum(SqlDeclaredEntityData),
-    Function(SqlDeclaredEntityData),
+    Type(SqlDeclaredTypeEntityData),
+    Enum(SqlDeclaredTypeEntityData),
+    Function(SqlDeclaredFunctionEntityData),
 }
 
 impl Display for SqlDeclaredEntity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SqlDeclaredEntity::Type(data) => {
+            Self::Type(data) => {
                 write!(f, "Type({})", data.name)
             }
-            SqlDeclaredEntity::Enum(data) => {
+            Self::Enum(data) => {
                 write!(f, "Enum({})", data.name)
             }
-            SqlDeclaredEntity::Function(data) => {
+            Self::Function(data) => {
                 write!(f, "Function({})", data.name)
             }
         }
@@ -146,76 +146,165 @@ impl Display for SqlDeclaredEntity {
 }
 
 impl SqlDeclaredEntity {
-    pub fn build(variant: impl AsRef<str>, name: impl AsRef<str>) -> eyre::Result<Self> {
-        let name = name.as_ref();
-        let data = SqlDeclaredEntityData {
-            sql: name
-                .split("::")
-                .last()
-                .ok_or_else(|| eyre::eyre!("Did not get SQL for `{}`", name))?
-                .to_string(),
-            name: name.to_string(),
-            option: format!("Option<{name}>"),
-            vec: format!("Vec<{name}>"),
-            vec_option: format!("Vec<Option<{name}>>"),
-            option_vec: format!("Option<Vec<{name}>>"),
-            option_vec_option: format!("Option<Vec<Option<{name}>>"),
-            array: format!("Array<{name}>"),
-            option_array: format!("Option<{name}>"),
-            varlena: format!("Varlena<{name}>"),
-            pg_box: vec![
-                format!("pgrx::pgbox::PgBox<{}>", name),
-                format!("pgrx::pgbox::PgBox<{}, pgrx::pgbox::AllocatedByRust>", name),
-                format!("pgrx::pgbox::PgBox<{}, pgrx::pgbox::AllocatedByPostgres>", name),
-            ],
-        };
-        let retval = match variant.as_ref() {
-            "Type" => Self::Type(data),
-            "Enum" => Self::Enum(data),
-            "Function" => Self::Function(data),
+    pub fn build(variant: &str, name: &str) -> eyre::Result<Self> {
+        let sql = name
+            .split("::")
+            .last()
+            .ok_or_else(|| eyre::eyre!("Did not get SQL for `{}`", name))?
+            .to_string();
+        let retval = match variant {
+            "Type" => Self::Type(SqlDeclaredTypeEntityData {
+                sql,
+                name: name.to_string(),
+                type_ident: name.to_string(),
+            }),
+            "Enum" => Self::Enum(SqlDeclaredTypeEntityData {
+                sql,
+                name: name.to_string(),
+                type_ident: name.to_string(),
+            }),
+            "Function" => {
+                Self::Function(SqlDeclaredFunctionEntityData { sql, name: name.to_string() })
+            }
             _ => {
                 return Err(eyre::eyre!(
                     "Can only declare `Type(Ident)`, `Enum(Ident)` or `Function(Ident)`"
-                ))
+                ));
             }
         };
         Ok(retval)
     }
+
+    pub fn build_type<T: SqlTranslatable>(variant: &str, name: &str) -> eyre::Result<Self> {
+        let make_declared = match variant {
+            "Type" => Self::Type,
+            "Enum" => Self::Enum,
+            _ => {
+                return Err(eyre::eyre!(
+                    "Can only declare `Type(Ident)` or `Enum(Ident)` with type metadata"
+                ));
+            }
+        };
+
+        if matches!(T::TYPE_ORIGIN, TypeOrigin::External) {
+            return Err(eyre::eyre!(
+                "`creates = [{variant}(...)]` is only valid for extension-owned SQL types"
+            ));
+        }
+
+        let sql = match T::argument_sql() {
+            Ok(SqlMapping::As(sql)) => sql,
+            Ok(SqlMapping::Composite | SqlMapping::Array(_)) => {
+                return Err(eyre::eyre!(
+                    "`creates = [{variant}(...)]` requires a concrete SQL type name"
+                ));
+            }
+            Ok(SqlMapping::Skip) => {
+                return Err(eyre::eyre!(
+                    "`creates = [{variant}(...)]` cannot use a skipped SQL type"
+                ));
+            }
+            Err(err) => return Err(err.into()),
+        };
+        let data = SqlDeclaredTypeEntityData {
+            sql,
+            name: name.to_string(),
+            type_ident: T::TYPE_IDENT.to_string(),
+        };
+        Ok(make_declared(data))
+    }
+
     pub fn sql(&self) -> String {
         match self {
-            SqlDeclaredEntity::Type(data) => data.sql.clone(),
-            SqlDeclaredEntity::Enum(data) => data.sql.clone(),
-            SqlDeclaredEntity::Function(data) => data.sql.clone(),
+            Self::Type(data) => data.sql.clone(),
+            Self::Enum(data) => data.sql.clone(),
+            Self::Function(data) => data.sql.clone(),
         }
+    }
+
+    pub fn type_ident(&self) -> Option<&str> {
+        match self {
+            Self::Type(data) | Self::Enum(data) => Some(data.type_ident.as_str()),
+            Self::Function(_) => None,
+        }
+    }
+
+    pub fn matches_type_ident(&self, type_ident: &str) -> bool {
+        matches!(self.type_ident(), Some(value) if value == type_ident)
     }
 
     pub fn has_sql_declared_entity(&self, identifier: &SqlDeclared) -> bool {
         match (&identifier, &self) {
-            (SqlDeclared::Type(ident_name), &SqlDeclaredEntity::Type(data))
-            | (SqlDeclared::Enum(ident_name), &SqlDeclaredEntity::Enum(data))
-            | (SqlDeclared::Function(ident_name), &SqlDeclaredEntity::Function(data)) => {
-                let matches = |identifier_name: &str| {
-                    identifier_name == data.name
-                        || identifier_name == data.option
-                        || identifier_name == data.vec
-                        || identifier_name == data.vec_option
-                        || identifier_name == data.option_vec
-                        || identifier_name == data.option_vec_option
-                        || identifier_name == data.array
-                        || identifier_name == data.option_array
-                        || identifier_name == data.varlena
-                };
-                if matches(ident_name) || data.pg_box.contains(ident_name) {
+            (SqlDeclared::Type(ident_name), &Self::Type(data))
+            | (SqlDeclared::Enum(ident_name), &Self::Enum(data)) => {
+                if ident_name == &data.name || ident_name == &data.type_ident {
                     return true;
                 }
-                // there are cases where the identifier is
-                // `core::option::Option<Foo>` while the data stores
-                // `Option<Foo>` check again for this
-                let Some(generics_start) = ident_name.find('<') else { return false };
-                let Some(qual_end) = ident_name[..generics_start].rfind("::") else { return false };
-                matches(&ident_name[qual_end + 2..])
+                false
             }
+            (SqlDeclared::Function(ident_name), &Self::Function(data)) => ident_name == &data.name,
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metadata::{ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, TypeOrigin};
+
+    struct ExtensionOwnedType;
+    struct ExternalType;
+
+    unsafe impl SqlTranslatable for ExtensionOwnedType {
+        const TYPE_IDENT: &'static str = "tests::ExtensionOwnedType";
+        const TYPE_ORIGIN: TypeOrigin = TypeOrigin::ThisExtension;
+        const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> =
+            Ok(SqlMappingRef::literal("extension_owned"));
+        const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+            Ok(ReturnsRef::One(SqlMappingRef::literal("extension_owned")));
+    }
+
+    unsafe impl SqlTranslatable for ExternalType {
+        const TYPE_IDENT: &'static str = "tests::ExternalType";
+        const TYPE_ORIGIN: TypeOrigin = TypeOrigin::External;
+        const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> =
+            Ok(SqlMappingRef::literal("text"));
+        const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+            Ok(ReturnsRef::One(SqlMappingRef::literal("text")));
+    }
+
+    #[test]
+    fn build_type_accepts_extension_owned_types() {
+        let declared = SqlDeclaredEntity::build_type::<ExtensionOwnedType>(
+            "Type",
+            "tests::ExtensionOwnedType",
+        )
+        .unwrap();
+
+        assert_eq!(declared.type_ident(), Some("tests::ExtensionOwnedType"));
+        assert_eq!(declared.sql(), "extension_owned");
+    }
+
+    #[test]
+    fn build_type_rejects_external_types() {
+        let error = SqlDeclaredEntity::build_type::<ExternalType>("Type", "tests::ExternalType")
+            .unwrap_err();
+        assert!(error.to_string().contains("only valid for extension-owned SQL types"));
+
+        let error = SqlDeclaredEntity::build_type::<ExternalType>("Enum", "tests::ExternalType")
+            .unwrap_err();
+        assert!(error.to_string().contains("only valid for extension-owned SQL types"));
+    }
+
+    #[test]
+    fn function_declarations_do_not_carry_type_idents() {
+        let declared = SqlDeclaredEntity::build("Function", "tests::helper_fn").unwrap();
+
+        assert_eq!(declared.type_ident(), None);
+        assert_eq!(declared.sql(), "helper_fn");
+        assert!(
+            declared.has_sql_declared_entity(&SqlDeclared::Function("tests::helper_fn".into()))
+        );
     }
 }
