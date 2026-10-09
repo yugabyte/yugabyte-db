@@ -40,6 +40,7 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/tcmalloc_util.h"
 
 DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "If true, the recommended defaults for the memory usage settings take into account the amount "
@@ -288,6 +289,7 @@ Status MasterTServerParseFlagsAndInit(
 
   MemTracker::ConfigureTCMalloc();
   MemTracker::PrintTCMallocConfigs();
+  CheckTCMallocPerCpuCaches();
 
   return Status::OK();
 }

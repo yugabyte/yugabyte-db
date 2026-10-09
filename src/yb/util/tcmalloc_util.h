@@ -61,4 +61,8 @@ int64_t GetTCMallocSamplingPeriod();
 
 void SetTCMallocSamplingPeriod(int64_t sample_period_bytes);
 
+// Logs a warning if TCMalloc per-CPU caches are inactive, or if they are active on a kernel where
+// they are unsafe.
+void CheckTCMallocPerCpuCaches();
+
 }  // namespace yb
