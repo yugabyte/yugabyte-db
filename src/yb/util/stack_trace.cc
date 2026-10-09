@@ -25,7 +25,6 @@
 #endif
 
 #include <algorithm>
-#include <cinttypes>
 #include <mutex>
 
 #include "yb/gutil/casts.h"
@@ -433,11 +432,11 @@ string StackTrace::ToLogFormatModuleOffsetString() const {
     void* pc = frames_[i];
     Dl_info info;
     if (dladdr(pc, &info) != 0 && info.dli_fname != nullptr) {
-      StringAppendF(&buf, "    @ %*p (%s+0x%" PRIxPTR ")\n", kPrintfPointerFieldWidth, pc,
-                    info.dli_fname,
-                    reinterpret_cast<uintptr_t>(pc) - reinterpret_cast<uintptr_t>(info.dli_fbase));
+      buf += Format(
+          "    @ $0 ($1+0x$2)\n", FormatStackTraceAddress(pc), info.dli_fname,
+          HexString(reinterpret_cast<uintptr_t>(pc) - reinterpret_cast<uintptr_t>(info.dli_fbase)));
     } else {
-      StringAppendF(&buf, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
+      buf += Format("    @ $0\n", FormatStackTraceAddress(pc));
     }
   }
   return buf;
