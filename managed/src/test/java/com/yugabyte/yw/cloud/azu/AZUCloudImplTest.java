@@ -204,8 +204,7 @@ public class AZUCloudImplTest extends FakeDBApplication {
   @Test
   public void testEnsureLbCreatesStandardLbInSubnetOfFirstZone() {
     setupLbProvider();
-    when(mockApiClient.updateLoadBalancer(eq(LB_NAME), any()))
-        .thenReturn(lb(LB_REGION, Map.of()));
+    when(mockApiClient.updateLoadBalancer(eq(LB_NAME), any())).thenReturn(lb(LB_REGION, Map.of()));
 
     assertEquals("10.0.0.5", ensureLb(Map.of("universe-name", "u1")));
 

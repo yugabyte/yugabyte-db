@@ -26,6 +26,8 @@ import com.azure.resourcemanager.compute.models.Sku;
 import com.azure.resourcemanager.compute.models.SubResourceReadOnly;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.marketplaceordering.MarketplaceOrderingManager;
+import com.azure.resourcemanager.network.NetworkManager;
+import com.azure.resourcemanager.network.fluent.NetworkInterfacesClient;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.LoadBalancerInner;
 import com.azure.resourcemanager.network.fluent.models.NetworkInterfaceInner;
@@ -400,15 +402,9 @@ public class AZUResourceGroupApiClient {
     return disk;
   }
 
-  // By ID: devops creates the interfaces in the network resource group, which can differ from
-  // resourceGroup.
   public NetworkInterfaceInner getNetworkInterface(String id) {
     NetworkInterfaceInner networkInterface =
-        azureResourceManager
-            .networks()
-            .manager()
-            .serviceClient()
-            .getNetworkInterfaces()
+        networkInterfaces(id)
             .getByResourceGroup(
                 ResourceUtils.groupFromResourceId(id), ResourceUtils.nameFromResourceId(id));
     if (networkInterface == null) {
@@ -419,15 +415,26 @@ public class AZUResourceGroupApiClient {
   }
 
   public void updateNetworkInterface(NetworkInterfaceInner networkInterface) {
-    azureResourceManager
-        .networks()
-        .manager()
-        .serviceClient()
-        .getNetworkInterfaces()
+    networkInterfaces(networkInterface.id())
         .createOrUpdate(
             ResourceUtils.groupFromResourceId(networkInterface.id()),
             networkInterface.name(),
             networkInterface);
+  }
+
+  // Devops creates the interfaces in the network subscription and resource group, which can differ
+  // from this client's, so each call goes where the ID says.
+  private NetworkInterfacesClient networkInterfaces(String id) {
+    NetworkManager network = azureResourceManager.networks().manager();
+    String subscription = ResourceUtils.subscriptionFromResourceId(id);
+    if (!network.subscriptionId().equalsIgnoreCase(subscription)) {
+      network =
+          NetworkManager.authenticate(
+              network.httpPipeline(),
+              new AzureProfile(
+                  azureResourceManager.tenantId(), subscription, network.environment()));
+    }
+    return network.serviceClient().getNetworkInterfaces();
   }
 
   private AzureResourceManager getResourceManager(AzureCloudInfo azCloudInfo) {

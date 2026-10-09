@@ -34,6 +34,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -360,19 +361,20 @@ public class AZUCloudImpl implements CloudAPI {
       List<BackendAddressPoolInner> backends,
       List<NodeID> nodeIDs) {
     List<VirtualMachineInner> nodes = getVirtualMachinesByNodeIDs(apiClient, nodeIDs);
-    if (backends == null || backends.isEmpty() || !hasIpAddresses(backends.get(0))) {
-      return ensureNicBackends(apiClient, lbName, backends, nodes);
-    }
-    Map<NetworkInterfaceIpConfigurationInner, VirtualMachineInner> ipToVm =
-        mapIpToNodes(apiClient, nodes);
-    // Load balancing traffic should be forwarded over the private network. Hence private IP is used
-    Map<String, String> ipToVmName =
-        ipToVm.entrySet().stream()
-            .collect(
-                Collectors.toMap(
-                    entry -> entry.getKey().privateIpAddress(),
-                    entry -> CloudAPI.getResourceNameFromResourceUrl(entry.getValue().id())));
     try {
+      if (backends == null || backends.isEmpty() || !hasIpAddresses(backends.get(0))) {
+        return ensureNicBackends(apiClient, lbName, backends, nodes);
+      }
+      Map<NetworkInterfaceIpConfigurationInner, VirtualMachineInner> ipToVm =
+          mapIpToNodes(apiClient, nodes);
+      // Load balancing traffic should be forwarded over the private network. Hence private
+      // IP is used
+      Map<String, String> ipToVmName =
+          ipToVm.entrySet().stream()
+              .collect(
+                  Collectors.toMap(
+                      entry -> entry.getKey().privateIpAddress(),
+                      entry -> CloudAPI.getResourceNameFromResourceUrl(entry.getValue().id())));
       if (ipToVmName.isEmpty()) {
         // Detach: no member subnets to derive vnet from (onlyElement() below throws on empty
         // set); vnet unused when writing an empty address list.
@@ -391,8 +393,7 @@ public class AZUCloudImpl implements CloudAPI {
                       .map(subnet -> subnet.split("/subnets")[0])
                       .collect(onlyElement()));
       backends.set(
-          0,
-          apiClient.updateIPsInBackendPool(lbName, ipToVmName, backends.get(0), virtualNetwork));
+          0, apiClient.updateIPsInBackendPool(lbName, ipToVmName, backends.get(0), virtualNetwork));
       return backends;
     } catch (Exception exception) {
       log.error("Error updating backend pools for load balancer {}", lbName, exception);
@@ -443,9 +444,7 @@ public class AZUCloudImpl implements CloudAPI {
 
   /** Removes from the pool the network interfaces whose lowercase IDs are not in keepNicIds. */
   private static void removeNicsFromPool(
-      AZUResourceGroupApiClient apiClient,
-      BackendAddressPoolInner pool,
-      Set<String> keepNicIds) {
+      AZUResourceGroupApiClient apiClient, BackendAddressPoolInner pool, Set<String> keepNicIds) {
     for (NetworkInterfaceIpConfigurationInner member :
         CollectionUtils.emptyIfNull(pool.backendIpConfigurations())) {
       String nicId = ResourceUtils.parentResourceIdFromResourceId(member.id());
@@ -686,23 +685,13 @@ public class AZUCloudImpl implements CloudAPI {
   }
 
   /**
-   * The subnet ID of the first zone that has a subnet, so that a retry picks the same one. A subnet
-   * name resolves as get_subnet_id in devops azure/utils.py resolves it for the VMs.
+   * The subnet ID of the first zone that has a subnet. A subnet name resolves as get_subnet_id in
+   * devops azure/utils.py resolves it for the VMs.
    */
   private static String getSubnetId(
       Provider provider, List<AvailabilityZone> zones, String regionCode, String lbName) {
     AvailabilityZone zone =
-        zones.stream()
-            .filter(az -> StringUtils.isNotBlank(az.getSubnet()))
-            .findFirst()
-            .orElseThrow(
-                () ->
-                    new PlatformServiceException(
-                        BAD_REQUEST,
-                        "No zone of region "
-                            + regionCode
-                            + " has a subnet for load balancer "
-                            + lbName));
+        ManagedLoadBalancerUtil.getFirstZoneWithSubnet(zones, regionCode, lbName);
     String subnet = zone.getSubnet();
     if (subnet.startsWith("/subscriptions/")) {
       return subnet;

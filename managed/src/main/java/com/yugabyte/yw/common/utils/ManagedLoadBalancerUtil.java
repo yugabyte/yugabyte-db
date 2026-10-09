@@ -71,6 +71,22 @@ public class ManagedLoadBalancerUtil {
     return region.getProviderCloudCode() == CloudType.azu ? name + "-" + region.getCode() : name;
   }
 
+  /** The first zone that has a subnet, so that a retry picks the same one. */
+  public static AvailabilityZone getFirstZoneWithSubnet(
+      List<AvailabilityZone> zones, String regionCode, String lbName) {
+    return zones.stream()
+        .filter(zone -> StringUtils.isNotBlank(zone.getSubnet()))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    BAD_REQUEST,
+                    "No zone of region "
+                        + regionCode
+                        + " has a subnet for load balancer "
+                        + lbName));
+  }
+
   /** Whether the cluster asks for any load balancer that YBA manages. */
   public static boolean isEnabled(Cluster cluster) {
     return cluster.userIntent.isManagedLoadBalancerEnabled();
