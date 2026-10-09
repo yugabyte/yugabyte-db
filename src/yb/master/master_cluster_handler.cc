@@ -29,6 +29,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+DECLARE_bool(send_blacklisted_tservers_on_heartbeat);
 DECLARE_bool(ysql_yb_enable_listen_notify);
 
 DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
@@ -284,9 +285,12 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   resp->set_remaining(blacklist_replicas);
   resp->set_total(initial_load);
 
+  // The waits for the server blacklist only make sense while the master is sending the hint they
+  // confirm the delivery of.
   const bool delay_until_heartbeat = blacklist_leader
       ? FLAGS_delay_leader_blacklist_completion_percent_until_tservers_heartbeat
-      : FLAGS_delay_blacklist_completion_percent_until_tservers_heartbeat;
+      : FLAGS_delay_blacklist_completion_percent_until_tservers_heartbeat &&
+            FLAGS_send_blacklisted_tservers_on_heartbeat;
   if (blacklist_replicas == 0 && delay_until_heartbeat) {
     // Best effort wait to ensure all tservers have updated their meta-cache: marked the leader
     // blacklisted tservers with no leaders as followers, or the blacklisted tservers with no

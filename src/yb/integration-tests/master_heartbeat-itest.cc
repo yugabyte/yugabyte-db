@@ -527,10 +527,16 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   ASSERT_OK(evict_from_all_tablets(drained_ts->permanent_uuid()));
   ASSERT_OK(wait_for_hint(drained_only));
 
-  // The flag turns it off.
+  // The flag turns it off: the hint stops at once, and the background task drops the cached set
+  // instead of refreshing it. Turning it back on recomputes the set.
+  auto& catalog_mgr_impl = mini_cluster_->mini_master()->catalog_manager_impl();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = false;
   ASSERT_TRUE(ASSERT_RESULT(heartbeat()).empty());
+  ASSERT_OK(WaitFor(
+      [&catalog_mgr_impl] { return catalog_mgr_impl.GetDrainedBlacklistedTServers().empty(); },
+      10s * kTimeMultiplier, "Cached drained set dropped while the hint is disabled"));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
+  ASSERT_OK(wait_for_hint(drained_only));
 
   // Still named after the drained tserver stops heartbeating and becomes unresponsive: this is the
   // window in which its address may already black-hole traffic.

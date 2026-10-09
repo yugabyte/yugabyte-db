@@ -408,6 +408,7 @@ DEFINE_RUNTIME_uint32(drained_blacklisted_tservers_refresh_interval_ms, 5000,
 TAG_FLAG(drained_blacklisted_tservers_refresh_interval_ms, advanced);
 
 DECLARE_int32(blacklist_progress_initial_delay_secs);
+DECLARE_bool(send_blacklisted_tservers_on_heartbeat);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
@@ -13769,8 +13770,17 @@ void CatalogManager::RefreshDrainedBlacklistedTServers() {
   const bool past_failover_grace = TimeSinceElectedLeader() >
       MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs);
   // Advanced every tick, not only once the grace period is over, so a report that lands and is
-  // then cleared by a tserver restart during the grace period still counts.
+  // then cleared by a tserver restart during the grace period still counts. Also advanced while the
+  // hint is disabled: GetLoadMoveCompletionPercent relies on it independently of the hint.
   const bool maps_trusted = UpdateReplicaMapsTrusted();
+  if (!FLAGS_send_blacklisted_tservers_on_heartbeat) {
+    // The off switch stops the scan as well as the hint. Forget the cached set so that turning the
+    // flag back on does not serve a stale set, and the refresh time so that it recomputes at once.
+    std::lock_guard l(drained_blacklisted_tservers_lock_);
+    drained_blacklisted_tservers_.clear();
+    drained_blacklisted_tservers_refreshed_at_ = CoarseTimePoint();
+    return;
+  }
   auto blacklist = BlacklistSetFromPB();
   if (past_failover_grace && maps_trusted && blacklist.ok() && !blacklist->empty()) {
     // Unresponsive descriptors stay candidates: a decommissioned tserver keeps being named after

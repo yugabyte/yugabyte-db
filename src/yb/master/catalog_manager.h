@@ -1928,7 +1928,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Recomputes the blacklisted tservers that host no replica of any live tablet, as far as the
   // replica maps know. Run from the background task, at most once per
-  // drained_blacklisted_tservers_refresh_interval_ms; served to tservers in heartbeat responses so
+  // drained_blacklisted_tservers_refresh_interval_ms and only while
+  // send_blacklisted_tservers_on_heartbeat is set; served to tservers in heartbeat responses so
   // they can stop routing to cached replicas on those tservers.
   void RefreshDrainedBlacklistedTServers();
   std::vector<TabletServerId> GetDrainedBlacklistedTServers() const;
