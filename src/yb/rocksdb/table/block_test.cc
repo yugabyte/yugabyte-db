@@ -38,6 +38,7 @@
 #include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracked_byte_buffer.h"
 #include "yb/util/random_util.h"
@@ -385,7 +386,7 @@ TEST_F(BlockTest, IndexHashWithSharedPrefix) {
 namespace {
 
 std::string GetPaddedNum(int i) {
-  return StringPrintf("%010d", i);
+  return yb::ZeroPadded(i, 10);
 }
 
 yb::Result<std::string> GetMiddleKey(

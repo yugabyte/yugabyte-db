@@ -44,6 +44,8 @@ import play.libs.Json;
 @Singleton
 public class OCIInitializer extends AbstractInitializer {
 
+  private static final int FALLBACK_NVME_SIZE_GB = 6800;
+
   @Inject private ConfigHelper configHelper;
   @Inject private Environment environment;
 
@@ -92,17 +94,19 @@ public class OCIInitializer extends AbstractInitializer {
     Iterator<String> itr = instanceTypes.fieldNames();
     while (itr.hasNext()) {
       String instanceTypeCode = itr.next();
+      // ListShapes reports Flex defaults (1 OCPU / 16 GB). YAML owns the valid min SKU.
+      if (isLocalNvmeFlex(instanceTypeCode)) {
+        continue;
+      }
       JsonNode instanceTypeToDetailsMap = instanceTypes.get(instanceTypeCode);
 
-      InstanceTypeDetails instanceTypeDetails = InstanceTypeDetails.createOCIDefault();
-      int numCores =
-          instanceTypeToDetailsMap.has("numCores")
-              ? instanceTypeToDetailsMap.get("numCores").asInt()
-              : 0;
+      InstanceType existing = InstanceType.get(provider.getUuid(), instanceTypeCode);
+      double numCores =
+          resourceFromApi(instanceTypeCode, instanceTypeToDetailsMap, existing, "numCores");
       double memSizeGb =
-          instanceTypeToDetailsMap.has("memSizeGb")
-              ? instanceTypeToDetailsMap.get("memSizeGb").asDouble()
-              : 0;
+          resourceFromApi(instanceTypeCode, instanceTypeToDetailsMap, existing, "memSizeGb");
+      InstanceTypeDetails instanceTypeDetails =
+          detailsFromApi(instanceTypeCode, instanceTypeToDetailsMap, existing);
 
       InstanceType.upsert(
           provider.getUuid(), instanceTypeCode, numCores, memSizeGb, instanceTypeDetails);
@@ -252,6 +256,7 @@ public class OCIInitializer extends AbstractInitializer {
             volumeDetails.volumeType = InstanceType.VolumeType.valueOf(volumeType);
             instanceTypeDetails.volumeDetailsList.add(volumeDetails);
           }
+          instanceTypeDetails.setDefaultMountPaths();
         }
       }
 
@@ -264,5 +269,67 @@ public class OCIInitializer extends AbstractInitializer {
           numCores,
           memSizeGb);
     }
+  }
+
+  // YAML is the min valid Flex SKU. ListShapes local_disks is the family max, not that SKU.
+  private static double resourceFromApi(
+      String instanceTypeCode, JsonNode node, InstanceType existing, String field) {
+    double api = node != null ? node.path(field).asDouble(0) : 0;
+    if (existing != null && isLocalNvmeFlex(instanceTypeCode)) {
+      Double yamlVal = "numCores".equals(field) ? existing.getNumCores() : existing.getMemSizeGB();
+      if (yamlVal != null) {
+        return yamlVal;
+      }
+    }
+    return api;
+  }
+
+  private static InstanceTypeDetails detailsFromApi(
+      String instanceTypeCode, JsonNode node, InstanceType existing) {
+    if (existing != null && isNvmeDetails(existing.getInstanceTypeDetails())) {
+      return existing.getInstanceTypeDetails();
+    }
+    if (isLocalNvmeFlex(instanceTypeCode)) {
+      return nvmeDetails(1, FALLBACK_NVME_SIZE_GB);
+    }
+    int localDisks = node != null ? node.path("localDisks").asInt(0) : 0;
+    double localDisksInGbs = node != null ? node.path("localDisksInGbs").asDouble(0) : 0;
+    if (isLocalNvmeShape(instanceTypeCode) && localDisks > 0) {
+      int size = perDiskSizeGb(localDisks, localDisksInGbs);
+      return nvmeDetails(localDisks, size > 0 ? size : FALLBACK_NVME_SIZE_GB);
+    }
+    if (isLocalNvmeShape(instanceTypeCode)) {
+      return nvmeDetails(1, FALLBACK_NVME_SIZE_GB);
+    }
+    return InstanceTypeDetails.createOCIDefault();
+  }
+
+  private static boolean isLocalNvmeShape(String shape) {
+    return shape != null && (shape.contains("DenseIO") || shape.contains("HPC"));
+  }
+
+  private static boolean isLocalNvmeFlex(String shape) {
+    return isLocalNvmeShape(shape) && shape.contains("Flex");
+  }
+
+  private static boolean isNvmeDetails(InstanceTypeDetails details) {
+    return details != null
+        && details.volumeDetailsList != null
+        && !details.volumeDetailsList.isEmpty()
+        && details.volumeDetailsList.get(0).volumeType == InstanceType.VolumeType.NVME;
+  }
+
+  private static InstanceTypeDetails nvmeDetails(int volumeCount, int volumeSizeGB) {
+    InstanceTypeDetails details = new InstanceTypeDetails();
+    details.setVolumeDetailsList(volumeCount, volumeSizeGB, InstanceType.VolumeType.NVME);
+    return details;
+  }
+
+  private static int perDiskSizeGb(int localDisks, double localDisksInGbs) {
+    if (localDisks <= 0) {
+      return (int) Math.round(localDisksInGbs);
+    }
+    int size = (int) Math.round(localDisksInGbs / localDisks);
+    return size > 0 ? size : (int) Math.round(localDisksInGbs);
   }
 }

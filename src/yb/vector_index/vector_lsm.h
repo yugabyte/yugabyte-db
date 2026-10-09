@@ -86,11 +86,6 @@ class VectorLSMMergeFilter {
 
   // payload is attached to the vector, empty when the vector has no payload.
   virtual storage::FilterDecision Filter(VectorId vector_id, Slice payload) = 0;
-
-  // Returns the payload for a vector kept by Filter when its chunk was written without payloads
-  // while the compacted chunk stores them. The vector is discarded when the returned payload is
-  // empty.
-  virtual Result<ValueBuffer> RestorePayload(VectorId vector_id) = 0;
 };
 using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
 
@@ -165,6 +160,11 @@ class VectorLSM {
   Result<size_t> TotalEntries() const;
 
   Status Flush(bool wait);
+  // Waits for insert tasks already allocated when the wait started (including those that raced
+  // onto a new chunk after DoFlush), then drains the flush queue. A waited insert can RollChunk
+  // and re-fill the queue. Leftover in-memory entries are not flushed here; CreateSplitChildTablet
+  // issues a second vector Flush before CreateCheckpoint. Inserts that allocate after the epoch
+  // advances are not waited, so continuous ingest cannot stall this.
   Status WaitForFlush();
 
   // Vector LSM starts with background compactions disabled, they must be enabled explicitly
@@ -247,6 +247,7 @@ class VectorLSM {
   Status RollChunk(
       size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
+  void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);

@@ -10,7 +10,7 @@ Specifically, **do not** flag:
 
 - Line length, indentation, trailing whitespace, missing trailing newlines, tab/space mixing.
 - Import ordering, header-include ordering (the linter and clang-format own this).
-- Naming-style nits where the existing module already follows a pattern (a new symbol that matches its surroundings is fine).
+- Naming-style nits where the existing module already follows a pattern (a new symbol that matches its surroundings is fine). This is about spelling and casing; a new *term* for a concept the codebase already names is in scope — see [Reuse and terminology](#reuse-and-terminology).
 - Missing tests for hunks where an existing test already exercises the changed behavior — flag only when a code path has *no* coverage at all.
 
 **Do** flag:
@@ -33,6 +33,29 @@ Default comment severity threshold: **MEDIUM**. Suppress LOW-severity nits unles
 - If a thread has a **reply** explaining why the suggestion was declined (e.g. "the script already has `set -euo pipefail` at line 17") or applied differently from the literal suggestion, accept the explanation and skip the issue on the next pass.
 - If your prior comment matches a hunk that is **byte-identical** to the version you reviewed before, skip it. The fact that the diff is unchanged means the author is keeping that hunk; re-flagging won't change anything.
 - New issues on lines you didn't review before are fine to raise.
+
+## Reuse and terminology
+
+These two checks need searching the repo, not just reading the diff. Do the searches; a finding here without a citation of the existing code or term (`path:line`, or a commit SHA for a term found only in history) is not a finding. Report each at **MEDIUM**, so the LOW threshold above does not suppress them. Raise to HIGH when the duplicate already behaves differently from the code it copies, since that is a correctness bug. Skip both checks for backport PRs and for test-only changes.
+
+### Reuse
+
+Does the added code duplicate an existing function, helper, constant, or pattern?
+
+1. **What to check:** every new helper, non-trivial expression, magic number, and hand-built object (iterators, `ReadOptions`, key encoding).
+2. **Where to search:** the same file first, then its directory, then the rest of `src/yb/`.
+3. **How to search:** by what the code does, not by how the diff spells it, because an equivalent rarely matches the text. Search for likely function and constant names, the types and APIs the code calls, and the key bytes or values it uses. For example, `a > b ? a - b : b - a` and `std::max(a, b) - std::min(a, b)` compute the same thing, and `kMaxPartitionKey` equals `std::numeric_limits<uint16_t>::max()`.
+4. **Before reporting:** confirm the existing code has the same semantics (edge cases, error handling, ownership, locking). If the new code is evidently meant to do the same thing but differs on an edge case, that is a drifted copy: report it at HIGH rather than dropping it. Model it on production code, not test code (`TEST_*`, `*-test.cc`). If reuse would cost more than it saves, for example it pulls in a heavy header or crosses a layering boundary, suggest the refactor that would make it cheap (such as moving the existing code to a lower-level header or library), and say whether it belongs in this PR or in a follow-up change. Report a follow-up refactor at LOW; the LOW threshold above does not apply to it.
+5. **What to report:** cite the existing code as `path:line` and show the replacement. When the same logic appears twice or more, including twice within the diff, suggest extracting a shared helper and name the file where it should live.
+6. **What not to report:** a choice between facilities that coexist because they differ on purpose, such as `scoped_refptr` vs `std::shared_ptr` (intrusive vs separate reference count), `MonoTime` vs `CoarseMonoClock` (precise vs cheap clock), or `std::mutex` vs `simple_spinlock` (blocking vs spinning). Do not flag one because the other is more common. Flag the choice only when that difference matters for this code, for example a spinlock held across blocking I/O, and say why. The legacy forms listed under "Preferred utilities" in `docs/content/stable/contribute/core-database/coding-style.md` are different: each has a replacement that does the same job, so do flag them in new code.
+
+### Terminology
+
+Do new names and terms match the vocabulary the codebase already uses for the same concept?
+
+1. **What to check:** new identifiers, gflag names, log and error messages, and comments that name a concept.
+2. **Where to search:** beyond the changed file, in the components it interacts with: master and tserver code for the same feature, the RocksDB layer under DocDB, the YSQL/YCQL layer above it, and the `*.proto` definitions both sides share. Also search commit history (`git log -S<term>`, `git log --grep=<term>`).
+3. **What to report:** a new term for something that already has a name. Cite where the existing term is used (`path:line` or commit SHA) and give the rename. When the codebase already uses more than one term for the concept, do not flag a choice between them unless one clearly dominates and the other is legacy; flag only a term that is new to all of them.
 
 ## Backport PRs (different review rules)
 

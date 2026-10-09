@@ -56,10 +56,14 @@
       "recommended": "Recommended",
       "reviewAndCreate": "Next: Review and Create",
       "duration": {
-        "seconds": "Seconds",
-        "minutes": "Minutes",
-        "hours": "Hours",
-        "days": "Days"
+        "seconds_one": "second",
+        "seconds_other": "seconds",
+        "minutes_one": "minute",
+        "minutes_other": "minutes",
+        "hours_one": "hour",
+        "hours_other": "hours",
+        "days_one": "day",
+        "days_other": "days"
       },
       "unitAbbreviation": {
         "milliseconds": "ms",
@@ -97,6 +101,11 @@
         "error": {
           "failedToFetchStorageConfigs": "Failed to fetch customer storage configurations."
         }
+      },
+      "rollMaxBatchSize": {
+        "label": "Max batch size: ",
+        "tooltip": "Refers to the number of nodes that can be unavailable during upgrade process per AZ. This can possibly affect the performance of the cluster till the upgrade is finished",
+        "lockedTooltip": "Batching isn't available for this universe."
       }
     },
     "toast": {
@@ -274,7 +283,7 @@
       "helmOverrides": {
         "title": "Kubernetes Overrides",
         "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
-        "upgradeDelayLabel": "Upgrade delay between Pods:",
+        "upgradeDelayLabel": "Upgrade delay between pods/batches:",
         "addAvailabilityZone": "Add Availability Zone",
         "forceUpgrade": "Force Upgrade",
         "forceApply": "Force Apply"
@@ -579,8 +588,6 @@
         "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
         "nonRollingWarning": "<strong>Non-rolling rollback will cause database downtime.</strong><br /> The database will be unavailable for the duration of the rollback.",
         "upgradeDelayLabel": "Upgrade delay between Nodes:",
-        "numNodesToRollingUpgrade": "Max batch size: ",
-        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "footerMsg1": "After the upgrade is done, you can monitor performance and ",
         "footerMsg2": "if you detect any problems.",
         "footerMsg3": "Before upgrading, perform a full backup of your universe.",
@@ -641,17 +648,18 @@
         "disablePaUniverseFailure": "Failed to disable Performance Monitoring for the universe",
         "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
         "enableAdvancedObservability": "Enable Advanced Observability",
-        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This will enable additional metrics export to Prometheus.",
+        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This adds a Performance tab to the console for Cluster Load, Top SQL, SQL details drilldown.",
         "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
         "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
-        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
+        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This removes a Performance tab from the console.",
         "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe",
         "modeLabel": "Collection mode",
-        "modeBasic": "Basic - collect and store performance data on this YugabyteDB Anywhere",
-        "modeAdvanced": "Advanced observability - also export universe metrics to Prometheus",
+        "modeBasic": "Basic - collects performance data and exports it with Support Bundle",
+        "modeAdvanced": "Advanced observability - adds a Performance tab to the console for Cluster Load, Top SQL, SQL details drilldown",
         "modeOnline": "Online - collect here and send everything to an external Perf Advisor",
         "onlineDestinationLabel": "Destination",
-        "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled."
+        "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled.",
+        "advancedObservabilityLicenseNotice": "<strong>Advanced Observability is a licensed feature.</strong> Please confirm your organization has an Advanced Observability license. If not, contact your Yugabyte account team."
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -935,8 +943,6 @@
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
         "flagsModifiedModalLine2": "Note that current changes will be lost.",
-        "numNodesToRollingUpgrade": "Max batch size: ",
-        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "pgGroupWarning": "You can't change the disabled fields because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
@@ -949,7 +955,9 @@
         "validateAndSaveSuccess": "Validated and Saved Successfully",
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
-        "yamlErrorsTitle": "Errors in helm YAML"
+        "yamlErrorsTitle": "Errors in helm YAML",
+        "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
+        "upgradeDelayLabel": "Upgrade delay between pods/batches:"
       },
       "azOverrides": {
         "modalTitle": "AZ Resource Overrides",
@@ -3247,7 +3255,7 @@
         "button": {
           "remove": "Remove"
         },
-        "backupIntervalValue": "Every {{backupFrequencyMinutes}} minutes",
+        "backupIntervalValue": "Every {{backupFrequency}} {{unit}}",
         "noRecentBackupError": "No backups have been created in the past 24 hours."
       },
       "configureContinuousBackupModal": {
@@ -3266,8 +3274,8 @@
         },
         "error": {
           "backupFrequencyMustBePositiveInteger": "Please enter a positive integer.",
-          "backupFrequencyMustBeGreaterThanOrEqualTo2": "Minimum 2 minutes.",
-          "backupFrequencyMustBeLessThanOrEqualTo1440": "Maximum 1440 minutes (24 hours)."
+          "backupFrequencyBelowMinimum": "Minimum {{min}} {{unit}}.",
+          "backupFrequencyAboveMaximum": "Maximum {{max}} {{unit}}."
         },
         "tip": {
           "performanceImpact": "Platform backups don't significantly impact performance.",

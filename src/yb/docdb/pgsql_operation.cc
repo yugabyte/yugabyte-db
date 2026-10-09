@@ -72,6 +72,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
 #include "yb/util/result.h"
@@ -765,6 +766,7 @@ Result<TableRowFetch> FetchTableRow(
 struct RowPackerData {
   SchemaVersion schema_version;
   const dockv::SchemaPacking& packing;
+  dockv::VectorValueFormat vector_value_format;
 
   static Result<RowPackerData> Create(
       const PgsqlWriteRequestMsg& request, const DocReadContext& read_context) {
@@ -772,6 +774,7 @@ struct RowPackerData {
     return RowPackerData {
       .schema_version = schema_version,
       .packing = VERIFY_RESULT(read_context.schema_packing_storage.GetPacking(schema_version)),
+      .vector_value_format = read_context.vector_value_format(),
     };
   }
 
@@ -787,7 +790,7 @@ struct RowPackerData {
   dockv::RowPackerVariant MakePackerHelper(bool is_update) const {
     return dockv::RowPackerVariant(
         std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
-        Slice(), is_update);
+        Slice(), is_update, vector_value_format);
   }
 };
 
@@ -1034,7 +1037,10 @@ class PgsqlVectorFilter {
     if (FLAGS_vector_index_skip_filter_check) {
       return false;
     }
-    if (!data.table_has_vector_deletion && !FilteringIterator::NeedFilter(data.request) &&
+    // An index which stores payloads keeps deleted vectors, they are detected only by fetching the
+    // row the stored ybctid points to, so it always needs the filter.
+    if (!data.table_has_vector_deletion && !data.vector_index->StoresPayload() &&
+        !FilteringIterator::NeedFilter(data.request) &&
         FLAGS_vector_index_no_deletions_skip_filter_check) {
       LOG_IF(INFO, FLAGS_vector_index_dump_stats)
           << "VI_STATS: PgsqlVectorFilter, "
@@ -1088,8 +1094,8 @@ class PgsqlVectorFilter {
     // references this vector, since the entry is tombstoned when the row is deleted or its
     // vector is replaced. A ybctid from the vector payload proves neither: such vectors have no
     // reverse mapping entries, so the row has to be fetched to detect deleted rows and vectors
-    // left behind by an update. An index which stores ybctids writes no tombstones, so this does
-    // not hold for the vectors without payload it could still have, see #33912.
+    // left behind by an update. An index either stores a payload for all its vectors or for
+    // none of them, so the two cases never mix within an index.
     bool resolved_via_reverse_mapping = false;
     if (ybctid.empty()) {
       // The vector does not store its ybctid, resolve it via the reverse mapping. Missing entry
@@ -1334,12 +1340,15 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
   VLOG_WITH_FUNC(2) << "doc key: " << doc_key_;
 
+  char highest = dockv::KeyEntryTypeAsChar::kHighest;
+  KeyBuffer upperbound_buffer(encoded_doc_key_.as_slice(), Slice(&highest, 1));
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
       BloomFilterOptions::Fixed(encoded_doc_key_.as_slice()),
       rocksdb::kDefaultQueryId,
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), iter.get());
 
   VLOG_WITH_FUNC(4) << "whole row: " << doc_key_;
   DocHybridTime oldest_past_min_dht = VERIFY_RESULT(
@@ -2191,6 +2200,12 @@ Status PgsqlWriteOperation::HandleDeletedVectorIds(
 
 Status PgsqlWriteOperation::FillRemovedVectorId(
     const DocOperationApplyData& data, const dockv::PgTableRow& table_row, ColumnId column_id) {
+  // A table which writes no reverse mapping has nothing to tombstone: its indexes store the ybctid
+  // with every vector, so search detects the deletion by fetching the row it points to.
+  if (!doc_read_context_->schema().table_properties().writes_vector_reverse_mapping()) {
+    return Status::OK();
+  }
+
   auto old_vector_value = table_row.GetValueByColumnId(column_id);
   if (!old_vector_value) {
     return Status::OK();
@@ -3219,7 +3234,7 @@ Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
     return table_iter_->GetTupleId();
   }
 
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", column_id);
+  return STATUS_FORMAT(InvalidArgument, "Invalid column ID: $0", column_id);
 }
 
 Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {

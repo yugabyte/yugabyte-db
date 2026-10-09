@@ -23,6 +23,7 @@ import { normalizeEditPlacementNodesAvailability } from './normalizeEditPlacemen
 import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 import { CloudType } from '@app/redesign/helpers/dtos';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
+import { useRuntimeConfigValues } from '../../create-universe/helpers/utils';
 
 const { Box } = mui;
 
@@ -37,6 +38,7 @@ export const EditPlacementNodesAndAvailability = () => {
   const [showEditPlacementModal, setShowEditPlacementModal] = useToggle(false);
   const { setNodesAndAvailability, setResilience, setActiveStep } = addEditPlacementMethods;
   const toast = useYBToast();
+  const { enablePrimaryRf9 } = useRuntimeConfigValues();
 
   const { hideModal, onSubmit, isSubmittingPlacementUpdate, selectedPartitionUUID } = extraMethods;
 
@@ -71,8 +73,8 @@ export const EditPlacementNodesAndAvailability = () => {
   }, [universeNodesDefaults]);
 
   const calculateNodesandAvailability = useMemo(
-    () => normalizeEditPlacementNodesAvailability(addEditPlacementData),
-    [addEditPlacementData]
+    () => normalizeEditPlacementNodesAvailability(addEditPlacementData, enablePrimaryRf9),
+    [addEditPlacementData, enablePrimaryRf9]
   );
 
   return (

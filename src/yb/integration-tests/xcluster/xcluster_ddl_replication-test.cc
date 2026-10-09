@@ -24,6 +24,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 
 #include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
@@ -34,6 +35,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_source_manager.h"
@@ -53,6 +55,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
@@ -68,6 +71,7 @@ DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
+DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -77,22 +81,25 @@ DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
 DECLARE_bool(xcluster_ddl_queue_enable_transactional_ddl);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
+DECLARE_bool(xcluster_kill_ddl_queue_pg_connection_on_pause);
+DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(xcluster_enable_target_applied_filter);
+DECLARE_bool(enforce_xcluster_guarded_lease);
+DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_target_manual_override);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
+DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
 DECLARE_string(ysql_cron_database_name);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
 DECLARE_bool(TEST_block_apply_intent);
@@ -101,6 +108,7 @@ DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
+DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_cache_connection);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
@@ -236,33 +244,22 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   }));
 }
 
-class XClusterDDLReplicationConcurrentDDLTest
-    : public XClusterDDLReplicationTest,
-      public ::testing::WithParamInterface<std::pair<bool, bool>> {
+// Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
+// cross-flag validators in common_flags.cc, so a single parameter drives all three.
+class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTest,
+                                                public ::testing::WithParamInterface<bool> {
  public:
   void SetUp() override {
-    auto [object_locking, concurrent_ddl] = GetParam();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = object_locking;
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = object_locking;
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = object_locking;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = object_locking;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
+    const auto object_locking = GetParam();
+    ToggleDDLMode(/* use_legacy = */ !object_locking);
     XClusterDDLReplicationTest::SetUp();
   }
 };
 
 INSTANTIATE_TEST_CASE_P(
-    ObjLockOff_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest,
-    ::testing::Values(std::make_pair(false, false)));
+    ObjLockOff_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
 INSTANTIATE_TEST_CASE_P(
-    ObjLockOn_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest,
-    ::testing::Values(std::make_pair(true, false)));
-INSTANTIATE_TEST_CASE_P(
-    ObjLockOn_ConcDDLOn, XClusterDDLReplicationConcurrentDDLTest,
-    ::testing::Values(std::make_pair(true, true)));
+    ObjLockOn_ConcDDLOn, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
 
 TEST_P(XClusterDDLReplicationConcurrentDDLTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClustersAndReplication());
@@ -317,7 +314,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
     ASSERT_OK(pconn.Execute("CREATE TABLE tbl(key int)"));
     ASSERT_OK(pconn.Execute("INSERT INTO tbl SELECT i FROM generate_series(1, 100) as i"));
   }
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name, namespace_name2}));
   for (auto db_name : {namespace_name, namespace_name2}) {
     ASSERT_OK(VerifyWrittenRecords({"tbl"}, db_name));
   }
@@ -328,7 +325,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
     ASSERT_OK(pconn.Execute("ALTER TABLE tbl ADD COLUMN a int"));
     ASSERT_OK(pconn.Execute("INSERT INTO tbl SELECT i FROM generate_series(101, 200) as i"));
   }
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name, namespace_name2}));
   for (auto db_name : {namespace_name, namespace_name2}) {
     ASSERT_OK(VerifyWrittenRecords({"tbl"}, db_name));
   }
@@ -477,6 +474,55 @@ TEST_F(XClusterDDLReplicationTest, ExtensionRoleUpdating) {
   EXPECT_EQ(
       xcluster_context.GetXClusterRole(namespace_id),
       XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE);
+}
+
+TEST_F(XClusterDDLReplicationTest, GuardedLeaseExpiration) {
+  const auto kLeaseDuration = 20s;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) =
+      narrow_cast<uint32_t>(MonoDelta(kLeaseDuration).ToMilliseconds());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  const auto namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name));
+  auto* tserver = producer_cluster_.mini_cluster_->mini_tablet_server(0);
+  auto& xcluster_context = tserver->server()->GetXClusterContext();
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return xcluster_context.GetXClusterRole(namespace_id) ==
+               XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_SOURCE;
+      },
+      kLeaseDuration, "Wait for role to initially switch to AUTOMATIC_SOURCE"));
+
+  // Now stop heartbeats and measure how long the lease lasts.  The lease came from the last
+  // heartbeat sent before this point, at most one heartbeat interval ago, and a lease is anchored
+  // to its heartbeat's send time.  So the role should become unavailable between
+  // kLeaseDuration - heartbeat interval and kLeaseDuration from now, give or take slack for
+  // polling, scheduling, and heartbeat timing jitter.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  const auto heartbeats_stopped = MonoTime::Now();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return xcluster_context.GetXClusterRole(namespace_id) ==
+               XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+      },
+      kLeaseDuration * 2, "Wait for the lease to expire", /*initial_delay=*/100ms,
+      /*delay_multiplier=*/1.0, /*max_delay=*/100ms));
+  const auto lease_lasted = MonoTime::Now() - heartbeats_stopped;
+  const auto heartbeat_interval = FLAGS_heartbeat_interval_ms * 1ms;
+  const auto slack = 2s * kTimeMultiplier;
+  EXPECT_GE(lease_lasted, MonoDelta(kLeaseDuration - heartbeat_interval - slack));
+  EXPECT_LE(lease_lasted, MonoDelta(kLeaseDuration + slack));
+
+  // When we resume heartbeats, we should get the role back.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return xcluster_context.GetXClusterRole(namespace_id) ==
+               XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_SOURCE;
+      },
+      3s * kTimeMultiplier, "Wait for role to return to AUTOMATIC_SOURCE"));
 }
 
 TEST_F(XClusterDDLReplicationTest, TestExtensionDeletionWithMultipleReplicationGroups) {
@@ -1883,7 +1929,7 @@ class XClusterTransactionalDDLReplicationTest : public XClusterDDLReplicationTes
                                                 public ::testing::WithParamInterface<bool> {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     XClusterDDLReplicationTest::SetUp();
   }
 };
@@ -4296,6 +4342,193 @@ TEST_F(XClusterDDLReplicationTest, TruncateTable) {
   ASSERT_OK(verify_data());
 }
 
+// ANALYZE is not a DDL and is not replayed on the target. The target is told which relation was
+// analyzed and marks it as needing an ANALYZE of its own, which the auto analyze service then
+// performs. Sampling on the target is what keeps its statistics consistent with the data it has
+// applied, and it is also what produces its extended statistics.
+class XClusterDDLReplicationAnalyzeTestBase : public XClusterDDLReplicationTest {
+ protected:
+
+  static std::string StatsCountQuery(const std::string& table_name, bool inherited = false) {
+    return Format(
+        "SELECT count(*) FROM pg_stats WHERE schemaname = 'public' AND tablename = '$0'$1",
+        table_name, inherited ? " AND inherited" : "");
+  }
+
+  Status WaitForTargetStats(const std::string& count_query, const std::string& description) {
+    return WaitFor(
+        [this, &count_query]() -> Result<bool> {
+          return VERIFY_RESULT(consumer_conn_->FetchRow<int64_t>(count_query)) > 0;
+        },
+        MonoDelta::FromSeconds(120) * kTimeMultiplier, description);
+  }
+
+  Status CheckStatsAgree(const std::string& table_name, bool inherited = false) {
+    const auto query = Format(
+        "SELECT attname, n_distinct FROM pg_stats "
+        "WHERE schemaname = 'public' AND tablename = '$0'$1 ORDER BY attname",
+        table_name, inherited ? " AND inherited" : "");
+    SCHECK_EQ(
+        VERIFY_RESULT(consumer_conn_->FetchAllAsString(query)),
+        VERIFY_RESULT(producer_conn_->FetchAllAsString(query)), IllegalState,
+        Format("Statistics for $0 differ between the universes", table_name));
+    return Status::OK();
+  }
+
+  Status CheckReplicationStillWorks() {
+    const auto table_name = Format("tbl_after_$0", ++tables_created_after_hint_);
+    RETURN_NOT_OK(
+        producer_conn_->ExecuteFormat("CREATE TABLE $0(id int PRIMARY KEY)", table_name));
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    SCHECK_EQ(
+        VERIFY_RESULT(CountConsumerTables({table_name})), 1, IllegalState,
+        Format("Expected $0, created after the hint, to replicate", table_name));
+    return Status::OK();
+  }
+
+  int tables_created_after_hint_ = 0;
+};
+
+class XClusterDDLReplicationAutoAnalyzeTest : public XClusterDDLReplicationAnalyzeTestBase {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = true;
+    // Keep the mutation reporting and persisting intervals low so the test does not have to wait
+    // out the default ten second cycles.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
+    XClusterDDLReplicationTest::SetUp();
+  }
+};
+
+TEST_F(XClusterDDLReplicationAutoAnalyzeTest, AnalyzeTriggersAutoAnalyzeOnTarget) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(id int PRIMARY KEY, col1 int, col2 text)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO tbl1 SELECT g, g % 5, 'value' || (g % 7) FROM generate_series(1, 20) g"));
+  ASSERT_OK(
+      producer_conn_->Execute("CREATE TABLE tbl_part(id int, col1 int) PARTITION BY RANGE (id)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE tbl_part_1 PARTITION OF tbl_part FOR VALUES FROM (0) TO (10)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE tbl_part_2 PARTITION OF tbl_part FOR VALUES FROM (10) TO (20)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO tbl_part SELECT g, g % 5 FROM generate_series(0, 19) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(CountConsumerTables({"tbl1", "tbl_part", "tbl_part_1", "tbl_part_2"})), 4);
+
+  const auto tbl1_stats_query = StatsCountQuery("tbl1");
+  const auto parent_stats_query = StatsCountQuery("tbl_part", /* inherited */ true);
+
+  // Writes arriving over xCluster bypass the pggate layer that counts mutations, so nothing has
+  // made the target consider analyzing these tables.
+  SleepFor(MonoDelta::FromSeconds(3) * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(tbl1_stats_query)), 0);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(tbl1_stats_query)), 0);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(parent_stats_query)), 0);
+
+  // The source analyzed it, so the target should now analyze its own copy.
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForTargetStats(tbl1_stats_query, "Waiting for auto analyze on the target"));
+  ASSERT_OK(CheckStatsAgree("tbl1"));
+
+  // Extended statistics are computed by the target's own ANALYZE, which is the point of triggering
+  // one there rather than copying pg_statistic over.
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE STATISTICS tbl1_stats (dependencies) ON id, col1 FROM tbl1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForTargetStats(
+      "SELECT count(*) FROM pg_statistic_ext_data d JOIN pg_statistic_ext e ON e.oid = d.stxoid "
+      "WHERE e.stxname = 'tbl1_stats'",
+      "Waiting for extended statistics on the target"));
+
+  // A partitioned table is sampled in two passes, so the parent's inherited statistics and each
+  // leaf's own statistics both have to be refreshed on the target.
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl_part"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForTargetStats(
+      parent_stats_query, "Waiting for inherited statistics on the target"));
+  ASSERT_OK(CheckStatsAgree("tbl_part", /* inherited */ true));
+  ASSERT_OK(WaitForTargetStats(
+      StatsCountQuery("tbl_part_1"), "Waiting for leaf statistics on the target"));
+
+  // A hint for a relation that cannot be found on the target is skipped
+  // and doesn't stuck the replication.
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl_renamed(id int PRIMARY KEY)"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl_renamed SELECT g FROM generate_series(1, 10) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_target_manual_override) = true;
+  ASSERT_OK(consumer_conn_->Execute("ALTER TABLE tbl_renamed RENAME TO tbl_renamed_target"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_target_manual_override) = false;
+
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl_renamed"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(CheckReplicationStillWorks());
+}
+
+// The target's default configuration: the auto analyze infra is up so there is a service to
+// report to, but auto analyze itself is off, so nothing acts on the hint yet.
+class XClusterDDLReplicationAutoAnalyzeDisabledTest : public XClusterDDLReplicationAnalyzeTestBase {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // Keep the persist interval low so that the test does not have to wait out the default ten
+    // second cycle once it enables auto analyze.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
+    XClusterDDLReplicationTest::SetUp();
+  }
+};
+
+TEST_F(XClusterDDLReplicationAutoAnalyzeDisabledTest, AnalyzeHintWhenAutoAnalyzeDisabled) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(id int PRIMARY KEY, col1 int)"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT g, g % 5 FROM generate_series(1, 20) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto stats_query = StatsCountQuery("tbl1");
+  const auto replicated_ddls_query =
+      "SELECT count(*) FROM yb_xcluster_ddl_replication.replicated_ddls";
+
+  // Without the infra there is no auto analyze service to report to, so the hint is dropped. With
+  // the infra up but auto analyze off the count is reported and the service holds it. Either way
+  // the entry must be recorded as processed so that the queue does not retry it forever, and
+  // neither may hold up replication.
+  for (const bool enable_infra : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = enable_infra;
+    SCOPED_TRACE(Format("ysql_enable_auto_analyze_infra = $0", enable_infra));
+
+    const auto replicated_ddls_before =
+        ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(replicated_ddls_query));
+    ASSERT_OK(producer_conn_->Execute("ANALYZE tbl1"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_EQ(
+        ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(replicated_ddls_query)),
+        replicated_ddls_before + 1);
+    ASSERT_OK(CheckReplicationStillWorks());
+  }
+
+  // The service holds the reported count without acting on it while auto analyze is off.
+  SleepFor(MonoDelta::FromSeconds(3) * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(stats_query)), 0);
+
+  // Enabling auto analyze drains the count reported while it was off, so the target catches up
+  // without the source having to analyze again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = true;
+  ASSERT_OK(WaitForTargetStats(
+      stats_query, "Waiting for auto analyze on the target after enabling it"));
+}
+
 // Make sure we can run a variety of DDLs related to temp tables on both clusters.
 TEST_F(XClusterDDLReplicationTest, TempTableDDLs) {
   ASSERT_OK(SetUpClustersAndReplication());
@@ -5463,24 +5696,28 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexCreatedBeforeDrSetup) {
 }
 
 class XClusterDDLReplicationVectorIndexParamTest : public XClusterDDLReplicationTest,
-                                                 public ::testing::WithParamInterface<bool> {};
+                                                 public ::testing::WithParamInterface<bool> {
+ protected:
+  Status SetUpVectorIndexReplication() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.is_colocated = GetParam();
+    RETURN_NOT_OK(SetUpClusters(params));
+    RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      return conn.Execute("CREATE EXTENSION vector");
+    }));
+    RETURN_NOT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    return CreateReplicationFromCheckpoint();
+  }
+};
 
 INSTANTIATE_TEST_SUITE_P(
     ColocationMode, XClusterDDLReplicationVectorIndexParamTest, ::testing::Values(false, true));
 
 TEST_P(XClusterDDLReplicationVectorIndexParamTest, VectorIndex) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
-  const bool use_colocated_db = GetParam();
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.is_colocated = use_colocated_db;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
-    return Status::OK();
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(SetUpVectorIndexReplication());
   ASSERT_OK(producer_conn_->Execute(
       "CREATE TABLE vec_test (id serial PRIMARY KEY, embedding vector(3))"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -5578,6 +5815,71 @@ TEST_P(XClusterDDLReplicationVectorIndexParamTest, VectorIndex) {
   c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
       "SELECT id FROM vec_test ORDER BY embedding <-> '[50.0, 50.0, 50.0]' LIMIT 11"));
   ASSERT_EQ(p_search, c_search);
+}
+
+// Renaming a vector index, or moving its table to another schema, must not stall replication.
+TEST_P(XClusterDDLReplicationVectorIndexParamTest, AlterVectorIndex) {
+  ASSERT_OK(SetUpVectorIndexReplication());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test SELECT g, array_fill(g::real, ARRAY[3])::vector "
+      "FROM generate_series(1, 20) g"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto consumer_has_relation = [this](const std::string& name) {
+    return consumer_conn_->FetchRow<bool>(Format("SELECT to_regclass('$0') IS NOT NULL", name));
+  };
+
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX vec_test_idx RENAME TO vec_test_idx2"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(consumer_has_relation("public.vec_test_idx2")));
+
+  ASSERT_OK(producer_conn_->Execute("CREATE SCHEMA s"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE vec_test SET SCHEMA s"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(consumer_has_relation("s.vec_test_idx2")));
+
+  // Later table changes and writes still replicate.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE s.vec_test ADD COLUMN c int"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO s.vec_test SELECT g, array_fill(g::real, ARRAY[3])::vector, g "
+      "FROM generate_series(21, 30) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  constexpr auto kSelectAll = "SELECT id, embedding, c FROM s.vec_test ORDER BY id";
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kSelectAll)),
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kSelectAll)));
+
+  // Make sure the table's own schema changes weren't skipped too. Row checks can't tell, since
+  // both sides happen to have the same schema versions here. Only non-colocated streams skip.
+  if (!GetParam()) {
+    auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+        &producer_cluster_, namespace_name, "s", "vec_test", /*verify_table_name=*/true,
+        /*verify_schema_name=*/true))));
+    auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table->id()));
+    auto cluster_config = ASSERT_RESULT(GetClusterConfig(consumer_cluster_));
+    const auto& schema_versions = cluster_config.consumer_registry()
+                                      .producer_map()
+                                      .at(kReplicationGroupId.ToString())
+                                      .stream_map()
+                                      .at(stream_id.ToString())
+                                      .schema_versions();
+    ASSERT_EQ(
+        schema_versions.current_producer_schema_version(), producer_table->schema().version());
+  }
+
+  // Target search uses the renamed index. No distance ties, so the order is stable.
+  constexpr auto kSearch =
+      "SELECT id FROM s.vec_test ORDER BY embedding <-> '[25.1, 25.1, 25.1]' LIMIT 5";
+  auto c_explain =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(Format("EXPLAIN (COSTS OFF) $0", kSearch)));
+  ASSERT_STR_CONTAINS(c_explain, "vec_test_idx2");
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kSearch)),
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kSearch)));
 }
 
 // When updating the vector index during apply intent, we skip the row if commit_ht is less than
@@ -6649,7 +6951,7 @@ TEST_F(XClusterWalAnchorStreamTest, DeleteReplicationGroupTearsDownAnchor) {
 class XClusterWalAnchorStreamTxnBlockTest : public XClusterWalAnchorStreamTest {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     // Sweep the hidden tables of dropped tables often, so that their anchors get dropped promptly
     // once cdc_wal_retention_time_secs elapses.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
@@ -6748,6 +7050,244 @@ TEST_F(XClusterWalAnchorStreamTxnBlockTest, AnchorsHeldPerTableInTransactionBloc
     ASSERT_OK(WaitForTargetDeletionMarkerCleared(target_table_id));
     ASSERT_OK(WaitForWalUnpinned(source_table_id));
   }
+}
+
+// Covers the interaction between a replicated CREATE TABLE that is waiting for the xCluster safe
+// time to advance and a pause of the replication group. Pausing is the first step of failover, and
+// it waits for every poller to report that it has stopped -- but in automatic DDL mode the
+// ddl_queue poller is pinned inside the very DDL that is waiting here, so the two wait on each
+// other. xcluster_kill_ddl_queue_pg_connection_on_pause breaks the cycle by terminating the
+// backend running the DDL.
+class XClusterDDLReplicationStuckCreateTablePauseTest : public XClusterDDLReplicationTest {
+ protected:
+  static constexpr auto kStuckTableName = "table_stuck_in_create";
+
+  void SetUp() override {
+    TEST_SETUP_SUPER(XClusterDDLReplicationTest);
+    // Default is one hour. Shrink it so that the run where the create is left to time out on its
+    // own stays within the test harness timeout.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_automatic_target_create_table_ddl_rpc_timeout_sec) =
+        60 * kTimeMultiplier;
+  }
+
+  // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
+  // the master waits for the pause to finish using the RPC's client deadline.
+  Status SetReplicationEnabled(bool is_enabled, MonoDelta timeout) {
+    master::SetUniverseReplicationEnabledRequestPB req;
+    master::SetUniverseReplicationEnabledResponsePB resp;
+    req.set_replication_group_id(kReplicationGroupId.ToString());
+    req.set_is_enabled(is_enabled);
+    master::MasterReplicationProxy proxy(
+        &consumer_client()->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout);
+    RETURN_NOT_OK(proxy.SetUniverseReplicationEnabled(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
+  // Leaves a replicated CREATE TABLE parked in AddTableToXClusterTargetTask's safe time wait, with
+  // the ddl_queue poller pinned inside the DDL.
+  void WedgeReplicatedCreateTable() {
+    // Block all replication so the source's DDL does not reach the target yet.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "CREATE TABLE $0(key int PRIMARY KEY, val int)", kStuckTableName));
+
+    // Lag only the new table's tablets. ddl_queue keeps flowing, so the target runs the replicated
+    // CREATE TABLE, but the new table's tablets never report a safe time. The target master's
+    // AddTableToXClusterTargetTask then parks in WaitForXClusterSafeTimeCaughtUp, and the ddl_queue
+    // poller stays pinned inside the CREATE TABLE that is waiting on it.
+    auto stuck_table = ASSERT_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", kStuckTableName));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> stuck_tablets;
+    ASSERT_OK(producer_client()->GetTabletsFromTableId(stuck_table.table_id(), 0, &stuck_tablets));
+    std::string stuck_tablet_filter;
+    for (const auto& tablet : stuck_tablets) {
+      if (!stuck_tablet_filter.empty()) {
+        stuck_tablet_filter += ",";
+      }
+      stuck_tablet_filter += tablet.tablet_id();
+    }
+    ASSERT_FALSE(stuck_tablet_filter.empty());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
+        stuck_tablet_filter;
+
+    // Wait until the target master is parked in the safe time wait.
+    ASSERT_OK(StringWaiterLogSink("Waiting for xCluster safe time").WaitFor(kTimeout));
+  }
+};
+
+// Terminating the ddl_queue handler's Postgres backend releases a poller that is pinned inside a
+// replicated DDL, so the pause -- and therefore a failover -- can complete instead of waiting for
+// the create table timeout.
+TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, PauseTerminatesStuckDdlBackend) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_NO_FATALS(WedgeReplicatedCreateTable());
+
+  // The pause must complete well inside the create's own timeout, which is what it would otherwise
+  // have to wait for.
+  // All log sinks must exist before the pause: the terminate, the resulting DDL failure and the
+  // master task ending can all happen while SetReplicationEnabled is still blocked waiting for the
+  // poller to report paused.
+  StringWaiterLogSink terminated_log("Terminated PostgreSQL backend");
+  StringWaiterLogSink ddl_aborted_log("Error when running DDL");
+  // The task id sits between the two parts of interest, so match with a regex rather than a
+  // substring. RegexWaiterLogSink uses regex_match, so the pattern has to cover the whole line.
+  RegexWaiterLogSink add_table_task_failed_log(".*AddTableToXClusterTargetTask.*Task failed.*");
+  RegexWaiterLogSink add_table_task_ended_log(".*AddTableToXClusterTargetTask.*Task ended.*");
+
+  // Without the fix, SetReplicationEnabled will fail
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
+  ASSERT_OK(terminated_log.WaitFor(kTimeout));
+
+  // The stuck create was aborted rather than left waiting for its own timeout.
+  ASSERT_OK(ddl_aborted_log.WaitFor(kTimeout));
+
+  // The master side stops too: the aborted DDL rolls back and drops the half-built table, and
+  // closing the table aborts its pending tasks ("Table closing"), which ends
+  // AddTableToXClusterTargetTask. After EndTask the task is in a terminal state, so
+  // WaitForXClusterSafeTimeCaughtUp cannot be scheduled again -- any further attempt would log
+  // "Task already ended" instead of running.
+  ASSERT_OK(add_table_task_failed_log.WaitFor(kTimeout));
+  ASSERT_OK(add_table_task_ended_log.WaitFor(kTimeout));
+}
+
+// A ddl_queue tablet leader change while a replicated DDL is stuck leaves the old poller behind
+// until the DDL finishes. The pause must still complete, which requires killing that poller's
+// backend too.
+TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, PauseTerminatesOrphanedPollerBackend) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_NO_FATALS(WedgeReplicatedCreateTable());
+
+  // A forced step down re-elects the leader with a new term, which makes the consumer replace the
+  // poller. The old poller is inside the stuck DDL, so its shutdown is deferred.
+  StringWaiterLogSink shutdown_deferred_log(
+      "DDL queue handler is running, it will complete the shutdown once done");
+  ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
+  ASSERT_OK(shutdown_deferred_log.WaitFor(kTimeout));
+
+  StringWaiterLogSink terminated_log("Terminated PostgreSQL backend");
+  StringWaiterLogSink shutdown_completed_log("DDL queue handler finished, completing shutdown");
+
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
+  ASSERT_OK(terminated_log.WaitFor(kTimeout));
+  ASSERT_OK(shutdown_completed_log.WaitFor(kTimeout));
+}
+
+// A replicated DROP TABLE blocks on the target while the target master removes the table from
+// replication, which includes deleting its stream on the source.
+class XClusterDDLReplicationStuckDropTablePauseTest
+    : public XClusterDDLReplicationStuckCreateTablePauseTest {
+ protected:
+  static constexpr auto kDroppedTableName = "table_stuck_in_drop";
+};
+
+TEST_F(XClusterDDLReplicationStuckDropTablePauseTest, PauseTerminatesStuckDropTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, val int)", kDroppedTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Hold replication while the source runs its own DROP TABLE, so that only the target's
+  // replicated DROP TABLE reaches the sync point registered below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP TABLE $0", kDroppedTableName));
+
+  // Stall the target master's DeleteTable right before it removes the table from replication.
+  CountDownLatch drop_stalled(1), release_drop(1);
+  SyncPoint::GetInstance()->SetCallBack(
+      "DeleteTableInternal::FailAfterTableMarkedInSysCatalog", [&](void*) {
+        drop_stalled.CountDown();
+        release_drop.Wait();
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto release = ScopeExit([&] {
+    release_drop.CountDown();
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_TRUE(drop_stalled.WaitFor(kTimeout));
+
+  StringWaiterLogSink terminated_log("Terminated PostgreSQL backend");
+  StringWaiterLogSink ddl_aborted_log("Error when running DDL");
+
+  // Without the fix, SetReplicationEnabled will fail.
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
+  ASSERT_OK(terminated_log.WaitFor(kTimeout));
+  ASSERT_OK(ddl_aborted_log.WaitFor(kTimeout));
+
+  // Let the stalled DeleteTable finish, then resume and check replication picks back up.
+  release_drop.CountDown();
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
+      Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kDroppedTableName))));
+
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name);
+}
+
+// A replicated CREATE INDEX blocks on the target while the target master's
+// AddTableToXClusterTargetTask fetches the index's stream checkpoint from the source.
+class XClusterDDLReplicationStuckCreateIndexPauseTest
+    : public XClusterDDLReplicationStuckCreateTablePauseTest {
+ protected:
+  static constexpr auto kIndexedTableName = "table_for_stuck_index";
+};
+
+TEST_F(XClusterDDLReplicationStuckCreateIndexPauseTest, PauseTerminatesStuckCreateIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_kill_ddl_queue_pg_connection_on_pause) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, val int)", kIndexedTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Hold replication while the source runs its own CREATE INDEX, so that only the target's
+  // replicated CREATE INDEX reaches the sync point registered below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX ON $0(val)", kIndexedTableName));
+
+  // Make the target master's task never return from its call to the source.
+  SyncPoint::GetInstance()->SetCallBack(
+      "AddTableToXClusterTargetTask::RunInternal::BeforeBootstrap",
+      [](void* abandon_task) { *static_cast<bool*>(abandon_task) = true; });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto clear = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+  StringWaiterLogSink task_stuck_log("Task will be stuck");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(task_stuck_log.WaitFor(kTimeout));
+
+  StringWaiterLogSink terminated_log("Terminated PostgreSQL backend");
+  StringWaiterLogSink ddl_aborted_log("Error when running DDL");
+
+  // Without the fix, SetReplicationEnabled will fail.
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
+  ASSERT_OK(terminated_log.WaitFor(kTimeout));
+  ASSERT_OK(ddl_aborted_log.WaitFor(kTimeout));
 }
 
 }  // namespace yb

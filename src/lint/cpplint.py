@@ -279,6 +279,7 @@ _ERROR_CATEGORIES = [
     'build/std_thread',
     'build/glog',
     'build/boost_optional',
+    'build/stringprintf',
     'legal/copyright',
     'readability/alt_tokens',
     'readability/braces',
@@ -6016,6 +6017,35 @@ def CheckGlog(filename, clean_lines, linenum, error):
             4,  # 4 = high confidence
             'Please include "yb/util/logging.h" instead of <glog/logging.h>')
 
+_RE_PATTERN_STRINGPRINTF = re.compile(
+    r'\b(StringPrintf|SStringPrintf|StringAppendF|StringPrintfVector|StringAppendV)\b')
+
+def CheckStringPrintf(filename, clean_lines, linenum, error):
+  """Check for the StringPrintf family of functions.
+  We should use Format from yb/util/format.h instead.  yb/gutil keeps
+  stringprintf.h for its own use, and ybc_util.cc formats a va_list from C
+  callers, which Format cannot take, with StringAppendV.
+
+  Args:
+    filename: The name of the current file.
+    clean_lines: A CleansedLines instance containing the file.
+    linenum: The number of the line to check.
+    error: The function to call with any errors found.
+  """
+  if "src/yb/gutil/" in filename:
+    return
+  allow_append_v = filename.endswith('src/yb/yql/pggate/util/ybc_util.cc')
+  line = clean_lines.elided[linenum]
+  for match in _RE_PATTERN_STRINGPRINTF.finditer(line):
+    if allow_append_v and match.group(1) == 'StringAppendV':
+      continue
+    error(filename, linenum, 'build/stringprintf',
+          4,  # 4 = high confidence
+          'Please use Format instead of %s. For printf-style field formatting, pass '
+          'FixedPoint, ZeroPadded, HexString, PadLeft, PadRight or Scientific from '
+          '"yb/util/format.h" as an argument' % match.group(1))
+    return
+
 # Returns true if we are at a new block, and it is directly
 # inside of a namespace.
 def IsBlockInNameSpace(nesting_state, is_forward_declaration):
@@ -6135,6 +6165,7 @@ def ProcessLine(filename, file_extension, clean_lines, line,
   CheckStdThread(filename, clean_lines, line, error)
   CheckGlog(filename, clean_lines, line, error)
   CheckBoostOptional(filename, clean_lines, line, error)
+  CheckStringPrintf(filename, clean_lines, line, error)
   for check_fn in extra_check_functions:
     check_fn(filename, clean_lines, line, error)
 

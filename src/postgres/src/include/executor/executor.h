@@ -160,7 +160,8 @@ extern TupleHashEntry FindTupleHashEntry(TupleHashTable hashtable,
 										 TupleTableSlot *slot,
 										 ExprState *eqcomp,
 										 FmgrInfo *hashfunctions,
-										 AttrNumber *keyColIdx);
+										 AttrNumber *keyColIdx,
+										 ExprState **yb_keyColExprs);
 extern void ResetTupleHashTable(TupleHashTable hashtable);
 
 /*

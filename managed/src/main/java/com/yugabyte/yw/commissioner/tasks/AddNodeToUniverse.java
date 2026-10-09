@@ -18,6 +18,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
@@ -48,6 +50,7 @@ import lombok.extern.slf4j.Slf4j;
 // and/or master and ensures the task waits for the right set of load balance primitives.
 @Slf4j
 @Retryable
+@CanRollback
 public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   private boolean addMaster;
@@ -62,6 +65,28 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected NodeTaskParams taskParams() {
     return (NodeTaskParams) taskParams;
+  }
+
+  /**
+   * Submit params keep the node at {@code Removed}/{@code Decommissioned}; project the named node
+   * to the intended Live process roles so freeze delta can restore that prior state on rollback.
+   */
+  @Override
+  protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
+    UniverseDefinitionTaskParams target = super.getTargetUniverseDetails();
+    if (target.nodeDetailsSet == null || taskParams().nodeName == null) {
+      return target;
+    }
+    for (NodeDetails node : target.nodeDetailsSet) {
+      if (taskParams().nodeName.equals(node.getNodeName())) {
+        node.state = NodeState.Live;
+        node.isMaster = addMaster;
+        node.isTserver = addTserver;
+        node.masterState = null;
+        break;
+      }
+    }
+    return target;
   }
 
   private void runBasicChecks(Universe universe) {
@@ -267,6 +292,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Start a shell master process.
         createStartMasterTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
+        // Raft join ends the rollback-safe window (node enters master quorum).
+        createMarkRollbackUnsafeTaskOnce();
+
         // Add it into the master quorum.
         createChangeConfigTasks(currentNode, true, SubTaskGroupType.StartingNodeProcesses);
 
@@ -282,6 +310,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       // Bring up Tservers, as needed.
       if (addTserver) {
+        // Tserver start ends the rollback-safe window (no-op when already marked before
+        // ChangeMasterConfig). A failed start is then retried or fixed manually.
+        createMarkRollbackUnsafeTaskOnce();
+
         // Add the tserver process start task.
         createTServerTaskForNode(currentNode, "start")
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
@@ -314,7 +346,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
 
-      // Clear the host from master's blacklist.
+      // Clear leftover blacklist from Remove/Release so tablets can land.
       createModifyBlackListTask(
               null /* addNodes */, nodeSet /*removeNodes */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 
 #include "yb/ash/wait_state.h"
 
@@ -54,7 +55,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
@@ -69,6 +69,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
@@ -77,6 +78,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/storage_tier.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
@@ -122,7 +124,6 @@ METRIC_DEFINE_entity(table);
 
 using std::string;
 
-using strings::Substitute;
 
 namespace yb::tablet {
 
@@ -485,6 +486,8 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
         self->table_type, self->doc_read_context->schema().is_colocated()),
     .table_owns_vector_reverse_mapping =
         self->doc_read_context->schema().table_properties().owns_vector_reverse_mapping(),
+    .table_writes_vector_reverse_mapping =
+        self->doc_read_context->schema().table_properties().writes_vector_reverse_mapping(),
   };
 }
 
@@ -604,7 +607,9 @@ Status KvStoreInfo::LoadFromPB(
           .path    = rocksdb_dir,
       });
     }
+    target_tier_path_id = pb.target_tier_path_id();
   }
+  target_storage_tier = pb.target_storage_tier();
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   rocksdb_parent_data_compacted = pb.rocksdb_parent_data_compacted();
@@ -643,6 +648,71 @@ Status KvStoreInfo::MergeWithRestored(
       snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
+// The snapshot lists every vector index that was on the tablet, including invalid indexes the
+// dump omitted and indexes dropped while a snapshot schedule still retained the tablet. Those
+// have no local table. A local vector index with no snapshot entry is the one whose options and
+// restored graph can disagree.
+Result<std::unordered_set<ColocationId>> SnapshotVectorIndexColocationIds(
+    const google::protobuf::RepeatedPtrField<TableInfoPB>& snapshot_tables) {
+  std::unordered_set<ColocationId> ids;
+  for (const auto& snapshot_table : snapshot_tables) {
+    if (!snapshot_table.index_info().has_vector_idx_options()) {
+      continue;
+    }
+    const auto& schema = snapshot_table.schema();
+    SCHECK(
+        schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id(),
+        Corruption, "Snapshot vector index $0 has no colocation id", snapshot_table.table_name());
+    ids.insert(schema.colocated_table_id().colocation_id());
+  }
+  return ids;
+}
+
+Status CheckLocalVectorIndexesInSnapshot(
+    const TableInfoMap& tables, const std::unordered_set<ColocationId>& snapshot_colocation_ids) {
+  for (const auto& [table_id, table_info] : tables) {
+    if (!table_info->IsVectorIndex()) {
+      continue;
+    }
+    SCHECK(
+        table_info->schema().has_colocation_id(), Corruption,
+        "Local vector index $0 has no colocation id", table_id);
+    const auto colocation_id = table_info->schema().colocation_id();
+    SCHECK(
+        snapshot_colocation_ids.find(colocation_id) != snapshot_colocation_ids.end(), Corruption,
+        "Local vector index $0 colocation id $1 has no snapshot counterpart", table_id,
+        colocation_id);
+  }
+  return Status::OK();
+}
+
+// CREATE INDEX on the restore cluster fills the local vector_idx_options, but the restored chunk
+// files were written with the snapshot superblock's:
+// - ysql_dump assigns dense DocDB ids and CREATE INDEX records that column id.
+// - id is the permanent index id the restored graph files are stored under.
+// - hnsw.backend and store_payload come from --vector_index_backend and
+//   --vector_index_store_payload; they set the chunk file names and whether each vector carries a
+//   ybctid.
+// SetSchema keeps the local index_info, so copy the snapshot options onto the local index,
+// matched by colocation id. table_id stays local.
+Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_table) {
+  if (!snapshot_table.index_info().has_vector_idx_options() || !target->IsVectorIndex()) {
+    return Status::OK();
+  }
+  const auto& source_options = snapshot_table.index_info().vector_idx_options();
+  std::string diff;
+  if (pb_util::ArePBsEqual(target->index_info->vector_idx_options(), source_options, &diff)) {
+    return Status::OK();
+  }
+  LOG(INFO) << "Restoring vector index options for " << target->table_id << ": " << diff;
+  IndexInfoPB index_info_pb;
+  target->index_info->ToPB(&index_info_pb);
+  *index_info_pb.mutable_vector_idx_options() = source_options;
+  target->index_info = std::make_unique<qlexpr::IndexInfo>(index_info_pb);
+  target->doc_read_context->vector_idx_options = source_options;
+  return Status::OK();
+}
+
 Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
@@ -664,6 +734,10 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     for (const auto& [table_id, table_info] : tables) {
       if (table_id == primary_table_id) {
         RETURN_NOT_OK(table_info->MergeSchemaPackings(*primary_table_info, overwrite));
+        if (overwrite) {
+          table_info->doc_read_context->mutable_schema()->UpdateMissingValuesFrom(
+              primary_table_info->schema().columns());
+        }
         continue;
       }
       RSTATUS_DCHECK(
@@ -672,21 +746,45 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
           table_info->ToString());
     }
     if (overwrite) {
-      auto schema = tables.begin()->second->doc_read_context->mutable_schema();
-      schema->UpdateMissingValuesFrom(primary_table_info->schema().columns());
+      auto snapshot_colocation_ids = VERIFY_RESULT(
+          SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()));
+      for (const auto& snapshot_table : snapshot_kvstoreinfo.tables()) {
+        if (!snapshot_table.index_info().has_vector_idx_options()) {
+          continue;
+        }
+        const auto colocation_id = snapshot_table.schema().colocated_table_id().colocation_id();
+        auto it = colocation_to_table.find(colocation_id);
+        if (it == colocation_to_table.end()) {
+          // The dump does not recreate an invalid index, or one dropped while a snapshot schedule
+          // still retained the tablet. The superblock still lists it.
+          LOG(WARNING) << "No local table for snapshot vector index " << snapshot_table.table_name()
+                       << " colocation id " << colocation_id;
+          continue;
+        }
+        RETURN_NOT_OK(RestoreVectorIndexOptions(it->second.get(), snapshot_table));
+      }
+      RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(tables, snapshot_colocation_ids));
     }
     return Status::OK();
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
     TableInfo* target_table = VERIFY_RESULT(FindMatchingTable(snapshot_table_pb, primary_table_id));
-    if (target_table != nullptr) {
-      auto schema = target_table->doc_read_context->mutable_schema();
-      if (overwrite) {
-        schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
-      }
-      RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
+    if (target_table == nullptr) {
+      continue;
     }
+    auto schema = target_table->doc_read_context->mutable_schema();
+    if (overwrite) {
+      schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
+    }
+    RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
+    if (overwrite) {
+      RETURN_NOT_OK(RestoreVectorIndexOptions(target_table, snapshot_table_pb));
+    }
+  }
+  if (overwrite) {
+    RETURN_NOT_OK(CheckLocalVectorIndexesInSnapshot(
+        tables, VERIFY_RESULT(SnapshotVectorIndexColocationIds(snapshot_kvstoreinfo.tables()))));
   }
   return Status::OK();
 }
@@ -746,6 +844,12 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
     tppb->set_tier(tp.tier);
     tppb->set_path(tp.path);
   }
+  if (target_storage_tier.empty()) {
+    pb->clear_target_storage_tier();
+  } else {
+    pb->set_target_storage_tier(target_storage_tier);
+  }
+  pb->set_target_tier_path_id(target_tier_path_id);
   if (lower_bound_key.empty()) {
     pb->clear_lower_bound_key();
   } else {
@@ -800,6 +904,8 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
   return YB_STRUCT_EQUALS(kv_store_id,
                           rocksdb_dir,
                           tier_paths,
+                          target_storage_tier,
+                          target_tier_path_id,
                           lower_bound_key,
                           upper_bound_key,
                           rocksdb_parent_data_compacted,
@@ -894,7 +1000,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
     wal_top_dir = wal_root_dirs[0];
   }
 
-  const string table_dir_name = Substitute("table-$0", data.table_info->table_id);
+  const string table_dir_name = Format("table-$0", data.table_info->table_id);
   const string tablet_dir_name = MakeTabletDirName(data.raft_group_id);
   const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
   const string rocksdb_dir = JoinPathSegments(
@@ -902,6 +1008,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
   ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
+  ret->kv_store_.target_storage_tier = data.target_storage_tier;
+  ret->kv_store_.target_tier_path_id = 0;
   RETURN_NOT_OK(ret->Flush());
   return ret;
 }
@@ -1022,6 +1130,33 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(ColocationId colocation_id)
 void RaftGroupMetadata::TEST_SetTierPaths(std::vector<TierPathInfo> paths) {
   std::lock_guard lock(data_mutex_);
   kv_store_.tier_paths = std::move(paths);
+}
+
+std::string RaftGroupMetadata::target_storage_tier() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.target_storage_tier;
+}
+
+uint32_t RaftGroupMetadata::target_tier_path_id() const {
+  std::lock_guard lock(data_mutex_);
+  return kv_store_.target_tier_path_id;
+}
+
+Status RaftGroupMetadata::SetTargetTier(const std::string& target_tier, uint32_t target_path_id) {
+  {
+    std::lock_guard lock(data_mutex_);
+    kv_store_.target_storage_tier = target_tier;
+    kv_store_.target_tier_path_id = target_path_id;
+  }
+  return Flush();
+}
+
+Status RaftGroupMetadata::ClearTargetTierPathId() {
+  {
+    std::lock_guard lock(data_mutex_);
+    kv_store_.target_tier_path_id = 0;
+  }
+  return Flush();
 }
 
 Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
@@ -1152,12 +1287,12 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
   std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
     return STATUS(IllegalState,
-        Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
-                   "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
-                   "Tablet data state: $1 ($2)",
-                   raft_group_id_,
-                   TabletDataState_Name(tablet_data_state_),
-                   tablet_data_state_));
+        Format("Tablet $0 is not in TABLET_DATA_DELETED state. "
+               "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
+               "Tablet data state: $1 ($2)",
+               raft_group_id_,
+               TabletDataState_Name(tablet_data_state_),
+               tablet_data_state_));
   }
 
   string path = VERIFY_RESULT(FilePath());
@@ -1372,6 +1507,7 @@ Status RaftGroupMetadata::Flush(OnlyIfDirty only_if_dirty) {
     last_applied_change_metadata_op_id = last_applied_change_metadata_op_id_;
     ResetMinUnflushedChangeMetadataOpIdUnlocked();
   }
+  TEST_SYNC_POINT_CALLBACK("RaftGroupMetadata::Flush", this);
   RETURN_NOT_OK(SaveToDiskUnlocked(pb));
   {
     // Update last_flushed_change_metadata_op_id_ only after disk write is complete. This removes
@@ -1423,7 +1559,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             fs_manager_->encrypted_env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),
-                        Substitute("Failed to write Raft group metadata $0", raft_group_id_));
+                        Format("Failed to write Raft group metadata $0", raft_group_id_));
 
   return Status::OK();
 }
@@ -1451,7 +1587,7 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(
     Env* env, const std::string& path, RaftGroupReplicaSuperBlockPB* superblock) {
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(env, path, superblock),
-      Substitute("Could not load Raft group metadata from $0", path));
+      Format("Could not load Raft group metadata from $0", path));
   return Status::OK();
 }
 
@@ -1813,6 +1949,9 @@ uint32_t RaftGroupMetadata::wal_retention_secs() const {
 Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_index) {
   {
     std::lock_guard lock(data_mutex_);
+    if (cdc_min_replicated_index_ == cdc_min_replicated_index) {
+      return Status::OK();
+    }
     cdc_min_replicated_index_ = cdc_min_replicated_index;
   }
   return Flush();
@@ -1841,22 +1980,48 @@ bool RaftGroupMetadata::is_under_cdc_sdk_replication() const {
 Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
   {
     std::lock_guard lock(data_mutex_);
-    cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
-
-    if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
-      // This means we no longer have an active CDC stream for the tablet.
-      is_under_cdc_sdk_replication_ = false;
-    } else if (cdc_min_checkpoint_op_id.valid()) {
-      // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
-      is_under_cdc_sdk_replication_ = true;
+    if (!SetCdcSdkMinCheckpointOpIdUnlocked(cdc_min_checkpoint_op_id)) {
+      return Status::OK();
     }
   }
   return Flush();
 }
 
+namespace {
+
+// Whether an active CDC stream exists given its min checkpoint; an op id that is neither valid
+// nor the "no stream" markers keeps the existing value.
+bool IsUnderCdcSdkReplication(const OpId& cdc_min_checkpoint_op_id, bool existing_value) {
+  if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
+    return false;
+  } else if (cdc_min_checkpoint_op_id.valid()) {
+    // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
+    return true;
+  } else {
+    return existing_value;
+  }
+}
+
+} // namespace
+
+bool RaftGroupMetadata::SetCdcSdkMinCheckpointOpIdUnlocked(const OpId& cdc_min_checkpoint_op_id) {
+  const bool is_under_cdc_sdk_replication =
+      IsUnderCdcSdkReplication(cdc_min_checkpoint_op_id, is_under_cdc_sdk_replication_);
+  if (cdc_sdk_min_checkpoint_op_id_ == cdc_min_checkpoint_op_id &&
+      is_under_cdc_sdk_replication_ == is_under_cdc_sdk_replication) {
+    return false;
+  }
+  cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+  is_under_cdc_sdk_replication_ = is_under_cdc_sdk_replication;
+  return true;
+}
+
 Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
   {
     std::lock_guard lock(data_mutex_);
+    if (cdc_sdk_safe_time_ == cdc_sdk_safe_time) {
+      return Status::OK();
+    }
     cdc_sdk_safe_time_ = cdc_sdk_safe_time;
   }
   return Flush();
@@ -1869,28 +2034,25 @@ Status RaftGroupMetadata::set_all_cdc_retention_barriers(
     bool set_cdc_min_checkpoint_op_id_check,
     const HybridTime& cdc_sdk_safe_time,
     bool set_cdc_sdk_safe_time_check) {
+  bool changed = false;
   {
     std::lock_guard lock(data_mutex_);
-    if (set_cdc_min_replicated_index_check) {
+    if (set_cdc_min_replicated_index_check &&
+        cdc_min_replicated_index_ != cdc_min_replicated_index) {
       cdc_min_replicated_index_ = cdc_min_replicated_index;
+      changed = true;
     }
 
     if (set_cdc_min_checkpoint_op_id_check) {
-      cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
-      if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
-        // This means we no longer have an active CDC stream for the tablet.
-        is_under_cdc_sdk_replication_ = false;
-      } else if (cdc_min_checkpoint_op_id.valid()) {
-        // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
-        is_under_cdc_sdk_replication_ = true;
-      }
+      changed = SetCdcSdkMinCheckpointOpIdUnlocked(cdc_min_checkpoint_op_id) || changed;
     }
 
-    if (set_cdc_sdk_safe_time_check) {
+    if (set_cdc_sdk_safe_time_check && cdc_sdk_safe_time_ != cdc_sdk_safe_time) {
       cdc_sdk_safe_time_ = cdc_sdk_safe_time;
+      changed = true;
     }
   }
-  return Flush();
+  return changed ? Flush() : Status::OK();
 }
 
 Status RaftGroupMetadata::SetAllCDCRetentionBarriers(

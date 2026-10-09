@@ -464,6 +464,77 @@ $(document).ready(() => {
   })();
 
   /**
+   * Copy the page's Markdown file into the clipboard.
+   */
+  (() => {
+    const button = document.querySelector('.markdown-actions button.copy-link');
+    if (!button || !navigator.clipboard) {
+      return;
+    }
+
+    const label = button.querySelector('span');
+    const originalLabel = label ? label.textContent : '';
+
+    button.addEventListener('click', () => {
+      const url = button.getAttribute('data-copy-file');
+      button.classList.add('is-copying');
+      button.classList.remove('is-copied', 'is-failed');
+      if (label) {
+        label.textContent = 'Copying...';
+      }
+
+      const pending = fetch(url).then((response) => {
+        if (!response.ok) {
+          throw new Error('File not found');
+        }
+        return response.text();
+      });
+
+      // clipboard.write must run in the click so the user gesture is still
+      // active. ClipboardItem accepts a promise and waits for the fetch.
+      // writeText after await is rejected by Safari, and by Chrome when the
+      // fetch is slow.
+      let copy;
+      try {
+        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+          copy = navigator.clipboard.write([
+            new ClipboardItem({
+              'text/plain': pending.then((text) => new Blob([text], { type: 'text/plain' })),
+            }),
+          ]);
+        } else {
+          copy = pending.then((text) => navigator.clipboard.writeText(text));
+        }
+      } catch (error) {
+        copy = Promise.reject(error);
+      }
+
+      copy
+        .then(() => {
+          button.classList.add('is-copied');
+          if (label) {
+            label.textContent = 'Copied';
+          }
+        })
+        .catch(() => {
+          button.classList.add('is-copied', 'is-failed');
+          if (label) {
+            label.textContent = 'Failed to copy';
+          }
+        })
+        .finally(() => {
+          button.classList.remove('is-copying');
+          setTimeout(() => {
+            button.classList.remove('is-copied', 'is-failed');
+            if (label) {
+              label.textContent = originalLabel;
+            }
+          }, 2000);
+        });
+    });
+  })();
+
+  /**
    * Copy heading link into clipboard.
    */
   (() => {

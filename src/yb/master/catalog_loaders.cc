@@ -51,6 +51,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
+
 DEFINE_UNKNOWN_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
   "This reduces failover time at the expense of garbage data." );
@@ -213,6 +215,25 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
                   << ", unknown table for this tablet: " << metadata.table_id();
     }
     catalog_manager_->deleted_tablets_.insert(tablet_id);
+    return Status::OK();
+  }
+
+  // A deleted split parent is only needed to redirect a lookup to its children and to be listed in
+  // the master UI, so load it straight into that form rather than as a TabletInfo that
+  // RemoveDeletedTabletsFromTables would drop.
+  // Tablets of a table that is going away are loaded as usual, as RemoveDeletedTabletsFromTables
+  // leaves them alone too.
+  if (FLAGS_master_enable_deleted_tablet_cleanup &&
+      metadata.state() == SysTabletsEntryPB::DELETED && metadata.split_tablet_ids_size() > 0 &&
+      !primary_table->LockForRead()->started_hiding_or_deleting()) {
+    catalog_manager_->deleted_tablets_.insert(tablet_id);
+    catalog_manager_->deleted_split_parents_.insert_or_assign(
+        tablet_id,
+        DeletedSplitParent{
+            .table_id = metadata.table_id(),
+            .child_ids = std::vector<TabletId>(
+                metadata.split_tablet_ids().begin(), metadata.split_tablet_ids().end()),
+            .state_msg = metadata.state_msg()});
     return Status::OK();
   }
 

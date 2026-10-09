@@ -2196,6 +2196,17 @@ class MasterSnapshotCoordinator::Impl {
         return STATUS(IllegalState, "The snapshot state is not complete", snapshot_id.ToString(),
                       MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
       }
+      // Reject restore to a time after the snapshot's own hybrid time; the snapshot
+      // cannot contain data from that time. Earlier timestamps are valid because
+      // tablet-level restore uses DocDB history retained in the snapshot's SST files.
+      if (phase == RestorePhase::kInitial && restore_at &&
+          restore_at > snapshot.snapshot_hybrid_time()) {
+        return STATUS_EC_FORMAT(
+            InvalidArgument, MasterError(MasterErrorPB::INVALID_REQUEST),
+            "Snapshot $0 contains data only up to $1, cannot restore it to the later time $2",
+            snapshot_id, snapshot.snapshot_hybrid_time().ToDebugString(),
+            restore_at.ToDebugString());
+      }
       restore_sys_catalog = phase == RestorePhase::kInitial && !snapshot.schedule_id().IsNil();
 
       if (restore_sys_catalog) {

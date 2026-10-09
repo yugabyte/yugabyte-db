@@ -42,8 +42,6 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
@@ -998,7 +996,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
                                      .GetLoadedStatusTabletsVersion();
           return current_version == version;
         },
-        30s, strings::Substitute(error, version)));
+        30s, Format(error, version)));
   };
   const auto run_write_verify_delete_test = [&]() {
     const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
@@ -1010,7 +1008,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     ASSERT_OK(DeleteUniverseReplication());
   };
 
-  int producer_version = 1, consumer_version = 1;
+  // 1 for system.transaction, plus 1 for each of its tablets (1 per tserver).
+  uint64_t producer_version = 1 + 3;
+  uint64_t consumer_version = 1 + 3;
 
   // Keep same tablet count for normal tablets.
   ASSERT_OK(CreateClusterAndTable());
@@ -1019,7 +1019,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   auto global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(producer_client(), producer_transaction_table_name));
   ASSERT_OK(producer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(producer_cluster(), ++producer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(producer_cluster(), ++producer_version));
 
   LOG(INFO) << "First run, more txn tablets on producer.";
   ASSERT_OK(SetupReplicationAndWaitForValidSafeTime());
@@ -1036,9 +1036,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(consumer_client(), producer_transaction_table_name));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(consumer_cluster(), ++consumer_version));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
-  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+  ASSERT_NO_FATALS(wait_for_txn_status_version(consumer_cluster(), ++consumer_version));
 
   ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
       consumer_table_->name().namespace_id(), /*is_read_only=*/false));

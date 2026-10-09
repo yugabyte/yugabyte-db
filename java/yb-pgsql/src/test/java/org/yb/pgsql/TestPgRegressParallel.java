@@ -32,19 +32,24 @@ public class TestPgRegressParallel extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    flags.put("ysql_yb_enable_ddl_savepoint_support", "false");
-    flags.put("ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flags.put("enable_object_locking_for_table_locks", "false");
-    flags.put("ysql_enable_concurrent_ddl", "false");
-    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     flags.put("ysql_enable_auto_analyze", "false");
     flags.put("yb_enable_read_committed_isolation", "true");
+    // TODO(#33505): yb.orig.select_parallel creates a function and a temp table inside a
+    // transaction block and then runs a parallel plan over them. With concurrent DDL those
+    // catalog entries are still uncommitted, and the parallel worker does not see them:
+    //   ERROR: cache lookup failed for function <oid>   CONTEXT: parallel worker
+    //   ERROR: relation with OID <oid> does not exist   CONTEXT: parallel worker
+    // Run in the legacy mode until parallel workers pick up the leader's uncommitted DDL.
+    toggleDDLMode(flags, /* useLegacy */ true);
     return flags;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
   }
 
   @Test

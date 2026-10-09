@@ -44,6 +44,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
@@ -555,6 +556,31 @@ TEST_F(AdminCliTest, TestRestoreSnapshotInterval) {
   ASSERT_NOK(select2);
 }
 
+TEST_F(AdminCliTest, TestRestoreSnapshotFutureTimeFails) {
+  CreateTable(Transactional::kFalse);
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  ASSERT_OK(WriteRow(CreateSession(), 1, 1));
+
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+  const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot());
+  ASSERT_RESULT(WaitForAllSnapshots());
+
+  // Get a timestamp strictly after the snapshot's creation time.
+  std::this_thread::sleep_for(2s);
+  auto future_ht = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+
+  // Restoring to a time after the snapshot was created should fail with the new validation error.
+  std::string error_msg;
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(
+      &error_msg, "restore_snapshot", snapshot_id,
+      std::to_string(future_ht.GetPhysicalValueMicros())));
+  ASSERT_STR_CONTAINS(
+      error_msg, Format("Snapshot $0 contains data only up to", snapshot_id));
+  ASSERT_STR_CONTAINS(error_msg, "cannot restore it to the later time");
+}
+
 void AdminCliTest::CheckImportedTableWithIndex(
     const string& keyspace, const string& table_name, const string& index_name, bool same_ids) {
   const YBTableName yb_table_name(YQL_DATABASE_CQL, keyspace, table_name);
@@ -763,7 +789,7 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
   const std::string json_end = "]}]";
 
   ASSERT_OK(RunAdminToolCommand(
-      "modify_placement_info", strings::Substitute("$0,$1,$2", c1z1, c1z2, c2z1), 5, ""));
+      "modify_placement_info", Format("$0,$1,$2", c1z1, c1z2, c2z1), 5, ""));
 
   ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", ""));
   auto output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
@@ -784,12 +810,12 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
           json_end),
       string::npos);
 
-  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1)));
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", Format("$0:1", c1z1)));
   output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
   ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
   ASSERT_NE(output.find(multi_affinitized_leaders_json_start + c1z1_json + json_end), string::npos);
 
-  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1), c1z2));
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", Format("$0:1", c1z1), c1z2));
   output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
   ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
   ASSERT_NE(
@@ -797,8 +823,8 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
       string::npos);
 
   ASSERT_OK(RunAdminToolCommand(
-      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:2", c1z2),
-      strings::Substitute("$0:3", c2z1)));
+      "set_preferred_zones", Format("$0:1", c1z1), Format("$0:2", c1z2),
+      Format("$0:3", c2z1)));
   output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
   ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
   ASSERT_NE(
@@ -808,8 +834,8 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
       string::npos);
 
   ASSERT_OK(RunAdminToolCommand(
-      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:1", c1z2),
-      strings::Substitute("$0:2", c2z1)));
+      "set_preferred_zones", Format("$0:1", c1z1), Format("$0:1", c1z2),
+      Format("$0:2", c2z1)));
   output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
   ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
   ASSERT_NE(
@@ -818,15 +844,15 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
           c2z1_json + json_end),
       string::npos);
 
-  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:", c1z1)));
-  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:0", c1z1)));
-  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:-13", c1z1)));
-  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:2", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", Format("$0:", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", Format("$0:0", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", Format("$0:-13", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", Format("$0:2", c1z1)));
   ASSERT_NOK(RunAdminToolCommand(
-      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:3", c1z2)));
+      "set_preferred_zones", Format("$0:1", c1z1), Format("$0:3", c1z2)));
   ASSERT_NOK(RunAdminToolCommand(
-      "set_preferred_zones", strings::Substitute("$0:2", c1z1), strings::Substitute("$0:2", c1z2),
-      strings::Substitute("$0:3", c2z1)));
+      "set_preferred_zones", Format("$0:2", c1z1), Format("$0:2", c1z2),
+      Format("$0:3", c2z1)));
 }
 
 TEST_F(AdminCliTest, TestSetPreferredZoneWithWildcardPlacement) {

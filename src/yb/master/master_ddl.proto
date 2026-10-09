@@ -882,6 +882,7 @@ message WaitForLockersMultipleGlobalRequestPB {
   repeated docdb.ObjectLockPB object_locks = 3;
   optional fixed64 propagated_hybrid_time = 4;
   optional bytes background_transaction_id = 5;
+  optional bytes background_transaction_status_tablet = 6;
 }
 
 message WaitForLockersMultipleGlobalResponsePB {

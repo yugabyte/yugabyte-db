@@ -37,6 +37,9 @@ class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
 
   // Run pg_upgrade --check
   virtual Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte");
+  // Same as above, with extra arguments appended to the pg_upgrade command line.
+  Status ValidateUpgradeCompatibilityWithArgs(
+      const std::vector<std::string>& extra_args, const std::string& user_name = "yugabyte");
   Status ValidateUpgradeCompatibilityFailure(
       const std::string& expected_error, const std::string& user_name = "yugabyte");
   Status ValidateUpgradeCompatibilityFailure(

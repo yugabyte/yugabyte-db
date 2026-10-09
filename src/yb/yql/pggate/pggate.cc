@@ -813,6 +813,10 @@ void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
 #endif
 }
 
+void PgApiImpl::SetConnectedDatabaseOid(YbcPgOid dboid) {
+  pg_txn_manager_->SetConnectedDatabaseOid(dboid);
+}
+
 void PgApiImpl::Interrupt() {
   interrupter_->Interrupt();
 }
@@ -2049,6 +2053,10 @@ void PgApiImpl::ReplicationInfoSnapshot::Refresh() {
   };
 }
 
+uint32_t PgApiImpl::GetSharedYsqlCatalogPrefetchLoad() const {
+  return tserver_shared_object_.ysql_catalog_prefetch_load();
+}
+
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
   if (!db_oid) {
     return tserver_shared_object_.ysql_catalog_version();
@@ -2337,12 +2345,25 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
+bool PgApiImpl::IsTableLockingEnabledForCurrentTxn() const {
+  return pg_txn_manager_->IsTableLockingEnabledForCurrentTxn();
+}
+
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
   return pg_session_->CurrentTransactionUsesFastPath();
 }
 
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
+}
+
+void PgApiImpl::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, const char* transaction_id) {
+  pg_session_->SetHistoricalReadContext(read_time, transaction_id ? transaction_id : "");
+}
+
+void PgApiImpl::ResetHistoricalReadContext() {
+  pg_session_->ResetHistoricalReadContext();
 }
 
 ReadHybridTime PgApiImpl::GetCatalogReadTime() const {

@@ -57,6 +57,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -179,7 +180,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         universeUuid,
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.existingProviderInitializer(intent).setInstanceType("c5.4xlarge");
           for (NodeDetails n : univ.getUniverseDetails().nodeDetailsSet) {
             n.state = NodeState.Live;
             if (n.cloudInfo != null) {
@@ -216,7 +217,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         universeUuid,
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.existingProviderInitializer(intent).setInstanceType("c5.4xlarge");
           List<NodeDetails> nodes =
               univ.getUniverseDetails().nodeDetailsSet.stream().collect(Collectors.toList());
           for (int i = 0; i < nodes.size(); i++) {
@@ -812,7 +813,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = curIntent.clone();
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
-    userIntent.deviceInfo.numVolumes = 1;
+    TestUtils.updateDeviceInfo(
+        userIntent, ServerType.TSERVER, deviceInfo -> deviceInfo.numVolumes = 1);
     PlacementInfo pi = rf3Placement(region);
     universe =
         Universe.saveDetails(

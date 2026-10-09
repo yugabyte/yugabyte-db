@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
@@ -58,11 +59,10 @@ import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
-import com.yugabyte.yw.nodeagent.GcsOnAwsConfig;
+import com.yugabyte.yw.nodeagent.GcsConfig;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
-import com.yugabyte.yw.nodeagent.S3OnGcpConfig;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlType;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
@@ -646,12 +646,21 @@ public class NodeAgentRpcPayload {
   }
 
   /**
-   * Builds the node-agent input for cross-cloud federated IAM on a node: sets the flow direction
-   * from the node's cloud and fills the audience (and, for S3-on-GCP, the role ARN). Only static
-   * config is passed; credentials are minted in-process on the node.
+   * Builds the node-agent input for cross-cloud federated IAM on a node, filling the audience (and,
+   * for S3-on-GCP, the role ARN) for the given direction. Only static config is passed; credentials
+   * are minted in-process on the node.
+   *
+   * <p>The direction is decided by the caller rather than derived from the provider type here: an
+   * on-prem provider serves both, and only the node's detected physical cloud says which one this
+   * node needs.
    */
   public ConfigureCloudFederationInput setupConfigureCloudFederationBits(
-      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+      Universe universe,
+      NodeDetails nodeDetails,
+      NodeTaskParams taskParams,
+      @Nullable CloudType sourceCloud,
+      @Nullable CrossCloudFederationTarget target,
+      NodeAgent nodeAgent) {
     ConfigureCloudFederationInput.Builder builder = ConfigureCloudFederationInput.newBuilder();
     Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
     Provider provider = Util.getProviderForNode(nodeDetails, cluster);
@@ -661,52 +670,60 @@ public class NodeAgentRpcPayload {
     }
     builder.setRemoteTmp(confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
 
-    String audience = null;
-    String s3RoleArn = null;
     boolean enabled = true;
     if (taskParams instanceof ManageCloudFederation.Params) {
-      ManageCloudFederation.Params params = (ManageCloudFederation.Params) taskParams;
-      audience = params.audience;
-      s3RoleArn = params.s3RoleArn;
-      enabled = params.enabled;
+      enabled = ((ManageCloudFederation.Params) taskParams).enabled;
     }
     builder.setEnabled(enabled);
+    if (!enabled) {
+      // Teardown removes every federation artifact, so it needs neither cloud nor settings.
+      return builder.build();
+    }
+    if (sourceCloud == null || target == null || target.targetCloud == null) {
+      throw new RuntimeException(
+          "Source and target cloud are required to configure cross-cloud federation");
+    }
+    builder.setSourceCloud(toProto(sourceCloud));
+    builder.setTargetCloud(toProto(target.targetCloud));
 
-    CloudType nodeCloud = cluster.userIntent.providerType;
-    // Provider-audience mode. AWS-backed DB node -> GCS (native AWS or on-prem on AWS): renders
-    // the external_account JSON from the audience. GCP DB node -> S3: renders the
-    // AssumeRoleWithWebIdentity credential_process from role ARN + audience. YBA passes only
-    // static config, never a minted credential.
-    if (nodeCloud == CloudType.aws || nodeCloud == CloudType.onprem) {
-      builder.setFlowDirection(ConfigureCloudFederationInput.FlowDirection.GCS_ON_AWS);
-      if (enabled) {
-        if (StringUtils.isBlank(audience)) {
-          throw new RuntimeException(
-              "GCP workload-identity audience is required for GCS-on-AWS federation");
+    // Provider-audience mode: YBA passes only static config, never a minted credential. Reaching
+    // GCS renders the external_account JSON from the audience; reaching S3 renders the
+    // AssumeRoleWithWebIdentity credential_process from role ARN + audience.
+    switch (target.targetCloud) {
+      case gcp:
+        if (StringUtils.isBlank(target.audience)) {
+          throw new RuntimeException("GCP workload-identity audience is required to reach GCS");
         }
-        builder.setGcsOnAws(GcsOnAwsConfig.newBuilder().setAudience(audience).build());
-      }
-    } else if (nodeCloud == CloudType.gcp) {
-      builder.setFlowDirection(ConfigureCloudFederationInput.FlowDirection.S3_ON_GCP);
-      if (enabled) {
-        if (StringUtils.isBlank(s3RoleArn) || StringUtils.isBlank(audience)) {
-          throw new RuntimeException(
-              "AWS role ARN and audience are required for S3-on-GCP federation");
+        builder.setGcs(GcsConfig.newBuilder().setAudience(target.audience).build());
+        break;
+      case aws:
+        if (StringUtils.isBlank(target.roleArn) || StringUtils.isBlank(target.audience)) {
+          throw new RuntimeException("AWS role ARN and audience are required to reach S3");
         }
-        builder.setS3OnGcp(
-            S3OnGcpConfig.newBuilder()
-                .setRoleArn(s3RoleArn)
-                .setAudience(audience)
+        // Fully qualified: telemetry.S3Config is imported in this file for the OTel exporter.
+        builder.setS3(
+            com.yugabyte.yw.nodeagent.S3Config.newBuilder()
+                .setRoleArn(target.roleArn)
+                .setAudience(target.audience)
                 .setProfileName(YB_CROSS_CLOUD_FEDERATION_AWS_PROFILE)
                 .build());
-      }
-    } else {
-      throw new RuntimeException(
-          String.format(
-              "Cross-cloud federation (provider-audience mode) not applicable for node cloud %s",
-              nodeCloud));
+        break;
+      default:
+        throw new RuntimeException(
+            "Cross-cloud federation does not support storage cloud " + target.targetCloud);
     }
     return builder.build();
+  }
+
+  private static ConfigureCloudFederationInput.CloudProvider toProto(CloudType cloud) {
+    switch (cloud) {
+      case aws:
+        return ConfigureCloudFederationInput.CloudProvider.AWS;
+      case gcp:
+        return ConfigureCloudFederationInput.CloudProvider.GCP;
+      default:
+        throw new RuntimeException("Cross-cloud federation does not support cloud " + cloud);
+    }
   }
 
   public InstallOtelCollectorInput.Builder setupInstallOtelCollectorBitsEnv(
@@ -791,7 +808,7 @@ public class NodeAgentRpcPayload {
             Objects.requireNonNull(universe.getCluster(node.placementUuid));
         CloudType cloudType = Util.getProviderForNode(nodeDetails, cluster).getCloudCode();
         if (cloudType != CloudType.onprem
-            && (deviceInfo = cluster.userIntent.getDeviceInfoForNode(node)) != null) {
+            && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
           serverControlInputBuilder.addAllMountPoints(getMountPoints(deviceInfo, cloudType));
           serverControlInputBuilder.setCheckDataVolumes(true);
         }

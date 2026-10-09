@@ -61,7 +61,7 @@ test: yb.orig.merge_scan_cross_type
 test: yb.orig.merge_scan_collation
 
 # This test uses bkt_tbl, adding an index and RLS state that it tears down for
-# tests in later lines.
+# tests in later lines.  It also defines and drops tables of its own.
 test: yb.orig.merge_scan_rls
 
 # These tests touch multiple tables.

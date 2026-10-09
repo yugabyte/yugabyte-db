@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common.rollback;
 
+import com.yugabyte.yw.models.helpers.TaskType;
+
 /**
  * Computes how to roll back a failed task of a specific source {@link
  * com.yugabyte.yw.models.helpers.TaskType}.
@@ -18,6 +20,24 @@ public interface TaskRollbackComputer {
    */
   default boolean isEnabled() {
     return true;
+  }
+
+  /**
+   * {@link TaskType} submitted by {@link #compute} when it is 1:1 with the source type. Null when
+   * the rollback type is chosen at compute time (software upgrade VM vs Kubernetes).
+   */
+  default TaskType rollbackTaskType() {
+    return null;
+  }
+
+  /**
+   * Whether this rollback needs a captured {@code state_transition_details} checkpoint (edit /
+   * add-node style, where rollback replays a before/target delta). When true, a failed task that
+   * never reached the freeze/checkpoint - e.g. aborted at precheck - has no checkpoint and is not
+   * rollbackable. Non-checkpoint rollbacks (software upgrade) leave this false.
+   */
+  default boolean requiresStateTransitionDetails() {
+    return false;
   }
 
   /**

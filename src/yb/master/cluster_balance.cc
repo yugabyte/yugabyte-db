@@ -80,6 +80,14 @@ DEFINE_RUNTIME_int32(load_balancer_min_inbound_remote_bootstraps_per_tserver, 4,
     "many to remote bootstrap). This forces some parallelism during remote bootstrap, which avoids "
     "single-threaded bottlenecks.");
 
+DEFINE_RUNTIME_uint32(load_balancer_min_free_disk_space_pct, 5,
+    "Reject a tablet server as the destination for a tablet replica if hosting that replica would "
+    "leave less than this percentage of its total disk capacity free. Disk usage is estimated from "
+    "the usage the tablet server reported in its last heartbeat plus the full size of every "
+    "replica it is already starting. Tablet servers that have not reported their disk capacity are "
+    "never rejected. Defaults to the same threshold as --reject_writes_min_disk_space_pct, past "
+    "which a tablet server rejects writes anyway. Set to 0 to disable the check.");
+
 DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 50,
     "Maximum number of running tablet replicas per table that are allowed to be over the "
     "configured replication factor. This controls the amount of space amplification in the cluster "
@@ -520,6 +528,11 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     // The estimate does not account for per-block max_num_replicas: the goal distribution may
     // place slack replicas in a block beyond its maximum, so the estimated number of moves can be
     // low when maximums are binding.
+    //
+    // The goal state also ignores disk space, so once a tserver is over
+    // FLAGS_load_balancer_min_free_disk_space_pct the difference can stay non-zero indefinitely:
+    // the cluster balancer will not make the adds that would close it and still reports itself
+    // idle.
     TsTableLoadMap current_loads;
     TSDescriptorVector valid_ts_descs;
     for (auto& ts_uuid : state_->sorted_load_) {
@@ -667,6 +680,14 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
       VLOG(3) << "Sorted leader load after HandleLeaderMoves: " << GetSortedLeaderLoad();
       task_added = true;
     }
+  }
+
+  auto tservers_low_on_disk = global_state_->DescribeTabletServersLowOnDiskSpace();
+  if (!tservers_low_on_disk.empty()) {
+    YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 300, 1) << Format(
+        "$0 tablet server(s) are low on disk, with less than $1% of their capacity free: $2",
+        tservers_low_on_disk.size(), FLAGS_load_balancer_min_free_disk_space_pct,
+        AsString(tservers_low_on_disk));
   }
 
   // Update the list of tables the cluster balancer skipped this run.
@@ -965,8 +986,11 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
         VLOG(3) << "Found tserver " << ts_uuid << " to add a replica of tablet " << tablet_id;
         RETURN_NOT_OK(AddOrMoveReplica(
             tablet_id, "" /* from_ts */, ts_uuid,
-            Format("Placement ($0) does not have enough replicas of this tablet",
-                    ts_meta.descriptor->GetCloudInfo().ShortDebugString())));
+            Format(missing_placements.empty()
+                       ? "Tablet has fewer replicas than its replication factor, adding a replica "
+                         "in placement ($0)"
+                       : "Placement ($0) does not have enough replicas of this tablet",
+                   ts_meta.descriptor->GetCloudInfo().ShortDebugString())));
         state_->tablets_missing_replicas_.erase(tablet_id);
         return true;
       }
@@ -1082,7 +1106,11 @@ Status ClusterLoadBalancer::CanAddReplicas() {
           state_->options_->kMaxTabletRemoteBootstrapsPerTable);
     }
   }
-
+  // This bounds space amplification from add-then-remove moves, but it also gates the
+  // under-replication path (HandleAddIfMissingPlacement), whose adds restore RF rather than
+  // over-replicating anything.
+  // TODO(#24340): slow removals elsewhere in this table should not delay under-replication repair.
+  // Scope this limit to the move path.
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
       get_total_over_replication() >=
           implicit_cast<size_t>(state_->options_->kMaxOverReplicatedTabletsPerTable)) {
@@ -1190,6 +1218,14 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
   // the interval between left and right cannot have load > kMinLoadVarianceToBalance.
   ssize_t last_pos = state_->sorted_load_.size() - 1;
   for (ssize_t left = 0; left <= last_pos; ++left) {
+    // Blacklisted tservers cannot receive load. Using one as the destination could end the search
+    // early via the global load check below. last_pos is never skipped: its iteration
+    // (left == right, load_variance == 0) terminates the loop via return false instead of
+    // falling through to the IllegalState below.
+    if (left < last_pos &&
+        global_state_->blacklisted_servers_.contains(state_->sorted_load_[left])) {
+      continue;
+    }
     for (auto right = last_pos; right >= 0; --right) {
       const TabletServerId& low_load_uuid = state_->sorted_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_load_[right];
@@ -1208,9 +1244,11 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
           int global_load_variance = global_state_->GetGlobalLoad(high_load_uuid) -
                                      global_state_->GetGlobalLoad(low_load_uuid);
           if (global_load_variance < state_->options_->kMinLoadVarianceToBalance) {
-            // Already globally balanced. Since we are sorted by global load, we can return here as
-            // there are no other moves for us to make.
-            return false;
+            if (right == last_pos) {
+              return false;
+            } else {
+              break;
+            }
           }
           VLOG(3) << "Global data load balancing is in effect now";
           // Mark this move as a global balancing move and try to find a tablet to move.
@@ -1218,7 +1256,11 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         } else {
           // The load_variance is too low, which means we weren't able to find a load to move to
           // the left tserver. Continue and try with the next left tserver.
-          break;
+          if (right == last_pos) {
+            return false;
+          } else {
+            break;
+          }
         }
       }
 

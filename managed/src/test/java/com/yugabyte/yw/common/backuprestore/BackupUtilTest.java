@@ -13,7 +13,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
@@ -65,6 +67,102 @@ public class BackupUtilTest extends FakeDBApplication {
     initMocks(this);
     testCustomer = ModelFactory.testCustomer();
     testUniverse = ModelFactory.createUniverse(testCustomer.getId());
+  }
+
+  private void setFipsEnabled(Universe universe, boolean fipsEnabled) {
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.fipsEnabled = fipsEnabled;
+          u.setUniverseDetails(details);
+        });
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testBackupRecordsFipsMode(boolean fipsEnabled) {
+    setFipsEnabled(testUniverse, fipsEnabled);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST");
+    Backup backup =
+        ModelFactory.createBackup(
+            testCustomer.getUuid(), testUniverse.getUniverseUUID(), storageConfig.getConfigUUID());
+    assertEquals(
+        fipsEnabled,
+        Backup.getOrBadRequest(testCustomer.getUuid(), backup.getBackupUUID())
+            .getBackupInfo()
+            .fipsEnabled);
+  }
+
+  @Test
+  @Parameters({"true, true", "false, false"})
+  public void testRestoreFipsModeMatch(boolean backupFipsEnabled, boolean targetFipsEnabled) {
+    setFipsEnabled(testUniverse, targetFipsEnabled);
+    BackupUtil.validateRestoreFipsMode(
+        backupFipsEnabled, Universe.getOrBadRequest(testUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testRestoreFipsModeUnknown(boolean targetFipsEnabled) {
+    setFipsEnabled(testUniverse, targetFipsEnabled);
+    BackupUtil.validateRestoreFipsMode(
+        null, Universe.getOrBadRequest(testUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testRestoreNonFipsBackupIntoFipsUniverse() {
+    setFipsEnabled(testUniverse, true);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                BackupUtil.validateRestoreFipsMode(
+                    false, Universe.getOrBadRequest(testUniverse.getUniverseUUID())));
+    assertEquals(
+        "Cannot restore a backup of a universe that is not FIPS-enabled into FIPS-enabled"
+            + " universe '"
+            + testUniverse.getName()
+            + "'. Such a backup can contain objects that don't work in FIPS mode, such as MD5"
+            + " passwords",
+        e.getMessage());
+  }
+
+  @Test
+  public void testRestoreFipsBackupIntoNonFipsUniverse() {
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                BackupUtil.validateRestoreFipsMode(
+                    true, Universe.getOrBadRequest(testUniverse.getUniverseUUID())));
+    assertEquals(
+        "Cannot restore a backup of a FIPS-enabled universe into universe '"
+            + testUniverse.getName()
+            + "', which is not FIPS-enabled",
+        e.getMessage());
+  }
+
+  @Test
+  public void testBackupFipsModeInferredFromSourceUniverse() {
+    setFipsEnabled(testUniverse, true);
+    UUID universeUUID = testUniverse.getUniverseUUID();
+    Set<UUID> sourceUUIDs =
+        BackupUtil.getSourceUniverseUUIDs(
+            Arrays.asList(
+                "s3://bucket/prefix/univ-my-test-universe-"
+                    + universeUUID
+                    + "/ybc_backup-20261002T000000-full/keyspace-foo",
+                "s3://bucket/univ-"
+                    + universeUUID
+                    + "/backup-2026-10-02T00:00:00-1/table-foo.bar"));
+    assertEquals(Set.of(universeUUID), sourceUUIDs);
+    // The recorded mode wins; without one, the source universe's mode is used.
+    assertEquals(false, BackupUtil.getBackupFipsMode(false, sourceUUIDs));
+    assertEquals(true, BackupUtil.getBackupFipsMode(null, sourceUUIDs));
+    // Source universe not in this YBA, or no universe directory in the location.
+    assertEquals(null, BackupUtil.getBackupFipsMode(null, Set.of(UUID.randomUUID())));
+    assertEquals(Set.of(), BackupUtil.getSourceUniverseUUIDs(List.of("s3://bucket/foo")));
   }
 
   @Test(expected = Test.None.class)

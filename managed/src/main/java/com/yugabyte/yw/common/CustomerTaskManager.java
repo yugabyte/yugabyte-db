@@ -464,7 +464,7 @@ public class CustomerTaskManager {
     Path restoreFilePath = Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE);
     Path restoreCustomerTaskFilePath =
         Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE);
-    if (Files.exists(restoreCustomerTaskFilePath) && Files.exists(restoreFilePath)) {
+    if (Util.restoreTaskInfoExists()) {
       finalizeRestoredYbaBackupTask();
       try {
         TaskInfo restoreTaskInfo =
@@ -930,6 +930,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
       case ResizeNode:
+      case RollbackResizeNode:
         taskParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
         break;
       case DestroyKubernetesUniverse:
@@ -1052,6 +1053,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, ExportTelemetryConfigParams.class);
         break;
       case AddNodeToUniverse:
+      case RollbackAddNodeToUniverse:
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:

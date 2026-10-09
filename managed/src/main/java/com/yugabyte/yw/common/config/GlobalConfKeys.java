@@ -274,6 +274,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleUiV2Enabled =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.ui_v2_enabled",
+          ScopeType.GLOBAL,
+          "Enable Support Bundle V2 API in UI",
+          "When true, the YBA UI uses the v2 support bundle API (support_bundle_v2 table)."
+              + " When false, the UI continues to use the v1 support bundle API. V1 and v2"
+              + " bundles are stored separately; toggling this flag switches which bundles"
+              + " appear in the UI list.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> supportBundleExtraYbAdminCommands =
       new ConfKeyInfo<>(
           "yb.support_bundle.extra_yb_admin_commands",
@@ -2076,6 +2087,37 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " rollback API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowAddNodeRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_add_node_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Add Node Tasks",
+          "Allow rolling back a failed add-node-to-universe task via the task rollback API."
+              + " Rollback is limited to the window before tserver start / raft join; Kubernetes"
+              + " is out of scope.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowResizeNodeRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_resize_node_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Resize Node Tasks",
+          "Allow rolling back a failed resize node task via the task rollback API. Kubernetes"
+              + " and disk-size shrink are out of scope; IOPS/throughput revert during the cloud"
+              + " disk-modify cooldown window is rejected.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipResizeNodeRollbackCooldown =
+      new ConfKeyInfo<>(
+          "yb.task.skip_resize_node_rollback_cooldown",
+          ScopeType.GLOBAL,
+          "Skip Cloud Disk-modify Cooldown Check on Resize Node Rollback",
+          "Bypass the cloud disk-modify cooldown gate when submitting or executing a resize node"
+              + " rollback. The cooldown protects against cloud-side rejection of IOPS/throughput"
+              + " reverts; enable only when the operator has independently confirmed the window"
+              + " has expired or the cloud will accept the reverse modify.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.continuous_platform_backups",
@@ -2093,6 +2135,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCrossCloudFederatedIam =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_cross_cloud_federated_iam",
+          ScopeType.GLOBAL,
+          "Enable Cross-Cloud Federated IAM",
+          "Exposes the cross-cloud federated IAM fields on the provider and backup storage"
+              + " configuration pages. Off by default while the feature is in preview; a provider"
+              + " or storage config that already has it set keeps working regardless.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_s3_backup_proxy",
@@ -2390,7 +2442,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Boolean> showNewUniverseUIToEveryone =
       new ConfKeyInfo<>(
           "yb.ui.enable_new_universe_experience_for_all_users",
@@ -2427,5 +2478,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum time to wait for task executor to shutdown gracefully before forcefully"
               + " terminating it",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> createYbStorageDb =
+      new ConfKeyInfo<>(
+          "yb.universe.create_yb_storage_db",
+          ScopeType.GLOBAL,
+          "Create yb_storage database on universe creation",
+          "When enabled, universe creation creates the yb_storage YSQL database used by the amp"
+              + " controller, if it does not already exist.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentHealthCheckerDisabled =
+      new ConfKeyInfo<>(
+          "yb.node_agent.health_checker.disabled",
+          ScopeType.GLOBAL,
+          "Node Agent Health Checker Disabled",
+          "Node agent checker offloaded to run asynchronously on its own schedule",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

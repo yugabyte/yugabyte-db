@@ -63,7 +63,6 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -180,7 +179,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
 using consensus::MakeOpIdPB;
-using strings::Substitute;
 
 static string DebugInfo(const string& tablet_id,
                         uint64_t segment_seqno,
@@ -194,9 +192,9 @@ static string DebugInfo(const string& tablet_id,
     debug_str.resize(500);
     debug_str.append("...");
   }
-  return Substitute("Debug Info: Error playing entry $0 of segment $1 of tablet $2. "
-                    "Segment path: $3. Entry: $4", entry_idx, segment_seqno, tablet_id,
-                    segment_path, debug_str);
+  return Format("Debug Info: Error playing entry $0 of segment $1 of tablet $2. "
+                "Segment path: $3. Entry: $4", entry_idx, segment_seqno, tablet_id,
+                segment_path, debug_str);
 }
 
 // ================================================================================================
@@ -367,18 +365,20 @@ void ReplayState::DumpReplayStateToStrings(
       "Committed OpId: $1, "
       "Pending Replicates: $2, "
       "Flushed Regular: $3, "
-      "Flushed Intents: $4",
+      "Flushed Intents: $4, "
+      "Flushed Vector Indexes: $5",
       prev_op_id,
       committed_op_id,
       pending_replicates.size(),
       stored_op_ids.regular,
-      stored_op_ids.intents));
+      stored_op_ids.intents,
+      stored_op_ids.vector_indexes));
   if (num_entries_applied_to_rocksdb > 0) {
-    strings->push_back(Substitute("Log entries applied to RocksDB: $0",
-                                  num_entries_applied_to_rocksdb));
+    strings->push_back(Format("Log entries applied to RocksDB: $0",
+                              num_entries_applied_to_rocksdb));
   }
   if (!pending_replicates.empty()) {
-    strings->push_back(Substitute("Dumping REPLICATES ($0 items):", pending_replicates.size()));
+    strings->push_back(Format("Dumping REPLICATES ($0 items):", pending_replicates.size()));
     AddEntriesToStrings(pending_replicates, strings, half_limit);
   }
 }
@@ -388,14 +388,21 @@ bool ReplayState::CanApply(const log::LWLogEntryPB& entry) {
 }
 
 OpId ReplayState::GetLowestOpIdToReplay(bool has_intents_db, const char* extra_log_prefix) const {
-  const auto op_id_replay_lowest =
+  auto op_id_replay_lowest =
       has_intents_db ? std::min(stored_op_ids.regular, stored_op_ids.intents)
                      : stored_op_ids.regular;
+  // A vector index flushes independently of the regular and intents DBs, and the intents flushed
+  // OpId may be advanced to match the regular one without waiting for vector indexes, so it
+  // could lag behind both of them. Replay from the lowest storage.
+  for (const auto& op_id : stored_op_ids.vector_indexes) {
+    op_id_replay_lowest = std::min(op_id_replay_lowest, op_id);
+  }
   LOG_WITH_PREFIX(INFO)
       << extra_log_prefix
       << "op_id_replay_lowest=" << op_id_replay_lowest
       << " (regular_op_id=" << stored_op_ids.regular
       << ", intents_op_id=" << stored_op_ids.intents
+      << ", vector_indexes_op_ids=" << AsString(stored_op_ids.vector_indexes)
       << ", has_intents_db=" << has_intents_db << ")";
   return op_id_replay_lowest;
 }
@@ -411,9 +418,10 @@ struct ReplayDecision {
 
   // Which storages a replayed op still applies to. Restricted below All() when the op's effect is
   // already durable in some storages but not others: an APPLYING transaction-update op already in
-  // the regular RocksDB but not the intents RocksDB; and (GH#31899) a fused xCluster external
+  // the regular RocksDB but not the intents RocksDB; (GH#31899) a fused xCluster external
   // WRITE_OP, which is intents-gated on replay but writes the regular RocksDB, so its regular bit
-  // is cleared once the regular RocksDB already has it.
+  // is cleared once the regular RocksDB already has it; and (GH#32797) a plain non-transactional
+  // WRITE_OP already in the regular RocksDB but not in a vector index.
   docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
 
   std::string ToString() const {
@@ -577,7 +585,7 @@ class TabletBootstrap {
     // always need to know the term and index of the last logged op in order to vote, know how to
     // respond to AppendEntries(), etc.
     if (has_blocks && !needs_recovery) {
-      return STATUS(IllegalState, Substitute("Tablet $0: Found rowsets but no log "
+      return STATUS(IllegalState, Format("Tablet $0: Found rowsets but no log "
                                             "segments could be found.",
                                             tablet_id));
     }
@@ -777,7 +785,7 @@ class TabletBootstrap {
       LOG_WITH_PREFIX(INFO) << "Moving log directory " << log_dir << " to recovery directory "
                             << recovery_path << " in preparation for log replay";
       RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(log_dir, recovery_path),
-                            Substitute("Could not move log directory $0 to recovery dir $1",
+                            Format("Could not move log directory $0 to recovery dir $1",
                                       log_dir, recovery_path));
       RETURN_NOT_OK_PREPEND(GetEnv()->CreateDir(log_dir),
                             "Failed to recreate log directory " + log_dir);
@@ -828,11 +836,11 @@ class TabletBootstrap {
     LOG_WITH_PREFIX(INFO) << "Preparing to delete log recovery files and directory "
                           << recovery_path;
 
-    string tmp_path = Substitute("$0-$1", recovery_path, GetCurrentTimeMicros());
+    string tmp_path = Format("$0-$1", recovery_path, GetCurrentTimeMicros());
     LOG_WITH_PREFIX(INFO) << "Renaming log recovery dir from "  << recovery_path
                           << " to " << tmp_path;
     RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(recovery_path, tmp_path),
-                          Substitute("Could not rename old recovery dir from: $0 to: $1",
+                          Format("Could not rename old recovery dir from: $0 to: $1",
                                     recovery_path, tmp_path));
 
     if (FLAGS_skip_remove_old_recovery_dir) {
@@ -907,7 +915,7 @@ class TabletBootstrap {
         RETURN_NOT_OK(HandleReplicateMessage(entry_metadata, entry_ptr));
         break;
       default:
-        return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
+        return STATUS(Corruption, Format("Unexpected log entry type: $0", entry.type()));
     }
     MAYBE_FAULT(FLAGS_TEST_fault_crash_during_log_replay);
     return Status::OK();
@@ -1008,13 +1016,13 @@ class TabletBootstrap {
         return PlayWriteRequest(replicate, apply_to_storages);
 
       case consensus::CHANGE_METADATA_OP:
-        return PlayChangeMetadataRequest(replicate);
+        return RefreshVectorIndexOpIds(PlayChangeMetadataRequest(replicate));
 
       case consensus::CHANGE_CONFIG_OP:
         return PlayChangeConfigRequest(replicate);
 
       case consensus::TRUNCATE_OP:
-        return PlayTruncateRequest(replicate);
+        return RefreshVectorIndexOpIds(PlayTruncateRequest(replicate));
 
       case consensus::NO_OP:
         return Status::OK();  // This is why it is a no-op!
@@ -1023,7 +1031,7 @@ class TabletBootstrap {
         return PlayUpdateTransactionRequest(replicate, apply_to_storages);
 
       case consensus::SNAPSHOT_OP:
-        return PlayTabletSnapshotRequest(replicate);
+        return RefreshVectorIndexOpIds(PlayTabletSnapshotRequest(replicate));
 
       case consensus::HISTORY_CUTOFF_OP:
         return PlayHistoryCutoffRequest(replicate);
@@ -1039,7 +1047,7 @@ class TabletBootstrap {
 
       // Unexpected cases:
       case consensus::UNKNOWN_OP:
-        return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
+        return STATUS(IllegalState, Format("Unsupported operation type: $0", op_type));
     }
 
     LOG_WITH_PREFIX(DFATAL) << "Invalid operation type " << op_type
@@ -1190,6 +1198,19 @@ class TabletBootstrap {
     }
     // For upgrade scenarios where metadata_flushed_index < 0, follow the pre-existing logic.
 
+    if (op_type == consensus::WRITE_OP && !write_op_has_transaction) {
+      // A plain non-transactional WRITE_OP is applied to the regular DB and vector indexes at once
+      // (see NonTransactionalBatchWriter), and each of them flushes on its own. Replay it into
+      // exactly the storages that have not flushed it yet. Gating on the regular DB alone lost
+      // vectors after an ungraceful restart once the regular DB flushed past the op while a vector
+      // index had not (GH#32797).
+      auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+          << ", apply_to_storages: " << apply_to_storages.ToString();
+      return {apply_to_storages.Any(), apply_to_storages};
+    }
+
     // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
     // trying to be resilient to violations of that assumption.
     if (index <= std::min(flushed_op_ids.regular.index, flushed_op_ids.intents.index)) {
@@ -1277,7 +1298,12 @@ class TabletBootstrap {
       LOG_WITH_PREFIX(WARNING)
           << "--force_recover_flushed_frontier specified, ignoring existing flushed frontiers "
           << "from RocksDB metadata (will replay all log records): " << flushed_op_ids.ToString();
-      return DocDbOpIds();
+      // Keep one reset entry per vector index. An empty list reads as "this tablet has no vector
+      // indexes" in ComputeApplyToStorages, which would replay every operation into the regular
+      // DB only and leave the indexes without the data this flag exists to recover.
+      DocDbOpIds result;
+      result.vector_indexes.assign(flushed_op_ids.vector_indexes.size(), OpId());
+      return result;
     }
 
     if (test_hooks_) {
@@ -1882,9 +1908,23 @@ class TabletBootstrap {
 
     Status s;
     RETURN_NOT_OK(operation.Apply(OpId::kUnknownTerm, &s));
-    tablet_->vector_indexes().FillMaxPersistentOpIds(
-        replay_state_->stored_op_ids.vector_indexes, false);
     return s;
+  }
+
+  // ComputeApplyToStorages maps the stored vector index OpIds onto the index list positionally, so
+  // they are refreshed after every op that can add an index, or reopen the storages and rebuild
+  // the list: a metadata change, a truncate or a snapshot restore. A test override of the flushed
+  // OpIds stays in effect, and --force_recover_flushed_frontier keeps replaying every op into
+  // every index, as in GetFlushedOpIds.
+  Status RefreshVectorIndexOpIds(const Status& play_status) {
+    auto& op_ids = replay_state_->stored_op_ids.vector_indexes;
+    if (FLAGS_force_recover_flushed_frontier) {
+      tablet_->vector_indexes().FillMaxPersistentOpIds(op_ids, false);
+      std::fill(op_ids.begin(), op_ids.end(), OpId());
+    } else if (!test_hooks_ || !test_hooks_->GetFlushedOpIdsOverride()) {
+      tablet_->vector_indexes().FillMaxPersistentOpIds(op_ids, false);
+    }
+    return play_status;
   }
 
   Status PlayChangeConfigRequest(consensus::LWReplicateMsg* replicate_msg) {

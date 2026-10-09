@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ConfirmEditRollbackMembership;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseDetailsFromDelta;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -23,16 +22,17 @@ import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,7 +52,6 @@ import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClientApi;
 
 @Slf4j
 public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
@@ -265,16 +264,24 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
     // Update any tags on nodes that are not going to be removed and not being added.
     Cluster existingCluster = getUniverse().getCluster(cluster.uuid);
-    if (!cluster.areTagsSame(existingCluster)) {
-      log.info(
-          "Tags changed from '{}' to '{}'.",
-          existingCluster.userIntent.instanceTags,
-          cluster.userIntent.instanceTags);
-      createUpdateInstanceTagsTasks(
-          getNodesInCluster(cluster.uuid, liveNodes),
-          cluster.userIntent.instanceTags,
-          Util.getKeysNotPresent(
-              existingCluster.userIntent.instanceTags, cluster.userIntent.instanceTags));
+    for (UUID providerUUID : existingCluster.userIntent.getAllProviderUUIDs()) {
+      if (!existingCluster.areTagsChanged(cluster, providerUUID)) {
+        continue;
+      }
+      Map<String, String> newTags =
+          nullSafeTags(cluster.userIntent.getInstanceTagsForProvider(providerUUID));
+      Map<String, String> oldTags =
+          nullSafeTags(existingCluster.userIntent.getInstanceTagsForProvider(providerUUID));
+      log.info("Tags changed from '{}' to '{}' for provider {}.", oldTags, newTags, providerUUID);
+      Set<NodeDetails> providerNodes =
+          liveNodes.stream()
+              .filter(n -> n.isInPlacement(cluster.uuid))
+              .filter(n -> providerUUID.equals(cluster.getProviderUUIDForNode(n)))
+              .collect(Collectors.toSet());
+      if (!providerNodes.isEmpty()) {
+        createUpdateInstanceTagsTasks(
+            providerNodes, newTags, Util.getKeysNotPresent(oldTags, newTags));
+      }
     }
 
     boolean ignoreUseCustomImageConfig =
@@ -489,6 +496,15 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               false /* skipDestroyPrecheck */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
+
+    // Delete the load balancers of the cluster that the new placement does not call for, after
+    // their nodes are gone. This also cleans up a load balancer left by an edit that was rolled
+    // back.
+    List<ManagedLoadBalancer> plannedLbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    createDeleteManagedLoadBalancerTasks(
+        lb ->
+            lb.getClusterUuid().equals(cluster.uuid) && plannedLbs.stream().noneMatch(lb::matches),
+        false /* ignoreErrors */);
 
     // Stop scrapping metrics from TServers that is set to be removed
     if (!newTservers.isEmpty()
@@ -716,38 +732,43 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       if (targetCluster == null) {
         continue;
       }
-      // areTagsSame is true when tags match OR the provider does not support tag modification.
-      if (beforeCluster.areTagsSame(targetCluster)) {
-        continue;
-      }
-
-      Map<String, String> beforeTags = nullSafeTags(beforeCluster);
-      Map<String, String> targetTags = nullSafeTags(targetCluster);
-      Set<NodeDetails> nodesToTag =
-          PlacementInfoUtil.getLiveNodes(getNodesInCluster(beforeCluster.uuid, universe.getNodes()))
-              .stream()
-              .filter(n -> n.getNodeName() != null)
-              .filter(n -> beforeLiveNames.contains(n.getNodeName()))
-              .collect(Collectors.toSet());
-      if (nodesToTag.isEmpty()) {
+      for (UUID providerUUID : beforeCluster.userIntent.getAllProviderUUIDs()) {
+        // areTagsSame is true when tags match OR the provider does not support tag modification.
+        if (!beforeCluster.areTagsChanged(targetCluster, providerUUID)) {
+          continue;
+        }
+        Map<String, String> targetTags =
+            nullSafeTags(targetCluster.userIntent.getInstanceTagsForProvider(providerUUID));
+        Map<String, String> beforeTags =
+            nullSafeTags(beforeCluster.userIntent.getInstanceTagsForProvider(providerUUID));
+        Set<NodeDetails> nodesToTag =
+            PlacementInfoUtil.getLiveNodes(
+                    getNodesInCluster(beforeCluster.uuid, universe.getNodes()))
+                .stream()
+                .filter(n -> n.getNodeName() != null)
+                .filter(n -> beforeLiveNames.contains(n.getNodeName()))
+                .filter(n -> providerUUID.equals(beforeCluster.getProviderUUIDForNode(n)))
+                .collect(Collectors.toSet());
+        if (nodesToTag.isEmpty()) {
+          log.info(
+              "No Live-before/Live-after nodes to revert tags for cluster {}", beforeCluster.uuid);
+          continue;
+        }
         log.info(
-            "No Live-before/Live-after nodes to revert tags for cluster {}", beforeCluster.uuid);
-        continue;
+            "Reverting instance tags on {} node(s) for cluster {}",
+            nodesToTag.size(),
+            beforeCluster.uuid);
+        createUpdateInstanceTagsTasks(
+            nodesToTag, beforeTags, Util.getKeysNotPresent(targetTags, beforeTags));
       }
-      log.info(
-          "Reverting instance tags on {} node(s) for cluster {}",
-          nodesToTag.size(),
-          beforeCluster.uuid);
-      createUpdateInstanceTagsTasks(
-          nodesToTag, beforeTags, Util.getKeysNotPresent(targetTags, beforeTags));
     }
   }
 
-  protected static Map<String, String> nullSafeTags(Cluster cluster) {
-    if (cluster.userIntent == null || cluster.userIntent.instanceTags == null) {
+  protected static Map<String, String> nullSafeTags(Map<String, String> tags) {
+    if (tags == null) {
       return new HashMap<>();
     }
-    return new HashMap<>(cluster.userIntent.instanceTags);
+    return new HashMap<>(tags);
   }
 
   /**
@@ -778,49 +799,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       toDestroy.add(node);
     }
     return toDestroy;
-  }
-
-  protected SubTaskGroup createRestoreUniverseDetailsFromDeltaTask(
-      StateTransitionDetails stateTransitionDetails) {
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("RestoreUniverseDetailsFromDelta", SubTaskGroupType.ConfigureUniverse);
-    RestoreUniverseDetailsFromDelta.Params params = new RestoreUniverseDetailsFromDelta.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.stateTransitionDetails = stateTransitionDetails;
-    RestoreUniverseDetailsFromDelta task = createTask(RestoreUniverseDetailsFromDelta.class);
-    task.initialize(params);
-    task.setUserTaskUUID(getUserTaskUUID());
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * When {@code rollbackSafe} is true, confirm master cluster config (including server_blacklist)
-   * is reachable. Do not trust the YBA flag alone.
-   */
-  protected void confirmMasterServerBlacklistReadable(Universe universe) {
-    try (YBClientApi client = ybService.getUniverseClient(universe)) {
-      org.yb.client.GetMasterClusterConfigResponse configResponse = client.getMasterClusterConfig();
-      if (configResponse == null || configResponse.getConfig() == null) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Cannot roll back edit universe: master cluster config is unavailable to confirm"
-                + " server_blacklist");
-      }
-      int blacklistSize = configResponse.getConfig().getServerBlacklist().getHostsCount();
-      log.info(
-          "Rollback precheck: master server_blacklist has {} host(s) for universe {}",
-          blacklistSize,
-          universe.getUniverseUUID());
-    } catch (PlatformServiceException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Cannot roll back edit universe: failed to read master server_blacklist - "
-              + e.getMessage());
-    }
   }
 
   /**

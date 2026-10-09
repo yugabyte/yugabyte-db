@@ -43,6 +43,10 @@ permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_a s1_commit s2_commit s2_select_test_atts
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_b s1_rollback s2_commit s2_select_test_atts
 
-# TODO: The following test cases give different error messages, fix it and enable the test cases.
+# TODO(#34413): The following test cases fail when run with the full cache
+# invalidation fallback (TestPgRegressIsolationObjectLockingFullInval): s2 gets
+# "cache lookup failed for relation <oid>" instead of "table does not exist",
+# because the fallback does not trigger the name-lookup retry in
+# RangeVarGetRelidExtended(). Enable these once that is fixed.
 # permutation s1_begin_rr s2_begin_rr s1_drop_table_test s2_drop_table_test s1_commit s2_commit
 # permutation s1_begin_rr s2_begin_rr s1_drop_table_test s2_drop_table_test_if_exists s1_commit s2_commit

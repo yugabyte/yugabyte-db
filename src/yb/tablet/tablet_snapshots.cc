@@ -811,6 +811,12 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
+  // The restore replaced the vector index storages together with the regular DB, but the patcher
+  // above moved only the regular DB's flushed frontier to the restore op id. Stamp the same op id
+  // on the vector indexes, otherwise they keep their snapshot time OpId and bootstrap replays the
+  // rolled back writes back into them.
+  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(frontier));
+
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
   s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);

@@ -37,8 +37,10 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -578,7 +580,7 @@ public class GFlagsUtil {
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
     ybcFlags.putAll(customYbcGflags);
-    if (userIntent.providerType == CloudType.local) {
+    if (Util.isLocal(cluster)) {
       // In case of local provider, we want ybc to use /tmp directory
       // inside the respective node folder.
       ybcFlags.put(TMP_DIRECTORY, ybHomeDir + "/tmp");
@@ -814,6 +816,15 @@ public class GFlagsUtil {
     return result == null ? "/tmp" : result;
   }
 
+  // A GCP passthrough load balancer keeps its own IP as the packet destination, health probes
+  // included, so a proxy bound to the private IP alone refuses them. Any GCP load balancer: YBA
+  // can't tell the user's kind, and a proxy load balancer works either way.
+  public static boolean listensOnLoadBalancerAddress(@Nullable Cluster cluster) {
+    return cluster != null
+        && cluster.userIntent.providerType == CloudType.gcp
+        && (cluster.userIntent.enableLB || ManagedLoadBalancerUtil.isEnabled(cluster));
+  }
+
   private static Map<String, String> getYSQLGFlags(
       AnsibleConfigureServers.Params taskParam,
       Universe universe,
@@ -822,7 +833,9 @@ public class GFlagsUtil {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
+    if (useHostname
+        || useSecondaryIp
+        || listensOnLoadBalancerAddress(universe.getCluster(node.placementUuid))) {
       pgsqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -981,7 +994,9 @@ public class GFlagsUtil {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String cqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
+    if (useHostname
+        || useSecondaryIp
+        || listensOnLoadBalancerAddress(universe.getCluster(node.placementUuid))) {
       cqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -1209,12 +1224,15 @@ public class GFlagsUtil {
   public static void validateFipsCompliancy(
       UniverseDefinitionTaskParams.UserIntent userIntent, boolean fipsEnabled) {
     if (fipsEnabled) {
-      if (!FIPS_SUPPORTED_PROVIDERS.contains(userIntent.providerType)) {
+      Set<CloudType> nonSupported =
+          userIntent.getAllCloudTypes().stream()
+              .filter(ct -> !FIPS_SUPPORTED_PROVIDERS.contains(ct))
+              .collect(Collectors.toSet());
+      if (!nonSupported.isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
-                "FIPS compliant universes are not supported on the %s provider",
-                userIntent.providerType));
+                "FIPS compliant universes are not supported on provider(s): %s", nonSupported));
       }
       // This is for new universes only, so don't consider old form of GFLags
       if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {
@@ -1237,6 +1255,46 @@ public class GFlagsUtil {
             throw new PlatformServiceException(
                 BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
           }
+        }
+      }
+      validateFipsCompliancyOfHelmOverrides(
+          userIntent.universeOverrides, userIntent.azOverrides, fipsEnabled);
+    }
+  }
+
+  /**
+   * Kubernetes helm overrides carry gflags too (gflags.master and gflags.tserver in the values) and
+   * are merged over the gflags YBA generates, so they could turn the FIPS gflag off where the
+   * gflags API refuses to.
+   */
+  public static void validateFipsCompliancyOfHelmOverrides(
+      String universeOverrides, Map<String, String> azOverrides, boolean fipsEnabled) {
+    if (!fipsEnabled) {
+      return;
+    }
+    List<String> overrides = new ArrayList<>();
+    overrides.add(universeOverrides);
+    if (azOverrides != null) {
+      overrides.addAll(azOverrides.values());
+    }
+    for (String overridesYaml : overrides) {
+      Map<String, String> flatOverrides;
+      try {
+        flatOverrides = HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
+      } catch (Exception e) {
+        // Overrides that cannot be read cannot be checked, so they are not accepted either.
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
+      }
+      for (String server : List.of("master", "tserver")) {
+        String value = flatOverrides.get("gflags." + server + "." + OPENSSL_REQUIRE_FIPS);
+        if (value != null && !value.equals("true")) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes"
+                      + " overrides cannot set %s %s to %s",
+                  server, OPENSSL_REQUIRE_FIPS, value));
         }
       }
     }

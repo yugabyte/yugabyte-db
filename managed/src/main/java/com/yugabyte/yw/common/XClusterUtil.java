@@ -240,6 +240,24 @@ public class XClusterUtil {
     };
   }
 
+  /**
+   * Replication bootstraps the target from a backup of the source, so the same FIPS-mode rule as
+   * restores applies: a non-FIPS universe's objects (MD5 passwords, for one) don't work in FIPS
+   * mode. A universe's FIPS mode is fixed at create, so checking once at config create is enough.
+   */
+  public static void ensureFipsModesMatch(Universe sourceUniverse, Universe targetUniverse) {
+    boolean sourceFipsEnabled = sourceUniverse.getUniverseDetails().fipsEnabled;
+    boolean targetFipsEnabled = targetUniverse.getUniverseDetails().fipsEnabled;
+    if (sourceFipsEnabled != targetFipsEnabled) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot configure XCluster/DR config between universes '%s' and '%s': one is"
+                  + " FIPS-enabled and the other is not.",
+              sourceUniverse.getName(), targetUniverse.getName()));
+    }
+  }
+
   public static void ensureUpgradeIsComplete(Universe sourceUniverse, Universe targetUniverse) {
     if (!sourceUniverse
         .getUniverseDetails()

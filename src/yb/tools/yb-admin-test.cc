@@ -46,12 +46,12 @@
 #include "yb/client/table_creator.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/json_util.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/cql_test_util.h"
@@ -74,6 +74,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/test_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -98,7 +99,6 @@ using std::string;
 using std::unordered_map;
 using itest::TabletServerMap;
 using itest::TServerDetails;
-using strings::Substitute;
 
 namespace {
 
@@ -486,7 +486,7 @@ TEST_F(AdminCliTest, BlackList) {
 
 TEST_F(AdminCliTest, InvalidMasterAddresses) {
   int port = AllocateFreePort();
-  string unreachable_host = Substitute("127.0.0.1:$0", port);
+  string unreachable_host = Format("127.0.0.1:$0", port);
   std::string error_string;
   ASSERT_NOK(Subprocess::Call(ToStringVector(
       GetAdminToolPath(), "--master_addresses", unreachable_host,
@@ -653,8 +653,8 @@ class AdminCliTestForTableLocks : public AdminCliTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->enable_ysql = true;
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
   }
 
  protected:
@@ -665,7 +665,7 @@ class AdminCliTestForTableLocks : public AdminCliTest {
         "\\{txn: ([a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}) subtxn_id: "
         "([0-9]+)\\}");
     faststring buf;
-    auto url = strings::Substitute("http://$0/$1", ToString(addr), page);
+    auto url = Format("http://$0/$1", ToString(addr), page);
     RETURN_NOT_OK(curl.FetchURL(url, &buf));
     auto lt_out = buf.ToString();
     VLOG(1) << "Response from url: " << url << " :\n" << lt_out;
@@ -2078,6 +2078,17 @@ TEST_F(AdminCliTestWithYSQL, TestVerifyXClusterRejectsInvalidArguments) {
   ASSERT_STR_CONTAINS(
       ASSERT_RESULT(ok_root["detail"].GetString()),
       "unable to resolve the target's xCluster safe time");
+
+  // --xcluster_source_certs_dir_name has to reach the source connection and only it. This cluster
+  // serves plaintext, so naming certificates for the source makes that one connection attempt TLS
+  // and it fails, while the target connection, made without certificates, still succeeds. Were the
+  // flag ignored, or applied to both, the failure would not be this one.
+  auto source_certs = CallAdmin(
+      "--xcluster_source_certs_dir_name", GetCertsDir(),
+      "--yb_client_admin_rpc_timeout_sec", "5",
+      "verify_xcluster_slice", table_id, table_id, GetMasterAddresses());
+  ASSERT_NOK(source_certs);
+  ASSERT_STR_CONTAINS(source_certs.status().ToString(), "Unable to connect to source masters");
 }
 
 
@@ -2430,8 +2441,8 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
 
   // Create transaction tables for each zone.
   for (int i = 0; i < 3; ++i) {
-    string table_name = Substitute("transactions_z$0", i);
-    string placement = Substitute("c.r.z$0", i);
+    string table_name = Format("transactions_z$0", i);
+    string placement = Format("c.r.z$0", i);
     ASSERT_OK(CallAdmin("create_transaction_table", table_name));
     ASSERT_OK(CallAdmin("modify_table_placement_info", "system", table_name, placement, 1));
   }
@@ -2440,12 +2451,12 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   std::shared_ptr<client::YBTable> table;
   for (int i = 0; i < 3; ++i) {
     const auto table_name =
-        YBTableName(YQLDatabase::YQL_DATABASE_CQL, "system", Substitute("transactions_z$0", i));
+        YBTableName(YQLDatabase::YQL_DATABASE_CQL, "system", Format("transactions_z$0", i));
     ASSERT_OK(client->OpenTable(table_name, &table));
     ASSERT_EQ(table->table_type(), YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
     ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 1);
     auto pb = table->replication_info()->live_replicas().placement_blocks(0).cloud_info();
-    ASSERT_EQ(pb.placement_zone(), Substitute("z$0", i));
+    ASSERT_EQ(pb.placement_zone(), Format("z$0", i));
   }
 
   // Add two new tservers, to zone3 and an unused zone.
@@ -2682,6 +2693,121 @@ TEST_F(AdminCliTest, AddTransactionStatusTablet) {
   }, kWaitNewTabletReadyTimeout, "Timeout waiting for new status tablet to be ready"));
 }
 
+class AddTransactionTabletTest : public AdminCliTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->transaction_table_num_tablets = 1;
+  }
+
+  void WaitForTransactionTabletCount(
+      std::string_view txn_table, int64_t expected_count, MonoDelta timeout = 20s) {
+    int64_t num_tablets;
+    ASSERT_OK(WaitFor([&] -> Result<bool> {
+      auto tablets = VERIFY_RESULT(CallAdmin(
+          "list_tablets", master::kSystemNamespaceName, std::string(txn_table)));
+      // -1 to exclude table header.
+      num_tablets = std::count(tablets.begin(), tablets.end(), '\n') - 1;
+      LOG(INFO) << "Tablets: " << AsString(tablets);
+      return num_tablets >= expected_count;
+    }, timeout, "Timeout waiting for status tablet count"));
+    ASSERT_EQ(num_tablets, expected_count);
+  }
+};
+
+TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTest) {
+  constexpr auto kNamespaceName = "test_namespace";
+  constexpr auto kTableName = "test_table";
+  constexpr auto kLocalTransactionTableName = "transactions_local";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+
+  BuildAndStart(/*ts_flags=*/{
+    "--ycql_use_local_transaction_tables=true",
+    "--TEST_transaction_manager_disable_local_filter=true",
+  }, /*master_flags=*/{
+    "--autoscale_transaction_tables=false",
+    "--tablet_creation_timeout_ms=10000",
+  });
+
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  // Force creation of system.transactions.
+  auto session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE KEYSPACE IF NOT EXISTS $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat("USE $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY) "
+      "WITH transactions = { 'enabled' : true }", kTableName));
+
+  auto global_txn_table = YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  auto global_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kGlobalTransactionsTableName, /*count=*/1));
+
+  // We create a transaction tablet that gets stuck in CREATING (for tablet_creation_timeout_ms) by
+  // adding the tablet after shutting down all tservers, and then restarting everything once create
+  // tablet RPCs start failing (see #33820).
+  // If this behavior is changed in the future, this test should be changed to create such a tablet
+  // by some other means.
+  cluster_->tablet_server(0)->Shutdown();
+  {
+    ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
+    auto log_waiter = cluster_->GetMasterLogWaiter(
+        Format("Processing pending assignments for table: $0", global_txn_table_id));
+    ASSERT_OK(log_waiter.WaitFor(5s));
+  }
+  cluster_->master()->Shutdown(SafeShutdown::kFalse);
+  ASSERT_OK(cluster_->Restart());
+
+  auto do_inserts = [&](size_t start, size_t end) -> Status {
+    for (size_t i = 0; i < 10; ++i) {
+      RETURN_NOT_OK(session.ExecuteQueryFormat(
+          "START TRANSACTION;"
+          "INSERT INTO $0.$1(key) VALUES ($2);"
+          "COMMIT",
+          kNamespaceName, kTableName, i));
+    }
+    return Status::OK();
+  };
+
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kGlobalTransactionsTableName, /*count=*/1));
+  session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(do_inserts(0, 10));
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kGlobalTransactionsTableName, /*count=*/2));
+  ASSERT_OK(do_inserts(10, 20));
+
+  ASSERT_OK(CallAdmin("create_transaction_table", kLocalTransactionTableName));
+  ASSERT_OK(CallAdmin(
+      "modify_table_placement_info", kNamespaceName, kTableName,
+      "cloud1.datacenter1.rack1", "1"));
+  ASSERT_OK(CallAdmin(
+      "modify_table_placement_info", master::kSystemNamespaceName, kLocalTransactionTableName,
+      "cloud1.datacenter1.rack1", "1"));
+  auto local_txn_table = YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kLocalTransactionTableName);
+  auto local_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), local_txn_table));
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kLocalTransactionTableName, /*count=*/1));
+
+  cluster_->tablet_server(0)->Shutdown();
+  {
+    auto log_waiter = cluster_->GetMasterLogWaiter(
+        Format("Processing pending assignments for table: $0", local_txn_table_id));
+    ASSERT_OK(CallAdmin("add_transaction_tablet", local_txn_table_id));
+    ASSERT_OK(log_waiter.WaitFor(5s));
+  }
+  cluster_->master()->Shutdown(SafeShutdown::kFalse);
+  ASSERT_OK(cluster_->Restart());
+
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kLocalTransactionTableName, /*count=*/1));
+  session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(do_inserts(20, 30));
+  ASSERT_NO_FATALS(WaitForTransactionTabletCount(kLocalTransactionTableName, /*count=*/2));
+  ASSERT_OK(do_inserts(30, 40));
+}
+
 class AdminCliListTabletsTest : public AdminCliTest {
  public:
   template <class... Args>
@@ -2815,7 +2941,8 @@ TEST_F_EX(AdminCliTest, TestSplitTabletDefault, AdminCliListTabletsTest) {
 }
 
 TEST_F_EX(AdminCliTest, TestSplitTabletMultiWay, AdminCliListTabletsTest) {
-  BuildAndStart();
+  // 256B data blocks so Cross has enough cut points for a 5-way split.
+  BuildAndStart({"--db_block_size_bytes=256"});
   const auto& keyspace = kTableName.namespace_name();
   const auto& table_name = kTableName.table_name();
 
@@ -3443,7 +3570,12 @@ TEST_F(AdminCliTest, TestUpdateSysCatalogEntry) {
 
 TEST_F(AdminCliTest, TestRemoveTabletServer) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
-  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+  // remove_tablet_server requires the TServer to have definitely lost its xCluster-guarded
+  // information lease.  Keep the lease (plus clock-skew slack) shorter than
+  // tserver_unresponsive_timeout_ms so that holds as soon as the TServer is marked unresponsive.
+  BuildAndStart(
+      {}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000",
+           "--xcluster_guarded_lease_duration_ms=3000"});
   ASSERT_OK(cluster_->AddTabletServer(true));
   auto added_tserver = cluster_->tablet_server(cluster_->num_tablet_servers() - 1);
   ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), added_tserver));

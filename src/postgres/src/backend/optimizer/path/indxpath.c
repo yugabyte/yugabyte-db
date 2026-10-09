@@ -222,6 +222,20 @@ static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, Re
 static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
 								 Relids relids, List *or_clauses,
 								 IndexClauseSet *clauseset);
+static List *yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
+										 IndexOptInfo *index,
+										 ScanDirection scandir,
+										 List *index_clauses,
+										 int yb_distinct_prefixlen,
+										 int *yb_distinct_nkeys,
+										 List *useful_pathkeys,
+										 List **yb_merge_scan_stream_cols);
+static List *yb_useful_pathkeys_without_merge_scan(PlannerInfo *root,
+												  RelOptInfo *rel,
+												  IndexOptInfo *index,
+												  ScanDirection scandir,
+												  int yb_distinct_prefixlen,
+												  int *yb_distinct_nkeys);
 static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 IndexOptInfo *index,
@@ -934,6 +948,9 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(!root->yb_cur_batched_relids);
 	root->yb_cur_batched_relids = batchedrelids;
+	root->yb_cur_batched_groups =
+		yb_clause_batched_groups(batched_rinfos, batchedrelids,
+								 index->rel->relids);
 
 	/*
 	 * An index clause that references a batched outer relation but cannot
@@ -1038,6 +1055,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	root->yb_cur_batched_relids = NULL;
+	root->yb_cur_batched_groups = NIL;
 
 	return batched_paths_added;
 }
@@ -1620,13 +1638,12 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
-		if (yb_merge_scan_stream_cols && useful_pathkeys != NIL)
-		{
-			useful_pathkeys = yb_truncate_embedded_index_pathkeys(root,
-																  rel,
-																  index,
-																  useful_pathkeys);
-		}
+		useful_pathkeys =
+			yb_finalize_merge_scan_path(root, rel, index,
+										ForwardScanDirection, index_clauses,
+										yb_distinct_prefixlen,
+										&yb_distinct_nkeys, useful_pathkeys,
+										&yb_merge_scan_stream_cols);
 		orderbyclauses = NIL;
 		orderbyclausecols = NIL;
 	}
@@ -1749,16 +1766,11 @@ yb_step_4:
 		 */
 		if (yb_merge_scan_stream_cols != NIL)
 		{
-			/* Get useful_pathkeys without merge scan. */
-			yb_distinct_nkeys =
-				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
-			index_pathkeys = build_index_pathkeys(root, index,
-												  ForwardScanDirection,
-												  &yb_distinct_nkeys,
-												  NULL);	/* yb_merge_scan_stream_cols */
-			useful_pathkeys = truncate_useless_pathkeys(root, rel,
-														index_pathkeys,
-														yb_distinct_nkeys);
+			useful_pathkeys =
+				yb_useful_pathkeys_without_merge_scan(root, rel, index,
+													  ForwardScanDirection,
+													  yb_distinct_prefixlen,
+													  &yb_distinct_nkeys);
 			yb_merge_scan_stream_cols = NIL;
 
 			goto yb_step_4;
@@ -1791,13 +1803,12 @@ yb_step_4:
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
-		if (yb_merge_scan_stream_cols && useful_pathkeys != NIL)
-		{
-			useful_pathkeys = yb_truncate_embedded_index_pathkeys(root,
-																  rel,
-																  index,
-																  useful_pathkeys);
-		}
+		useful_pathkeys =
+			yb_finalize_merge_scan_path(root, rel, index,
+										BackwardScanDirection, index_clauses,
+										yb_distinct_prefixlen,
+										&yb_distinct_nkeys, useful_pathkeys,
+										&yb_merge_scan_stream_cols);
 yb_step_5:
 		if (useful_pathkeys != NIL)
 		{
@@ -1867,16 +1878,11 @@ yb_step_5:
 		 */
 		if (yb_merge_scan_stream_cols != NIL)
 		{
-			/* Get useful_pathkeys without merge scan. */
-			yb_distinct_nkeys =
-				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
-			index_pathkeys = build_index_pathkeys(root, index,
-												  BackwardScanDirection,
-												  &yb_distinct_nkeys,
-												  NULL);	/* yb_merge_scan_stream_cols */
-			useful_pathkeys = truncate_useless_pathkeys(root, rel,
-														index_pathkeys,
-														yb_distinct_nkeys);
+			useful_pathkeys =
+				yb_useful_pathkeys_without_merge_scan(root, rel, index,
+													  BackwardScanDirection,
+													  yb_distinct_prefixlen,
+													  &yb_distinct_nkeys);
 			yb_merge_scan_stream_cols = NIL;
 
 			goto yb_step_5;
@@ -5642,4 +5648,57 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 
 		return iclause;
 	}
+}
+
+/*
+ * YB: The useful pathkeys of index in scandir without merge scan.  Also sets
+ * *yb_distinct_nkeys for them.
+ */
+static List *
+yb_useful_pathkeys_without_merge_scan(PlannerInfo *root, RelOptInfo *rel,
+									  IndexOptInfo *index,
+									  ScanDirection scandir,
+									  int yb_distinct_prefixlen,
+									  int *yb_distinct_nkeys)
+{
+	List	   *index_pathkeys;
+
+	*yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
+	/* No stream key list disallows merge scan. */
+	index_pathkeys = build_index_pathkeys(root, index, scandir,
+										  yb_distinct_nkeys, NULL);
+	return truncate_useless_pathkeys(root, rel, index_pathkeys,
+									 *yb_distinct_nkeys);
+}
+
+/*
+ * YB: Settle a merge scan path once truncate_useless_pathkeys has trimmed its
+ * pathkeys.  Returns the path's useful pathkeys and sets
+ * *yb_merge_scan_stream_cols to its stream key columns.  With no stream key
+ * columns left, the path is not a merge scan and takes the pathkeys the index
+ * gives without merge scan.
+ */
+static List *
+yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
+							IndexOptInfo *index, ScanDirection scandir,
+							List *index_clauses, int yb_distinct_prefixlen,
+							int *yb_distinct_nkeys, List *useful_pathkeys,
+							List **yb_merge_scan_stream_cols)
+{
+	if (*yb_merge_scan_stream_cols == NIL)
+		return useful_pathkeys;
+
+	if (useful_pathkeys != NIL)
+		useful_pathkeys = yb_truncate_embedded_index_pathkeys(root, rel, index,
+															  useful_pathkeys);
+	*yb_merge_scan_stream_cols =
+		yb_finalize_merge_scan_stream_cols(index, rel->relids,
+										   *yb_merge_scan_stream_cols,
+										   index_clauses, useful_pathkeys);
+	if (*yb_merge_scan_stream_cols == NIL)
+		useful_pathkeys =
+			yb_useful_pathkeys_without_merge_scan(root, rel, index, scandir,
+												  yb_distinct_prefixlen,
+												  yb_distinct_nkeys);
+	return useful_pathkeys;
 }

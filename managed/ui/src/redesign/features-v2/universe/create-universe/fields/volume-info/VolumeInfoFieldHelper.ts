@@ -15,7 +15,7 @@ import {
   RunTimeConfigEntry,
   StorageType
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { isEphemeralAwsStorageInstance } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
+import { isEphemeralStorageInstance } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 // iops / throughput limits (same as backend StorageType ranges)
@@ -360,8 +360,8 @@ const getVolumeSize = (instance: InstanceType, providerRuntimeConfigs: any) => {
 
 const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => {
   let storageType = null;
-  if (isEphemeralAwsStorageInstance(instance))
-    //aws ephemeral storage
+  if (isEphemeralStorageInstance(instance))
+    // local NVMe / AWS instance store
     return storageType;
 
   if (instance.providerCode === CloudType.aws) {
@@ -390,7 +390,7 @@ export const getDeviceInfoFromInstance = (
 
   const { volumeDetailsList } = instance.instanceTypeDetails;
   const volumeSize = volumeDetailsList[0].volumeSizeGB;
-  const defaultInstanceVolumeSize = isEphemeralAwsStorageInstance(instance)
+  const defaultInstanceVolumeSize = isEphemeralStorageInstance(instance)
     ? volumeSize
     : getVolumeSize(instance, providerRuntimeConfigs);
   const storageType = getStorageType(instance, providerRuntimeConfigs);

@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.PlatformInstance.State;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.zaxxer.hikari.HikariDataSource;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
@@ -786,6 +787,7 @@ public class PlatformReplicationManager {
     private final String dbHost;
     // The port that the DB is listening to connection requests on.
     private final int dbPort;
+    private final boolean fipsEnabled;
 
     protected PlatformBackupParams() {
       this.prometheusHost = prometheusConfigHelper.getPrometheusHost();
@@ -794,6 +796,7 @@ public class PlatformReplicationManager {
       this.dbPassword = replicationHelper.getDBPassword();
       this.dbHost = replicationHelper.getDBHost();
       this.dbPort = replicationHelper.getDBPort();
+      this.fipsEnabled = confGetter.getStaticConf().getBoolean(CommonUtils.FIPS_ENABLED);
     }
 
     protected abstract List<String> getCommandSpecificArgs();
@@ -814,6 +817,9 @@ public class PlatformReplicationManager {
       commandArgs.add(String.valueOf(prometheusPort));
       commandArgs.add("--verbose");
       commandArgs.add("--skip_restart");
+      if (fipsEnabled) {
+        commandArgs.add("--fips");
+      }
 
       return commandArgs;
     }

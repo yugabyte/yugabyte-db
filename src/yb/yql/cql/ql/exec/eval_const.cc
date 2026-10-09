@@ -91,8 +91,8 @@ Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
       break;
 
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Invalid constant expression ($0)", expr->QLName());
+      return STATUS_FORMAT(RuntimeError,
+                           "Invalid constant expression ($0)", expr->QLName());
   }
 
   const PTExpr *const_pt = expr.get();
@@ -248,9 +248,9 @@ Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValueMsg *const_pb,
     }
 
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Illegal datatype conversion: $0 to $1", "varint",
-                               InternalTypeToCQLString(const_pt->expected_internal_type()));
+      return STATUS_FORMAT(RuntimeError,
+                           "Illegal datatype conversion: $0 to $1", "varint",
+                           InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -275,9 +275,9 @@ Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValueMsg *const_pb
       break;
     }
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Illegal datatype conversion: $0 to $1", "decimal",
-                               InternalTypeToCQLString(const_pt->expected_internal_type()));
+      return STATUS_FORMAT(RuntimeError,
+                           "Illegal datatype conversion: $0 to $1", "decimal",
+                           InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -314,9 +314,9 @@ Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValueMsg *const_pb,
       const_pb->set_timestamp_value(DateTime::TimestampFromInt(value).ToInt64());
       break;
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Illegal datatype conversion: $0 to $1", "int",
-                               InternalTypeToCQLString(const_pt->expected_internal_type()));
+      return STATUS_FORMAT(RuntimeError,
+                           "Illegal datatype conversion: $0 to $1", "int",
+                           InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -336,9 +336,9 @@ Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValueMsg *const_pb,
       const_pb->set_double_value(value);
       break;
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Illegal datatype conversion: $0 to $1", "double",
-                               InternalTypeToCQLString(const_pt->expected_internal_type()));
+      return STATUS_FORMAT(RuntimeError,
+                           "Illegal datatype conversion: $0 to $1", "double",
+                           InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -388,9 +388,9 @@ Status Executor::PTExprToPB(const PTConstText *const_pt, QLValueMsg *const_pb) {
     }
 
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Illegal datatype conversion: $0 to $1", "text",
-                               InternalTypeToCQLString(const_pt->expected_internal_type()));
+      return STATUS_FORMAT(RuntimeError,
+                           "Illegal datatype conversion: $0 to $1", "text",
+                           InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -401,9 +401,9 @@ Status Executor::PTExprToPB(const PTConstBool *const_pt, QLValueMsg *const_pb) {
       const_pb->set_bool_value(const_pt->value());
       break;
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Illegal datatype conversion: $0 to $1", "bool",
-                               InternalTypeToCQLString(const_pt->expected_internal_type()));
+      return STATUS_FORMAT(RuntimeError,
+                           "Illegal datatype conversion: $0 to $1", "bool",
+                           InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -423,9 +423,9 @@ Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValueMsg *const_pb)
       break;
     }
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Illegal datatype conversion: $0 to $1", "binary",
-                               InternalTypeToCQLString(const_pt->expected_internal_type()));
+      return STATUS_FORMAT(RuntimeError,
+                           "Illegal datatype conversion: $0 to $1", "binary",
+                           InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }
@@ -451,9 +451,9 @@ Status Executor::PTExprToPB(const PTConstUuid *const_pt, QLValueMsg *const_pb) {
       break;
     }
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Illegal datatype conversion: $0 to $1", "uuid",
-                               InternalTypeToCQLString(const_pt->expected_internal_type()));
+      return STATUS_FORMAT(RuntimeError,
+                           "Illegal datatype conversion: $0 to $1", "uuid",
+                           InternalTypeToCQLString(const_pt->expected_internal_type()));
   }
   return Status::OK();
 }

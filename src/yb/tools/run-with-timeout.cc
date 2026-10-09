@@ -20,9 +20,8 @@
 #include <thread>
 #include <vector>
 
-#include "yb/gutil/stringprintf.h"
-
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
@@ -227,6 +226,6 @@ int main(int argc, char** argv) {
 
   LOG(INFO) << "Returning exit code " << exit_code;
   auto duration_ms = duration_cast<milliseconds>(steady_clock::now() - start_time).count();
-  LOG(INFO) << "Total time taken: " << StringPrintf("%.3f", duration_ms / 1000.0) << " sec";
+  LOG(INFO) << "Total time taken: " << yb::FixedPoint(duration_ms / 1000.0, 3) << " sec";
   return exit_code;
 }

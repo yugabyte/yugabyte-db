@@ -230,10 +230,10 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   // Cleanup old tasks from tracker.
   catalog_manager_->tasks_tracker_->CleanupOldTasks();
 
-  // Mark unresponsive tservers.
+  // Mark unresponsive TServers.
   WARN_NOT_OK(
       catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers(epoch),
-      "Failed to update sys catalog with unresponsive tservers");
+      "Failed to update sys catalog with unresponsive TServers");
 
   TabletInfos to_delete;
   TableToTabletInfos to_process;
@@ -286,6 +286,8 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   master_->tablet_split_manager().MaybeDoSplitting(tables, tablet_info_map, epoch);
 
   WARN_NOT_OK(master_->clone_state_manager().Run(), "Failed to run CloneStateManager: ");
+
+  catalog_manager_->RemoveDeletedTabletsFromTables(to_delete);
 
   if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
     catalog_manager_->CleanUpDeletedTables(epoch);

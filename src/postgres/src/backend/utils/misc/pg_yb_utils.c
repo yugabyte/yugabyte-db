@@ -164,6 +164,26 @@ static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_last_known_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
+/*
+ * Set when this session commits a transaction that bumped the catalog version. The next DDL that
+ * is going to bump it again clears the flag and calls
+ * YbWaitForMasterCatalogPrefetchDrain() before executing, so that DDL does not start until the
+ * master has worked through the prefetches the earlier bump caused.
+ *
+ * The flag records that this session bumped the version. It does not record whether the master is
+ * still serving the prefetches that bump caused -- by the time the next DDL arrives the master may
+ * have finished them. That is what the wait itself checks: it reads the load level the master
+ * reports and returns immediately if it is below busy.
+ *
+ * A session that bumps and then issues no further DDL never waits, and load caused by other
+ * sessions never delays this one -- that is bounded on the master side, by admission control.
+ *
+ * Nothing resets this between logical connections, so under the connection manager a bump made by
+ * one of them arms the next to share a backend. That is the behaviour we want: the wave is the
+ * node's either way, and whoever runs the next DDL is the one about to add to it.
+ */
+static bool yb_catalog_prefetch_wave_pending = false;
+
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static bool yb_need_invalidate_all_table_cache = false;
 
@@ -828,7 +848,8 @@ bool
 YbNeedAdditionalCatalogTables()
 {
 	return (*YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
-			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list));
+			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
+			YbCatalogPreloadCacheListIsSet());
 }
 
 static const char *
@@ -2217,6 +2238,7 @@ bool		yb_enable_nop_alter_role_optimization = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
+bool		yb_enable_xcluster_analyze_replication = false;
 
 /* Deprecated; see pg_yb_utils.h. Value is not read for lock behavior. */
 bool		yb_silence_advisory_locks_not_supported_error = false;
@@ -2224,6 +2246,7 @@ bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 8192;
+int			yb_ddl_wait_for_master_prefetch_drain_ms = 30000;
 bool		yb_enable_parallel_scan_colocated = true;
 bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
@@ -2581,16 +2604,7 @@ YBResetDdlState()
 bool
 YBIsDdlTransactionBlockEnabled()
 {
-	bool		enabled = yb_ddl_transaction_block_enabled;
-
-	if (!IsYBReadCommitted())
-		return enabled;
-
-	/*
-	 * For READ COMMITTED isolation, also check if DDL transaction support has
-	 * been explicitly disabled.
-	 */
-	return enabled && !yb_disable_ddl_transaction_block_for_read_committed;
+	return YBCIsDdlTransactionBlockEnabled();
 }
 
 int
@@ -2752,7 +2766,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
-	Assert(yb_ddl_transaction_block_enabled);
+	Assert(YBIsDdlTransactionBlockEnabled());
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
@@ -2818,7 +2832,7 @@ YBAddDdlTxnState(YbDdlMode mode)
 void
 YBMergeDdlTxnState()
 {
-	Assert(yb_ddl_transaction_block_enabled);
+	Assert(YBIsDdlTransactionBlockEnabled());
 
 	const bool	has_change = YbHasDdlMadeChanges();
 	MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
@@ -3039,6 +3053,116 @@ YbCheckNewLocalCatalogVersionOptimization()
 		 */
 		if (YbIsInvalidationMessageEnabled())
 			YbWaitForSharedCatalogVersionToCatchup(new_version);
+	}
+}
+
+#define YB_PREFETCH_DRAIN_POLL_MS 100
+
+static const char *
+YbCatalogPrefetchLoadName(YbCatalogPrefetchLoad load)
+{
+	switch (load)
+	{
+		case YB_CATALOG_PREFETCH_LOAD_UNKNOWN:
+			return "unknown";
+		case YB_CATALOG_PREFETCH_LOAD_LOW:
+			return "low";
+		case YB_CATALOG_PREFETCH_LOAD_BUSY:
+			return "busy";
+		case YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY:
+			return "super busy";
+	}
+	return "invalid";
+}
+
+/*
+ * Wait for the master leader to work through the catalog prefetches the previous catalog version
+ * bump caused, before letting this session cause another one.
+ *
+ * Every bump invalidates the cached prefetch on every tserver, so the next connection on each of
+ * them goes to the leader for a fresh copy of the catalog. The version is part of that cache's
+ * key, so a second bump before the first wave drains does not replace that work, it adds to it:
+ * each node ends up fetching a separate snapshot per version, of which only the newest is of any
+ * use. A run of DDLs issued back to back multiplies the load on the leader accordingly.
+ *
+ * Called at the start of a DDL that is going to bump the version, rather than after the previous
+ * one committed. Waiting at the end would run inside the HOLD_INTERRUPTS window around commit,
+ * where neither a cancel nor statement_timeout can be serviced, and would hold the committing
+ * transaction's heavyweight locks and its pending invalidations for the length of the wait. Here
+ * the wait is interruptible and statement_timeout bounds it, and the DDL that ends a script does
+ * not make any later statement wait.
+ *
+ * The caller only calls this when this session is the one that bumped, so a session is never
+ * delayed for load another session caused -- that is bounded on the master side instead, by
+ * admission control. What this paces is a migration running DDLs in a row, whether as separate
+ * statements or as a run of transaction blocks.
+ *
+ * The wait is capped, and is never fatal: if the leader is still busy when the cap is reached the
+ * session simply carries on.
+ *
+ * The level this reads is only as fresh as the last heartbeat. Reading it from the master directly
+ * instead would cost an RPC on every DDL.
+ */
+void
+YbWaitForMasterCatalogPrefetchDrain(void)
+{
+	int			max_count;
+	int			count = 0;
+	YbCatalogPrefetchLoad load;
+
+	if (yb_ddl_wait_for_master_prefetch_drain_ms <= 0)
+		return;
+
+	/* Round up, so that a setting below one poll interval still waits once. */
+	max_count = (yb_ddl_wait_for_master_prefetch_drain_ms / YB_PREFETCH_DRAIN_POLL_MS +
+				 (yb_ddl_wait_for_master_prefetch_drain_ms % YB_PREFETCH_DRAIN_POLL_MS != 0));
+	load = (YbCatalogPrefetchLoad) YBCGetSharedYsqlCatalogPrefetchLoad();
+
+	while (load >= YB_CATALOG_PREFETCH_LOAD_BUSY)
+	{
+		/*
+		 * Super busy means the leader is refusing even the reads that continue a prefetch it has
+		 * already begun, so it is discarding work it has done rather than merely refusing new
+		 * work. Adding a wave to that is worse than adding one to a leader that is only past the
+		 * new-prefetch watermark, so allow twice as long to get out of its way. The budget
+		 * follows the level as it changes, rather than the level this wait happened to start at.
+		 */
+		int			budget = (load >= YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY ?
+							  2 * max_count : max_count);
+
+		if (count >= budget)
+			break;
+		count++;
+
+		/* Avoid flooding the log file, but always print for the first time. */
+		if (count % 20 == 1)
+			ereport(LOG,
+					(errmsg("waiting for master catalog prefetch load to drain "
+							"before incrementing catalog version (load is %s)",
+							YbCatalogPrefetchLoadName(load)),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+		CHECK_FOR_INTERRUPTS();
+		pg_usleep(YB_PREFETCH_DRAIN_POLL_MS * 1000);
+		load = (YbCatalogPrefetchLoad) YBCGetSharedYsqlCatalogPrefetchLoad();
+	}
+
+	if (count > 0)
+	{
+		if (load >= YB_CATALOG_PREFETCH_LOAD_BUSY)
+			ereport(WARNING,
+					(errmsg("proceeding with catalog version increment while master catalog "
+							"prefetch load is still %s after waiting %d ms",
+							YbCatalogPrefetchLoadName(load),
+							count * YB_PREFETCH_DRAIN_POLL_MS),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+		else
+			ereport(LOG,
+					(errmsg("master catalog prefetch load has drained after waiting %d ms",
+							count * YB_PREFETCH_DRAIN_POLL_MS),
+					 errhidestmt(true),
+					 errhidecontext(true)));
 	}
 }
 
@@ -3514,8 +3638,11 @@ YBCommitTransactionContainingDDL()
 	}
 	YBClearDdlHandles();
 	if (increment_done)
+	{
 		YBC_LOG_INFO("%s: got %d invalidation messages, local catalog version %" PRIu64,
 			 __func__, nmsgs, yb_catalog_cache_version);
+		yb_catalog_prefetch_wave_pending = true;
+	}
 }
 
 void
@@ -4545,6 +4672,17 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 {
 
 	bool		should_run_in_autonomous_transaction = false;
+
+	/*
+	 * Taken before YbGetDdlMode, which may set any of them. Unlike the rest of the state it
+	 * records, these are assigned only while still unset, so a statement that throws before it
+	 * finishes would leave them to be reported against someone else's catalog version bump.
+	 */
+	const bool	prev_is_global_ddl = ddl_transaction_state.is_global_ddl;
+	const CommandTag prev_global_ddl_command_tag =
+		ddl_transaction_state.global_ddl_command_tag;
+	const CommandTag prev_breaking_ddl_command_tag =
+		ddl_transaction_state.breaking_ddl_command_tag;
 	const YbDdlModeOptional ddl_mode =
 		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
 
@@ -4559,6 +4697,43 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	const bool	use_separate_ddl_transaction =
 		is_ddl && (should_run_in_autonomous_transaction ||
 				   !YBIsDdlTransactionBlockEnabled());
+
+	/*
+	 * A bump this session made may still have the master leader fetching catalog snapshots for the
+	 * whole cluster. Wait for that to drain before this transaction adds another wave.
+	 *
+	 * A transaction bumps the version once however many DDLs it contains, so this fires on the
+	 * first version-bumping DDL of each one: the session waits once per transaction, not once per
+	 * DDL. In an explicit block that DDL need not be the first statement, so the wait can extend a
+	 * lock hold that was going to last until commit anyway. Running at statement start rather than
+	 * in the commit path keeps it interruptible and bounded by statement_timeout.
+	 *
+	 * The condition is the version-increment aspect YbGetDdlMode has already computed, so a
+	 * statement waits exactly when it is the one that will bump: a DDL the client sent, on its own
+	 * or inside a transaction block, one run from a function body, and one run from a procedure
+	 * that commits between its DDLs.
+	 */
+	if (yb_catalog_prefetch_wave_pending &&
+		is_ddl &&
+		(ddl_mode.value & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
+	{
+		PG_TRY();
+		{
+			YbWaitForMasterCatalogPrefetchDrain();
+		}
+		PG_CATCH();
+		{
+			if (YbIsTopLevelOrAtomicStatement(context))
+				ddl_transaction_state.is_top_level_ddl_active = false;
+			ddl_transaction_state.is_global_ddl = prev_is_global_ddl;
+			ddl_transaction_state.global_ddl_command_tag = prev_global_ddl_command_tag;
+			ddl_transaction_state.breaking_ddl_command_tag = prev_breaking_ddl_command_tag;
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+		/* Cleared after the wait, so that a cancelled one leaves the next DDL to pay for it. */
+		yb_catalog_prefetch_wave_pending = false;
+	}
 
 	elog(DEBUG3, "is_ddl %d", is_ddl);
 	PG_TRY();
@@ -5255,7 +5430,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 		size += typesize;
 	}
 
-	arg_buf = alloca(size);
+	arg_buf = palloc(size);
 
 	/* TODO(Tanuj): Look into caching the above buffer */
 
@@ -5291,6 +5466,8 @@ yb_hash_code(PG_FUNCTION_ARGS)
 
 	/* hash the contents of the buffer and return */
 	uint16_t	hashed_val = YBCCompoundHash(arg_buf, total_bytes);
+
+	pfree(arg_buf);
 
 	PG_RETURN_UINT16(hashed_val);
 }
@@ -6888,7 +7065,8 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 	 */
 	int			sys_only_filter_attr = InvalidAttrNumber;
 	int			db_id = MyDatabaseId;
-	int			sys_table_index_id = InvalidOid;
+	int			mandatory_index_id = InvalidOid;
+	int			index_id = InvalidOid;
 	bool		fetch_ybctid = true;
 
 	switch (sys_table_id)
@@ -6896,17 +7074,17 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			/* TemplateDb tables */
 		case AuthMemRelationId: /* pg_auth_members */
 			db_id = Template1DbOid;
-			sys_table_index_id = AuthMemMemRoleIndexId;
+			mandatory_index_id = AuthMemMemRoleIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			sys_table_index_id = AuthIdRolnameIndexId;
+			index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */
 			db_id = Template1DbOid;
-			sys_table_index_id = DatabaseNameIndexId;
+			mandatory_index_id = DatabaseNameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 
@@ -6931,95 +7109,95 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			sys_only_filter_attr = Anum_pg_aggregate_aggfnoid;
 			break;
 		case AccessMethodProcedureRelationId:	/* pg_amproc */
-			sys_table_index_id = AccessMethodProcedureIndexId;
+			mandatory_index_id = AccessMethodProcedureIndexId;
 			sys_only_filter_attr = Anum_pg_amproc_oid;
 			break;
 		case AccessMethodRelationId:	/* pg_am */
-			sys_table_index_id = AmNameIndexId;
+			index_id = AmNameIndexId;
 			sys_only_filter_attr = Anum_pg_am_oid;
 			break;
 		case AttrDefaultRelationId: /* pg_attrdef */
-			sys_table_index_id = AttrDefaultIndexId;
+			index_id = AttrDefaultIndexId;
 			sys_only_filter_attr = Anum_pg_attrdef_oid;
 			break;
 		case AttributeRelationId:	/* pg_attribute */
-			sys_table_index_id = AttributeRelidNameIndexId;
+			index_id = AttributeRelidNameIndexId;
 			sys_only_filter_attr = Anum_pg_attribute_attrelid;
 			break;
 		case CastRelationId:	/* pg_cast */
-			sys_table_index_id = CastSourceTargetIndexId;
+			mandatory_index_id = CastSourceTargetIndexId;
 			sys_only_filter_attr = Anum_pg_cast_oid;
 			break;
 		case ConstraintRelationId:	/* pg_constraint */
-			sys_table_index_id = ConstraintRelidTypidNameIndexId;
+			mandatory_index_id = ConstraintRelidTypidNameIndexId;
 			sys_only_filter_attr = Anum_pg_constraint_oid;
 			break;
 		case EnumRelationId:	/* pg_enum */
-			sys_table_index_id = EnumTypIdLabelIndexId;
+			mandatory_index_id = EnumTypIdLabelIndexId;
 			sys_only_filter_attr = Anum_pg_enum_oid;
 			break;
 		case IndexRelationId:	/* pg_index */
-			sys_table_index_id = IndexIndrelidIndexId;
+			index_id = IndexIndrelidIndexId;
 			sys_only_filter_attr = Anum_pg_index_indexrelid;
 			break;
 		case InheritsRelationId:	/* pg_inherits */
-			sys_table_index_id = InheritsParentIndexId;
+			mandatory_index_id = InheritsParentIndexId;
 			sys_only_filter_attr = Anum_pg_inherits_inhrelid;
 			break;
 		case NamespaceRelationId:	/* pg_namespace */
-			sys_table_index_id = NamespaceNameIndexId;
+			mandatory_index_id = NamespaceNameIndexId;
 			sys_only_filter_attr = Anum_pg_namespace_oid;
 			break;
 		case OperatorClassRelationId:	/* pg_opclass */
-			sys_table_index_id = OpclassAmNameNspIndexId;
+			index_id = OpclassAmNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_opclass_oid;
 			break;
 		case OperatorRelationId:	/* pg_operator */
-			sys_table_index_id = OperatorNameNspIndexId;
+			mandatory_index_id = OperatorNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_operator_oid;
 			break;
 		case PolicyRelationId:	/* pg_policy */
-			sys_table_index_id = PolicyPolrelidPolnameIndexId;
+			mandatory_index_id = PolicyPolrelidPolnameIndexId;
 			sys_only_filter_attr = Anum_pg_policy_oid;
 			break;
 		case ProcedureRelationId:	/* pg_proc */
-			sys_table_index_id = ProcedureNameArgsNspIndexId;
+			mandatory_index_id = ProcedureNameArgsNspIndexId;
 			sys_only_filter_attr = Anum_pg_proc_oid;
 			break;
 		case RelationRelationId:	/* pg_class */
-			sys_table_index_id = ClassNameNspIndexId;
+			index_id = ClassNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_class_oid;
 			break;
 		case CollationRelationId:	/* pg_collation */
-			sys_table_index_id = CollationNameEncNspIndexId;
+			index_id = CollationNameEncNspIndexId;
 			break;
 		case RangeRelationId:	/* pg_range */
 			sys_only_filter_attr = Anum_pg_range_rngtypid;
 			break;
 		case RewriteRelationId: /* pg_rewrite */
-			sys_table_index_id = RewriteRelRulenameIndexId;
+			mandatory_index_id = RewriteRelRulenameIndexId;
 			sys_only_filter_attr = Anum_pg_rewrite_oid;
 			break;
 		case StatisticRelationId:	/* pg_statistic */
 			sys_only_filter_attr = Anum_pg_statistic_starelid;
 			break;
 		case StatisticExtRelationId:	/* pg_statistic_ext */
-			sys_table_index_id = StatisticExtNameIndexId;
+			mandatory_index_id = StatisticExtNameIndexId;
 			sys_only_filter_attr = Anum_pg_statistic_ext_oid;
 			break;
 		case StatisticExtDataRelationId:	/* pg_statistic_ext_data */
 			sys_only_filter_attr = Anum_pg_statistic_ext_data_stxoid;
 			break;
 		case TriggerRelationId: /* pg_trigger */
-			sys_table_index_id = TriggerRelidNameIndexId;
+			index_id = TriggerRelidNameIndexId;
 			sys_only_filter_attr = Anum_pg_trigger_oid;
 			break;
 		case TypeRelationId:	/* pg_type */
-			sys_table_index_id = TypeNameNspIndexId;
+			index_id = TypeNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_type_oid;
 			break;
 		case AccessMethodOperatorRelationId:	/* pg_amop */
-			sys_table_index_id = AccessMethodOperatorIndexId;
+			mandatory_index_id = AccessMethodOperatorIndexId;
 			sys_only_filter_attr = Anum_pg_amop_oid;
 			break;
 		case PartitionedRelationId: /* pg_partitioned_table */
@@ -7039,7 +7217,11 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 	if (!YbUseMinimalCatalogCachesPreload())
 		sys_only_filter_attr = InvalidAttrNumber;
 
-	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id,
+	Assert(mandatory_index_id == InvalidOid || index_id == InvalidOid);
+	if (*YBCGetGFlags()->ysql_catalog_prefetch_minimize_index_scans)
+		index_id = InvalidOid;
+	const int actual_index_id = mandatory_index_id == InvalidOid ? index_id : mandatory_index_id;
+	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, actual_index_id,
 									  sys_only_filter_attr, fetch_ybctid);
 }
 
@@ -8751,7 +8933,51 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 
 	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);
 	assign_yb_read_time(read_time, NULL);
+	YBCPgResetHistoricalReadContext();
 	YbRelationCacheInvalidate();
+}
+
+void
+YBCSetHistoricalReadContext(uint64_t read_time_ht,
+							uint64_t in_txn_limit_ht,
+							const char *docdb_txn_id)
+{
+	elog(DEBUG1,
+		 "Setting historical read context to read_time_ht: %" PRIu64
+		 ", in_txn_limit_ht: %" PRIu64 ", docdb_txn_id: %s",
+		 read_time_ht, in_txn_limit_ht, docdb_txn_id);
+
+	YbcReadHybridTime read_time = {
+		.read = read_time_ht,
+		.local_limit = read_time_ht,
+		.global_limit = read_time_ht,
+		.in_txn_limit = in_txn_limit_ht,
+		.serial_no = 0
+	};
+
+	YBCPgSetHistoricalReadContext(read_time, docdb_txn_id);
+}
+
+void
+YBCInvalidateCachesForHistoricalReadContext(void)
+{
+	YbRelationCacheInvalidate();
+}
+
+void
+YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
+											   uint64_t in_txn_limit_ht,
+											   const char *docdb_txn_id)
+{
+	YBCSetHistoricalReadContext(read_time_ht, in_txn_limit_ht, docdb_txn_id);
+	YBCInvalidateCachesForHistoricalReadContext();
+}
+
+void
+YBCResetHistoricalReadContextAndInvalidateRelcache(void)
+{
+	YBCPgResetHistoricalReadContext();
+	YBCInvalidateCachesForHistoricalReadContext();
 }
 
 void

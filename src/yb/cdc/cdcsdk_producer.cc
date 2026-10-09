@@ -666,9 +666,13 @@ Result<size_t> DoPopulatePackedRows(
   for (size_t i = 0; i != packing.columns(); ++i) {
     auto column_value = decoder.FetchValue(i);
     const auto& column_data = packing.column_packing_data(i);
+    const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
+    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+        col.marked_for_deletion()) {
+      continue;
+    }
 
     auto pv = VERIFY_RESULT(UnpackPrimitiveValue(column_value, column_data.data_type));
-    const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
     modified_columns->insert(col.name());
 
     if (column_value.IsNull()) {

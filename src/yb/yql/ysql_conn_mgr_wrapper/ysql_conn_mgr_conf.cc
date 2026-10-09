@@ -61,7 +61,6 @@ DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_probes);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
 DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
 DECLARE_uint32(ysql_conn_mgr_pool_timeout);
-DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_max_prepared_statements);
@@ -397,8 +396,6 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%tcp_keepalive_usr_timeout%}",
      std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_usr_timeout)},
     {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
-    {"{%yb_optimized_extended_query_protocol%}",
-      BoolToString(FLAGS_ysql_conn_mgr_optimized_extended_query_protocol)},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
     {"{%yb_ysql_max_connections%}", std::to_string(conf_->ysql_max_connections)},
     {"{%yb_optimized_session_parameters%}",

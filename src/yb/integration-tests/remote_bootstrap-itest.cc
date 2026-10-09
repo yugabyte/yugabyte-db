@@ -54,7 +54,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
@@ -333,6 +332,10 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   }
 
   opts.extra_master_flags = extra_master_flags;
+  // Several tests remove a TServer via ExternalMiniCluster::RemoveTabletServer, which requires the
+  // TServer to have definitely lost its xCluster-guarded information lease; shorten the lease so
+  // that happens within the tests' deadlines.
+  opts.extra_master_flags.emplace_back("--xcluster_guarded_lease_duration_ms=3000");
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
@@ -2320,7 +2323,9 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
         }
         return leader.get() == ts_idx_to_bootstrap;
       },
-      timeout, "Waiting for ts_idx_to_bootstrap to become leader"));
+      // Leader transfer away from a blacklisted tserver can exceed 10s on a loaded host.
+      MonoDelta::FromSeconds(kTimeMultiplier * 60),
+      "Waiting for ts_idx_to_bootstrap to become leader"));
 
   // Check persistence of previously inserted data.
   auto new_conn = ASSERT_RESULT(ConnectToDB(database));

@@ -68,13 +68,15 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 			excludePADatabase = false
 			excludePAFiles = false
 		}
+		script := fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
+			common.GetActiveSymlink(), state.Version)
+		fips := viper.GetBool("fips.enabled") && common.BackupScriptSupportsFips(script)
 		err := RestoreBackupScriptHelper(backup, common.GetBaseInstall(), true, true, false, false, true,
-			fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
-				common.GetActiveSymlink(), state.Version),
+			script,
 			common.GetBaseInstall()+"/data/yb-platform",
 			common.GetActiveSymlink()+"/ybdb/bin/ysqlsh",
 			common.GetActiveSymlink()+"/pgsql/bin/pg_restore",
-			excludePADatabase, excludePAFiles)
+			excludePADatabase, excludePAFiles, fips)
 		if err != nil {
 			log.Warn(fmt.Sprintf("failed to restore backup: %s", err.Error()))
 		}
@@ -213,12 +215,14 @@ func upgradeCmd() *cobra.Command {
 					excludePADatabase = false
 					excludePAFiles = false
 				}
-				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),
-					fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
+				script := fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
+					common.GetActiveSymlink(), state.Version)
+				fips := viper.GetBool("fips.enabled") && common.BackupScriptSupportsFips(script)
+				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(), script,
 					common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
 					common.GetActiveSymlink()+"/pgsql/bin/pg_dump",
 					true, true, false, true, false, usePromProtocol,
-					excludePADatabase, excludePAFiles); errB != nil {
+					excludePADatabase, excludePAFiles, fips); errB != nil {
 					log.Fatal("Failed taking backup of YBA, aborting upgrade: " + errB.Error())
 				}
 			}

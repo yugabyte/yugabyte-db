@@ -14,7 +14,11 @@
 #include <regex>
 
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/subprocess.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
@@ -1097,6 +1101,104 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsMultipleDatabases) {
   ASSERT_OK(ResetAcls(cluster_.get(), &conn_yugabyte, kFunctionMitigationSql));
   ASSERT_OK(ResetAcls(cluster_.get(), &conn_postgres, kTypeMitigationSql, "postgres"));
   ASSERT_OK(ValidateUpgradeCompatibility());
+}
+
+TEST_F(YsqlMajorUpgradeCheckTest, CollectSchemaDump) {
+  const auto pg_data_dir =
+      JoinPathSegments(cluster_->tablet_server(0)->GetDataDirs().front(), "../../pg_data");
+  const auto output_root = JoinPathSegments(pg_data_dir, "pg_upgrade_output.d");
+  const auto dump_dir = JoinPathSegments(output_root, "schema_dump");
+  const std::vector<std::string> dump_args = {"--yb-collect-schema-dump"};
+
+  // pg_upgrade --check connects to tserver 0, so run the setup DDL through the same node.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", /*tserver_index=*/0));
+  ASSERT_OK(conn.Execute("CREATE TABLE schema_dump_test (id int PRIMARY KEY, val text)"));
+  ASSERT_OK(conn.Execute("CREATE ROLE schema_dump_role"));
+
+  // The dump outlives a run, so clear it first or a stale one satisfies the assertions.
+  auto reset = [&]() -> Status {
+    if (Env::Default()->FileExists(output_root)) {
+      RETURN_NOT_OK(Env::Default()->DeleteRecursively(output_root));
+    }
+    return Status::OK();
+  };
+
+  auto dump_contains = [](const std::string& path, const std::string& substr) -> Status {
+    faststring contents;
+    RETURN_NOT_OK(ReadFileToString(Env::Default(), path, &contents));
+    SCHECK_FORMAT(
+        contents.ToString().find(substr) != std::string::npos, NotFound,
+        "$0 does not contain '$1'", path, substr);
+    return Status::OK();
+  };
+
+  auto check_dump = [&]() -> Status {
+    RETURN_NOT_OK(
+        dump_contains(JoinPathSegments(dump_dir, "globals_dump.sql"), "schema_dump_role"));
+
+    const auto databases_file = JoinPathSegments(dump_dir, "all_databases_dump.sql");
+    RETURN_NOT_OK(dump_contains(databases_file, "schema_dump_test"));
+    // The dump only predicts pg_upgrade's restore if it pins OIDs the same way.
+    return dump_contains(databases_file, "binary_upgrade_set_next_heap_pg_class_oid");
+  };
+
+  auto collected_when_checks_pass = [&]() -> Status {
+    RETURN_NOT_OK(reset());
+    RETURN_NOT_OK(ValidateUpgradeCompatibilityWithArgs(dump_args));
+    RETURN_NOT_OK(check_dump());
+
+    // Collecting a dump must not change how the per-run log directories are retained.
+    auto entries = VERIFY_RESULT(Env::Default()->GetChildren(output_root, ExcludeDots::kTrue));
+    SCHECK_EQ(
+        entries.size(), 1, IllegalState, "Expected the passing check to leave only the dump");
+    return Status::OK();
+  };
+
+  // The dump is collected even when a check fails, which is when it is most wanted.
+  auto collected_when_a_check_fails = [&]() -> Status {
+    RETURN_NOT_OK(reset());
+    // A reg* column fails check_for_reg_data_type_usage, which defers to the check verdict.
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE reg_check (a int, b regproc)"));
+
+    auto status = ValidateUpgradeCompatibilityWithArgs(dump_args);
+    SCHECK(!status.ok(), IllegalState, "Expected pg_upgrade --check to fail");
+    RETURN_NOT_OK(check_dump());
+
+    return conn.Execute("DROP TABLE reg_check");
+  };
+
+  // Nothing is dumped without the flag.
+  auto not_collected_without_the_flag = [&]() -> Status {
+    RETURN_NOT_OK(reset());
+    RETURN_NOT_OK(ValidateUpgradeCompatibility());
+    SCHECK(
+        !Env::Default()->FileExists(dump_dir), IllegalState,
+        "Expected no schema dump without --yb-collect-schema-dump");
+    return Status::OK();
+  };
+
+  // Outside --check the flag is rejected rather than quietly ignored.
+  auto rejected_without_check = [&]() -> Status {
+    const auto tserver = cluster_->tablet_server(0);
+    const std::vector<std::string> args = {
+        GetPgToolPath("pg_upgrade"),
+        "--old-datadir", pg_data_dir,
+        "--old-host", tserver->bind_host(),
+        "--old-port", AsString(tserver->pgsql_rpc_port()),
+        "--username", "yugabyte",
+        "--yb-collect-schema-dump"};
+
+    StringWaiterLogSink log_waiter("--yb-collect-schema-dump can only be used with --check");
+    auto status = Subprocess::Call(args, /*log_stdout_and_stderr=*/true);
+    SCHECK(!status.ok(), IllegalState, "Expected pg_upgrade to reject the flag");
+    SCHECK(log_waiter.IsEventOccurred(), IllegalState, "Expected the --check requirement error");
+    return Status::OK();
+  };
+
+  ASSERT_OK(collected_when_checks_pass());
+  ASSERT_OK(collected_when_a_check_fails());
+  ASSERT_OK(not_collected_without_the_flag());
+  ASSERT_OK(rejected_without_check());
 }
 
 }  // namespace yb

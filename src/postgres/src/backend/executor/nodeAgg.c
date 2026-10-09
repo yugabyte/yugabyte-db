@@ -2750,23 +2750,23 @@ agg_retrieve_direct(AggState *aggstate)
 						{
 							/*
 							 * Like COUNT, add the sum and count values
-							 * directly. The datum is guaranteed to be an
-							 * Int8TransTypeData.
+							 * directly. The datum is guaranteed to be a
+							 * YbInt8TransTypeData.
 							 * The checking code is taken from int8_avg()
 							 * in numeric.c.
 							 */
-							Int8TransTypeData *transdata;
+							YbInt8TransTypeData *transdata;
 							ArrayType  *transarray = (ArrayType *) (pergroupstate->transValue);
 							oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 
 							if (ARR_HASNULL(transarray) ||
 								ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
-								sizeof(Int8TransTypeData))
+								sizeof(YbInt8TransTypeData))
 							{
 								elog(ERROR, "expected 2-element int8 array");
 							}
 
-							transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+							transdata = (YbInt8TransTypeData *) ARR_DATA_PTR(transarray);
 
 							transdata->sum += value;
 							transdata->count += count_value;

@@ -19,6 +19,8 @@
 
 #include "yb/rocksdb/db.h"
 
+#include "yb/rocksutil/yb_rocksdb.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
@@ -56,6 +58,7 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
     frontiers.Largest().set_history_cutoff_information(history_cutoff);
     batch.SetFrontiers(&frontiers);
     rocksdb::WriteOptions options;
+    InitRocksDBWriteOptions(&options);
     RETURN_NOT_OK(regular_db->Write(options, &batch));
   }
   return Status::OK();

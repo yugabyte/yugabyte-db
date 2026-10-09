@@ -17,8 +17,6 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -176,6 +174,20 @@ void TCMallocReleaseMemoryToSystem(int64_t bytes) {
 #endif
 }
 
+void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes) {
+#if YB_GOOGLE_TCMALLOC
+  const auto short_interval = tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval();
+  const auto long_interval = tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval();
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(absl::ZeroDuration());
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::ZeroDuration());
+  TCMallocReleaseMemoryToSystem(bytes);
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(short_interval);
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(long_interval);
+#else
+  TCMallocReleaseMemoryToSystem(bytes);
+#endif
+}
+
 #if YB_GOOGLE_TCMALLOC
 // Sets the given property to the given value in Google tcmalloc using a Set... function and
 // immediately calls the corresponding Get... function to verify the effective new value of the
@@ -243,7 +255,7 @@ void ConfigureTCMalloc(int64_t mem_limit) {
   }
 
   if (FLAGS_heap_profile_path.empty()) {
-    const auto path = strings::Substitute(
+    const auto path = Format(
         "$0/$1.$2", FLAGS_tmp_dir, google::ProgramInvocationShortName(), getpid());
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }

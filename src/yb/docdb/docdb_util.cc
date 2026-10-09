@@ -37,6 +37,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
@@ -44,7 +45,6 @@
 #include "yb/docdb/docdb_pgapi.h"
 
 using std::string;
-using strings::Substitute;
 using std::vector;
 
 namespace yb::docdb {
@@ -182,7 +182,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       // don't contain the HybridTime.
       RETURN_NOT_OK_PREPEND(
           subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.key),
-          Substitute("when decoding key: $0", FormatBytesAsStr(entry.key)));
+          Format("when decoding key: $0", FormatBytesAsStr(entry.key)));
     }
   }
 
@@ -236,8 +236,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
     return Status::OK();
   }
   if (!hybrid_time.is_valid()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Hybrid time is not valid: $0",
-                             hybrid_time.ToString());
+    return STATUS_FORMAT(InvalidArgument, "Hybrid time is not valid: $0",
+                         hybrid_time.ToString());
   }
 
   ConsensusFrontiers frontiers;

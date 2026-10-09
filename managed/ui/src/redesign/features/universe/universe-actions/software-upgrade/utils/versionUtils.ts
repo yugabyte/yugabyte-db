@@ -28,29 +28,36 @@ const sortReleasesDesc = (releases: YbdbRelease[]): YbdbRelease[] =>
  * - Latest from current series
  * - All eligible versions grouped by series
  *
- * Releases without an artifact matching `currentReleaseArchitecture` are excluded,
- * since we cannot upgrade to a release that does not ship a binary for the universe's CPU arch.
- * If `currentReleaseArchitecture` is undefined (arch unknown), no architecture filtering is applied.
+ * Compatibility is by target platform.
+ * - A Kubernetes universe upgrades through the Helm chart, so a
+ *   release is kept when it has a KUBERNETES artifact; `currentReleaseArchitecture` is ignored.
+ * - For VM universe, a release is kept when it has a LINUX artifact.
+ *   If `currentReleaseArchitecture` is set, that artifact must match it.
+ *   If it is unset, any LINUX artifact matches, and a Helm-only release is excluded.
  */
 export const buildVersionOptions = (
   releases: YbdbRelease[],
   currentReleaseVersion: string,
   currentReleaseArchitecture: YbdbReleaseArtifact['architecture'] | undefined,
-  skipVersionChecks: boolean
+  skipVersionChecks: boolean,
+  platform: YbdbReleaseArtifact['platform']
 ): ReleaseOption[] => {
   if (releases.length === 0) {
     return [];
   }
 
-  const archFilteredReleases = currentReleaseArchitecture
-    ? releases.filter((release) =>
-        release.artifacts?.some((artifact) => artifact.architecture === currentReleaseArchitecture)
-      )
-    : releases;
+  const compatibleReleases = releases.filter((release) =>
+    release.artifacts?.some((artifact) =>
+      platform === 'KUBERNETES'
+        ? artifact.platform === 'KUBERNETES'
+        : artifact.platform === 'LINUX' &&
+          (!currentReleaseArchitecture || artifact.architecture === currentReleaseArchitecture)
+    )
+  );
 
   const options: ReleaseOption[] = [];
   const isCurrentVersionStable = isVersionStable(currentReleaseVersion);
-  const sortedReleases = sortReleasesDesc(archFilteredReleases);
+  const sortedReleases = sortReleasesDesc(compatibleReleases);
 
   const shouldIncludeLatestStableRelease = isCurrentVersionStable || skipVersionChecks;
   if (shouldIncludeLatestStableRelease) {

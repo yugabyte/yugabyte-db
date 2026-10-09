@@ -350,6 +350,9 @@ extern bool yb_has_same_batching_reqs(List *paths);
 extern ParamPathInfo *yb_find_batched_param_path_info(RelOptInfo *rel,
 													  Relids required_outer,
 													  Relids yb_required_batched_outer);
+extern List *yb_clause_batched_groups(List *pclauses,
+									 Relids batchedrelids,
+									 Relids inner_relids);
 extern Path *yb_create_distinct_index_path(PlannerInfo *root,
 										   IndexOptInfo *index,
 										   IndexPath *basepath,

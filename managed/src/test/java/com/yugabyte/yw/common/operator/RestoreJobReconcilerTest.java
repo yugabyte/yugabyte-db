@@ -47,6 +47,8 @@ import io.fabric8.kubernetes.client.informers.cache.Indexer;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.RestoreJobSpec;
+import io.yugabyte.operator.v1alpha1.RestoreJobStatus;
+import io.yugabyte.operator.v1alpha1.restorejobspec.RestoreKeyspaces;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -389,5 +391,112 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
 
     restoreJobReconciler.onAdd(restoreJob);
     verify(backupHelper, never()).createRestoreTask(any(), any());
+  }
+
+  private void setBackupPieces(BackupTableParams... pieces) {
+    BackupTableParams backupInfo = testBackup.getBackupInfo();
+    backupInfo.backupList = new ArrayList<>(List.of(pieces));
+    testBackup.setBackupInfo(backupInfo);
+    testBackup.save();
+  }
+
+  private BackupTableParams piece(String keyspace, String location) {
+    BackupTableParams piece = new BackupTableParams();
+    piece.setKeyspace(keyspace);
+    piece.storageLocation = location;
+    return piece;
+  }
+
+  @Test
+  public void testOnAddSkipsRestoreJobThatAlreadyHasStatus() throws Exception {
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+    RestoreJobStatus status = new RestoreJobStatus();
+    status.setTaskUUID(UUID.randomUUID().toString());
+    status.setMessage("Finished Restore");
+    restoreJob.setStatus(status);
+
+    restoreJobReconciler.onAdd(restoreJob);
+
+    verify(backupHelper, never()).createRestoreTask(any(), any());
+    verify(resourceClient, never()).inNamespace(anyString());
+  }
+
+  private RestoreKeyspaces restoreKeyspace(String name, String newName) {
+    RestoreKeyspaces entry = new RestoreKeyspaces();
+    entry.setName(name);
+    entry.setNewName(newName);
+    return entry;
+  }
+
+  private RestoreJob restoreJobWithKeyspaces(RestoreKeyspaces... entries) {
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+    restoreJob.getSpec().setKeyspace(null);
+    restoreJob.getSpec().setRestoreKeyspaces(new ArrayList<>(List.of(entries)));
+    return restoreJob;
+  }
+
+  @Test
+  public void testRestoreKeyspacesRestoresOnlyListedKeyspaces() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    setBackupPieces(
+        piece("db_one", "s3://test-bucket/db_one"),
+        piece("db_two", "s3://test-bucket/db_two"),
+        piece("db_three", "s3://test-bucket/db_three"),
+        piece("db_one", "s3://test-bucket/db_one_again"));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    RestoreJob restoreJob =
+        restoreJobWithKeyspaces(
+            restoreKeyspace("db_one", "db_one_restored"), restoreKeyspace("db_three", null));
+
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    assertEquals(3, params.backupStorageInfoList.size());
+    assertEquals("db_one_restored", params.backupStorageInfoList.get(0).keyspace);
+    assertEquals("s3://test-bucket/db_one", params.backupStorageInfoList.get(0).storageLocation);
+    assertEquals("db_three", params.backupStorageInfoList.get(1).keyspace);
+    assertEquals("s3://test-bucket/db_three", params.backupStorageInfoList.get(1).storageLocation);
+    assertEquals("db_one_restored", params.backupStorageInfoList.get(2).keyspace);
+    assertEquals(
+        "s3://test-bucket/db_one_again", params.backupStorageInfoList.get(2).storageLocation);
+  }
+
+  @Test
+  public void testRestoreKeyspacesRejectedWhenUnknownCollidingOrWithKeyspace() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    setBackupPieces(
+        piece("db_one", "s3://test-bucket/db_one"), piece("db_two", "s3://test-bucket/db_two"));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    RestoreJob unknown = restoreJobWithKeyspaces(restoreKeyspace("missing_db", "other"));
+    Exception unknownEx =
+        assertThrows(
+            Exception.class, () -> restoreJobReconciler.getRestoreBackupParamsFromCr(unknown));
+    assertTrue(unknownEx.getMessage().contains("not a keyspace"));
+
+    RestoreJob colliding =
+        restoreJobWithKeyspaces(
+            restoreKeyspace("db_one", "db_two"), restoreKeyspace("db_two", null));
+    Exception collidingEx =
+        assertThrows(
+            Exception.class, () -> restoreJobReconciler.getRestoreBackupParamsFromCr(colliding));
+    assertTrue(collidingEx.getMessage().contains("same destination"));
+
+    RestoreJob both = restoreJobWithKeyspaces(restoreKeyspace("db_one", "db_one_restored"));
+    both.getSpec().setKeyspace("renamed_db");
+    Exception bothEx =
+        assertThrows(
+            Exception.class, () -> restoreJobReconciler.getRestoreBackupParamsFromCr(both));
+    assertTrue(bothEx.getMessage().contains("mutually exclusive"));
   }
 }

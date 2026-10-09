@@ -149,6 +149,10 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexPtr IndexForTable(
       const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);
 
+  // Stamps `frontier` as flushed on every vector index, see
+  // DocVectorIndex::ModifyFlushedFrontier.
+  Status ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier);
+
   void FillMaxPersistentOpIds(
       boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
 
@@ -211,8 +215,14 @@ class TabletVectorIndexes :
   ShutdownController shutdown_controller_;
 
   rpc::Scheduler* scheduler_ = nullptr;
+  // Serializes ScheduledTaskTracker::Schedule, which aborts the pending task and overwrites its id
+  // without any synchronization of its own. Never held across CompleteShutdown, which waits for a
+  // running retry that takes this mutex itself.
+  std::mutex backfill_retry_mutex_;
   rpc::ScheduledTaskTracker backfill_retry_task_;
   std::atomic<bool> backfills_launched_{false};
+  // A backfill asked for a retry and no retry has evaluated the indexes since.
+  std::atomic<bool> backfill_retry_pending_{false};
 };
 
 }  // namespace yb::tablet

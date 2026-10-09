@@ -668,8 +668,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              k8sProvider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(k8sProvider.getUuid());
         });
 
     ObjectNode providerJson = (ObjectNode) Json.toJson(p);
@@ -696,8 +697,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              k8sProvider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(k8sProvider.getUuid());
         });
 
     List<AvailabilityZone> zones = p.getRegions().get(0).getZones();
@@ -1123,6 +1125,64 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testInUseGcpImageBundleEditWithOmittedDestVpcId() throws InterruptedException {
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.gcp);
+    UUID providerUUID = p.getUuid();
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    p.getDetails().setCloudInfo(new ProviderDetails.CloudInfo());
+    GCPCloudInfo gcp = new GCPCloudInfo();
+    gcp.setDestVpcId("hostVpcId");
+    gcp.setHostVpcId("hostVpcId");
+    gcp.setGceProject("proj");
+    gcp.setUseHostVPC(true);
+    gcp.setUseHostCredentials(true);
+    gcp.setVpcType(CloudInfoInterface.VPCType.HOSTVPC);
+    p.getDetails().getCloudInfo().setGcp(gcp);
+    p.save();
+
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(Common.CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "hostVpcId").put("project", "proj"));
+
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    Universe universe = ModelFactory.createUniverse("gcp-in-use", defaultCustomer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          TestUtils.getProviderInitializerForTests(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent, providerUUID)
+              .setProviderUUID(providerUUID)
+              .setProviderType(Common.CloudType.gcp);
+        });
+    Result providerRes = getProvider(p.getUuid());
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ((ObjectNode) bodyJson.path("details").path("cloudInfo").path("gcp")).remove("destVpcId");
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ImageBundle ib = new ImageBundle();
+    ib.setName("ib-2");
+    ib.setProvider(p);
+    ib.setDetails(details);
+    List<ImageBundle> ibs = new ArrayList<>(p.getImageBundles());
+    ibs.add(ib);
+    p.setImageBundles(ibs);
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(2, p.getImageBundles().size());
+    assertEquals("hostVpcId", p.getDetails().getCloudInfo().getGcp().getDestVpcId());
+  }
+
+  @Test
   public void testWaitForFinishingTasksTimeout() throws InterruptedException {
     factory.globalRuntimeConf().setValue(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "50");
     factory
@@ -1135,8 +1195,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              provider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(provider.getUuid());
         });
     params.setUniverseUUID(universe.getUniverseUUID());
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
@@ -1170,8 +1231,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
-          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
-              provider.getUuid().toString();
+          TestUtils.existingProviderInitializer(
+                  univ.getUniverseDetails().getPrimaryCluster().userIntent)
+              .setProviderUUID(provider.getUuid());
         });
     params.setUniverseUUID(universe.getUniverseUUID());
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
@@ -1234,6 +1296,49 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
     ImageBundleDetails.BundleInfo bInfo = ib1.getDetails().getRegions().get("us-west-2");
     assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
+  @Test
+  public void testOciProviderEditKeepsMarketplaceFlags() throws InterruptedException {
+    Provider ociProvider = ModelFactory.ociProvider(defaultCustomer);
+    Region.create(ociProvider, "us-ashburn-1", "us-ashburn-1", null);
+    Region.create(ociProvider, "us-phoenix-1", "us-phoenix-1", null);
+    ImageBundleDetails.BundleInfo info = new ImageBundleDetails.BundleInfo();
+    info.setYbImage("ocid1.image.oc1.iad.marketplace");
+    info.setIsImageMarketplaceBased(true);
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-ashburn-1", info);
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    ImageBundle.Metadata metadata = new ImageBundle.Metadata();
+    metadata.setType(ImageBundleType.YBA_ACTIVE);
+    ImageBundle bundle = ImageBundle.create(ociProvider, "oci-default", details, metadata, true);
+    when(mockOCICloudImpl.getImageOrBadRequest(any(), eq("us-phoenix-1"), eq("ybImage-default")))
+        .thenReturn(
+            com.oracle.bmc.core.model.Image.builder()
+                .compartmentId("publisherCompartment")
+                .build());
+
+    // Resend the bundle with a wrong flag; the edit also fills in us-phoenix-1 with the default.
+    Result providerRes = getProvider(ociProvider.getUuid());
+    Provider editReq = Json.fromJson(Json.parse(contentAsString(providerRes)), Provider.class);
+    editReq
+        .getImageBundles()
+        .get(0)
+        .getDetails()
+        .getRegions()
+        .get("us-ashburn-1")
+        .setIsImageMarketplaceBased(false);
+    TaskInfo taskInfo = waitForTask(doEditProvider(editReq, false));
+    assertEquals(Success, taskInfo.getTaskState());
+
+    Map<String, ImageBundleDetails.BundleInfo> stored =
+        ImageBundle.get(bundle.getUuid()).getDetails().getRegions();
+    assertEquals(true, stored.get("us-ashburn-1").getIsImageMarketplaceBased());
+    assertEquals("ybImage-default", stored.get("us-phoenix-1").getYbImage());
+    assertEquals(true, stored.get("us-phoenix-1").getIsImageMarketplaceBased());
+    verify(mockOCICloudImpl, times(1)).getImageOrBadRequest(any(), anyString(), anyString());
   }
 
   @Test

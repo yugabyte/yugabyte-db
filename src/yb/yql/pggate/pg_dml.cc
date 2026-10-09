@@ -288,8 +288,8 @@ Status PgDml::AssignColumn(int attr_num, PgExpr* attr_value) {
     assign_pb = AllocColumnAssignPB(&column);
   } else {
     if (expr_assigns_.count(assign_pb)) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-                               "Column $0 is already assigned to another value", attr_num);
+      return STATUS_FORMAT(InvalidArgument,
+                           "Column $0 is already assigned to another value", attr_num);
     }
   }
 

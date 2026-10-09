@@ -323,6 +323,14 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     FlushTabletsResponsePB* resp,
                     rpc::RpcContext context) override;
 
+  void AlterTabletTier(const AlterTabletTierRequestPB* req,
+                       AlterTabletTierResponsePB* resp,
+                       rpc::RpcContext context) override;
+
+  void GetTabletTierInfo(const GetTabletTierInfoRequestPB* req,
+                         GetTabletTierInfoResponsePB* resp,
+                         rpc::RpcContext context) override;
+
   void CountIntents(const CountIntentsRequestPB* req,
                     CountIntentsResponsePB* resp,
                     rpc::RpcContext context) override;
@@ -373,6 +381,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const UpdateTransactionTablesVersionRequestPB* req,
       UpdateTransactionTablesVersionResponsePB* resp,
       rpc::RpcContext context) override;
+
+  void ApplyXClusterGuardedInfoIfNewer(
+      const ApplyXClusterGuardedInfoIfNewerRequestPB* req,
+      ApplyXClusterGuardedInfoIfNewerResponsePB* resp, rpc::RpcContext context) override;
 
   void CloneTablet(
       const tablet::CloneTabletRequestPB* req,

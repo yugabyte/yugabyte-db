@@ -569,7 +569,10 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
       Format("--transaction_table_num_tablets=$0", NumTabletsPerTransactionTable(opts_)));
   // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
   // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
-  if (IsSanitizer()) {
+  // Don't override a value explicitly set by the test.
+  if (IsSanitizer() && std::none_of(flags.begin(), flags.end(), [](const auto& flag) {
+        return flag.starts_with("--leader_failure_max_missed_heartbeat_periods=");
+      })) {
     flags.push_back("--leader_failure_max_missed_heartbeat_periods=10");
   }
   if (opts_.enable_ysql) {
@@ -1389,14 +1392,14 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   bool is_stale = false, is_ts_found = false;
   for (int i = 0; i < resp.servers_size(); i++) {
     if (!resp.servers(i).has_instance_id()) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         Uninitialized,
         "ListTabletServers RPC returned a TS with uninitialized instance id."
       );
     }
 
     if (!resp.servers(i).instance_id().has_permanent_uuid()) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         Uninitialized,
         "ListTabletServers RPC returned a TS with uninitialized UUIDs."
       );
@@ -1409,7 +1412,7 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   }
 
   if (!is_ts_found) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         NotFound,
         "Given TS not found in ListTabletServers RPC."
     );

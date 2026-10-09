@@ -10,7 +10,9 @@ import com.azure.core.credential.TokenCredential;
 import com.azure.core.management.SubResource;
 import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.resourcemanager.compute.fluent.models.DiskInner;
 import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
+import com.azure.resourcemanager.compute.models.DataDisk;
 import com.azure.resourcemanager.compute.models.NetworkInterfaceReference;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.FrontendIpConfigurationInner;
@@ -31,6 +33,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import java.util.ArrayList;
@@ -41,6 +44,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -531,5 +535,59 @@ public class AZUCloudImpl implements CloudAPI {
         azureCloudInfo.getAzuClientId(),
         azureCloudInfo.getAzuClientSecret(),
         azureCloudInfo.getAzuTenantId());
+  }
+
+  /**
+   * Current VM size plus IOPS/throughput/size of data disks. ARM disks have no last-resize field,
+   * so {@code lastModificationStart} is always null; the cooldown gate uses local clocks when a
+   * modify would actually run.
+   */
+  @Override
+  public Optional<CloudAPI.NodeDiskSpec> describeNodeDataDiskSpec(
+      Provider provider, NodeDetails node) {
+    if (node == null || StringUtils.isBlank(node.nodeName)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Azure node is missing a name");
+    }
+    AzureCloudInfo azureCloudInfo = CloudInfoInterface.get(provider);
+    AZUResourceGroupApiClient apiClient = new AZUResourceGroupApiClient(azureCloudInfo);
+    VirtualMachineInner vm = apiClient.getVirtulMachineDetailsByName(node.nodeName);
+    if (vm.storageProfile() == null || vm.storageProfile().dataDisks() == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Azure VM " + node.nodeName + " has no data disks");
+    }
+    List<CloudAPI.NodeDiskSpec> perDisk = new ArrayList<>();
+    for (DataDisk dataDisk : vm.storageProfile().dataDisks()) {
+      String diskId = dataDisk.managedDisk() == null ? null : dataDisk.managedDisk().id();
+      String diskName = diskNameFromId(diskId);
+      if (StringUtils.isBlank(diskName)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Azure data disk on " + node.nodeName + " has no managed disk id");
+      }
+      DiskInner disk = apiClient.getDiskByName(diskName);
+      perDisk.add(
+          new CloudAPI.NodeDiskSpec(
+              null,
+              toInt(disk.diskIopsReadWrite()),
+              toInt(disk.diskMBpsReadWrite()),
+              disk.diskSizeGB(),
+              null));
+    }
+    String instanceType =
+        vm.hardwareProfile() == null || vm.hardwareProfile().vmSize() == null
+            ? null
+            : vm.hardwareProfile().vmSize().toString();
+    return Optional.of(CloudAPI.NodeDiskSpec.mergeDataDisks(instanceType, perDisk));
+  }
+
+  private static String diskNameFromId(String diskId) {
+    if (StringUtils.isBlank(diskId)) {
+      return null;
+    }
+    int slash = diskId.lastIndexOf('/');
+    return slash < 0 ? diskId : diskId.substring(slash + 1);
+  }
+
+  private static Integer toInt(Long value) {
+    return value == null ? null : Math.toIntExact(value);
   }
 }

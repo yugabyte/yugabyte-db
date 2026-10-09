@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -14,18 +15,26 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Singleton
@@ -1207,6 +1216,86 @@ public class RedactingService {
     return output;
   }
 
+  /** Shorter values are too likely to occur by chance to replace everywhere. */
+  private static final int MIN_REDACTED_VALUE_LENGTH = 6;
+
+  private static final AtomicLong telemetrySecretsVersion = new AtomicLong();
+  private static volatile List<String> telemetrySecretForms;
+
+  /**
+   * Redacts the credentials of every telemetry provider by value, so they are caught in whatever
+   * shape they are rendered: helm values, manifests, pod specs, base64-encoded Secrets.
+   */
+  public static String redactTelemetryCredentials(String input) {
+    if (StringUtils.isEmpty(input)) {
+      return input;
+    }
+    return replaceAll(input, telemetrySecretForms());
+  }
+
+  /** Called whenever a telemetry provider is saved or deleted. */
+  public static void invalidateTelemetrySecrets() {
+    telemetrySecretsVersion.incrementAndGet();
+    telemetrySecretForms = null;
+  }
+
+  private static List<String> telemetrySecretForms() {
+    List<String> forms = telemetrySecretForms;
+    if (forms != null) {
+      return forms;
+    }
+    long version = telemetrySecretsVersion.get();
+    List<String> secrets = new ArrayList<>();
+    try {
+      for (TelemetryProvider provider : TelemetryProvider.getAll()) {
+        if (provider.getConfig() != null) {
+          secrets.addAll(provider.getConfig().secretValues());
+        }
+      }
+    } catch (RuntimeException e) {
+      log.warn("Could not load telemetry provider credentials for redaction", e);
+      return Collections.emptyList();
+    }
+    forms = secretForms(secrets);
+    // Not cached if a provider changed while loading, so the change is not lost.
+    if (telemetrySecretsVersion.get() == version) {
+      telemetrySecretForms = forms;
+    }
+    return forms;
+  }
+
+  /** Replaces every occurrence of the given secrets, in the forms they are rendered in. */
+  public static String redactValues(String input, Collection<String> secrets) {
+    return StringUtils.isEmpty(input) ? input : replaceAll(input, secretForms(secrets));
+  }
+
+  /**
+   * Each secret as is, base64-encoded (Secret data, Basic auth) and JSON-escaped. Longest first, so
+   * a secret that contains another is replaced whole.
+   */
+  private static List<String> secretForms(Collection<String> secrets) {
+    Set<String> forms = new HashSet<>();
+    for (String secret : secrets) {
+      if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
+        continue;
+      }
+      forms.add(secret);
+      forms.add(Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
+      forms.add(new String(JsonStringEncoder.getInstance().quoteAsString(secret)));
+    }
+    return forms.stream()
+        .sorted(Comparator.comparingInt(String::length).reversed())
+        .collect(Collectors.toList());
+  }
+
+  private static String replaceAll(String input, List<String> forms) {
+    String output = input;
+    for (String form : forms) {
+      output = output.replace(form, SECRET_REPLACEMENT);
+    }
+    return output;
+  }
+
   public static String redactShellProcessOutput(String input, RedactionTarget target) {
     String output = input;
     try {
@@ -1217,6 +1306,7 @@ public class RedactingService {
           break;
         case HELM_VALUES:
           output = redactrootCAKeys(output);
+          output = redactTelemetryCredentials(output);
           break;
         default:
           break;

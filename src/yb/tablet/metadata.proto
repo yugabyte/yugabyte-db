@@ -145,6 +145,8 @@ message KvStoreInfoPB {
   // tserver matter (e.g. post-split compaction and orphaned parent-data checks), so it does not
   // need to match the master catalog value.
   optional uint64 split_generation = 13;
+  optional string target_storage_tier = 14;
+  optional uint32 target_tier_path_id = 15;
 }
 
 // Tiered-storage directory pin: maps a RocksDB path_id to an absolute directory on

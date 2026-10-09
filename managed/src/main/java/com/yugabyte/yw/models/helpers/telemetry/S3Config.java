@@ -11,6 +11,7 @@ import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -213,5 +214,10 @@ public class S3Config extends TelemetryProviderConfig {
     } finally {
       s3.close();
     }
+  }
+
+  @Override
+  public List<String> secretValues() {
+    return nonEmpty(accessKey, secretKey);
   }
 }

@@ -13,6 +13,12 @@
 #include <sys/shm.h>
 #include <time.h>
 
+/* YB: For the OpenSSL provider check in yb_od_verify_fips_provider() */
+#include <openssl/opensslv.h>
+#if !USE_BORINGSSL && (OPENSSL_VERSION_NUMBER >= 0x30000000L)
+#include <openssl/provider.h>
+#endif
+
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 void od_instance_init(od_instance_t *instance)
@@ -99,6 +105,40 @@ struct ConnectionStats *yb_get_stats_ptr(od_instance_t *instance,
 	}
 
 	return (struct ConnectionStats *)shmat(shmid, NULL, 0);
+}
+
+/*
+ * YB: OpenSSL ignores a missing OPENSSL_CONF without error, so a wrong or absent path would
+ * leave the connection manager silently serving logical client connection from default
+ * provider while the universe reports FIPS.
+ */
+static inline int yb_od_verify_fips_provider(od_instance_t *instance)
+{
+	char *require_fips = getenv(YSQL_CONN_MGR_REQUIRE_FIPS);
+	if (require_fips == NULL || strcmp(require_fips, "true") != 0)
+		return 0;
+
+#if !USE_BORINGSSL && (OPENSSL_VERSION_NUMBER >= 0x30000000L)
+	/* Same provider set that OpenSSLInitializer (secure_stream.cc) asserts in master/tserver. */
+	if (OSSL_PROVIDER_available(NULL, "fips") &&
+	    OSSL_PROVIDER_available(NULL, "base") &&
+	    !OSSL_PROVIDER_available(NULL, "default")) {
+		od_log(&instance->logger, "init", NULL, NULL,
+		       "OpenSSL FIPS enabled");
+		return 0;
+	}
+
+	char *openssl_conf = getenv("OPENSSL_CONF");
+	od_error(&instance->logger, "init", NULL, NULL,
+		 "openssl_require_fips is set but the FIPS provider is not active "
+		 "(OPENSSL_CONF=%s): refusing to serve TLS on unvalidated crypto",
+		 openssl_conf ? openssl_conf : "<unset>");
+#else
+	od_error(&instance->logger, "init", NULL, NULL,
+		 "openssl_require_fips is set but this build's TLS library has no "
+		 "FIPS provider support");
+#endif
+	return -1;
 }
 
 int od_instance_main(od_instance_t *instance, int argc, char **argv)
@@ -320,6 +360,14 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 			 "failed to init machinarium");
 		goto error;
 	}
+
+	/*
+	 * machinarium_init() is where SSL_library_init() runs, so this is the first point at which
+	 * OpenSSL has read OPENSSL_CONF and resolved its providers, and it is still before any
+	 * listener exists.
+	 */
+	if (yb_od_verify_fips_provider(instance) == -1)
+		goto error;
 
 	/* create pid file */
 	if (instance->config.pid_file) {
