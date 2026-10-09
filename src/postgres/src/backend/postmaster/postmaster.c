@@ -487,6 +487,7 @@ static void InitPostmasterDeathWatchHandle(void);
 #if 0
 static bool CleanupKilledProcess(PGPROC *proc);
 #endif
+static bool YbIsAuxBackendAllowed(BackendType type);
 
 #ifdef WIN32
 #define WNOHANG 0				/* ignored, so any integer value will do */
@@ -1855,14 +1856,6 @@ ServerLoop(void)
 		 * If we need to launch any background processes after changing state
 		 * or because some exited, do so now.
 		 */
-		/*
-		 * YB_TODO_PG19MERGE: PG19 collapsed the per-process restart logic into
-		 * LaunchMissingBackgroundProcesses(). YB had a `!YBIsEnabledInPostgresEnvVar()`
-		 * guard in the autovacuum-restart branch and used the (now removed)
-		 * PgArchStartupAllowed macro. Re-introduce the YB autovac suppression
-		 * inside LaunchMissingBackgroundProcesses (or skip the call under YB
-		 * when appropriate).
-		 */
 		LaunchMissingBackgroundProcesses();
 
 		/* If we need to signal the autovacuum launcher, do so now */
@@ -2674,13 +2667,6 @@ process_pm_child_exit(void)
 			 * background workers that were not started earlier already.
 			 */
 			StartWorkerNeeded = true;
-			/*
-			 * YB_TODO_PG19MERGE: PG19 collapsed per-process restart into
-			 * StartWorkerNeeded + LaunchMissingBackgroundProcesses. YB had a
-			 * `!YBIsEnabledInPostgresEnvVar()` guard suppressing the autovac
-			 * launcher start; re-introduce it inside
-			 * LaunchMissingBackgroundProcesses.
-			 */
 
 			/* at this point we are really open for business */
 			ereport(LOG,
@@ -4766,16 +4752,7 @@ StartChildProcess(BackendType type)
 	PMChild    *pmchild;
 	pid_t		pid;
 
-	/*
-	 * YB: skip starting BgWriter/WalWriter/WalReceiver under YSQL since
-	 * YugaByte does not use the PG WAL/buffer-pool subsystems. (Note: PG18+
-	 * BackendType enum renamed BgWriterProcess -> B_BG_WRITER etc.; rewritten
-	 * accordingly.)
-	 */
-	if (YBIsEnabledInPostgresEnvVar() &&
-		(type == B_BG_WRITER ||
-		 type == B_WAL_WRITER ||
-		 type == B_WAL_RECEIVER))
+	if (!YbIsAuxBackendAllowed(type))
 		return NULL;
 
 	pmchild = AssignPostmasterChildSlot(type);
@@ -5185,6 +5162,10 @@ maybe_reap_io_worker(int pid)
 static TimestampTz
 maybe_start_io_workers_scheduled_at(void)
 {
+	/*
+	 * YB does not support IO workers so pgaio_workers_enabled will always
+	 * return false in YB environments.
+	 */
 	if (!pgaio_workers_enabled())
 		return 0;
 
@@ -5505,4 +5486,26 @@ InitPostmasterDeathWatchHandle(void)
 				(errmsg_internal("could not duplicate postmaster handle: error code %lu",
 								 GetLastError())));
 #endif							/* WIN32 */
+}
+
+/*
+ * YB: A whitelist of auxiliary process types that may start under YSQL. Any
+ * other process is refused, so a process added by an upstream merge stays off
+ * until it is reviewed and listed here.
+ */
+static bool
+YbIsAuxBackendAllowed(BackendType type)
+{
+	if (!YBIsEnabledInPostgresEnvVar())
+		return true;
+
+	switch (type)
+	{
+		case B_STARTUP:
+			pg_fallthrough;
+		case B_CHECKPOINTER:
+			return true;
+		default:
+			return false;
+	}
 }

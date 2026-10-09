@@ -229,6 +229,7 @@ extern bool check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newv
 extern bool yb_check_extra_commands_to_retry(char **newval, void **extra,
 											 GucSource source);
 extern void yb_assign_extra_commands_to_retry(const char *newval, void *extra);
+extern bool check_yb_io_method(int *newval, void **extra, GucSource source);
 extern bool yb_check_extra_commands_to_retry_in_proc(char **newval,
 													 void **extra,
 													 GucSource source);

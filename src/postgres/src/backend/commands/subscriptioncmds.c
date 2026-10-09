@@ -181,8 +181,10 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 		opts->refresh = true;
 	if (IsSet(supported_opts, SUBOPT_BINARY))
 		opts->binary = false;
+
+	/* YB: Use the PG15 default; parallel streaming (PG19's default) is not supported. */
 	if (IsSet(supported_opts, SUBOPT_STREAMING))
-		opts->streaming = LOGICALREP_STREAM_PARALLEL;
+		opts->streaming = IsYugaByteEnabled() ? LOGICALREP_STREAM_OFF : LOGICALREP_STREAM_PARALLEL;
 	if (IsSet(supported_opts, SUBOPT_TWOPHASE_COMMIT))
 		opts->twophase = false;
 	if (IsSet(supported_opts, SUBOPT_DISABLE_ON_ERR))
@@ -296,6 +298,16 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 
 			opts->specified_opts |= SUBOPT_STREAMING;
 			opts->streaming = defGetStreamingMode(defel);
+
+			/*
+			 * YB: The Parallel Apply worker is currently not a whitelisted background worker.
+			 * TODO: Validate whether streaming  = "any" can be supported.
+			 */
+			if (IsYugaByteEnabled() && opts->streaming == LOGICALREP_STREAM_PARALLEL)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("parallel streaming is not supported in YugabyteDB"),
+						 errhint("Use \"streaming\" = \"on\" or \"off\".")));
 		}
 		else if (IsSet(supported_opts, SUBOPT_TWOPHASE_COMMIT) &&
 				 strcmp(defel->defname, "two_phase") == 0)
@@ -2061,6 +2073,12 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 							errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 							errmsg("%s is not allowed for disabled subscriptions",
 								   "ALTER SUBSCRIPTION ... REFRESH SEQUENCES"));
+
+				/* YB: The Sequence Sync worker is currently not a whitelisted background worker. */
+				if (IsYugaByteEnabled())
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("ALTER SUBSCRIPTION ... REFRESH SEQUENCES is not supported in YugabyteDB")));
 
 				AlterSubscription_refresh_seq(sub);
 

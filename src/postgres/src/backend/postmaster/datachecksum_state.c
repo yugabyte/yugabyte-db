@@ -221,6 +221,9 @@
 #include "utils/syscache.h"
 #include "utils/wait_event.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * Configuration of conditions which must match when absorbing a procsignal
  * barrier during data checksum enable/disable operations.  A single function
@@ -479,6 +482,15 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 	return true;
 }
 
+static void
+YbCheckDataChecksumsSupported(void)
+{
+	if (IsYugaByteEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("data checksums are not supported in YugabyteDB")));
+}
+
 
 /*
  * Disables data checksums for the cluster, if applicable. Starts a background
@@ -487,6 +499,8 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 Datum
 disable_data_checksums(PG_FUNCTION_ARGS)
 {
+	YbCheckDataChecksumsSupported();
+
 	if (!superuser())
 		ereport(ERROR,
 				errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -506,6 +520,8 @@ enable_data_checksums(PG_FUNCTION_ARGS)
 {
 	int			cost_delay = PG_GETARG_INT32(0);
 	int			cost_limit = PG_GETARG_INT32(1);
+
+	YbCheckDataChecksumsSupported();
 
 	if (!superuser())
 		ereport(ERROR,

@@ -38,8 +38,12 @@ typedef enum IoMethod
 #endif
 }			IoMethod;
 
-/* We'll default to worker based execution. */
-#define DEFAULT_IO_METHOD IOMETHOD_WORKER
+/*
+ * YB hands off IO to DocDB. Pinning the default to synchronous IO prevents
+ * postmaster from launching IO workers.
+ */
+#define YB_DEFAULT_IO_METHOD IOMETHOD_SYNC
+#define DEFAULT_IO_METHOD YB_DEFAULT_IO_METHOD
 
 
 /*

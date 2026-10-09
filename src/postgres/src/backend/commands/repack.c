@@ -264,6 +264,14 @@ ExecRepack(ParseState *pstate, RepackStmt *stmt, bool isTopLevel)
 						errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg("CONCURRENTLY option not supported for %s",
 							   RepackCommandAsString(stmt->command)));
+
+			/* YB: The REPACK parallel worker is currently not a whitelisted background worker. */
+			if (IsYugaByteEnabled())
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("CONCURRENTLY option not supported for %s",
+								RepackCommandAsString(stmt->command))));
+
 			params.options |= CLUOPT_CONCURRENT;
 		}
 		else

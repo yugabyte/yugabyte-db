@@ -190,8 +190,33 @@ static const struct
 	}
 };
 
+/*
+ * YB: A whitelist of InternalBGWorkers that may be registered under YSQL. Any
+ * other worker is refused, so a worker added by an upstream merge stays off
+ * until it is reviewed and listed here. Workers added by extensions are not
+ * affected.
+ */
+static const bgworker_main_type yb_allowed_internal_bgworkers[] = {
+	/* Logical replication workers */
+	ApplyLauncherMain,
+	ApplyWorkerMain,
+	TableSyncWorkerMain,
+
+	/* Parallel query workers */
+	ParallelWorkerMain,
+
+	/* YB-specific workers */
+	YbAshMain,
+	YbQueryDiagnosticsMain,
+	YbQueryDiagnosticsDatabaseConnectionWorkerMain,
+	YbNotifsPollerMain,
+};
+
 /* Private functions. */
 static bgworker_main_type LookupBackgroundWorkerFunction(const char *libraryname, const char *funcname);
+
+/* YB declarations */
+static bool YbIsBackgroundWorkerAllowed(const BackgroundWorker *worker);
 
 
 /*
@@ -1056,6 +1081,9 @@ RegisterBackgroundWorker(BackgroundWorker *worker)
 	if (!SanityCheckBackgroundWorker(worker, LOG))
 		return;
 
+	if (!YbIsBackgroundWorkerAllowed(worker))
+		return;
+
 	if (worker->bgw_notify_pid != 0)
 	{
 		ereport(LOG,
@@ -1137,6 +1165,9 @@ RegisterDynamicBackgroundWorker(BackgroundWorker *worker,
 		return false;
 
 	if (!SanityCheckBackgroundWorker(worker, ERROR))
+		return false;
+
+	if (!YbIsBackgroundWorkerAllowed(worker))
 		return false;
 
 	parallel = (worker->bgw_flags & BGWORKER_CLASS_PARALLEL) != 0;
@@ -1520,4 +1551,41 @@ size_t
 YbBackgroundWorkerHandleSize()
 {
 	return sizeof(BackgroundWorkerHandle);
+}
+
+/*
+ * YB: Check if a background worker is allowed.
+ * The worker's name is resolved through InternalBGWorkers rather than
+ * LookupBackgroundWorkerFunction(), which raises an ERROR for an unknown name.
+ */
+static bool
+YbIsBackgroundWorkerAllowed(const BackgroundWorker *worker)
+{
+	bgworker_main_type fn = NULL;
+
+	if (!YBIsEnabledInPostgresEnvVar() ||
+		strcmp(worker->bgw_library_name, "postgres") != 0)
+		return true;
+
+	for (int i = 0; i < lengthof(InternalBGWorkers); i++)
+	{
+		if (strcmp(InternalBGWorkers[i].fn_name,
+				   worker->bgw_function_name) == 0)
+		{
+			fn = InternalBGWorkers[i].fn_addr;
+			break;
+		}
+	}
+
+	for (int i = 0; fn != NULL && i < lengthof(yb_allowed_internal_bgworkers); i++)
+	{
+		if (yb_allowed_internal_bgworkers[i] == fn)
+			return true;
+	}
+
+	ereport(LOG,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("background worker \"%s\" (%s) is not supported in YSQL",
+					worker->bgw_name, worker->bgw_function_name)));
+	return false;
 }

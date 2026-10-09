@@ -1417,6 +1417,7 @@
   variable => 'io_method',
   boot_val => 'DEFAULT_IO_METHOD',
   options => 'io_method_options',
+  check_hook => 'check_yb_io_method', # YB
   assign_hook => 'assign_io_method',
 },
 

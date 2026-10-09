@@ -50,6 +50,9 @@
 #include "utils/resowner.h"
 #include "utils/wait_event_types.h"
 
+/* YB includes */
+#include "common/pg_yb_common.h"
+
 
 static inline void pgaio_io_update_state(PgAioHandle *ioh, PgAioHandleState new_state);
 static void pgaio_io_reclaim(PgAioHandle *ioh);
@@ -1354,5 +1357,16 @@ check_io_max_concurrency(int *newval, void **extra, GucSource source)
 		return false;
 	}
 
+	return true;
+}
+
+bool
+check_yb_io_method(int *newval, void **extra, GucSource source)
+{
+	if (YBIsEnabledInPostgresEnvVar() && *newval != YB_DEFAULT_IO_METHOD)
+	{
+		GUC_check_errdetail("YugabyteDB supports only \"io_method\" = \"sync\".");
+		return false;
+	}
 	return true;
 }
