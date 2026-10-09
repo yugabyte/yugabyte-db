@@ -112,6 +112,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
           tablet_id),
       &metric_registry_,
       /*tablet_splitter=*/nullptr,
+      /*persistence_gate=*/nullptr,
       std::shared_future<client::YBClient*>()));
 
   // TODO similar to code in tablet_peer-test, consider refactor.

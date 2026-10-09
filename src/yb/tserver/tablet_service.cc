@@ -608,6 +608,9 @@ class WriteQueryCompletionCallback {
 
       if (status.IsTryAgain()) {
           LOG(DETAIL) << "Write failed: " << status;
+      } else if (TabletServerError(status).value() == TabletServerErrorPB::PERSISTING_BLOCKED) {
+          // Expected while persisting is stopped, once per refused write.
+          YB_LOG_EVERY_N_SECS(INFO, 10) << YB_DETAIL_LOG_PREFIX << "Write failed: " << status;
       } else {
           LOG(INFO) << "Write failed: " << status;
       }
@@ -1487,6 +1490,9 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
       SetupErrorAndRespond(resp->mutable_error(), status, &context);
       return;
     }
+    TEST_SYNC_POINT_CALLBACK(
+        "TabletServiceImpl::UpdateTransaction::BeforeStampedCommitAppend",
+        const_cast<UpdateTransactionRequestPB*>(req));
   }
 
   auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);

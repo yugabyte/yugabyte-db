@@ -22,6 +22,8 @@
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
@@ -91,7 +93,13 @@ Status UpdateTxnOperation::DoAborted(const Status& status) {
   auto tablet = VERIFY_RESULT(tablet_safe());
   TransactionCoordinator* txn_coordinator = tablet->transaction_coordinator();
   if (txn_coordinator) {
-    LOG_WITH_PREFIX(INFO) << "Aborted: " << status;
+    if (tserver::TabletServerError(status).value() ==
+            tserver::TabletServerErrorPB::PERSISTING_BLOCKED) {
+      // Expected while persisting is stopped, once per refused commit.
+      YB_LOG_EVERY_N_SECS(INFO, 10) << YB_DETAIL_LOG_PREFIX << LogPrefix() << "Aborted: " << status;
+    } else {
+      LOG_WITH_PREFIX(INFO) << "Aborted: " << status;
+    }
     TransactionCoordinator::AbortedData data = {
       .state = *request(),
       .op_id = op_id(),

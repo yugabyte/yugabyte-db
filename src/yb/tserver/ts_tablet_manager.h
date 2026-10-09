@@ -796,6 +796,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletServer* server_;
 
+  // Created in Init, before any tablet peer.  Every tablet peer points at it, so it must outlive
+  // their use of it: all peers are shut down (see CompleteShutdown) before this manager is
+  // destroyed.
+  std::unique_ptr<tablet::PersistenceGate> persistence_gate_;
+
   consensus::RaftPeerPB local_peer_pb_;
 
   using TabletMap = std::unordered_map<

@@ -1500,6 +1500,10 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     LOG_WITH_PREFIX(WARNING) << "Long wait on leader_mutex_: " << yb::ToString(finish - start);
   }
 
+  // Before anything below clears in-memory state.
+  catalog_loaded_term_.store(OpId::kUnknownTerm, std::memory_order_release);
+  TEST_SYNC_POINT("CatalogManager::VisitSysCatalog::CatalogLoadedTermReset");
+
   // Exclusive mutex_ scope.
   {
     LOG_WITH_FUNC(INFO) << "Acquire catalog manager lock_ before loading sys catalog.";
@@ -1594,6 +1598,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
           tables_->GetAllTables(), sys_catalog_, *ysql_manager_.get(), state->epoch));
     }
   }  // Exclusive mutex_ scope.
+  catalog_loaded_term_.store(term, std::memory_order_release);
   leader_ready_term_ = term;
   return Status::OK();
 }

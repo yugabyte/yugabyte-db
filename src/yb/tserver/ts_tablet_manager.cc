@@ -91,6 +91,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/split_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_fwd.h"
@@ -707,6 +708,28 @@ TSTabletManager::~TSTabletManager() {
 
 Status TSTabletManager::Init() {
   CHECK_EQ(state(), MANAGER_INITIALIZING);
+
+  // The term is unused: a TServer's map does not depend on the term its tablet leaders are in.
+  // Without a lease the TServer cannot know whether StopPersisting has blocked a database, so it
+  // fails closed.
+  persistence_gate_ = std::make_unique<tablet::PersistenceGate>(
+      [&xcluster_context = server_->GetXClusterContext(),
+       tserver_uuid = server_->permanent_uuid()](
+          int64_t /*op_term*/, uint32_t database_oid) -> Result<std::optional<HybridTime>> {
+        auto blocked_through = xcluster_context.GetPersistenceBlockedThrough(database_oid);
+        if (!blocked_through.ok()) {
+          // Retryable: the client retries ServiceUnavailable as if this TServer were no longer the
+          // leader, so the op succeeds once this TServer regains its lease or the tablet's
+          // leadership moves to one that has one.
+          return STATUS_FORMAT(
+              ServiceUnavailable,
+              "Tablet server $0 cannot accept YSQL writes: it holds no xCluster lease (cannot "
+              "reach master)",
+              tserver_uuid);
+        }
+        return blocked_through;
+      },
+      server_->metric_entity());
 
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
@@ -2057,6 +2080,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
       Bind(&TSTabletManager::ApplyChange, Unretained(this), tablet_id),
       metric_registry_,
       this,
+      persistence_gate_.get(),
       server_->client_future()));
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(RegisterTabletUnlocked(tablet_id, tablet_peer, mode));

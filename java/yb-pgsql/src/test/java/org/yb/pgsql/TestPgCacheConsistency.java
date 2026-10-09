@@ -312,6 +312,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       try {
         if (disableHeartbeats) {
           for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+            // Each SELECT waits 60 s for the catalog version, so the loop outlasts the
+            // TServers' xCluster-guarded lease, which only heartbeats renew; without the lease,
+            // the later ALTERs would be refused.  This test is not about that.
+            assertTrue(miniCluster.getClient().setFlag(
+                hp, "enforce_xcluster_guarded_lease", "false", true));
             assertTrue(miniCluster.getClient().setFlag(
                 hp, "TEST_tserver_disable_heartbeat", "true", true));
           }

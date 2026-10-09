@@ -957,6 +957,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // This never returns nullptr.
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
+  // The leader term the in-memory catalog was last fully loaded for, or OpId::kUnknownTerm while a
+  // load is in progress (including a reload within the same term, e.g., after a sys catalog
+  // restore) or before the first load.  Unlike leader_ready_term(), it is reset when a load
+  // starts, so a match with the current term means the in-memory state was loaded in that term.
+  int64_t catalog_loaded_term() const {
+    return catalog_loaded_term_.load(std::memory_order_acquire);
+  }
+
   YsqlManagerIf& GetYsqlManager();
   YsqlManager& GetYsqlManagerImpl() { return *DCHECK_NOTNULL(ysql_manager_.get()); }
 
@@ -2775,6 +2783,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // that depend on the in-memory state until this master can respond
   // correctly.
   std::atomic<int64_t> leader_ready_term_ = -1;
+
+  // See catalog_loaded_term().
+  std::atomic<int64_t> catalog_loaded_term_ = OpId::kUnknownTerm;
 
   // This field is set to true when the leader master has is restoring sys catalog.
   // While this is true, the ScopedLeaderSharedLock cannot be acquired on this master, so all RPCs
