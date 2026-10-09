@@ -385,6 +385,7 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 2000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) = 2000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
   // The master was just elected; do not sit out the post-failover grace period, and recompute the
   // drained set on every background tick so the hint tracks the replica maps closely.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 0;
@@ -569,6 +570,8 @@ TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHint) {
 // blacklisted tserver, including ones that still host replicas, and get_load_move_completion would
 // report 100%. Both must instead wait until every live tserver has completed a full report.
 TEST_F(MasterHeartbeatITest, BlacklistedTServersWithNoTabletsHintWaitsForTabletReports) {
+  // The hint must be on, or the drained set is empty for the wrong reason.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_blacklisted_tservers_on_heartbeat) = true;
   // Descriptors must survive the master restart; otherwise there is nothing to misjudge.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
