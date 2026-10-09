@@ -77,6 +77,43 @@ SET SESSION ROLE yugabyte;
 DROP ROLE regress_test_user1;
 DROP ROLE regress_test_user2;
 
+-- verify a member of yb_db_admin without CREATEROLE can change bypassrls
+-- attribute. Unlike the test above, it runs as a member, not as yb_db_admin
+-- itself. The superuser creates regress_test_user3, so the member has no
+-- ADMIN OPTION on it.
+CREATE ROLE regress_test_user3;
+CREATE ROLE regress_test_admin IN ROLE yb_db_admin;
+SET SESSION AUTHORIZATION regress_test_admin;
+CREATE ROLE regress_test_user4 WITH BYPASSRLS;
+ALTER ROLE regress_test_user3 WITH BYPASSRLS;
+ALTER ROLE regress_test_user3 WITH NOBYPASSRLS;
+
+-- clean up
+RESET SESSION AUTHORIZATION;
+DROP ROLE regress_test_user3;
+DROP ROLE regress_test_user4;
+DROP ROLE regress_test_admin;
+
+-- verify upstream's rules apply to members of yb_db_admin. regress_test_admin
+-- has CREATEROLE but not CREATEDB, and ADMIN OPTION on regress_test_user6 but
+-- not on regress_test_user5. The superuser creates both.
+CREATE ROLE regress_test_user5;
+CREATE ROLE regress_test_user6;
+CREATE ROLE regress_test_admin CREATEROLE IN ROLE yb_db_admin;
+GRANT regress_test_user6 TO regress_test_admin WITH ADMIN OPTION;
+SET SESSION AUTHORIZATION regress_test_admin;
+-- giving CREATEDB needs CREATEDB, even with ADMIN OPTION on the role
+CREATE ROLE regress_test_user7 WITH CREATEDB; -- should fail
+ALTER ROLE regress_test_user6 WITH CREATEDB; -- should fail
+-- altering another role needs ADMIN OPTION on it
+ALTER ROLE regress_test_user5 WITH PASSWORD 'password'; -- should fail
+
+-- clean up
+RESET SESSION AUTHORIZATION;
+DROP ROLE regress_test_user5;
+DROP ROLE regress_test_user6;
+DROP ROLE regress_test_admin;
+
 --
 -- Test YB Managed admin role
 --

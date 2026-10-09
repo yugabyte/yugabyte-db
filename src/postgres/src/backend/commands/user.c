@@ -178,6 +178,8 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	DefElem    *dbypassRLS = NULL;
 	GrantRoleOptions popt;
 
+	bool		yb_bypassrls_by_admin;
+
 	/* Report error if name has \n or \r character. */
 	if (strpbrk(stmt->role, "\n\r"))
 		ereport(ERROR,
@@ -323,8 +325,16 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	if (dbypassRLS)
 		bypassrls = boolVal(dbypassRLS->arg);
 
+	/*
+	 * YB: A yb_db_admin member may create a role WITH BYPASSRLS without
+	 * CREATEROLE or BYPASSRLS itself, unless the new role is SUPERUSER or
+	 * REPLICATION.  See commit 507d1dc589c and DB-24199.
+	 */
+	yb_bypassrls_by_admin = (bypassrls && !issuper && !isreplication &&
+							 IsYbDbAdminUser(currentUserId));
+
 	/* Check some permissions first */
-	if (!superuser_arg(currentUserId))
+	if (!superuser_arg(currentUserId) && !yb_bypassrls_by_admin)
 	{
 		if (!has_createrole_privilege(currentUserId))
 			ereport(ERROR,
@@ -350,14 +360,7 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 					 errmsg("permission denied to create role"),
 					 errdetail("Only roles with the %s attribute may create roles with the %s attribute.",
 							   "REPLICATION", "REPLICATION")));
-		/*
-		 * YB_TODO_PG19MERGE: PG19 changed BYPASSRLS privilege model — now requires
-		 * the BYPASSRLS attribute on the creating role rather than SUPERUSER.
-		 * YB previously allowed yb_db_admin to set BYPASSRLS. Verify this
-		 * bypass is still appropriate under the new model.
-		 */
-		if (bypassrls && !has_bypassrls_privilege(currentUserId)
-			&& !IsYbDbAdminUser(currentUserId))
+		if (bypassrls && !has_bypassrls_privilege(currentUserId))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to create role"),
@@ -735,6 +738,8 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	DefElem    *dnoprofile = NULL;
 	DefElem    *dunlocked = NULL;
 
+	bool		yb_bypassrls_by_admin;
+
 	check_rolespec_name(stmt->role,
 						_("Cannot alter reserved roles."));
 
@@ -886,11 +891,25 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 						   "SUPERUSER", "SUPERUSER")));
 
 	/*
+	 * YB: A yb_db_admin member may give or remove BYPASSRLS without
+	 * CREATEROLE, ADMIN OPTION on the role, or BYPASSRLS itself, unless the
+	 * role has or gets SUPERUSER (rejected above) or REPLICATION.  See commit
+	 * 507d1dc589c and DB-24199.
+	 */
+	yb_bypassrls_by_admin = (dbypassRLS != NULL &&
+							 !authform->rolreplication && !disreplication &&
+							 IsYbDbAdminUser(currentUserId));
+
+	/*
 	 * Most changes to a role require that you both have CREATEROLE privileges
 	 * and also ADMIN OPTION on the role.
 	 */
-	if (!have_createrole_privilege() ||
-		!is_admin_of_role(GetUserId(), roleid))
+	if (yb_bypassrls_by_admin)
+	{
+		/* YB: skip the checks below; see yb_bypassrls_by_admin above. */
+	}
+	else if (!have_createrole_privilege() ||
+			 !is_admin_of_role(GetUserId(), roleid))
 	{
 		/* things an unprivileged user certainly can't do */
 		if (dinherit || dcreaterole || dcreatedb || dcanlogin || dconnlimit ||
@@ -928,13 +947,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 					 errmsg("permission denied to alter role"),
 					 errdetail("Only roles with the %s attribute may change the %s attribute.",
 							   "REPLICATION", "REPLICATION")));
-		/*
-		 * YB_TODO_PG19MERGE: PG19 changed BYPASSRLS privilege model — now requires
-		 * the BYPASSRLS attribute rather than SUPERUSER. YB previously allowed
-		 * yb_db_admin to set BYPASSRLS. Verify this bypass is still appropriate.
-		 */
-		if (dbypassRLS && !has_bypassrls_privilege(currentUserId)
-			&& !IsYbDbAdminUser(currentUserId))
+		if (dbypassRLS && !has_bypassrls_privilege(currentUserId))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to alter role"),
@@ -945,18 +958,10 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	/*
 	 * YB_TODO_PG19MERGE: PG19 restructured AlterRole privilege checks from a
 	 * nested superuser-based chain into a CREATEROLE+ADMIN flow with per-attribute
-	 * checks. YB had IsYbDbAdminUser bypasses for bypassrls and profile management.
-	 * Port these into the new model.
+	 * checks. YB had an IsYbDbAdminUser bypass for profile management. Port it
+	 * into the new model.
 	 */
 #if 0
-	else if (dbypassRLS)
-	{
-		if (!superuser() && !IsYbDbAdminUser(GetUserId()))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser or a member of the yb_db_admin "
-							"role to change bypassrls attribute")));
-	}
 	else if (profile != NULL || dnoprofile != NULL || dunlocked != NULL)
 	{
 		if (!superuser() && !IsYbDbAdminUser(GetUserId()))
