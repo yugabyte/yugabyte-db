@@ -11,6 +11,7 @@
 // under the License.
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -2308,6 +2309,37 @@ TEST_F(DistTraceTest, TestBackfillBackendJoinsQueryTrace) {
 
   ASSERT_EQ(backend_span.trace_id, tp.trace_id);
   ASSERT_EQ(backend_span.op_name, "query");
+}
+
+// Every global object-lock release is followed by a second one at the acquire deadline, in case an
+// acquire retry landed late. That deadline release must not join and stretch the DDL's trace.
+TEST_F(DistTraceTest, TestLostMessageLockReleaseNotTraced) {
+  static constexpr auto kReleaseSpan = "rpc yb.master.MasterService.ReleaseObjectLocksGlobal";
+  // The second release fires lock_timeout + pg_client_extra_timeout_ms after the acquire.
+  static constexpr auto kLockTimeout = 3s * kTimeMultiplier;
+  static constexpr auto kPgClientExtraTimeout = 2s;
+  static constexpr auto kAcquireDeadline = kLockTimeout + kPgClientExtraTimeout;
+
+  // First catalog access on a fresh connection preloads the relcache; keep that out of the timing.
+  ASSERT_OK(conn_->Fetch("SELECT 1 FROM pg_class LIMIT 1"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET lock_timeout = '$0s'", kLockTimeout.count()));
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  const auto ddl_start = std::chrono::steady_clock::now();
+  ASSERT_OK(conn_->Execute("CREATE TABLE lost_release_test (id int PRIMARY KEY)"));
+
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, kReleaseSpan, 1));
+  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 5ms);
+  const auto releases_after_ddl = collector_.FindSpansByName(tp.trace_id, kReleaseSpan).size();
+  // The acquire happened after ddl_start, so a baseline taken before the deadline cannot already
+  // contain the deadline release.
+  ASSERT_LT(std::chrono::steady_clock::now() - ddl_start, kAcquireDeadline)
+      << "baseline taken after the acquire deadline, a leaked release would go unnoticed";
+
+  SleepFor(kAcquireDeadline + kOtelBatchScheduleDelayMs * kTimeMultiplier * 10ms);
+  ASSERT_EQ(collector_.FindSpansByName(tp.trace_id, kReleaseSpan).size(), releases_after_ddl)
+      << "the deadline release joined the DDL trace";
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
