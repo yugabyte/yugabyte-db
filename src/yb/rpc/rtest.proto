@@ -215,8 +215,8 @@ enum LightweightEnum {
 message LightweightSubMessagePB {
   optional sfixed32 sf32 = 1;
   repeated sint32 rsi32 = 2;
-  optional string str = 3;
-  repeated bytes rbytes = 4;
+  optional string str = 3 [(yb.rpc.trace) = {enabled: true}];
+  repeated bytes rbytes = 4 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   optional LightweightSubMessagePB cycle = 5;
 
@@ -237,21 +237,21 @@ message LightweightRequestPB {
   optional int64 i64 = 2;
   optional fixed32 f32 = 3;
   optional fixed64 f64 = 4;
-  optional uint32 u32 = 5;
+  optional uint32 u32 = 5 [(yb.rpc.trace) = {enabled: true}];
   optional uint64 u64 = 6;
   optional float r32 = 7;
   optional double r64 = 8;
-  optional string str = 9;
-  optional bytes bytes = 10;
-  optional LightweightEnum en = 11;
+  optional string str = 9 [(yb.rpc.trace) = {enabled: true}];
+  optional bytes bytes = 10 [(yb.rpc.trace) = {enabled: true}];
+  optional LightweightEnum en = 11 [(yb.rpc.trace) = {enabled: true}];
   optional sfixed32 sf32 = 12;
   optional sfixed64 sf64 = 13;
   optional sint32 si32 = 14;
   optional sint64 si64 = 15;
 
-  repeated uint32 ru32 = 16;
+  repeated uint32 ru32 = 16 [(yb.rpc.trace) = {enabled: true}];
   repeated fixed32 rf32 = 17;
-  repeated string rstr = 18;
+  repeated string rstr = 18 [(yb.rpc.trace) = {enabled: true}];
 
   optional LightweightSubMessagePB message = 19;
   repeated LightweightSubMessagePB repeated_messages = 20;
@@ -266,6 +266,9 @@ message LightweightRequestPB {
 
 
   optional google.protobuf.Any extra_data = 26;
+
+  optional bool flag = 27 [(yb.rpc.trace) = {enabled: true}];
+  optional bytes bytes_str = 28 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message LightweightResponsePB {

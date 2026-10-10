@@ -20,6 +20,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <boost/container/container_fwd.hpp>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/master/master_fwd.h"
@@ -74,6 +76,11 @@ class PgTableCache {
   ~PgTableCache();
 
   Result<client::YBTablePtr> Get(TableIdView table_id);
+  // Cache-only lookup under one lock acquisition; appends one entry per id, nullptr unless the
+  // table is already loaded. Never fetches from master.
+  void GetIfCached(
+      std::span<const TableId> table_ids,
+      boost::container::small_vector_base<client::YBTablePtr>& tables);
   void GetTables(
       std::span<const TableId> table_ids,
       const PgTablesQueryListenerPtr& listener,
