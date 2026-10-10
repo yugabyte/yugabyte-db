@@ -2364,7 +2364,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING:
           ASH_ENABLE_CONCURRENT_UPDATES();
-          SET_WAIT_STATUS(OnCpu_Passive);
           manager_->client()->messenger()->scheduler().Schedule(
               [this, weak_transaction, send_to_new_tablet, id = metadata_.transaction_id,
                   wait_state = wait_state_](
@@ -2747,7 +2746,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   // This is a pointer to the wait state that was created while
   // processing the inbound call, we use this to update the
-  // threadlocal wait state ptr when changing threads.
+  // threadlocal wait state ptr when changing threads. That call may still be in flight, so
+  // don't overwrite its wait status just to mark a pending timer.
   const ash::WaitStateInfoPtr wait_state_;
 
   std::atomic<MicrosTime> start_;
