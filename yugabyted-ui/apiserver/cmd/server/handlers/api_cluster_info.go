@@ -60,6 +60,8 @@ var WARNING_MSGS = map[string]string{
     "max_user_processes" :fmt.Sprintf("max user processes ulimits value set low." +
         " Please set soft and hard limits to %d", MAX_PROC[OS_NAME]),
     "transparent_hugepages" :"Transparent hugepages disabled. Please enable transparent_hugepages.",
+    "thp_max_ptes_none" :"Transparent hugepages max_ptes_none is not set to 0. Please set " +
+        "/sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none to 0.",
     "ntp/chrony" :"ntp/chrony package is missing for clock synchronization. For centos 7, " +
         "we recommend installing either ntp or chrony package and for centos 8, " +
         "we recommend installing chrony package.",

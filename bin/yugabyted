@@ -133,6 +133,8 @@ PREREQS_ERROR_MSGS = {
     'max_user_processes' :'max user processes ulimits value set low.' \
         ' Please set soft and hard limits to {}.'.format(MAX_PROC[OS_NAME]),
     'transparent_hugepages' :'Transparent hugepages disabled. Please enable transparent_hugepages.',
+    'thp_max_ptes_none' :'Transparent hugepages max_ptes_none is not set to 0. Please set' \
+        ' /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none to 0.',
     'ntp/chrony' :'ntp/chrony package is missing for clock synchronization. For centos 7, ' +
         'we recommend installing either ntp or chrony package and for centos 8, ' +
         'we recommend installing chrony package.',
@@ -3360,6 +3362,16 @@ class ControlScript(object):
                 thp_mode = re.search(r"\[(.*)\]", thp_enabled).group(1)
         return thp_mode == 'always'
 
+    # With a non-zero max_ptes_none, khugepaged collapses partially used ranges into huge pages, so
+    # memory that TCMalloc has released to the OS is mapped again and RSS grows past the configured
+    # memory limits (TA-26440).
+    def linux_thp_max_ptes_none_check(self):
+        max_ptes_none_file = "/sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none"
+        if not os.path.exists(max_ptes_none_file):
+            return True
+        with open(max_ptes_none_file, 'r') as max_ptes_none:
+            return max_ptes_none.read().strip() == '0'
+
     def check_ports(self):
         failed_ports = []
         warning_ports = []
@@ -3429,6 +3441,10 @@ class ControlScript(object):
 
         if not self.linux_transparent_hugepage_check():
             prereqs_warn.add('transparent_hugepages')
+            prereqs_warn_flag = True
+
+        if not self.linux_thp_max_ptes_none_check():
+            prereqs_warn.add('thp_max_ptes_none')
             prereqs_warn_flag = True
 
         ntp_check = shutil.which('ntpd')
