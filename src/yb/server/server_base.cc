@@ -563,10 +563,10 @@ Status RpcAndWebServerBase::Init() {
   }
 
   // Set up distributed tracing before the RPC server below, so it is ready for the first call.
-  if (dist_trace::IsDistTraceEnabled()) {
+  if (dist_trace::DistTrace::IsEnabled()) {
     std::lock_guard lock(dist_trace_mutex);
     if (dist_trace_servers++ == 0) {
-      dist_trace::InitDistTrace(name_, fs_manager_->uuid());
+      dist_trace::DistTrace::Init(name_, fs_manager_->uuid());
     }
     dist_trace_initialized_ = true;
   }
@@ -789,7 +789,7 @@ void RpcAndWebServerBase::Shutdown() {
     dist_trace_initialized_ = false;
     std::lock_guard lock(dist_trace_mutex);
     if (--dist_trace_servers == 0) {
-      dist_trace::ShutdownDistTrace();
+      dist_trace::DistTrace::Shutdown();
     }
   }
 }
