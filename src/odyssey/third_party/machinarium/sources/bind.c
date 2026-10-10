@@ -30,6 +30,10 @@ MACHINE_API int machine_bind(machine_io_t *obj, struct sockaddr *sa, int flags)
 		mm_errno_set(errno);
 		goto error;
 	}
+	/*
+	 * YB Change: Allow dual-stack binding by not forcing IPV6_V6ONLY.
+	 */
+#if 0
 	if (sa->sa_family == AF_INET6) {
 		rc = mm_socket_set_ipv6only(io->fd, 1);
 		if (rc == -1) {
@@ -37,6 +41,7 @@ MACHINE_API int machine_bind(machine_io_t *obj, struct sockaddr *sa, int flags)
 			goto error;
 		}
 	}
+#endif
 	rc = mm_socket_bind(io->fd, sa);
 	if (rc == -1) {
 		mm_errno_set(errno);
