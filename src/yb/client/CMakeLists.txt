@@ -48,6 +48,7 @@ set(CLIENT_SRCS
   meta_data_cache.cc
   namespace_alterer.cc
   permissions.cc
+  retryable_request_tracker.cc
   session.cc
   schema.cc
   stateful_services/stateful_service_client_base.cc
