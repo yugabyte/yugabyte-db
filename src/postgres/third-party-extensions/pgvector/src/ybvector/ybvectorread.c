@@ -73,24 +73,6 @@ keyEqualityIsExact(Oid type)
 	}
 }
 
-/*
- * Returns the btree equality operator of the column's type that an equality
- * on a primary key column has to use, as done for primary key lookups.  Sets
- * *input_type to the operator's input type, which can differ from the column
- * type for binary-compatible types (e.g. varchar uses text's operator).
- */
-static Oid
-getKeyEqualityOperator(Oid column_type, Oid *input_type)
-{
-	Oid			opclass = GetDefaultOpClass(column_type, BTREE_AM_OID);
-
-	if (!OidIsValid(opclass))
-		return InvalidOid;
-	*input_type = get_opclass_input_type(opclass);
-	return get_opfamily_member(get_opclass_family(opclass), *input_type,
-							   *input_type, BTEqualStrategyNumber);
-}
-
 static bool
 isIntegerType(Oid type)
 {
@@ -138,38 +120,36 @@ convertIntegerValue(Datum value, Oid value_type, Oid column_type, Datum *result)
 }
 
 /*
- * Whether opno, which isn't the column type's own equality operator, compares
- * an integer column with a value of another integer type for equality, e.g.
- * int8 = int4 for "bigint_col = 3".  The integer types share one btree
- * operator family, whose cross-type equality is exact.  Sets *value_type to
- * the type of the compared value.
+ * Whether opno is an equality operator of the default btree operator family
+ * of the column's type that routing can use, as primary key lookups do:
+ * - an equality of a single type, which can differ from the column type for
+ *   binary-compatible types (e.g. varchar uses text's operator);
+ * - an integer cross-type equality such as int8 = int4 for "bigint_col = 3".
+ *   The integer types share one family whose cross-type equality is exact,
+ *   so the value can be converted to the column type.
+ * Sets *value_type to the operator's input type on the value's side, and
+ * *convert to whether the value has to be converted to the column type.
  */
 static bool
-isIntegerCrossTypeEquality(Oid opno, Oid column_type, bool var_on_right,
-						   Oid *value_type)
+isKeyEqualityOperator(Oid opno, Oid column_type, bool var_on_right,
+					  Oid *value_type, bool *convert)
 {
-	Oid			opclass;
+	Oid			opclass = GetDefaultOpClass(column_type, BTREE_AM_OID);
 	Oid			left_type;
 	Oid			right_type;
+	Oid			column_side_type;
 
-	if (!isIntegerType(column_type))
-		return false;
-	opclass = GetDefaultOpClass(column_type, BTREE_AM_OID);
 	if (!OidIsValid(opclass) ||
 		get_op_opfamily_strategy(opno, get_opclass_family(opclass)) !=
 		BTEqualStrategyNumber)
 		return false;
 	op_input_types(opno, &left_type, &right_type);
-
-	/*
-	 * The integer types aren't binary-compatible, so the bare Var has the
-	 * operator's input type on its side, and the integer family holds only
-	 * int2/int4/int8 operators.
-	 */
-	Assert((var_on_right ? right_type : left_type) == column_type);
+	column_side_type = var_on_right ? right_type : left_type;
 	*value_type = var_on_right ? left_type : right_type;
-	Assert(isIntegerType(*value_type) && *value_type != column_type);
-	return true;
+	*convert = column_side_type != *value_type;
+	return !*convert ||
+		(column_side_type == column_type && isIntegerType(column_type) &&
+		 isIntegerType(*value_type));
 }
 
 static Expr *
@@ -239,8 +219,8 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 		return InvalidAttrNumber;
 
 	Form_pg_attribute att = TupleDescAttr(tupdesc, var->varattno - 1);
-	Oid			input_type = InvalidOid;
-	Oid			cross_type = InvalidOid;
+	Oid			value_type;
+	bool		convert;
 
 	/*
 	 * Quals under a non-C collation aren't pushed down, so only the C
@@ -249,31 +229,27 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	 */
 	if (!keyEqualityIsExact(att->atttypid) ||
 		inputcollid != att->attcollation ||
-		YBIsCollationValidNonC(att->attcollation))
-		return InvalidAttrNumber;
-	if (opno != getKeyEqualityOperator(att->atttypid, &input_type) &&
-		!isIntegerCrossTypeEquality(opno, att->atttypid, var_on_right,
-									&cross_type))
+		YBIsCollationValidNonC(att->attcollation) ||
+		!isKeyEqualityOperator(opno, att->atttypid, var_on_right, &value_type,
+							   &convert))
 		return InvalidAttrNumber;
 
+	/*
+	 * A value of a single-type equality can also have the column's own type,
+	 * relabeled to the operator's (e.g. a varchar value compared as text).
+	 */
 	if (!is_array)
 	{
-		if (OidIsValid(cross_type))
-		{
-			if (value->consttype != cross_type)
-				return InvalidAttrNumber;
-			*values = palloc(sizeof(Datum));
-			*nvalues = 1;
-			return convertIntegerValue(value->constvalue, cross_type,
-									   att->atttypid, &(*values)[0]) ?
-				var->varattno : InvalidAttrNumber;
-		}
-		if (value->consttype != input_type && value->consttype != att->atttypid)
+		if (value->consttype != value_type &&
+			(convert || value->consttype != att->atttypid))
 			return InvalidAttrNumber;
 		*values = palloc(sizeof(Datum));
-		(*values)[0] = value->constvalue;
 		*nvalues = 1;
-		return var->varattno;
+		(*values)[0] = value->constvalue;
+		return !convert ||
+			convertIntegerValue(value->constvalue, value_type, att->atttypid,
+								&(*values)[0]) ?
+			var->varattno : InvalidAttrNumber;
 	}
 
 	ArrayType  *array = DatumGetArrayTypeP(value->constvalue);
@@ -283,8 +259,7 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	char		elmalign;
 	bool	   *nulls;
 
-	if (OidIsValid(cross_type) ? elemtype != cross_type :
-		elemtype != input_type && elemtype != att->atttypid)
+	if (elemtype != value_type && (convert || elemtype != att->atttypid))
 		return InvalidAttrNumber;
 	get_typlenbyvalalign(elemtype, &elmlen, &elmbyval, &elmalign);
 	deconstruct_array(array, elemtype, elmlen, elmbyval, elmalign, values,
@@ -293,8 +268,8 @@ extractKeyColumnValues(Expr *qual, TupleDesc tupdesc, Datum **values,
 	{
 		if (nulls[i])
 			return InvalidAttrNumber;
-		if (OidIsValid(cross_type) &&
-			!convertIntegerValue((*values)[i], cross_type, att->atttypid,
+		if (convert &&
+			!convertIntegerValue((*values)[i], value_type, att->atttypid,
 								 &(*values)[i]))
 			return InvalidAttrNumber;
 	}
