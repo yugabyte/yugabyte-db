@@ -1847,6 +1847,11 @@ Status PgApiImpl::DmlHnswSetReadOptions(PgStatement* handle, int ef_search) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).HnswSetReadOptions(ef_search);
 }
 
+Status PgApiImpl::DmlANNBindKeyFilter(
+    PgStatement* handle, std::span<const YbcPgVectorKeyColumn> columns) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindKeyFilter(columns);
+}
+
 Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exec_params) {
   auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
   auto* read_req = select.read_req();

@@ -59,6 +59,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
@@ -720,6 +721,103 @@ TEST_F_EX(ClientTest, TestBadKeyRanges, ClientTestNoCluster) {
   ASSERT_DEATH({
     FindPartitionStartIndex(partition_starts, high_key);
   }, "Invalid table partition list");
+}
+
+namespace {
+
+std::vector<size_t> SelectedPartitions(
+    const std::vector<std::string>& partitions, bool is_hash_partitioned,
+    const std::vector<std::string>& key_prefixes) {
+  std::vector<Slice> prefixes(key_prefixes.begin(), key_prefixes.end());
+  auto mask = CHECK_RESULT(FindPartitionsForKeyPrefixes(
+      partitions, is_hash_partitioned, prefixes));
+  std::vector<size_t> result;
+  for (size_t i = 0; i != mask.size(); ++i) {
+    if (mask[i]) {
+      result.push_back(i);
+    }
+  }
+  return result;
+}
+
+std::string HashKeyPrefix(uint16_t hash, int32_t value) {
+  auto key = dockv::DocKey(
+      hash, dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(value)},
+      dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(1)}).Encode();
+  auto size = CHECK_RESULT(dockv::DocKey::EncodedSize(key.AsSlice(), dockv::DocKeyPart::kUpToHash));
+  return key.AsSlice().Prefix(size).ToBuffer();
+}
+
+std::string RangeKey(std::initializer_list<int32_t> values) {
+  dockv::KeyEntryValues components;
+  for (auto value : values) {
+    components.push_back(dockv::KeyEntryValue::Int32(value));
+  }
+  return dockv::DocKey(std::move(components)).Encode().ToStringBuffer();
+}
+
+// Encoded leading range components without the closing group end.
+std::string RangeKeyPrefix(std::initializer_list<int32_t> values) {
+  auto key = RangeKey(values);
+  key.pop_back();
+  return key;
+}
+
+} // namespace
+
+TEST_F_EX(ClientTest, FindPartitionsForHashKeyPrefixes, ClientTestNoCluster) {
+  const std::vector<std::string> partitions = {
+      "",
+      PartitionSchema::EncodeMultiColumnHashValue(0x4000),
+      PartitionSchema::EncodeMultiColumnHashValue(0x8000),
+      PartitionSchema::EncodeMultiColumnHashValue(0xC000),
+  };
+  using Partitions = std::vector<size_t>;
+  ASSERT_EQ(SelectedPartitions(partitions, true, {}), Partitions{});
+  ASSERT_EQ(SelectedPartitions(partitions, true, {HashKeyPrefix(0, 1)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, true, {HashKeyPrefix(0x3FFF, 1)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, true, {HashKeyPrefix(0x4000, 1)}), Partitions{1});
+  ASSERT_EQ(SelectedPartitions(partitions, true, {HashKeyPrefix(0xFFFF, 1)}), Partitions{3});
+  ASSERT_EQ(
+      SelectedPartitions(partitions, true, {HashKeyPrefix(0x9000, 1), HashKeyPrefix(0x9001, 2)}),
+      Partitions{2});
+  ASSERT_EQ(
+      SelectedPartitions(partitions, true, {HashKeyPrefix(0xC001, 1), HashKeyPrefix(0x10, 2)}),
+      (Partitions{0, 3}));
+
+  // A prefix of a hash partitioned table has to carry the hash code.
+  std::vector<Slice> range_prefix = {Slice(RangeKeyPrefix({1}))};
+  ASSERT_NOK(FindPartitionsForKeyPrefixes(partitions, true, range_prefix));
+}
+
+TEST_F_EX(ClientTest, FindPartitionsForRangeKeyPrefixes, ClientTestNoCluster) {
+  const std::vector<std::string> partitions = {
+      "",
+      RangeKey({10}),
+      RangeKey({20, 5}),
+      RangeKey({30}),
+  };
+  using Partitions = std::vector<size_t>;
+  ASSERT_EQ(SelectedPartitions(partitions, false, {RangeKeyPrefix({5})}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(partitions, false, {RangeKeyPrefix({15})}), Partitions{1});
+  ASSERT_EQ(SelectedPartitions(partitions, false, {RangeKeyPrefix({40})}), Partitions{3});
+  // Keys starting with 20 are split between the partitions starting at {10} and {20, 5}.
+  ASSERT_EQ(SelectedPartitions(partitions, false, {RangeKeyPrefix({20})}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(partitions, false, {RangeKeyPrefix({20, 4})}), Partitions{1});
+  // A prefix sorts before a start key that extends it, so when a split point starts with the
+  // prefix, the partition before it is selected too. That costs a search, never a row.
+  ASSERT_EQ(SelectedPartitions(partitions, false, {RangeKeyPrefix({20, 5})}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(partitions, false, {RangeKeyPrefix({30})}), (Partitions{2, 3}));
+  ASSERT_EQ(
+      SelectedPartitions(partitions, false, {RangeKeyPrefix({5}), RangeKeyPrefix({40})}),
+      (Partitions{0, 3}));
+
+  // Prefixes ending in 0xff bytes, where the end of the prefix range has to carry. A prefix of only
+  // 0xff bytes has no end.
+  const std::vector<std::string> raw_partitions = {"", "a\xff", "a\xff\x01", "b", "\xff\xff\x01"};
+  ASSERT_EQ(SelectedPartitions(raw_partitions, false, {"a\xff"}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(raw_partitions, false, {"a"}), (Partitions{0, 1, 2}));
+  ASSERT_EQ(SelectedPartitions(raw_partitions, false, {"\xff\xff"}), (Partitions{3, 4}));
 }
 
 TEST_F(ClientTest, TestKeyRangeFiltering) {

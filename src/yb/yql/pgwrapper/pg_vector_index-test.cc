@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <numeric>
 #include <queue>
 
 #include "yb/client/client_error.h"
@@ -29,6 +30,7 @@
 #include "yb/docdb/doc_vector_index.h"
 
 #include "yb/docdb/docdb_util.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -72,6 +74,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
+DECLARE_bool(vector_index_enable_pk_routing);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
@@ -117,6 +120,7 @@ DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
 
+METRIC_DECLARE_event_stats(vector_index_partitions_queried);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::docdb {
@@ -2242,6 +2246,333 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
       ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
           "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
       1);
+}
+
+// Routing does not depend on the vector index engine or the row packing, so these tests run with
+// the defaults only.
+class PgVectorIndexPkRoutingTest : public PgVectorIndexTestBase {
+ protected:
+  bool IsColocated() const override {
+    return false;
+  }
+
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV2;
+  }
+
+  static constexpr int kNumTenants = 20;
+  static constexpr int kRowsPerTenant = 10;
+  static constexpr int kNumTablets = 4;
+
+  struct QueryStats {
+    std::vector<int32_t> ids;
+    // Partitions searched over all fetch rounds of the query, and the number of rounds.
+    int64_t partitions = 0;
+    uint64_t rounds = 0;
+  };
+
+  std::pair<int64_t, uint64_t> PartitionsQueried() {
+    int64_t sum = 0;
+    uint64_t count = 0;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      const auto* stats = cluster_->mini_tablet_server(i)->metric_entity()
+          .FindOrCreateMetric<EventStats>(&METRIC_vector_index_partitions_queried)->underlying();
+      sum += stats->TotalSum();
+      count += stats->TotalCount();
+    }
+    return {sum, count};
+  }
+
+  Result<QueryStats> Query(PGConn& conn, const std::string& query) {
+    auto [sum_before, count_before] = PartitionsQueried();
+    QueryStats result;
+    result.ids = VERIFY_RESULT(conn.FetchRows<int32_t>(query));
+    auto [sum_after, count_after] = PartitionsQueried();
+    result.partitions = sum_after - sum_before;
+    result.rounds = count_after - count_before;
+    return result;
+  }
+
+  // Embedding of row (tenant, id) is [tenant, id, 0], so the rows of a tenant ordered by distance
+  // to [tenant, 0, 0] are ordered by id.
+  Status CreateAndFill(PGConn& conn, const std::string& table, const std::string& key_columns,
+                       const std::string& primary_key, const std::string& split) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 ($1, embedding vector(3), PRIMARY KEY ($2)) $3",
+        table, key_columns, primary_key, split));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE INDEX ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
+    return conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT t, i, vector('[' || t || ', ' || i || ', 0]') "
+        "FROM generate_series(0, $1) t, generate_series(0, $2) i",
+        table, kNumTenants - 1, kRowsPerTenant - 1);
+  }
+
+  static std::string KnnQuery(
+      const std::string& table, const std::string& where, int tenant, int limit) {
+    return Format(
+        "/*+IndexScan($0 $0_embedding_idx)*/ SELECT id FROM $0 WHERE $1 "
+        "ORDER BY embedding <-> '[$2, 0, 0]' LIMIT $3",
+        table, where, tenant, limit);
+  }
+
+  static std::vector<int32_t> Ids(int32_t first, int32_t count) {
+    std::vector<int32_t> result(count);
+    std::iota(result.begin(), result.end(), first);
+    return result;
+  }
+
+  // Index of the partition of table_name that holds hash code hash.
+  Result<size_t> HashPartition(const std::string& table_name, uint16_t hash) {
+    auto table = VERIFY_RESULT(client_->OpenTable(
+        VERIFY_RESULT(GetTableIDFromTableName(table_name))));
+    return client::FindPartitionStartIndex(
+        table->GetVersionedPartitions()->keys,
+        dockv::PartitionSchema::EncodeMultiColumnHashValue(hash));
+  }
+};
+
+TEST_F(PgVectorIndexPkRoutingTest, HashKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "th", "tenant INT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  for (int tenant = 0; tenant != kNumTenants; ++tenant) {
+    SCOPED_TRACE(Format("tenant: $0", tenant));
+    auto stats = ASSERT_RESULT(Query(
+        conn, KnnQuery("th", Format("tenant = $0", tenant), tenant, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+
+  // Without a filter on the key, and with routing disabled, every partition is searched.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("th", "id < 3", 4, 3)));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+  {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_pk_routing) = false;
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("th", "tenant = 4", 4, 5)));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_pk_routing) = true;
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, kNumTablets);
+  }
+
+  // A non-integer cross-type equality isn't routed, but still returns the right rows.
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("th", "tenant = 4.0", 4, 5)));
+  ASSERT_EQ(stats.ids, Ids(0, 5));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+
+  // With several equalities on the key, the one with the fewest values bounds the search.
+  for (const auto* where : {"tenant = 3 AND tenant IN (3, 4)", "tenant IN (3, 4) AND tenant = 3"}) {
+    SCOPED_TRACE(where);
+    stats = ASSERT_RESULT(Query(conn, KnnQuery("th", where, 3, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+
+  // IN list: one partition per distinct partition of the tenants.
+  auto hashes = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT yb_hash_code(t) FROM generate_series(0, $0) t ORDER BY t", kNumTenants - 1)));
+  std::vector<size_t> partition_of_tenant;
+  for (auto hash : hashes) {
+    partition_of_tenant.push_back(ASSERT_RESULT(HashPartition("th", hash)));
+  }
+  int other_tenant = 1;
+  while (partition_of_tenant[other_tenant] == partition_of_tenant[0]) {
+    ++other_tenant;
+    ASSERT_LT(other_tenant, kNumTenants);
+  }
+  // Fetch every row of both tenants, so a missing partition would lose rows.
+  stats = ASSERT_RESULT(Query(
+      conn, KnnQuery("th", Format("tenant IN (0, $0)", other_tenant), 0, 2 * kRowsPerTenant)));
+  std::ranges::sort(stats.ids);
+  std::vector<int32_t> expected_ids;
+  for (int id = 0; id != kRowsPerTenant; ++id) {
+    expected_ids.insert(expected_ids.end(), {id, id});
+  }
+  ASSERT_EQ(stats.ids, expected_ids);
+  ASSERT_EQ(stats.partitions, 2);
+
+  // Prepared statement with a generic plan: the parameter is bound at execution.
+  ASSERT_OK(conn.Execute("SET plan_cache_mode = force_generic_plan"));
+  ASSERT_OK(conn.Execute(
+      "PREPARE knn(int, vector) AS /*+IndexScan(th)*/ SELECT id FROM th WHERE tenant = $1 "
+      "ORDER BY embedding <-> $2 LIMIT 4"));
+  for (int tenant : {3, 7}) {
+    auto stats = ASSERT_RESULT(Query(
+        conn, Format("EXECUTE knn($0, '[$0, 0, 0]')", tenant)));
+    ASSERT_EQ(stats.ids, Ids(0, 4));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+  ASSERT_OK(conn.Execute("RESET plan_cache_mode"));
+
+  // Nested loop: the inner scan is routed again on each rescan.
+  stats = ASSERT_RESULT(Query(conn,
+      "/*+NestLoop(t th) Leading((t th)) IndexScan(th)*/ "
+      "SELECT x.id FROM (VALUES (2), (9)) t(tenant), LATERAL ("
+      "  SELECT id FROM th WHERE th.tenant = t.tenant "
+      "  ORDER BY embedding <-> '[0, 0, 0]' LIMIT 2) x"));
+  ASSERT_EQ(stats.ids, (std::vector<int32_t>{0, 1, 0, 1}));
+  ASSERT_EQ(stats.partitions, 2);
+
+  // The join rejects the first rows returned by the vector index, so Postgres fetches more rounds.
+  // The pruned partitions must not keep the query waiting for them.
+  ASSERT_OK(conn.Execute("CREATE TABLE keep (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO keep VALUES (6), (7), (8)"));
+  stats = ASSERT_RESULT(Query(conn,
+      "SELECT th.id FROM th INNER JOIN keep AS k ON th.id = k.id WHERE th.tenant = 5 "
+      "ORDER BY th.embedding <-> '[5, 0, 0]' LIMIT 3"));
+  ASSERT_EQ(stats.ids, Ids(6, 3));
+  ASSERT_GE(stats.rounds, 2);
+  ASSERT_LE(stats.partitions, static_cast<int64_t>(stats.rounds));
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, MultiColumnHashKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tm", "tenant INT, id INT", "(tenant, id) HASH",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tm", "tenant = 3 AND id = 2", 3, 5)));
+  ASSERT_EQ(stats.ids, std::vector<int32_t>{2});
+  ASSERT_EQ(stats.partitions, 1);
+
+  // Only some of the hash columns: every partition is searched.
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("tm", "tenant = 3", 3, 5)));
+  ASSERT_EQ(stats.ids, Ids(0, 5));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, TextHashKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tt", "tenant TEXT COLLATE \"C\", id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  // Expressions with a non-C collation are not pushed down, so their key equalities can't be
+  // routed. Their results must still be correct.
+  ASSERT_OK(CreateAndFill(
+      conn, "tt_icu", "tenant TEXT COLLATE \"en-US-x-icu\", id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  for (int tenant = 0; tenant != kNumTenants; ++tenant) {
+    SCOPED_TRACE(Format("tenant: $0", tenant));
+    auto stats = ASSERT_RESULT(Query(
+        conn, KnnQuery("tt", Format("tenant = '$0'", tenant), tenant, 3)));
+    ASSERT_EQ(stats.ids, Ids(0, 3));
+    ASSERT_EQ(stats.partitions, 1);
+
+    stats = ASSERT_RESULT(Query(
+        conn, KnnQuery("tt_icu", Format("tenant = '$0'", tenant), tenant, 3)));
+    ASSERT_EQ(stats.ids, Ids(0, 3));
+    ASSERT_EQ(stats.partitions, kNumTablets);
+  }
+
+  // varchar has no equality operator of its own: the column is compared with text's operator, and
+  // the value can be text or varchar.
+  ASSERT_OK(CreateAndFill(
+      conn, "tv", "tenant VARCHAR(20) COLLATE \"C\", id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  for (const auto* value : {"'7'", "'7'::varchar", "'7'::text", "'7'::varchar(5)"}) {
+    SCOPED_TRACE(value);
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tv", Format("tenant = $0", value), 7, 3)));
+    ASSERT_EQ(stats.ids, Ids(0, 3));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tv", "tenant IN ('7', '7')", 7, 3)));
+  ASSERT_EQ(stats.ids, Ids(0, 3));
+  ASSERT_EQ(stats.partitions, 1);
+}
+
+// Integer literals are int4 and parameters can be int8, so equalities on integer keys are often
+// cross-type (e.g. int8 = int4). Those are routed after converting the value to the column type.
+TEST_F(PgVectorIndexPkRoutingTest, IntegerCrossTypeKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tb", "tenant BIGINT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  ASSERT_OK(CreateAndFill(
+      conn, "ts", "tenant SMALLINT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  for (const auto* where : {"tenant = 6", "6 = tenant", "tenant = 6::smallint", "tenant IN (6)"}) {
+    SCOPED_TRACE(where);
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tb", where, 6, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+  for (const auto* where : {"tenant = 6", "tenant = 6::bigint", "tenant IN (6::bigint)"}) {
+    SCOPED_TRACE(where);
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", where, 6, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+
+  // A value outside the smallint range matches no row, so the column isn't routed.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", "tenant = 70000", 6, 5)));
+  ASSERT_EQ(stats.ids, std::vector<int32_t>{});
+  ASSERT_EQ(stats.partitions, kNumTablets);
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", "tenant IN (6, 70000)", 6, 5)));
+  ASSERT_EQ(stats.ids, Ids(0, 5));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+
+  // A bigint parameter against a smallint column, with a generic plan.
+  ASSERT_OK(conn.Execute("SET plan_cache_mode = force_generic_plan"));
+  ASSERT_OK(conn.Execute(
+      "PREPARE knn(bigint, vector) AS /*+IndexScan(ts ts_embedding_idx)*/ SELECT id FROM ts "
+      "WHERE tenant = $1 ORDER BY embedding <-> $2 LIMIT 4"));
+  stats = ASSERT_RESULT(Query(conn, "EXECUTE knn(9, '[9, 0, 0]')"));
+  ASSERT_EQ(stats.ids, Ids(0, 4));
+  ASSERT_EQ(stats.partitions, 1);
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, FloatKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tf", "tenant FLOAT8, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  // -0 equals 0 but has a different key encoding, so float keys are never routed.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tf", "tenant = '-0'", 0, 3)));
+  ASSERT_EQ(stats.ids, Ids(0, 3));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, RangeKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  // Partitions: [, 5), [5, (10, 5)), [(10, 5), 15), [15, ).
+  ASSERT_OK(CreateAndFill(
+      conn, "tr", "tenant INT, id INT", "tenant ASC, id ASC",
+      "SPLIT AT VALUES ((5), (10, 5), (15))"));
+
+  for (auto [tenant, partitions] : std::initializer_list<std::pair<int, int64_t>>{
+           // The split point (5) sorts after the prefix of tenant 5, so both of its neighbours
+           // are searched.
+           {2, 1}, {5, 2}, {7, 1}, {10, 2}, {12, 1}, {15, 2}, {19, 1}}) {
+    SCOPED_TRACE(Format("tenant: $0", tenant));
+    auto stats = ASSERT_RESULT(Query(
+        conn, KnnQuery("tr", Format("tenant = $0", tenant), tenant, 7)));
+    ASSERT_EQ(stats.ids, Ids(0, 7));
+    ASSERT_EQ(stats.partitions, partitions);
+  }
+
+  // A prefix of two range columns.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tr", "tenant = 10 AND id = 7", 10, 3)));
+  ASSERT_EQ(stats.ids, std::vector<int32_t>{7});
+  ASSERT_EQ(stats.partitions, 1);
+
+  // No equality on the leading range column: every partition is searched.
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("tr", "id = 7", 10, 3)));
+  ASSERT_EQ(stats.partitions, kNumTablets);
 }
 
 class PgDistributedVectorIndexTest

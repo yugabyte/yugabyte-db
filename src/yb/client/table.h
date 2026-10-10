@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <span>
+#include <vector>
+
 #include "yb/util/flags.h"
 
 #include "yb/client/client_fwd.h"
@@ -28,6 +31,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 
@@ -172,6 +176,13 @@ size_t FindPartitionStartIndex(
 PartitionKeyPtr FindPartitionStart(
     const VersionedTablePartitionListPtr& versioned_partitions, const PartitionKey& partition_key,
     size_t group_by = 1);
+
+// Returns, for each partition, whether it could contain a key that starts with one of
+// key_prefixes. Each prefix is an encoded DocKey prefix: for a hash partitioned table it has to
+// include the hash code, for a range partitioned table it is a byte prefix of the matching keys.
+Result<std::vector<bool>> FindPartitionsForKeyPrefixes(
+    const TablePartitionList& partitions, bool is_hash_partitioned,
+    std::span<const Slice> key_prefixes);
 
 } // namespace client
 } // namespace yb

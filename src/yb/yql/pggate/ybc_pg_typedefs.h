@@ -430,6 +430,16 @@ typedef struct {
   YbcPgAttrValueDescriptor *attrs;
 } YbcPgYBTupleIdDescriptor;
 
+// The values a primary key column of the indexed table is compared for equality with
+// (col = value, or col IN (values)) in a vector index search. The datums have the column's type.
+// Columns under a non-C collation are never passed: their quals aren't pushed down.
+typedef struct {
+  int attr_num;
+  const YbcPgTypeEntity *type_entity;
+  size_t nvalues;
+  const uint64_t *datums;
+} YbcPgVectorKeyColumn;
+
 typedef struct {
   const char *host;
   const char *cloud;
