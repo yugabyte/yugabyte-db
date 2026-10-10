@@ -153,11 +153,11 @@ In this example, ANALYZE has run twice. The first run recorded a cooldown of 10 
 
 ### pg_stat_user_tables
 
-For PostgreSQL compatibility, Auto Analyze also updates the `last_autoanalyze` and `autoanalyze_count` columns of [`pg_stat_user_tables`](https://www.postgresql.org/docs/15/monitoring-stats.html#MONITORING-PG-STAT-ALL-TABLES-VIEW). Prefer [`yb_stat_auto_analyze()`](#observability) for Auto Analyze observability.
+For PostgreSQL compatibility, Auto Analyze also updates the `last_autoanalyze` and `autoanalyze_count` columns of [pg_stat_user_tables](https://www.postgresql.org/docs/15/monitoring-stats.html#MONITORING-PG-STAT-ALL-TABLES-VIEW). Prefer [yb_stat_auto_analyze()](#observability) for Auto Analyze observability.
 
 As with other PostgreSQL cumulative statistics views, these columns are node-local. They are updated only on the YB-TServer where the Auto Analyze service ran ANALYZE. On other YB-TServers, `pg_stat_user_tables` shows `last_autoanalyze` as NULL and `autoanalyze_count` as `0`, even when Auto Analyze runs normally. If the Auto Analyze service moves to a different YB-TServer, the history is split across YB-TServers.
 
-To see these columns from all YB-TServers, enable `yb_enable_global_views` and query [`gv$pg_stat_user_tables`](../../explore/observability/cluster-wide-db-views/), which returns one row for each YB-TServer.
+To see these columns from all YB-TServers, enable `yb_enable_global_views` and query [gv$pg_stat_user_tables](../../explore/observability/cluster-wide-db-views/), which returns one row for each YB-TServer.
 
 ```sql
 SET yb_enable_global_views = on;
