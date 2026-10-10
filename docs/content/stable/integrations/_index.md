@@ -80,6 +80,7 @@ Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. 
 | Metabase        |         | Full    | [Metabase](tools/metabase/) |
 | pgAdmin         |         | Full    | [pgAdmin](tools/pgadmin/) |
 | SQL Workbench/J |         | Full    | [SQL Workbench/J](tools/sql-workbench/) |
+| Tabularis       | 0.24.0  | Full    | [Tabularis](tools/tabularis/) |
 | TablePlus       | 2.18    | Full    | [TablePlus](tools/tableplus/) |
 
 ### Application frameworks

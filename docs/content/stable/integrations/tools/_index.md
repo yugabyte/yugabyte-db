@@ -77,6 +77,13 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
   </li>
 
   <li>
+    <a href="tabularis/">
+      <img src="/images/develop/tools/tabularis/tabularis-icon.png">
+      Tabularis
+    </a>
+  </li>
+
+  <li>
     <a href="tableplus/">
       <img src="/images/section_icons/develop/tools/tableplus.png">
       TablePlus
