@@ -114,6 +114,7 @@
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -338,6 +339,10 @@ DEFINE_test_flag(bool, crash_before_clone_target_marked_ready, false,
 
 DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
     "Whether to crash before marking a clone op as completed on the source tablet.");
+
+DEFINE_test_flag(bool, wait_for_split_parent_running_on_open, false,
+    "Split children wait in OpenTablet until the split parent's retryable requests are "
+    "available.");
 
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
     "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
@@ -927,8 +932,9 @@ Status TSTabletManager::Init() {
           meta->raft_group_id(), "opening tablet", &deleter));
 
       TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
-      RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
-          std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
+      RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(std::bind(
+          &TSTabletManager::OpenTablet, this, meta, deleter,
+          CopyRetryableRequestsFromParent::kFalse)));
     }
   }
 
@@ -1202,8 +1208,9 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   TabletPeerPtr new_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
 
   // We can run this synchronously since there is nothing to bootstrap.
-  RETURN_NOT_OK(
-      open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
+  RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(std::bind(
+      &TSTabletManager::OpenTablet, this, meta, deleter,
+      CopyRetryableRequestsFromParent::kFalse)));
 
   return new_peer;
 }
@@ -1314,7 +1321,8 @@ Status TSTabletManager::StartSubtabletsSplit(
 
 void TSTabletManager::CreatePeerAndOpenTablet(
     const tablet::RaftGroupMetadataPtr& meta,
-    const scoped_refptr<TransitionInProgressDeleter>& deleter) {
+    const scoped_refptr<TransitionInProgressDeleter>& deleter,
+    CopyRetryableRequestsFromParent copy_retryable_requests_from_parent) {
   Status s = ResultToStatus(CreateAndRegisterTabletPeer(meta, NEW_PEER));
   if (!s.ok()) {
     s = s.CloneAndPrepend("Failed to create and register tablet peer");
@@ -1327,7 +1335,8 @@ void TSTabletManager::CreatePeerAndOpenTablet(
     }
     return;
   }
-  s = open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter));
+  s = open_tablet_pool_->SubmitFunc(std::bind(
+      &TSTabletManager::OpenTablet, this, meta, deleter, copy_retryable_requests_from_parent));
   if (!s.ok()) {
     s = s.CloneAndPrepend(Format("Failed to schedule opening tablet $0", meta->raft_group_id()));
     if (s.IsShutdownInProgress()) {
@@ -1502,7 +1511,7 @@ Status TSTabletManager::ApplyTabletSplit(
     // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
     RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
         &TSTabletManager::CreatePeerAndOpenTablet, this, tcmeta.raft_group_metadata,
-        tcmeta.transition_deleter)));
+        tcmeta.transition_deleter, CopyRetryableRequestsFromParent::kTrue)));
   }
 
   unregister_wal_se.Cancel();
@@ -1680,7 +1689,8 @@ Status TSTabletManager::DoApplyCloneTablet(
   // in case of reverse lock order in some other thread.
   // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
   RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
-      &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result)));
+      &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result,
+      CopyRetryableRequestsFromParent::kFalse)));
   unregister_wal_se.Cancel();
 
   return Status::OK();
@@ -1942,7 +1952,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_rb_finish_before_open);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
-  OpenTablet(meta, nullptr);
+  OpenTablet(meta, nullptr, CopyRetryableRequestsFromParent::kFalse);
   // If OpenTablet fails, tablet_peer->error() will be set.
   RETURN_NOT_OK(ShutdownAndTombstoneTabletPeerNotOk(
       tablet_peer->error(), tablet_peer, meta, fs_manager_->uuid(),
@@ -2326,8 +2336,10 @@ Status MaybeAssignPerDbCgroups(
 } // namespace
 #endif
 
-void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
-                                 const scoped_refptr<TransitionInProgressDeleter>& deleter) {
+void TSTabletManager::OpenTablet(
+    const RaftGroupMetadataPtr& meta,
+    const scoped_refptr<TransitionInProgressDeleter>& deleter,
+    CopyRetryableRequestsFromParent copy_retryable_requests_from_parent) {
   string tablet_id = meta->raft_group_id();
   TRACE_EVENT1("tserver", "TSTabletManager::OpenTablet",
                "tablet_id", tablet_id);
@@ -2381,8 +2393,21 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   retryable_requests.SetServerClock(server_->Clock());
   retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
-  if (FLAGS_enable_copy_retryable_requests_from_parent &&
-          cmeta->has_split_parent_tablet_id()) {
+  if (FLAGS_TEST_wait_for_split_parent_running_on_open && cmeta->has_split_parent_tablet_id()) {
+    s = WaitFor(
+        [this, &cmeta] { return GetTabletRetryableRequests(cmeta->split_parent_tablet_id()).ok(); },
+        30s, "split parent running");
+    if (!s.ok()) {
+      tablet_peer->SetFailed(s);
+      return;
+    }
+  }
+
+  // Copying is only valid before the child has replicated writes of its own. Every other open
+  // rebuilds retryable requests from the child's bootstrap state and WAL, which includes the
+  // parent's WAL up to the split op.
+  if (copy_retryable_requests_from_parent && FLAGS_enable_copy_retryable_requests_from_parent &&
+      cmeta->has_split_parent_tablet_id()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
       retryable_requests.CopyFrom(*parent_tablet_requests);

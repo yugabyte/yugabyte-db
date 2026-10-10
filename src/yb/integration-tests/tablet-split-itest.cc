@@ -100,6 +100,7 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -185,6 +186,8 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_bool(tablet_split_use_middle_user_key);
 DECLARE_double(tablet_split_min_size_ratio);
+DECLARE_int32(num_tablets_to_open_simultaneously);
+DECLARE_bool(TEST_wait_for_split_parent_running_on_open);
 DECLARE_int32(unresponsive_ts_rpc_retry_limit);
 
 METRIC_DECLARE_gauge_uint64(tablet_split_candidates);
@@ -2812,6 +2815,7 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
   Status TestSplitBeforeParentDeletion(bool hide_only);
 
   void TestRetryableWrite();
+  void TestRetryableWriteAfterSplitChildRestart(bool flush_child_bootstrap_state);
 };
 
 // Parameterized extension to test N-way tablet split.
@@ -3430,6 +3434,118 @@ TEST_F(TabletSplitSingleServerITest, TestRetryableWriteWithPersistedStructure) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_copy_retryable_requests_from_parent) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   TestRetryableWrite();
+}
+
+void TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart(
+    bool flush_child_bootstrap_state) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_copy_retryable_requests_from_parent) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+
+  constexpr int kNumRows = 2;
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const auto parent_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
+  const auto parent_tablet_id = parent_peer->tablet_id();
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(2, 1, 1));
+  const auto child_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  ASSERT_EQ(child_peers.size(), 2);
+  ASSERT_OK(WriteRow(NewSession(), kNumRows + 1, 0));
+  std::vector<OpId> child_committed_op_ids;
+  for (const auto& child_peer : child_peers) {
+    child_committed_op_ids.push_back(
+        ASSERT_RESULT(child_peer->GetRaftConsensus())->GetLastCommittedOpId());
+  }
+
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->LoadDependency({
+      {"AsyncRpc::Finished:SetTimedOut:1",
+       "TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:WriteTimedOut"},
+      {"TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:RetryWrite",
+       "AsyncRpc::Finished:SetTimedOut:2"},
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+#endif
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = true;
+  Status write_status;
+  std::thread write_thread([&] {
+    write_status = ResultToStatus(WriteRow(NewSession(), kNumRows + 1, kNumRows + 1));
+  });
+  auto write_thread_cleanup = ScopeExit([&] {
+    if (write_thread.joinable()) {
+      // Releases the client if a check failed before the retry was allowed.
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+      TEST_SYNC_POINT(
+          "TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:RetryWrite");
+      write_thread.join();
+    }
+#ifndef NDEBUG
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearTrace();
+#endif
+  });
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i != child_peers.size(); ++i) {
+          if (VERIFY_RESULT(child_peers[i]->GetRaftConsensus())->GetLastCommittedOpId() >
+              child_committed_op_ids[i]) {
+            return true;
+          }
+        }
+        return false;
+      },
+      10s * kTimeMultiplier, "post-split update is applied"));
+  TEST_SYNC_POINT(
+      "TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:WriteTimedOut");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+
+  for (const auto& child_peer : child_peers) {
+    if (flush_child_bootstrap_state) {
+      ASSERT_OK(child_peer->log()->AllocateSegmentAndRollOver());
+      ASSERT_OK(WaitFor([&] { return child_peer->TEST_HasBootstrapStateOnDisk(); },
+                        10s * kTimeMultiplier, "child retryable requests flushed to disk"));
+    } else {
+      ASSERT_FALSE(child_peer->TEST_HasBootstrapStateOnDisk());
+    }
+    ASSERT_OK(ASSERT_RESULT(child_peer->shared_tablet())->Flush(
+        tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_wait_for_split_parent_running_on_open) = true;
+  // Both waiting children plus the parent each need a bootstrap thread.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablets_to_open_simultaneously) = 3;
+  auto* tablet_server = cluster_->mini_tablet_server(0);
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto peer = tablet_server->server()->tablet_manager()->GetTablet(parent_tablet_id);
+        return peer.ok() && (*peer)->state() == tablet::RaftGroupStatePB::RUNNING;
+      },
+      10s * kTimeMultiplier, "split parent is running"));
+  ASSERT_OK(WaitFor(
+      [&] { return ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id()).size() == 2; },
+      10s * kTimeMultiplier, "split children are running after restart"));
+
+  ASSERT_OK(DeleteRow(NewSession(), kNumRows + 1));
+  TEST_SYNC_POINT(
+      "TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:RetryWrite");
+  write_thread.join();
+  ASSERT_OK(write_status);
+
+  ASSERT_OK(CheckRowsCount(kNumRows));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
+}
+
+TEST_F(TabletSplitSingleServerITest, RetryableWriteAfterSplitChildRestart) {
+  TestRetryableWriteAfterSplitChildRestart(/* flush_child_bootstrap_state= */ true);
+}
+
+TEST_F(TabletSplitSingleServerITest, RetryableWriteAfterSplitChildRestartWithoutFlush) {
+  TestRetryableWriteAfterSplitChildRestart(/* flush_child_bootstrap_state= */ false);
 }
 
 TEST_F(TabletSplitExternalMiniClusterITest, Simple) {

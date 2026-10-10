@@ -129,6 +129,7 @@ YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
 
 YB_STRONGLY_TYPED_BOOL(MarkDirtyAfterRegister);
 YB_STRONGLY_TYPED_BOOL(ShouldWait);
+YB_STRONGLY_TYPED_BOOL(CopyRetryableRequestsFromParent);
 
 struct AdminCompactionOptions {
   ShouldWait should_wait;
@@ -579,8 +580,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // method. A TransitionInProgressDeleter must be passed as 'deleter' into
   // this method in order to remove that transition-in-progress entry when
   // opening the tablet is complete (in either a success or a failure case).
+  // 'copy_retryable_requests_from_parent' is set only when opening a split child as part of
+  // applying the split, before the child has replicated any writes of its own.
   void OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
-                  const scoped_refptr<TransitionInProgressDeleter>& deleter);
+                  const scoped_refptr<TransitionInProgressDeleter>& deleter,
+                  CopyRetryableRequestsFromParent copy_retryable_requests_from_parent);
 
   // Open a tablet whose metadata has already been loaded.
   void BootstrapAndInitTablet(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
@@ -655,7 +659,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // See CreateAndRegisterTabletPeer and OpenTablet.
   void CreatePeerAndOpenTablet(
       const tablet::RaftGroupMetadataPtr& meta,
-      const scoped_refptr<TransitionInProgressDeleter>& deleter);
+      const scoped_refptr<TransitionInProgressDeleter>& deleter,
+      CopyRetryableRequestsFromParent copy_retryable_requests_from_parent);
 
   TSTabletManagerStatePB state() const {
     SharedLock<RWMutex> lock(mutex_);
