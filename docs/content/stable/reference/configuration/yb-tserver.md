@@ -346,6 +346,8 @@ The server configuration parameters for YugabyteDB are the same as for PostgreSQ
 
 Note that if a corresponding flag is available (with the same name as the parameter and `ysql_` prefix), then set the flag directly.
 
+This section describes the parameters that need more than a one-line description. For a reference list of every YugabyteDB-specific (`yb_`) parameter, including its type, default, unit, and the context in which you can set it, see [All YSQL configuration parameters](../all-ysql-configuration-parameters/).
+
 ##### log_line_prefix
 
 YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
