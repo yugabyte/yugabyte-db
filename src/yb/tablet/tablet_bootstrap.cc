@@ -1143,9 +1143,13 @@ class TabletBootstrap {
 
   // Computes which storages a replayed write must (re-)materialize into: the regular DB when this
   // op is not yet flushed there, plus each vector index that is likewise behind.
+  //
+  // TODO(vector_index): The vector index bits are positions in the current vector index list,
+  // so the result must be consumed before the list changes. See the TODO in docdb::StorageSet.
   static docdb::StorageSet ComputeApplyToStorages(
       int64_t index, const DocDbOpIds& flushed_op_ids) {
     docdb::StorageSet apply_to_storages;
+    apply_to_storages.Resize(flushed_op_ids.vector_indexes.size());
     if (index > flushed_op_ids.regular.index) {
       apply_to_storages.SetRegularDB();
     }

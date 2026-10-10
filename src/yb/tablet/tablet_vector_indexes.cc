@@ -308,6 +308,8 @@ Status TabletVectorIndexes::CreateSkippedIndexes(
   return Status::OK();
 }
 
+// TODO(vector_index): Can insert in front of existing indexes and so shift their positions, which
+// docdb::StorageSet uses to address them. See the TODO there.
 void InsertVectorIndex(docdb::DocVectorIndexes& indexes, const docdb::DocVectorIndexPtr& index) {
   auto it = std::upper_bound(
       indexes.begin(), indexes.end(), index, [](const auto& lhs, const auto& rhs) {
@@ -995,6 +997,8 @@ void TabletVectorIndexes::FillMaxPersistentOpIds(
   }
 }
 
+// TODO(vector_index): Shifts the positions of the later indexes, which docdb::StorageSet uses to
+// address them. See the TODO there.
 docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId& table_id) {
   if (!vector_indexes_list_) {
     return nullptr;

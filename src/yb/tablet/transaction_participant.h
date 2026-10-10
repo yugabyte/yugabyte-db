@@ -75,6 +75,10 @@ struct TransactionApplyData {
   HybridTime log_ht = {};
   bool sealed = false;
   TabletId status_tablet = {};
+
+  // TODO(vector_index): May need a rework once large transactions are supported for vector indexes:
+  // the deferred apply of the later chunks would carry this set across vector index list changes,
+  // and StorageSet addresses vector indexes by position. See the TODO in docdb::StorageSet.
   docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
 
   // Owned by running transaction if non-null.
