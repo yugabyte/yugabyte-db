@@ -3075,14 +3075,19 @@ Status Tablet::CreatePreparedChangeMetadata(
     // On follower, the previous op for adding table may not finish applying.
     // GetKeySchema might fail in this case.
     if (is_leader_side) {
+      // The table could have been removed, e.g. by hidden table cleanup after PITR. Failing
+      // prepare here is fatal once the consensus round exists, so let Apply skip the op instead.
       auto key_schema = GetKeySchema(
           operation->has_table_id() ? operation->table_id().ToBuffer() : "");
-      if (!key_schema.KeyEquals(*schema)) {
+      if (!key_schema.ok() && !key_schema.status().IsNotFound()) {
+        return key_schema.status();
+      }
+      if (key_schema.ok() && !key_schema->KeyEquals(*schema)) {
         return STATUS_FORMAT(
             InvalidArgument,
             "Schema keys cannot be altered. New schema key: $0. Existing schema key: $1",
             schema->CreateKeyProjection(),
-            key_schema);
+            *key_schema);
       }
     }
 
@@ -5744,11 +5749,11 @@ Result<docdb::DocReadContextPtr> Tablet::GetDocReadContext(const std::string& ta
   return VERIFY_RESULT(metadata_->GetTableInfo(table_id))->doc_read_context;
 }
 
-Schema Tablet::GetKeySchema(const std::string& table_id) const {
+Result<Schema> Tablet::GetKeySchema(const std::string& table_id) const {
   if (table_id.empty()) {
     return *key_schema_;
   }
-  auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
+  auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   return table_info->schema().CreateKeyProjection();
 }
 
