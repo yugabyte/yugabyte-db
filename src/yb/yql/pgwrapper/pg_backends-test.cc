@@ -232,6 +232,19 @@ TEST_F_EX(PgBackendsTest, FirstLeaderSkipsLeaseWait, PgBackendsTestLongLease) {
       "yugabyte", cat_ver, MonoDelta::FromSeconds(kLongYsqlLeaseSec / 4))));
 }
 
+// With no tserver holding a live lease, there are no backends to wait on.
+TEST_F(PgBackendsTest, NoLeasedTservers) {
+  ASSERT_OK(BumpCatalogVersion(1));
+  const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
+  conn_.reset();
+  cluster_->tserver_daemons()[0]->Shutdown();
+
+  // Wait for the master's lease cleanup poller to mark the lease expired.
+  SleepFor(MonoDelta::FromSeconds(kYsqlLeaseSec + 10));
+  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
+      "yugabyte", cat_ver, MonoDelta::FromSeconds(5))));
+}
+
 // If usable cached version is not found but usable cached job is, a new job should not be created.
 TEST_F(PgBackendsTest, CachedJob) {
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
