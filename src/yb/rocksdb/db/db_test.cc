@@ -4710,6 +4710,8 @@ class ModelDB: public DB {
     return Status::OK();
   }
 
+  void WaitForFlushJobs() override {}
+
   Status SyncWAL() override {
     return Status::OK();
   }
