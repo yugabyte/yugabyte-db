@@ -14,7 +14,35 @@ type: docs
 
 The `yb_tablet_metadata` view returns tablet placement, leadership, and state for the whole cluster. The examples below look up tablets, leaders, range boundaries, and the tablet that holds a row.
 
-Columns, tablet states, and which columns are masked for unprivileged users are listed in [Tablet metadata](../../../launch-and-manage/monitor-and-alert/tablet-metadata/#yb-tablet-metadata).
+While the [yb_local_tablets](../yb-local-tablets/) view provides information about tablets on the local node, `yb_tablet_metadata` exposes tablet placement and replica roles cluster-wide, serving as the YSQL equivalent of the YCQL `system.partitions` table.
+
+Use the `yb_tablet_metadata` view for the following:
+
+- Identifying the location of all tablets for a specific table.
+- Determining the leader node for a specific tablet.
+- Identifying the tablet for a given tuple in [hash-sharded](../../../architecture/docdb-sharding/sharding/#hash-sharding) tables, or the range boundaries for [range-sharded](../../../architecture/docdb-sharding/sharding/#range-sharding) tables.
+- Checking tablet lifecycle state across the cluster.
+
+Note that the view returns tablet information for YSQL objects and the system transaction table only.
+
+The following table describes the columns of the `yb_tablet_metadata` view.
+
+| Column | Type | Description |
+| :----- | :--- | :---------- |
+| tablet_id | text | A unique identifier (UUID) representing the tablet. |
+| oid | oid | The object identifier (OID) for the table/index that the tablet belongs to. |
+| db_name | text | Name of the database this relation belongs to. |
+| relname | text | Name of table/index whose data is stored on the tablet. |
+| start_hash_code | integer | Starting hash code (inclusive) for the tablet. (NULL for range-sharded tables.) |
+| end_hash_code | integer | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
+| leader | text | IP address, port of the leader node for the tablet. |
+| replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
+| start_range | text | Starting range key (inclusive) for the tablet. (NULL for hash-sharded tables.) |
+| end_range | text | Ending range key (exclusive) for the tablet. (NULL for hash-sharded tables.) |
+| tablet_attrs | json | Tablet leader disk size fields when available: `sst_bytes`, `wal_bytes`, `uncompressed_sst_bytes`, `total_bytes` (SST+WAL), and optionally `vector_index_bytes`. NULL when sizes are unavailable or the row is privilege-masked. |
+| tablet_state | text | Current state of the tablet. <br>Possible tablet states are `PREPARING`, `CREATING`, `RUNNING`, `REPLACED`, or `DELETED`. |
+
+The `relname`, `start_range`, and `end_range` columns are masked for unprivileged users (shown as `<insufficient privilege>`). Only superusers or users with the `yb_db_admin` role can see the entire unmasked view.
 
 ## Examples
 

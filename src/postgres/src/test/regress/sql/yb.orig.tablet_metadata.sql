@@ -313,6 +313,20 @@ SELECT object_name, start_hash_code, end_hash_code, start_range, end_range
 FROM yb_get_tablet_metadata()
 WHERE tablet_id = '00000000000000000000000000000000';
 
+-- ============================================================
+-- yb_tablegroup_size
+-- ============================================================
+-- tablet_attrs key/shape checks live in PgTableSizeTest.ColocatedTableSize,
+-- which can wait for master drive-info heartbeats. pg_regress cannot, and a
+-- populated-but-unread-yet row would make those predicates return false.
+-- yb_tablegroup_size raises a NOTICE when a tablet has not reported drive
+-- info yet; suppress it. The returned size is still >= 0.
+\c colocated_db yugabyte
+SET client_min_messages = warning;
+SELECT COALESCE(bool_and(yb_tablegroup_size(oid) >= 0), true) AS tg_size_ok
+FROM pg_yb_tablegroup;
+RESET client_min_messages;
+
 -- Cleanup
 \c yugabyte yugabyte
 DROP DATABASE colocated_db;
