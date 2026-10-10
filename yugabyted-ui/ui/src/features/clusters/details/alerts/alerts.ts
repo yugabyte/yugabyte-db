@@ -41,6 +41,11 @@ export const alertList: AlertListItem[] = [
     status: BadgeVariant.Warning,
   },
   {
+    name: "Transparent hugepages max_ptes_none not set to 0",
+    key: "thp_max_ptes_none",
+    status: BadgeVariant.Warning,
+  },
+  {
     name: "Missing ntp/chrony package for clock synchronization",
     key: "ntp/chrony",
     status: BadgeVariant.Warning,
