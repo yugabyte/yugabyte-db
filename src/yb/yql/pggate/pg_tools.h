@@ -41,6 +41,7 @@
 #include "yb/util/format.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
+#include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
@@ -261,5 +262,33 @@ Status ApplySkipIntentsOptimizationInfo(
 }
 
 Status CheckForPgInterrupts();
+
+// Interval between client connection checks while blocked in pggate. Uninitialized when disabled.
+MonoDelta ClientConnectionCheckInterval();
+
+// Asks postgres whether the client connection is gone and, if so, interrupts pggate (messenger
+// shutdown + shared exchange stop) so that every pending wait completes with an error. The
+// interrupt is irreversible: postgres terminates the backend at its next interrupt check.
+// Must be called from the postgres main thread.
+bool InterruptOnClientConnectionLoss();
+
+// Blocks on the postgres main thread until an event happens, checking between wake-ups whether the
+// client connection has been lost. Postgres never gets control while pggate is blocked on the
+// tserver, so without this a backend whose client vanished lives until the RPC deadline.
+// - wait_for(MonoDelta) -> bool: bounded wait, returns true once the event happened.
+// - wait(): unbounded wait, used when the check is disabled.
+template <class WaitFor, class Wait>
+void WaitWithClientConnectionCheck(const WaitFor& wait_for, const Wait& wait) {
+  const auto interval = ClientConnectionCheckInterval();
+  if (!interval.Initialized()) {
+    wait();
+    return;
+  }
+  // Keep waiting after an interrupt: the event is guaranteed to fire once the messenger is shut
+  // down, and callers may hold resources the completion callback still references.
+  while (!wait_for(interval)) {
+    InterruptOnClientConnectionLoss();
+  }
+}
 
 } // namespace yb::pggate

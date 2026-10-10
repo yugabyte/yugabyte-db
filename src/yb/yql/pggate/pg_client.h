@@ -135,7 +135,7 @@ class ResultFuture {
   ResultFuture(Args&&... args) : variant_(std::forward<Args>(args)...) {} // NOLINT
 
   void Wait() const {
-    std::visit([](const auto& future) { future.wait(); }, variant_);
+    std::visit([](const auto& future) { WaitForFuture(future); }, variant_);
   }
 
   bool Ready() const {
@@ -155,13 +155,32 @@ class ResultFuture {
   }
 
   Result<ResultTp> Get() {
-    const auto& result = std::visit([](auto& future) { return future.get(); }, variant_);
+    const auto& result = std::visit(
+        [](auto& future) {
+          WaitForFuture(future);
+          return future.get();
+        },
+        variant_);
     RETURN_NOT_OK(CheckForPgInterrupts());
     return result;
   }
 
  private:
   using SimpleFuture = std::future<ResultTp>;
+
+  // ExchangeFuture checks the client connection itself while blocked on the shared exchange.
+  static void WaitForFuture(const ExchangeFuture<Data>& future) {
+    future.wait();
+  }
+
+  static void WaitForFuture(const SimpleFuture& future) {
+    WaitWithClientConnectionCheck(
+        [&future](MonoDelta timeout) {
+          return future.wait_for(timeout.ToSteadyDuration()) == std::future_status::ready;
+        },
+        [&future] { future.wait(); });
+  }
+
   std::variant<SimpleFuture, ExchangeFuture<Data>> variant_;
 };
 

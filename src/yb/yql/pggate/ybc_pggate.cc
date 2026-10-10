@@ -2395,6 +2395,10 @@ bool YBCHasProcessableAbortInterrupt() {
       ? false : pgapi->pg_callbacks()->HasProcessableAbortInterrupt();
 }
 
+bool YBCIsClientConnectionLost() {
+  return PREDICT_FALSE(!pgapi) ? false : pgapi->pg_callbacks()->ClientConnectionLost();
+}
+
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {
   return ToYBCStatus(pgapi->NewGetLockStatusDataSRF(handle));
 }
