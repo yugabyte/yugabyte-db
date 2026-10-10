@@ -6908,7 +6908,8 @@ deconstruct_indexquals(IndexPath *path)
 			qinfo->clause_op = ((OpExpr *) clause)->opno;
 			leftop = get_leftop(clause);
 			rightop = get_rightop(clause);
-			if (match_index_to_operand(leftop, indexcol, index))
+			if (match_index_to_operand(leftop, indexcol, index) ||
+				yb_hash_code_match_index(leftop, index))
 			{
 				qinfo->varonleft = true;
 				qinfo->other_operand = rightop;
@@ -6939,7 +6940,8 @@ deconstruct_indexquals(IndexPath *path)
 			}
 			else
 			{
-				Assert(match_index_to_operand(rightop, indexcol, index));
+				Assert(match_index_to_operand(rightop, indexcol, index) ||
+					   yb_hash_code_match_index(rightop, index));
 				qinfo->varonleft = false;
 				qinfo->other_operand = leftop;
 				if (IsA(rightop, FuncExpr))

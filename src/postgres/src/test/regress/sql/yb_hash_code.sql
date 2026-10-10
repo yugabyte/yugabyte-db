@@ -273,3 +273,65 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;
 
 DROP TABLE tt;
+
+-- GH-34733: yb_hash_code is not unique.  Keys 534 and 1970 share hash code
+-- 63516, so a yb_hash_code condition must not prove uniqueness of a key
+-- column.
+CREATE TABLE hash_pk (k int PRIMARY KEY);
+INSERT INTO hash_pk VALUES (1), (534), (1970), (2000);
+CREATE TABLE hash_range_pk (k int, r int, PRIMARY KEY (k HASH, r ASC));
+INSERT INTO hash_range_pk SELECT k, k FROM hash_pk;
+CREATE TABLE hash_codes (id int PRIMARY KEY, h int);
+INSERT INTO hash_codes VALUES (1, yb_hash_code(534));
+SELECT k, yb_hash_code(k) FROM hash_pk ORDER BY k;
+-- A LEFT JOIN whose inner table appears only in its ON clause can be removed
+-- only if each outer row matches at most one inner row.  The hash_codes row
+-- matches both 534 and 1970, so the join stays and returns 2 rows.
+EXPLAIN (COSTS OFF) SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+EXPLAIN (COSTS OFF) SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = yb_hash_code(534);
+SELECT hash_codes.id FROM hash_codes LEFT JOIN hash_pk ON yb_hash_code(hash_pk.k) = yb_hash_code(534);
+-- Different keys can share a hash code, so yb_hash_code(hash_pk.k) =
+-- hash_codes.h can match several hash_pk rows, and no join method may treat
+-- hash_pk as unique.  So the plans must not show Inner Unique, which only
+-- EXPLAIN VERBOSE prints in text format, and each count is 2.
+-- yb_explain_hide_non_deterministic_fields disables VERBOSE.
+SET yb_explain_hide_non_deterministic_fields = false;
+EXPLAIN (VERBOSE, COSTS OFF) /*+ Leading((hash_codes hash_pk)) HashJoin(hash_codes hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+/*+ Leading((hash_codes hash_pk)) HashJoin(hash_codes hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+EXPLAIN (VERBOSE, COSTS OFF) /*+ Leading((hash_codes hash_pk)) MergeJoin(hash_codes hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+/*+ Leading((hash_codes hash_pk)) MergeJoin(hash_codes hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+EXPLAIN (VERBOSE, COSTS OFF) /*+ Leading((hash_codes hash_pk)) NestLoop(hash_codes hash_pk) SeqScan(hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+/*+ Leading((hash_codes hash_pk)) NestLoop(hash_codes hash_pk) SeqScan(hash_pk) */ SELECT count(*) FROM hash_codes JOIN hash_pk ON yb_hash_code(hash_pk.k) = hash_codes.h;
+SET yb_explain_hide_non_deterministic_fields = true;
+
+-- GH-34733, GH-31403: yb_hash_code(k) is not key column k or r, so a NullTest
+-- on it is not an index condition on either column.
+-- TODO(#34807): use the fact that yb_hash_code never returns NULL to avoid a
+-- post-scan filter.
+EXPLAIN (COSTS OFF) /*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NULL;
+/*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NULL;
+EXPLAIN (COSTS OFF) /*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NOT NULL;
+/*+ IndexScan(hash_range_pk) */ SELECT count(*) FROM hash_range_pk WHERE yb_hash_code(k) IS NOT NULL;
+
+-- The comparison value of an index condition must be known before the scan
+-- starts, so a yb_hash_code comparison with a column of the scanned row or
+-- with a volatile value is a filter.
+CREATE TABLE same_row_cmp (k int PRIMARY KEY, j int);
+INSERT INTO same_row_cmp SELECT k, yb_hash_code(k) + (k % 2) FROM hash_pk;
+-- A column of the scanned row.  Both operand orders are tested because
+-- yb_match_clause_to_index checks each separately.
+EXPLAIN (COSTS OFF) /*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE yb_hash_code(k) = j ORDER BY k;
+/*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE yb_hash_code(k) = j ORDER BY k;
+EXPLAIN (COSTS OFF) /*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE j = yb_hash_code(k) ORDER BY k;
+/*+ IndexScan(same_row_cmp) */ SELECT * FROM same_row_cmp WHERE j = yb_hash_code(k) ORDER BY k;
+-- A volatile value.  PG evaluates a volatile function at every row where its
+-- value is needed, and never in an index condition, which evaluates its
+-- comparison value once.  So each row is compared with a new value: the first
+-- with 0, which passes, and every later one with 100000 or more, which fails,
+-- so the count is 1.
+CREATE SEQUENCE hash_code_seq MINVALUE 0 START 0 INCREMENT 100000;
+EXPLAIN (COSTS OFF) /*+ IndexScan(same_row_cmp) */ SELECT count(*) FROM same_row_cmp WHERE yb_hash_code(k) >= nextval('hash_code_seq');
+/*+ IndexScan(same_row_cmp) */ SELECT count(*) FROM same_row_cmp WHERE yb_hash_code(k) >= nextval('hash_code_seq');
+DROP SEQUENCE hash_code_seq;
+DROP TABLE hash_pk, hash_range_pk, hash_codes, same_row_cmp;

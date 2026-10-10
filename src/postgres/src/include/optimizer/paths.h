@@ -85,6 +85,7 @@ extern void expand_indexqual_conditions(IndexOptInfo *index,
 							List *indexclauses, List *indexclausecols,
 							List **indexquals_p, List **indexqualcols_p);
 extern void check_index_predicates(PlannerInfo *root, RelOptInfo *rel);
+extern bool yb_hash_code_match_index(Node *expr, IndexOptInfo *index);
 extern Expr *adjust_rowcompare_for_index(RowCompareExpr *clause,
 							IndexOptInfo *index,
 							int indexcol,
