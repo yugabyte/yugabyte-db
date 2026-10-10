@@ -83,6 +83,12 @@ As soon as a zone outage occurs, YugabyteDB assumes that all nodes in that zone 
 Failure of **followers** has no impact on reads and writes. Only the tablet **leaders** serve reads and writes.
 {{</note>}}
 
+## Partial failures
+
+A node can be unhealthy without being down. A slow leader keeps committing writes while it still has a quorum and can persist them. Followers elect a new leader once heartbeats time out or durable write progress stops. A node can keep heartbeating while local storage writes fail.
+
+Timelines for these cases are in [Handle gray failures](../../../explore/fault-tolerance/handling-gray-failures/).
+
 ## RPO and RTO on zone outage
 
 The recovery point objective (RPO) for each of these tablets is 0, meaning no data is lost in the failover to another zone. The recovery time objective (RTO) is 3 seconds, which is the time window for completing the failover and becoming operational out of the new zones, as per the following diagram:
