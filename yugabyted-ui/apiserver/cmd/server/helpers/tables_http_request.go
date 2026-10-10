@@ -107,7 +107,8 @@ type TableInfoStruct struct {
     TableType            string               `json:"table_type"`
     TableState           string               `json:"table_state"`
     TableStateMessage    string               `json:"table_state_message"`
-    TableTablespaceOid   string               `json:"table_tablespace_oid"`
+    // The master reports the tablespace OID as a JSON number.
+    TableTablespaceOid   json.Number          `json:"table_tablespace_oid"`
     TableReplicationInfo TableReplicationInfo `json:"table_replication_info"`
     Columns              []ColumnInfo         `json:"columns"`
     Tablets              []TableTabletInfo    `json:"tablets"`

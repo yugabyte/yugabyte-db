@@ -1619,7 +1619,7 @@ func (c *Container) GetTableInfo(ctx echo.Context) error {
         TableType: tableInfo.TableInfo.TableType,
         TableState: tableInfo.TableInfo.TableState,
         TableStateMessage: tableInfo.TableInfo.TableStateMessage,
-        TableTablespaceOid: tableInfo.TableInfo.TableTablespaceOid,
+        TableTablespaceOid: tableInfo.TableInfo.TableTablespaceOid.String(),
         TableReplicationInfo: models.TableInfoTableReplicationInfo{
             LiveReplicas: models.TableReplicationInfo{
                 NumReplicas:
