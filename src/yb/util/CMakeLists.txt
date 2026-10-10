@@ -110,6 +110,7 @@ set(UTIL_SRCS
   backoff_waiter.cc
   bitmap.cc
   bloom_filter.cc
+  byte_buffer.cc
   bytes_formatter.cc
   cache_metrics.cc
   coding.cc
