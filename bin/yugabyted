@@ -9777,6 +9777,12 @@ class ControlScript(object):
             self.configs.temp_data["background"] = args.background
             self.configs.saved_data["ui"] = args.ui
             self.configs.saved_data["backup_daemon"] = args.backup_daemon
+            if args.initial_scripts_dir:
+                # Resolve the path here: the shell leaves "~" unexpanded in
+                # --initial_scripts_dir=~/dir, and the daemon changes its working directory
+                # before it runs the scripts.
+                args.initial_scripts_dir = os.path.abspath(os.path.realpath(
+                    os.path.expanduser(os.path.expandvars(args.initial_scripts_dir))))
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
             self.configs.temp_data[
                 "enhance_time_sync_via_clockbound"] = args.enhance_time_sync_via_clockbound
@@ -10499,7 +10505,7 @@ class ControlScript(object):
                 self.setup_env_init.setup_ycql_credentials(ycql_proxy)
 
         if self.configs.temp_data.get("initial_scripts_dir"):
-            init_scripts = os.path.abspath(self.configs.temp_data.get("initial_scripts_dir"))
+            init_scripts = self.configs.temp_data.get("initial_scripts_dir")
 
             if os.path.exists(init_scripts):
                 Output.log("Initialization scripts from the {} directory".format(init_scripts))
