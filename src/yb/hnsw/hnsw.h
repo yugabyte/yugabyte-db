@@ -14,6 +14,8 @@
 #pragma once
 
 #include <queue>
+#include <string>
+#include <unordered_map>
 
 #include <boost/range/iterator_range.hpp>
 
@@ -127,6 +129,13 @@ class UsearchMetric : public YbHnswMetric {
   unum::usearch::metric_punned_t impl_;
 };
 
+// Number of trailing coordinates that form the tenant code of vectors with the specified number
+// of dimensions, or 0 when tenant aware entry points are disabled.
+size_t TenantDims(size_t dimensions);
+
+// Returns the tenant key of the vector: the raw bytes of its last tenant_dims coordinates.
+std::string TenantKey(const void* coordinates, size_t dimensions, size_t tenant_dims);
+
 class YbHnsw {
  public:
   using CoordinateType = float;
@@ -186,11 +195,19 @@ class YbHnsw {
   boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(
       size_t vector, SearchCache& cache) const;
 
+  // Fills tenant_entries_ when tenant aware entry points are enabled.
+  void BuildTenantEntries();
+  size_t VectorLevel(VectorNo vector) const;
+
   MetricPtr metric_;
   const BlockCachePtr block_cache_;
 
   Header header_;
   FileBlockCachePtr file_block_cache_;
+
+  // Tenant key => the tenant's vector at the highest level, used as the search entry point.
+  size_t tenant_dims_ = 0;
+  std::unordered_map<std::string, VectorNo> tenant_entries_;
 };
 
 }  // namespace yb::hnsw
