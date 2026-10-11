@@ -85,7 +85,7 @@ namespace {
 
 // Check the leadership:
 // - initialization of catalog
-// - lease period elapsed since leadership
+// - lease period elapsed since leadership, unless this term created the universe
 // Return ok if those conditions are satisfied.  If not satisfied, fill the response error code and
 // return status.
 Status CheckLeadership(
@@ -96,6 +96,14 @@ Status CheckLeadership(
     // MasterServiceBase::HandleOnLeader.
     resp->mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     return l->first_failed_status();
+  }
+  // The wait lets tservers leased by an earlier leader show up.  Only a leader that finished
+  // loading the sys catalog, which persists the cluster config, grants YSQL leases, and a tserver
+  // without one has no backends, so the leader that created the universe can skip it.  The catalog
+  // lease does not keep backends from running, so it gets no such shortcut.
+  if (FLAGS_enable_ysql_operation_lease &&
+      catalog_manager->CreatedUniverseInTerm(l->epoch().leader_term)) {
+    return Status::OK();
   }
   const auto lease_ms = FLAGS_enable_ysql_operation_lease ?
       FLAGS_master_ysql_operation_lease_ttl_ms :
@@ -531,6 +539,15 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
       ts_uuids.emplace_back(ts_uuid);
       ts_map_[ts_uuid] = -1;
     }
+  }
+
+  // Progress is only made through tserver responses, so with no tserver to ask the job would never
+  // finish.  No leased tserver means no backends.
+  if (ts_uuids.empty()) {
+    LOG_WITH_PREFIX(INFO) << "no tservers with a live lease: completing";
+    master_->ysql_backends_manager()->TerminateJob(
+        shared_from_this(), MonitoredTaskState::kComplete);
+    return Status::OK();
   }
 
   for (const auto& ts_uuid : ts_uuids) {
