@@ -113,6 +113,7 @@ struct ExpectedSpan {
 struct TraceparentInfo {
   std::string full;
   std::string trace_id;
+  std::string span_id;
 };
 
 struct TestQuery {
@@ -191,14 +192,138 @@ std::string RandomHexString(int num_bytes) {
   return result;
 }
 
-TraceparentInfo GenerateTraceparent() {
+TraceparentInfo GenerateTraceparentWithFlags(std::string_view flags) {
   auto trace_id = RandomHexString(16);
   auto parent_id = RandomHexString(8);
   return {
-      .full = Format("00-$0-$1-01", trace_id, parent_id),
+      .full = Format("00-$0-$1-$2", trace_id, parent_id, flags),
       .trace_id = trace_id,
+      .span_id = parent_id,
   };
 }
+
+TraceparentInfo GenerateTraceparent() {
+  return GenerateTraceparentWithFlags("01");
+}
+
+// Minimal wire-protocol client for what libpq cannot send: an Execute with a row limit, which
+// suspends the portal so later Execute+Sync cycles run without a Bind.
+class RawPgConn {
+ public:
+  Status Connect(const HostPort& host_port, const std::string& user, const std::string& db) {
+    auto endpoint = VERIFY_RESULT(ParseEndpoint(host_port.ToString(), 0));
+    RETURN_NOT_OK(socket_.Init(0));
+    RETURN_NOT_OK(socket_.Connect(endpoint));
+    std::string body;
+    AppendInt32(&body, 3 << 16);  // protocol 3.0
+    AppendCString(&body, "user");
+    AppendCString(&body, user);
+    AppendCString(&body, "database");
+    AppendCString(&body, db);
+    body.push_back(0);
+    RETURN_NOT_OK(Send(0, body));
+    return ReadUntilReadyForQuery();
+  }
+
+  Status SimpleQuery(const std::string& sql) {
+    std::string body;
+    AppendCString(&body, sql);
+    RETURN_NOT_OK(Send('Q', body));
+    return ReadUntilReadyForQuery();
+  }
+
+  Status Parse(const std::string& stmt, const std::string& query) {
+    std::string body;
+    AppendCString(&body, stmt);
+    AppendCString(&body, query);
+    AppendInt16(&body, 0);  // no parameter types
+    RETURN_NOT_OK(Send('P', body));
+    RETURN_NOT_OK(Send('S', ""));
+    return ReadUntilReadyForQuery();
+  }
+
+  Status BindExecute(const std::string& portal, const std::string& stmt, int32_t max_rows) {
+    std::string body;
+    AppendCString(&body, portal);
+    AppendCString(&body, stmt);
+    AppendInt16(&body, 0);  // no parameter format codes
+    AppendInt16(&body, 0);  // no parameters
+    AppendInt16(&body, 0);  // no result format codes
+    RETURN_NOT_OK(Send('B', body));
+    return Execute(portal, max_rows);
+  }
+
+  Status Execute(const std::string& portal, int32_t max_rows) {
+    std::string body;
+    AppendCString(&body, portal);
+    AppendInt32(&body, max_rows);
+    RETURN_NOT_OK(Send('E', body));
+    RETURN_NOT_OK(Send('S', ""));
+    return ReadUntilReadyForQuery();
+  }
+
+ private:
+  static void AppendInt32(std::string* out, int32_t value) {
+    for (int shift = 24; shift >= 0; shift -= 8) {
+      out->push_back(static_cast<char>((value >> shift) & 0xff));
+    }
+  }
+
+  static void AppendInt16(std::string* out, int16_t value) {
+    out->push_back(static_cast<char>((value >> 8) & 0xff));
+    out->push_back(static_cast<char>(value & 0xff));
+  }
+
+  static void AppendCString(std::string* out, const std::string& value) {
+    out->append(value);
+    out->push_back(0);
+  }
+
+  static int32_t ReadInt32(const uint8_t* buf) {
+    return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
+  }
+
+  MonoTime Deadline() const { return MonoTime::NowPlus(30s * kTimeMultiplier); }
+
+  // type 0 is the startup message, which has no type byte.
+  Status Send(char type, const std::string& body) {
+    std::string msg;
+    if (type) {
+      msg.push_back(type);
+    }
+    AppendInt32(&msg, narrow_cast<int32_t>(body.size() + 4));
+    msg += body;
+    return socket_.BlockingWrite(
+        pointer_cast<const uint8_t*>(msg.data()), msg.size(), Deadline());
+  }
+
+  Status ReadUntilReadyForQuery() {
+    for (;;) {
+      uint8_t header[5];
+      RETURN_NOT_OK(socket_.BlockingRecv(header, sizeof(header), Deadline()));
+      std::string body(ReadInt32(header + 1) - 4, 0);
+      if (!body.empty()) {
+        RETURN_NOT_OK(socket_.BlockingRecv(
+            pointer_cast<uint8_t*>(body.data()), body.size(), Deadline()));
+      }
+      switch (header[0]) {
+        case 'Z':
+          return Status::OK();
+        case 'E':
+          return STATUS_FORMAT(QLError, "Server error: $0", body);
+        case 'R':
+          if (ReadInt32(pointer_cast<const uint8_t*>(body.data())) != 0) {
+            return STATUS(NotSupported, "Only trust authentication is supported");
+          }
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  Socket socket_;
+};
 
 class OtlpHttpCollector {
   // All executor node span names produced by YbGetExecNodeSpanName() in execProcnode.c.
@@ -512,6 +637,82 @@ class OtlpHttpCollector {
         },
         kOtelBatchScheduleDelayMs * kTimeMultiplier * 30ms,
         Format("$0 '$1' span(s) in trace '$2'", expected_count, span_op_name, trace_id));
+  }
+
+  size_t CountSpansInTrace(std::string_view trace_id, std::string_view span_op_name) const
+      EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(std::string(trace_id));
+    if (it == traces_.end()) return 0;
+    return std::count_if(
+        it->second.spans.begin(), it->second.spans.end(),
+        [span_op_name](const Span& s) { return s.op_name == span_op_name; });
+  }
+
+  std::vector<std::string> TraceIds() const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    std::vector<std::string> ids;
+    for (const auto& [trace_id, _] : traces_) {
+      ids.push_back(trace_id);
+    }
+    return ids;
+  }
+
+  size_t NumTraces() const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return traces_.size();
+  }
+
+  // Waits for a trace whose root carries query_text; a sampled query's trace id is not known up
+  // front.
+  Result<Trace> WaitForTraceWithQueryText(std::string_view query_text) const EXCLUDES(mutex_) {
+    Trace found;
+    RETURN_NOT_OK(WaitFor(
+        [this, query_text, &found]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          for (const auto& [_, trace] : traces_) {
+            if (trace.query_text == query_text) {
+              found = trace;
+              return true;
+            }
+          }
+          return false;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 30ms,
+        Format("trace for query '$0'", query_text)));
+    return found;
+  }
+
+  // Waits until at least expected_count traces carry query_text on their root.
+  Result<std::vector<Trace>> WaitForTracesWithQueryText(
+      std::string_view query_text, size_t expected_count) const EXCLUDES(mutex_) {
+    std::vector<Trace> found;
+    RETURN_NOT_OK(WaitFor(
+        [this, query_text, expected_count, &found]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          found.clear();
+          for (const auto& [_, trace] : traces_) {
+            if (trace.query_text == query_text) {
+              found.push_back(trace);
+            }
+          }
+          return found.size() >= expected_count;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 30ms,
+        Format("$0 trace(s) for query '$1'", expected_count, query_text)));
+    return found;
+  }
+
+  std::optional<Span> FindRootSpan(const std::string& trace_id) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return std::nullopt;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name == "query") {
+        return span;
+      }
+    }
+    return std::nullopt;
   }
 
   // Waits until each name in child_op_names has a span whose parent_span_id
@@ -955,6 +1156,16 @@ class DistTraceTest : public LibPqTestBase {
     return trace;
   }
 
+  Status SetSampleRate(const std::string& rate) {
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_dist_trace_sample_rate", rate));
+    return WaitFor(
+        [this, &rate]() -> Result<bool> {
+          return VERIFY_RESULT(conn_->FetchRow<std::string>(
+              "SHOW yb_dist_trace_sample_rate")) == rate;
+        },
+        30s * kTimeMultiplier, Format("yb_dist_trace_sample_rate = $0", rate));
+  }
+
   Status CreateTable(const std::string& table_name, int num_rows = 20) {
     RETURN_NOT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (id int, val text)", table_name));
     RETURN_NOT_OK(conn_->ExecuteFormat(
@@ -1155,6 +1366,13 @@ TEST_F(DistTraceTest, TestGucPriorityOverComment) {
   ASSERT_EQ(warnings.size(), 1);
   ASSERT_STR_CONTAINS(warnings.back(),
       "yb_dist_tracecontext GUC takes priority");
+
+  // The comment is parsed before the GUC is considered, so a malformed one reports its own
+  // error instead of the priority warning.
+  ASSERT_OK(conn_->FetchFormat(
+      "/*traceparent='$0'*/ SELECT 1;", kInvalidTraceparentValues[0]));
+  ASSERT_EQ(warnings.size(), 2);
+  ASSERT_STR_CONTAINS(warnings.back(), "traceparent format is invalid");
 }
 
 TEST_F(DistTraceTest, TestTraceparentGucSetLocal) {
@@ -1779,6 +1997,330 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
            {SpanType::kExtSync, 1},
            {SpanType::kCommit, 1}}),
   }));
+}
+
+// The comment traceparent is part of the stored statement text, so every later
+// Bind/Execute/Sync cycle is parented to it too, regardless of the sample rate.
+TEST_F(DistTraceTest, TestExtendedQueryProtocolPreparedStatementReuse) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  auto tp = GenerateTraceparent();
+  const auto query = Format("/*traceparent='$0'*/ SELECT 1", tp.full);
+
+  ASSERT_OK(ext_conn.Prepare("stmt", query));
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_OK(ext_conn.FetchPrepared("stmt"));
+  }
+
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.parse", 1));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.bind", 3));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.execute", 3));
+  ASSERT_EQ(collector_.NumTraces(), 1);
+  ASSERT_EQ(collector_.CountSpansInTrace(tp.trace_id, "query"), 4);
+
+  // Parse and each execution are separate cycles, each under its own root.
+  const auto parse_root_id =
+      collector_.FindSpansByName(tp.trace_id, "ext.parse")[0].parent_span_id;
+  std::unordered_set<std::string> bind_roots, execute_roots;
+  for (const auto& span : collector_.FindSpansByName(tp.trace_id, "ext.bind")) {
+    ASSERT_NE(span.parent_span_id, parse_root_id);
+    bind_roots.insert(span.parent_span_id);
+  }
+  for (const auto& span : collector_.FindSpansByName(tp.trace_id, "ext.execute")) {
+    execute_roots.insert(span.parent_span_id);
+  }
+  ASSERT_EQ(bind_roots.size(), 3);
+  ASSERT_EQ(bind_roots, execute_roots);
+
+  // Dropping the statement frees the stored span context with the plan source.
+  ASSERT_OK(ext_conn.Execute("DEALLOCATE stmt"));
+  ASSERT_OK(ext_conn.Fetch("SELECT 2"));
+}
+
+// With a sampled GUC set, sampling is not consulted: every cycle gets its own root under the
+// GUC parent.
+TEST_F(DistTraceTest, TestExtendedQueryProtocolGucTracesEveryCycle) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(ext_conn.ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  constexpr size_t kNumExecutions = 2;
+
+  ASSERT_OK(ext_conn.Prepare("stmt", "SELECT 3"));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.parse", 1));
+
+  for (size_t i = 0; i < kNumExecutions; ++i) {
+    ASSERT_OK(ext_conn.FetchPrepared("stmt"));
+  }
+
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.bind", kNumExecutions));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.execute", kNumExecutions));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "query", 1 + kNumExecutions));
+  for (const auto& root : collector_.FindSpansByName(tp.trace_id, "query")) {
+    ASSERT_EQ(root.parent_span_id, tp.span_id);
+    ASSERT_EQ(root.query_text, "SELECT 3");
+  }
+}
+
+// Sampling is off by default: queries without a traceparent produce no trace.
+TEST_F(DistTraceTest, TestNoSamplingByDefault) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  ASSERT_OK(conn_->Fetch("SELECT 4"));
+  ASSERT_OK(ext_conn.Prepare("stmt", "SELECT 5"));
+  ASSERT_OK(ext_conn.FetchPrepared("stmt"));
+  ASSERT_OK(collector_.VerifyNoTracesEmitted());
+}
+
+// A Bind+Execute+Sync batch draws once. Without that, a dropped Bind lets Execute draw again
+// and a winning second draw yields a trace with ext.execute but no ext.bind.
+TEST_F(DistTraceTest, TestOneSampleDrawPerCycle) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  constexpr size_t kNumExecutions = 40;
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_dist_trace_sample_rate", "0.5"));
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        return VERIFY_RESULT(conn_->FetchRow<std::string>(
+            "SHOW yb_dist_trace_sample_rate")) == "0.5";
+      },
+      30s * kTimeMultiplier, "yb_dist_trace_sample_rate = 0.5"));
+  ASSERT_OK(ext_conn.Prepare("stmt", "SELECT 18"));
+  for (size_t i = 0; i < kNumExecutions; ++i) {
+    ASSERT_OK(ext_conn.FetchPrepared("stmt"));
+  }
+
+  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 2ms);
+  for (const auto& trace_id : collector_.TraceIds()) {
+    if (collector_.CountSpansInTrace(trace_id, "ext.execute") > 0) {
+      ASSERT_EQ(collector_.CountSpansInTrace(trace_id, "ext.bind"), 1) << trace_id;
+    }
+  }
+}
+
+// A traceparent whose sampled flag is clear (-00) is treated as absent: with sampling off
+// it starts no trace, through the GUC or a comment, and an unsampled GUC neither takes
+// priority over a sampled comment traceparent nor warns about it.
+TEST_F(DistTraceTest, TestUnsampledTraceparentNotTraced) {
+  auto tp = GenerateTraceparentWithFlags("00");
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT 14"));
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+  auto query = Format("/*traceparent='$0'*/ SELECT 15", tp.full);
+  ASSERT_OK(conn_->Fetch(query));
+  ASSERT_OK(collector_.VerifyNoTracesEmitted());
+
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  const auto& warnings = CaptureWarnings();
+  auto sampled_tp = GenerateTraceparent();
+  ASSERT_OK(conn_->Fetch(Format("/*traceparent='$0'*/ SELECT 24", sampled_tp.full)));
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(sampled_tp.trace_id, "query"));
+  auto root = collector_.FindRootSpan(sampled_tp.trace_id);
+  ASSERT_TRUE(root.has_value());
+  ASSERT_EQ(root->parent_span_id, sampled_tp.span_id);
+  ASSERT_TRUE(warnings.empty()) << warnings.front();
+}
+
+// The rate is a runtime tserver flag; a change reaches sessions that are already open.
+TEST_F(DistTraceTest, TestSampleRateFlagChangeReachesOpenSession) {
+  auto wait_for_rate = [this](const std::string& rate) -> Status {
+    return WaitFor(
+        [this, &rate]() -> Result<bool> {
+          return VERIFY_RESULT(conn_->FetchRow<std::string>(
+              "SHOW yb_dist_trace_sample_rate")) == rate;
+        },
+        30s * kTimeMultiplier, Format("yb_dist_trace_sample_rate = $0", rate));
+  };
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_dist_trace_sample_rate", "1"));
+  ASSERT_OK(wait_for_rate("1"));
+  ASSERT_OK(conn_->Fetch("SELECT 6"));
+  ASSERT_RESULT(collector_.WaitForTraceWithQueryText("SELECT 6"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_dist_trace_sample_rate", "0"));
+  ASSERT_OK(wait_for_rate("0"));
+  ASSERT_OK(conn_->Fetch("SELECT 7"));
+  ASSERT_OK(collector_.VerifyQueryNotTraced("SELECT 7"));
+}
+
+// --- Sampling tests: rate 1, so every traceparent-less cycle is traced ---
+
+class DistTraceSamplingTest : public DistTraceTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceTest::ConfigureDistTraceOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_yb_dist_trace_sample_rate=1");
+  }
+};
+
+// A sampled root starts a new trace: no parent.
+TEST_F(DistTraceSamplingTest, TestSimpleQuerySampled) {
+  ASSERT_OK(conn_->Fetch("SELECT 8"));
+  auto trace = ASSERT_RESULT(collector_.WaitForTraceWithQueryText("SELECT 8"));
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(trace.trace_id, "execute"));
+  auto root = collector_.FindRootSpan(trace.trace_id);
+  ASSERT_TRUE(root.has_value());
+  ASSERT_TRUE(root->parent_span_id.empty());
+}
+
+// Parse and each sampled execution are separate traces; every root carries the query text.
+TEST_F(DistTraceSamplingTest, TestPreparedStatementExecutionsAreSeparateTraces) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  const std::string query = "SELECT 9";
+  constexpr size_t kNumExecutions = 3;
+
+  ASSERT_OK(ext_conn.Prepare("stmt", query));
+  auto parse_trace = ASSERT_RESULT(collector_.WaitForTraceWithQueryText(query));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(parse_trace.trace_id, "ext.parse", 1));
+
+  for (size_t i = 0; i < kNumExecutions; ++i) {
+    ASSERT_OK(ext_conn.FetchPrepared("stmt"));
+  }
+
+  auto traces = ASSERT_RESULT(collector_.WaitForTracesWithQueryText(query, 1 + kNumExecutions));
+  size_t num_parses = 0, num_executions = 0;
+  for (const auto& trace : traces) {
+    auto root = collector_.FindRootSpan(trace.trace_id);
+    ASSERT_TRUE(root.has_value());
+    ASSERT_TRUE(root->parent_span_id.empty());
+    ASSERT_EQ(collector_.CountSpansInTrace(trace.trace_id, "query"), 1);
+    if (collector_.CountSpansInTrace(trace.trace_id, "ext.parse") == 1) {
+      ++num_parses;
+      ASSERT_EQ(collector_.CountSpansInTrace(trace.trace_id, "ext.bind"), 0);
+    } else {
+      ++num_executions;
+      ASSERT_OK(collector_.VerifySpanCountInTrace(trace.trace_id, "ext.bind", 1));
+      ASSERT_OK(collector_.VerifySpanCountInTrace(trace.trace_id, "ext.execute", 1));
+    }
+  }
+  ASSERT_EQ(num_parses, 1);
+  ASSERT_EQ(num_executions, kNumExecutions);
+}
+
+// A comment traceparent in the stored statement text parents every execution.
+TEST_F(DistTraceSamplingTest, TestCommentTraceparentParentsExecutions) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  auto tp = GenerateTraceparent();
+  constexpr size_t kNumExecutions = 2;
+
+  ASSERT_OK(ext_conn.Prepare("stmt", Format("/*traceparent='$0'*/ SELECT 10", tp.full)));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.parse", 1));
+  const auto parse_root_id =
+      collector_.FindSpansByName(tp.trace_id, "ext.parse")[0].parent_span_id;
+
+  for (size_t i = 0; i < kNumExecutions; ++i) {
+    ASSERT_OK(ext_conn.FetchPrepared("stmt"));
+  }
+
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "query", 1 + kNumExecutions));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.execute", kNumExecutions));
+  size_t num_executions = 0;
+  for (const auto& root : collector_.FindSpansByName(tp.trace_id, "query")) {
+    ASSERT_EQ(root.parent_span_id, tp.span_id);
+    if (root.span_id == parse_root_id) {
+      continue;
+    }
+    ++num_executions;
+    size_t binds = 0, executes = 0;
+    for (const auto& child : collector_.FindSpansByParent(tp.trace_id, root.span_id)) {
+      binds += child.op_name == "ext.bind";
+      executes += child.op_name == "ext.execute";
+    }
+    ASSERT_EQ(binds, 1);
+    ASSERT_EQ(executes, 1);
+  }
+  ASSERT_EQ(num_executions, kNumExecutions);
+}
+
+// With sampling on, a -00 traceparent falls through to the draw: the query is traced as a
+// fresh trace, not under the unsampled parent.
+TEST_F(DistTraceSamplingTest, TestUnsampledTraceparentFallsBackToSampling) {
+  auto tp = GenerateTraceparentWithFlags("00");
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT 16"));
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+  auto query = Format("/*traceparent='$0'*/ SELECT 17", tp.full);
+  ASSERT_OK(conn_->Fetch(query));
+
+  for (const auto& text : {std::string("SELECT 16"), query}) {
+    auto trace = ASSERT_RESULT(collector_.WaitForTraceWithQueryText(text));
+    ASSERT_NE(trace.trace_id, tp.trace_id);
+    auto root = collector_.FindRootSpan(trace.trace_id);
+    ASSERT_TRUE(root.has_value());
+    ASSERT_TRUE(root->parent_span_id.empty());
+  }
+  ASSERT_EQ(collector_.CountSpansInTrace(tp.trace_id, "query"), 0);
+}
+
+// A row-limited Execute suspends the portal. The first cycle has Bind+Execute, each later
+// Execute+Sync is its own cycle: a separate trace with the query text and no Bind.
+TEST_F(DistTraceSamplingTest, TestSuspendedPortalExecuteCyclesAreSeparateTraces) {
+  const std::string query = "SELECT g FROM generate_series(1, 8) g";
+  constexpr size_t kNumFetches = 4;
+  RawPgConn raw;
+  ASSERT_OK(raw.Connect(cluster_->ysql_hostport(0), PGConnSettings::kDefaultUser, "yugabyte"));
+  // Portals do not survive the end of a transaction.
+  ASSERT_OK(raw.SimpleQuery("BEGIN"));
+
+  ASSERT_OK(raw.Parse("stmt", query));
+  auto parse_trace = ASSERT_RESULT(collector_.WaitForTraceWithQueryText(query));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(parse_trace.trace_id, "ext.parse", 1));
+
+  ASSERT_OK(raw.BindExecute("ptl", "stmt", 2));
+  for (size_t i = 1; i < kNumFetches; ++i) {
+    ASSERT_OK(raw.Execute("ptl", 2));
+  }
+  ASSERT_OK(raw.SimpleQuery("COMMIT"));
+
+  auto traces = ASSERT_RESULT(collector_.WaitForTracesWithQueryText(query, 1 + kNumFetches));
+  size_t num_binds = 0, num_executes = 0;
+  for (const auto& trace : traces) {
+    auto root = collector_.FindRootSpan(trace.trace_id);
+    ASSERT_TRUE(root.has_value());
+    ASSERT_TRUE(root->parent_span_id.empty());
+    if (trace.trace_id == parse_trace.trace_id) {
+      continue;
+    }
+    ASSERT_OK(collector_.VerifySpanCountInTrace(trace.trace_id, "ext.execute", 1));
+    num_executes += collector_.CountSpansInTrace(trace.trace_id, "ext.execute");
+    num_binds += collector_.CountSpansInTrace(trace.trace_id, "ext.bind");
+  }
+  ASSERT_EQ(num_executes, kNumFetches);
+  ASSERT_EQ(num_binds, 1);
+}
+
+// Connections the tserver opens internally (tserver-key auth) are not sampled; a traceparent
+// they carry is still honored.
+TEST_F(DistTraceSamplingTest, TestInternalConnectionNotSampled) {
+  auto* ts = cluster_->tserver_daemons()[0];
+  auto auth_key = ASSERT_RESULT(GetPostgresAuthKey(ts));
+  auto internal = ASSERT_RESULT(CreateInternalPGConnBuilder(
+      HostPort(ts->bind_host(), ts->ysql_port()), "yugabyte", PGConnSettings::kDefaultUser,
+      auth_key, /* deadline= */ std::nullopt).Connect());
+
+  ASSERT_OK(internal.Fetch("SELECT 21"));
+  ASSERT_OK(collector_.VerifyQueryNotTraced("SELECT 21"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(internal.ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(internal.Fetch("SELECT 22"));
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(tp.trace_id, "query"));
+}
+
+class DistTraceSamplingConnMgrTest : public DistTraceSamplingTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceSamplingTest::ConfigureDistTraceOptions(options);
+    options->enable_ysql_conn_mgr = true;
+  }
+};
+
+// Conn-mgr backends authenticate with the tserver key like internal connections, but their
+// client queries are sampled.
+TEST_F(DistTraceSamplingConnMgrTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestSimpleQuerySampledViaConnMgr)) {
+  ASSERT_OK(conn_->Fetch("SELECT 23"));
+  auto trace = ASSERT_RESULT(collector_.WaitForTraceWithQueryText("SELECT 23"));
+  auto root = collector_.FindRootSpan(trace.trace_id);
+  ASSERT_TRUE(root.has_value());
+  ASSERT_TRUE(root->parent_span_id.empty());
 }
 
 // --- SPI tracing tests ---

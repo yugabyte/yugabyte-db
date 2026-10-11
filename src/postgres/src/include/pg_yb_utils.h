@@ -837,6 +837,12 @@ extern char *yb_default_replica_identity;
 extern char *yb_dist_tracecontext;
 
 /*
+ * Fraction (0 to 1) of protocol cycles without a traceparent that start a
+ * distributed trace of their own; 0 disables sampling.
+ */
+extern double yb_dist_trace_sample_rate;
+
+/*
  * If set to true, any DDLs that rewrite tables/indexes will fail after
  * the new table is created.
  */
