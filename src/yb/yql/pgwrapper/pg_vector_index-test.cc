@@ -32,6 +32,7 @@
 #include "yb/dockv/value_type.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -55,6 +56,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -166,7 +168,7 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
 }
 
-YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnswUsearch)(kHnswlib)(kYbHnswHnswlib));
+YB_DEFINE_ENUM(VectorIndexEngine, (kYbHnswUsearch)(kYbHnswHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 
 // Returns the tablet peers matching `filter` that currently host at least one vector index.
@@ -211,14 +213,8 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
     switch (Engine()) {
-      case VectorIndexEngine::kUsearch:
-        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "usearch";
-        break;
       case VectorIndexEngine::kYbHnswUsearch:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw";
-        break;
-      case VectorIndexEngine::kHnswlib:
-        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
         break;
       case VectorIndexEngine::kYbHnswHnswlib:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_hnswlib";
@@ -748,7 +744,7 @@ std::string ParamsToString(
   return Format(
       "$0$1$2",
       !is_colocated.has_value() ? "" : *is_colocated ? "Colocated" : "Distributed",
-      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1),
+      ToString(engine).substr(1),
       packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
 }
 
@@ -1815,13 +1811,8 @@ TEST_P(PgVectorIndexTest, Options) {
         prev_value = value;
       }
       switch (Engine()) {
-        case VectorIndexEngine::kUsearch:
-          break;
         case VectorIndexEngine::kYbHnswUsearch:
           expected_options += " backend: YB_HNSW_USEARCH";
-          break;
-        case VectorIndexEngine::kHnswlib:
-          expected_options += " backend: HNSWLIB";
           break;
         case VectorIndexEngine::kYbHnswHnswlib:
           expected_options += " backend: YB_HNSW_HNSWLIB";
@@ -1928,12 +1919,8 @@ struct TestParamTraits<PgDistributedVectorIndexTestParam> {
 
   static auto TestParamNameGenerator() {
     return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
-      auto engine = Engine(param_info.param);
-      auto packing_mode = GetPackingMode(param_info.param);
-      if (engine == VectorIndexEngine::kUsearch && packing_mode == PackingMode::kNone) {
-        return "None";
-      }
-      return ParamsToString(std::nullopt, engine, packing_mode);
+      return ParamsToString(
+          std::nullopt, Engine(param_info.param), GetPackingMode(param_info.param));
     };
   }
 };
@@ -2037,7 +2024,7 @@ template <typename TestClass>
 using PgVectorIndexColocatedPackingTestParamsDecorator =
     PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexColocatedPackingTestParam>;
 
-// Colocation only; engine and packing stay kUsearch / kNone.
+// Colocation only; engine and packing stay kYbHnswHnswlib / kNone.
 using PgVectorIndexColocationOnlyParam = bool;
 
 template <>
@@ -2049,7 +2036,7 @@ struct TestParamTraits<PgVectorIndexColocationOnlyParam> {
   }
 
   static VectorIndexEngine Engine(const ParamType&) {
-    return VectorIndexEngine::kUsearch;
+    return VectorIndexEngine::kYbHnswHnswlib;
   }
 
   static PackingMode GetPackingMode(const ParamType&) {
@@ -2242,6 +2229,51 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
       ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
           "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
       1);
+}
+
+// Snapshot import keeps the snapshot's vector index options, so a snapshot of an index without a
+// block-based backend (here: no backend set, as in indexes that predate the backend field) must be
+// rejected before the import creates anything.
+TEST_P(PgVectorIndexColocationOnlyTest, ImportRejectsDeprecatedBackend) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto schedule_snapshot = ASSERT_RESULT(snapshot_util.WaitScheduleSnapshot(schedule_id));
+  auto snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(schedule_snapshot.id()));
+  auto snapshots = ASSERT_RESULT(snapshot_util.ListSnapshots(
+      snapshot_id, client::ListDeleted::kFalse, client::PrepareForBackup::kTrue));
+  ASSERT_EQ(snapshots.size(), 1);
+  auto snapshot = snapshots[0];
+
+  size_t num_vector_indexes = 0;
+  for (auto& backup_entry : *snapshot.mutable_backup_entries()) {
+    auto& entry = *backup_entry.mutable_entry();
+    if (entry.type() != master::SysRowEntryType::TABLE) {
+      continue;
+    }
+    auto meta = ASSERT_RESULT(pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data()));
+    if (!meta.has_index_info() || !meta.index_info().has_vector_idx_options()) {
+      continue;
+    }
+    auto& options = *meta.mutable_index_info()->mutable_vector_idx_options();
+    ASSERT_EQ(options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
+    options.mutable_hnsw()->clear_backend();
+    entry.set_data(meta.SerializeAsString());
+    ++num_vector_indexes;
+  }
+  ASSERT_EQ(num_vector_indexes, 1);
+
+  auto import_result = snapshot_util.StartImportSnapshot(snapshot);
+  ASSERT_NOK(import_result);
+  ASSERT_TRUE(import_result.status().IsNotSupported()) << import_result.status();
+  ASSERT_STR_CONTAINS(import_result.status().ToString(), "no longer supported");
 }
 
 class PgDistributedVectorIndexTest
@@ -3870,7 +3902,7 @@ struct TestParamTraits<PgVectorIndexEngineOnlyParam> {
 
   static auto TestParamNameGenerator() {
     return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
-      // ToString(kUsearch) is "kUsearch"; drop the leading "k" to get "Usearch", "Hnswlib", etc.
+      // Drop the leading "k" of the enum value name, e.g. "kYbHnswHnswlib" -> "YbHnswHnswlib".
       return ToString(param_info.param).substr(1);
     };
   }
@@ -4592,7 +4624,7 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   tools::TmpDirProvider tmp_dir;
   ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
   ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
 
   auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
@@ -4789,7 +4821,7 @@ struct TestParamTraits<PgVectorIndexReverseMappingTestParam> {
   }
 
   static VectorIndexEngine Engine(const ParamType&) {
-    return VectorIndexEngine::kUsearch;
+    return VectorIndexEngine::kYbHnswHnswlib;
   }
 
   static PackingMode GetPackingMode(const ParamType& param) {
@@ -5790,6 +5822,17 @@ TEST_P(PgVectorIndexStorageSetCapacityTest, BootstrapReplayWith64VectorIndexes) 
 
   ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
   ASSERT_NO_FATALS(VerifyAllIndexesReturnAllRows());
+}
+
+class PgVectorIndexBackendFlagTest : public YBTest {};
+
+TEST_F(PgVectorIndexBackendFlagTest, RejectsNonBlockBasedBackends) {
+  for (const auto* backend : {"usearch", "hnswlib"}) {
+    ASSERT_NOK(SET_FLAG(vector_index_backend, backend));
+  }
+  for (const auto* backend : {"yb_hnsw", "yb_hnsw_usearch", "yb_hnsw_hnswlib"}) {
+    ASSERT_OK(SET_FLAG(vector_index_backend, backend));
+  }
 }
 
 }  // namespace yb::pgwrapper

@@ -19,6 +19,8 @@
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include "yb/common/common.pb.h"
+
 #include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -118,16 +120,21 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
   auto hnsw_options = ConvertToHnswOptions(options);
   auto backend = options.hnsw().backend();
   switch (backend) {
-    case HnswBackend::USEARCH: [[fallthrough]];
     case HnswBackend::YB_HNSW_USEARCH:
       return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, backend, mem_tracker);
-    case HnswBackend::HNSWLIB: [[fallthrough]];
+          block_cache, hnsw_options, mem_tracker);
     case HnswBackend::YB_HNSW_HNSWLIB:
       return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, backend, mem_tracker);
+          block_cache, hnsw_options, mem_tracker);
+    case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
+    case HnswBackend::DEPRECATED_HNSWLIB:
+      break;
   }
-  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, backend);
+  return STATUS_FORMAT(
+      NotSupported,
+      "Vector index backend $0 is no longer supported. Roll back to the previous release and drop "
+      "the index before upgrading",
+      HnswBackend_Name(backend));
 }
 
 template<vector_index::IndexableVectorType Vector,
@@ -493,8 +500,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return name_;
   }
 
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const override {
-    return lsm_.HasVectorId(vector_id);
+  Result<std::unordered_set<vector_index::VectorId>> AllVectorIds() const override {
+    return lsm_.AllVectorIds();
   }
 
   Result<size_t> TotalEntries() const override {

@@ -153,10 +153,6 @@ Result<std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
 
 namespace {
 
-void LogDistFunction(hnswlib::DISTFUNC<int> ptr) {
-  LOG(INFO) << "Unknown hnswlib distance function: " << reinterpret_cast<void*>(ptr);
-}
-
 void LogDistFunction(hnswlib::DISTFUNC<float> ptr) {
 #define CHECK_LOG_AND_RETURN(fname) \
   if (ptr == hnswlib::fname) { \
@@ -194,14 +190,13 @@ class HnswlibIndex :
   using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
 
   HnswlibIndex(
-      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
       const MemTrackerPtr& mem_tracker,
       std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space,
       vector_index::StoreVectorPayload store_vector_payload)
       : Base(store_vector_payload),
         block_cache_(block_cache),
         options_(options),
-        backend_(backend),
         space_(std::move(space)) {
     consumption_.Init(mem_tracker);
     static std::once_flag once_flag;
@@ -294,29 +289,13 @@ class HnswlibIndex :
   }
 
   Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveIndex(const std::string& path) {
-    if (std::is_same_v<DistanceResult, float> && backend_ == HnswBackend::YB_HNSW_HNSWLIB) {
-      return ImportYbHnsw<Vector, DistanceResult>(
-          *hnsw_, path, block_cache_, options_, this->payloads());
-    }
-    try {
-      hnsw_->saveIndex(path);
-    } catch (std::exception& e) {
-      return STATUS_FORMAT(
-          IOError, "Failed to save Hnswlib index to file $0: $1", path, e.what());
-    }
-    return nullptr;
+    return ImportYbHnsw<Vector, DistanceResult>(
+        *hnsw_, path, block_cache_, options_, this->payloads());
   }
 
   Status DoLoadIndex(const std::string& path, size_t) {
-    // Create hnsw_ before loading from file.
-    RETURN_NOT_OK(DoReserve(0, 0, 0, rocksdb::Cache::ReservationMode::kAlways));
-    try {
-      hnsw_->loadIndex(path, space_.get());
-    } catch (std::exception& e) {
-      return STATUS_FORMAT(
-          IOError, "Failed to load Hnswlib index from file $0: $1", path, e.what());
-    }
-    return Status::OK();
+    // Saved chunks are always loaded as YbHnsw, see HnswlibIndexTraits::Create.
+    return STATUS_FORMAT(NotSupported, "Hnswlib index cannot be loaded from file: $0", path);
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
@@ -346,6 +325,20 @@ class HnswlibIndex :
   Result<Vector> GetVector(VectorId vector_id) const override {
     return STATUS(
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
+  }
+
+  Result<std::vector<VectorId>> VectorIds() const override {
+    std::vector<VectorId> result;
+    if (!hnsw_) {
+      return result;
+    }
+    // addPoint registers the label under label_lookup_lock before it writes the element.
+    std::lock_guard lock(hnsw_->label_lookup_lock);
+    result.reserve(hnsw_->label_lookup_.size());
+    for (const auto& [vector_id, _] : hnsw_->label_lookup_) {
+      result.push_back(vector_id);
+    }
+    return result;
   }
 
   static std::string StatsToStringHelper(const Stats& stats) {
@@ -412,7 +405,6 @@ class HnswlibIndex :
 
   const hnsw::BlockCachePtr block_cache_;
   const HNSWOptions options_;
-  const HnswBackend backend_;
   // Shared with HnswlibIndexTraits and all indexes it created.
   const std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
@@ -469,12 +461,11 @@ class HnswlibIndexTraits :
   vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
       vector_index::FactoryMode mode,
       vector_index::StoreVectorPayload store_vector_payload) const override {
-    if (std::is_same_v<DistanceResult, float> && backend_ == HnswBackend::YB_HNSW_HNSWLIB &&
-        mode == vector_index::FactoryMode::kLoad) {
+    if (mode == vector_index::FactoryMode::kLoad) {
       return CreateYbHnsw<Vector, DistanceResult>(block_cache_, options_);
     }
     return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(
-        block_cache_, options_, backend_, mem_tracker_, space_, store_vector_payload);
+        block_cache_, options_, mem_tracker_, space_, store_vector_payload);
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
@@ -487,20 +478,13 @@ class HnswlibIndexTraits :
         options_.dimensions * sizeof(Scalar));
   }
 
-  bool StoresPayloadInSeparateFile() const override {
-    return true;
-  }
-
  private:
   // Only CreateHnswlibIndexTraits is allowed to instantiate this class, since Init must be
   // called after construction.
   HnswlibIndexTraits(
-      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
       const MemTrackerPtr& mem_tracker)
-      : block_cache_(block_cache), options_(options), backend_(backend),
-        mem_tracker_(mem_tracker) {
-    LOG_IF(DFATAL, backend != HnswBackend::HNSWLIB && backend != HnswBackend::YB_HNSW_HNSWLIB) <<
-        "Invalid backend for Hnswlib index: " << HnswBackend_Name(backend);
+      : block_cache_(block_cache), options_(options), mem_tracker_(mem_tracker) {
   }
 
   Status Init() {
@@ -512,11 +496,10 @@ class HnswlibIndexTraits :
   friend Result<vector_index::VectorIndexTraitsPtr<FriendVector, FriendDistanceResult>>
       ann_methods::CreateHnswlibIndexTraits(
           const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-          HnswBackend backend, const MemTrackerPtr& mem_tracker);
+          const MemTrackerPtr& mem_tracker);
 
   const hnsw::BlockCachePtr block_cache_;
   const HNSWOptions options_;
-  const HnswBackend backend_;
   const MemTrackerPtr mem_tracker_;
   // Shared with all created indexes, see Create. Safe to share: the space is immutable after
   // creation and only provides data sizes and a stateless distance function.
@@ -528,9 +511,9 @@ class HnswlibIndexTraits :
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateHnswlibIndexTraits(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-    HnswBackend backend, const MemTrackerPtr& mem_tracker) {
+    const MemTrackerPtr& mem_tracker) {
   std::shared_ptr<HnswlibIndexTraits<Vector, DistanceResult>> traits(
-      new HnswlibIndexTraits<Vector, DistanceResult>(block_cache, options, backend, mem_tracker));
+      new HnswlibIndexTraits<Vector, DistanceResult>(block_cache, options, mem_tracker));
   RETURN_NOT_OK(traits->Init());
   return traits;
 }
@@ -538,10 +521,6 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateHnswlib
 template Result<vector_index::VectorIndexTraitsPtr<FloatVector, float>>
     CreateHnswlibIndexTraits<FloatVector, float>(
         const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-        HnswBackend backend, const MemTrackerPtr& mem_tracker);
-template Result<vector_index::VectorIndexTraitsPtr<UInt8Vector, int32_t>>
-    CreateHnswlibIndexTraits<UInt8Vector, int32_t>(
-        const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-        HnswBackend backend, const MemTrackerPtr& mem_tracker);
+        const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::ann_methods

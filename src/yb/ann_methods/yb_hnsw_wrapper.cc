@@ -141,6 +141,18 @@ class YbHnswIndex :
     return STATUS_FORMAT(NotSupported, "GetVector not implemented");
   }
 
+  Result<std::vector<VectorId>> VectorIds() const override {
+    hnsw::SearchCache cache;
+    hnsw::SearchCacheScope cache_scope(cache, index_);
+    std::vector<VectorId> result;
+    const auto size = Size();
+    result.reserve(size);
+    for (size_t i = 0; i != size; ++i) {
+      result.push_back(cache.GetVectorIdAndPayload(i).first);
+    }
+    return result;
+  }
+
   std::string IndexStatsStr() const override {
     return index_.header().ToString();
   }

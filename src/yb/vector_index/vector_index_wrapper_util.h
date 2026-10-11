@@ -72,6 +72,10 @@ class VectorIndexReaderAdapter
     return STATUS(NotSupported, "GetVector not implemented");
   }
 
+  Result<std::vector<VectorId>> VectorIds() const override {
+    return source_reader_.VectorIds();
+  }
+
   std::unique_ptr<DestinationIterator> BeginImpl() const override {
     SourceIterator source_begin_iterator = source_reader_.begin();
     return std::make_unique<VectorIteratorAdapter>(std::move(source_begin_iterator));

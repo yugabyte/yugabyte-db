@@ -14,6 +14,7 @@
 #pragma once
 
 #include <mutex>
+#include <unordered_set>
 
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
@@ -202,7 +203,7 @@ class DocVectorIndex {
   virtual storage::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
-  virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
+  virtual Result<std::unordered_set<vector_index::VectorId>> AllVectorIds() const = 0;
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
 

@@ -71,23 +71,18 @@ namespace yb::ann_methods {
 
 namespace {
 
-using ParamType = std::tuple<ANNMethodKind, bool, vector_index::StoreVectorPayload>;
+using ParamType = std::tuple<ANNMethodKind, vector_index::StoreVectorPayload>;
 
 ANNMethodKind GetANNMethodKind(const ParamType& param) {
   return std::get<0>(param);
 }
 
-bool UseYbHnsw(const ParamType& param) {
+vector_index::StoreVectorPayload StorePayload(const ParamType& param) {
   return std::get<1>(param);
 }
 
-vector_index::StoreVectorPayload StorePayload(const ParamType& param) {
-  return std::get<2>(param);
-}
-
 std::string ParamToString(const testing::TestParamInfo<ParamType>& param_info) {
-  return "k"s +
-         (UseYbHnsw(param_info.param) ? "YbHnsw" : "") +
+  return "kYbHnsw"s +
          AsString(GetANNMethodKind(param_info.param)).substr(1) +
          (StorePayload(param_info.param) ? "WithPayload" : "");
 }
@@ -362,24 +357,20 @@ class VectorLSMUsearchTest : public VectorLSMTestBase {
  public:
   VectorLSMUsearchTest()
       : VectorLSMTestBase({
-            ANNMethodKind::kUsearch, /* use_yb_hnsw = */ false,
-            vector_index::StoreVectorPayload::kFalse,
+            ANNMethodKind::kUsearch, vector_index::StoreVectorPayload::kFalse,
         }) {}
 };
 
 Result<vector_index::VectorIndexTraitsPtr<std::vector<float>, float>> GetVectorIndexTraits(
     const ParamType& param, const vector_index::HNSWOptions& options,
     const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker = {}) {
-  bool use_yb_hnsw = UseYbHnsw(param);
   switch (GetANNMethodKind(param)) {
     case ANNMethodKind::kUsearch:
       return CreateUsearchIndexTraits<std::vector<float>, float>(
-          block_cache, options,
-          use_yb_hnsw ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::USEARCH, mem_tracker);
+          block_cache, options, mem_tracker);
     case ANNMethodKind::kHnswlib:
       return CreateHnswlibIndexTraits<std::vector<float>, float>(
-          block_cache, options,
-          use_yb_hnsw ? HnswBackend::YB_HNSW_HNSWLIB : HnswBackend::HNSWLIB, mem_tracker);
+          block_cache, options, mem_tracker);
   }
   FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
 }
@@ -689,10 +680,8 @@ void VectorLSMTestBase::CheckQueryVector(
 
 Result<std::vector<std::string>> VectorLSMTestBase::GetFiles(FloatVectorLSM& lsm) {
   auto files = VERIFY_RESULT(vector_index::ListVectorLSMFiles(lsm.TEST_GetEnv(), lsm.StorageDir()));
-  // Payload files are expected only when the LSM stores payloads, and only for backends based
-  // on IndexWrapperWithExternalPayload: yb_hnsw stores payloads in the chunk file itself.
-  SCHECK(!files.has_payload_files || (store_vector_payload() && !UseYbHnsw(backend_param())),
-         IllegalState, "Unexpected payload file");
+  // yb_hnsw stores payloads in the chunk file itself, so there are no separate payload files.
+  SCHECK(!files.has_payload_files, IllegalState, "Unexpected payload file");
   return std::move(files.manifest_and_chunk_files);
 }
 
@@ -1679,14 +1668,13 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   // The byte budget approximates in-memory consumption: it includes per-vector pointer tables
   // (vectors_lookup_, nodes_, linkLists_) that don't make it into the serialized chunk file,
   // so the on-disk size is expected to be smaller than the budget but still close to it. The
-  // exact ratio depends on the backend layout and on whether the chunk is rewritten through
-  // the YbHnsw saver, which packs less data than the native usearch/hnswlib formats.
+  // exact ratio depends on the in-memory layout of the backend the chunk was built with.
   const auto on_disk_lower_bound_ratio = [&]() -> double {
     switch (GetANNMethodKind(GetParam())) {
       case ANNMethodKind::kUsearch:
-        return UseYbHnsw(GetParam()) ? 0.80 : 0.90;
+        return 0.80;
       case ANNMethodKind::kHnswlib:
-        return UseYbHnsw(GetParam()) ? 0.65 : 0.70;
+        return 0.65;
     }
     FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(GetParam()));
   }();
@@ -1718,7 +1706,6 @@ INSTANTIATE_TEST_SUITE_P(
     VectorLSMTest,
     testing::Combine(
         testing::ValuesIn(kANNMethodKindArray),
-        testing::Bool(),
         testing::Values(
             vector_index::StoreVectorPayload::kTrue, vector_index::StoreVectorPayload::kFalse)),
     ParamToString);

@@ -83,7 +83,7 @@ class CountingVectorIndex : public DocVectorIndex {
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
-  Result<bool> HasVectorId(const vector_index::VectorId&) const override {
+  Result<std::unordered_set<vector_index::VectorId>> AllVectorIds() const override {
     LOG(FATAL) << "Unexpected call";
   }
   Status Destroy() override { LOG(FATAL) << "Unexpected call"; }

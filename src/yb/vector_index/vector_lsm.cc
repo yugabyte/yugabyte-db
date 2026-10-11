@@ -542,7 +542,7 @@ class VectorLSMInsertRegistryBase
     }
   }
 
-  virtual void DoTaskDoneUnlocked(InsertTask* /*task*/) REQUIRES(mutex_) {
+  virtual void DoTaskDoneUnlocked(InsertTask* task) REQUIRES(mutex_) {
     // Nothing to do, could be used in derived classes.
   }
 
@@ -1635,23 +1635,19 @@ auto VectorLSM<Vector, DistanceResult>::Search(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Result<bool> VectorLSM<Vector, DistanceResult>::HasVectorId(
-    const vector_index::VectorId& vector_id) const {
-  // Search in insert registry is not implemented, so just wait until all entries are inserted.
+Result<std::unordered_set<vector_index::VectorId>>
+    VectorLSM<Vector, DistanceResult>::AllVectorIds() const {
+  // Iterating the insert registry is not implemented, so just wait until all entries are inserted.
   while (insert_registry_->HasRunningTasks()) {
     std::this_thread::sleep_for(10ms);
   }
   auto indexes = VERIFY_RESULT(AllIndexes());
+  std::unordered_set<vector_index::VectorId> result;
   for (const auto& index : indexes) {
-    auto vector_res = index->GetVector(vector_id);
-    if (vector_res.ok()) {
-      return true;
-    }
-    if (!vector_res.status().IsNotFound()) {
-      return vector_res.status();
-    }
+    auto ids = VERIFY_RESULT(index->VectorIds());
+    result.insert(ids.begin(), ids.end());
   }
-  return false;
+  return result;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
