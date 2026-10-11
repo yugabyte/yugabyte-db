@@ -831,7 +831,9 @@ determine_test_timeout() {
             $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" ||
             $rel_test_binary == "tests-pgwrapper/pg_mini-test" ||
             $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" ||
+            $rel_test_binary == "tests-integration-tests/ysql_major_extension_upgrade-test" ||
             $rel_test_binary == "tests-integration-tests/ysql_major_upgrade_check-test" ||
+            $rel_test_binary == "tests-integration-tests/ysql_major_upgrade_expression_pushdown-test" ||
             $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ) ||
           ( $build_root_basename =~ ^asan &&
             ( $rel_test_binary == "tests-integration-tests/pg_partman-test" )) ||
