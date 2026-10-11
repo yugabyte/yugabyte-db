@@ -275,8 +275,8 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
-
 /* YB includes */
+#include "access/yb_target.h"
 #include "catalog/yb_type.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -2220,12 +2220,12 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		Aggref	   *aggref = (Aggref *) lfirst(lc_agg);
 		char	   *func_name = get_func_name(aggref->aggfnoid);
 
-		/* Only support COUNT/MIN/MAX/SUM. */
-		if (strcmp(func_name, "count") != 0 &&
-			strcmp(func_name, "min") != 0 &&
-			strcmp(func_name, "max") != 0 &&
-			strcmp(func_name, "sum") != 0 &&
-			strcmp(func_name, "avg") != 0)
+		/*
+		 * Built-in SUM/MIN/MAX/COUNT/AVG only, by OID. get_func_name() is
+		 * unqualified, so a user aggregate with one of those names must not
+		 * be sent to DocDB.
+		 */
+		if (!YbAggPushdownFnIsBuiltin(aggref->aggfnoid))
 			return;
 
 		/* No ORDER BY. */

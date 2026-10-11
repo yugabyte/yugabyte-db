@@ -3276,6 +3276,50 @@ INSERT INTO null_test SELECT i, NULL, NULL FROM generate_series(1,6) i;
 
 DROP TABLE null_test;
 --
+-- #34356 A user aggregate named like a built-in must not be pushed down.
+--
+CREATE SCHEMA custom_agg;
+CREATE FUNCTION custom_agg.sum_sfunc(int, int) RETURNS int
+    LANGUAGE sql IMMUTABLE AS 'SELECT $1 + 1000 * $2';
+CREATE AGGREGATE custom_agg.sum(int) (
+    sfunc = custom_agg.sum_sfunc,
+    stype = int,
+    initcond = '0'
+);
+CREATE TABLE custom_agg_test (k int PRIMARY KEY, v int);
+INSERT INTO custom_agg_test VALUES (1, 2), (2, 3), (3, 4);
+\set query 'SELECT custom_agg.sum(v) FROM custom_agg_test'
+:explain :query; :query;
+            QUERY PLAN             
+-----------------------------------
+ Aggregate
+   ->  Seq Scan on custom_agg_test
+(2 rows)
+
+ sum  
+------
+ 9000
+(1 row)
+
+\set query 'SELECT sum(v) FROM custom_agg_test'
+:explain :query; :query;
+            QUERY PLAN             
+-----------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on custom_agg_test
+         Partial Aggregate: true
+(3 rows)
+
+ sum 
+-----
+   9
+(1 row)
+
+DROP TABLE custom_agg_test;
+DROP AGGREGATE custom_agg.sum(int);
+DROP FUNCTION custom_agg.sum_sfunc(int, int);
+DROP SCHEMA custom_agg;
+--
 -- Colocation.
 --
 CREATE DATABASE co COLOCATION TRUE;

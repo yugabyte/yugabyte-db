@@ -28,6 +28,7 @@
 #include "catalog/yb_type.h"
 #include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "ybgate/ybgate_api.h"
@@ -126,7 +127,19 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 	foreach(lc, aggrefs)
 	{
 		Aggref	   *aggref = lfirst_node(Aggref, lc);
-		char	   *func_name = get_func_name(aggref->aggfnoid);
+		char	   *func_name;
+
+		/*
+		 * get_func_name() is unqualified. A user aggregate named sum, min,
+		 * max, count, or avg must not be sent to DocDB as that built-in
+		 * opcode.
+		 */
+		if (!YbAggPushdownFnIsBuiltin(aggref->aggfnoid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("unsupported aggregate function for pushdown")));
+
+		func_name = get_func_name(aggref->aggfnoid);
 		ListCell   *lc_arg;
 		YbcPgExpr	op_handle;
 		const YbcPgTypeEntity *type_entity;
@@ -346,4 +359,79 @@ ybc_get_attcollation(TupleDesc desc, AttrNumber attnum)
 	return (attnum > 0 ?
 			TupleDescAttr(desc, attnum - 1)->attcollation :
 			InvalidOid);
+}
+
+/*
+ * True for a built-in aggregate DocDB knows how to evaluate.
+ */
+bool
+YbAggPushdownFnIsBuiltin(Oid fnoid)
+{
+	switch (fnoid)
+	{
+		case F_SUM_INT8:
+		case F_SUM_INT4:
+		case F_SUM_INT2:
+		case F_SUM_FLOAT4:
+		case F_SUM_FLOAT8:
+		case F_SUM_MONEY:
+		case F_SUM_INTERVAL:
+		case F_SUM_NUMERIC:
+		case F_MIN_INT8:
+		case F_MIN_INT4:
+		case F_MIN_INT2:
+		case F_MIN_OID:
+		case F_MIN_FLOAT4:
+		case F_MIN_FLOAT8:
+		case F_MIN_DATE:
+		case F_MIN_TIME:
+		case F_MIN_TIMETZ:
+		case F_MIN_MONEY:
+		case F_MIN_TIMESTAMP:
+		case F_MIN_TIMESTAMPTZ:
+		case F_MIN_INTERVAL:
+		case F_MIN_TEXT:
+		case F_MIN_NUMERIC:
+		case F_MIN_ANYARRAY:
+		case F_MIN_ANYENUM:
+		case F_MIN_BPCHAR:
+		case F_MIN_TID:
+		case F_MIN_INET:
+		case F_MIN_PG_LSN:
+		case F_MIN_XID8:
+		case F_MAX_INT8:
+		case F_MAX_INT4:
+		case F_MAX_INT2:
+		case F_MAX_OID:
+		case F_MAX_FLOAT4:
+		case F_MAX_FLOAT8:
+		case F_MAX_DATE:
+		case F_MAX_TIME:
+		case F_MAX_TIMETZ:
+		case F_MAX_MONEY:
+		case F_MAX_TIMESTAMP:
+		case F_MAX_TIMESTAMPTZ:
+		case F_MAX_INTERVAL:
+		case F_MAX_TEXT:
+		case F_MAX_NUMERIC:
+		case F_MAX_ANYARRAY:
+		case F_MAX_ANYENUM:
+		case F_MAX_BPCHAR:
+		case F_MAX_TID:
+		case F_MAX_INET:
+		case F_MAX_PG_LSN:
+		case F_MAX_XID8:
+		case F_COUNT_ANY:
+		case F_COUNT_:
+		case F_AVG_INT8:
+		case F_AVG_INT4:
+		case F_AVG_INT2:
+		case F_AVG_NUMERIC:
+		case F_AVG_FLOAT4:
+		case F_AVG_FLOAT8:
+		case F_AVG_INTERVAL:
+			return true;
+		default:
+			return false;
+	}
 }
