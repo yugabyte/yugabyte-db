@@ -285,9 +285,32 @@ std::optional<int32_t> TSDescriptor::receiving_full_report_seq_no() const {
   return receiving_full_report_seq_no_;
 }
 
-void TSDescriptor::set_receiving_full_report_seq_no(int32_t value) {
+bool TSDescriptor::UpdateFullReportState(const TabletReportPB& report, bool completed) {
   std::lock_guard lock(mutex_);
-  receiving_full_report_seq_no_ = value;
+  // A rejected chunk makes the tserver start a new full report, which is only needed while the
+  // master does not have a complete one.
+  //
+  // The tserver sends a newer report only after it stops waiting for this one, so it never reads
+  // the response to this report and will not continue it.
+  if (report.sequence_number() != latest_report_seqno_) {
+    return has_tablet_report_;
+  }
+  // The tserver abandons its current full report whenever it starts a new one (e.g. after a
+  // heartbeat RPC timeout that the master still processed), so track the most recently started
+  // report, not the first one seen.
+  if (report.full_report_seq_no() == report.sequence_number()) {
+    if (receiving_full_report_seq_no_ != report.full_report_seq_no()) {
+      LOG_WITH_FUNC(INFO) << permanent_uuid() << " set full report seq no: "
+                          << report.full_report_seq_no();
+    }
+    receiving_full_report_seq_no_ = report.full_report_seq_no();
+  } else if (receiving_full_report_seq_no_ != report.full_report_seq_no()) {
+    return has_tablet_report_;
+  }
+  if (completed) {
+    set_has_tablet_report_unlocked(true);
+  }
+  return true;
 }
 
 bool TSDescriptor::has_faulty_drive() const {

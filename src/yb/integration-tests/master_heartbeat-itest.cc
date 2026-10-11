@@ -52,8 +52,11 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -78,6 +81,8 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
+DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
+DECLARE_bool(TEST_enable_sync_points);
 
 METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
@@ -613,6 +618,166 @@ TEST_F(MasterHeartbeatITestOneTServer, FullReportContinutation) {
     // The continuation should succeed and the full report should be complete.
     ASSERT_FALSE(resp.needs_full_tablet_report());
   }
+}
+
+Result<master::TSHeartbeatResponsePB> SendFullReportChunk(
+    master::MasterHeartbeatProxy& master_proxy, const master::TSDescriptor& ts,
+    const std::string& universe_uuid, int32_t seq_no, int32_t full_report_seq_no,
+    int32_t remaining_tablet_count) {
+  master::TSHeartbeatRequestPB req;
+  *req.mutable_common() = MakeTSToMasterCommonPB(ts, std::nullopt);
+  req.set_universe_uuid(universe_uuid);
+  auto* report = req.mutable_tablet_report();
+  report->set_is_incremental(false);
+  report->set_sequence_number(seq_no);
+  report->set_full_report_seq_no(full_report_seq_no);
+  report->set_remaining_tablet_count(remaining_tablet_count);
+  master::TSHeartbeatResponsePB resp;
+  rpc::RpcController rpc;
+  RETURN_NOT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
+}
+
+// A tserver abandons a full report whenever its heartbeat RPC times out, even if the master went on
+// to process that RPC, and starts a new full report. The master must accept the continuations of
+// the new report.
+TEST_F(MasterHeartbeatITestOneTServer, FullReportRestartedByTServer) {
+  verify_cluster_before_next_tear_down_ = false;
+  ShutdownAllTServers(cluster_.get());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto universe_uuid = ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid();
+  master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
+  ASSERT_EQ(ts_descs.size(), 1);
+  auto ts = ts_descs[0];
+  master::MasterHeartbeatProxy master_proxy(
+      &cluster_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
+  // Same effect as a master leader change.
+  ts->set_has_tablet_report(false);
+
+  // The master processes the first chunk of report A, but the tserver times out on it.
+  const int32_t report_a = ts->latest_report_seqno() + 1;
+  auto resp = ASSERT_RESULT(SendFullReportChunk(
+      master_proxy, *ts, universe_uuid, report_a, report_a, /* remaining_tablet_count */ 1));
+  ASSERT_FALSE(resp.needs_full_tablet_report());
+
+  // The tserver starts report B and sends both of its chunks.
+  const int32_t report_b = report_a + 1;
+  resp = ASSERT_RESULT(SendFullReportChunk(
+      master_proxy, *ts, universe_uuid, report_b, report_b, /* remaining_tablet_count */ 1));
+  ASSERT_FALSE(resp.needs_full_tablet_report());
+
+  resp = ASSERT_RESULT(SendFullReportChunk(
+      master_proxy, *ts, universe_uuid, report_b + 1, report_b, /* remaining_tablet_count */ 0));
+  ASSERT_FALSE(resp.needs_full_tablet_report());
+  ASSERT_TRUE(ts->has_tablet_report());
+}
+
+// The master can process two heartbeats from one tserver concurrently: a heartbeat the tserver
+// timed out on can finish after the tserver's next heartbeat. The first chunk of the abandoned
+// report must not replace the report the tserver is sending.
+TEST_F(MasterHeartbeatITestOneTServer, StaleFullReportChunkFinishesLast) {
+  verify_cluster_before_next_tear_down_ = false;
+  ShutdownAllTServers(cluster_.get());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto universe_uuid = ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid();
+  master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
+  ASSERT_EQ(ts_descs.size(), 1);
+  auto ts = ts_descs[0];
+  master::MasterHeartbeatProxy master_proxy(
+      &cluster_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
+  ts->set_has_tablet_report(false);
+
+  const int32_t report_a = ts->latest_report_seqno() + 1;
+  const int32_t report_b = report_a + 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  CountDownLatch report_a_paused(1);
+  CountDownLatch report_b_processed(1);
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "MasterHeartbeatServiceImpl::ProcessTabletReport:BeforeUpdateFullReportState",
+      [&](void* arg) {
+        if (static_cast<master::TabletReportPB*>(arg)->sequence_number() == report_a) {
+          report_a_paused.CountDown();
+          report_b_processed.Wait();
+        }
+      });
+  sync_point->EnableProcessing();
+  std::thread report_a_thread;
+  auto cleanup = ScopeExit([&] {
+    report_b_processed.CountDown();
+    if (report_a_thread.joinable()) {
+      report_a_thread.join();
+    }
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  // The master processes the first chunk of report A up to the full report state update.
+  Result<master::TSHeartbeatResponsePB> report_a_resp = STATUS(IllegalState, "Not sent");
+  report_a_thread = std::thread([&] {
+    report_a_resp = SendFullReportChunk(
+        master_proxy, *ts, universe_uuid, report_a, report_a, /* remaining_tablet_count */ 1);
+  });
+  ASSERT_TRUE(report_a_paused.WaitFor(30s * kTimeMultiplier));
+
+  // Meanwhile the tserver has timed out on report A and starts report B.
+  auto resp = ASSERT_RESULT(SendFullReportChunk(
+      master_proxy, *ts, universe_uuid, report_b, report_b, /* remaining_tablet_count */ 1));
+  ASSERT_FALSE(resp.needs_full_tablet_report());
+
+  // Report A finishes last.
+  report_b_processed.CountDown();
+  report_a_thread.join();
+  ASSERT_OK(report_a_resp);
+
+  resp = ASSERT_RESULT(SendFullReportChunk(
+      master_proxy, *ts, universe_uuid, report_b + 1, report_b, /* remaining_tablet_count */ 0));
+  ASSERT_FALSE(resp.needs_full_tablet_report());
+  ASSERT_TRUE(ts->has_tablet_report());
+}
+
+class MasterHeartbeatITestSixTablets : public MasterHeartbeatITest {
+ protected:
+  int num_tablets() override { return 6; }
+};
+
+// End-to-end version of FullReportRestartedByTServer: the master is slow enough that a tserver's
+// first full report chunk times out on the tserver but is still processed by the master.
+TEST_F(MasterHeartbeatITestSixTablets, FullReportCompletesAfterHeartbeatTimeout) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  // Each full report chunk carries 2 tablets, so the master processes it in 2 batches and sleeps
+  // between them. Every tserver hosts a replica of each of the 6 tablets, so a full report has
+  // several chunks.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 2;
+  const auto heartbeat_rpc_timeout = MonoDelta::FromSeconds(2 * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) =
+      narrow_cast<int32_t>(heartbeat_rpc_timeout.ToMilliseconds());
+
+  auto ts = catalog_mgr.GetAllLiveNotBlacklistedTServers()[0];
+  ASSERT_TRUE(ts->has_tablet_report());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) =
+      (heartbeat_rpc_timeout + 1s).ToMilliseconds();
+  // Same effect as a master leader change: the next heartbeat gets needs_full_tablet_report.
+  ts->set_has_tablet_report(false);
+  // Wait until the master has stored the id of a full report whose first chunk timed out on the
+  // tserver, and the tserver has started a newer report.
+  ASSERT_OK(WaitFor(
+      [&ts] { return ts->receiving_full_report_seq_no().has_value(); },
+      30s * kTimeMultiplier, "Master stores the full report id"));
+  const auto stored_report = *ts->receiving_full_report_seq_no();
+  ASSERT_OK(WaitFor(
+      [&ts, stored_report] { return ts->latest_report_seqno() > stored_report; },
+      30s * kTimeMultiplier, "TServer starts a new report"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) = 0;
+
+  ASSERT_OK(WaitFor(
+      [&ts] { return ts->has_tablet_report(); }, 30s * kTimeMultiplier,
+      "Master receives a complete full report"));
 }
 
 TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
