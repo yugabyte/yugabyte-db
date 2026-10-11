@@ -19,10 +19,12 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet-test-util.h"
@@ -247,6 +249,28 @@ class TabletSnapshotsTest : public YBTest {
     operation.AllocateRequest()->CopyFrom(request);
     operation.set_op_id(OpId(1, op_index));
     return harness_->tablet()->snapshots().Delete(operation);
+  }
+
+  Status WriteRow(int32_t key) {
+    LocalTabletWriter writer(harness_->tablet());
+    QLWriteRequestPB req;
+    QLAddInt32HashValue(&req, key);
+    QLAddInt32ColumnValue(&req, kFirstColumnId + 1, key);
+    QLAddStringColumnValue(&req, kFirstColumnId + 2, "value");
+    return writer.Write(&req);
+  }
+
+  Status PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::Operation op_type) {
+    tserver::TabletSnapshotOpRequestPB request;
+    request.set_operation(op_type);
+    SnapshotOperation operation(harness_->tablet());
+    operation.AllocateRequest()->CopyFrom(request);
+    RETURN_NOT_OK(operation.Prepare(IsLeaderSide::kTrue));
+    return operation.Prepare(IsLeaderSide::kFalse);
+  }
+
+  uint64_t NumRegularDbSSTFiles() {
+    return harness_->tablet()->GetCurrentVersionNumSSTFiles();
   }
 
   template <class Metric, class Prototype>
@@ -566,6 +590,13 @@ TEST_F(TabletSnapshotsTest, ShutdownWaitsForRunningCleanup) {
   shutdown_thread.JoinAll();
   ASSERT_TRUE(shutdown_complete.load(std::memory_order_acquire));
   ASSERT_FALSE(test_env_->FileExists(paths.tombstone));
+}
+
+TEST_F(TabletSnapshotsTest, PrepareDoesNotFlush) {
+  ASSERT_OK(WriteRow(1));
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
 }
 
 }  // namespace

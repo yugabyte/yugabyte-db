@@ -19,6 +19,7 @@
 //
 
 #include <algorithm>
+#include <future>
 #include <map>
 #include <string>
 
@@ -38,6 +39,7 @@
 
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 
 using std::unique_ptr;
 
@@ -91,6 +93,34 @@ class FlushJobTest : public RocksDBTest {
     ASSERT_OK(s);
     // Make "CURRENT" file that points to the new manifest file.
     s = SetCurrentFile(env_, dbname_, 1, nullptr, db_options_.disableDataSync);
+  }
+
+  void TestBackgroundFilterFailure(const Status& failure) {
+    Options options;
+    options.create_if_missing = true;
+    options.paranoid_checks = false;
+    options.mem_table_flush_filter_factory = std::make_shared<std::function<MemTableFilter()>>(
+        [failure] {
+          return [failure](const MemTable&, bool) -> yb::Result<bool> { return failure; };
+        });
+    auto db = ASSERT_RESULT(DB::Open(options, dbname_ + "/filtered"));
+    ASSERT_OK(db->Put(WriteOptions(), "key", "value"));
+    std::promise<Status> result;
+    auto future = result.get_future();
+    yb::TestThreadHolder threads;
+    threads.AddThreadFunctor([&] {
+      result.set_value(db->Flush(FlushOptions(FlushReason::kTestOnly)));
+    });
+    ASSERT_EQ(future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+    auto status = future.get();
+    ASSERT_EQ(status.code(), failure.code());
+    ASSERT_STR_CONTAINS(status.ToString(), failure.message().ToBuffer());
+    threads.JoinAll();
+    db->WaitForFlushJobs();
+    ASSERT_TRUE(db->GetLiveFilesMetaData().empty());
+    std::string value;
+    ASSERT_OK(db->Get(ReadOptions(), "key", &value));
+    ASSERT_EQ(value, "value");
   }
 
   Env* env_;
@@ -186,6 +216,53 @@ TEST_F(FlushJobTest, NonEmpty) {
   values.Check(fd.smallest, fd.largest);
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();
+}
+
+TEST_F(FlushJobTest, FilterFailureRollsBackSelection) {
+  auto cfd = versions_->GetColumnFamilySet()->GetDefault();
+  auto* imm = cfd->imm();
+  autovector<MemTable*> to_delete;
+  autovector<MemTable*> expected;
+  for (SequenceNumber seq = 1; seq != 3; ++seq) {
+    auto* mem = cfd->ConstructNewMemtable(*cfd->GetLatestMutableCFOptions(), kMaxSequenceNumber);
+    mem->Ref();
+    const auto key = ToString(seq);
+    Slice key_slice(key), value_slice("value");
+    mem->Add(seq, kTypeValue, SliceParts(&key_slice, 1), SliceParts(&value_slice, 1));
+    imm->Add(mem, &to_delete);
+    expected.push_back(mem);
+  }
+  ASSERT_TRUE(to_delete.empty());
+  autovector<MemTable*> selected;
+  size_t checks = 0;
+  auto status = imm->PickMemtablesToFlush(
+      &selected, [&](const MemTable&, bool) -> yb::Result<bool> {
+    if (++checks == 2) {
+      return STATUS(IOError, "injected flush dependency failure");
+    }
+    return true;
+  });
+  ASSERT_TRUE(status.IsIOError()) << status;
+  ASSERT_EQ(checks, 2);
+  ASSERT_TRUE(selected.empty());
+  ASSERT_EQ(imm->NumNotFlushed(), 2);
+  ASSERT_TRUE(imm->IsFlushPending());
+
+  ASSERT_OK(imm->PickMemtablesToFlush(&selected, [](const MemTable&, bool) { return false; }));
+  ASSERT_TRUE(selected.empty());
+  ASSERT_OK(imm->PickMemtablesToFlush(&selected));
+  ASSERT_EQ(selected.size(), 2);
+  ASSERT_EQ(selected[0], expected[0]);
+  ASSERT_EQ(selected[1], expected[1]);
+  imm->RollbackMemtableFlush(selected, 0);
+}
+
+TEST_F(FlushJobTest, FilterErrorStopsBackgroundFlush) {
+  TestBackgroundFilterFailure(STATUS(IOError, "failed flush dependency"));
+}
+
+TEST_F(FlushJobTest, DependencyShutdownStopsBackgroundFlush) {
+  TestBackgroundFilterFailure(STATUS(ShutdownInProgress, "flush dependency is shutting down"));
 }
 
 TEST_F(FlushJobTest, Snapshots) {
