@@ -15,7 +15,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy automatic and fully manual provisioning are deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned with these methods continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. Assisted manual provisioning has been removed. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Legacy automatic and fully manual provisioning are deprecated. They required SSH for YugabyteDB Anywhere, or a long command list that drifted between releases. For information about why the node agent script replaced them, see [Why the script exists](../software-on-prem/#why-the-script-exists). For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned with these methods continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. For information about which provisioning method to use, including assisted provisioning (removed in v2025.2), see [Choose a provisioning method](../software-on-prem/#choose-a-provisioning-method).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -40,7 +40,7 @@ Legacy automatic and fully manual provisioning are deprecated. For new nodes, us
   </li>
 </ul>
 
-How you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes.
+How you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes. For information about which method is supported, and which **Manually Provision Nodes** setting it uses, see [Choose a provisioning method](../software-on-prem/#choose-a-provisioning-method). The table below only distinguishes the two legacy SSH modes that are still supported. For the settings to compare with your own legacy-manual commands, see [What the script configures](../software-on-prem/#what-the-script-configures).
 
 | SSH mode | Description | Notes | For more details |
 | :--- | :--- | :--- | :--- |

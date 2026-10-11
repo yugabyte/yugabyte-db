@@ -58,7 +58,7 @@ _If the instance type and instances weren't created when provisioning the VMs_, 
 
 {{< warning title="Legacy provisioning deprecated" >}}
 
-Legacy provisioning is being phased out. Going forward, [automatic provisioning](#automatic-provisioning) is strongly recommended.
+Legacy provisioning is being phased out. The older methods needed SSH for YugabyteDB Anywhere, or a command list that drifted between releases. For information about why the older methods were replaced, see [Why the script exists](../../prepare/server-nodes-software/software-on-prem/#why-the-script-exists). Going forward, [automatic provisioning](#automatic-provisioning) with the node agent script is recommended when YugabyteDB Anywhere has no sudo. For information about which provisioning method to use, and whether each method is still supported, see [Choose a provisioning method](../../prepare/server-nodes-software/software-on-prem/#choose-a-provisioning-method).
 
 {{< /warning >}}
 
@@ -98,7 +98,6 @@ In YugabyteDB Anywhere, navigate to the provider you created in Stage 2 and do t
     | :--- | :--- | :--- |
     | Legacy automatic | YugabyteDB Anywhere is provided an SSH user with sudo access for the nodes it needs to provision. For example, the `ec2-user` for AWS EC2 instances. | No action. YugabyteDB Anywhere will automatically provision the VMs that you add. |
     | Legacy fully manual | Neither YugabyteDB Anywhere nor the user has access to an SSH user with sudo access; only a local (non-SSH) user is available with sudo access. | Follow a sequence of steps to [provision each VM manually](../../prepare/server-nodes-software/software-on-prem-manual/) before adding the VM to the pool. |
-  <!-- | Legacy assisted&nbsp;manual (deprecated) | The SSH user requires a password for sudo access. | [Run a script](../on-premises-script/), provided by YugabyteDB Anywhere, to provision each VM, providing credentials for the SSH user with sudo access. | -->
 
 1. Add the VMs (instances) to the provider.
 
