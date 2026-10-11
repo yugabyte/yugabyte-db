@@ -727,6 +727,24 @@ def is_phc_configured():
     out, _, retcode = run_process(cmd, timeout=1, log_cmd=True)
     return retcode == 0 and 'PHC' in out
 
+# Kernels 6.19.0 through 7.0.13 break TCMalloc's own rseq registration and crash it
+# (google/tcmalloc#292).
+def kernel_breaks_tcmalloc_rseq():
+    uname = os.uname()
+    release = uname.release
+    # Ubuntu's release (e.g. 7.0.0-14-generic) hides the upstream patch level, which is the
+    # last field of /proc/version_signature.
+    if release.startswith("7.0") and "Ubuntu" in uname.version:
+        try:
+            with open("/proc/version_signature") as f:
+                release = f.readline().split()[-1]
+        except (OSError, IndexError):
+            pass
+    match = re.match(r"(\d+)\.(\d+)\.(\d+)", release)
+    if not match:
+        return False
+    return (6, 19, 0) <= tuple(int(v) for v in match.groups()) <= (7, 0, 13)
+
 # Check if ip is ipv6
 def is_ipv6(ip):
     try:
@@ -3407,12 +3425,24 @@ class ControlScript(object):
                 continue
         return (None, False)
 
+    # TCMalloc cannot use per-CPU caches if glibc has already registered rseq
+    # (glibc 2.35+, RHEL 9's 2.34), and silently falls back to per-thread caches.
+    # On kernels where TCMalloc's own registration crashes, keep glibc's instead.
+    def set_glibc_tunables(self):
+        tunables = os.environ.get("GLIBC_TUNABLES", "")
+        if "glibc.pthread.rseq=" not in tunables:
+            rseq = "glibc.pthread.rseq={}".format(1 if kernel_breaks_tcmalloc_rseq() else 0)
+            os.environ["GLIBC_TUNABLES"] = ":".join(t for t in (tunables, rseq) if t)
+
     # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
         prereqs_failed = set()
         prereqs_warn = set()
         prereqs_failed_flag = False
         prereqs_warn_flag = False
+
+        # Before the Docker early return: containers need the tunable too.
+        self.set_glibc_tunables()
 
         if os.path.exists("/.dockerenv"):
             Output.log("Running in a Docker container. Skipping pre-requisite checks.")
