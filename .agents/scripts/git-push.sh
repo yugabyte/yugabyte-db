@@ -24,8 +24,10 @@
 #   its history is linear, and keeps it linear by cascading rebases, so every
 #   layer above a change is rewritten whatever its review state. This script
 #   lints the whole stack and hands the push to `gh stack push`, which
-#   force-pushes each layer with a lease. Rebasing and syncing are gh-stack's
-#   job; see the gh-stack skill.
+#   force-pushes each layer with a lease. When a layer's parent changed (a
+#   reorder or an inserted layer), it moves that PR's base out of the way
+#   first and sets the new base after the push. Rebasing and syncing are
+#   gh-stack's job; see the gh-stack skill.
 #
 # usage: git-push [-b <base>] [-r <fork-remote>]
 #
@@ -50,6 +52,8 @@
 #   4  the PR is ready for review and the push is not a fast-forward -- the
 #      message says how to recover without rewriting the PR's history
 #   5  stack branch: `gh stack push` failed -- read its message
+#   7  stack branch: pushed, but a PR's new base could not be set -- the
+#      message gives the command
 
 set -euo pipefail
 
@@ -229,9 +233,82 @@ print(s["trunk"], live[-1] if live else "")' <<< "$stack_json")
   fi
   run_lint "${UPSTREAM_REMOTE}/${trunk}"
 
+  # GitHub marks a PR merged, and this repo then deletes its head branch, as
+  # soon as a push makes the PR's head reachable from its base. It then
+  # retargets PRs that were based on the deleted branch, which can merge them
+  # too. After a reorder, a layer's old base is often a layer that is now
+  # above it, so pushing first and fixing bases afterwards (what `gh stack
+  # push` and `gh stack submit` do) merges it. Move every PR whose base is
+  # about to change onto the trunk, which holds no unmerged layer, push, then
+  # point it at its new parent.
+  moved_prs=()  # "<number> <old base> <new base>"
+  stack_prs=()  # open PR numbers, bottom-up
+  while read -r num new_base; do
+    stack_prs+=("$num")
+    old_base=$(gh pr view "$num" -R "$GH_REPO" --json baseRefName --jq .baseRefName) || {
+      echo "error: could not look up the base of PR #${num}; nothing was pushed." >&2
+      exit 1
+    }
+    [[ "$old_base" != "$new_base" ]] && moved_prs+=("$num $old_base $new_base")
+  done < <(python3 -c 'import json, sys
+s = json.load(sys.stdin)
+parent = s["trunk"]
+for b in s["branches"]:
+    if b.get("isMerged"):
+        continue
+    if (b.get("pr") or {}).get("state") == "OPEN":
+        print(b["pr"]["number"], parent)
+    parent = b["name"]' <<< "$stack_json")
+
+  set_base() {
+    gh api -X PATCH "repos/${GH_REPO}/pulls/$1" -f "base=$2" >/dev/null
+  }
+  for (( i = 0; i < ${#moved_prs[@]}; i++ )); do
+    read -r num old_base new_base <<< "${moved_prs[$i]}"
+    [[ "$old_base" == "$trunk" ]] && continue
+    echo ">>> PR #${num}: moving its base ${old_base} -> ${trunk} until the push is done"
+    if ! set_base "$num" "$trunk"; then
+      # Nothing is pushed yet, so putting the earlier ones back is safe.
+      for (( j = 0; j < i; j++ )); do
+        read -r n b _ <<< "${moved_prs[$j]}"
+        set_base "$n" "$b" || echo "warn: could not move PR #${n} back to ${b}" >&2
+      done
+      echo "error: could not change the base of PR #${num}; nothing was pushed." >&2
+      echo "       If the PR is in a GitHub stack that blocks base changes, unstack" >&2
+      echo "       it on GitHub first (gh stack unstack <stack-number>) and re-run." >&2
+      exit 1
+    fi
+  done
+
   echo ">>> gh stack push --remote ${UPSTREAM_REMOTE} (${GH_REPO})"
-  gh stack push --remote "$UPSTREAM_REMOTE" || exit 5
+  if ! gh stack push --remote "$UPSTREAM_REMOTE"; then
+    if (( ${#moved_prs[@]} )); then
+      echo "error: the push failed with these PRs moved to ${trunk}, where they are" >&2
+      echo "       safe: $(printf '#%s ' "${moved_prs[@]%% *}")" >&2
+      echo "       Re-run this script to finish; it sets their bases after the push." >&2
+    fi
+    exit 5
+  fi
   echo ">>> pushed stack ${trunk} <- ... <- ${top_branch} to ${GH_REPO}"
+
+  failed=0
+  for (( i = 0; i < ${#moved_prs[@]}; i++ )); do
+    read -r num old_base new_base <<< "${moved_prs[$i]}"
+    [[ "$new_base" == "$trunk" ]] && continue
+    echo ">>> PR #${num}: base ${trunk} -> ${new_base}"
+    if ! set_base "$num" "$new_base"; then
+      echo "error: could not set the base of PR #${num}; set it with" >&2
+      echo "         gh api -X PATCH repos/${GH_REPO}/pulls/${num} -f base=${new_base}" >&2
+      failed=1
+    fi
+  done
+  if (( ${#moved_prs[@]} )); then
+    echo ">>> PR bases changed. If layers were reordered, GitHub's stack keeps its"
+    echo "    old order until it is rebuilt:"
+    echo "      gh stack unstack <stack-number>"
+    echo "      gh stack link --remote ${UPSTREAM_REMOTE} --base ${trunk} ${stack_prs[*]}"
+  fi
+  (( failed )) && exit 7
   exit 0
 fi
 
