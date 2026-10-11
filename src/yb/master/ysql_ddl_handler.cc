@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <optional>
+#include <tuple>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
@@ -345,16 +346,24 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       RemoveDdlTransactionState(table->id(), {txn});
       continue;
     }
-    if (table->is_index() && is_committed.has_value()) {
-      // This is an index. If the indexed table is being deleted or marked for deletion, then skip
-      // doing anything as the deletion of the table will delete this index.
+    if (table->is_index() && is_committed.has_value() &&
+        table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed)) {
+      // Skip an index that is already being deleted, or that is deleted along with its indexed
+      // table: the indexed table is running, is being dropped by this transaction, and lists the
+      // index. Any other index being dropped, including one whose indexed table is already gone,
+      // is dropped on its own.
       const auto& indexed_table_id = table->indexed_table_id();
-      auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
-      if (table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed) &&
-          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed)) {
+      auto indexed_table = GetTableInfo(indexed_table_id);
+      const bool index_deletion_started = table->LockForRead()->started_deleting();
+      TEST_SYNC_POINT("YsqlDdlTxnCompleteCallback::AfterIndexStateRead");
+      const bool dropped_with_indexed_table =
+          indexed_table && indexed_table->LockForRead()->is_running() &&
+          indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, *is_committed) &&
+          !indexed_table->GetIndexInfo(table->id()).table_id().empty();
+      if (index_deletion_started || dropped_with_indexed_table) {
         LOG(INFO) << "Skipping DDL transaction verification for index " << table->ToString()
-                << " as the indexed table " << indexed_table->ToString()
-                << " is also being dropped";
+                  << " as it is already being deleted or is dropped together with its indexed "
+                  << "table " << indexed_table_id;
         continue;
       }
     }
@@ -367,6 +376,9 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
 
     auto s = background_tasks_thread_pool_->SubmitFunc([this, table, txn, is_committed, epoch]() {
       auto s = YsqlDdlTxnCompleteCallbackInternal(table.get(), txn, is_committed, epoch);
+      auto sync_point_arg = std::make_tuple(table.get(), &txn, &s);
+      TEST_SYNC_POINT_CALLBACK(
+          "YsqlDdlTxnCompleteCallback::TableVerificationDone", &sync_point_arg);
       if (!s.ok()) {
         LOG(WARNING) << "YsqlDdlTxnCompleteCallback failed for table " << table->ToString()
                      << " txn " << txn << ": " << s.ToString();
@@ -430,6 +442,18 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
                       << (success.has_value() ? (*success ? "true" : "false") : "nullopt")
                       << " ysql_ddl_txn_verifier_state: "
                       << AsString(l->ysql_ddl_txn_verifier_state());
+
+  // A table this transaction drops on commit, or created and drops on abort, can already be
+  // deleting, for example an index deleted by the drop of its indexed table. Its drop is then
+  // already under way.
+  const bool txn_success = success.value_or(true);
+  if (l->started_deleting() &&
+      ((l->is_being_created_by_ysql_ddl_txn() && !txn_success) ||
+       (l->is_being_deleted_by_ysql_ddl_txn() && txn_success))) {
+    LOG_WITH_FUNC(INFO) << table->ToString() << " is already being deleted";
+    TEST_SYNC_POINT_CALLBACK("YsqlDdlTxnCompleteCallbackInternal::AlreadyDeleting", table);
+    return Status::OK();
+  }
 
   auto& metadata = l.mutable_data()->pb;
 
@@ -1164,13 +1188,14 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
 
     bool is_table_index = false;
     if (table->is_index()) {
-      // This is an index. If the indexed table is being deleted or marked for deletion due to the
-      // sub-transaction rollback, then skip doing anything as the deletion of the table will delete
-      // this index.
+      // This is an index. If the indexed table lists this index and is being deleted or marked for
+      // deletion due to the sub-transaction rollback, then skip doing anything as the deletion of
+      // the table will delete this index.
       const auto& indexed_table_id = table->indexed_table_id();
       auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
       if (table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id) &&
-          indexed_table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id)) {
+          indexed_table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id) &&
+          !indexed_table->GetIndexInfo(table->id()).table_id().empty()) {
         LOG(INFO) << "Will skip rollback to sub-transaction for index " << table->ToString()
                   << " as the indexed table " << indexed_table->ToString()
                   << " is also being dropped";
