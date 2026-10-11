@@ -34,6 +34,7 @@ set(YB_PCH_PREFIX client)
 
 set(CLIENT_SRCS
   async_rpc.cc
+  atomic_request_id_allocator.cc
   batcher.cc
   client.cc
   client_builder-internal.cc
@@ -48,6 +49,7 @@ set(CLIENT_SRCS
   meta_data_cache.cc
   namespace_alterer.cc
   permissions.cc
+  request_id_allocator.cc
   session.cc
   schema.cc
   stateful_services/stateful_service_client_base.cc
@@ -150,3 +152,4 @@ ADD_YB_TEST(serializable-txn-test)
 ADD_YB_TEST(tablet_rpc-test)
 ADD_YB_TEST(transaction_promotion-test)
 ADD_YB_TEST(advisory_lock-test)
+ADD_YB_TEST(atomic_request_id_allocator-test)

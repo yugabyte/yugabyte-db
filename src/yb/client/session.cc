@@ -342,7 +342,7 @@ internal::Batcher& YBSession::Batcher() {
 namespace {
 void PrepareAndApplyYbOp(internal::Batcher* batcher, YBOperationPtr yb_op) {
   VLOG(5) << "YBSession Apply yb_op: " << yb_op->ToString();
-  yb_op->reset_request_id();
+  yb_op->reset_retryable_request();
   batcher->Add(std::move(yb_op));
 }
 }  // namespace

@@ -36,6 +36,7 @@
 #include <string>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/request_id_allocator.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
@@ -128,16 +129,16 @@ class YBOperation {
   // Resets tablet, so it will be re-resolved on applying this operation.
   void ResetTablet();
 
-  std::optional<RetryableRequestId> request_id() const {
-    return request_id_;
+  const internal::RequestIdAllocation& retryable_request() const {
+    return retryable_request_;
   }
 
-  void set_request_id(RetryableRequestId id) {
-    request_id_ = id;
+  void set_retryable_request(const internal::RequestIdAllocation& request) {
+    retryable_request_ = request;
   }
 
-  void reset_request_id() {
-    request_id_.reset();
+  void reset_retryable_request() {
+    retryable_request_ = {};
   }
 
   // Returns the partition key of the operation.
@@ -175,9 +176,10 @@ class YBOperation {
 
   std::optional<PartitionListVersion> partition_list_version_;
 
-  // Persist retryable request ID across internal retries within the same YBSession
-  // to prevent duplicate writes due to internal retries.
-  std::optional<RetryableRequestId> request_id_;
+  // The retryable request the op was sent with, kept across the internal retries of the session,
+  // so that a retry is sent with the same id and the server rejects the duplicate. The batcher
+  // that owns the op finishes it.
+  internal::RequestIdAllocation retryable_request_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };

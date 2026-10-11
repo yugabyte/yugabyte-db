@@ -135,12 +135,6 @@ bool LocalTabletServerOnly(const InFlightOps& ops) {
           !FLAGS_forward_redis_requests);
 }
 
-void FillRequestIds(const RetryableRequestId request_id, InFlightOps* ops) {
-  for (auto& op : *ops) {
-    op.yb_op->set_request_id(request_id);
-  }
-}
-
 void DoCheckResponseCount(
     const char* op, const char* name, size_t found, size_t expected, Status* status) {
   if (found == expected) {
@@ -771,25 +765,23 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
     req_.set_leader_term(batcher_->GetLeaderTerm());
   }
 
-  const auto& client_id = batcher_->client_id();
-  if (!client_id.IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
-    auto temp = client_id.ToUInt64Pair();
-    req_.set_client_id1(temp.first);
-    req_.set_client_id2(temp.second);
-    const auto& first_yb_op = ops_.begin()->yb_op;
-    // That means we are trying to resend all ops from this RPC and need to reuse retryable
-    // request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
-    if (first_yb_op->request_id()) {
-      const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
-      req_.set_request_id(*first_yb_op->request_id());
-      req_.set_min_running_request_id(request_detail.min_running_request_id);
-    } else {
-      const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      req_.set_request_id(request_pair.first);
-      req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second);
+  if (FLAGS_detect_duplicates_for_retryable_requests) {
+    // The ops carry the request when we are trying to resend all ops from this RPC, and then it
+    // is reused (see https://github.com/yugabyte/yugabyte-db/issues/14005).
+    auto request = ops_.begin()->yb_op->retryable_request();
+    if (!request) {
+      request = batcher_->NextRequestIdAndMinRunningRequestId();
+      batcher_->RegisterRequest(request);
+      for (auto& op : ops_) {
+        op.yb_op->set_retryable_request(request);
+      }
     }
-    FillRequestIds(req_.request_id(), &ops_);
+    req_.set_request_id(request.id);
+    req_.set_min_running_request_id(request.min_running);
+    // The client id of the request, since a sharded allocator has one per shard.
+    auto client_id = request.client_id->ToUInt64Pair();
+    req_.set_client_id1(client_id.first);
+    req_.set_client_id2(client_id.second);
   }
 
   if (batcher_->in_flight_ops().metadata.object_locking_txn_meta) {
