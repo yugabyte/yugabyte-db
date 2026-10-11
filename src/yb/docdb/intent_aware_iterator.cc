@@ -605,12 +605,14 @@ void IntentAwareIterator::Prev() {
       } else {
         SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
       }
+    }
 
-      // No need to move regular iterartor, but bounds should be re-checked for the current
-      // regular entry.
-      if (regular_entry_.Valid() && !SatisfyBounds(regular_entry_.key)) {
-        regular_entry_.Reset();
-      }
+    // The regular side is not moved, but the bounds may have been narrowed since it was
+    // positioned, e.g. GetHelperBase sets the lower bound to the row being read. Re-check it even
+    // if intent_iter_ is invalid, as it is then the only candidate. The regular branch needs no
+    // such case: regular_entry_ always matches iter_'s current entry.
+    if (regular_entry_.Valid() && !SatisfyBounds(regular_entry_.key)) {
+      regular_entry_.Reset();
     }
   }
 
