@@ -62,6 +62,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -69,6 +70,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -306,6 +308,29 @@ Status StartServices(Services& services) {
   Factory factory;
 
   services.tablet_server = factory.CreateTabletServer(tablet_server_options);
+
+  // Local initdb only sets up this node's PostgreSQL data directory and does not talk to the
+  // cluster, so run it while the tablet server waits for the master during Init().
+  bool ysql_enabled = FLAGS_start_pgsql_proxy || FLAGS_enable_ysql;
+  std::optional<Result<PgProcessConf>> pg_process_conf_result;
+  ThreadPtr initdb_thread;
+  if (ysql_enabled) {
+    const auto& data_root = tablet_server_options.fs_opts.data_paths.front();
+    RETURN_NOT_OK(Env::Default()->CreateDirs(data_root));
+    initdb_thread = VERIFY_RESULT(Thread::Make(
+        "pg", "local_initdb", [&pg_process_conf_result, pg_data_dir = data_root + "/pg_data"] {
+          pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
+              FLAGS_pgsql_proxy_bind_address, pg_data_dir);
+        }));
+  }
+  auto join_initdb_thread = [&initdb_thread] {
+    if (initdb_thread) {
+      WARN_NOT_OK(ThreadJoiner(initdb_thread.get()).Join(), "Failed to join local initdb thread");
+      initdb_thread.reset();
+    }
+  };
+  ScopeExit join_initdb_thread_on_exit(join_initdb_thread);
+
   // ----------------------------------------------------------------------------------------------
   // Starting to instantiate servers
   // ----------------------------------------------------------------------------------------------
@@ -329,14 +354,11 @@ Status StartServices(Services& services) {
   services.call_home->ScheduleCallHome();
 
   bool ysql_lease_enabled = false;
-  bool ysql_enabled = FLAGS_start_pgsql_proxy || FLAGS_enable_ysql;
   if (ysql_enabled) {
-    auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
-        FLAGS_pgsql_proxy_bind_address,
-        tablet_server_options.fs_opts.data_paths.front() + "/pg_data");
-    RETURN_NOT_OK(pg_process_conf_result);
+    join_initdb_thread();
+    RETURN_NOT_OK(*pg_process_conf_result);
     RETURN_NOT_OK(docdb::DocPgInit(pgwrapper::PgWrapper::GetPostgresExecutablePath()));
-    auto& pg_process_conf = *pg_process_conf_result;
+    auto& pg_process_conf = **pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options.master_addresses_flag;
     RETURN_NOT_OK(pg_process_conf.SetSslConf(
         services.tablet_server->options(), *services.tablet_server->fs_manager()));

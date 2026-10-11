@@ -61,9 +61,6 @@
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
-DECLARE_bool(quick_leader_election_on_create);
-
-
 namespace yb {
 namespace tserver {
 
