@@ -9,7 +9,9 @@ Migrations are run in a special YSQL upgrade mode that changes some expectations
 executed and allows some new grammar - see the next section for details.
 
 Migration scripts should be designed idempotent - i.e. in such a way so that re-running them
-multiple times would be okay.
+multiple times would be okay. In particular, re-running a migration must not change any catalog
+OIDs: when a migration touches an object that already exists, modify it in place rather than
+dropping and recreating it (see "Note on modifying an existing catalog object" below).
 
 The script will be run in the scope of a single transaction, unless you explicitly start a migration
 with `BEGIN`. Unfortunately, according to YugabyteDB limitations, DDLs are executed in their own
@@ -75,6 +77,10 @@ Postgres' SQL grammar was slightly extended to make writing migrations easier. I
 * `CREATE VIEW`:
     * Reloption `use_initdb_acl=<bool>`, if true, will set the ACL (permissions) as if the view was
       created by initdb using `yb_system_views.sql`.
+    * To modify a view that already exists, prefer `CREATE OR REPLACE VIEW` over `DROP VIEW`
+      followed by a fresh `CREATE`: a bare `DROP` reassigns the view's OID and breaks idempotency.
+      If a `DROP` is unavoidable (e.g. to rename a column), it must be guarded - see "Note on
+      modifying an existing catalog object" below.
 
 (Both of the above were changed to imitate what initdb is doing - e.g. dependencies recorded would
   be different than you'd normally expect.)
@@ -134,6 +140,35 @@ To allow DMLs to modify system tables directly, use
     SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
 
 in a transaction after DDLs are done.
+
+---
+**Note on modifying an existing catalog object (OID stability)**
+
+Re-running a migration must leave `pg_catalog` identical, including every object's **OID**. A `DROP` +
+re-`CREATE` gives the object a new OID (the OID allocator restarts from the current max), diverging
+from a fresh `initdb` and breaking idempotency - so modify existing objects in place, never drop and
+recreate:
+
+* View: `CREATE OR REPLACE VIEW` (not `DROP VIEW` + `CREATE`).
+* Function: `DELETE` the old `pg_proc` row and re-`INSERT` reusing the **same** hardcoded `oid`
+  (not `pg_nextoid()`), with `ON CONFLICT DO NOTHING`.
+
+`TestYsqlUpgrade`'s idempotency check catches OID divergence, so a `DROP`-based migration that isn't
+OID-stable will fail it.
+
+If a `DROP` is truly unavoidable - e.g. renaming a column, which `CREATE OR REPLACE VIEW` forbids -
+guard it so it runs at most once, skipping the rebuild when the new schema is already present:
+
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT TRUE FROM pg_attribute
+                     WHERE attrelid = 'pg_catalog.<view_name>'::regclass
+                       AND attname = '<new_column>' AND NOT attisdropped) THEN
+        DROP VIEW pg_catalog.<view_name>;
+        CREATE OR REPLACE VIEW pg_catalog.<view_name> WITH (use_initdb_acl = true) AS SELECT ...;
+      END IF;
+    END $$;
+
+---
 
 Tips
 ----

@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "yb/common/entity_ids_types.h"
@@ -71,9 +72,13 @@ class RemoteClientBase {
   static int32_t StartedClientsCount();
 
  protected:
-  // Construct the remote client base.
-  // 'fs_manager' and 'messenger' must remain valid until this object is destroyed.
-  RemoteClientBase(const TabletId& tablet_id, FsManager* fs_manager);
+  // Construct the remote client base. 'fs_manager' and 'messenger' must remain valid until this
+  // object is destroyed. `is_cancelled`, if set, is polled while fetching data and waiting for the
+  // change-role to propagate; when it returns true those waits stop promptly (returning
+  // ShutdownInProgress) instead of retrying until session_idle_timeout -- e.g. once this server
+  // starts shutting down. See issue #32211.
+  RemoteClientBase(
+      const TabletId& tablet_id, FsManager* fs_manager, std::function<bool()> is_cancelled = {});
 
   // Attempt to clean up resources on the remote end by sending an
   // EndRemoteBootstrapSession() RPC
@@ -95,6 +100,11 @@ class RemoteClientBase {
   Env& env() const;
 
   const std::string& permanent_uuid() const;
+
+  // Returns true when in-flight fetches / change-role waits should be abandoned because the client
+  // should stop (e.g. tserver shutdown). The predicate is owned by the downloader. See issue
+  // #32211.
+  bool IsCancelled() const { return downloader_.IsCancelled(); }
 
   static std::atomic<int32_t> remote_clients_started_;
 

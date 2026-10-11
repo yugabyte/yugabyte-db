@@ -5,3 +5,4 @@
 ####################################################################################################
 test: yb.orig.dml_single_row
 test: yb.orig.select_no_pushdown
+test: yb.orig.in_clause_pushdown

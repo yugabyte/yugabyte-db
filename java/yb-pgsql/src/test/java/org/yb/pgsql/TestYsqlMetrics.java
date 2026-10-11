@@ -473,22 +473,29 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE test(k INT, v VARCHAR)");
       String preparedStmtSql =
-          "PREPARE foo(INT, VARCHAR, INT, VARCHAR, INT, VARCHAR, INT, VARCHAR, INT, VARCHAR) " +
-          "AS INSERT INTO test VALUES($1, $2), ($3, $4), ($5, $6), ($7, $8), ($9, $10)";
+          "PREPARE foo(VARCHAR, INT, INT) " +
+          "AS INSERT INTO test SELECT s, $1 FROM generate_series($2, $3) AS s";
       statement.execute(preparedStmtSql);
       statement.execute(
-          "CREATE PROCEDURE proc(n INT) LANGUAGE PLPGSQL AS $$ DECLARE c INT := 0; BEGIN " +
-          "WHILE c < n LOOP c := c + 1; INSERT INTO test VALUES(c, 'value'); END LOOP; END; $$");
-      testStatement(statement,
-          "INSERT INTO test VALUES(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5')",
+          "CREATE PROCEDURE proc(n INT) LANGUAGE PLPGSQL AS $$ " +
+          "DECLARE c INT := 0; BEGIN " +
+          "  WHILE c < n LOOP " +
+          "    INSERT INTO test SELECT s + (c * n), 'value' FROM generate_series(1, 50) AS s; " +
+          "    c := c + 1; " +
+          "  END LOOP; " +
+          "END; $$");
+      testStatement(
+          statement,
+          "INSERT INTO test SELECT s, 'value' FROM generate_series(1, 500) AS s",
           INSERT_STMT_METRIC,
-          "INSERT INTO test VALUES($1, $2), ($3, $4), ($5, $6), ($7, $8), ($9, $10)");
-      testStatement(statement,
-                    "EXECUTE foo(1, '1', 2, '2', 3, '3', 4, '4', 5, '5')",
-                    INSERT_STMT_METRIC,
-                    preparedStmtSql);
-      testStatement(statement, "CALL proc(40)", OTHER_STMT_METRIC);
-      testStatement(statement, "DO $$ BEGIN CALL proc(40); END $$", OTHER_STMT_METRIC);
+          "INSERT INTO test SELECT s, $1 FROM generate_series($3, $4) AS s");
+      testStatement(
+          statement,
+          "EXECUTE foo('value', 1, 500)",
+          INSERT_STMT_METRIC,
+          preparedStmtSql);
+      testStatement(statement, "CALL proc(10)", OTHER_STMT_METRIC);
+      testStatement(statement, "DO $$ BEGIN CALL proc(10); END $$", OTHER_STMT_METRIC);
     }
   }
 
@@ -717,7 +724,9 @@ public class TestYsqlMetrics extends BasePgSQLTest {
                              String query,
                              String metricName,
                              String statName) throws Exception {
-    final int count = 200;
+    statement.execute(query);
+    resetStatementStat();
+    final int count = 20;
     for (int i = 0; i < count; ++i) {
       statement.addBatch(query);
     }

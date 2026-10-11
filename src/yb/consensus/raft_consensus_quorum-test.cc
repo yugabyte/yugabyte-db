@@ -50,16 +50,20 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 
 #include "yb/server/logical_clock.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/drive_io_stats.h"
+#include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -67,6 +71,11 @@
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(raft_monotonic_last_received_current_leader);
+DECLARE_bool(enable_wal_sync_on_consensus_update);
+DECLARE_int32(interval_durable_wal_write_ms);
+DECLARE_int32(bytes_durable_wal_write_mb);
+DECLARE_bool(never_fsync);
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -84,8 +93,6 @@ namespace yb::consensus {
 using log::Log;
 using log::LogOptions;
 using log::LogReader;
-using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 const char* kTestTable = "TestTable";
 const char* kTestTablet = "TestTablet";
@@ -124,9 +131,9 @@ class RaftConsensusQuorumTest : public YBTest {
     // Build the fsmanagers and logs
     for (int i = 0; i < config_.peers_size(); i++) {
       shared_ptr<MemTracker> parent_mem_tracker =
-          MemTracker::CreateTracker(Substitute("peer-$0", i));
+          MemTracker::CreateTracker(Format("peer-$0", i));
       parent_mem_trackers_.push_back(parent_mem_tracker);
-      string test_path = GetTestPath(Substitute("peer-$0-root", i));
+      string test_path = GetTestPath(Format("peer-$0-root", i));
       FsManagerOpts opts;
       opts.parent_mem_tracker = parent_mem_tracker;
       opts.wal_paths = { test_path };
@@ -164,7 +171,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
       auto operation_factory = new TestOperationFactory();
 
-      string peer_uuid = Substitute("peer-$0", i);
+      string peer_uuid = Format("peer-$0", i);
 
       fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
       std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
@@ -292,7 +299,7 @@ class RaftConsensusQuorumTest : public YBTest {
     (**round).BindToTerm(peer->LeaderTerm());
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
-                          Substitute("Unable to replicate to peer $0", peer_idx));
+                          Format("Unable to replicate to peer $0", peer_idx));
     return Status::OK();
   }
 
@@ -360,8 +367,8 @@ class RaftConsensusQuorumTest : public YBTest {
     // Gather the replica and leader operations for printing
     log::LogEntries replica_ops = GatherLogEntries(peer_idx, logs_[peer_idx]);
     log::LogEntries leader_ops = GatherLogEntries(leader_idx, logs_[leader_idx]);
-    SCOPED_TRACE(PrintOnError(replica_ops, Substitute("local peer ($0)", peer->peer_uuid())));
-    SCOPED_TRACE(PrintOnError(leader_ops, Substitute("leader (peer-$0)", leader_idx)));
+    SCOPED_TRACE(PrintOnError(replica_ops, Format("local peer ($0)", peer->peer_uuid())));
+    SCOPED_TRACE(PrintOnError(leader_ops, Format("leader (peer-$0)", leader_idx)));
     FAIL() << "Replica did not commit.";
   }
 
@@ -416,16 +423,11 @@ class RaftConsensusQuorumTest : public YBTest {
   log::LogEntries GatherLogEntries(int idx, const scoped_refptr<Log>& log) {
     EXPECT_OK(log->WaitUntilAllFlushed());
     EXPECT_OK(log->Close());
-    std::unique_ptr<LogReader> log_reader;
-    EXPECT_OK(log::LogReader::Open(fs_managers_[idx]->env(),
-                                   scoped_refptr<log::LogIndex>(),
-                                   "Log reader: ",
-                                   fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
-                                                                                kTestTablet),
-                                   table_metric_entity_.get(),
-                                   tablet_metric_entity_.get(),
-                                   /*read_wal_mem_tracker=*/nullptr,
-                                   &log_reader));
+    auto log_reader = EXPECT_RESULT(log::LogReader::Open(
+        fs_managers_[idx]->env(), scoped_refptr<log::LogIndex>(), "Log reader: ",
+        fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
+        table_metric_entity_.get(), tablet_metric_entity_.get(),
+        /*read_wal_mem_tracker=*/nullptr));
     log::LogEntries ret;
     log::SegmentSequence segments;
     EXPECT_OK(log_reader->GetSegmentsSnapshot(&segments));
@@ -509,8 +511,8 @@ class RaftConsensusQuorumTest : public YBTest {
                      const log::LogEntries& replica_entries,
                      const string& leader_name,
                      const string& replica_name) {
-    SCOPED_TRACE(PrintOnError(leader_entries, Substitute("Leader: $0", leader_name)));
-    SCOPED_TRACE(PrintOnError(replica_entries, Substitute("Replica: $0", replica_name)));
+    SCOPED_TRACE(PrintOnError(leader_entries, Format("Leader: $0", leader_name)));
+    SCOPED_TRACE(PrintOnError(replica_entries, Format("Replica: $0", replica_name)));
 
     // Check that the REPLICATE messages come in the same order on both nodes.
     VerifyReplicateOrderMatches(leader_entries, replica_entries);
@@ -524,8 +526,8 @@ class RaftConsensusQuorumTest : public YBTest {
   string PrintOnError(const log::LogEntries& replica_entries,
                       const string& replica_id) {
     string ret = "";
-    SubstituteAndAppend(&ret, "$1 log entries for replica $0:\n",
-                        replica_id, replica_entries.size());
+    ret += Format("$1 log entries for replica $0:\n",
+                  replica_id, replica_entries.size());
     for (const auto& replica_entry : replica_entries) {
       StrAppend(&ret, "Replica log entry: ", replica_entry->ShortDebugString(), "\n");
     }
@@ -534,7 +536,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   // Read the ConsensusMetadata for the given peer from disk.
   std::unique_ptr<ConsensusMetadata> ReadConsensusMetadataFromDisk(int peer_index) {
-    string peer_uuid = Substitute("peer-$0", peer_index);
+    string peer_uuid = Format("peer-$0", peer_index);
     std::unique_ptr<ConsensusMetadata> cmeta;
     CHECK_OK(ConsensusMetadata::Load(fs_managers_[peer_index], kTestTablet, peer_uuid, &cmeta));
     return cmeta;
@@ -943,6 +945,118 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
                       "Log matching property violated");
 }
 
+// The wiring, as opposed to the primitive. The log-test cases drive
+// Log::MaybeSyncInBackground() directly; the guarantee an operator actually gets is that an
+// UpdateConsensus RPC carrying no operations gets an idle follower's WAL fsynced, and that lives
+// in RaftConsensus::Update() rather than in Log.
+//
+// Constructed so that only that path can explain the fsync: one op is replicated and then no more,
+// so the appender is parked in its drain wait and will not call Sync() again; the byte arm is far
+// out of reach; and the requests sent below carry no ops at all, so they append nothing that could
+// provoke a sync of their own.
+class RaftConsensusWalSyncTest : public RaftConsensusQuorumTest {
+ protected:
+  static constexpr int kFollowerIdx = 0;
+  static constexpr int kLeaderIdx = 2;
+  static constexpr int kIntervalMs = 100;
+
+  // These tests move process-global durability flags, one of them to a value that would silently
+  // disable the feature for anything running afterwards in the same binary. Restored here rather
+  // than at the end of each test body so that a failing test cannot leak them either.
+  google::FlagSaver flag_saver_;
+
+  void SetUpFlagsAndDrives() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_interval_durable_wal_write_ms) = kIntervalMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_bytes_durable_wal_write_mb) = 1024;
+    // Registered before BuildAndStartConfig, because Log resolves its drive once at construction
+    // and PosixWritableFile does the same per open. The roots are this test's own temp paths, so
+    // nothing else in the process shares the counters.
+    for (int i = 0; i < 3; ++i) {
+      DriveIoStatsRegistry::Instance().Register(
+          GetTestPath(Format("peer-$0-root", i)), nullptr);
+    }
+  }
+
+  // A heartbeat: right term, right preceding id, no ops. This is what a real leader sends an
+  // up-to-date follower when there is nothing to replicate.
+  std::shared_ptr<LWConsensusRequestPB> MakeHeartbeat(const OpIdPB& last_op_id) {
+    shared_ptr<RaftConsensus> leader;
+    CHECK_OK(peers_->GetPeerByIdx(kLeaderIdx, &leader));
+    auto req = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+    req->ref_caller_uuid(leader->peer_uuid());
+    req->set_caller_term(last_op_id.term());
+    req->mutable_preceding_id()->CopyFrom(last_op_id);
+    req->mutable_committed_op_id()->CopyFrom(last_op_id);
+    return req;
+  }
+
+  DriveIoStats* FollowerDriveStats() {
+    return DriveIoStatsRegistry::Instance().Find(
+        GetTestPath(Format("peer-$0-root", kFollowerIdx)));
+  }
+};
+
+TEST_F(RaftConsensusWalSyncTest, TestHeartbeatSyncsAnIdleFollowersWal) {
+  ASSERT_NO_FATALS(SetUpFlagsAndDrives());
+  ASSERT_OK(BuildAndStartConfig(3));
+
+  OpIdPB last_op_id;
+  vector<scoped_refptr<ConsensusRound>> rounds;
+  REPLICATE_SEQUENCE_OF_MESSAGES(
+      1, kLeaderIdx, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id, &rounds);
+
+  auto* drive_stats = FollowerDriveStats();
+  ASSERT_NE(drive_stats, nullptr);
+  const auto syncs_before = drive_stats->sync_count();
+
+  shared_ptr<RaftConsensus> follower;
+  ASSERT_OK(peers_->GetPeerByIdx(kFollowerIdx, &follower));
+
+  SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 10));
+
+  // Heartbeats until the WAL is on disk. Sent explicitly rather than waiting for the leader's own
+  // timer so the test does not depend on the harness's heartbeat plumbing, but they are the same
+  // requests through the same entry point.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        LWConsensusResponsePB resp(nullptr);
+        auto req = MakeHeartbeat(last_op_id);
+        RETURN_NOT_OK(follower->Update(req, &resp, CoarseBigDeadline()));
+        return drive_stats->sync_count() > syncs_before;
+      },
+      MonoDelta::FromSeconds(10), "the follower's WAL to be fsynced from the heartbeat path"));
+}
+
+// The kill switch, which matters because the consensus-path check is on by default. Same setup,
+// flag off: however many heartbeats arrive and however long the entry has been sitting there,
+// nothing fsyncs.
+TEST_F(RaftConsensusWalSyncTest, TestNoSyncWhenDisabled) {
+  ASSERT_NO_FATALS(SetUpFlagsAndDrives());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_sync_on_consensus_update) = false;
+  ASSERT_OK(BuildAndStartConfig(3));
+
+  OpIdPB last_op_id;
+  vector<scoped_refptr<ConsensusRound>> rounds;
+  REPLICATE_SEQUENCE_OF_MESSAGES(
+      1, kLeaderIdx, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id, &rounds);
+
+  auto* drive_stats = FollowerDriveStats();
+  ASSERT_NE(drive_stats, nullptr);
+  const auto syncs_before = drive_stats->sync_count();
+
+  shared_ptr<RaftConsensus> follower;
+  ASSERT_OK(peers_->GetPeerByIdx(kFollowerIdx, &follower));
+
+  SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 10));
+  for (int i = 0; i < 20; ++i) {
+    LWConsensusResponsePB resp(nullptr);
+    auto req = MakeHeartbeat(last_op_id);
+    ASSERT_OK(follower->Update(req, &resp, CoarseBigDeadline()));
+  }
+  ASSERT_EQ(drive_stats->sync_count(), syncs_before);
+}
+
 // Test that RequestVote performs according to "spec".
 TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_OK(BuildAndStartConfig(3));
@@ -1057,6 +1171,228 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_TRUE(res.status().has_error());
   ASSERT_EQ(ConsensusErrorPB::INVALID_TERM, res.status().error().code());
   LOG(INFO) << "Follower rejected old heartbeat, as expected: " << res.ShortDebugString();
+}
+
+// A follower that briefly won a term, appended its own leader NO_OP and lost leadership before
+// committing it holds a conflicting uncommitted entry the next leader does not have. To catch it
+// up the leader must eventually offer that index so the follower truncates, but it decides where
+// to send from using two watermarks the follower reports and both are unusable here:
+// last_received names the follower's own overwritten op, which IsOpInLog() rejects, and
+// last_received_current_leader is set once per term and then frozen. The leader keeps re-sending
+// below the conflict while every exchange succeeds.
+//
+// No real election is needed: a request with a higher caller_term makes the follower advance its
+// term, which is enough to impersonate the succession of leaders.
+
+struct CatchupProbeObservation {
+  OpId baseline;
+
+  // The conflicting uncommitted tail, in a later term than anything the impersonated leader has.
+  OpId conflicting_op;
+
+  // Carried by the two fully-deduplicated probes; the second is deliberately higher, and that
+  // advance is what the follower is supposed to reflect back.
+  OpId probe1_preceding;
+  OpId probe2_preceding;
+
+  OpId lrcl_after_probe1;
+  OpId lrcl_after_probe2;
+
+  // Names an op no other replica has, so the leader cannot position from it.
+  OpId last_received_after_probe2;
+
+  // The leader's own log end; the follower's conflicting op lies beyond it.
+  OpId leader_last_received;
+};
+
+// An election persists the new term and the vote for self with a single flush.
+TEST_F(RaftConsensusQuorumTest, ElectionFlushesConsensusMetadataOnce) {
+  ASSERT_OK(BuildAndStartConfig(3));
+  shared_ptr<RaftConsensus> leader;
+  ASSERT_OK(peers_->GetPeerByIdx(2, &leader));
+  shared_ptr<RaftConsensus> candidate;
+  ASSERT_OK(peers_->GetPeerByIdx(0, &candidate));
+  // Catch the candidate up with the leader's log and term first: otherwise the pre-election is
+  // denied for a stale log, and the term update would count as a flush below.
+  OpIdPB last_op_id;
+  vector<scoped_refptr<ConsensusRound>> rounds;
+  REPLICATE_SEQUENCE_OF_MESSAGES(1, 2, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id,
+                                 &rounds);
+  WaitForCommitIfNotAlreadyPresent(last_op_id, 0, 2);
+  const auto term_before = leader->LeaderTerm();
+  ASSERT_EQ(ReadConsensusMetadataFromDisk(0)->current_term(), term_before);
+
+  std::atomic<int> candidate_flushes{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("ConsensusMetadata::Flush", [&](void* arg) {
+    if (static_cast<ConsensusMetadata*>(arg)->peer_uuid() == candidate->peer_uuid()) {
+      ++candidate_flushes;
+    }
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(candidate->StartElection(LeaderElectionData{
+      .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+      .pending_commit = false,
+      .must_be_committed_opid = OpId()}));
+  ASSERT_OK(candidate->WaitUntilLeaderForTests(MonoDelta::FromSeconds(15)));
+
+  ASSERT_EQ(candidate_flushes.load(), 1);
+  AssertDurableTermAndVote(0, term_before + 1, candidate->peer_uuid());
+}
+
+class RaftConsensusCatchupProbeTest : public RaftConsensusQuorumTest {
+ public:
+  // Every request here is accepted; the livelock is made of successful exchanges.
+  void SendAndCheck(const std::shared_ptr<RaftConsensus>& follower,
+                    const std::shared_ptr<LWConsensusRequestPB>& req,
+                    LWConsensusResponsePB* resp,
+                    const std::string& what) {
+    ASSERT_OK(follower->Update(req, resp, CoarseBigDeadline()));
+    ASSERT_TRUE(resp->has_status()) << what << ": response carried no status";
+    ASSERT_FALSE(resp->status().has_error())
+        << what << " was rejected: " << resp->ShortDebugString();
+    ASSERT_TRUE(resp->status().has_last_received() &&
+                resp->status().has_last_received_current_leader())
+        << what << ": response is missing a watermark: " << resp->ShortDebugString();
+  }
+
+  void RunScenario(CatchupProbeObservation* out) {
+    const int kFollower0Idx = 0;
+    const int kLeaderIdx = 2;
+
+    ASSERT_OK(BuildAndStartConfig(3));
+
+    // Committed baseline in the original term.
+    OpIdPB last_op_id;
+    vector<scoped_refptr<ConsensusRound>> rounds;
+    REPLICATE_SEQUENCE_OF_MESSAGES(
+        10, kLeaderIdx, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id, &rounds);
+    WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower0Idx, kLeaderIdx);
+
+    const auto baseline = OpId::FromPB(last_op_id);
+    out->baseline = baseline;
+    ASSERT_GT(baseline.index, 1) << "Need at least two committed indexes to probe between.";
+
+    shared_ptr<RaftConsensus> leader;
+    ASSERT_OK(peers_->GetPeerByIdx(kLeaderIdx, &leader));
+    shared_ptr<RaftConsensus> follower;
+    ASSERT_OK(peers_->GetPeerByIdx(kFollower0Idx, &follower));
+
+    // Give the follower a conflicting uncommitted tail. Delivering it as a request from term+1
+    // reaches the same state as it winning that term, with no real election.
+    const OpId conflicting_op(baseline.term + 1, baseline.index + 1);
+    out->conflicting_op = conflicting_op;
+    {
+      auto req_ptr = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+      auto& req = *req_ptr;
+      req.ref_caller_uuid(leader->peer_uuid());
+      req.set_caller_term(conflicting_op.term);
+      baseline.ToPB(req.mutable_preceding_id());
+      baseline.ToPB(req.mutable_committed_op_id());
+      auto* replicate = req.add_ops();
+      replicate->set_hybrid_time(clock_->Now().ToUint64());
+      replicate->set_op_type(NO_OP);
+      replicate->mutable_noop_request();
+      conflicting_op.ToPB(replicate->mutable_id());
+
+      LWConsensusResponsePB resp(&req.arena());
+      ASSERT_NO_FATALS(SendAndCheck(follower, req_ptr, &resp, "conflicting tail append"));
+    }
+    ASSERT_EQ(follower->GetLastReceivedOpId(), conflicting_op)
+        << "Follower did not take the conflicting tail.";
+
+    // A new leader without that entry. Its first contact advances the follower's term, clearing
+    // last_received_current_leader. Both probes are ops-empty heartbeats, the simplest shape
+    // reaching the empty-dedup branch, preceded by committed entries the follower holds.
+    const auto probe_term = conflicting_op.term + 1;
+    out->probe1_preceding = OpId(baseline.term, baseline.index - 1);
+    out->probe2_preceding = baseline;
+
+    auto send_probe = [&](const OpId& preceding, const std::string& what, OpId* lrcl,
+                          OpId* last_received) {
+      auto req_ptr = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+      auto& req = *req_ptr;
+      req.ref_caller_uuid(leader->peer_uuid());
+      req.set_caller_term(probe_term);
+      preceding.ToPB(req.mutable_preceding_id());
+      // At or below what the follower already committed, so nothing new applies.
+      preceding.ToPB(req.mutable_committed_op_id());
+
+      LWConsensusResponsePB resp(&req.arena());
+      ASSERT_NO_FATALS(SendAndCheck(follower, req_ptr, &resp, what));
+      *lrcl = OpId::FromPB(resp.status().last_received_current_leader());
+      *last_received = OpId::FromPB(resp.status().last_received());
+    };
+
+    OpId ignored;
+    ASSERT_NO_FATALS(send_probe(
+        out->probe1_preceding, "first deduplicated probe", &out->lrcl_after_probe1, &ignored));
+    ASSERT_NO_FATALS(send_probe(
+        out->probe2_preceding, "second deduplicated probe, advanced preceding",
+        &out->lrcl_after_probe2, &out->last_received_after_probe2));
+
+    out->leader_last_received = leader->GetLastReceivedOpId();
+
+    LOG(INFO) << "Catch-up probe: baseline=" << baseline
+              << " conflicting_op=" << conflicting_op
+              << " probe1_preceding=" << out->probe1_preceding
+              << " lrcl_after_probe1=" << out->lrcl_after_probe1
+              << " probe2_preceding=" << out->probe2_preceding
+              << " lrcl_after_probe2=" << out->lrcl_after_probe2
+              << " last_received_after_probe2=" << out->last_received_after_probe2
+              << " leader_last_received=" << out->leader_last_received;
+  }
+};
+
+// A fully deduplicated request must advance last_received_current_leader to the op the follower
+// just confirmed it holds.
+TEST_F(RaftConsensusCatchupProbeTest, LastReceivedCurrentLeaderAdvancesAcrossDedupedProbes) {
+  CatchupProbeObservation obs;
+  ASSERT_NO_FATALS(RunScenario(&obs));
+
+  // Trigger guard: the probes have to actually advance, or this holds vacuously.
+  ASSERT_LT(obs.probe1_preceding, obs.probe2_preceding)
+      << "The two probes did not carry an advancing preceding op id, so there was nothing "
+      << "for the follower to reflect back.";
+
+  ASSERT_EQ(obs.lrcl_after_probe2, obs.probe2_preceding)
+      << "last_received_current_leader stayed at " << obs.lrcl_after_probe2
+      << " while the leader's probe had advanced to " << obs.probe2_preceding
+      << "; the leader cannot discover the conflicting index from this.";
+
+  // The premise this fix exists for is unchanged: the other watermark still names
+  // an op only this replica ever had, so the leader still cannot position from it
+  // and still depends on the fallback above.
+  ASSERT_EQ(obs.last_received_after_probe2, obs.conflicting_op);
+  ASSERT_GT(obs.conflicting_op.index, obs.leader_last_received.index);
+}
+
+// With the monotonic advance disabled the freeze must come back, proving the flag gates this path.
+TEST_F(RaftConsensusCatchupProbeTest, MonotonicAdvanceDisabledRestoresFreeze) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_monotonic_last_received_current_leader) = false;
+  auto restore = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_monotonic_last_received_current_leader) = true;
+  });
+
+  CatchupProbeObservation obs;
+  ASSERT_NO_FATALS(RunScenario(&obs));
+
+  ASSERT_LT(obs.probe1_preceding, obs.probe2_preceding);
+  ASSERT_EQ(obs.lrcl_after_probe1, obs.probe1_preceding)
+      << "The first probe did not seed last_received_current_leader.";
+
+  // The second probe advanced the preceding op id and the follower kept reporting
+  // the first probe's value.
+  ASSERT_EQ(obs.lrcl_after_probe2, obs.lrcl_after_probe1)
+      << "last_received_current_leader moved from " << obs.lrcl_after_probe1 << " to "
+      << obs.lrcl_after_probe2 << "; the kill switch did not restore the freeze.";
+  ASSERT_LT(obs.lrcl_after_probe2, obs.probe2_preceding);
+  ASSERT_EQ(obs.last_received_after_probe2, obs.conflicting_op);
 }
 
 } // namespace yb::consensus

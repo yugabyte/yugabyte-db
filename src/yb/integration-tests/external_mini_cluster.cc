@@ -32,12 +32,16 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include <stdlib.h>
+
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <ranges>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -565,7 +569,10 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
       Format("--transaction_table_num_tablets=$0", NumTabletsPerTransactionTable(opts_)));
   // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
   // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
-  if (IsSanitizer()) {
+  // Don't override a value explicitly set by the test.
+  if (IsSanitizer() && std::none_of(flags.begin(), flags.end(), [](const auto& flag) {
+        return flag.starts_with("--leader_failure_max_missed_heartbeat_periods=");
+      })) {
     flags.push_back("--leader_failure_max_missed_heartbeat_periods=10");
   }
   if (opts_.enable_ysql) {
@@ -1385,14 +1392,14 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   bool is_stale = false, is_ts_found = false;
   for (int i = 0; i < resp.servers_size(); i++) {
     if (!resp.servers(i).has_instance_id()) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         Uninitialized,
         "ListTabletServers RPC returned a TS with uninitialized instance id."
       );
     }
 
     if (!resp.servers(i).instance_id().has_permanent_uuid()) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
         Uninitialized,
         "ListTabletServers RPC returned a TS with uninitialized UUIDs."
       );
@@ -1405,7 +1412,7 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   }
 
   if (!is_ts_found) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         NotFound,
         "Given TS not found in ListTabletServers RPC."
     );
@@ -2662,7 +2669,15 @@ Status ExternalTabletServer::Launch(
     flags.Add(flag_value.first, flag_value.second);
   }
 
-  return StartProcess(flags.value());
+  // The standalone backends that initdb runs get no explicit port, so pre-PG12 servers derive
+  // their System V shared memory key from the compiled in default port. All tablet servers of
+  // the cluster run initdb at the same time and would then share a single key, which can make
+  // initdb fail with "pre-existing shared memory block is still in use". The child process
+  // inherits this environment, giving each of them its own key.
+  setenv("PGPORT", std::to_string(pgsql_rpc_port_).c_str(), /* overwrite */ 1);
+  auto status = StartProcess(flags.value());
+  unsetenv("PGPORT");
+  return status;
 }
 
 Status ExternalTabletServer::BuildServerStateFromInfoPath() {
@@ -2730,6 +2745,26 @@ Status ExternalTabletServer::SetNumDrives(uint16_t num_drives) {
   num_drives_ = num_drives;
   data_dirs_ = FsDataDirs(root_dir_, "tserver", num_drives_);
   return Status::OK();
+}
+
+void ExternalTabletServer::Shutdown(
+    SafeShutdown safe_shutdown, RequireExitCode0 require_exit_code_0) {
+  auto postmaster_pid = PostmasterPid();
+  ExternalDaemon::Shutdown(safe_shutdown, require_exit_code_0);
+  if (!postmaster_pid.ok()) {
+    return;
+  }
+  // Killing the tablet server does not reap postgres: it gets reparented and only exits
+  // asynchronously in response to its parent death signal. Wait for it, otherwise a following
+  // Restart() races with an orphan postmaster that still holds the YSQL port and keeps writing to
+  // the pg_data directory.
+  const auto pid = *postmaster_pid;
+  const auto pid_file = JoinPathSegments(GetRootDir(), "pg_data", "postmaster.pid");
+  WARN_NOT_OK(
+      WaitFor(
+          [pid, &pid_file] { return kill(pid, 0) != 0 || !Env::Default()->FileExists(pid_file); },
+          30s * kTimeMultiplier, Format("Waiting for postmaster $0 to exit", pid)),
+      LogPrefix() + "Postmaster did not exit");
 }
 
 Result<pid_t> ExternalTabletServer::PostmasterPid() {
@@ -2878,6 +2913,54 @@ Status WaitForTableIntentsApplied(
     ExternalMiniCluster *cluster, const TableId&, MonoDelta timeout) {
   // TODO(jhe) - Check for just table_id, currently checking for all intents.
   return CHECK_NOTNULL(cluster)->WaitForAllIntentsApplied(timeout);
+}
+
+void DumpTabletDistribution(ExternalMiniCluster* cluster, bool running_only) {
+  const auto num_ts = cluster->num_tablet_servers();
+
+  // table_name -> per-tserver replica counts, indexed by tserver index.
+  std::map<std::string, std::vector<int>> table_to_ts_loads;
+  std::vector<int> ts_totals(num_ts, 0);
+  for (size_t i = 0; i < num_ts; ++i) {
+    auto* ts = cluster->tablet_server(i);
+    auto tablets_result = cluster->GetTablets(ts);
+    if (!tablets_result.ok()) {
+      LOG(WARNING) << "Failed to list tablets for tserver " << ts->uuid() << ": "
+                   << tablets_result.status();
+      continue;
+    }
+    for (const auto& tablet : *tablets_result) {
+      // Skip replicas that are not actively serving (e.g. tombstoned replicas left behind after
+      // the load balancer moved a peer to another tserver); counting them would over-report load
+      // and disagree with the committed placement seen through the master.
+      if (running_only && tablet.state() != tablet::RUNNING) {
+        continue;
+      }
+      auto& loads = table_to_ts_loads[tablet.table_name()];
+      if (loads.empty()) {
+        loads.resize(num_ts);
+      }
+      loads[i]++;
+      ts_totals[i]++;
+    }
+  }
+
+  std::ostringstream out;
+  out << "Tablet distribution across " << num_ts << " tservers (replicas per table per tserver):";
+  for (size_t i = 0; i < num_ts; ++i) {
+    out << "\n  TS" << i << " = " << cluster->tablet_server(i)->uuid();
+  }
+  for (const auto& [table_name, loads] : table_to_ts_loads) {
+    out << "\n  " << table_name << ":";
+    for (size_t i = 0; i < num_ts; ++i) {
+      out << " " << (i < loads.size() ? loads[i] : 0);
+    }
+  }
+  out << "\n  TOTAL:";
+  for (size_t i = 0; i < num_ts; ++i) {
+    out << " " << ts_totals[i];
+  }
+  LOG(INFO) << out.str();
 }
 
 }  // namespace yb

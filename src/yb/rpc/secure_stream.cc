@@ -35,6 +35,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/flags.h"
 #include "yb/util/env.h"
@@ -575,7 +576,7 @@ Result<SSLPtr> SecureContext::Impl::Create(
 
   auto ssl = SSLPtr(SSL_new(context_.get()));
   if (use_certificate_key_pair) {
-    DCHECK(!certificates.empty());
+    SCHECK(!certificates.empty(), IllegalState, "No certificate loaded to present");
     auto res = SSL_use_certificate(ssl.get(), certificates[0].get());
     if (res != 1) {
       return SSL_STATUS(InvalidArgument, "Failed to use certificate: $0");

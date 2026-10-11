@@ -29,23 +29,23 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 {{%/ebnf%}}
 
 <a name="table-expr-note"></a></br></br>
-{{< note title="Table inheritance is not yet supported" >}}
+{{< note title="Table inheritance" >}}
 
-YSQL in the present "latest" YugabyteDB does not yet support the "table inheritance" feature that is described in the [PostgreSQL documentation](https://www.postgresql.org/docs/15/ddl-inherit.html). The attempt to create a table that inherits another table causes the _0A000 (feature_not_supported)_ error with the message _"INHERITS not supported yet"_. This means that the syntax that the `table_expr` rule allows doesn't yet bring any useful meaning.
-
-It says that you can write, for example, this:
+When other tables inherit `t`, `ONLY` on `DROP COLUMN` drops the column on `t` and leaves it on the children:
 
 ```plpgsql
-alter table t * add column y text;
+alter table only t drop column y;
 ```
 
-or this:
+Without `ONLY`, the drop applies to `t` and to tables that inherit from it:
 
 ```plpgsql
-alter table only t add column y text;
+alter table t * drop column y;
 ```
 
-These variants are useful only when at least one other table inherits `t`. But as yet, no table can inherit `t`. This means that if the unadorned variant `alter table t...` runs without error, then each of these variants will run without error too. But the effect of each is the same as that of the unadorned variant. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+`ALTER TABLE ONLY t ADD COLUMN` fails when `t` has children, because the new column must be added to those children too.
+
+See [Table inheritance](../../ddl-inherit/).
 {{< /note >}}
 
 ## Semantics
@@ -336,16 +336,26 @@ ALTER TABLE test RENAME CONSTRAINT vague_name TO unique_a_constraint;
 
 #### ALTER CONSTRAINT *constraint_name* [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
 
-Change the deferrability of an existing foreign key constraint. See [Deferrable constraints](#deferrable-constraints).
+Modify the deferral properties of an existing constraint. This is currently only supported for foreign key constraints.
+
+- `DEFERRABLE` — The constraint can be deferred until the end of the transaction.
+- `NOT DEFERRABLE` — The constraint is always checked immediately after each row in a statement (the default).
+- `INITIALLY DEFERRED` — The constraint is deferred by default unless explicitly checked during the transaction.
+- `INITIALLY IMMEDIATE` — The constraint is checked immediately by default (the default).
 
 ##### Example
 
-Create a foreign key constraint, then make it deferrable and deferred by default:
+Alter a foreign key constraint to be deferrable:
 
 ```sql
-CREATE TABLE t(id int PRIMARY KEY);
-CREATE TABLE u(id int, CONSTRAINT f FOREIGN KEY (id) REFERENCES t);
-ALTER TABLE u ALTER CONSTRAINT f DEFERRABLE INITIALLY DEFERRED;
+CREATE TABLE parent(id int PRIMARY KEY);
+CREATE TABLE child(id int, parent_id int,
+  CONSTRAINT fk_parent FOREIGN KEY(parent_id) REFERENCES parent(id)
+);
+
+-- Make the constraint deferrable and initially deferred
+ALTER TABLE child ALTER CONSTRAINT fk_parent
+  DEFERRABLE INITIALLY DEFERRED;
 ```
 
 #### ENABLE / DISABLE ROW LEVEL SECURITY
@@ -420,6 +430,8 @@ The following ALTER TABLE operations involve making a full copy of the underlyin
 1. [Adding](#add-alter) or [dropping](#drop-constraint-constraint-restrict-cascade) the primary key of a table.
 1. [Adding a column with a (volatile) default value](#add-column-if-not-exists-column-data-constraint).
 1. [Changing the type of a column](#alter-column-column-set-data-type-data-collate-collation-using-expression).
+
+These rewrite operations write into a newly built table, so they can use [faster writes to new tables](../../../../../explore/transactions/new-table-writes/).
 
 ## See also
 

@@ -27,6 +27,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tsan_util.h"

@@ -1,0 +1,47 @@
+# Reports the node's FIPS state. Only rendered for a FIPS enabled universe (configure_fips).
+#
+# A node that has just had FIPS enabled is not in FIPS mode yet - the kernel flag only flips on
+# reboot, and the run script and this precheck execute in the same provisioning pass. So a pending
+# reboot is reported as a pass with a note; what must not pass is a node that is neither in FIPS
+# mode nor on its way there.
+
+check_fips_mode() {
+    FIPS_KERNEL_FLAG="/proc/sys/crypto/fips_enabled"
+    # The marker lives on /run, which systemd mounts as tmpfs, so it cannot outlive the reboot it
+    # asks for. That matters because prechecks also run on their own, long after provisioning
+    # (RunPreflightChecks generates and runs only the precheck script): a marker on disk would still
+    # be there on a node where FIPS was configured but never actually took effect, and the precheck
+    # would report that node as compliant. Keep this path in step with run.j2/precheck.j2.
+    FIPS_REBOOT_MARKER="/run/.fips-reboot-required"
+
+    if [[ ! -f "$FIPS_KERNEL_FLAG" ]]; then
+        add_result "FIPS Mode" "FAIL" \
+          "$FIPS_KERNEL_FLAG is absent - this kernel cannot run in FIPS mode"
+        return
+    fi
+
+    kernel_fips=$(cat "$FIPS_KERNEL_FLAG")
+    if [[ "$kernel_fips" == "1" ]]; then
+        add_result "FIPS Mode" "PASS" "Kernel FIPS mode is enabled"
+    elif [[ -f "$FIPS_REBOOT_MARKER" ]]; then
+        add_result "FIPS Mode" "PASS" "FIPS mode is configured and takes effect on reboot"
+    else
+        add_result "FIPS Mode" "FAIL" \
+          "Kernel FIPS mode is off and no reboot is pending"
+        return
+    fi
+
+    # The kernel flag and OpenSSL are configured separately, and it is the system OpenSSL that
+    # ssh, python and the provisioning tooling use - the database brings its own. Report it rather
+    # than failing on it, since it only becomes meaningful once the kernel flag is on.
+    if command -v openssl >/dev/null 2>&1; then
+        if openssl list -providers 2>/dev/null | grep -qi "^ *fips"; then
+            add_result "FIPS OpenSSL Provider" "PASS" "System OpenSSL has the FIPS provider active"
+        else
+            add_result "FIPS OpenSSL Provider" "WARN" \
+              "System OpenSSL is not using the FIPS provider"
+        fi
+    fi
+}
+
+check_fips_mode

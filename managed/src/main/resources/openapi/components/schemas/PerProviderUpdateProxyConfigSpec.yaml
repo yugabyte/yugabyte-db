@@ -1,0 +1,21 @@
+title: PerProviderUpdateProxyConfigSpec
+description: Proxy settings for a single provider when updating proxy configuration on a multicloud cluster.
+type: object
+required:
+  - provider
+properties:
+  provider:
+    description: Cloud provider UUID.
+    type: string
+    format: uuid
+  proxy_config:
+    description: Default proxy settings for this provider.
+    $ref: "./NodeProxyConfig.yaml"
+  region_networking:
+    description: Proxy settings overridden per region identified by region code.
+    additionalProperties:
+      $ref: "./NodeProxyConfig.yaml"
+  az_networking:
+    description: Proxy settings overridden per Availability Zone identified by AZ code.
+    additionalProperties:
+      $ref: "./NodeProxyConfig.yaml"

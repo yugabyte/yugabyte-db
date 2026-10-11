@@ -1,15 +1,14 @@
 # src/test/regress/yb_index_schedule
 # This schedule is for non-ported tests only.
-test: yb.orig.index_including
+#
+# The index tests are split between this schedule and yb_index2_schedule so that
+# each test method stays well within its timeout.  Keep the two halves roughly
+# equal in runtime when adding tests.
+#
+# These three tests must stay together, in this order: "yb.orig.indexing_order"
+# defines the get_table_indexes() function that "yb.orig.create_index" uses, and
+# "yb.orig.index_scan" drops the table t1 that "yb.orig.create_index" leaves
+# behind.
 test: yb.orig.indexing_order
 test: yb.orig.create_index
-test: yb.orig.create_index_update_reltuples
 test: yb.orig.index_scan
-test: yb.orig.reindex
-test: yb.orig.secondary_index_scan
-test: yb.orig.index_recheck
-test: yb.orig.index_only_scan_decoded_pk
-
-test: yb.orig.index_scan_null_create
-test: yb.orig.index_scan_null_hash
-test: yb.orig.index_scan_null_asc

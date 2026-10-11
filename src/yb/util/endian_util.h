@@ -17,6 +17,7 @@
 
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

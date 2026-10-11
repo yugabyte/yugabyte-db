@@ -17,7 +17,14 @@ import {
   useFormContext,
   useWatch
 } from 'react-hook-form';
-import { mui, YBAutoComplete, YBLabel, YBSelectProps, YBTooltip } from '@yugabyte-ui-library/core';
+import {
+  mui,
+  YBAutoComplete,
+  YBLabel,
+  YBSelectProps,
+  YBTag,
+  YBTooltip
+} from '@yugabyte-ui-library/core';
 import { api, DBReleasesQueryKey } from '../../../../../features/universe/universe-form/utils/api';
 import { isNonEmptyString } from '../../../../../../utils/ObjectUtils';
 import { isVersionStable } from '../../../../../../utils/universeUtilsTyped';
@@ -33,20 +40,49 @@ import {
 } from '../../../../../features/universe/universe-form/utils/dto';
 import { PROVIDER_CONFIGURATION } from '../FieldNames';
 
-//icons
-import InfoMessageIcon from '../../../../../assets/info-message.svg';
+const { Box, useTheme } = mui;
 
-const { Box } = mui;
-
-interface DatabaseVersionFieldProps<T extends FieldValues>
-  extends Omit<YBSelectProps, 'name' | 'control'> {
+interface DatabaseVersionFieldProps<T extends FieldValues> extends Omit<
+  YBSelectProps,
+  'name' | 'control'
+> {
   name: Path<T>;
   label: string;
   placeholder?: string;
   disabled?: boolean;
 }
+
+const VersionTag = ({ tag }: { tag: string }) => {
+  const theme = useTheme();
+  const truncated = tag.length > MAX_RELEASE_TAG_CHAR;
+  const label = truncated ? `${tag.substring(0, MAX_RELEASE_TAG_CHAR)}...` : tag;
+  const tagNode = (
+    <span data-testid="DBVersionField-ReleaseTag" style={{ marginLeft: 8 }}>
+      <YBTag
+        size="small"
+        variant="light"
+        customSx={{
+          backgroundColor: theme.palette.grey[200],
+          color: theme.palette.grey[700],
+          border: 'unset'
+        }}
+      >
+        {label}
+      </YBTag>
+    </span>
+  );
+
+  return truncated ? (
+    <YBTooltip title={tag} placement="top">
+      {tagNode}
+    </YBTooltip>
+  ) : (
+    tagNode
+  );
+};
+
 const getOptionLabel = (option: string | Record<string, string>): string =>
-  typeof option === 'string' ? option : option.label ?? '';
+  typeof option === 'string' ? option : (option.label ?? '');
 const renderOption = (
   props: React.HTMLAttributes<HTMLLIElement>,
   option: Record<string, string>
@@ -54,49 +90,14 @@ const renderOption = (
   return (
     <li {...props}>
       <Box
-        style={{
+        sx={{
           display: 'flex',
-          flexDirection: 'row'
+          flexDirection: 'row',
+          alignItems: 'center'
         }}
       >
         {option.label}
-        {isNonEmptyString(option.releaseTag) && (
-          <>
-            <Box
-              style={{
-                border: '1px',
-                borderRadius: '6px',
-                padding: '3px 3px 3px 3px',
-                backgroundColor: '#E9EEF2',
-                maxWidth: 'fit-content',
-                marginLeft: '4px',
-                marginTop: '-4px'
-              }}
-            >
-              <span
-                data-testid={'DBVersionField-ReleaseTag'}
-                style={{
-                  fontWeight: 400,
-                  fontFamily: 'Inter',
-                  fontSize: '11.5px',
-                  color: '#0B1117',
-                  alignSelf: 'center'
-                }}
-              >
-                {option.releaseTag.length > MAX_RELEASE_TAG_CHAR
-                  ? `${option.releaseTag.substring(0, 10)}...`
-                  : option.releaseTag}
-              </span>
-            </Box>
-            <span>
-              {option.releaseTag.length > MAX_RELEASE_TAG_CHAR && (
-                <YBTooltip title={option.releaseTag} arrow placement="top">
-                  <img src={InfoMessageIcon} alt="info" />
-                </YBTooltip>
-              )}
-            </span>
-          </>
-        )}
+        {isNonEmptyString(option.releaseTag) && <VersionTag tag={option.releaseTag} />}
       </Box>
     </li>
   );
@@ -207,12 +208,12 @@ export const DatabaseVersionField = <T extends FieldValues>({
             <Box flex={1}>
               <YBAutoComplete
                 loading={isLoading}
-                options={(dbVersions as unknown) as Record<string, any>[]}
+                options={dbVersions as unknown as Record<string, any>[]}
                 groupBy={(option: Record<string, string>) => option.series}
                 getOptionLabel={getOptionLabel}
                 renderOption={renderOption}
                 onChange={handleChange}
-                value={(value as unknown) as never}
+                value={value as unknown as never}
                 dataTestId="database-version-field-container"
                 ybInputProps={{
                   error: !!fieldState.error,

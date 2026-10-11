@@ -25,6 +25,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 
 DECLARE_int32(yb_client_admin_operation_timeout_sec);

@@ -1,0 +1,49 @@
+name: "bld-db"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    # All files should be covered by one of the bld-* workflows.
+    # If you add ignored paths here, make sure they are covered by one of the other bld-* workflows.
+    paths-ignore:
+      - '.agents/**'
+      - '.arc*'
+      - '.claude/**'
+      - '.cursor/**'
+      - '.git/**'
+      - '.github/**'
+      - '.gitignore'
+      - 'architecture/**'
+      - 'arcanist/**'
+      - CONTRIBUTORS.md
+      - 'cloud/**'
+      - code_style
+      - 'community/**'
+      - java/yb-client
+      - 'docs/**'
+      - LICENSE.md
+      - 'license/**'
+      - 'managed/**'
+      - '!managed/src/main/resources/ybc_version.conf'
+      - NOTICE.txt
+      - '**/*.md'
+      - '**/README*'
+      - 'sample/**'
+      - 'src/lint/**'
+
+# The jenkins environment requires approval, so the job waits until a yugabyte-dev member
+# approves it. A newer run for the same PR cancels the older one, if it is still waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  bld-db:
+    environment: jenkins
+    runs-on: ybdbghr
+    steps:
+      - name: Build Trigger
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ybbld "$PR_NUMBER" "$PR_SHA" DB

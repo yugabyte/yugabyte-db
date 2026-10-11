@@ -1,0 +1,83 @@
+---
+title: Back up and restore universes
+headerTitle: Back up and restore universes
+linkTitle: Back up universes
+description: Use YugabyteDB Anywhere to back up and restore YugabyteDB universe data.
+headcontent: Use YugabyteDB Anywhere to back up and restore YugabyteDB universes and data
+menu:
+  v2025.2_yugabyte-platform:
+    parent: yugabytedb-anywhere
+    identifier: back-up-restore-universes
+weight: 650
+type: indexpage
+---
+
+{{< page-finder/head text="Back Up and Restore" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../manage/backup-restore/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
+{{< /page-finder/head >}}
+
+You can use YugabyteDB to schedule and manage backups of your universe data. This includes the following features:
+
+- On-demand [backup](back-up-universe-data/) and [restore](restore-universe-data/).
+- [Scheduled backups](schedule-data-backups/). Schedule backups at regular intervals, along with retention periods. Optionally enable restore to a point in time.
+- [Incremental backups](back-up-universe-data/#create-incremental-backups). Create a schedule to take full backups periodically and incremental backups between those full backups.
+- [Rewind to a point in time](pitr/). Rewind universe data to a specific point in time.
+- [Flexible storage](configure-backup-storage/). Store backups in the cloud or in your data center.
+- [Disaster recovery](disaster-recovery/). Failover to an asynchronously replicated universe in case of unplanned outages.
+- [Configurable performance parameters](back-up-universe-data/#configure-backup-performance-parameters). Tune parallelization and buffers for faster backup and restore performance. In most cases, this results in 5x or more speed improvements in backups and restores.
+
+Starting with YugabyteDB v2025.2.1, taking YSQL backups during DDLs is supported by default.
+
+{{< note title="Note" >}}
+Configurable performance parameters and incremental backups are mediated using the yb-controller process.
+{{< /note >}}
+
+## Best practices
+
+- Don't perform cluster operations at the same time as your scheduled backup.
+- Configure your maintenance window and backup schedule so that they do not conflict.
+- Perform full backups before performing a large operation, such as a DDL change.
+- Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup.
+- Avoid running a backup during or before a scheduled maintenance.
+
+{{<index/block>}}
+
+  {{<index/item
+    title="Configure backup storage"
+    body="Configure the storage location for your backups."
+    href="configure-backup-storage/"
+    icon="fa-thin fa-bucket">}}
+
+  {{<index/item
+    title="Schedule universe data backups"
+    body="Create backup schedules and enable point-in-time recovery for backups."
+    href="schedule-data-backups/"
+    icon="fa-thin fa-calendar">}}
+
+  {{<index/item
+    title="Back up universe data"
+    body="Back up universes and create incremental backups."
+    href="back-up-universe-data/"
+    icon="fa-thin fa-down-to-bracket">}}
+
+  {{<index/item
+    title="Restore universe data"
+    body="Restore from full and incremental backups, and to a point in time."
+    href="restore-universe-data/"
+    icon="fa-thin fa-up-to-bracket">}}
+
+  {{<index/item
+    title="Rewind to a point in time"
+    body="Rewind universe data to a specific point in time."
+    href="pitr/"
+    icon="fa-thin fa-timeline-arrow">}}
+
+  {{<index/item
+    title="Disaster recovery"
+    body="Fail over to a backup universe in case of unplanned outages."
+    href="disaster-recovery/"
+    icon="fa-thin fa-sun-cloud">}}
+
+{{</index/block>}}

@@ -298,6 +298,9 @@ stmt:
             if (yychar != YYEOF)
                 yyerror(&yylloc, scanner, extra, "syntax error");
 
+            /* YB: same idiom as PG gram.y's parse_toplevel */
+            (void) yynerrs;		/* suppress compiler warning */
+
             extra->result = $1;
             extra->extra = NULL;
         }

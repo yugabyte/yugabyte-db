@@ -56,6 +56,7 @@ static YbcRpczEntry **rpczResultPointer;
 static YbcConnectionMetrics *conn_metrics = NULL;
 
 static YbcPostgresCallbacks pgCallbacks;
+static YbcIterateDbCatalogCacheMetricsFunc ybc_iterate_db_catalog_cache_metrics_fn = nullptr;
 
 static const char *EXPORTED_INSTANCE = "exported_instance";
 static const char *METRIC_TYPE = "metric_type";
@@ -80,6 +81,40 @@ static std::regex rename_from(
 static std::string rename_to = "handler_latency_yb_ysqlserver_SQLProcessor_$1";
 
 namespace {
+
+// Emits one line per non-zero (db_oid, metric, table_name) triple.
+// Mutates and restores the file-level prometheus_attr map the same way the
+// surrounding aggregate-metric loop does.
+void DbCatalogCacheMetricPrometheusVisitor(
+    unsigned int db_oid, const char *metric_name, const char *table_name,
+    uint64_t count, void *arg) {
+  auto *writer = static_cast<PrometheusWriter *>(arg);
+  prometheus_attr["table_name"] = table_name;
+  prometheus_attr["db_oid"] = std::to_string(db_oid);
+  const auto& metric_entity_type = prometheus_attr["metric_type"];
+  WARN_NOT_OK(
+      writer->WriteSingleEntry(
+          prometheus_attr, std::string(metric_name) + "_count", count,
+          AggregationFunction::kSum, kServerLevel, metric_entity_type,
+          "counter", ""),
+      "Couldn't write per-db catalog cache miss metric");
+  prometheus_attr.erase("table_name");
+  prometheus_attr.erase("db_oid");
+}
+
+void DbCatalogCacheMetricJsonVisitor(
+    unsigned int db_oid, const char *metric_name, const char *table_name,
+    uint64_t count, void *arg) {
+  auto *w = static_cast<JsonWriter *>(arg);
+  w->StartObject();
+  w->String("name");          w->String(metric_name);
+  w->String("count");         w->Int64(static_cast<int64_t>(count));
+  w->String("sum");           w->Int64(0);
+  w->String("rows");          w->Int64(0);
+  w->String("table_name");    w->String(table_name);
+  w->String("db_oid");        w->String(std::to_string(db_oid));
+  w->EndObject();
+}
 
 void emitConnectionMetrics(PrometheusWriter *pwriter) {
   pgCallbacks.pullRpczEntries();
@@ -321,6 +356,12 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
     if (duplicate_name != entry->name)
       singleEntryWriter(duplicate_name);
 
+  }
+
+  // Emit per-database catalog-cache miss entries (one row per
+  // (db_oid, metric, table_name) tuple with a non-zero count).
+  if (ybc_iterate_db_catalog_cache_metrics_fn) {
+    ybc_iterate_db_catalog_cache_metrics_fn(DbCatalogCacheMetricJsonVisitor, &writer);
   }
 
   writer.EndArray();
@@ -585,6 +626,10 @@ static void PgPrometheusMetricsHandler(
     prometheus_attr.erase("table_name");
   }
 
+  if (ybc_iterate_db_catalog_cache_metrics_fn) {
+    ybc_iterate_db_catalog_cache_metrics_fn(DbCatalogCacheMetricPrometheusVisitor, &writer);
+  }
+
   // Publish sql server connection related metrics
   emitConnectionMetrics(&writer);
 
@@ -682,6 +727,10 @@ void RegisterMetrics(YbcPgmEntry *tab, int num_entries, char *metric_node_name) 
   ybpgm_table = tab;
   ybpgm_num_entries = num_entries;
   initSqlServerDefaultLabels(metric_node_name);
+}
+
+void RegisterDbCatalogCacheMetrics(YbcIterateDbCatalogCacheMetricsFunc fn) {
+  ybc_iterate_db_catalog_cache_metrics_fn = fn;
 }
 
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *)) {

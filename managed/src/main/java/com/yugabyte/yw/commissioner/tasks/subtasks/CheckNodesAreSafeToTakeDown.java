@@ -32,7 +32,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.MasterErrorException;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
@@ -107,7 +107,7 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
 
     ScheduledExecutorService executor = Executors.newScheduledThreadPool(poolSize);
 
-    try (YBClient ybClient = getClient()) {
+    try (YBClientApi ybClient = getClient()) {
       List<String> lastErrors = new ArrayList<>();
       boolean result =
           checkNodes(
@@ -156,7 +156,7 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
   }
 
   private boolean checkNodes(
-      YBClient ybClient,
+      YBClientApi ybClient,
       Universe universe,
       Collection<UpgradeTaskBase.MastersAndTservers> nodesToCheck,
       List<String> lastErrors,
@@ -253,7 +253,8 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
     return lastErrors.isEmpty() && errorCnt.get() < MAX_ERRORS_TO_IGNORE;
   }
 
-  private void doCheck(YBClient ybClient, CheckBatch checkBatch, long maxAcceptableFollowerLagMs) {
+  private void doCheck(
+      YBClientApi ybClient, CheckBatch checkBatch, long maxAcceptableFollowerLagMs) {
     String errorStr = null;
     try {
       AreNodesSafeToTakeDownResponse resp =

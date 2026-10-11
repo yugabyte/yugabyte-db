@@ -70,5 +70,5 @@ yugabyte=# DROP DOMAIN idx CASCADE;
 
 ## See also
 
-- [`ALTER DOMAIN`](../ddl_alter_domain)
-- [`CREATE DOMAIN`](../ddl_create_domain)
+- [ALTER DOMAIN](../ddl_alter_domain)
+- [CREATE DOMAIN](../ddl_create_domain)

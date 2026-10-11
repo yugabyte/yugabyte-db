@@ -54,7 +54,7 @@ public class PitrConfigMapperTest extends FakeDBApplication {
 
     assertEquals("pitr-config-1", spec.getName());
     assertEquals("mydb", spec.getDbName());
-    assertEquals(PitrConfigSpec.TableTypeEnum.PGSQL_TABLE_TYPE, spec.getTableType());
+    assertEquals(api.v2.models.TableType.PGSQL_TABLE_TYPE, spec.getTableType());
     assertEquals(3600L, spec.getScheduleInterval().longValue());
     assertEquals(86400L, spec.getRetentionPeriod().longValue());
     assertEquals(100L, spec.getIntermittentMinRecoverTimeInMillis().longValue());

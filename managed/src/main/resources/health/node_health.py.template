@@ -51,7 +51,7 @@ try:
 except Exception as e:
     from exceptions import RuntimeError
 from datetime import datetime, timedelta, timezone
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 NODE_INFO = '{{NODE_INFO}}'
 
@@ -204,9 +204,6 @@ YB_NODE_YSQL_CGROUP_USAGE = MetricDefinition(
 YB_NODE_IS_MASTER_LEADER = MetricDefinition(
     "yb_node_is_master_leader",
     "Master leadership status")
-YB_NODE_YSQL_CONNECTIONS_COUNT = MetricDefinition(
-    "yb_node_ysql_connections_count",
-    "YSQL connections count")
 YB_NODE_YSQL_CONNECT = MetricDefinition(
     "yb_node_ysql_connect",
     "Status of test ysql connection")
@@ -247,6 +244,17 @@ YB_NODE_CLOCK_DRIFT_CHECK = MetricDefinition(
 YB_NODE_NTP_SERVICE_STATUS = MetricDefinition(
     "yb_node_ntp_service_status",
     "If chronyd or ntp(d) services are running")
+# Master tasks that mean a DDL is in flight. The atomicity check compares the master's view of
+# a table against pg_class/pg_attribute, and a table caught mid-DDL legitimately disagrees, so
+# findings from a run that overlapped one of these cannot be trusted - see check_ddl_atomicity.
+DDL_TASK_NAMES = ("TableSchemaVerificationTask", "Backfill Table")
+
+# <tr><th>name</th><td>state</td><td>N ago</td><td>duration</td><td>description</td></tr>, as
+# emitted by HtmlOutputTask in src/yb/server/webui_util.cc.
+TASK_ROW_RE = re.compile(
+    r"<tr><th>([^<]*)</th><td>([^<]*)</td><td>[^<]*</td><td>[^<]*</td><td>(.*?)</td></tr>",
+    re.DOTALL)
+
 YB_DDL_ATOMICITY_CHECK = MetricDefinition(
     "yb_ddl_atomicity_check",
     "Status of DDL atomicity check")
@@ -256,6 +264,14 @@ YB_PROCESS_CPU_SECONDS_TOTAL = MetricDefinition(
 YB_PROCESS_MEMORY_KB = MetricDefinition(
     "yb_process_memory_kb",
     "Check memory bytes per process and its subprocesses")
+YB_POSTGRES_BACKEND_PSS_MAX_KB = MetricDefinition(
+    "yb_postgres_worker_pss_max_kb",
+    "Max PSS among postgres worker processes (children of postmaster)",
+    "kb")
+YB_POSTGRES_BACKEND_PSS_P95_KB = MetricDefinition(
+    "yb_postgres_worker_pss_p95_kb",
+    "P95 PSS among postgres worker processes (children of postmaster)",
+    "kb")
 YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
     "yb_process_io_kb_total",
     "Check io bytes per process and its subprocesses")
@@ -485,6 +501,7 @@ class Report:
         file = open(log_file, 'w+')
         file.write(str(self))
         file.close()
+        logging.info("Wrote report with %d entry(ies) to %s", len(self.entries), log_file)
 
     def write_to_metrics_file(self, file):
         if file is None:
@@ -492,9 +509,12 @@ class Report:
             return
 
         # Write to the log file.
+        path = file
         file = open(file, 'w+')
         file.write(self.to_prom_format())
         file.close()
+        logging.info("Wrote %d metric family(ies) to %s",
+                     len([m for e in self.entries if e.metrics for m in e.metrics]), path)
 
     def add_common_label(self, name, value):
         for entry in self.entries:
@@ -541,18 +561,39 @@ class Report:
 ###################################################################################################
 # Checking
 ###################################################################################################
+def truncate_for_log(text, limit=2000):
+    if text is None:
+        return None
+    text = str(text)
+    if len(text) <= limit:
+        return text
+    return "{}... [{} chars truncated]".format(text[:limit], len(text) - limit)
+
+
 def check_output(cmd, env, success_statuses=[0]):
+    start = time.time()
+    logging.debug("Running command: %s", truncate_for_log(cmd))
     try:
         output = subprocess.check_output(
             cmd, shell=True, stderr=subprocess.STDOUT, env=env)
-        return str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
+        decoded = str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
+        logging.debug("Command finished in %.1fs with %d chars of output",
+                      time.time() - start, len(decoded))
+        return decoded
     except subprocess.CalledProcessError as ex:
         output = ex.output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
         if ex.returncode in success_statuses:
             # Some commands, like grep, can return error statuses even under normal operation
+            logging.debug("Command exited %d, treated as success: %s",
+                          ex.returncode, truncate_for_log(cmd))
             return str(output)
+        logging.warning("Command failed after %.1fs with exit code %d: %s\nOutput: %s",
+                        time.time() - start, ex.returncode, truncate_for_log(cmd),
+                        truncate_for_log(output))
         return 'Error executing command {}: {}'.format(cmd, output)
     except subprocess.TimeoutExpired:
+        logging.warning("Command timed out after %ds: %s", CMD_TIMEOUT_SEC,
+                        truncate_for_log(cmd))
         return 'Error: timed out executing command {} for {} seconds'.format(
             cmd, CMD_TIMEOUT_SEC)
 
@@ -563,6 +604,32 @@ def wrap_command(command_str):
 
 def check_for_errors(str):
     return str is not None and str.startswith('Error')
+
+
+def parse_ysqlsh_json(output):
+    # check_output merges server messages into stdout, and INFO level ones survive
+    # client_min_messages. ysqlsh prints the json_agg value on its own line, so fall back to
+    # the lines that start one - a server message containing '[' is never a candidate.
+    # None if nothing parses.
+    try:
+        return json.loads(output)
+    except ValueError:
+        pass
+    lines = output.splitlines()
+    for i, line in enumerate(lines):
+        if not line.strip().startswith('['):
+            continue
+        # Single line first; joined remainder covers a value ysqlsh split across lines.
+        for candidate in (line, '\n'.join(lines[i:])):
+            try:
+                parsed = json.loads(candidate)
+                logging.debug("ysqlsh output parsed as json from line %d of %d", i + 1,
+                              len(lines))
+                return parsed
+            except ValueError:
+                continue
+    logging.warning("Could not parse ysqlsh output as json: %s", truncate_for_log(output))
+    return None
 
 
 def get_process_name(process):
@@ -581,6 +648,21 @@ def get_rss_from_statm(statm):
             continue
         total_rss += int(process_rss)
     return total_rss
+
+
+def get_nearest_rank_percentile(values, p):
+    if not values:
+        return 0
+    sorted_vals = sorted(values)
+    n = len(sorted_vals)
+    # nearest-rank: ceil(p * n) - 1
+    rank = int(n * p)
+    if rank < n * p:
+        rank += 1
+    idx = max(0, rank - 1)
+    if idx >= n:
+        idx = n - 1
+    return sorted_vals[idx]
 
 
 class NodeChecker():
@@ -784,6 +866,7 @@ class NodeChecker():
             date = output.replace('notAfter=', '')
             expiry_date = datetime.strptime(date, ssl_date_fmt)
         except Exception as ex:
+            logging.exception("Unexpected error in check_certificate_expiration")
             message = str(ex)
             return e.fill_and_return_entry([message], has_error=True)
 
@@ -818,6 +901,8 @@ class NodeChecker():
                                     date = output.replace('notAfter=', '')
                                     expiry_date = datetime.strptime(date, ssl_date_fmt)
                                 except Exception as ex:
+                                    logging.exception(
+                                        "Unexpected error in check_certificate_expiration")
                                     message = str(ex)
                                     return e.fill_and_return_entry([message], has_error=True)
 
@@ -940,10 +1025,18 @@ class NodeChecker():
         else:
             cmd = 'curl -s -L --insecure {}'.format(endpoint)
 
+        logging.debug("HTTP request to %s", endpoint)
         output = self._check_output(cmd).strip()
         if check_for_errors(output):
-            logging.info("HTTP request to {} returned error: {}".format(endpoint, output))
+            logging.warning("HTTP request to %s returned error: %s", endpoint,
+                            truncate_for_log(output))
             return None
+        if not output:
+            # An empty body is not an error here, but it is the usual reason a caller then
+            # reports the endpoint as not running.
+            logging.info("HTTP request to %s returned an empty body", endpoint)
+        else:
+            logging.debug("HTTP request to %s returned %d chars", endpoint, len(output))
         return output
 
     def check_yb_version(self, ip_address, process, port, expected):
@@ -958,6 +1051,7 @@ class NodeChecker():
             json_version = json.loads(response)
             release_build = json_version["version_number"] + "-b" + json_version["build_number"]
         except Exception as ex:
+            logging.exception("Unexpected error in check_yb_version")
             message = str(ex)
             return e.fill_and_return_entry([message], has_error=True)
 
@@ -1095,6 +1189,7 @@ class NodeChecker():
         pid = self._check_output(cmd).strip()
         if pid.isdigit():
             return pid
+        logging.info("No pid found for process %s", process_name)
         return None
 
     def get_uptime_for_process(self, process_name):
@@ -1252,6 +1347,7 @@ class NodeChecker():
                 .add_value(limit)
             return e.fill_and_return_entry([limit], has_error=False, metrics=[metric])
         except Exception as ex:
+            logging.exception("Unexpected error in check_ysql_cgroup_memory_limit")
             message = str(ex)
             return e.fill_and_return_entry([message], has_error=True)
 
@@ -1276,36 +1372,9 @@ class NodeChecker():
                 .add_value(usage)
             return e.fill_and_return_entry([usage], has_error=False, metrics=[metric])
         except Exception as ex:
+            logging.exception("Unexpected error in check_ysql_cgroup_memory_usage")
             message = str(ex)
             return e.fill_and_return_entry([message], has_error=True)
-
-    def check_ysql_connections_count(self):
-        logging.info("Checking ysql connections count on node {}".format(self.node))
-        e = self._new_metric_entry("YSQL connections")
-        ysql_http_endpoint = 'http://{}:{}/rpcz'.format(self.node, self.ysql_server_http_port)
-        response = self.http_request(ysql_http_endpoint)
-        if not response:
-            return e.fill_and_return_entry(['TServer HTTP endpoint is not running'],
-                                           has_error=False)
-        client_backends = 0
-        try:
-            response_json = json.loads(response)
-            if "connections" not in response_json:
-                return e.fill_and_return_entry(['Unexpected response received from TServer'],
-                                               has_error=True)
-            for connection in response_json["connections"]:
-                if (
-                    connection["backend_type"] == "client backend"
-                    or connection["backend_type"].startswith("yb-conn-mgr")
-                ):
-                        client_backends += 1
-        except Exception as ex:
-            message = str(ex)
-            return e.fill_and_return_entry([message], has_error=True)
-
-        metric = Metric.from_definition(YB_NODE_YSQL_CONNECTIONS_COUNT)\
-            .add_value(client_backends)
-        return e.fill_and_return_entry([int(client_backends)], has_error=False, metrics=[metric])
 
     def check_tablets(self, entry, endpoint, tablets_field, count_metric):
         # Only run this check on master leader
@@ -1330,6 +1399,7 @@ class NodeChecker():
             for tablet in response_json[tablets_field]:
                 total_tablets += 1
         except Exception as ex:
+            logging.exception("Unexpected error in check_tablets")
             message = str(ex)
             return entry.fill_and_return_entry([message], has_error=True)
 
@@ -1658,59 +1728,145 @@ class NodeChecker():
         metric = Metric.from_definition(YB_NODE_CLOCK_SKEW_CHECK).add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
+    def get_ddl_task_activity(self):
+        """What the master leader's /tasks page says about DDL tasks, or None if unreadable.
+
+        Returns (active, recent): how many DDL tasks are running now, and a count of the rows in
+        the recent-tasks table, which the master appends to as tasks finish. The elapsed and
+        duration columns are deliberately not part of a row's identity - they change between
+        two fetches of an unchanged page.
+
+        Counted rather than collected, because what is left is not unique per task.
+        TableSchemaVerificationTask's description is "TableSchemaVerificationTask for <name>
+        [id=<uuid>]" and its final state is kComplete, so every DDL against one table produces an
+        identical row. A set would collapse two of them into one element and the second DDL - the
+        one that actually ran under the check - would be invisible.
+        """
+        url = "{}/tasks".format(self.master_leader_url)
+        page = self.http_request(url)
+        if not page:
+            logging.warning("Could not read %s to check for concurrent DDL", url)
+            return None
+
+        # Three tables in this order: active tasks, user-initiated jobs, recent tasks.
+        sections = page.split("<h3>")
+        active = 0
+        recent = Counter()
+        for section in sections:
+            rows = [(name, state, desc) for name, state, desc in TASK_ROW_RE.findall(section)
+                    if name in DDL_TASK_NAMES]
+            if not rows:
+                continue
+            if section.startswith("Active Tasks"):
+                active += len(rows)
+            elif "tasks started in the past" in section.split("</h3>")[0]:
+                recent.update(rows)
+        logging.info("Master reports %d active DDL task(s) and %d recent one(s)",
+                     active, sum(recent.values()))
+        return (active, recent)
+
+    def ddl_ran_during_check(self, before, after):
+        """Whether a DDL could have moved under the check between the two snapshots."""
+        if before is None or after is None:
+            # The page could not be read at least once, so we cannot rule a DDL out.
+            logging.info("DDL task state unknown for at least one snapshot")
+            return True
+        if before[0] or after[0]:
+            logging.info("DDL task active at the start (%d) or end (%d) of the check",
+                         before[0], after[0])
+            return True
+        # Only rows that arrived matter. The recent-tasks table is a rolling window ("tasks
+        # started in the past ..."), so rows age out of it on their own; comparing for equality
+        # would also fire on a departure, discarding a perfectly good result. Counter subtraction
+        # keeps only positive counts, so a departure still contributes nothing while a repeat of
+        # a row already present counts as an arrival.
+        arrived = after[1] - before[1]
+        if arrived:
+            logging.info("%d DDL task(s) finished during the check: %s",
+                         len(arrived), truncate_for_log(sorted(arrived)))
+            return True
+        return False
+
     def check_ddl_atomicity(self):
         logging.info("Checking DDL atomicity on node {}".format(self.node))
 
+        # A DDL running while the check reads the master and pg catalogs makes the two disagree
+        # for reasons that are not corruption, so the task page is read either side of the check
+        # and such a run is discarded rather than reported.
+        tasks_before = self.get_ddl_task_activity()
+
         result, recheck_table_uuids = self.check_ddl_atomicity_internal([])
 
-        if not recheck_table_uuids:
+        if recheck_table_uuids:
+            result, recheck_table_uuids = self.check_ddl_atomicity_internal(recheck_table_uuids)
+
+        # Only a finding about the catalogs is gated. A check that could not run - tserver down,
+        # master unreachable, a response that did not parse - says nothing a concurrent DDL could
+        # explain, and discarding it would turn "could not tell" into "nothing to report".
+        if getattr(result, "ddl_unavailable", False):
             return result
 
-        result, recheck_table_uuids = self.check_ddl_atomicity_internal(recheck_table_uuids)
+        if (result.has_error or result.has_warning) and self.ddl_ran_during_check(
+                tasks_before, self.get_ddl_task_activity()):
+            logging.info("Skipping DDL atomicity result: %s", result.details)
+            return result.ignore_check()
+
         return result
 
 
+    def ddl_check_unavailable(self, entry, reason):
+        """The check could not run to completion - a warning, and no metric.
+
+        Only a real atomicity finding is an error here, because that is what the alert on
+        yb_ddl_atomicity_check describes: a DDL left non-atomic, which a later backup cannot
+        restore without a manual fixup. A tserver that is down, an unreachable master endpoint,
+        a failed query or a response that does not parse say nothing about atomicity either way,
+        so they are warnings, and the metric is left unpublished rather than set to 0 - the same
+        thing a skipped run does, so the alert reads "unknown" instead of "bad".
+        """
+        logging.warning("DDL atomicity check unavailable: %s", reason)
+        # Marked so check_ddl_atomicity can tell this apart from a finding about the catalogs,
+        # which is the only thing the concurrent-DDL gate should be allowed to discard.
+        entry.ddl_unavailable = True
+        return (entry.fill_and_return_warning_entry([reason]), [])
+
     def check_ddl_atomicity_internal(self, recheck_table_uuids):
         e = self._new_entry("DDL atomicity")
+        if recheck_table_uuids:
+            logging.info("Rechecking DDL atomicity for %d table(s): %s",
+                         len(recheck_table_uuids), truncate_for_log(recheck_table_uuids))
         metric = Metric.from_definition(YB_DDL_ATOMICITY_CHECK)
         tables_with_errors = []
 
         tserver_pid = self.get_process_pid_by_name(TSERVER)
         if tserver_pid is None:
-            metric.add_value(0)
-            return (e.fill_and_return_entry(["TServer is not running on this node"],
-                                           has_error=True,
-                                           metrics=[metric]), [])
+            return self.ddl_check_unavailable(e, "TServer is not running on this node")
 
         try:
             ysqlsh_cmd = self.create_ysqlsh_command(
                 "", True if self.enable_connection_pooling else False)
         except RuntimeError as re:
-            metric.add_value(0)
-            return (e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric]), [])
+            return self.ddl_check_unavailable(e, str(re))
 
         errors = []
+        warnings = []
         try:
             # Get table data
             tables_response = self.http_request(
                 "{}/api/v1/tables".format(self.master_leader_url))
             if not tables_response:
-                metric.add_value(0)
-                return (e.fill_and_return_entry(
-                    ['Master Leader HTTP endpoint is not running'],
-                    has_error=True,
-                    metrics=[metric]), [])
+                return self.ddl_check_unavailable(
+                    e, 'Master Leader HTTP endpoint is not running')
             try:
                 tables_output = json.loads(tables_response)
             except Exception as ex:
                 logging.warning("Tables HTTP API response is not a valid json: %s", tables_response)
-                metric.add_value(0)
-                return (e.fill_and_return_entry(
-                    ['Tables HTTP API response is not a valid json'],
-                    has_error=True,
-                    metrics=[metric]), [])
+                return self.ddl_check_unavailable(
+                    e, 'Tables HTTP API response is not a valid json')
             table_data_json = tables_output["user"]
             table_data_json += tables_output["index"]
+            logging.info("Master leader reports %d user table(s) and %d index(es)",
+                         len(tables_output["user"]), len(tables_output["index"]))
 
             # Initialize a dictionary to store table data by database
             db_tables = {}
@@ -1732,9 +1888,17 @@ class NodeChecker():
                 db_tables[dbname].append(
                     (table["table_name"], pg_oid, yb_pg_table_oid, table["uuid"]))
 
+            logging.info("Checking %d table(s) across %d database(s): %s",
+                         sum(len(t) for t in db_tables.values()), len(db_tables),
+                         ", ".join("{}={}".format(db, len(t)) for db, t in db_tables.items()))
+
             # Iterate through each database
             for dbname, tables in db_tables.items():
-                pg_class_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
+                logging.info("Checking database %s", dbname)
+                # pgaudit.log_client=on echoes audit records to the client, corrupting the
+                # json below. Own -c: PLAT-15726 removed multi-statement -c queries here.
+                quiet_cmd = "-q -c \"SET client_min_messages TO error\""
+                pg_class_cmd = "{}{} -t {} -c \"{}\"".format(ysqlsh_cmd, dbname, quiet_cmd,
                     "SELECT json_agg(row_to_json(t)) FROM \
                      (SELECT relname, oid, relfilenode FROM pg_class WHERE oid >= 16384) t;")
 
@@ -1742,21 +1906,14 @@ class NodeChecker():
                 pg_class_output = self._check_output(pg_class_cmd).strip()
 
                 if check_for_errors(pg_class_output):
-                    metric.add_value(0)
-                    return (e.fill_and_return_entry(
-                        ["Failed to retrieve pg_class info: {}".format(pg_class_output)],
-                        has_error=True,
-                        metrics=[metric]), [])
-                try:
-                    pg_class_json = json.loads(pg_class_output)
-                except Exception as ex:
-                    logging.warning("pg_class query returned invalid json: %s",
-                                    pg_class_output)
-                    metric.add_value(0)
-                    return (e.fill_and_return_entry(
-                        ['pg_class query returned invalid json'],
-                        has_error=True,
-                        metrics=[metric]), [])
+                    return self.ddl_check_unavailable(
+                        e, "Failed to retrieve pg_class info: {}".format(pg_class_output))
+                pg_class_json = parse_ysqlsh_json(pg_class_output)
+                if pg_class_json is None:
+                    return self.ddl_check_unavailable(
+                        e, 'pg_class query returned invalid json')
+                logging.info("pg_class returned %d row(s) for database %s",
+                             len(pg_class_json), dbname)
                 pg_class_oid_tableinfo_dict = {}
                 # Use relfilenode if it exists (as the table may be rewritten)
                 for table in pg_class_json:
@@ -1765,29 +1922,23 @@ class NodeChecker():
                     else:
                         pg_class_oid_tableinfo_dict[table['oid']] = table
 
-                pg_attribute_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
+                pg_attribute_cmd = "{}{} -t {} -c \"{}\"".format(ysqlsh_cmd, dbname,
+                    quiet_cmd,
                     "SELECT json_agg(row_to_json(t)) FROM \
                      (SELECT attname, attrelid FROM pg_attribute WHERE attrelid >= 16384) t;")
 
                 pg_attribute_output = self._check_output(pg_attribute_cmd).strip()
 
                 if check_for_errors(pg_attribute_output):
-                    metric.add_value(0)
-                    return (e.fill_and_return_entry(
-                        ["Failed to retrieve pg_attribute info: {}".format(pg_attribute_output)],
-                        has_error=True,
-                        metrics=[metric]), [])
+                    return self.ddl_check_unavailable(
+                        e, "Failed to retrieve pg_attribute info: {}".format(pg_attribute_output))
 
-                try:
-                    pg_attribute_json = json.loads(pg_attribute_output)
-                except Exception as ex:
-                    logging.warning("pg_attribute query returned invalid json: %s",
-                                    pg_attribute_output)
-                    metric.add_value(0)
-                    return (e.fill_and_return_entry(
-                        ['pg_attribute query returned invalid json'],
-                        has_error=True,
-                        metrics=[metric]), [])
+                pg_attribute_json = parse_ysqlsh_json(pg_attribute_output)
+                if pg_attribute_json is None:
+                    return self.ddl_check_unavailable(
+                        e, 'pg_attribute query returned invalid json')
+                logging.info("pg_attribute returned %d row(s) for database %s",
+                             len(pg_attribute_json), dbname)
                 pg_attribute_attrelid_attnames_dict = defaultdict(list)
                 for attribute in pg_attribute_json:
                     (pg_attribute_attrelid_attnames_dict[attribute['attrelid']]
@@ -1826,24 +1977,22 @@ class NodeChecker():
                     table_schema_response = self.http_request(
                         "{}/api/v1/table?id={}".format(self.master_leader_url, tableid))
                     if not table_schema_response:
-                        metric.add_value(0)
-                        return (e.fill_and_return_entry(
-                            ['Master Leader HTTP endpoint is not running'],
-                            has_error=True,
-                            metrics=[metric]), [])
+                        return self.ddl_check_unavailable(
+                            e, 'Master Leader HTTP endpoint is not running')
 
                     try:
                         table_schema_json = json.loads(table_schema_response)
                     except Exception as ex:
-                        # Somehow this can happen during DDL operations.
-                        # We will recheck once, and if happens again - raise an error.
+                        # Somehow this can happen during DDL operations, so the table is queued
+                        # for a recheck. If it happens again it is reported as a warning: the
+                        # master's answer was unusable, which says nothing about the table.
                         logging.warning("Table HTTP API response is not a valid json: %s",
                                          table_schema_response)
                         tables_with_errors.append(tableid)
-                        errors.append(("Table {} with oid {} and uuid {} exists in {} but master "
-                                       "leader API returns wrong table details - {}")
-                                       .format(tablename, pg_oid, tableid, dbname,
-                                               table_schema_response))
+                        warnings.append(("Table {} with oid {} and uuid {} exists in {} but master "
+                                         "leader API returns wrong table details - {}")
+                                        .format(tablename, pg_oid, tableid, dbname,
+                                                table_schema_response))
                         continue
                     columns = [html.unescape(
                         column['column']) for column in table_schema_json["columns"]]
@@ -1860,18 +2009,26 @@ class NodeChecker():
                             continue
         except Exception as ex:
             logging.exception('Got exception on while performing DDL Atomicity check')
-            metric.add_value(0)
-            return (e.fill_and_return_entry(
-                ["Unexpected error occurred"],
-                has_error=True,
-                metrics=[metric]), [])
+            return self.ddl_check_unavailable(e, "Unexpected error occurred: {}".format(ex))
 
         has_errors = len(errors) > 0
         if has_errors:
+            # Only the first 10 of each make it into the report entry.
+            for error in errors:
+                logging.warning("DDL atomicity error: %s", error)
             msgs = ["Found {} errors:".format(len(errors))]
             msgs.extend(errors[:10])
             if len(errors) > 10:
                 msgs.append("...")
+        elif warnings:
+            for warning in warnings:
+                logging.warning("DDL atomicity check warning: %s", warning)
+            msgs = ["Found {} table(s) the master could not describe:".format(len(warnings))]
+            msgs.extend(warnings[:10])
+            if len(warnings) > 10:
+                msgs.append("...")
+            # No metric: nothing was learned about atomicity for those tables.
+            return (e.fill_and_return_warning_entry(msgs), tables_with_errors)
         else:
             msgs = ["No errors found"]
         metric.add_value(0 if has_errors else 1)
@@ -1952,6 +2109,7 @@ class NodeChecker():
         try:
             drift_ms = active_service.drift_ms()
         except Exception as ex:
+            logging.exception("Unexpected error in check_yb_node_clock_drift")
             msgs.append("Failed to get clock drift: {}".format(str(ex)))
             metrics[0].add_value(0)
             return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
@@ -1998,8 +2156,25 @@ class NodeChecker():
             metrics[2].add_value(stat['io_read_kb'], labels=[process,
                                                                 Label('type', 'read')])
             metrics[3].add_value(stat['open_files'], labels=[process])
+            if process_name == POSTMASTER:
+                backend_pss = []
+                for pid_info in res['process_map'].values():
+                    if not pid_info.get('is_root'):
+                        pss = pid_info['stats']['proportional_memory_kb']
+                        if pss > 0:
+                            backend_pss.append(pss)
+                metric_max = Metric.from_definition(YB_POSTGRES_BACKEND_PSS_MAX_KB)
+                metric_p95 = Metric.from_definition(YB_POSTGRES_BACKEND_PSS_P95_KB)
+                if backend_pss:
+                    metric_max.add_value(max(backend_pss))
+                    metric_p95.add_value(get_nearest_rank_percentile(backend_pss, 0.95))
+                else:
+                    metric_max.add_value(0)
+                    metric_p95.add_value(0)
+                metrics.extend([metric_max, metric_p95])
             return e.fill_and_return_entry([], has_error=False, metrics=metrics)
         except Exception as ex:
+            logging.exception("Unexpected error in check_process_stats")
             return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
                                            has_error=True, metrics = metrics)
 
@@ -2053,6 +2228,7 @@ class NodeChecker():
 
             return e.fill_and_return_entry([], has_error=False, metrics=all_metrics)
         except Exception as ex:
+            logging.exception("Unexpected error in check_process_limits")
             return e.fill_and_return_entry(
                 ["Failed to parse process limits: {}".format(str(ex))],
                 has_error=True, metrics=[metric])
@@ -2099,6 +2275,7 @@ class NodeChecker():
                                                                     virtual_label])
             return e.fill_and_return_entry([], has_error=False, metrics=[metric])
         except Exception as ex:
+            logging.exception("Unexpected error in check_other_process_stats")
             return e.fill_and_return_entry(["Failed to parse other stats: {}".format(str(ex))],
                                            has_error=True, metrics = [metric])
 
@@ -2161,13 +2338,10 @@ class NodeChecker():
                     ["OpenTelemetry health check failed: {}".format(output)], has_error=True
                 )
 
-            # Parse timestamp, ignoring nanoseconds
-            TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
-            boot_time_in_epoch = int(
-                datetime.strptime(up_since[:26], TIMESTAMP_FORMAT)
-                .replace(tzinfo=timezone.utc)
-                .timestamp()
-            )
+            # This one is genuinely UTC - the collector renders RFC 3339 and says so with the
+            # trailing Z - unlike the systemd timestamps parsed further down, which come out in
+            # the host's zone.
+            boot_time_in_epoch = parse_rfc3339_utc(up_since)
 
             hc_metric = Metric.from_definition(
                 HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC
@@ -2316,6 +2490,7 @@ class NodeChecker():
                 stat = self._get_process_stats_by_pid(cur_pid)
                 start_time = stat['start_time']
             except Exception as e:
+                logging.exception("Unexpected error in _load_per_process_metrics_by_pids")
                 pass
             # Calculating the sum with current state
             total_stat = self._merge_proc_results(stat, total_stat)
@@ -2481,6 +2656,7 @@ class NodeChecker():
                 .add_value(count)
             return e.fill_and_return_entry([count], has_error=False, metrics=[metric])
         except Exception as ex:
+            logging.exception("Unexpected error in count_earlyoom_kills")
             message = str(ex)
             return e.fill_and_return_entry([message], has_error=True)
 
@@ -2596,7 +2772,13 @@ class NodeChecker():
 
             # Query the relevant fields in one call against the discovered scope.
             scope_flag = "--user " if user_scope else ""
-            cmd = ("systemctl {scope}show {unit} --no-pager "
+            # TZ=UTC because systemd renders timestamps in the host's timezone, and
+            # parse_systemctl_timestamp cannot resolve an arbitrary zone abbreviation - "PDT" is
+            # not a thing Python can turn into an offset, and %Z silently matches the host's own
+            # abbreviation without attaching one. Forcing the zone is the only fix that works for
+            # every host. LC_ALL=C pins the day name, which strftime renders per LC_TIME; the
+            # parser drops that token, so it is only belt and braces.
+            cmd = ("TZ=UTC LC_ALL=C systemctl {scope}show {unit} --no-pager "
                    "--property=LoadState,Result,ExecMainExitTimestamp,"
                    "ActiveState,SubState 2>&1").format(scope=scope_flag, unit=unit)
             output = self._check_output(cmd)
@@ -2640,6 +2822,9 @@ class NodeChecker():
     def verbose_log(self, message):
         if self.verbose:
             logging.info(message)
+        else:
+            # Still worth having in the log file, which takes DEBUG.
+            logging.debug(message)
 
 ###################################################################################################
 # Utility functions
@@ -2651,12 +2836,49 @@ def seconds_to_human_readable_time(seconds):
     return ['{} days {:d}:{:02d}:{:02d}'.format(d, h, m, s)]
 
 
+def parse_rfc3339_utc(value):
+    """Parse an RFC 3339 UTC timestamp into Unix epoch seconds.
+
+    Written for the OpenTelemetry collector's upSince, which Go renders with RFC3339Nano. That
+    format trims trailing zeros from the fractional second and omits it entirely when it is zero,
+    so the field is anywhere from nine digits to absent:
+
+        2025-03-26T16:54:47.936558866Z
+        2025-03-26T16:54:47.9Z
+        2025-03-26T16:54:47Z
+
+    A fixed-width slice therefore cuts in the wrong place on the shorter forms, which used to
+    raise and be reported as a failed health check on a collector that was running perfectly
+    well. strptime's %f wants one to six digits, so the fraction is padded and truncated to six.
+
+    Raises ValueError if the value is not a timestamp at all, which the caller reports.
+    """
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1]
+    head, dot, fraction = text.partition(".")
+    if dot:
+        # Microseconds, whatever precision arrived.
+        text = "{}.{}".format(head, (fraction + "000000")[:6])
+        fmt = "%Y-%m-%dT%H:%M:%S.%f"
+    else:
+        fmt = "%Y-%m-%dT%H:%M:%S"
+    return int(datetime.strptime(text, fmt).replace(tzinfo=timezone.utc).timestamp())
+
+
 def parse_systemctl_timestamp(value):
     """Parse a `systemctl show` timestamp into Unix epoch seconds.
 
-    systemd reports timestamps in the form 'Mon 2026-04-14 10:11:12 UTC'.
-    Returns 0 if the value is empty or unparseable (which also covers the
-    'never executed' case where systemd reports an empty string).
+    The caller must run systemctl under TZ=UTC. systemd renders timestamps in the host's
+    timezone, and this cannot recover one: %Z resolves only "UTC", "GMT" and whatever the host
+    itself is called, and even when it matches it attaches no offset. A host in PDT would
+    otherwise have its local time read as UTC - seven hours in the past, which reads as a
+    service that has not run - and a value from any other zone would not parse at all. No
+    parser change fixes that, because a zone abbreviation is ambiguous across zones.
+
+    Returns 0 for an empty value, which is what systemd reports for a unit that has never run.
+    An unparseable value also returns 0, and is logged, because the caller cannot tell the two
+    apart from the return value alone.
     """
     if not value:
         return 0
@@ -2665,16 +2887,18 @@ def parse_systemctl_timestamp(value):
     parts = value.split(None, 1)
     if len(parts) == 2:
         value = parts[1]
-    # Try a few common formats: with timezone abbreviation and without.
+    # With the zone as UTC, or without one at all.
     for fmt in ("%Y-%m-%d %H:%M:%S %Z", "%Y-%m-%d %H:%M:%S"):
         try:
             dt = datetime.strptime(value, fmt)
-            # systemd emits UTC by default; treat naive timestamps as UTC.
+            # %Z matches a name without attaching an offset, so the caller's TZ=UTC is what
+            # makes this correct rather than the format string.
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return int(dt.timestamp())
         except ValueError:
             continue
+    logging.warning("Could not parse systemctl timestamp %r; reporting it as never run", value)
     return 0
 
 
@@ -2887,10 +3111,23 @@ class CheckCoordinator:
 
     def run(self):
         additional_info = {}
+        logging.info("Running %d precheck(s)", len(self.prechecks))
         for precheck in self.prechecks:
-            precheck.result = getattr(precheck.instance, precheck.func_name)()
+            start = time.time()
+            try:
+                precheck.result = getattr(precheck.instance, precheck.func_name)()
+            except Exception:
+                # Same reasoning as the checks below: a precheck that raises used to take the whole
+                # run with it. Its contribution to additional_info is simply missing, which any
+                # check that needed it reports individually.
+                logging.exception("Precheck %s raised after %.1fs", precheck.func_name,
+                                  time.time() - start)
+                precheck.result = {}
+            logging.debug("Precheck %s finished in %.1fs: %s", precheck.func_name,
+                          time.time() - start, truncate_for_log(precheck.result))
             additional_info.update(precheck.result)
 
+        logging.info("Running %d check(s)", len(self.checks))
         while True:
             for check in self.checks:
                 check.instance.additional_info = additional_info
@@ -2903,14 +3140,48 @@ class CheckCoordinator:
                         logging.info("Retry # {} for check {}"
                                      .format(str(check.tries), check.func_name))
 
-                    if check.yb_process is None:
-                        check.result = getattr(check.instance, check.func_name)()
-                    else:
-                        check.result =\
-                            getattr(check.instance, check.func_name)(check.yb_process,)
+                    # Timed here rather than in each check, so all of them leave a trace and an
+                    # escaping exception names its check instead of being a bare traceback.
+                    logging.debug("Running check %s%s", check.func_name,
+                                  " for {}".format(check.yb_process)
+                                  if isinstance(check.yb_process, str) else "")
+                    start = time.time()
+                    try:
+                        if check.yb_process is None:
+                            check.result = getattr(check.instance, check.func_name)()
+                        else:
+                            check.result =\
+                                getattr(check.instance, check.func_name)(check.yb_process,)
+                    except Exception as ex:
+                        # Contained rather than propagated. An escaping exception used to end the
+                        # run, so every check after this one in the list - disk usage, YBC, cgroup
+                        # - never ran, and the node reported as failed with no indication of which
+                        # check was at fault. Reporting it as this check's own error leaves the
+                        # rest of the report intact and names the culprit. The traceback is in the
+                        # log; only the exception itself goes into the report, since details are
+                        # surfaced in the UI.
+                        logging.exception("Check %s raised after %.1fs", check.func_name,
+                                          time.time() - start)
+                        check.result = check.instance._new_entry(
+                            check.func_name,
+                            check.yb_process if isinstance(check.yb_process, str) else None
+                        ).fill_and_return_entry(
+                            ["Health check raised {}: {}".format(type(ex).__name__, ex)],
+                            has_error=True)
                     if check.result.has_error:
-                        logging.info("Check {} failed with details {}"
-                                     .format(check.func_name, check.result.details))
+                        logging.info("Check %s failed in %.1fs with details %s",
+                                     check.func_name, time.time() - start,
+                                     truncate_for_log(check.result.details))
+                    elif check.result.ignore_result:
+                        logging.info("Check %s skipped after %.1fs", check.func_name,
+                                     time.time() - start)
+                    elif check.result.has_warning:
+                        logging.info("Check %s warned in %.1fs with details %s",
+                                     check.func_name, time.time() - start,
+                                     truncate_for_log(check.result.details))
+                    else:
+                        logging.debug("Check %s passed in %.1fs", check.func_name,
+                                      time.time() - start)
                     check.tries += 1
 
             checks_remaining = 0
@@ -2926,10 +3197,17 @@ class CheckCoordinator:
                 break
 
         entries = []
+        skipped = 0
         for check in self.checks:
-            if not check.result.ignore_result:
-                entries.append(check.result)
+            if check.result.ignore_result:
+                skipped += 1
+                continue
+            entries.append(check.result)
 
+        logging.info("Checks complete: %d reported, %d skipped, %d with errors, %d with warnings",
+                     len(entries), skipped,
+                     len([e for e in entries if e.has_error]),
+                     len([e for e in entries if e.has_warning]))
         return entries
 
 
@@ -2974,6 +3252,7 @@ class NodeInfo:
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
         self.otel_enabled = data["otelCollectorEnabled"]
+        self.otel_collector_installed = data.get("otelCollectorInstalled", False)
         self.enable_earlyoom = data["earlyoomEnabled"]
         self.clockSyncServiceRequired = data.get("clockSyncServiceRequired", True)
         self.clockbound_enabled = data["clockboundEnabled"]
@@ -2981,6 +3260,116 @@ class NodeInfo:
         self.topk_mem_threshold_percent = data["topKMemThresholdPercent"]
         self.check_thp = data["checkTHP"]
         self.ybdb_inbuilt_ybc = data["ybdbInbuiltYbc"]
+
+
+# Health check output says what failed, never why. The log goes to <yb_home>/metrics/logs, a
+# symlink onto the data partition (see the node agent's configure_server), and the support
+# bundle collects it.
+#
+# One file per day, appended to and never rotated here: gzipping the finished days and holding
+# the directory to a budget is zip_purge_yb_logs.sh's job, as it is for the master, tserver and
+# postgres logs. That script gzips every plain log in a directory except the newest, so the date
+# in the name is what lets it work at all.
+HEALTH_LOG_DIR = "metrics/logs"
+HEALTH_LOG_FILE_FORMAT = "node_health-%Y%m%d.log"
+
+
+def resolve_health_log_dir(yb_home_dir, is_k8s):
+    """<yb_home>/metrics/logs, pointed at the data volume if it is not already.
+
+    The node agent creates this symlink during configure, but a YBA upgrade delivers this
+    script to nodes long before their next configure run. Doing nothing would put the log on
+    the root partition and leave a real directory where configure later replaces the path with
+    a symlink - taking the logs with it. So the first health check after an upgrade sets the
+    link up itself, using the data volume that <yb_home>/cores already points at (a symlink on
+    a VM, and one the pod image creates too).
+
+    Returns the directory to log into, or None if one could not be prepared.
+    """
+    home_logs = os.path.join(yb_home_dir, HEALTH_LOG_DIR)
+
+    if os.path.islink(home_logs):
+        # Already linked, by configure or by an earlier run of this script.
+        target = os.path.realpath(home_logs)
+        os.makedirs(target, exist_ok=True)
+        return home_logs
+
+    cores = os.path.join(yb_home_dir, "cores")
+    if not os.path.islink(cores):
+        # Nothing to derive the data volume from; the root partition is better than no log.
+        os.makedirs(home_logs, exist_ok=True)
+        return home_logs
+
+    # On a VM this mirrors otel-collector/logs at <mount>/metrics/logs, which is what configure
+    # creates and what zip_purge_yb_logs.sh reaches through the symlink. In a pod it has to sit
+    # under yb-data: the chart's yb-cleanup container, the only thing that runs log_cleanup.sh
+    # there, mounts the volume's yb-data subdirectory as its own /home/yugabyte, so anything
+    # outside yb-data is invisible to it.
+    data_subpath = os.path.join("yb-data", HEALTH_LOG_DIR) if is_k8s else HEALTH_LOG_DIR
+    data_logs = os.path.join(os.path.dirname(os.path.realpath(cores)), data_subpath)
+    os.makedirs(data_logs, exist_ok=True)
+
+    if os.path.isdir(home_logs):
+        # An earlier run of this script logged to the root partition. Move those logs across
+        # rather than lose them.
+        for name in os.listdir(home_logs):
+            try:
+                os.replace(os.path.join(home_logs, name), os.path.join(data_logs, name))
+            except OSError:
+                pass
+        os.rmdir(home_logs)
+
+    os.makedirs(os.path.dirname(home_logs), exist_ok=True)
+    # -n semantics: never follow an existing link, or the new link lands inside its target.
+    tmp_link = home_logs + ".tmp"
+    if os.path.lexists(tmp_link):
+        os.remove(tmp_link)
+    os.symlink(data_logs, tmp_link)
+    os.replace(tmp_link, home_logs)
+    return home_logs
+
+
+def configure_logging(yb_home_dir, is_k8s, metrics_only, verbose=False):
+    """Logs to <yb_home>/metrics/logs/node_health-<date>.log, and to stderr unless metrics_only.
+
+    Metrics-only runs used to disable logging outright; they keep the file so that a run whose
+    only visible output is a bare metric can still be explained afterwards. stderr stays off
+    there because that output is read by the caller.
+
+    The file gets DEBUG - every command that ran and every endpoint that was called - while
+    stderr stays at INFO unless --verbose, because that output is read by the caller. Two
+    health checks can overlap; the timestamps and pids in the format keep interleaved lines
+    readable.
+    """
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        "%(asctime)s %(process)d %(levelname)s %(funcName)s: %(message)s")
+
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+
+    if not metrics_only:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        stream_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+        root.addHandler(stream_handler)
+
+    try:
+        log_dir = resolve_health_log_dir(yb_home_dir, is_k8s)
+        file_handler = logging.FileHandler(
+            os.path.join(log_dir, time.strftime(HEALTH_LOG_FILE_FORMAT)))
+        file_handler.setFormatter(formatter)
+        # Metrics-only runs happen every minute (yb-collect_metrics.timer), so they get the
+        # outcomes and nothing else; the health check itself - the run whose results YBA
+        # reports and the one worth reconstructing afterwards - gets every command it ran.
+        file_handler.setLevel(logging.INFO if metrics_only else logging.DEBUG)
+        root.addHandler(file_handler)
+    except OSError as ex:
+        # A node health check that cannot write its log still has to run and report.
+        if not metrics_only:
+            logging.warning("Could not open the health log under %s: %s",
+                            os.path.join(yb_home_dir, HEALTH_LOG_DIR), ex)
 
 
 def main():
@@ -3011,12 +3400,11 @@ def main():
 
     args = parser.parse_args()
 
-    if args.metrics_only:
-        logger = logging.getLogger()
-        logger.disabled = True
-
     # Allow passing node info as argument, otherwise get pre-defined during script upload
     n = NodeInfo(json.loads(args.node_info if args.node_info is not None else NODE_INFO))
+    configure_logging(n.yb_home_dir, n.is_k8s, args.metrics_only, args.verbose)
+    logging.info("Starting health check on node %s (metrics_only=%s, ddl_atomicity_check=%s)",
+                 n.node_host, args.metrics_only, args.ddl_atomicity_check)
     coordinator = CheckCoordinator(args.retry_interval_secs)
     try:
         alert_enhancements_version = is_equal_or_newer_release_build(
@@ -3091,7 +3479,6 @@ def main():
             coordinator.add_check(checker, "check_postgres_worker_count")
             coordinator.add_check(checker, "check_postmaster_rss")
             coordinator.add_check(checker, "check_postgres_workers_rss")
-            coordinator.add_check(checker, "check_ysql_connections_count")
             coordinator.add_check(checker, "check_ysql_cgroup_memory_limit")
             coordinator.add_check(checker, "check_ysql_cgroup_memory_usage")
         if n.is_ybc_enabled:
@@ -3142,12 +3529,11 @@ def main():
 
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
-
-    if n.otel_enabled and n.tserver_index >= 0:
-        if n.is_k8s:
-            coordinator.add_check(checker, "check_otel_container_health_k8s")
-        else:
-            coordinator.add_check(checker, "check_uptime_for_process", OTEL_COLLECTOR)
+        if n.otel_collector_installed:
+            if n.is_k8s:
+                coordinator.add_check(checker, "check_otel_container_health_k8s")
+            else:
+                coordinator.add_check(checker, "check_uptime_for_process", OTEL_COLLECTOR)
 
     if args.ddl_atomicity_check:
         coordinator.add_check(checker, "check_ddl_atomicity")
@@ -3161,12 +3547,18 @@ def main():
     if not n.is_k8s and n.check_thp:
         coordinator.add_check(checker, "check_thp_settings")
 
-    if not n.is_k8s:
+    # YBA passes --yba_ynp_version only with yb.node_agent.enable_ynp_version_check on, so it
+    # doubles as the on switch. The check has to be skipped wholesale when it is off, not just its
+    # skew comparison: it also publishes yb_node_ynp_version == 0 for a node with no version file,
+    # and the YNP_VERSION_SKEW alert fires on that independently of any skew.
+    if not n.is_k8s and args.yba_ynp_version:
         coordinator.add_check(checker, "check_ynp_version")
 
+    start_time = time.time()
     entries = coordinator.run()
     for e in entries:
         report.add_entry(e)
+    logging.info("Health check finished in %.1fs", time.time() - start_time)
 
     report.add_common_label("universe_uuid", n.universe_uuid)
     report.write_to_metrics_file(args.metrics_file)
@@ -3179,9 +3571,17 @@ def main():
 
 
 if __name__ == '__main__':
+    # Replaced by configure_logging once the node info - and with it the home directory - is
+    # known; this covers anything logged before that.
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(levelname)s: %(message)s")
-    main()
+        format="%(asctime)s %(process)d %(levelname)s: %(message)s")
+    try:
+        main()
+    except Exception:
+        # Without this the traceback goes to stderr only, which is discarded in metrics-only
+        # (cron) runs.
+        logging.exception("Health check failed")
+        raise
 
 # vim: set ft=python et ts=4 sw=4 :

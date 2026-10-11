@@ -9,6 +9,11 @@ public class SupportBundleComponentFactory {
 
   private final ApplicationLogsComponent applicationLogsComponent;
   private final UniverseLogsComponent universeLogsComponent;
+  private final FilesComponent filesComponent;
+  private final BashComponent bashComponent;
+  private final YSQLComponent ysqlComponent;
+  private final YCQLComponent ycqlComponent;
+  private final YbAdminComponent ybAdminComponent;
   private final OutputFilesComponent outputFilesComponent;
   private final ErrorFilesComponent errorFilesComponent;
   private final CoreFilesComponent coreFilesComponent;
@@ -19,16 +24,24 @@ public class SupportBundleComponentFactory {
   private final YbcLogsComponent ybcLogsComponent;
   private final K8sInfoComponent k8sInfoComponent;
   private final NodeAgentComponent nodeAgentComponent;
+  private final NodeHealthLogsComponent nodeHealthLogsComponent;
   private final YbaMetadataComponent ybaMetadataComponent;
   private final PrometheusMetricsComponent prometheusMetricsComponent;
   private final SystemLogsComponent systemLogsComponent;
   private final TabletReportComponent tabletReportComponent;
+  private final ClusterConfigComponent clusterConfigComponent;
   private final PerfAdvisorComponent perfAdvisorComponent;
+  private final YBAComponent ybaComponent;
 
   @Inject
   public SupportBundleComponentFactory(
       ApplicationLogsComponent applicationLogsComponent,
       UniverseLogsComponent universeLogsComponent,
+      FilesComponent filesComponent,
+      BashComponent bashComponent,
+      YSQLComponent ysqlComponent,
+      YCQLComponent ycqlComponent,
+      YbAdminComponent ybAdminComponent,
       OutputFilesComponent outputFilesComponent,
       ErrorFilesComponent errorFilesComponent,
       CoreFilesComponent coreFilesComponent,
@@ -39,13 +52,21 @@ public class SupportBundleComponentFactory {
       YbcLogsComponent ybcLogsComponent,
       K8sInfoComponent k8sInfoComponent,
       NodeAgentComponent nodeAgentComponent,
+      NodeHealthLogsComponent nodeHealthLogsComponent,
       YbaMetadataComponent ybaMetadataComponent,
       PrometheusMetricsComponent prometheusMetricsComponent,
       SystemLogsComponent systemLogsComponent,
       TabletReportComponent tabletReportComponent,
-      PerfAdvisorComponent perfAdvisorComponent) {
+      ClusterConfigComponent clusterConfigComponent,
+      PerfAdvisorComponent perfAdvisorComponent,
+      YBAComponent ybaComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
     this.universeLogsComponent = universeLogsComponent;
+    this.filesComponent = filesComponent;
+    this.bashComponent = bashComponent;
+    this.ysqlComponent = ysqlComponent;
+    this.ycqlComponent = ycqlComponent;
+    this.ybAdminComponent = ybAdminComponent;
     this.outputFilesComponent = outputFilesComponent;
     this.errorFilesComponent = errorFilesComponent;
     this.coreFilesComponent = coreFilesComponent;
@@ -56,11 +77,14 @@ public class SupportBundleComponentFactory {
     this.ybcLogsComponent = ybcLogsComponent;
     this.k8sInfoComponent = k8sInfoComponent;
     this.nodeAgentComponent = nodeAgentComponent;
+    this.nodeHealthLogsComponent = nodeHealthLogsComponent;
     this.ybaMetadataComponent = ybaMetadataComponent;
     this.prometheusMetricsComponent = prometheusMetricsComponent;
     this.systemLogsComponent = systemLogsComponent;
     this.tabletReportComponent = tabletReportComponent;
+    this.clusterConfigComponent = clusterConfigComponent;
     this.perfAdvisorComponent = perfAdvisorComponent;
+    this.ybaComponent = ybaComponent;
   }
 
   // Maps the support bundle component type to its respective implementation
@@ -70,6 +94,21 @@ public class SupportBundleComponentFactory {
     switch (componentType) {
       case UniverseLogs:
         supportBundleComponent = this.universeLogsComponent;
+        break;
+      case FilesComponent:
+        supportBundleComponent = this.filesComponent;
+        break;
+      case BashComponent:
+        supportBundleComponent = this.bashComponent;
+        break;
+      case YSQLComponent:
+        supportBundleComponent = this.ysqlComponent;
+        break;
+      case YCQLComponent:
+        supportBundleComponent = this.ycqlComponent;
+        break;
+      case YbAdminComponent:
+        supportBundleComponent = this.ybAdminComponent;
         break;
       case ApplicationLogs:
         supportBundleComponent = this.applicationLogsComponent;
@@ -104,6 +143,9 @@ public class SupportBundleComponentFactory {
       case NodeAgent:
         supportBundleComponent = this.nodeAgentComponent;
         break;
+      case NodeHealthLogs:
+        supportBundleComponent = this.nodeHealthLogsComponent;
+        break;
       case YbaMetadata:
         supportBundleComponent = this.ybaMetadataComponent;
         break;
@@ -118,6 +160,12 @@ public class SupportBundleComponentFactory {
         break;
       case TabletReport:
         supportBundleComponent = this.tabletReportComponent;
+        break;
+      case ClusterConfig:
+        supportBundleComponent = this.clusterConfigComponent;
+        break;
+      case YBAComponent:
+        supportBundleComponent = this.ybaComponent;
         break;
       default:
         break;

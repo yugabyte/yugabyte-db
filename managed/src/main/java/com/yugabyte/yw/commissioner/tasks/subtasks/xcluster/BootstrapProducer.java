@@ -32,7 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.BootstrapUniverseResponse;
 import org.yb.client.DeleteCDCStreamResponse;
 import org.yb.client.ListCDCStreamsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class BootstrapProducer extends XClusterConfigTaskBase {
@@ -87,7 +87,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
         taskParams().tableIds, XClusterTableConfig.Status.Bootstrapping);
 
     Universe sourceUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = getClientToBootstrapProducer(sourceUniverse)) {
+    try (YBClientApi client = getClientToBootstrapProducer(sourceUniverse)) {
       //      Map<String, String> tableIdToBootstrapIdMap = new HashMap<>();
       Map<String, List<String>> tableIdToBootstrapIdsMap = new HashMap<>();
       try {
@@ -228,7 +228,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
     log.info("Completed (time: {}) {}", System.nanoTime() - startTime, getName());
   }
 
-  protected YBClient getClientToBootstrapProducer(Universe universe) {
+  protected YBClientApi getClientToBootstrapProducer(Universe universe) {
     String sourceUniverseMasterAddresses = universe.getMasterAddresses();
     String sourceUniverseCertificate = universe.getCertificateNodetoNode();
     // Bootstrapping producer might be slower compared to other operations, and it has to have a
@@ -249,7 +249,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
   protected Map<String, String> bootstrapProducer(
       XClusterConfig xClusterConfig,
       Universe sourceUniverse,
-      YBClient client,
+      YBClientApi client,
       List<String> tableIdsWithoutBootstrapId) {
     // Set bootstrap creation time.
     Date now = new Date();

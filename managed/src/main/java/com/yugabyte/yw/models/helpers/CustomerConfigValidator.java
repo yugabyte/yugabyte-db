@@ -14,7 +14,9 @@ import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.OCIUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Schedule;
@@ -30,10 +32,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
+@Slf4j
 @Singleton
 public class CustomerConfigValidator extends BaseBeanValidator {
 
@@ -43,6 +47,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
   private final RuntimeConfGetter runtimeConfGetter;
   public final AWSUtil awsUtil;
   public final AZUtil azUtil;
+  public final OCIUtil ociUtil;
 
   private final Map<Class<? extends CustomerConfigData>, ConfigDataValidator> validators =
       new HashMap<>();
@@ -54,13 +59,15 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       RuntimeConfGetter runtimeConfGetter,
       AWSUtil awsUtil,
       AZUtil azUtil,
-      GCPUtil gcpUtil) {
+      GCPUtil gcpUtil,
+      OCIUtil ociUtil) {
     super(beanValidator);
     this.factory = createCloudFactory();
     this.storageUtilFactory = storageUtilFactory;
     this.runtimeConfGetter = runtimeConfGetter;
     this.awsUtil = awsUtil;
     this.azUtil = azUtil;
+    this.ociUtil = ociUtil;
 
     validators.put(
         CustomerConfigStorageGCSData.class,
@@ -73,6 +80,9 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     validators.put(
         CustomerConfigStorageAzureData.class,
         new CustomerConfigStorageAzureValidator(beanValidator, factory, storageUtilFactory));
+    validators.put(
+        CustomerConfigStorageOCIData.class,
+        new CustomerConfigStorageOCIValidator(beanValidator, awsUtil, ociUtil));
     validators.put(
         CustomerConfigStorageGCSData.class,
         new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
@@ -95,6 +105,11 @@ public class CustomerConfigValidator extends BaseBeanValidator {
    *
    * <p>The URLs validation allows empty scheme. In such case the check is made with DEFAULT_SCHEME
    * added before the URL.
+   *
+   * <p>{@link GlobalConfKeys#skipStorageConfigValidation} skips the storage checks above, as an
+   * escape hatch for storage that YBA itself cannot reach. It disarms nothing else: field level
+   * validation of the payload still runs, as do the config name conflict and read-only backup
+   * location checks, and non-storage config types are unaffected.
    *
    * @param customerConfig
    */
@@ -125,6 +140,19 @@ public class CustomerConfigValidator extends BaseBeanValidator {
 
     CustomerConfigData data = customerConfig.getDataObject();
     beanValidator.validate(data, "data");
+
+    // Scoped to storage configs, and placed after the checks above: only the storage validators
+    // depend on anything outside YBA, so they are the only ones an unreachable-storage escape
+    // hatch has any business disarming.
+    if (customerConfig.getType() == ConfigType.STORAGE
+        && runtimeConfGetter.getGlobalConf(GlobalConfKeys.skipStorageConfigValidation)) {
+      log.warn(
+          "Skipping validation of storage config {} as {} is set",
+          configName,
+          GlobalConfKeys.skipStorageConfigValidation.getKey());
+      return;
+    }
+
     ConfigDataValidator validator = validators.get(data.getClass());
     if (validator != null) {
       validator.validate(data);

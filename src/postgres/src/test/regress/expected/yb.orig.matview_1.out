@@ -38,7 +38,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 SELECT COUNT(*) FROM mv_xid_test;
  count 
 -------
-    10
+    12
 (1 row)
 
 COMMIT;
@@ -634,3 +634,95 @@ SELECT * FROM mv_empty;
 ---
 (0 rows)
 
+-- Concurrent refresh with a json column (no equality operator).  Deletes must
+-- be matched by unique-index keys, not whole-row equality.
+DROP MATERIALIZED VIEW IF EXISTS mv_json;
+NOTICE:  materialized view "mv_json" does not exist, skipping
+DROP TABLE IF EXISTS t_json;
+NOTICE:  table "t_json" does not exist, skipping
+CREATE TABLE t_json (
+  id text PRIMARY KEY,
+  name text,
+  info json,
+  age int
+);
+INSERT INTO t_json (id, name, info, age) VALUES
+  ('user-1', 'a', '{"x": 1}', 10),
+  ('user-2', 'b', '{"x": 2}', 20),
+  ('user-3', 'c', '{"x": 3}', 30);
+CREATE MATERIALIZED VIEW mv_json AS
+  SELECT * FROM t_json
+  WITH DATA;
+CREATE UNIQUE INDEX uidx_mv_json_id ON mv_json (id);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_json;
+DELETE FROM t_json WHERE id = 'user-2';
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_json;
+SELECT id, name, info::text, age FROM mv_json ORDER BY id;
+   id   | name |   info   | age 
+--------+------+----------+-----
+ user-1 | a    | {"x": 1} |  10
+ user-3 | c    | {"x": 3} |  30
+(2 rows)
+
+DROP TABLE t_json CASCADE;
+NOTICE:  drop cascades to materialized view mv_json
+-- Concurrent refresh with nullable unique-index keys.  Non-NULL keys use the
+-- fast IN path; NULL keys need a separate NULL-safe delete.
+DROP MATERIALIZED VIEW IF EXISTS mv_nullkey;
+NOTICE:  materialized view "mv_nullkey" does not exist, skipping
+DROP TABLE IF EXISTS t_nullkey;
+NOTICE:  table "t_nullkey" does not exist, skipping
+CREATE TABLE t_nullkey (id int, val text);
+INSERT INTO t_nullkey VALUES (1, 'a'), (NULL, 'b'), (2, 'c');
+CREATE MATERIALIZED VIEW mv_nullkey AS SELECT * FROM t_nullkey WITH DATA;
+CREATE UNIQUE INDEX uidx_mv_nullkey_id ON mv_nullkey (id);
+UPDATE t_nullkey SET val = 'b2' WHERE id IS NULL;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_nullkey;
+SELECT id, val FROM mv_nullkey ORDER BY id NULLS LAST, val;
+ id | val 
+----+-----
+  1 | a
+  2 | c
+    | b2
+(3 rows)
+
+DELETE FROM t_nullkey WHERE id IS NULL;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_nullkey;
+SELECT id, val FROM mv_nullkey ORDER BY id NULLS LAST, val;
+ id | val 
+----+-----
+  1 | a
+  2 | c
+(2 rows)
+
+DROP TABLE t_nullkey CASCADE;
+NOTICE:  drop cascades to materialized view mv_nullkey
+-- Several rows with NULL in *every* unique-index key column but not null
+-- values in the remaining.
+DROP MATERIALIZED VIEW IF EXISTS mv_nullkeys_dup;
+NOTICE:  materialized view "mv_nullkeys_dup" does not exist, skipping
+DROP TABLE IF EXISTS t_nullkeys_dup;
+NOTICE:  table "t_nullkeys_dup" does not exist, skipping
+CREATE TABLE t_nullkeys_dup (col1 int, col2 int, col3 int, col4 int);
+INSERT INTO t_nullkeys_dup VALUES (NULL, NULL, 1, 2), (NULL, NULL, 1, 3);
+CREATE MATERIALIZED VIEW mv_nullkeys_dup AS SELECT * FROM t_nullkeys_dup WITH DATA;
+CREATE UNIQUE INDEX uidx_mv_nullkeys_dup ON mv_nullkeys_dup (col1, col2);
+SELECT col1, col2, col3, col4 FROM mv_nullkeys_dup
+  ORDER BY col1 NULLS FIRST, col2 NULLS FIRST, col3, col4;
+ col1 | col2 | col3 | col4 
+------+------+------+------
+      |      |    1 |    2
+      |      |    1 |    3
+(2 rows)
+
+DELETE FROM t_nullkeys_dup WHERE col4 = 2;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_nullkeys_dup;
+SELECT col1, col2, col3, col4 FROM mv_nullkeys_dup
+  ORDER BY col1 NULLS FIRST, col2 NULLS FIRST, col3, col4;
+ col1 | col2 | col3 | col4 
+------+------+------+------
+      |      |    1 |    3
+(1 row)
+
+DROP TABLE t_nullkeys_dup CASCADE;
+NOTICE:  drop cascades to materialized view mv_nullkeys_dup

@@ -1,11 +1,13 @@
 test: yb.orig.concurrent_ddls_read_latest_cat_version
 test: yb.orig.concurrent_ddls
+test: yb.orig.concurrent_drop_dependent_objects
 test: yb.orig.avoid_stale_catalog_reads-1
 test: yb.orig.avoid_stale_catalog_reads-2
 test: yb.orig.avoid_stale_catalog_reads-3
 test: yb.orig.avoid_stale_catalog_reads-4
 test: yb.orig.avoid_stale_catalog_reads-5
 test: yb.orig.snapshot_switch_dml_ddl_txn
+test: yb.orig.flush_writes_before_catalog_ops
 test: yb.orig.user_table_access_in_a_ddl
 test: yb.orig.analyze_ddl_deadlock
 test: yb.orig.concurrent_insert_during_rewrite
@@ -13,3 +15,8 @@ test: yb.orig.concurrent_partition_insert
 test: yb.orig.inplace_catalog_updates
 test: yb.orig.non_concurrent_index_with_parallel_dml
 test: yb.orig.detach-partition-concurrently-1
+test: yb.orig.matview_refresh_locking
+test: yb.orig.ddl_lock_conflicts
+test: yb.orig.index_check_concurrent_drop
+test: yb.orig.lock-status-ddl-waiters
+test: yb.orig.reset_txn_snapshot_after_ddl

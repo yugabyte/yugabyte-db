@@ -37,6 +37,7 @@
 #include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
@@ -46,7 +47,6 @@ using std::string;
 namespace yb {
 namespace crc {
 
-using strings::Substitute;
 
 class CrcTest : public YBTest {
  protected:

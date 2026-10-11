@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-platform:
     identifier: create-multi-cloud-universe
     parent: create-deployments
-    weight: 35
+    weight: 50
 type: docs
 ---
 
@@ -94,23 +94,15 @@ Click **Add Instances** to add nodes in the regions you defined for the provider
 
 ## Create a universe
 
-You can create a multi-region universe as follows:
+Create a multi-region universe as usual, following the steps in [Create universes](../create-universes-wizard/), and keep in mind the following:
 
-1. Navigate to **Dashboard** or **Universes** and click **Create Universe**.
+- Choose the provider you created.
 
-1. Complete the **Primary Cluster** fields, as shown in the following illustration:
+- Set the regions to those created in your provider. For example, `aws-west-2`, `azu-east-1`, and `gcp-central-1`.
 
-    ![New universe details](/images/ee/multi-cloud-create-universe1.png)
+- Set the instance type to the instance type you created.
 
-1. Enter a name for the universe.
-
-1. Choose the provider you created.
-
-1. Select the regions, for example, `aws-west-2`, `azu-east-1`, and `gcp-central-1`, and the corresponding availability zones.
-
-1. Set the instance type to the instance type you created.
-
-1. Add the following flag to Master and T-Server:
+- Add the following flag to Master and T-Server:
 
     ```sh
     leader_failure_max_missed_heartbeat_periods=10
@@ -118,15 +110,7 @@ You can create a multi-region universe as follows:
 
     As the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
 
-1. Click **Create**.
-
 At this point, YugabyteDB Anywhere begins to provision your new universe across multiple cloud providers. When the universe is provisioned, it appears on the **Dashboard** and **Universes**. You can click the universe name to open its **Overview**.
-
-![Universe overview page](/images/ee/multi-cloud-universe-overview.png)
-
-The new universe's nodes list will be similar to the following:
-
-![Universe overview](/images/ee/multi-cloud-universe-nodes.png)
 
 ## Run the TPC-C benchmark
 

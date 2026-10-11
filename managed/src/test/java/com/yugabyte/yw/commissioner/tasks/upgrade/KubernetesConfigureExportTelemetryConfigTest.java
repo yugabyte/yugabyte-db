@@ -6,6 +6,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,6 +24,7 @@ import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig.YSQLLogErrorVerbosity;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig.YSQLLogStatement;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig.YSQlLogMinErrorStatement;
+import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -88,7 +90,7 @@ public class KubernetesConfigureExportTelemetryConfigTest extends KubernetesUpgr
 
     // Helm upgrade is invoked at least once (one POD_INFO + multiple HELM_UPGRADE per AZ).
     verify(mockKubernetesManager, atLeastOnce())
-        .helmUpgrade(any(UUID.class), any(), any(), any(), any(), any());
+        .helmUpgrade(any(UUID.class), any(), any(), any(), any(), any(), isNull());
 
     // The persist subtask must be in the resulting subtask DAG.
     boolean persistRan =
@@ -144,5 +146,51 @@ public class KubernetesConfigureExportTelemetryConfigTest extends KubernetesUpgr
         taskInfo.getSubTasks().stream()
             .anyMatch(t -> t.getTaskType() == TaskType.KubernetesCommandExecutor);
     assertTrue("KubernetesCommandExecutor subtask must be scheduled", helmUpgradeScheduled);
+  }
+
+  /**
+   * Without this subtask the otel Prometheus targets for a K8s universe are only refreshed by some
+   * later unrelated universe write, so enabling export would not start metrics collection (and the
+   * OTel export failure alerts would never fire).
+   */
+  @Test
+  public void testRunSchedulesSwamperTargetUpdateSubtask() {
+    setupUniverseSingleAZ(false, false);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.skipOpentelemetryOperatorCheck.getKey(), "true");
+    task.setUserTaskUUID(UUID.randomUUID());
+
+    ExportTelemetryConfigParams params = new ExportTelemetryConfigParams();
+    params.setTelemetryConfig(TelemetryConfig.of(buildAuditLogConfig(), null, null));
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(params);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    boolean swamperUpdateScheduled =
+        subTasks.stream().anyMatch(t -> t.getTaskType() == TaskType.SwamperTargetsFileUpdate);
+    assertTrue(
+        "SwamperTargetsFileUpdate subtask must be scheduled, found types: "
+            + subTasks.stream().map(t -> t.getTaskType().name()).distinct().toList(),
+        swamperUpdateScheduled);
+
+    // It must come after the persist subtask, which is what flips otelCollectorEnabled in the
+    // universe details that SwamperHelper gates the otel targets on.
+    int persistIdx = indexOfTaskType(subTasks, TaskType.UpdateAndPersistExportTelemetryConfig);
+    int swamperIdx = indexOfTaskType(subTasks, TaskType.SwamperTargetsFileUpdate);
+    assertTrue(
+        "SwamperTargetsFileUpdate must run after UpdateAndPersistExportTelemetryConfig",
+        persistIdx >= 0 && swamperIdx > persistIdx);
+  }
+
+  private static int indexOfTaskType(List<TaskInfo> subTasks, TaskType taskType) {
+    for (int i = 0; i < subTasks.size(); i++) {
+      if (subTasks.get(i).getTaskType() == taskType) {
+        return i;
+      }
+    }
+    return -1;
   }
 }

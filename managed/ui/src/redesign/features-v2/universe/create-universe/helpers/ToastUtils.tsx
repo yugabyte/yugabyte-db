@@ -18,7 +18,7 @@ export type YBToastApi = {
   info: (text: string) => void;
   success: (text: string) => void;
   error: (text: string) => void;
-  warning: (text: string) => void;
+  warn: (text: string) => void;
   inProgress: (text: string) => void;
 };
 
@@ -85,7 +85,7 @@ export const YBToastProvider: FC<{ children: ReactNode }> = ({ children }) => {
         setToasts((prev) => [...prev, { id: nextToastId(), text, variant: AlertVariant.Success }]),
       error: (text: string) =>
         setToasts((prev) => [...prev, { id: nextToastId(), text, variant: AlertVariant.Error }]),
-      warning: (text: string) =>
+      warn: (text: string) =>
         setToasts((prev) => [...prev, { id: nextToastId(), text, variant: AlertVariant.Warning }]),
       inProgress: (text: string) =>
         setToasts((prev) => [
@@ -138,6 +138,6 @@ export const YBToast: YBToastApi = {
   info: (text: string) => toastApiRef.current?.info(text),
   success: (text: string) => toastApiRef.current?.success(text),
   error: (text: string) => toastApiRef.current?.error(text),
-  warning: (text: string) => toastApiRef.current?.warning(text),
+  warn: (text: string) => toastApiRef.current?.warn(text),
   inProgress: (text: string) => toastApiRef.current?.inProgress(text)
 };

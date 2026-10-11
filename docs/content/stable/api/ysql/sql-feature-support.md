@@ -35,7 +35,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/yes>}} | `SMALLINT, INT, INTEGER, BIGINT`                                          | [Integers](../datatypes/type_numeric/#integers)                             |
 | {{<icon/yes>}} | `INT4RANGE`, `INT8RANGE`, `NUMRANGE`, `TSRANGE`, `TSTZRANGE`, `DATERANGE` | [Range data types](../datatypes/type_range/)                                |
 | {{<icon/yes>}} | `UUID`                                                                    | [UUID data type](../datatypes/type_uuid/)                                   |
-| {{<icon/no>}}  | `XML`                                                                     |                                                                                            |
+| {{<icon/yes>}} | `XML`                                                                     | [XML data type and functions](../datatypes/type_xml/)                                       |
 | {{<icon/yes>}} | `TSVECTOR`                                                                |                                                                                            |
 | {{<icon/yes>}} | UDT(Base, Enumerated, Range, Composite, Array, Domain types)              |                                                                                            |
 {.sno-1}
@@ -146,9 +146,11 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/yes>}} | Sequences                                            | [Auto-Increment column values](../../../explore/ysql-language-features/data-manipulation/#auto-increment-column-values) |
 | {{<icon/yes>}} | Identity columns                                     |                                                                                    |
 | {{<icon/yes>}} | Views                                                | [Views](../../../explore/ysql-language-features/advanced-features/views/)                                               |
+| {{<icon/yes>}} | Table inheritance                                    | [Table inheritance](../the-sql-language/ddl-inherit/)                                                                   |
 | {{<icon/yes>}} | Materialized views                                   | [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views)               |
 | {{<icon/yes>}} | Window functions                                     | [Window functions](../exprs/window_functions/)                      |
 | {{<icon/yes>}} | Common table expressions                             |                                                                                    |
 | {{<icon/yes>}} | Extensions                                           | [PostgreSQL extensions](../../../additional-features/pg-extensions/)                                         |
 | {{<icon/yes>}} | Foreign data wrappers                                | [Foreign data wrappers](../../../explore/ysql-language-features/advanced-features/foreign-data-wrappers/)               |
+| {{<icon/no>}}  | Large objects                                        |                                                                                    |
 {.sno-1}

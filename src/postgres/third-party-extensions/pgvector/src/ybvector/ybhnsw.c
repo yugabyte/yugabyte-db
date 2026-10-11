@@ -175,7 +175,7 @@ ybhnswbindcolumnschema(YbcPgStatement handle,
 }
 
 static void
-ybBindHnswReadOptions(YbScanDesc yb_scan)
+ybBindHnswReadOptions(YbOpaque yb_scan)
 {
 	YBCPgDmlHnswSetReadOptions(yb_scan->handle, ybhnsw_ef_search);
 }
@@ -190,7 +190,7 @@ ybhnswrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 {
 	ybvectorrescan(scan, scankeys, nscankeys, orderbys, norderbys);
 	YbVectorScanOpaque so = (YbVectorScanOpaque) scan->opaque;
-	YbScanDesc ybscan = so->yb_scan_desc;
+	YbOpaque ybscan = so->yb_scan_desc;
 	ybBindHnswReadOptions(ybscan);
 }
 

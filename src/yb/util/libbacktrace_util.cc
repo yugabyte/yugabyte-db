@@ -13,6 +13,8 @@
 
 #include "yb/util/libbacktrace_util.h"
 
+#include <pthread.h>
+#include <csignal>
 #include <regex>
 #include <string>
 #include <thread>
@@ -46,7 +48,7 @@ void BacktraceErrorCallback(void* data, const char* msg, int errnum) {
     auto* context = static_cast<BacktraceContext*>(data);
     if (context->buf) {
       buf_ptr = context->buf;
-      buf_ptr->append(StringPrintf("Backtrace error: %s (errnum=%d)\n", msg, errnum));
+      buf_ptr->append(Format("Backtrace error: $0 (errnum=$1)\n", msg, errnum));
       return;
     }
   }
@@ -77,7 +79,7 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
       if (demangle_status != kDemangleInvalidMangledName) {
         // -2 means the mangled name is not a valid name under the C++ ABI mangling rules.
         // This happens when the name is e.g. "main", so we don't report the error.
-        StringAppendF(buf, "Error: __cxa_demangle failed for '%s' with error code %d\n",
+        *buf += Format("Error: __cxa_demangle failed for '$0' with error code $1\n",
             original_function_name, demangle_status);
       }
       // Regardless of the exact reason for demangle failure, we use the original function name
@@ -87,8 +89,8 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
       // function name.
       function_name_to_use = demangled_function_name;
     } else {
-      StringAppendF(buf,
-          "Error: __cxa_demangle returned zero status but nullptr demangled function for '%s'\n",
+      *buf += Format(
+          "Error: __cxa_demangle returned zero status but nullptr demangled function for '$0'\n",
           original_function_name);
     }
   }
@@ -127,32 +129,32 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
       // At least print out the hex address, otherwise we'd end up with an empty string.
       *buf += hex_pc_buf;
     } else {
-      StringAppendF(buf, "    @ %18s ", hex_pc_buf);
+      *buf += Format("    @ $0 ", PadLeft(hex_pc_buf, 18));
     }
   } else {
     const string frame_without_file_line =
         is_symbol_only_fmt ? pretty_function_name
-                           : StringPrintf(
-                               kStackTraceEntryFormat, kPrintfPointerFieldWidth,
-                               reinterpret_cast<void*>(pc), pretty_function_name.c_str());
+                           : Format(
+                               kStackTraceEntryFormat,
+                               FormatStackTraceAddress(reinterpret_cast<void*>(pc)),
+                               pretty_function_name);
 
     // Got filename and line number from libbacktrace! No need to filter the output through
     // addr2line, etc.
     switch (context.stack_trace_line_format) {
       case StackTraceLineFormat::CLION_CLICKABLE: {
-        const string file_line_prefix = StringPrintf("%s:%d: ", filename, lineno);
-        StringAppendF(buf, "%-100s", file_line_prefix.c_str());
+        *buf += PadRight(Format("$0:$1: ", filename, lineno), 100);
         *buf += frame_without_file_line;
         break;
       }
       case StackTraceLineFormat::SHORT: {
         *buf += frame_without_file_line;
-        StringAppendF(buf, " (%s:%d)", ShortenSourceFilePath(filename), lineno);
+        *buf += Format(" ($0:$1)", ShortenSourceFilePath(filename), lineno);
         break;
       }
       case StackTraceLineFormat::SYMBOL_ONLY: {
         *buf += frame_without_file_line;
-        StringAppendF(buf, " (%s:%d)", ShortenSourceFilePath(filename), lineno);
+        *buf += Format(" ($0:$1)", ShortenSourceFilePath(filename), lineno);
         break;
       }
     }
@@ -179,10 +181,20 @@ GlobalBacktraceState::GlobalBacktraceState() {
   // to locking common mutexes from signal handler. See
   // https://github.com/yugabyte/yugabyte-db/issues/6672 for more details.
   // OK to use std::thread here because this thread is very short-lived.
+  //
+  // Block all signals while spawning the helper thread so it inherits a fully-blocked signal
+  // mask.  Otherwise an asynchronous signal (e.g. PostgreSQL's SIGALRM handler handle_sig_alarm)
+  // may be delivered to this thread and run a handler that touches process-global state such as
+  // InterruptHoldoffCount and MyLatch, racing with the thread that triggered initialization.
+  // The original mask is restored in the parent once the helper has been created.
+  sigset_t all_signals, old_signals;
+  sigfillset(&all_signals);
+  pthread_sigmask(SIG_SETMASK, &all_signals, &old_signals);
   std::thread backtrace_thread([&] {  // NOLINT
       backtrace_full(bt_state_, /* skip = */ 1, DummyCallback,
                      BacktraceErrorCallback, nullptr);
   });
+  pthread_sigmask(SIG_SETMASK, &old_signals, nullptr);
   backtrace_thread.join();
 }
 

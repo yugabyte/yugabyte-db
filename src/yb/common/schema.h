@@ -367,6 +367,8 @@ class TableProperties {
     // Ignoring num_tablets_.
     // Ignoring retain_delete_markers_.
     // Ignoring partitioning_version_.
+    // Ignoring owns_vector_reverse_mapping_.
+    // Ignoring writes_vector_reverse_mapping_.
   }
 
   bool operator!=(const TableProperties& other) const {
@@ -392,6 +394,8 @@ class TableProperties {
     // Ignoring contain_counters_.
     // Ignoring retain_delete_markers_.
     // Ignoring partitioning_version_.
+    // Ignoring owns_vector_reverse_mapping_.
+    // Ignoring writes_vector_reverse_mapping_.
     return true;
   }
 
@@ -482,6 +486,14 @@ class TableProperties {
     partitioning_version_ = value;
   }
 
+  bool owns_vector_reverse_mapping() const {
+    return owns_vector_reverse_mapping_;
+  }
+
+  bool writes_vector_reverse_mapping() const {
+    return writes_vector_reverse_mapping_;
+  }
+
   PgReplicaIdentity replica_identity() const {
     DCHECK(HasReplicaIdentity());
     return *ysql_replica_identity_;
@@ -525,6 +537,17 @@ class TableProperties {
   int num_tablets_;
   bool is_ysql_catalog_table_;
   uint32_t partitioning_version_;
+
+  // Whether the base table owns vector reverse mappings (vs legacy index-only model).
+  // Set by master at YSQL table creation; loaded via FromTablePropertiesPB; restored from backup.
+  // Alter is intentionally not supported.
+  bool owns_vector_reverse_mapping_;
+
+  // Whether writes to this table maintain the vector reverse mapping. When false, all vector
+  // indexes of the table store the ybctid as the vector payload instead.
+  // Set by master at YSQL table creation; loaded via FromTablePropertiesPB; restored from backup.
+  // Alter is intentionally not supported.
+  bool writes_vector_reverse_mapping_;
 
   // This is optional since its a ysql only field
   std::optional<PgReplicaIdentity> ysql_replica_identity_;

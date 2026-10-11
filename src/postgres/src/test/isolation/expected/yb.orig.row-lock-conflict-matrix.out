@@ -1,0 +1,597 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s1_keyshare s2_begin_rr s2_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_keyshare s2_begin_rr s2_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_keyshare s2_begin_rr s2_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_keyshare s2_begin_rr s2_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_share s2_begin_rr s2_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_share s2_begin_rr s2_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_share s2_begin_rr s2_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_nokeyupd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_share s2_begin_rr s2_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_nokeyupd s2_begin_rr s2_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_nokeyupd s2_begin_rr s2_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_share: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_nokeyupd s2_begin_rr s2_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_nokeyupd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_nokeyupd s2_begin_rr s2_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_upd s2_begin_rr s2_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_keyshare: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_upd s2_begin_rr s2_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_share: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_upd s2_begin_rr s2_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_nokeyupd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_upd s2_begin_rr s2_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_keyshare s2_begin_rr s2_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_keyshare: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_keyshare s2_begin_rr s2_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_keyshare: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_keyshare s2_begin_rr s2_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_keyshare: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_keyshare s2_begin_rr s2_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_keyshare: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_share s2_begin_rr s2_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_share: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_share s2_begin_rr s2_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_share: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_share s2_begin_rr s2_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_share: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_nokeyupd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_share s2_begin_rr s2_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_share: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_nokeyupd s2_begin_rr s2_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_nokeyupd: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE;
+k
+-
+1
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_nokeyupd s2_begin_rr s2_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_nokeyupd: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_share: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_nokeyupd s2_begin_rr s2_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_nokeyupd: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_nokeyupd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_nokeyupd s2_begin_rr s2_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_nokeyupd: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_upd s2_begin_rr s2_keyshare s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_upd: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_keyshare: SELECT k FROM conflict_matrix WHERE k = 1 FOR KEY SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_keyshare: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_upd s2_begin_rr s2_share s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_upd: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_share: SELECT k FROM conflict_matrix WHERE k = 1 FOR SHARE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_share: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_upd s2_begin_rr s2_nokeyupd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_upd: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_nokeyupd: SELECT k FROM conflict_matrix WHERE k = 1 FOR NO KEY UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_nokeyupd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s1_cur_upd s2_begin_rr s2_upd s1_commit s2_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_cur_upd: DECLARE c CURSOR FOR SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; FETCH ALL c;
+k
+-
+1
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_upd: SELECT k FROM conflict_matrix WHERE k = 1 FOR UPDATE; <waiting ...>
+step s1_commit: COMMIT;
+step s2_upd: <... completed>
+k
+-
+1
+(1 row)
+
+step s2_commit: COMMIT;

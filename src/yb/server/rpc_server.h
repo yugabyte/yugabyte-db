@@ -74,7 +74,6 @@ class RpcServer {
       rpc::ServicePriority priority = rpc::ServicePriority::kNormal);
   Status Bind();
   Status Start();
-  void Shutdown();
 
   const std::vector<Endpoint>& GetBoundAddresses() const {
     return rpc_bound_addresses_;

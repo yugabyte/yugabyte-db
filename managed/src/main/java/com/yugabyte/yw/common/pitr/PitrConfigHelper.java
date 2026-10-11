@@ -52,7 +52,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j
@@ -188,7 +188,7 @@ public class PitrConfigHelper {
     PitrConfig.getOrBadRequest(taskParams.pitrConfigUUID);
     ListSnapshotSchedulesResponse scheduleResp;
     List<SnapshotScheduleInfo> scheduleInfoList;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       scheduleResp = client.listSnapshotSchedules(taskParams.pitrConfigUUID);
       scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
     } catch (Exception ex) {
@@ -452,7 +452,7 @@ public class PitrConfigHelper {
         ybClientConfigFactory.create(
             universe.getMasterAddresses(), universe.getCertificateNodetoNode(), timeoutMs);
 
-    try (YBClient client = ybClientService.getClientWithConfig(config)) {
+    try (YBClientApi client = ybClientService.getClientWithConfig(config)) {
       ListSnapshotSchedulesResponse scheduleResp = client.listSnapshotSchedules(null);
       if (scheduleResp.hasError()) {
         log.warn(

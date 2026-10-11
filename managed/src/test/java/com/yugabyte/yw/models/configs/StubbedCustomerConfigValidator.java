@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.OCIUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
@@ -66,8 +67,9 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
       RuntimeConfGetter runtimeConfGetter,
       AWSUtil awsUtil,
       AZUtil azUtil,
-      GCPUtil gcpUtil) {
-    super(beanValidator, storageUtilFactory, runtimeConfGetter, awsUtil, azUtil, gcpUtil);
+      GCPUtil gcpUtil,
+      OCIUtil ociUtil) {
+    super(beanValidator, storageUtilFactory, runtimeConfGetter, awsUtil, azUtil, gcpUtil, ociUtil);
 
     lenient()
         .when(s3Client.headBucket(any(Consumer.class)))

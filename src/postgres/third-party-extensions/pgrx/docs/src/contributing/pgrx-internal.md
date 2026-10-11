@@ -81,12 +81,17 @@ at least somewhat. Or not.
 
 ## cargo-pgrx
 
-Together with `pgrx-sql-entity-graph`, this implements a rather astounding hack:
+Together with `pgrx-sql-entity-graph`, this is responsible for turning Rust extension code into
+ordered SQL install scripts.
 
-Various functions are injected into the Rust library, which are then dlopened and called to
-extract the required SQL!
+Today, the proc macros emit serialized SQL graph entities into a short linker section in the
+compiled extension library: `.pgrxsc` on ELF/PE and `__DATA,__pgrxsc` on Mach-O. `cargo-pgrx`
+reads that section directly from the built artifact, reconstructs the entity graph, orders the
+SQL objects by dependency, and writes the extension SQL file.
 
-See [Forging SQL from Rust](../articles/forging-sql-from-rust.md) for more.
+The old `pgrx_embed` and `__pgrx_internals_*` symbol-scanning pipeline has been removed. If you
+want the background on that older design, see the historical article
+[Forging SQL from Rust](../articles/forging-sql-from-rust.md).
 
 ## pgrx-pg-config
 
@@ -102,12 +107,15 @@ the alternative is a horrible pile of bash and regexen.
 This should be run in CI for every merge.
 
 ## pgrx-tests
-This currently contains both our test support framework and the actual test suite.
+This contains the test support framework (`#[pg_test]`, test harness, Postgres lifecycle).
 
-Fortunately, the way `#[pg_test]` works is magic enough to simply happen if you run `cargo test`.
-Unfortunately, due to the way that `#[pg_test]` works, the placement of test code is extremely
-constrained in terms of where it must be in files. This is part of why we have this
-additional crate.
+## pgrx-unit-tests
+This contains the actual internal pgrx test suite. It depends on `pgrx-tests` for the harness.
+
+The way `#[pg_test]` works is magic enough to simply happen if you run `cargo test`.
+Due to the way that `#[pg_test]` works, the placement of test code is extremely
+constrained in terms of where it must be in files. This is part of why we have
+these additional crates.
 
 ## pgrx-examples
 Various example extensions one can define using pgrx.

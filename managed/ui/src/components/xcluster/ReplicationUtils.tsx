@@ -25,7 +25,9 @@ import {
   DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
   POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES,
   AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_PREVIEW,
-  AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_STABLE
+  AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_STABLE,
+  MATVIEW_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
+  MATVIEW_XCLUSTER_VERSION_THRESHOLD_STABLE
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -61,6 +63,7 @@ import {
   XClusterReplicationStatusError,
   XClusterTableDetails
 } from './dtos';
+import { REPLICATION_STATUS_ERROR_KEY } from './XClusterTableStatusLabel';
 import { MetricTrace, TableType, Universe, UniverseNamespace } from '../../redesign/helpers/dtos';
 import {
   AlertTemplate,
@@ -877,6 +880,47 @@ export const checkIsAutomaticDdlReplicationSupported = (ybSoftwareVersion: strin
     options: { suppressFormatError: true }
   }) > 0;
 
+/**
+ * Whether a universe runs a YBDB version that can replicate materialized views through xCluster.
+ *
+ * The comparison is inclusive of the threshold to match the backend
+ * (`XClusterUtil.supportsMatviewXCluster` uses `>= 0`).
+ */
+export const checkIsMatviewReplicationSupported = (ybSoftwareVersion: string) =>
+  compareYBSoftwareVersionsWithReleaseTrack({
+    version: ybSoftwareVersion,
+    stableVersion: MATVIEW_XCLUSTER_VERSION_THRESHOLD_STABLE,
+    previewVersion: MATVIEW_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
+    options: { suppressFormatError: true }
+  }) >= 0;
+
+/**
+ * Whether materialized views can be part of a replication config, mirroring
+ * `XClusterUtil.isMatviewReplicationSupported`: only configs in automatic DDL mode replicate
+ * materialized views, and only when both universes run a YBDB version that supports it.
+ *
+ * Returns false while either universe's software version is still unknown.
+ */
+export const getIsMatviewReplicationSupported = (
+  isAutomaticDdlMode: boolean,
+  sourceUniverse: Universe | undefined,
+  targetUniverse: Universe | undefined
+): boolean => {
+  if (!isAutomaticDdlMode || !sourceUniverse || !targetUniverse) {
+    return false;
+  }
+  const sourceYbSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  const targetYbSoftwareVersion = getPrimaryCluster(targetUniverse.universeDetails.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  return (
+    !!sourceYbSoftwareVersion &&
+    checkIsMatviewReplicationSupported(sourceYbSoftwareVersion) &&
+    !!targetYbSoftwareVersion &&
+    checkIsMatviewReplicationSupported(targetYbSoftwareVersion)
+  );
+};
+
 export const getLatestSchemaChangeModeSupported = (
   sourceUniverseVersion: string,
   targetUniverseVersion: string
@@ -909,16 +953,34 @@ const updateTableStatusWithReplicationLag = (
     : tableStatus;
 
 /**
- * Returns the single string representation of a table status. This is used for search and sorting.
+ * Returns translated status labels for search and sorting.
+ * For error tables with replication errors, returns all translated error labels.
  */
-const getStringRepresentationOfTableStatus = (
+const getReplicationStatusErrorLabel = (error: string): string => {
+  const errorKey = REPLICATION_STATUS_ERROR_KEY[error];
+  return errorKey
+    ? i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.replicationStatusError.${errorKey}.label`)
+    : error;
+};
+
+export const getTableStatusSearchValues = (
   tableStatus: XClusterTableStatus,
   replicationStatusErrors: XClusterReplicationStatusError[]
-) =>
-  tableStatus === XClusterTableStatus.ERROR
-    ? replicationStatusErrors[0] ??
-      i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`)
-    : i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`);
+): string[] => {
+  if (tableStatus === XClusterTableStatus.ERROR) {
+    return replicationStatusErrors.length > 0
+      ? replicationStatusErrors.map(getReplicationStatusErrorLabel)
+      : [i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}.label`)];
+  }
+  return [i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}.label`)];
+};
+
+/**
+ * Returns the primary status label used for column sort.
+ * This is the first searchable status value (e.g. the first error pill label).
+ */
+export const getTableStatusSortLabel = (statusSearchValues: string[]): string =>
+  statusSearchValues[0];
 
 /**
  * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.
@@ -968,44 +1030,51 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
     }
 
     if (sourceTableInfo) {
+      const statusSearchValues = getTableStatusSearchValues(
+        tableStatus,
+        tableDetails.replicationStatusErrors
+      );
       tables.push({
         ...sourceTableInfo,
         ...xClusterTableDetails,
         status: tableStatus,
-        statusLabel: getStringRepresentationOfTableStatus(
-          tableStatus,
-          tableDetails.replicationStatusErrors
-        ),
+        statusSearchValues,
+        statusLabel: getTableStatusSortLabel(statusSearchValues),
         replicationLag
       });
     } else if (targetTableInfo) {
+      const statusSearchValues = getTableStatusSearchValues(
+        tableStatus,
+        tableDetails.replicationStatusErrors
+      );
       tables.push({
         ...targetTableInfo,
         ...xClusterTableDetails,
         status: tableStatus,
-        statusLabel: getStringRepresentationOfTableStatus(
-          tableStatus,
-          tableDetails.replicationStatusErrors
-        ),
+        statusSearchValues,
+        statusLabel: getTableStatusSortLabel(statusSearchValues),
         replicationLag
       });
     } else {
       // Table info missing from both source and target.
       // YBA backend does not provide a status for this case. Thus, on the client side we will
       // use `XClusterTableStatus.DROPPED` or `XClusterTableStatus.TABLE_INFO_MISSING` to indicate no table detail information is available.
+      const statusLabel = i18n.t(
+        `${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${
+          isTableInfoIncludedInConfig
+            ? XClusterTableStatus.DROPPED
+            : XClusterTableStatus.TABLE_INFO_MISSING
+        }.label`
+      );
+      const statusSearchValues = [statusLabel];
       tables.push({
         ...xClusterTableDetails,
         tableUUID: tableId,
         status: isTableInfoIncludedInConfig
           ? XClusterTableStatus.DROPPED
           : XClusterTableStatus.TABLE_INFO_MISSING,
-        statusLabel: i18n.t(
-          `${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${
-            isTableInfoIncludedInConfig
-              ? XClusterTableStatus.DROPPED
-              : XClusterTableStatus.TABLE_INFO_MISSING
-          }`
-        ),
+        statusSearchValues,
+        statusLabel: getTableStatusSortLabel(statusSearchValues),
         replicationLag
       });
     }

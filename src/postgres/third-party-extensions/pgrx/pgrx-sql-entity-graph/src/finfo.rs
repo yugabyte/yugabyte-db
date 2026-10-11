@@ -1,6 +1,6 @@
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
-use syn::{self, spanned::Spanned, ItemFn};
+use syn::{self, ItemFn, spanned::Spanned};
 
 /// Generate the Postgres fn info record
 ///
@@ -9,7 +9,7 @@ use syn::{self, spanned::Spanned, ItemFn};
 pub fn finfo_v1_tokens(ident: proc_macro2::Ident) -> syn::Result<ItemFn> {
     let finfo_name = format_ident!("pg_finfo_{ident}");
     let tokens = quote! {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         #[doc(hidden)]
         pub extern "C" fn #finfo_name() -> &'static ::pgrx::pg_sys::Pg_finfo_record {
             const V1_API: ::pgrx::pg_sys::Pg_finfo_record = ::pgrx::pg_sys::Pg_finfo_record { api_version: 1 };
@@ -31,7 +31,7 @@ pub fn finfo_v1_extern_c(
     let synthetic = synthetic.located_at(original.sig.span());
 
     let tokens = quote_spanned! { synthetic =>
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         #[doc(hidden)]
         pub unsafe extern "C-unwind" fn #wrapper_symbol(#fcinfo: ::pgrx::pg_sys::FunctionCallInfo) -> ::pgrx::pg_sys::Datum {
             #contents

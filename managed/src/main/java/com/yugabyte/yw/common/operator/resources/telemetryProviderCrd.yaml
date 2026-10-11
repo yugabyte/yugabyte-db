@@ -1,0 +1,699 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: telemetryproviders.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: telemetryproviders
+    singular: telemetryprovider
+    shortNames:
+      - ytp
+    kind: TelemetryProvider
+    categories:
+      - all
+      - yugabyte
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Provider
+          type: string
+          description: The telemetry provider backing this configuration
+          jsonPath: .spec.provider
+        - name: State
+          type: string
+          description: The state of the telemetry provider
+          jsonPath: .status.state
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: >
+            Custom resource definition for a YugabyteDB Anywhere telemetry
+            provider, the export destination used by DB audit logs, query logs
+            and metrics export. The whole spec is immutable: YBA exposes no edit
+            API for a telemetry provider, so changing any setting (credentials
+            included) requires deleting this resource and creating a new one,
+            which YBA only allows while no universe references the provider.
+          type: object
+          properties:
+            status:
+              description: Telemetry provider status for the telemetry provider custom resource.
+              type: object
+              properties:
+                state:
+                  description: >
+                    State of the telemetry provider: Ready, Error, or InUse when a
+                    delete was refused because a universe still exports to it.
+                  type: string
+                resourceUUID:
+                  description: >
+                    Internal UUID of the telemetry provider in YBA. Empty until the
+                    provider has been created; a non-empty value tells the operator the
+                    provider already exists and must not be created again.
+                  type: string
+                taskUUID:
+                  description: Internal UUID of the most recent task associated with the telemetry provider.
+                  type: string
+                message:
+                  description: >
+                    Message for the telemetry provider (validation errors, runtime-flag
+                    gating, connectivity failures, etc.).
+                  type: string
+            spec:
+              type: object
+              x-kubernetes-validations:
+                - rule: "(self.provider == 'DATA_DOG') == has(self.dataDog)"
+                  message: "dataDog must be set if and only if provider is DATA_DOG"
+                - rule: "(self.provider == 'SPLUNK') == has(self.splunk)"
+                  message: "splunk must be set if and only if provider is SPLUNK"
+                - rule: "(self.provider == 'AWS_CLOUDWATCH') == has(self.awsCloudWatch)"
+                  message: "awsCloudWatch must be set if and only if provider is AWS_CLOUDWATCH"
+                - rule: "(self.provider == 'GCP_CLOUD_MONITORING') == has(self.gcpCloudMonitoring)"
+                  message: "gcpCloudMonitoring must be set if and only if provider is GCP_CLOUD_MONITORING"
+                - rule: "(self.provider == 'LOKI') == has(self.loki)"
+                  message: "loki must be set if and only if provider is LOKI"
+                - rule: "(self.provider == 'DYNATRACE') == has(self.dynatrace)"
+                  message: "dynatrace must be set if and only if provider is DYNATRACE"
+                - rule: "(self.provider == 'S3') == has(self.s3)"
+                  message: "s3 must be set if and only if provider is S3"
+                - rule: "(self.provider == 'OTLP') == has(self.otlp)"
+                  message: "otlp must be set if and only if provider is OTLP"
+              properties:
+                provider:
+                  description: Telemetry provider backing this configuration. Immutable once set.
+                  type: string
+                  enum:
+                    - DATA_DOG
+                    - SPLUNK
+                    - AWS_CLOUDWATCH
+                    - GCP_CLOUD_MONITORING
+                    - LOKI
+                    - DYNATRACE
+                    - S3
+                    - OTLP
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "provider is immutable"
+                tags:
+                  description: >
+                    Extra key/value tags attached to every record exported through this
+                    telemetry provider. Immutable.
+                  type: object
+                  default: {}
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "tags is immutable"
+                  additionalProperties:
+                    type: string
+
+                dataDog:
+                  description: >
+                    Configuration for Datadog. Required when provider is DATA_DOG.
+                    Immutable.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "dataDog is immutable"
+                  properties:
+                    site:
+                      description: >
+                        Datadog site the telemetry is sent to, without a scheme
+                        (e.g. datadoghq.com, us3.datadoghq.com, datadoghq.eu).
+                      type: string
+                      minLength: 1
+                    apiKeySecret:
+                      description: Secret holding the Datadog API key.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                          minLength: 1
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                          minLength: 1
+                      required:
+                        - name
+                        - key
+                  required:
+                    - site
+                    - apiKeySecret
+
+                splunk:
+                  description: >
+                    Configuration for Splunk HEC. Required when provider is SPLUNK.
+                    Immutable.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "splunk is immutable"
+                  properties:
+                    endpoint:
+                      description: >
+                        Splunk HTTP Event Collector endpoint
+                        (e.g. https://splunk.example.com:8088/services/collector).
+                      type: string
+                      minLength: 1
+                    tokenSecret:
+                      description: Secret holding the Splunk HEC token.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                          minLength: 1
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                          minLength: 1
+                      required:
+                        - name
+                        - key
+                    source:
+                      description: Optional Splunk source assigned to exported events.
+                      type: string
+                    sourceType:
+                      description: Optional Splunk sourcetype assigned to exported events.
+                      type: string
+                    index:
+                      description: Optional Splunk index the events are written to.
+                      type: string
+                  required:
+                    - endpoint
+                    - tokenSecret
+
+                awsCloudWatch:
+                  description: >
+                    Configuration for AWS CloudWatch Logs. Required when provider is
+                    AWS_CLOUDWATCH. Immutable.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "awsCloudWatch is immutable"
+                  properties:
+                    logGroup:
+                      description: Name of the CloudWatch log group. Required.
+                      type: string
+                      minLength: 1
+                    logStream:
+                      description: Name of the CloudWatch log stream. Required.
+                      type: string
+                      minLength: 1
+                    region:
+                      description: AWS region of the CloudWatch log group. Required.
+                      type: string
+                      minLength: 1
+                    # Spelled roleARN, not roleArn, to match the Java field
+                    # AWSCloudWatchConfig.roleARN so the spec sub-object converts
+                    # directly. S3Config spells the same concept roleArn; the two
+                    # Java classes disagree and the CRD mirrors each faithfully.
+                    roleARN:
+                      description: >
+                        Optional ARN of a role the exporter assumes before writing to
+                        CloudWatch.
+                      type: string
+                    endpoint:
+                      description: Optional custom CloudWatch Logs endpoint.
+                      type: string
+                    accessKeyIdSecret:
+                      description: Secret holding the AWS access key ID.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                          minLength: 1
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                          minLength: 1
+                      required:
+                        - name
+                        - key
+                    secretAccessKeySecret:
+                      description: Secret holding the AWS secret access key.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                          minLength: 1
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                          minLength: 1
+                      required:
+                        - name
+                        - key
+                  required:
+                    - logGroup
+                    - logStream
+                    - region
+                    - accessKeyIdSecret
+                    - secretAccessKeySecret
+
+                gcpCloudMonitoring:
+                  description: >
+                    Configuration for GCP Cloud Monitoring / Cloud Logging. Required when
+                    provider is GCP_CLOUD_MONITORING. Immutable.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "gcpCloudMonitoring is immutable"
+                  properties:
+                    project:
+                      description: >
+                        GCP project ID the logs are written to. Optional only when the
+                        service account credentials JSON carries a project_id; otherwise
+                        required.
+                      type: string
+                    credentialsSecret:
+                      description: >
+                        Secret holding the GCP service account credentials JSON. The
+                        service account needs the logging.logEntries.create and
+                        logging.logEntries.route permissions.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                          minLength: 1
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the JSON.
+                          type: string
+                          minLength: 1
+                      required:
+                        - name
+                        - key
+                  required:
+                    - credentialsSecret
+
+                loki:
+                  description: >
+                    Configuration for Grafana Loki. Required when provider is LOKI.
+                    Immutable.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "loki is immutable"
+                    - rule: "(self.authType == 'BasicAuth') == has(self.basicAuth)"
+                      message: "basicAuth must be set if and only if authType is BasicAuth"
+                  properties:
+                    endpoint:
+                      description: >
+                        Base URL of the Loki server (e.g. http://loki.example.com:3100).
+                        Any trailing slash and any trailing /loki/api/v1/push suffix are
+                        stripped by YBA.
+                      type: string
+                      minLength: 1
+                    authType:
+                      description: >
+                        Authentication method used against Loki. Bearer token
+                        authentication is not supported by this provider.
+                      type: string
+                      enum:
+                        - BasicAuth
+                        - NoAuth
+                    organizationID:
+                      description: >
+                        Optional Loki organization/tenant ID, sent as the X-Scope-OrgID
+                        header.
+                      type: string
+                    basicAuth:
+                      description: >
+                        Username and password. Required when authType is BasicAuth, and
+                        must be omitted otherwise.
+                      type: object
+                      properties:
+                        username:
+                          description: Loki username.
+                          type: string
+                          minLength: 1
+                        passwordSecret:
+                          description: Secret holding the password.
+                          type: object
+                          properties:
+                            name:
+                              description: Name of the Secret.
+                              type: string
+                              minLength: 1
+                            namespace:
+                              description: Namespace of the Secret. Defaults to the resource namespace.
+                              type: string
+                            key:
+                              description: Key within the Secret data holding the value.
+                              type: string
+                              minLength: 1
+                          required:
+                            - name
+                            - key
+                      required:
+                        - username
+                        - passwordSecret
+                  required:
+                    - endpoint
+                    - authType
+
+                dynatrace:
+                  description: >
+                    Configuration for Dynatrace. Required when provider is DYNATRACE.
+                    Immutable.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "dynatrace is immutable"
+                  properties:
+                    endpoint:
+                      description: >
+                        Dynatrace environment URL, including scheme and host
+                        (e.g. https://abc12345.live.dynatrace.com). Trailing slashes are
+                        stripped by YBA.
+                      type: string
+                      minLength: 1
+                      x-kubernetes-validations:
+                        - rule: "self.startsWith('http://') || self.startsWith('https://')"
+                          message: "endpoint must include an http:// or https:// scheme"
+                    apiTokenSecret:
+                      description: >
+                        Secret holding the Dynatrace API token, in <id>.<token> form. The
+                        token needs the metrics.ingest, logs.ingest and
+                        openTelemetryTrace.ingest scopes.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                          minLength: 1
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                          minLength: 1
+                      required:
+                        - name
+                        - key
+                  required:
+                    - endpoint
+                    - apiTokenSecret
+
+                s3:
+                  description: >
+                    Configuration for an S3 bucket export target. Required when provider
+                    is S3. Immutable.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "s3 is immutable"
+                  properties:
+                    region:
+                      description: AWS region of the bucket. Required.
+                      type: string
+                      minLength: 1
+                    bucket:
+                      description: Name of the S3 bucket. Required.
+                      type: string
+                      minLength: 1
+                    directoryPrefix:
+                      description: >
+                        Root directory (key prefix) inside the bucket that exported
+                        objects are written under.
+                      type: string
+                      default: yb-logs/
+                    partition:
+                      description: >
+                        Time granularity of the partition directories created under the
+                        prefix.
+                      type: string
+                      enum:
+                        - hour
+                        - minute
+                      default: minute
+                    roleArn:
+                      description: >
+                        Optional ARN of a role the exporter assumes before writing to the
+                        bucket. Must start with 'arn:'.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: "self == '' || self.startsWith('arn:')"
+                          message: "roleArn must start with 'arn:'"
+                    filePrefix:
+                      description: Prefix prepended to the name of every exported object.
+                      type: string
+                      default: yb-otel-
+                    marshaler:
+                      description: Encoding used for the exported objects.
+                      type: string
+                      enum:
+                        - OTLP_JSON
+                        - SUMO_IC
+                      default: OTLP_JSON
+                    disableSSL:
+                      description: Talk to the endpoint over plain HTTP instead of HTTPS.
+                      type: boolean
+                      default: false
+                    accessKeyIdSecret:
+                      description: Secret holding the AWS access key ID.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                          minLength: 1
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                          minLength: 1
+                      required:
+                        - name
+                        - key
+                    secretAccessKeySecret:
+                      description: Secret holding the AWS secret access key.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                          minLength: 1
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                          minLength: 1
+                      required:
+                        - name
+                        - key
+                    forcePathStyle:
+                      description: >
+                        Force path-style addressing (bucket in the path rather than the
+                        host). Needed by most S3-compatible stores.
+                      type: boolean
+                      default: false
+                    endpoint:
+                      description: >
+                        Optional endpoint override, used instead of deriving the endpoint
+                        from region and bucket. https:// is assumed when no scheme is
+                        given.
+                      type: string
+                    includeUniverseAndNodeInPrefix:
+                      description: >
+                        Append the universe UUID and node name to the prefix, e.g.
+                        'yb-logs/<universe-uuid>/<node-name>'.
+                      type: boolean
+                      default: false
+                  required:
+                    - region
+                    - bucket
+                    - accessKeyIdSecret
+                    - secretAccessKeySecret
+
+                otlp:
+                  description: >
+                    Configuration for a generic OpenTelemetry (OTLP) collector endpoint.
+                    Required when provider is OTLP. Immutable.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "otlp is immutable"
+                    - rule: "(self.authType == 'BasicAuth') == has(self.basicAuth)"
+                      message: "basicAuth must be set if and only if authType is BasicAuth"
+                    - rule: "(self.authType == 'BearerToken') == has(self.bearerToken)"
+                      message: "bearerToken must be set if and only if authType is BearerToken"
+                    - rule: "!has(self.logsEndpoint) || self.logsEndpoint == '' || self.protocol == 'HTTP'"
+                      message: "logsEndpoint is only valid when protocol is HTTP"
+                    - rule: "!has(self.metricsEndpoint) || self.metricsEndpoint == '' || self.protocol == 'HTTP'"
+                      message: "metricsEndpoint is only valid when protocol is HTTP"
+                  properties:
+                    endpoint:
+                      description: >
+                        Endpoint of the OTLP receiver. For the HTTP protocol, '/v1/logs'
+                        is appended for logs export.
+                      type: string
+                      minLength: 1
+                    authType:
+                      description: Authentication method used against the OTLP receiver.
+                      type: string
+                      enum:
+                        - BasicAuth
+                        - NoAuth
+                        - BearerToken
+                    basicAuth:
+                      description: >
+                        Username and password. Required when authType is BasicAuth, and
+                        must be omitted otherwise.
+                      type: object
+                      properties:
+                        username:
+                          description: OTLP receiver username.
+                          type: string
+                          minLength: 1
+                        passwordSecret:
+                          description: Secret holding the password.
+                          type: object
+                          properties:
+                            name:
+                              description: Name of the Secret.
+                              type: string
+                              minLength: 1
+                            namespace:
+                              description: Namespace of the Secret. Defaults to the resource namespace.
+                              type: string
+                            key:
+                              description: Key within the Secret data holding the value.
+                              type: string
+                              minLength: 1
+                          required:
+                            - name
+                            - key
+                      required:
+                        - username
+                        - passwordSecret
+                    bearerToken:
+                      description: >
+                        Bearer token credentials. Required when authType is BearerToken,
+                        and must be omitted otherwise.
+                      type: object
+                      properties:
+                        tokenSecret:
+                          description: Secret holding the bearer token.
+                          type: object
+                          properties:
+                            name:
+                              description: Name of the Secret.
+                              type: string
+                              minLength: 1
+                            namespace:
+                              description: Namespace of the Secret. Defaults to the resource namespace.
+                              type: string
+                            key:
+                              description: Key within the Secret data holding the value.
+                              type: string
+                              minLength: 1
+                          required:
+                            - name
+                            - key
+                      required:
+                        - tokenSecret
+                    headers:
+                      description: >
+                        Extra headers sent with every OTLP request. Do not put credentials
+                        here; use basicAuth or bearerToken instead.
+                      type: object
+                      additionalProperties:
+                        type: string
+                    compression:
+                      description: Compression applied to exported payloads.
+                      type: string
+                      enum:
+                        - gzip
+                        - none
+                        - snappy
+                        - zstd
+                      default: gzip
+                    timeoutSeconds:
+                      description: Per-request timeout in seconds. Must be positive.
+                      type: integer
+                      format: int32
+                      default: 5
+                      x-kubernetes-validations:
+                        - rule: self > 0
+                          message: "timeoutSeconds must be positive"
+                    protocol:
+                      description: Wire protocol used to reach the OTLP receiver.
+                      type: string
+                      enum:
+                        - gRPC
+                        - HTTP
+                      default: gRPC
+                    logsEndpoint:
+                      description: >
+                        Target URL for log data (e.g. https://example.com:4318/v1/logs).
+                        When set, endpoint is ignored for logs. Only valid when protocol
+                        is HTTP.
+                      type: string
+                    metricsEndpoint:
+                      description: >
+                        Target URL for metric data (e.g.
+                        https://example.com:4318/v1/metrics). When set, endpoint is
+                        ignored for metrics. Only valid when protocol is HTTP.
+                      type: string
+                    retryOnFailure:
+                      description: >
+                        Optional retry-on-failure overrides for the Otel collector
+                        exporter. Unset members keep the YBA defaults.
+                      type: object
+                      properties:
+                        enabled:
+                          description: Whether retry on failure is enabled.
+                          type: boolean
+                        initialInterval:
+                          description: >
+                            Initial interval between retries, as an Otel collector duration
+                            string (e.g. "30s", "1m"). Maps to initial_interval.
+                          type: string
+                          pattern: '^([0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h))+$'
+                        maxInterval:
+                          description: >
+                            Maximum interval between retries, as an Otel collector duration
+                            string (e.g. "10m", "1800m"). Maps to max_interval.
+                          type: string
+                          pattern: '^([0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h))+$'
+                        maxElapsedTime:
+                          description: >
+                            Maximum elapsed time across all retries, as an Otel collector
+                            duration string (e.g. "60m", "1800m"). Maps to max_elapsed_time.
+                          type: string
+                          pattern: '^([0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h))+$'
+                  required:
+                    - endpoint
+                    - authType
+              required:
+                - provider
+          required:
+            - spec

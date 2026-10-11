@@ -29,6 +29,7 @@
 #include "yb/rocksdb/util/mutexlock.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 

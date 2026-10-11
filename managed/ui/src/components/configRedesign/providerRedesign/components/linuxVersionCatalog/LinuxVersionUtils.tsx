@@ -19,12 +19,12 @@ import { useTranslation } from 'react-i18next';
 import { FormHelperText, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { useQuery } from 'react-query';
 import {
-  CloudType,
   ImageBundle,
   ImageBundleType,
   Provider,
   RunTimeConfigEntry
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '../../utils';
 import { ArchitectureType } from '../../constants';
 import { ClusterType, UniverseDetails } from '../../../../../redesign/helpers/dtos';
 import { runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
@@ -199,19 +199,37 @@ export const getImageBundleUsedByUniverse = (universeDetails: UniverseDetails, p
 };
 
 /**
+ * Checks whether two image bundles refer to the same entry in the catalog.
+ *
+ * Bundles that are already saved on the provider are matched on their UUID, so they keep
+ * their identity across a rename. Bundles added in the current form session do not have a
+ * UUID yet, so they fall back to matching on name and architecture.
+ *
+ * @param imageBundle - An image bundle.
+ * @param otherImageBundle - The image bundle to compare against.
+ * @returns Whether both refer to the same image bundle.
+ */
+export const isSameImageBundle = (imageBundle: ImageBundle, otherImageBundle: ImageBundle) =>
+  imageBundle.uuid && otherImageBundle.uuid
+    ? imageBundle.uuid === otherImageBundle.uuid
+    : imageBundle.name === otherImageBundle.name &&
+      imageBundle.details.arch === otherImageBundle.details.arch;
+
+/**
  * Constructs the payload for image bundles based on the form values.
  *
  * @param formValues - The form values.
- * @param isAWS - Whether the provider is AWS.
+ * @param isPerRegionImage - Whether the provider uses per-region images (AWS, OCI).
  * @returns The constructed image bundle payload.
  */
-export const constructImageBundlePayload = (formValues: any, isAWS = false) => {
+export const constructImageBundlePayload = (formValues: any, isPerRegionImage = false) => {
   const imageBundles = [...formValues.imageBundles];
 
   imageBundles.forEach((img) => {
     formValues.regions.forEach((region: CloudVendorRegionField) => {
-      // Only AWS supports region specific AMI
-      if (isAWS && !has(img.details.regions, region.code)) {
+      // Clouds with per-region images (AWS AMIs, OCI image OCIDs) need a per-region
+      // entry seeded for every configured region.
+      if (isPerRegionImage && !has(img.details.regions, region.code)) {
         img.details.regions[region.code] = {};
       }
     });
@@ -248,7 +266,7 @@ export function IsOsPatchingEnabled() {
  * @returns Whether the image bundle is supported by the provider.
  */
 export const isImgBundleSupportedByProvider = (provider: Provider) =>
-  [CloudType.aws, CloudType.azu, CloudType.gcp, CloudType.oci].includes(provider?.code);
+  isCloudVendorCloudType(provider?.code);
 
 /**
  * Displays a message for configuring SSH details.

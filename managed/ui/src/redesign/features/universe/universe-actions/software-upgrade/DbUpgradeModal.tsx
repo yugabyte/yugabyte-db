@@ -6,7 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
 import { toast } from 'react-toastify';
 
+import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import { ProviderCode } from '@app/components/configRedesign/providerRedesign/constants';
 import { YBButton, YBModal, type YBModalProps } from '@app/redesign/components';
 import { YBStepper } from '@app/redesign/components/YBStepper/YBStepper';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
@@ -15,16 +17,21 @@ import { RBAC_ERR_MSG_NO_PERM } from '@app/redesign/features/rbac/common/validat
 import {
   api,
   dbReleaseQueryKey,
+  providerQueryKey,
   runtimeConfigQueryKey,
   universeQueryKey
 } from '@app/redesign/helpers/api';
+import { useRefreshSoftwareUpgradeTasksCache } from '@app/redesign/helpers/cacheUtils';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandlingUtils';
 import { getUniverse, startSoftwareUpgrade } from '@app/v2/api/universe/universe';
-import type {
-  UniverseSoftwareUpgradeReqBody,
-  YBATaskRespResponse
+import {
+  ClusterSpecClusterType,
+  type Universe,
+  type UniverseSoftwareUpgradeReqBody,
+  type YBATaskRespResponse
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+
 import { CurrentDbUpgradeFormStep } from './CurrentDbUpgradeFormStep';
 import { DbUpgradeModalContextProvider } from './DbUpgradeModalContext';
 import {
@@ -34,7 +41,7 @@ import {
   UpgradePace
 } from './constants';
 import { ReleaseState, type YbdbRelease } from './dtos';
-import type { DBUpgradeFormFields } from './types';
+import type { DBUpgradeFormFields, ReleaseOption } from './types';
 import {
   buildCanaryUpgradeConfig,
   buildRequestPayload,
@@ -42,11 +49,6 @@ import {
 } from './utils/formUtils';
 import { buildVersionOptions } from './utils/versionUtils';
 import { DbUpgradeSummaryCard } from './upgrade-summary/DbUpgradeSummaryCard';
-import {
-  useRefreshSoftwareUpgradeTasksCache,
-  useRefreshUniverseDetailsCache
-} from '@app/redesign/helpers/cacheUtils';
-import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 
 const MODAL_NAME = 'DbUpgradeModal';
 const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal';
@@ -83,7 +85,10 @@ const useStyles = makeStyles((theme) => ({
     flexDirection: 'column',
     gap: theme.spacing(2),
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+
+    width: '100%',
+    minHeight: 760
   },
   leftPanel: {
     display: 'flex',
@@ -109,28 +114,34 @@ const useStyles = makeStyles((theme) => ({
 interface DBUpgradeModalProps {
   universeUuid: string;
   modalProps: YBModalProps;
+  /** Prefill target version when still present in release options (e.g. from a passed pre-check). */
+  initialTargetDbVersion?: string;
 }
 
 export const DbUpgradeModal = ({
   universeUuid: currentUniverseUuid,
-  modalProps
+  modalProps,
+  initialTargetDbVersion
 }: DBUpgradeModalProps) => {
-  const [currentFormStep, setCurrentFormStep] = useState<DbUpgradeFormStep>(
-    DbUpgradeFormStep.DB_VERSION
-  );
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
-  const refreshUniverseDetailsCache = useRefreshUniverseDetailsCache(currentUniverseUuid);
-  const refreshSoftwareUpgradeTasksCache = useRefreshSoftwareUpgradeTasksCache(currentUniverseUuid);
   const universeDetailsQuery = useQuery(universeQueryKey.detailsV2(currentUniverseUuid), () =>
     getUniverse(currentUniverseUuid)
   );
 
-  const clusters = universeDetailsQuery.data?.spec?.clusters ?? [];
   const currentDbVersion = universeDetailsQuery.data?.spec?.yb_software_version ?? '';
   const currentReleaseArchitecture = universeDetailsQuery.data?.info?.arch;
-  const maxNodesPerBatchMaximum =
-    universeDetailsQuery.data?.info?.roll_max_batch_size?.primary_batch_size ?? 1;
+  const primaryProviderUuid = universeDetailsQuery.data?.spec?.clusters?.find(
+    (cluster) => cluster.cluster_type === ClusterSpecClusterType.PRIMARY
+  )?.provider_spec?.provider;
+
+  const providerQuery = useQuery(
+    providerQueryKey.detail(primaryProviderUuid ?? ''),
+    () => api.fetchProvider(primaryProviderUuid),
+    { enabled: !!primaryProviderUuid }
+  );
+  const targetReleasePlatform =
+    providerQuery.data?.code === ProviderCode.KUBERNETES ? 'KUBERNETES' : 'LINUX';
 
   const universeRuntimeConfigsQuery = useQuery(
     runtimeConfigQueryKey.universeScope(currentUniverseUuid),
@@ -154,12 +165,90 @@ export const DbUpgradeModal = ({
     releasesList,
     currentDbVersion,
     currentReleaseArchitecture,
-    shouldSkipVersionChecks
+    shouldSkipVersionChecks,
+    targetReleasePlatform
   );
+
+  const areModalQueriesReady =
+    !universeDetailsQuery.isLoading &&
+    !providerQuery.isLoading &&
+    !universeRuntimeConfigsQuery.isLoading &&
+    !dbReleasesQuery.isLoading &&
+    !!universeDetailsQuery.data;
+
+  if (!areModalQueriesReady) {
+    return (
+      <YBModal
+        title={t('modalTitle')}
+        submitLabel={t('submitLabel.next')}
+        cancelLabel={t('cancel', { keyPrefix: 'common' })}
+        overrideWidth="1100px"
+        overrideHeight="fit-content"
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        size="xl"
+        dialogContentProps={{ className: classes.modalContainer }}
+        onSubmit={() => {}}
+        hideCloseBtn={false}
+        titleSeparator
+        buttonProps={{
+          primary: {
+            disabled: true
+          }
+        }}
+        {...modalProps}
+      >
+        <div className={classes.loadingContainer}>
+          <YBLoadingCircleIcon />
+        </div>
+      </YBModal>
+    );
+  }
+
+  return (
+    <DbUpgradeModalForm
+      currentUniverseUuid={currentUniverseUuid}
+      modalProps={modalProps}
+      initialTargetDbVersion={initialTargetDbVersion}
+      universeDetails={universeDetailsQuery.data}
+      targetReleaseOptions={targetReleaseOptions}
+    />
+  );
+};
+
+interface DbUpgradeModalFormProps {
+  currentUniverseUuid: string;
+  modalProps: YBModalProps;
+  initialTargetDbVersion?: string;
+  universeDetails: Universe;
+  targetReleaseOptions: ReleaseOption[];
+}
+
+const DbUpgradeModalForm = ({
+  currentUniverseUuid,
+  modalProps,
+  initialTargetDbVersion,
+  universeDetails,
+  targetReleaseOptions
+}: DbUpgradeModalFormProps) => {
+  const [currentFormStep, setCurrentFormStep] = useState<DbUpgradeFormStep>(
+    DbUpgradeFormStep.DB_VERSION
+  );
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const classes = useStyles();
+  const refreshSoftwareUpgradeTasksCache = useRefreshSoftwareUpgradeTasksCache(currentUniverseUuid);
+
+  const clusters = universeDetails.spec?.clusters ?? [];
+  const currentDbVersion = universeDetails.spec?.yb_software_version ?? '';
+  const maxNodesPerBatchMaximum =
+    universeDetails.info?.roll_max_batch_size?.primary_batch_size ?? 1;
+
+  const isInitialTargetAvailable =
+    !!initialTargetDbVersion &&
+    targetReleaseOptions.some((option) => option.version === initialTargetDbVersion);
 
   const formMethods = useForm<DBUpgradeFormFields>({
     defaultValues: {
-      targetDbVersion: '',
+      targetDbVersion: isInitialTargetAvailable ? initialTargetDbVersion : '',
       upgradeMethod: UpgradeMethod.EXPRESS,
       upgradePace: UpgradePace.ROLLING,
       maxNodesPerBatch: 1,
@@ -358,28 +447,19 @@ export const DbUpgradeModal = ({
             <YBStepper steps={formStepperLabels} currentStep={currentFormStep} />
           </div>
           <div className={classes.formScrollArea}>
-            {universeDetailsQuery.isLoading ||
-            universeRuntimeConfigsQuery.isLoading ||
-            dbReleasesQuery.isLoading ||
-            !universeDetailsQuery.data ? (
-              <div className={classes.loadingContainer}>
-                <YBLoadingCircleIcon />
-              </div>
-            ) : (
-              <DbUpgradeModalContextProvider
-                value={{
-                  currentUniverseUuid,
-                  universeDetails: universeDetailsQuery.data,
-                  currentDbVersion,
-                  clusters,
-                  maxNodesPerBatchMaximum,
-                  targetReleaseOptions,
-                  closeModal: modalProps.onClose
-                }}
-              >
-                <CurrentDbUpgradeFormStep currentFormStep={currentFormStep} />
-              </DbUpgradeModalContextProvider>
-            )}
+            <DbUpgradeModalContextProvider
+              value={{
+                currentUniverseUuid,
+                universeDetails,
+                currentDbVersion,
+                clusters,
+                maxNodesPerBatchMaximum,
+                targetReleaseOptions,
+                closeModal: modalProps.onClose
+              }}
+            >
+              <CurrentDbUpgradeFormStep currentFormStep={currentFormStep} />
+            </DbUpgradeModalContextProvider>
           </div>
         </div>
         <div className={classes.infoPanel}>

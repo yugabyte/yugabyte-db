@@ -96,7 +96,7 @@ export const EditUserTagsModal = ({ open, onClose }: EditUserTagModalProps) => {
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       titleSeparator
       size="md"
-      dialogContentProps={{ sx: { padding: '16px !important' } }}
+      dialogContentProps={{ sx: { padding: '8px 16px !important' } }}
       overrideHeight={'fit-content'}
       onSubmit={handleFormSubmit}
     >

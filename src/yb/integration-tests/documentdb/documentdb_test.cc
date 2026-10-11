@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/util/status_log.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(ysql_enable_documentdb);

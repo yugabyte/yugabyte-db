@@ -9,8 +9,6 @@ menu:
     identifier: query-plan-manage
     parent: query-tuning
     weight: 600
-tags:
-  feature: early-access
 type: docs
 ---
 
@@ -29,13 +27,7 @@ Query plan management (QPM) serves two main objectives:
 
 Because plans can change over time (you turn on the cost-based optimizer, for example), there is a chance a new plan for a query degrades performance. QPM provides views that capture all unique plans for a query so that you can look back and see when a plan changed. The entry for the old plan includes hints that can generate the same plan. You can then insert those hints into the hint plan table and get the old better-performing plan back.
 
-QPM features are available in v2025.2.3 and later.
-
-## Prerequisites
-
-QPM is available in v2025.2.3.0 and later. While in Early Access, QPM is disabled by default.
-
-To enable QPM, you set the `yb_pg_stat_plans_track` configuration parameter to `top` or `all`. For more information on configuring QPM, see [Configure QPM](#configure-qpm).
+QPM features are available in v2025.2.3 and later. Starting in v2026.1.0.0, QPM is enabled by default with the `yb_pg_stat_plans_track` configuration parameter set to  `all`. For more information on configuring QPM, see [Configure QPM](#configure-qpm).
 
 ## Using QPM
 
@@ -353,12 +345,13 @@ Use the following [YSQL configuration parameters](../../../../reference/configur
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
-| `yb_pg_stat_plans_track` | Turns tracking on or off. Valid values are:<ul><li>none: no plans are tracked, disables QPM.</li><li>top: track only top-level (non-nested) statements.</li><li>all: track all statements.</li></ul> | none |
+| `yb_pg_stat_plans_track` | Turns tracking on or off. Valid values are:<ul><li>none: no plans are tracked, disables QPM.</li><li>top: track only top-level (non-nested) statements.</li><li>all: track all statements.</li></ul> | all |
 | `yb_pg_stat_plans_max_cache_size` | Specifies the Maximum number of entries to store (1-50000). | 5000 |
 | `yb_pg_stat_plans_cache_replacement_algorithm` | Controls the eviction policy used by QPM once the number of entries reaches yb_pg_stat_plans_max_cache_size. Valid values are:<ul><li>`simple_clock_lru` - uses an efficient simulation of clock-based Least Recently Used (LRU) algorithm to find the entry to evict.</li><li>`true_lru` - evicts the entry with the oldest last_used value (less efficient but finds the actual oldest entry).</li></ul> Requires restart. | simple_clock_lru |
 | `yb_pg_stat_plans_track_catalog_queries` | Controls tracking of statements referencing catalog tables. | true |
 | `yb_pg_stat_plans_verbose_plans` | Set to `true` to generate and store verbose plans. | false |
 | `yb_pg_stat_plans_plan_format` | Controls text format for plans.<br/>Valid values are `text`, `json`, `yaml`, and `xml`. | json |
+| `yb_pg_stat_plans_show_max_exec_params` | When `true`, `max_exec_time_params` includes the parameter values for the slowest execution of each plan. When `false`, those values are replaced with `?`. | true in v2026.1.2 and later. In earlier versions of the v2026.1 series, false. |
 
 The yb_pg_stat_plans data is stored per node; all backends on a specific node read and write to the same table. The data is persisted across restarts.
 
@@ -443,7 +436,7 @@ The columns of the yb_pg_stat_plans view are described, along with their purpose
 | calls | Detect plan regressions | Number of times [dbid query id, plan id] pair is used. |
 | avg_exec_time |         | Average execution time. |
 | max_exec_time |         | Maximum recorded execution time for this plan. |
-| max_exec_time_params |         | This particular set of query parameters led to the longest execution time. |
+| max_exec_time_params |         | Parameter values for the execution that recorded the longest time for this plan. When [`yb_pg_stat_plans_show_max_exec_params`](#configure-qpm) is false, the values are replaced with `?`. |
 | avg_est_cost |         | Planner's average estimated cost for the plan. |
 | hints | Pin the plan | These hints, if applied during query planning, would lead to the same plan being used. |
 

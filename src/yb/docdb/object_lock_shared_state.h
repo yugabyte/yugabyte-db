@@ -29,6 +29,22 @@
 
 namespace yb::docdb {
 
+// State tracking active kStrongWrite, kWeakWrite intent types at the tserver's Object lock Manager.
+// - first 32 bits store the num_active kStrongWrite
+// - last 32 bits store the num_active kWeakWrite
+//
+// Since fastpath object locking is enabled for kAccessShare, kRowShare & kRowExclusive alone, all
+// of which request intent_type(s) kWeakRead/kStrongRead, it is sufficient to just track active
+// write intent types for detecting fast path locking conflicts. Hence not reusing LockState here.
+//
+// Additionally, since write lock state for multiple objects (with same hash) is stored in the same
+// entry, it is better to not use LockState here as it could potentially lead to overflow.
+using SharedWriteLockState = uint64_t;
+
+SharedWriteLockState LockStateToSharedWriteLockState(LockState lock_state);
+
+void SharedWriteLockStateRelease(SharedWriteLockState& held, SharedWriteLockState release);
+
 TableLockType FastpathLockTypeToTableLockType(ObjectLockFastpathLockType lock_type);
 
 std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLockType lock_type);
@@ -37,7 +53,6 @@ std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLo
     ObjectLockFastpathLockType lock_type);
 
 struct ObjectLockFastpathRequest {
-  SessionLockOwnerTag owner;
   SubTransactionId subtxn_id;
   uint32_t database_oid;
   uint32_t relation_oid;
@@ -47,11 +62,39 @@ struct ObjectLockFastpathRequest {
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
-        owner, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
+        subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
   }
 };
 
 static_assert(std::is_trivially_copyable_v<ObjectLockFastpathRequest>);
+
+struct ObjectLockExclusiveIntent;
+
+// This object is a handle to a shared memory array of exclusive lock intents, and may be stored in
+// private memory.
+class ObjectLockExclusiveIntents {
+ public:
+  ObjectLockExclusiveIntents();
+  ObjectLockExclusiveIntents(ObjectLockExclusiveIntents&& other);
+  ~ObjectLockExclusiveIntents();
+
+  ObjectLockExclusiveIntents& operator=(ObjectLockExclusiveIntents&& other);
+
+  static Result<ObjectLockExclusiveIntents> Make(
+      SharedMemoryBackingAllocator& allocator,
+      const std::map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
+
+ private:
+  friend class ObjectLockSharedState;
+
+  ObjectLockExclusiveIntents(
+      SharedMemoryUniquePtr<ObjectLockExclusiveIntent[]> array, size_t count);
+
+  std::span<const ObjectLockExclusiveIntent> SharedMemorySpan() const;
+
+  SharedMemoryUniquePtr<ObjectLockExclusiveIntent[]> intents_;
+  size_t count_ = 0;
+};
 
 using FastLockRequestConsumer = LWFunction<void(ObjectLockFastpathRequest)>;
 
@@ -59,40 +102,50 @@ class ObjectLockSharedState {
   class Impl;
 
  public:
-  class ActivationGuard {
-   public:
-    ActivationGuard() = default;
-    explicit ActivationGuard(Impl* impl);
-    ActivationGuard(ActivationGuard&& other);
-    ~ActivationGuard();
-    ActivationGuard& operator=(ActivationGuard&& other) PARENT_PROCESS_ONLY;
-   private:
-    Impl* impl_ = nullptr;
-  };
-
-  explicit ObjectLockSharedState(SharedMemoryBackingAllocator& allocator);
+  ObjectLockSharedState(
+      SharedMemoryBackingAllocator& allocator,
+      const ObjectLockExclusiveIntents& exclusive_intents);
   ~ObjectLockSharedState();
 
+  // Try to add a lock request from postgres side.
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  ActivationGuard Activate(const std::unordered_map<ObjectLockPrefix, LockState>& initial_intents)
-      PARENT_PROCESS_ONLY;
+  // Try to perform an unlock all from postgres side.
+  [[nodiscard]] bool UnlockAll();
 
-  void PauseAndReset() PARENT_PROCESS_ONLY;
-  void Resume() PARENT_PROCESS_ONLY;
+  // Try to add a lock request from tserver side. Similar to Lock() except for accounting.
+  [[nodiscard]] bool TServerLock(const ObjectLockFastpathRequest& request) PARENT_PROCESS_ONLY;
 
-  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  // Try to perform an unlock all from tserver side. Similar to UnlockAll() except for accounting.
+  [[nodiscard]] bool TServerUnlockAll() PARENT_PROCESS_ONLY;
 
-  size_t ConsumeAndAcquireExclusiveLockIntents(
+  void ForceDropAll() PARENT_PROCESS_ONLY;
+
+  // Indicate that TServer has loaded the transaction corresponding to this state into the lock
+  // manager.
+  void MarkTServerLoaded() PARENT_PROCESS_ONLY;
+
+  void Enable() PARENT_PROCESS_ONLY;
+
+  void Disable() PARENT_PROCESS_ONLY;
+
+  void Shutdown() PARENT_PROCESS_ONLY;
+
+  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+
+  void ConsumeAndResetExclusiveLockIntentsTo(
       const FastLockRequestConsumer& consume,
-      std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY;
+      const ObjectLockExclusiveIntents& exclusive_intents) PARENT_PROCESS_ONLY;
 
-  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
+  void ResetExclusiveLockIntentsTo(const ObjectLockExclusiveIntents& exclusive_intents)
       PARENT_PROCESS_ONLY;
 
-  [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
+  uint64_t PgLockRequestCount() const;
+  uint64_t PgLockReleaseCount() const;
+  uint64_t TServerLockRequestCount() const;
+  uint64_t TServerLockReleaseCount() const;
 
-  [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
+  [[nodiscard]] bool TEST_has_exclusive_intents() const PARENT_PROCESS_ONLY;
 
  private:
   const SharedMemoryUniquePtr<Impl> impl_;

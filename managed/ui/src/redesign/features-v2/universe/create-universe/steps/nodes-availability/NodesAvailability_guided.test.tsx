@@ -46,6 +46,20 @@ vi.mock('react-i18next', () => ({
   }) => children ?? i18nKey ?? null
 }));
 
+vi.mock('../../helpers/utils', () => ({
+  useRuntimeConfigValues: () => ({
+    enablePrimaryRf9: false,
+    osPatchingEnabled: false,
+    useK8CustomResources: false,
+    maxVolumeCount: 32,
+    canUseSpotInstance: false,
+    ebsVolumeEnabled: false,
+    enableAzOverridesK8s: false,
+    isRuntimeConfigLoading: false,
+    isProviderRuntimeConfigLoading: false
+  })
+}));
+
 const mockMoveToNextPage = vi.fn();
 const mockSaveNodesAvailabilitySettings = vi.fn();
 const mockMoveToPreviousPage = vi.fn();
@@ -865,7 +879,7 @@ describe('NodesAvailability', () => {
         })
       );
 
-      const azSelects = screen.getAllByLabelText('Availability Zone');
+      const azSelects = screen.getAllByLabelText('availabilityZone');
       fireEvent.mouseDown(azSelects[1]);
 
       const listbox = await screen.findByRole('listbox');

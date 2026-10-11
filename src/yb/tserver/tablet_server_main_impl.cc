@@ -63,6 +63,7 @@
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"
@@ -164,7 +165,9 @@ Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsql
   const auto conn_mgr_shmem_key =
       FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor.GetYsqlConnManagerStatsShmkey() : 0;
   auto ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
-      ysql_conn_mgr_conf, conn_mgr_shmem_key);
+      ysql_conn_mgr_conf, conn_mgr_shmem_key, [pg_supervisor = &pg_supervisor](MonoDelta timeout) {
+        return pg_supervisor->WaitForProcessStartAfterLastRestart(timeout);
+      });
   if (ysql_lease_enabled) {
     RETURN_NOT_OK(ysql_conn_mgr_supervisor->InitPaused());
   } else {
@@ -488,15 +491,15 @@ int TabletServerMain(int argc, char** argv) {
 #endif
 
   // Reset some default values before parsing gflags.
-  FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
-                                                 TabletServer::kDefaultPort);
+  FLAGS_rpc_bind_addresses = Format("0.0.0.0:$0",
+                                    TabletServer::kDefaultPort);
   FLAGS_webserver_port = TabletServer::kDefaultWebPort;
   FLAGS_redis_proxy_webserver_port = RedisServer::kDefaultWebPort;
   FLAGS_cql_proxy_webserver_port = CQLServer::kDefaultWebPort;
 
   string host_name;
   if (GetHostname(&host_name).ok()) {
-    FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, TabletServer::kDefaultWebPort);
+    FLAGS_metric_node_name = Format("$0:$1", host_name, TabletServer::kDefaultWebPort);
   } else {
     LOG(INFO) << "Failed to get tablet's host name, keeping default metric_node_name";
   }

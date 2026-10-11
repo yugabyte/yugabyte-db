@@ -25,8 +25,8 @@ type: indexpage
     icon="fa-thin fa-down-to-bracket">}}
 
   {{<index/item
-    title="Node alerts"
-    body="What to do when you get a node alert."
+    title="Node issues and alerts"
+    body="Troubleshoot node issues and alerts."
     href="node-alerts/"
     icon="fa-thin fa-bell">}}
 

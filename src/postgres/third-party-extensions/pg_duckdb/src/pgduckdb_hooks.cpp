@@ -173,8 +173,97 @@ ContainsPostgresTable(Node *node, void *context) {
 #endif
 }
 
+/* Accumulator for YbQueryRestrictionWalker: set to true once a lake read is seen. */
+struct YbQueryRestrictionWalkerContext {
+	bool found_lake_io;
+};
+
+/*
+ * Query/expression tree walker that flags whether the tree calls a lake read
+ * (read_parquet / read_csv / read_json). Recurses into subqueries via query_tree_walker
+ * and stops early once one is found. Used by YbCheckAllowedDuckdbQuery to detect
+ * the "lake read combined with a YB table" case.
+ */
+static bool
+YbQueryRestrictionWalker(Node *node, YbQueryRestrictionWalkerContext *ctx) {
+	if (node == NULL) {
+		return false;
+	}
+
+	if (IsA(node, Query)) {
+		Query *query = (Query *)node;
+		return query_tree_walker(query, (bool (*)())((void *)YbQueryRestrictionWalker), ctx, 0);
+	}
+
+	if (IsA(node, FuncExpr)) {
+		FuncExpr *func = castNode(FuncExpr, node);
+		if (pgduckdb::YbIsLakeIoFunction(func->funcid)) {
+			ctx->found_lake_io = true;
+			return true;
+		}
+	}
+
+	/* No lake read function has an aggregate overload; kept for symmetry with ContainsDuckdbItems. */
+	if (IsA(node, Aggref)) {
+		Aggref *agg = castNode(Aggref, node);
+		if (pgduckdb::YbIsLakeIoFunction(agg->aggfnoid)) {
+			ctx->found_lake_io = true;
+			return true;
+		}
+	}
+
+	return expression_tree_walker(node, (bool (*)())((void *)YbQueryRestrictionWalker), ctx);
+}
+
+/*
+ * Enforce the lake_io-mode query policy on a query about to run through DuckDB (no-op outside
+ * lake_io mode). Rejects two shapes:
+ *   1. references to DuckDB-managed (USING duckdb) tables -- unsupported in lake_io mode; and
+ *   2. a lake read combined with YugabyteDB-table access in one statement.
+ *
+ * Rationale for (2): lake_io keeps lake and YB access on separate sides -- import reads a lake file
+ * into a YB table, export writes a YB table out to a lake file (see pgduckdb_guc.hpp). A single query
+ * joining a lake read with a YB table would instead make DuckDB execute over a YB table (via
+ * postgres_scan) while reading a lake file -- the general DuckDB-over-YB-table execution the mode
+ * disables -- so it is rejected.
+ *
+ * Note: the walker inspects only the query's own tree, not the bodies of functions it calls. So a lake
+ * read hidden inside a user function is not detected here. That is harmless: the separate "route this
+ * query to DuckDB?" decision reads the same top-level tree, where the function is equally opaque, so
+ * the query runs in plain Postgres, never as a DuckDB plan.
+ */
+void
+YbCheckAllowedDuckdbQuery(Query *query) {
+	if (!YbIsLakeIoMode()) {
+		return;
+	}
+
+	if (::ContainsDuckdbTables(query->rtable)) {
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("DuckDB-managed tables are not supported"),
+		         errhint("Use YugabyteDB tables with CTAS or COPY for import/export.")));
+	}
+
+	YbQueryRestrictionWalkerContext ctx = {false};
+	YbQueryRestrictionWalker((Node *)query, &ctx);
+
+	if (ctx.found_lake_io && ContainsPostgresTable((Node *)query, NULL)) {
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("cannot combine object-store lake reads with YugabyteDB table access in one query"),
+		         errhint("Import with CREATE TABLE AS SELECT from read_parquet(), read_csv(), or read_json(), "
+		                 "or export with COPY (SELECT ... FROM yb_table) TO 's3://...'; do not join lake files with "
+		                 "YB tables in a single statement.")));
+	}
+}
+
 bool
 ShouldTryToUseDuckdbExecution(Query *query) {
+	if (YbIsLakeIoMode()) {
+		return false;
+	}
+
 	if (top_level_duckdb_ddl_type == DDLType::REFRESH_MATERIALIZED_VIEW) {
 		/* When refreshing materialized views, we only want to use DuckDB
 		 * execution when needed by the query, not when duckdb.force_execution
@@ -260,6 +349,7 @@ DuckdbPlannerHook_Cpp(Query *parse, const char *query_string, int cursor_options
 	if (pgduckdb::IsExtensionRegistered()) {
 		if (pgduckdb::NeedsDuckdbExecution(parse)) {
 			pgduckdb::TriggerActivity();
+			pgduckdb::YbCheckAllowedDuckdbQuery(parse);
 			pgduckdb::IsAllowedStatement(parse, true);
 
 			return DuckdbPlanNode(parse, cursor_options, true);
@@ -455,6 +545,14 @@ DuckdbEmitLogHook(ErrorData *edata) {
 		}
 	} else if (edata->elevel == ERROR && edata->sqlerrcode == ERRCODE_SYNTAX_ERROR &&
 	           pgduckdb::IsExtensionRegistered() &&
+	           /*
+	            * YB: edata->message_id can be NULL here. YB's errmsg()/errmsg_internal() do not set
+	            * it in multi-threaded mode (pg_duckdb runs DuckDB on worker threads), and errors
+	            * re-raised via ThrowErrorData drop it (it "assumes message_id is not available";
+	            * CopyErrorData, by contrast, pstrdup's it). emit_log_hook runs for every logged
+	            * error, so an unguarded strcmp(NULL, ...) segfaults.
+	            */
+	           edata->message_id != NULL &&
 	           strcmp(edata->message_id,
 	                  "a column definition list is only allowed for functions returning \"record\"") == 0) {
 		if (ContainsDuckdbRowReturningFunction(debug_query_string)) {

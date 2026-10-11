@@ -37,7 +37,7 @@ import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.client.AlterUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 
 public class XClusterSchedulerTest extends FakeDBApplication {
@@ -45,7 +45,7 @@ public class XClusterSchedulerTest extends FakeDBApplication {
   private Universe sourceUniverse;
   private Universe targetUniverse;
   private XClusterConfig xClusterConfig;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private XClusterScheduler scheduler;
 
   @Before
@@ -76,7 +76,7 @@ public class XClusterSchedulerTest extends FakeDBApplication {
     createFormData.tables = Collections.singleton("exampleTableId");
     xClusterConfig = XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockService.getUniverseClient(any())).thenReturn(mockClient);
 
     // Construct XClusterScheduler directly so we control its YBClientService dependency

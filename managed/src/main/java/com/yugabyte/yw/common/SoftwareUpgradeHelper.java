@@ -4,7 +4,6 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -16,7 +15,7 @@ import java.io.IOException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import play.mvc.Http.Status;
 
@@ -37,7 +36,7 @@ public class SoftwareUpgradeHelper {
   }
 
   public YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState(Universe universe) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
       if (resp.hasError()) {
         log.error("Error while getting YSQL major version catalog upgrade state: ", resp);
@@ -63,11 +62,11 @@ public class SoftwareUpgradeHelper {
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     return gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
+        && primaryCluster.userIntent.enableYSQL
         && (primaryCluster.userIntent.enableYSQLAuth
             || primaryCluster.userIntent.enableNodeToNodeEncrypt
             || primaryCluster.userIntent.enableClientToNodeEncrypt)
-        && (primaryCluster.userIntent.dedicatedNodes
-            || primaryCluster.userIntent.providerType.equals(CloudType.kubernetes));
+        && (primaryCluster.userIntent.dedicatedNodes || Util.isKubernetesBased(primaryCluster));
   }
 
   public boolean checkUpgradeRequireFinalize(String currentVersion, String newVersion) {
@@ -81,7 +80,7 @@ public class SoftwareUpgradeHelper {
   }
 
   public boolean isAllMasterUpgradedToYsqlMajorVersion(Universe universe, String ysqlMajorVersion) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       return universe.getMasters().stream()
           .allMatch(
               master ->
@@ -98,7 +97,7 @@ public class SoftwareUpgradeHelper {
 
   public boolean isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(
       Universe universe, String ysqlMajorVersion) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       return universe.getMasters().stream()
           .anyMatch(
               master -> {

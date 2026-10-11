@@ -104,7 +104,7 @@ public class BackupMapperTest {
     assertEquals("test-universe", spec.getUniverseName());
     assertTrue(spec.getOnDemand());
     assertTrue(spec.getIsFullBackup());
-    assertEquals(BackupSpec.BackupTypeEnum.PGSQL_TABLE_TYPE, spec.getBackupType());
+    assertEquals(api.v2.models.TableType.PGSQL_TABLE_TYPE, spec.getBackupType());
     assertEquals(BackupSpec.CategoryEnum.CONTROLLER, spec.getCategory());
     assertEquals(BackupSpec.StorageConfigTypeEnum.S3, spec.getStorageConfigType());
     assertEquals(BackupSpec.ExpiryTimeUnitEnum.DAYS, spec.getExpiryTimeUnit());

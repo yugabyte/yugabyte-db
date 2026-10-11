@@ -4,23 +4,26 @@ else
   package_path="{{ package_path }}"
 fi
 
+# Directory used by node_exporter's textfile collector for YugabyteDB metrics.
+metrics_dir="{{ yb_home_dir }}/metrics"
+
 # Setup the directories & permissions for prometheus user
 mkdir -p /opt/prometheus
 mkdir -p /etc/prometheus
 mkdir -p /var/log/prometheus
 mkdir -p /var/run/prometheus
-mkdir -p "{{ yb_home_dir }}/metrics"
+mkdir -p "$metrics_dir"
 
 # Detect system architecture
 arch=$(uname -m)
 
 # Set the appropriate file name based on architecture
 if [[ "$arch" == "x86_64" ]]; then
-    node_exporter_package="node_exporter-1.10.2.linux-amd64.tar.gz"
-    node_exported_package_name="node_exporter-1.10.2.linux-amd64"
+    node_exporter_package="node_exporter-1.12.1-fips.linux-amd64.tar.gz"
+    node_exported_package_name="node_exporter-1.12.1-fips.linux-amd64"
 elif [[ "$arch" == "aarch64" ]]; then
-    node_exporter_package="node_exporter-1.10.2.linux-arm64.tar.gz"
-    node_exported_package_name="node_exporter-1.10.2.linux-arm64"
+    node_exporter_package="node_exporter-1.12.1-fips.linux-arm64.tar.gz"
+    node_exported_package_name="node_exporter-1.12.1-fips.linux-arm64"
 else
     echo "Unsupported architecture: $arch"
     exit 1
@@ -69,8 +72,8 @@ chown -R prometheus:{{ yb_user }} /opt/prometheus
 chown -R prometheus:{{ yb_user }} /etc/prometheus
 chown -R prometheus:{{ yb_user }} /var/log/prometheus
 chown -R prometheus:{{ yb_user }} /var/run/prometheus
-chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_home_dir }}/metrics"
-chmod -R 755 "{{ yb_home_dir }}/metrics"
+chown -R {{ yb_user }}:{{ yb_user }} "$metrics_dir"
+chmod -R 755 "$metrics_dir"
 
 if [ -f "/opt/prometheus/$node_exporter_package" ]; then
     chmod +r /opt/prometheus/$node_exporter_package
@@ -106,12 +109,14 @@ Group={{ yb_user }}
 
 ExecStart=/opt/prometheus/$node_exported_package_name/node_exporter  \
 --web.listen-address=:{{ node_exporter_port }} \
---collector.textfile.directory={{ yb_home_dir }}/metrics
+--collector.textfile.directory=$metrics_dir
 EOL
 
-# Enable and start the node_exporter service
+# Restart unconditionally: the unit's binary path, port and textfile directory all come
+# from provisioning input, and a running node_exporter keeps its old values until restarted.
+# A restart only costs one scrape, so no attempt is made to detect what changed.
 systemctl daemon-reload
 systemctl enable node_exporter
-systemctl start node_exporter
+systemctl restart node_exporter
 
 echo "Node exporter setup is complete."

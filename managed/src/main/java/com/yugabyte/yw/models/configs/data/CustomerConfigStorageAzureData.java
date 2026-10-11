@@ -16,6 +16,11 @@ public class CustomerConfigStorageAzureData extends CustomerConfigStorageData {
   @Size(min = 4)
   public String azureSasToken;
 
+  @ApiModelProperty(value = "Azure Client ID for user-assigned managed identity.")
+  @JsonProperty("AZURE_CLIENT_ID")
+  @Nullable
+  public String azureClientId;
+
   @ApiModelProperty(
       value =
           "Boolean flag showing whether to use Azure managed identities or not for the storage"

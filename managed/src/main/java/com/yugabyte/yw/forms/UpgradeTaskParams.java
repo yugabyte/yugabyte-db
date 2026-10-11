@@ -88,7 +88,34 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
   }
 
   public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Only the incoming request can be corrected, so reject a bad batch size at the boundary only;
+    // on a retry the stored value is fixed and KubernetesPartitions/splitNodes degrade to
+    // sequential rolling instead of failing a task that can no longer be resubmitted.
+    if (isFirstTry && rollMaxBatchSize != null) {
+      verifyRollBatchSize("primaryBatchSize", rollMaxBatchSize.getPrimaryBatchSize());
+      verifyRollBatchSize("readReplicaBatchSize", rollMaxBatchSize.getReadReplicaBatchSize());
+    }
+
+    if (clusters != null) {
+      for (Cluster cluster : clusters) {
+        Cluster originalCluster = universe.getCluster(cluster.uuid);
+        if (originalCluster != null
+            && originalCluster.userIntent != null
+            && cluster.userIntent != null) {
+          if (originalCluster.userIntent.isMulticloudSupport()
+              != cluster.userIntent.isMulticloudSupport()) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST,
+                cluster.clusterType
+                    + ": original cluster has multicloud support "
+                    + originalCluster.userIntent.isMulticloudSupport()
+                    + " but current cluster has "
+                    + cluster.userIntent.isMulticloudSupport()
+                    + " (should be the same)");
+          }
+        }
+      }
+    }
     Map<String, String> universeConfig = universe.getConfig();
 
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE && universe.nodesInTransit(nodeState)) {
@@ -141,6 +168,18 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     if (!isKubernetesUpgradeSupported() && Util.isKubernetesBasedUniverse(universe)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
+    }
+  }
+
+  private static void verifyRollBatchSize(String fieldName, Integer batchSize) {
+    if (batchSize != null && batchSize < 1) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "rollMaxBatchSize."
+              + fieldName
+              + " must be at least 1, got "
+              + batchSize
+              + " (a batch size below 1 would skip rolling the servers entirely).");
     }
   }
 

@@ -8,11 +8,11 @@
 #include <assert.h>
 #include <unordered_set>
 #include <list>
+#include <tuple>
 #include <memory>
 #include <utility>
 
 namespace hnswlib {
-typedef unsigned int tableint;
 typedef unsigned int linklistsizeint;
 
 template<typename dist_t, typename label_t>
@@ -372,7 +372,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
         dist_t lowerBound;
         if (bare_bone_search ||
-            (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
+            (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id), ep_id)))) {
             char* ep_data = getDataByInternalId(ep_id);
             dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_);
             lowerBound = dist;
@@ -453,7 +453,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 #endif
 
                         if (bare_bone_search ||
-                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
+                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id), candidate_id)))) {
                             top_candidates.emplace(dist, candidate_id);
                             if (!bare_bone_search && stop_condition) {
                                 stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
@@ -1000,7 +1000,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
     * Adds point. Updates the point if it is already in the index.
     * If replacement of deleted elements is enabled: replaces previously deleted point if any, updating it with new point
     */
-    void addPoint(const void *data_point, label_t label, bool replace_deleted = false) override {
+    size_t addPoint(const void *data_point, label_t label, bool replace_deleted = false) override {
         if ((allow_replace_deleted_ == false) && (replace_deleted == true)) {
             throw std::runtime_error("Replacement of deleted elements is disabled in constructor");
         }
@@ -1008,8 +1008,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         // lock all operations with element by label
         std::unique_lock <std::mutex> lock_label(getLabelOpMutex(label));
         if (!replace_deleted) {
-            addPoint(data_point, label, -1);
-            return;
+            return addPoint(data_point, label, -1);
         }
         // check if there is vacant place
         tableint internal_id_replaced;
@@ -1024,7 +1023,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         // if there is no vacant place then add or update point
         // else add point to vacant place
         if (!is_vacant_place) {
-            addPoint(data_point, label, -1);
+            return addPoint(data_point, label, -1);
         } else {
             // we assume that there are no concurrent operations on deleted element
             label_t label_replaced = getExternalLabel(internal_id_replaced);
@@ -1038,6 +1037,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
             unmarkDeletedInternal(internal_id_replaced);
             updatePoint(data_point, internal_id_replaced, 1.0);
         }
+        return internal_id_replaced;
     }
 
 
@@ -1316,12 +1316,12 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
     }
 
 
-    std::priority_queue<std::pair<dist_t, label_t >>
+    std::priority_queue<std::tuple<dist_t, label_t, tableint>>
     searchKnn(const void *query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed = nullptr, size_t ef = 0) const override {
         if (!ef) {
           ef = ef_;
         }
-        std::priority_queue<std::pair<dist_t, label_t >> result;
+        std::priority_queue<std::tuple<dist_t, label_t, tableint>> result;
         if (cur_element_count == 0) return result;
 
         tableint currObj = enterpoint_node_;
@@ -1369,7 +1369,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         }
         while (top_candidates.size() > 0) {
             std::pair<dist_t, tableint> rez = top_candidates.top();
-            result.push(std::pair<dist_t, label_t>(rez.first, getExternalLabel(rez.second)));
+            result.push(std::make_tuple(rez.first, getExternalLabel(rez.second), rez.second));
             top_candidates.pop();
         }
         return result;
@@ -1451,30 +1451,37 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         return params;
     }
 
+    // Average per-vector heap cost for the configured index parameters, used to convert between a
+    // byte budget and a vector count in both directions.
+    static size_t bytesPerVectorEstimate(size_t M, size_t maxM0, size_t data_size) {
+        size_t size_links_level0 = maxM0 * sizeof(tableint) + sizeof(linklistsizeint);
+        size_t size_data_per_element = size_links_level0 + data_size + sizeof(label_t);
+        size_t size_links_per_element = M * sizeof(tableint) + sizeof(linklistsizeint);
+
+        // Search context cost per max_element: one vl_type entry in the visited_list_pool_
+        size_t per_element_search_context_bytes = sizeof(vl_type);
+
+        double expected_extra_levels = M > 1 ? 1.0 / std::log(static_cast<double>(M)) : 0.0;
+
+        return PER_ELEMENT_BOOKKEEPING_BYTES +
+            per_element_search_context_bytes +
+            PER_INSERTED_LABEL_LOOKUP_BYTES +
+            size_data_per_element +
+            static_cast<size_t>(expected_extra_levels * size_links_per_element);
+    }
+
     // Estimation of vectors that can fit within a given byte limit.
     // Calculates based on the configured index parameters.
     static size_t estimateNumVectorsForBytes(size_t bytes_limit, size_t M, size_t maxM0, size_t data_size) {
         if (bytes_limit == 0) {
             return 0;
         }
+        return bytes_limit / bytesPerVectorEstimate(M, maxM0, data_size);
+    }
 
-        size_t size_links_level0 = maxM0 * sizeof(tableint) + sizeof(linklistsizeint);
-        size_t size_data_per_element = size_links_level0 + data_size + sizeof(label_t);
-        size_t size_links_per_element = M * sizeof(tableint) + sizeof(linklistsizeint);
-
-        // Search context cost per max_element: one vl_type entry in the visited_list_pool_
-        size_t per_element_search_context_bytes = sizeof(vl_type); 
-
-        double expected_extra_levels = M > 1 ? 1.0 / std::log(static_cast<double>(M)) : 0.0;
-
-        size_t bytes_per_vector =
-            PER_ELEMENT_BOOKKEEPING_BYTES +
-            per_element_search_context_bytes +
-            PER_INSERTED_LABEL_LOOKUP_BYTES +
-            size_data_per_element +
-            static_cast<size_t>(expected_extra_levels * size_links_per_element);
-
-        return bytes_limit / bytes_per_vector;
+    // Inverse of estimateNumVectorsForBytes: the byte budget required to hold num_vectors.
+    static size_t estimateBytesForNumVectors(size_t num_vectors, size_t M, size_t maxM0, size_t data_size) {
+        return num_vectors * bytesPerVectorEstimate(M, maxM0, data_size);
     }
 
     size_t indexDataBytes() const {
@@ -1588,6 +1595,11 @@ class VectorIterator {
       return std::make_pair(
           outer_->getDataByInternalId(curr_internal_id_),
           outer_->getExternalLabel(curr_internal_id_));
+    }
+
+    // Returns the internal id of the current element.
+    tableint internal_id() const {
+        return curr_internal_id_;
     }
 
     // Prefix increment operator

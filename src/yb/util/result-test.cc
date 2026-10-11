@@ -14,6 +14,7 @@
 //
 
 #include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 namespace yb::test {

@@ -598,7 +598,7 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 
 Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
 
-Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/going-beyond-sql/tablespaces) instead.
+Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [CREATE TABLESPACE](../../api/ysql/the-sql-language/statements/ddl_create_tablespace/) instead.
 {{< /note >}}
 
 #### create_transaction_table
@@ -756,6 +756,73 @@ yb-admin \
 
 A new backfill job is created for all the `DEFERRED` indexes of the table. The command does not have any output.
 
+#### get_table_hash
+
+Computes an XOR hash and row count over the data in a table, tablet by tablet. Use this to verify data consistency across clusters in an xCluster deployment by comparing hash values at the same hybrid timestamp.
+
+For colocated databases, pass a child table's *table-id* to scope the hash to a single colocated table. To hash all colocated tables sharing a tablet together, pass the colocation parent table ID, which is visible in [list_tables](#list-tables) when system tables are included.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    get_table_hash <table-id> \
+    [<read-ht>] [<start-key-hex>] [<end-key-hex>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *table-id*: UUID of the table to hash. Obtain this from [list_tables](#list-tables). For a colocated database, pass the child table UUID to scope the hash to one table, or the colocation parent table UUID to hash all colocated tables in the tablet.
+* *read-ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time. Because the arguments are positional, pass 0 to keep the default when you also need to specify *start-key-hex* / *end-key-hex*. Use the same value on both clusters when comparing hashes for xCluster consistency checks.
+* *start-key-hex* (optional): Inclusive lower bound of the partition-key range to hash, as the hex encoding of a tablet's `partition_key_start` from [list_tablets](#list-tablets). Pass an empty string (`""`) to leave this side unbounded.
+* *end-key-hex* (optional): Exclusive upper bound of the partition-key range, as the hex encoding of `partition_key_end`. `partition_key_end` values from [list_tablets](#list-tablets) are inclusive; add 1 to match this exclusive bound. Pass an empty string (`""`) to leave this side unbounded.
+
+**Notes**
+
+* Key range arguments (*start-key-hex* / *end-key-hex*) require a concrete child table ID. Using them with a colocation parent table ID returns an error.
+* For hash-partitioned tables, each bound must be a valid 2-byte hash-partition key.
+* *start-key-hex* must be strictly less than *end-key-hex* when both are specified.
+* Key-range and per-table colocated scoping require YugabyteDB {{<release "2024.2">}}, {{<release "2025.2">}}, or {{<release "2026.1">}} on both yb-admin and the target YB-TServers. On older YB-TServer versions, the scoping arguments are silently ignored and the full table (or entire colocated tablet) is hashed instead of returning an error, so verify versions before relying on the result in a mixed-version cluster.
+
+**Example: Hash a full table**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    get_table_hash 000030af000030008000000000004000
+```
+
+```output
+Processing 3 tablets for table 000030af000030008000000000004000
+Read HT: { physical: 1748000000000000 }
+Tablet ID: cea3aaac2f10460a880b0b4a2a4b652a
+    Row count: 100
+    XOR hash: 3825474321
+
+Tablet ID: e509cf8eedba410ba3b60c7e9138d479
+    Row count: 98
+    XOR hash: 2910384756
+
+Tablet ID: f1a234b5c6d7e8f9a0b1c2d3e4f5a6b7
+    Row count: 102
+    XOR hash: 1029384756
+
+Total row count: 300
+Total XOR hash: 1948762961
+```
+
+**Example: Hash a partition-key range**
+
+Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. *start-key-hex* and *end-key-hex* are the hex encodings of `partition_key_start` and `partition_key_end` which you can obtain from [list_tablets](#list-tablets). For hash-partitioned tables, `list_tablets` prints each tablet's range as `hash_split: [0x..., 0x...]`; use the values without the `0x` prefix. Remember that `list_tablets` shows `partition_key_end` as inclusive, while *end-key-hex* is exclusive, so add 1 to the end value to land on the same boundary. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    get_table_hash 000030af000030008000000000004000 0 "" 8000
+```
+
+This hashes the lower half of the hash-partition space (unbounded start through `0x8000` exclusive).
+
 ---
 
 ### Backup and snapshot commands
@@ -777,6 +844,8 @@ The following backup and snapshot commands are available:
 * [**edit_snapshot_schedule**](#edit-snapshot-schedule) modifies the schedule for snapshot creation
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
+* [**clone_namespace**](#clone-namespace) clones a YSQL database or YCQL keyspace as of a point in time
+* [**list_clones**](#list-clones) lists clone operations for a source database or keyspace
 
 {{< note title="YugabyteDB Anywhere" >}}
 
@@ -1419,6 +1488,107 @@ The output should show the schedule ID we just deleted.
 }
 ```
 
+#### clone_namespace
+
+Creates a clone of a YSQL database or YCQL keyspace as of a point in time. The clone is a new database or keyspace on the same cluster. The source must have a [snapshot schedule](#create-snapshot-schedule) that covers the clone time.
+
+For YSQL, you can also clone using `CREATE DATABASE ... TEMPLATE ... AS OF`. See [Clone to PIT](../../manage/backup-restore/point-in-time-recovery/clone/).
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    clone_namespace <source-namespace> <target-namespace-name> [<timestamp> | minus <interval>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *source-namespace*: The source YSQL database (`ysql.<database-name>`) or YCQL keyspace (`ycql.<keyspace-name>`). If you omit the prefix, the name is treated as a YCQL keyspace.
+* *target-namespace-name*: The name of the new clone.
+* *timestamp*: Unix timestamp in microseconds, or a [YSQL](../../api/ysql/datatypes/type_datetime/) or [YCQL](../../api/ycql/type_datetime/#timestamp) timestamp. Optional; omit to clone as of the current time.
+* `minus <interval>`: Clone as of a relative time, using the same formats as [restore_snapshot_schedule](#restore-snapshot-schedule).
+
+**Examples**
+
+Clone a YCQL keyspace as of an absolute time:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ycql.originaldb1 clonedb2 1715275616599020
+```
+
+Clone a YSQL database as of five minutes ago:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ysql.yugabyte cloned_db minus 5m
+```
+
+Clone a YSQL database as of the current time:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ysql.yugabyte cloned_db
+```
+
+When the clone starts, the command returns the source namespace ID and a sequence number you can pass to [list_clones](#list-clones):
+
+```output.json
+{
+    "source_namespace_id": "00004000000030008000000000000000",
+    "seq_no": "1"
+}
+```
+
+#### list_clones
+
+Lists clone operations for a source YSQL database or YCQL keyspace.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    list_clones <source-namespace-id> [<seq-no>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *source-namespace-id*: The identifier of the source database or keyspace. Find this ID on the YB-Master leader UI `/namespaces` endpoint, or in the output of [clone_namespace](#clone-namespace).
+* *seq-no*: Optional sequence number of a specific clone. Omit to list all clones of the source.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    list_clones 00004000000030008000000000000000
+```
+
+```output.json
+[
+    {
+        "aggregate_state": "COMPLETE",
+        "source_namespace_id": "00004000000030008000000000000000",
+        "seq_no": "1",
+        "target_namespace_name": "testing_clone_db",
+        "restore_time": "2024-08-09 21:42:16.451974"
+    }
+]
+```
+
+To check a specific clone, pass the sequence number:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    list_clones 00004000000030008000000000000000 1
+```
+
+If a clone was aborted, the entry includes an `abort_message`.
+
 ---
 
 <a name="deployment-topology-commands"></a>
@@ -1486,19 +1656,21 @@ This requests a placement of 3 replicas anywhere in the `us-east-1` region of `a
 
 #### set_preferred_zones
 
-Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
+Sets [leader affinity](../../architecture/key-concepts/#leader-affinity) for the cluster (preferred zones). The load balancer places tablet leaders on alive, healthy replicas in the listed availability zones, in order of preference. When no healthy replica is available in preference 1, preference 2 is used, and so on. Zones you omit are used only after every preferred rank is exhausted.
 
-Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
+This command does not change tablet replica placement (use [modify_placement_info](#modify-placement-info)) and does not move YB-Master processes. By default, the sys catalog (master) leader steps down onto a master that is already running in a preferred zone.
+
+Having tablet leaders in a single region reduces the number of network hops for transactional writes, which lowers latency.
 
 {{< note title="Note" >}}
 
-* Make sure you've already run [modify_placement_info](#modify-placement-info) command beforehand.
+* Make sure you've already run [modify_placement_info](#modify-placement-info). Preferred zones must match existing placement blocks.
 
-* By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
+* By default, transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction; using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
-* Leader blacklisted nodes don't host any leaders irrespective of their preference.
+* Leader-blacklisted nodes don't host any leaders, regardless of preference.
 
-* Cluster configuration stores preferred zones in either affinitized_leaders or multi_affinitized_leaders object.
+* Cluster configuration stores preferred zones in `multi_affinitized_leaders`. Older clusters may still have `affinitized_leaders`; this command rewrites the list as `multi_affinitized_leaders`.
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
@@ -1517,7 +1689,7 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *cloud.region.zone*: Specifies the cloud, region, and zone. Default is `cloud1.datacenter1.rack1`.
-* *preference*: Specifies the leader preference for a zone. Values have to be contiguous non-zero integers. Multiple zones can have the same value. Default is 1.
+* *preference*: Leader preference. Values must be contiguous integers starting at 1. Multiple zones can share a value (leaders are spread across them). Default is 1.
 
 **Example**
 
@@ -1569,7 +1741,7 @@ replication_info {
 }
 ```
 
-The following command sets the preferred region to `gcp.us-west1` and the fallback to zone `gcp.us-east4.us-east4-a`:
+The following command prefers both zones in `gcp.us-west1` (rank 1) and falls back to `gcp.us-east4.us-east4-a` (rank 2):
 
 ```sh
 ssh -i $PEM $ADMIN_USER@$MASTER1 \

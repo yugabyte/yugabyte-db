@@ -20,7 +20,7 @@ public class ModifyClusterConfigIncrementVersion extends AbstractModifyMasterClu
   // (RPC will fail if this does not match current version in cluster config)
   int version;
 
-  public ModifyClusterConfigIncrementVersion(YBClient client, int version) {
+  public ModifyClusterConfigIncrementVersion(YBClientApi client, int version) {
     super(client);
     this.version = version;
   }

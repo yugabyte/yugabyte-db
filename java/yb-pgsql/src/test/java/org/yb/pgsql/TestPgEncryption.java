@@ -99,8 +99,6 @@ public class TestPgEncryption extends BasePgSQLTest {
       // ysql conn mgr layer itself and returns required / below error.
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -110,8 +108,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -145,8 +141,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -156,8 +150,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -165,9 +157,6 @@ public class TestPgEncryption extends BasePgSQLTest {
 
   @Test
   public void testSslWithCustomAuth() throws Exception {
-    Assume.assumeFalse("Skipping this test for Ysql Connection Manager as CERT Authentication " +
-        "is currently not supported in Ysql Connection Manager.",
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
 
     String sslcertFile = String.format("%s/ysql.crt", certsDir());
     String sslkeyFile = String.format("%s/ysql.key.der", certsDir());

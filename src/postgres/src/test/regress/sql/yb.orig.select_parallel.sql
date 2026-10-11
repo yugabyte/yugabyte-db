@@ -138,6 +138,7 @@ reset enable_bitmapscan;
 -- test parallel merge join path.
 set enable_hashjoin to off;
 set enable_nestloop to off;
+set yb_bnl_batch_size to 1;
 
 explain (costs off)
 	select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
@@ -145,6 +146,7 @@ select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
 
 reset enable_hashjoin;
 reset enable_nestloop;
+reset yb_bnl_batch_size;
 
 -- test gather merge
 set enable_hashagg = false;
@@ -285,6 +287,8 @@ ROLLBACK TO SAVEPOINT settings;
 -- (make the error message long enough to require multiple bufferloads)
 SAVEPOINT settings;
 SET LOCAL force_parallel_mode = 1;
+-- YB: keep leader participation off so the error surfaces from a worker (YB may otherwise cost-pick a leader-participating parallel plan for this lookup)
+SET LOCAL parallel_leader_participation = off;
 select (stringu1 || repeat('abcd', 5000))::int2 from tenk1 where unique1 = 1;
 ROLLBACK TO SAVEPOINT settings;
 
@@ -327,6 +331,7 @@ DEALLOCATE pstmt;
 
 -- test interaction between subquery and partial_paths
 SET LOCAL min_parallel_table_scan_size TO 0;
+SET LOCAL yb_test_force_parallel = force;
 CREATE VIEW tenk1_vw_sec WITH (security_barrier) AS SELECT * FROM tenk1;
 EXPLAIN (COSTS OFF)
 SELECT 1 FROM tenk1_vw_sec

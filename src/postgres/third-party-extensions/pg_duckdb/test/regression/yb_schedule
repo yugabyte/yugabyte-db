@@ -1,0 +1,13 @@
+# third-party-extensions/pg_duckdb/test/regression/yb_schedule
+#
+# YB-authored tests for lake_io execution mode: lake import, the restrictions,
+# and regression guards for fixed backend crashes.
+test: yb.orig.lake_import
+test: yb.orig.lake_io_restrictions
+test: yb.orig.pg_duckdb_crash_guards
+test: yb.orig.pgaudit_duckdb
+
+# Guard for the fixed #32655 backend FATAL (YBCCheckForInterrupts off the main thread when DuckDB
+# scans a YB table on a worker thread via an ORDER BY export). Runs at the default (multi-threaded)
+# duckdb.threads so the off-main-thread path stays covered.
+test: yb.orig.issue_32655

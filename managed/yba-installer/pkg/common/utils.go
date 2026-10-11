@@ -45,6 +45,12 @@ const ybdbPackageGlob = "yba_installer-*linux*/yugabyte-*-linux-x86_64.tar.gz"
 
 const PACollectorPackageGlob = "yba_installer-*linux*/perf_advisor-*.tar.gz"
 
+// YsqlDumpClientBundleName is the ysql_dump client bundle packaged for Perf Advisor's DDL
+// collection.
+const YsqlDumpClientBundleName = "ysql_dump_client.tar.gz"
+
+const YsqlDumpClientBundleGlob = "yba_installer-*linux*/" + YsqlDumpClientBundleName
+
 var skipConfirmation = false
 
 var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}
@@ -414,7 +420,7 @@ func InitViper() {
 	viper.SetDefault("prometheus.scrapeConfig.yugabyte.scheme", "http")
 	// PerfAdvisor defaults (always set, will be overridden by config file if present)
 	// InitViper initializes the legacy config file, so we need to set the defaults here.
-	viper.SetDefault("perfAdvisor.enabled", false)
+	viper.SetDefault("perfAdvisor.enabled", true)
 	viper.SetDefault("perfAdvisor.port", 8443)
 	viper.SetDefault("perfAdvisor.restartSeconds", 10)
 	viper.SetDefault("perfAdvisor.callhome.enabled", true)
@@ -432,6 +438,12 @@ func InitViper() {
 	viper.SetDefault("nodeExporter.enableAuth", false)
 	viper.SetDefault("nodeExporter.authUsername", "")
 	viper.SetDefault("nodeExporter.authPassword", "")
+	// ByocApiProxy defaults (always set, will be overridden by config file if present).
+	viper.SetDefault("byocApiProxy.enabled", false)
+	viper.SetDefault("byocApiProxy.version", "latest")
+	viper.SetDefault("byocApiProxy.downloadBaseUrl", "https://downloads.yugabyte.com/byoc-api-proxy")
+	viper.SetDefault("byocApiProxy.restartSeconds", 10)
+	viper.SetDefault("byocApiProxy.appConfig", map[string]interface{}{})
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))
@@ -462,6 +474,11 @@ func IsPerfAdvisorEnabled() bool {
 // Checks if NodeExporter is enabled in config.
 func IsNodeExporterEnabled() bool {
 	return viper.GetBool("nodeExporter.enabled")
+}
+
+// Checks if the BYOC API Proxy is enabled in config.
+func IsByocApiProxyEnabled() bool {
+	return viper.GetBool("byocApiProxy.enabled")
 }
 
 func GetUserHomeDir() string {
@@ -1144,4 +1161,18 @@ func (cu ConfUpdater) Update(f io.Reader, resp io.Writer) error {
 		return fmt.Errorf("failed to add remaining lines: %w", err)
 	}
 	return nil
+}
+
+// BackupScriptSupportsFips reports whether the given yb_platform_backup.sh accepts --fips.
+// Upgrade and rollback run the previously installed script, which rejects unknown options, and
+// the script version that first accepts --fips varies per release branch, so the script itself
+// is checked rather than a version table.
+func BackupScriptSupportsFips(script string) bool {
+	content, err := os.ReadFile(script)
+	if err != nil {
+		log.Warn(fmt.Sprintf("Failed to read %s to check for --fips support, assuming unsupported: %s",
+			script, err.Error()))
+		return false
+	}
+	return strings.Contains(string(content), "--fips)")
 }

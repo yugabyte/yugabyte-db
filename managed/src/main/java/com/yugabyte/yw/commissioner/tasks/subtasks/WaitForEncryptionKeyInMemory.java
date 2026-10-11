@@ -17,7 +17,7 @@ import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
@@ -43,7 +43,7 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (universe != null
         && EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) > 0) {
-      try (YBClient client = ybService.getUniverseClient(universe)) {
+      try (YBClientApi client = ybService.getUniverseClient(universe)) {
         KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
         if (!client.waitForMasterHasUniverseKeyInMemory(
             KEY_IN_MEMORY_TIMEOUT, activeKey.getUuid().keyRef, taskParams().nodeAddress)) {

@@ -7,7 +7,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 /**
  * This class interacts with the YBClient and get the certs reload done for every node
@@ -37,7 +37,7 @@ public class NodeCertReloadTask extends NodeTaskBase {
     // fetch cert file from DB, it might have been changed during rolling restart
     String certFile = Universe.getOrBadRequest(params.getUniverseUUID()).getCertificateNodetoNode();
 
-    try (YBClient client = clientService.getClient(params.masterHostPorts, certFile)) {
+    try (YBClientApi client = clientService.getClient(params.masterHostPorts, certFile)) {
       log.info("about to reload certs for {} using certFile {}", params.nodeHostPort, certFile);
 
       client.reloadCertificates(HostAndPort.fromString(params.nodeHostPort));

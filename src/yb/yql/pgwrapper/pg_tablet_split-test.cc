@@ -13,6 +13,9 @@
 
 #include <mutex>
 #include <optional>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
@@ -20,8 +23,10 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -60,6 +65,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
@@ -73,20 +79,25 @@
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(enable_wait_queues);
+DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
-DECLARE_int64(db_block_size_bytes);
-DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
-DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_select_parallelism);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_uint32(ddl_verification_timeout_multiplier);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(TEST_pause_apply_tablet_split);
 DECLARE_bool(TEST_pause_before_full_compaction);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
@@ -95,13 +106,6 @@ DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
 DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
-DECLARE_uint32(ddl_verification_timeout_multiplier);
-DECLARE_bool(TEST_pause_apply_tablet_split);
-DECLARE_bool(TEST_disable_flush_on_shutdown);
-DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(cleanup_intents_sst_files);
-DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_bool(ysql_enable_write_pipelining);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -236,6 +240,67 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     auto deadline = ToCoarse(MonoTime::Now() + MonoDelta::FromSeconds(3 * kTimeMultiplier));
     return VERIFY_RESULT(client_->LookupTabletByKeyFuture(table, partition_key, deadline).get());
   }
+
+  Result<std::unordered_set<TableId>> ListYsqlTableIds() {
+    std::unordered_set<TableId> ids;
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.namespace_type() == YQL_DATABASE_PGSQL) {
+        ids.insert(table.table_id());
+      }
+    }
+    return ids;
+  }
+
+  // A DDL that populates a new relation does not always leave the new DocDB table under a name a
+  // test can look up: an ALTER rewrite leaves both tables sharing the original's name, and a
+  // matview refresh names its new heap internally. Diffing the catalog around the DDL does not
+  // depend on naming.
+  Result<std::vector<TableId>> TablesCreatedSince(const std::unordered_set<TableId>& before) {
+    std::vector<TableId> created;
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.namespace_type() == YQL_DATABASE_PGSQL && !before.count(table.table_id())) {
+        created.push_back(table.table_id());
+      }
+    }
+    return created;
+  }
+
+  // Runs |ddl| inside an open transaction and checks that every DocDB table it creates is refused
+  // for splitting until that transaction commits, and splittable once it has. A manual split drives
+  // the check directly, which avoids having to grow a table past a size threshold.
+  void AssertSplitHeldBackUntilCommit(PGConn* conn, const std::string& ddl) {
+    SCOPED_TRACE(ddl);
+    const auto before = ASSERT_RESULT(ListYsqlTableIds());
+
+    ASSERT_OK(conn->Execute("BEGIN"));
+    ASSERT_OK(conn->Execute(ddl));
+    ASSERT_OK(cluster_->FlushTablets());
+
+    const auto created = ASSERT_RESULT(TablesCreatedSince(before));
+    ASSERT_FALSE(created.empty()) << "the statement created no DocDB table";
+    for (const auto& table_id : created) {
+      SCOPED_TRACE(table_id);
+      // Split through the master admin RPC, the path yb-admin split_tablet takes. It is the entry
+      // point that runs ValidateSplitCandidate; CatalogManager::SplitTablet(TabletId), which
+      // PgTabletSplitTestBase::SplitTablet calls, schedules the split without validating it.
+      const auto tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_id));
+      ASSERT_NOK_STR_CONTAINS(
+          InvokeSplitTabletRpc(cluster_.get(), tablet_id),
+          "creating transaction has not committed");
+    }
+
+    // Committing clears the DDL verifier state, so the new tables become eligible for splitting.
+    ASSERT_OK(conn->Execute("COMMIT"));
+    // Unless the new-relation fastpath is enabled for transaction blocks the rows sit in the
+    // intents DB until the commit is applied, and the split needs a key from the regular DB.
+    ASSERT_OK(WaitForIntentsAppliedAndFlush());
+    for (const auto& table_id : created) {
+      SCOPED_TRACE(table_id);
+      const auto tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_id));
+      ASSERT_OK(InvokeSplitTabletRpc(cluster_.get(), tablet_id));
+      ASSERT_OK(WaitForSplitCompletion(table_id));
+    }
+  }
 };
 
 TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
@@ -246,7 +311,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
   ASSERT_OK(conn.Execute(
       "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) t2;"));
 
-  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
 
@@ -270,7 +335,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
 }
 
 // The below test asserts that the intent iterator created during conflict resolution rightly checks
-// conflicts for the empty doc key and that it doesn't get iniaited with the tablet's key bounds.
+// conflicts for the empty doc key and that it doesn't get initialized with the tablet's key bounds.
 //
 // Refer https://github.com/yugabyte/yugabyte-db/issues/22630 for details.
 #ifndef NDEBUG
@@ -371,6 +436,82 @@ TEST_F(PgTabletSplitTest, TestDisableSplitWhenTableIsBeingHidden) {
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
 }
 
+class PgTabletSplitUncommittedDdlTest : public PgTabletSplitTest {
+ protected:
+  void SetUp() override {
+    ToggleDDLMode(/* use_legacy = */ false);
+    PgTabletSplitTest::SetUp();
+  }
+};
+
+// A DocDB table created by a transaction that has not committed is still being loaded, so
+// splitting it is refused until that transaction commits. The tests below cover the DDL shapes
+// that populate a brand new DocDB table, all of which the new-relation fastpath writes to directly
+// and so can grow past a split threshold while the statement is still running.
+
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileCtasIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE src(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO src SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "CREATE TABLE clone AS SELECT * FROM src");
+}
+
+// Adding a primary key rewrites the table into a new DocDB table.
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileAddPrimaryKeyIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "ALTER TABLE t ADD PRIMARY KEY (k)");
+}
+
+// Dropping the primary key rewrites the table too, into one keyed by ybrowid.
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileDropPrimaryKeyIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "ALTER TABLE t DROP CONSTRAINT t_pkey");
+}
+
+// A materialized view is backed by its own DocDB table, populated by the defining query.
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileMatviewCreationIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "CREATE MATERIALIZED VIEW mv AS SELECT * FROM t");
+}
+
+// A nonconcurrent refresh is out of place: it builds a new DocDB table through make_new_heap and
+// swaps it in at commit. (An in-place refresh, yb_refresh_matview_in_place, creates no new table
+// and is therefore unaffected by the rule under test.)
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileMatviewRefreshIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "REFRESH MATERIALIZED VIEW NONCONCURRENTLY mv");
+}
+
+// An index is a DocDB table of its own. A nonconcurrent build populates it inline, within the
+// creating transaction, rather than through a separate backfill.
+TEST_F_EX(PgTabletSplitTest, TestDisableSplitWhileIndexCreationIsUncommitted,
+          PgTabletSplitUncommittedDdlTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+
+  AssertSplitHeldBackUntilCommit(&conn, "CREATE INDEX NONCONCURRENTLY idx ON t(v)");
+}
+
 // Trigger a tablet split when a transaction has an outstanding statement in progress.
 // The split will cause ops to be retried at the YBSession level.
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)) {
@@ -387,7 +528,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)
   auto num_rows_str = "10000";
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0), 0", num_rows_str));
-  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   // Reduce max batch size so as to increase chances of encountering a WriteRpc amidst split.
@@ -417,7 +558,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)
 
   // Restart the tserver to force a fresh bootstrap of the children. If the async-write
   // race ever leaked an intent past split_op_id into the source's intents flushed_frontier,
-  // CreateSubtablet's checkpoint would propagate it into the children, and the children's
+  // CreateSplitChildTablet's checkpoint would propagate it into the children, and the children's
   // bootstrap would fail the prev_op_id >= committed_op_id SCHECK in
   // TabletBootstrap::PlaySegments. With the fix in RaftConsensus::AppendNewRoundsToQueueUnlocked,
   // no such intent is ever written, so the children inherit a clean frontier and bootstrap
@@ -443,7 +584,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
   constexpr auto kNumRows = 1000;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
-  FLAGS_ysql_client_read_write_timeout_ms =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) =
       narrow_cast<int32_t>(ToMilliseconds(kScanAfterSplitDuration + 60s));
 
   auto conn = ASSERT_RESULT(Connect());
@@ -638,7 +779,7 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
       std::numeric_limits<int32>::max();
 
-  // Create custom RocksDB listener to analyse files in a compaction.
+  // Create custom RocksDB listener to analyze files in a compaction.
   struct Listener : public rocksdb::EventListener {
     using CompactedFiles = std::vector<uint64_t>;
     using CompactionJob  = std::vector<CompactedFiles>;
@@ -789,19 +930,19 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
     expected_rows.emplace_back(k, k);
   }
 
-  // Resume post split compaciton and wait for a completion.
+  // Resume post split compaction and wait for completion.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
   ASSERT_OK(WaitForPeersPostSplitCompacted(
       cluster_.get(), { peers.front()->tablet_id(), peers.back()->tablet_id() }));
 
-  // WaitForPeersPostSplitCompacted() is waiting on tablet's meta `parent_data_compacted` field,
+  // WaitForPeersPostSplitCompacted() is waiting on tablet's meta `rocksdb_parent_data_compacted`,
   // which is updated only when regular db instances are compacted as we are not so interested in
   // intents db compactions. That's why the waiting loop can finish when the latest intents db
   // post split compaction is still running or not yet started. But in this test we are going to
   // track all compaction jobs, that's why let's wait for all expected compactions are done.
   compactions_listener.compactions_done.WaitFor(15s * kTimeMultiplier);
 
-  // Analyse compactions. The order is preserved.
+  // Analyze compactions. The order is preserved.
   // 1) We expected 4 instances (1 regular db and 1 intents db per child).
   auto compactions_per_db = compactions_listener.GetCompactions();
   ASSERT_EQ(4, compactions_per_db.size());
@@ -943,8 +1084,8 @@ class PgPartitioningVersionTest :
     auto tablet = VERIFY_RESULT(peer->shared_tablet());
     auto partitioning_version = tablet->schema()->table_properties().partitioning_version();
     SCHECK_EQ(expected_partitioning_version, partitioning_version, IllegalState,
-              Format("Unexpected paritioning version {0} vs {1}",
-                      expected_partitioning_version, partitioning_version));
+              Format("Unexpected partitioning version {0} vs {1}",
+                     expected_partitioning_version, partitioning_version));
 
     // Make sure SST files appear to be able to split
     RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
@@ -1376,7 +1517,7 @@ TEST_P(PgPartitioningVersionTest, SplitAt) {
       [](const uint32_t partitioning_version, PartitionsKeys partitions) -> PartitionsKeys {
     for (auto& part : partitions) {
       if (partitioning_version) {
-        // Starting from paritioning version == 1, a range group of partition, created with
+        // Starting from partitioning version == 1, a range group of partition, created with
         // split at statement, will contain a `-Inf` (a.k.a `kLowest` a.k.a 0x00) value for
         // `ybuniqueidxkeysuffix` or `ybidxbasectid`.
         part.push_back("-Inf");
@@ -1519,7 +1660,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
       const auto tablets = ASSERT_RESULT(GetTabletsByPartitionKey(table));
       ASSERT_EQ(tablets.size(), 3);
 
-      // Exptract middle tablet bounds.
+      // Extract middle tablet bounds.
       const auto parse_partition_key = [](const std::string& key) -> Result<int> {
         dockv::SubDocKey doc_key;
         RETURN_NOT_OK(doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
@@ -1608,7 +1749,7 @@ TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
   // this value.
   ASSERT_EQ(props.num_hash_key_columns, (partitioning == Partitioning::kHash));
   if (partitioning == Partitioning::kRange) {
-    // Additionally we can check split clause for range paritioned table.
+    // Additionally we can check split clause for range partitioned table.
     const auto range_clause = ASSERT_RESULT(FetchRangeSplitClause(&conn, table_name));
 
     // Build expected split clause.
@@ -1861,9 +2002,20 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   // Insert enough data to create SST files for splitting
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
 
+  if (FLAGS_ysql_enable_write_pipelining) {
+    // Write pipelining acks the above insert immediately, need to wait for this to be applied
+    // before doing the flush + split.
+    ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
+  }
+
   // Insert a row in a transaction
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, $1)", kKey, kValue));
+  // Make sure every replica has applied all the writes before flushing. Otherwise a lagging
+  // follower may flush an empty regular memtable (a no-op) and end up without any level-0 SST file.
+  // If such a follower later becomes the leader, GetSplitKey fails with "No SST file at level 0",
+  // which is not retried for a manual split, so the split never completes.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
   ASSERT_OK(cluster_->FlushTablets());
 
   // Stop tserver C (index 2)
@@ -2164,7 +2316,7 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
       << "Async-write race fired: source intents flushed_frontier (" << stored.intents
       << ") advanced beyond SPLIT_OP (" << split_op_id
       << "). After split apply, this state is propagated into the children via "
-         "Tablet::CreateSubtablet's RocksDB checkpoint, and bootstrap of the children on "
+         "Tablet::CreateSplitChildTablet's RocksDB checkpoint, and bootstrap of the children on "
          "this replica will fail with TabletBootstrap::PlaySegments's SCHECK.";
 
   // Make sure split actually completes, and children bootstrap cleanly.
@@ -2187,6 +2339,168 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
   auto verify_conn = ASSERT_RESULT(Connect());
   auto count = ASSERT_RESULT(verify_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t"));
   ASSERT_EQ(count, 1000);
+}
+
+// Reproduces a data-loss race in SimulateProcessRecentlyAppliedTransactions: during fresh
+// bootstrap, if recently_applied={helper} is populated while the loader has not yet reached
+// target (whose first_write_ht is lower), SaveToDisk persists min_replay_txn_first_write_ht >
+// target.first_write_ht. On the next bootstrap, target is Skip-loaded and target.APPLY fails
+// with "Apply of unknown leader_term:-1" and target's row never lands in RegularDB.
+TEST_F(PgTabletSplitTest, BootstrapStateLoadRaceFlush) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  // Load the initial rows non-transactionally. A distributed txn here would leave an APPLYING
+  // update in the parent's WAL, and TabletBootstrap always replays those (see
+  // ShouldReplayOperation) even when already flushed. That replay calls ProcessApply ->
+  // loader_.WaitLoaded(id), which deadlocks the children's bootstrap whenever the load txn id
+  // sorts after helper_uuid, where the loader is parked by the sync point below.
+  ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = true"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+  ASSERT_OK(conn.Execute("RESET yb_disable_transactional_writes"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  // Open txns with target writing first (so target.first_write_ht < helper.first_write_ht) and
+  // helper.UUID < target.UUID (so the loader iterates helper first and the sync point pauses
+  // before reaching target). helper writes 100 keys so its metadata lands on every post-split
+  // child.
+  auto conn_target = ASSERT_RESULT(Connect());
+  auto conn_helper = ASSERT_RESULT(Connect());
+  Uuid target_uuid;
+  Uuid helper_uuid;
+  constexpr int kMaxRetries = 100;
+  int retries = 0;
+  while (retries < kMaxRetries) {
+    ASSERT_OK(conn_target.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn_target.Execute("INSERT INTO t VALUES (5001, 5001)"));
+    target_uuid = ASSERT_RESULT(conn_target.FetchRow<Uuid>(
+        "SELECT yb_get_current_transaction()"));
+    ASSERT_OK(conn_helper.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn_helper.Execute(
+        "INSERT INTO t SELECT generate_series(6001, 6100), 0"));
+    helper_uuid = ASSERT_RESULT(conn_helper.FetchRow<Uuid>(
+        "SELECT yb_get_current_transaction()"));
+    if (helper_uuid < target_uuid) break;
+    ASSERT_OK(conn_target.RollbackTransaction());
+    ASSERT_OK(conn_helper.RollbackTransaction());
+    ++retries;
+  }
+  ASSERT_LT(retries, kMaxRetries);
+
+  // Flush intents into SSTs so split children inherit them via hard-link.
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync,
+                                   tablet::FlushFlags::kIntents));
+
+  // Set below flags to make the test deterministic
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_flush_max_delay_ms) = 3600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+
+  std::atomic<bool> resume_loader{false};
+  std::atomic<int> helper_applies_recorded{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "TransactionLoader::Executor::LoadedTransaction",
+      [&](void* arg) {
+        const auto* loaded_id = static_cast<const TransactionId*>(arg);
+        if (loaded_id && loaded_id->GetUuid() == helper_uuid) {
+          while (!resume_loader.load()) {
+            std::this_thread::sleep_for(10ms);
+          }
+        }
+      });
+  SyncPoint::GetInstance()->SetCallBack(
+      "TransactionParticipant::Impl::AddRecentlyAppliedTransaction",
+      [&](void* arg) {
+        const auto* id = static_cast<const TransactionId*>(arg);
+        if (id && id->GetUuid() == helper_uuid) {
+          helper_applies_recorded.fetch_add(1);
+        }
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([&] {
+    resume_loader.store(true);
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id, 2));
+
+  // In prod, log segment switch and RBS can trigger FlushBootstrapState. To make the test
+  // deterministic, poison each child peer's bootstrap-state file directly by calling
+  // FlushBootstrapState in the race state (transactions_loaded_=false, recently_applied={helper},
+  // target not yet in transactions_ or recently_applied). DoProcess computes threshold =
+  // min(recently_applied) = helper.first_write_ht. Since target writes first,
+  // target.first_write_ht < helper.first_write_ht, so the persisted threshold will cause target
+  // to be skip-loaded on next bootstrap.
+  // ListTableTabletPeers also returns the split-completed parent peer; drop it so counts refer
+  // only to the two children that actually run helper.APPLY.
+  auto user_peers = ListTableTabletPeers(cluster_.get(), table_id);
+  std::erase_if(user_peers, [](const tablet::TabletPeerPtr& peer) {
+    return peer->tablet_metadata()->tablet_data_state() !=
+           tablet::TabletDataState::TABLET_DATA_READY;
+  });
+  ASSERT_EQ(user_peers.size(), 2u);
+
+  // helper.APPLY runs against children. The sync point above lets the loader load helper into
+  // transactions_, but then blocks it before it can advance to target. ProcessApply(helper)
+  // unblocks (last_loaded_ >= helper.id) and moves helper into recently_applied. Wait until
+  // that has happened on EVERY child; otherwise a lagging child's flush would see
+  // recently_applied={} and compute threshold=kMax (min_running_ht_ stays kInvalid during the
+  // race window because TransactionsModifiedUnlocked early-returns when !transactions_loaded_),
+  // harmlessly skipping the poison. Note we do NOT commit target yet: with the fix, target.APPLY
+  // would block at loader_.WaitLoaded(target) holding the replica-state lock, which would block
+  // FlushBootstrapState's TakeSnapshotOfRetryableRequests for the entire pause and prevent the
+  // race-window persist.
+  ASSERT_OK(conn_helper.CommitTransaction());
+  ASSERT_OK(WaitFor(
+      [&] { return helper_applies_recorded.load() >= static_cast<int>(user_peers.size()); },
+      60s * kTimeMultiplier, "helper added to recently_applied on all children"));
+
+  std::atomic<int> flush_done_count{0};
+  TestThreadHolder flush_bootstrap_state_thread;
+  for (const auto& peer : user_peers) {
+    flush_bootstrap_state_thread.AddThread([&, peer]() {
+      WARN_NOT_OK(peer->FlushBootstrapState(), "flush bootstrap state");
+      flush_done_count.fetch_add(1);
+    });
+  }
+
+  // Let the flush-bootstrap-state threads proceed for a brief race window, then release the
+  // loader. With the fix (WaitAllLoaded inside SimulateProcess), each flush blocks here until
+  // the loader finishes, so we must release the loader before WaitFor(flush_done_count).
+  // Without the fix, SimulateProcess returned immediately in the partial-state window; either
+  // way, releasing the loader does not change what was persisted.
+  resume_loader.store(true);
+  ASSERT_OK(WaitFor([&] {
+    return flush_done_count.load() == static_cast<int>(user_peers.size());
+  }, 60s * kTimeMultiplier, "flush bootstrap state"));
+
+  // Commit target so target.APPLY enters the WAL.
+  ASSERT_OK(conn_target.CommitTransaction());
+
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->ClearAllCallBacks();
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Restart());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->WaitStarted());
+
+  // CONSISTENT_PREFIX read served from the tserver's local replica.
+  auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_EQ(tablet_ids.size(), 2u);
+
+  bool found = false;
+  for (const auto& tablet_id : tablet_ids) {
+    auto exists = ASSERT_RESULT(RowExistsInTablet(
+        cluster_.get(), client_.get(), table_id, tablet_id, 5001, 0));
+    if (exists) { found = true; break; }
+  }
+  LOG(INFO) << "target row k=5001 locally: " << (found ? "YES" : "NO");
+  EXPECT_TRUE(found) << "DATA LOSS: target row missing";
 }
 
 } // namespace yb::pgwrapper

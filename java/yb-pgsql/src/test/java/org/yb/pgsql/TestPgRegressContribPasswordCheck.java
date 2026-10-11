@@ -19,8 +19,6 @@ import org.yb.YBTestRunner;
 
 import java.io.File;
 
-import java.util.Map;
-
 @RunWith(value = YBTestRunner.class)
 public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
     @Override
@@ -28,12 +26,7 @@ public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
         return 1800;
     }
 
-    @Override
-    protected Map<String, String> getTServerFlags() {
-        Map<String, String> flagMap = super.getTServerFlags();
-        appendToYsqlPgConf(flagMap, "shared_preload_libraries='passwordcheck'");
-        return flagMap;
-    }
+    // each test in yb_schedule installs passwordcheck with the LOAD command
 
     @Test
     public void schedule() throws Exception {

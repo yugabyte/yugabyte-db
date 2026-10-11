@@ -16,7 +16,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/util/byte_buffer.h"
+#include "yb/util/mem_tracked_byte_buffer.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/random_util.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;

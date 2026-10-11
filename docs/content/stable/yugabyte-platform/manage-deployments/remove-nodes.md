@@ -82,6 +82,14 @@ Automatic master failover works as follows:
 
 ## Replace a live or unreachable node
 
+Before replacing a node for an on-premises universe:
+
+- Ensure the [on-premises provider](../../configure-yugabyte-platform/on-premises-provider/) has a provisioned node available in its free pool.
+
+    To view available on-premises nodes, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
+
+- If necessary, [provision a new node](../../prepare/server-nodes-software/software-on-prem/) for the provider.
+
 To replace a live node for extended maintenance or replace an unhealthy node, do the following:
 
 1. Navigate to **Universes**, select your universe, and open the **Nodes** tab.
@@ -89,36 +97,39 @@ To replace a live node for extended maintenance or replace an unhealthy node, do
 
     ![Replace Node Actions](/images/ee/replace-node.png)
 
-1. Click OK to confirm.
+1. Click **OK** to confirm.
 
-YugabyteDB Anywhere (YBA) starts the node replacement process, and you can view the progress on the **Tasks** tab. As part of the node replacement process, all data (tablets) on the existing node will be moved to other nodes to ensure that the desired replication factor is maintained throughout the operation.
+YugabyteDB Anywhere starts the node replacement process, and you can view the progress on the **Tasks** tab. As part of the node replacement process, all data (tablets) on the existing node will be moved to other nodes to ensure that the desired replication factor is maintained throughout the operation.
 
-For cloud providers (AWS, Azure, or GCP), YBA returns the existing node back to the provider and provisions a new replacement node from the cloud provider. For on-premises universes, the existing node is returned to the [on-premises provider node pool](../../configure-yugabyte-platform/on-premises-nodes/) and a new replacement node is selected from the free pool.
+For cloud providers (AWS, Azure, or GCP), YugabyteDB Anywhere returns the existing node back to the provider and provisions a new replacement node from the cloud provider.
 
-For on-premises universes, clean up of existing data directories and running processes may fail if the node is unhealthy. In such cases, YBA sets the state to Decommissioned. This prevents the node from being added to a new universe.
+For on-premises universes, the existing node is returned to the [on-premises provider node pool](../../configure-yugabyte-platform/on-premises-nodes/) and a new replacement node is selected from the free pool.
+
+For on-premises universes, clean up of existing data directories and running processes may fail if the node is unhealthy. In such cases, YugabyteDB Anywhere sets the state to _Decommissioned_. This prevents the node from being added to a new universe.
 
 ### Check on-premises node state
 
-On-premises nodes have three states: In use, Free, and Decommissioned as described in the following illustration.
+On-premises nodes have three states: _In use_, _Free_, and _Decommissioned_ as described in the following illustration.
 
 ![Decommissioned node workflow](/images/ee/on-prem-replace-workflow.png)
+
 To check the state of an on-premises node, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
 ### Recommission a decommissioned on-premises node
 
-You can return a Decommissioned node to the on-premises provider Free pool after it becomes reachable and is cleaned up.
+You can return a _Decommissioned_ node to the on-premises provider Free pool after it becomes reachable and is cleaned up.
 
 Perform the following steps to recommission a node:
 
 1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
-1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YBA will now re-attempt to clean up existing data directories and processes on this node.
+1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YugabyteDB Anywhere will now re-attempt to clean up existing data directories and processes on this node.
 
     ![Recommission Node](/images/ee/recommission-node.png)
 
-1. Click OK to confirm.
+1. Click **OK** to confirm.
 
-YugabyteDB Anywhere (YBA) starts the node recommissioning process, and you can view the progress on the **Tasks** tab.
+YugabyteDB Anywhere starts the node recommissioning process, and you can view the progress on the **Tasks** tab.
 
 ## Eliminate an unresponsive node
 
@@ -142,25 +153,31 @@ A node status displayed in the UI is not always entirely indicative of the node'
 
 {{< /note >}}
 
-## Start and stop node processes
+## Enter and exit maintenance mode
 
 {{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
 If the universe uses NFS for backup storage, make sure the NFS mount is added to `/etc/fstab` on the node. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restore](../../back-up-restore-universes/restore-universe-data/).
 {{< /warning >}}
 
-### Stop a process
+When performing maintenance on universe nodes, use YugabyteDB Anywhere to stop and start node processes by entering and exiting maintenance mode.
 
-If a node needs to be briefly taken out of service (for example, to perform a quick OS patch), you can click its associated **Actions > Stop Processes**. It is expected that this node will be returned to service soon through the **Actions > Start Processes** operation.
+### Enter maintenance mode
+
+If a node needs to be briefly taken out of service (for example, to perform a quick OS patch), on the **Nodes** tab, click the associated **Actions > Enter Maintenance Mode**.
+
+It is expected that this node will be returned to service soon using **Actions > Exit Maintenance Mode**.
 
 After the YB-TServer and (where applicable) YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
 
 Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never under-replicated.
 
-In general, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor of 3.
+Typically, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor of 3.
 
-### Start a process
+Note that if you don't exit maintenance mode after a set period of time (15 minutes by default), data will be removed from the node and re-replicated to other nodes (if any) in the same fault domain.
 
-You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
+### Exit maintenance mode
+
+You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Exit Maintenance Mode** corresponding to the node. This returns the node to the Live state.
 
 ## Remove node
 
@@ -221,8 +238,8 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 If a master process is down for more than its [WAL log retention period](../../../reference/configuration/yb-master/#log-min-seconds-to-retain) (defaults to 2 hrs) and then becomes healthy, it will be unable to catch up to its peers. In this scenario, the **Nodes** tab shows that the master is in a healthy state but YugabyteDB Anywhere generates an "under-replicated masters" alert. To fix this situation, do the following:
 
 1. Identify the lagging master.  Navigate to **Universes**, select your universe, open the **Metrics** tab, and select **Master > Master Follower Lag** metric.
-1. On the **Nodes** page, click the [**Actions > Stop Processes**](#stop-a-process) action on the node with the lagging master. As part of the execution of this action, a new master process might be started on a different node in the same Availability Zone (if possible).
-1. When the "Stop Processes" task completes, click the [**Actions > Start Processes**](#start-a-process) action on the same node.
+1. On the **Nodes** page, click the [**Actions > Enter Maintenance Mode**](#enter-maintenance-mode) action on the node with the lagging master. As part of the execution of this action, a new master process might be started on a different node in the same Availability Zone (if possible).
+1. When the task completes, click the [**Actions > Exit Maintenance Mode**](#exit-maintenance-mode) action on the same node.
 1. Verify that the cluster has an [RF](../../../architecture/key-concepts/#replication-factor-rf) count of healthy masters.
 
 ## Release node instance

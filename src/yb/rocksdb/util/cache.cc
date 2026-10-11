@@ -24,6 +24,8 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include <absl/synchronization/mutex.h>
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/statistics.h"
@@ -114,7 +116,8 @@ struct LRUHandle {
   }
 
   void Free(yb::CacheMetrics* metrics) {
-    assert((refs == 1 && in_cache) || (refs == 0 && !in_cache));
+    DCHECK((refs == 1 && in_cache) || (refs == 0 && !in_cache))
+        << "refs: " << refs << " in_cache: " << in_cache;
     (*deleter)(key(), value);
     if (metrics != nullptr) {
       if (GetSubCacheType() == MULTI_TOUCH) {
@@ -387,6 +390,11 @@ class LRUCache {
   // free the needed space
   void SetCapacity(size_t capacity);
 
+  // Reserve/return space that is not backed by a cache entry. Reduces/restores the effective
+  // capacity available to real entries and evicts as needed. See Cache::ConsumeSpace.
+  void ConsumeSpace(size_t bytes);
+  void ReleaseSpace(size_t bytes);
+
   void SetMetrics(shared_ptr<yb::CacheMetrics> metrics) {
     metrics_ = metrics;
     table_.SetMetrics(metrics);
@@ -410,12 +418,12 @@ class LRUCache {
   // protect them with mutex_.
 
   size_t GetUsage() const {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     return single_touch_sub_cache_.Usage() + multi_touch_sub_cache_.Usage();
   }
 
   size_t GetPinnedUsage() const {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     return single_touch_sub_cache_.GetPinnedUsage() + multi_touch_sub_cache_.GetPinnedUsage();
   }
 
@@ -436,8 +444,17 @@ class LRUCache {
   LRUSubCache single_touch_sub_cache_;
   LRUSubCache multi_touch_sub_cache_;
 
+  // total_capacity_ is the effective capacity (base_total_capacity_ minus space_consumed_);
+  // multi_touch_capacity_ is derived from it. base_total_capacity_ is the configured capacity and
+  // space_consumed_ is reserved-but-not-stored space (see ConsumeSpace).
   size_t total_capacity_;
   size_t multi_touch_capacity_;
+  size_t base_total_capacity_ = 0;
+  size_t space_consumed_ = 0;
+
+  // Recomputes total_capacity_/multi_touch_capacity_ from base_total_capacity_ and space_consumed_,
+  // then evicts to fit. Caller must hold mutex_; evicted handles are freed via `deleted`.
+  void UpdateCapacities(LRUHandleDeleter* deleted);
 
   // Just reduce the reference count by 1.
   // Return true if last reference
@@ -469,7 +486,7 @@ class LRUCache {
   // mutex_ protects the following state.
   // We don't count mutex_ as the cache's internal state so semantically we
   // don't mind mutex_ invoking the non-const actions.
-  mutable port::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   HandleTable table_;
 
@@ -504,15 +521,10 @@ void LRUCache::DecrementUsage(const SubCacheType subcache_type, const size_t cha
 
 void LRUCache::ApplyToAllCacheEntries(void (*callback)(void*, size_t),
                                       bool thread_safe) {
-  if (thread_safe) {
-    mutex_.Lock();
-  }
+  absl::MutexLockMaybe l{thread_safe ? &mutex_ : nullptr};
   table_.ApplyToAllCacheEntries([callback](LRUHandle* h) {
     callback(h->value, h->charge);
   });
-  if (thread_safe) {
-    mutex_.Unlock();
-  }
 }
 
 void LRUCache::LRU_Remove(LRUHandle* e) {
@@ -530,7 +542,13 @@ size_t LRUCache::GetSubCacheCapacity(const SubCacheType subcache_type) {
       if (strict_capacity_limit_ || !FLAGS_cache_overflow_single_touch) {
         return total_capacity_ - multi_touch_capacity_;
       }
-      return total_capacity_ - multi_touch_sub_cache_.Usage();
+      // total_capacity_ can drop below the multi-touch usage held by pinned entries once
+      // ConsumeSpace (block cache reservation) shrinks the effective capacity. Guard against the
+      // unsigned underflow; otherwise EvictFromLRU would compute a huge single-touch capacity and
+      // evict nothing, leaving the single-touch LRU non-empty while the cache reports full and
+      // tripping the IsLRUEmpty() assertion in Release.
+      return total_capacity_ > multi_touch_sub_cache_.Usage()
+          ? total_capacity_ - multi_touch_sub_cache_.Usage() : 0;
     case MULTI_TOUCH :
       return multi_touch_capacity_;
   }
@@ -555,20 +573,46 @@ void LRUCache::EvictFromLRU(const size_t charge,
   }
 }
 
+void LRUCache::UpdateCapacities(LRUHandleDeleter* deleted) {
+  total_capacity_ =
+      base_total_capacity_ > space_consumed_ ? base_total_capacity_ - space_consumed_ : 0;
+  multi_touch_capacity_ = round((1 - FLAGS_cache_single_touch_ratio) * total_capacity_);
+  EvictFromLRU(0, deleted, MULTI_TOUCH);
+  EvictFromLRU(0, deleted, SINGLE_TOUCH);
+}
+
 void LRUCache::SetCapacity(size_t capacity) {
   LRUHandleDeleter last_reference_list(metrics_.get());
 
   {
-    MutexLock l(&mutex_);
-    multi_touch_capacity_ = round((1 - FLAGS_cache_single_touch_ratio) * capacity);
-    total_capacity_ = capacity;
-    EvictFromLRU(0, &last_reference_list, MULTI_TOUCH);
-    EvictFromLRU(0, &last_reference_list, SINGLE_TOUCH);
+    absl::MutexLock l(&mutex_);
+    base_total_capacity_ = capacity;
+    UpdateCapacities(&last_reference_list);
+  }
+}
+
+void LRUCache::ConsumeSpace(size_t bytes) {
+  LRUHandleDeleter last_reference_list(metrics_.get());
+
+  {
+    absl::MutexLock l(&mutex_);
+    space_consumed_ += bytes;
+    UpdateCapacities(&last_reference_list);
+  }
+}
+
+void LRUCache::ReleaseSpace(size_t bytes) {
+  LRUHandleDeleter last_reference_list(metrics_.get());
+
+  {
+    absl::MutexLock l(&mutex_);
+    space_consumed_ = space_consumed_ > bytes ? space_consumed_ - bytes : 0;
+    UpdateCapacities(&last_reference_list);
   }
 }
 
 void LRUCache::SetStrictCapacityLimit(bool strict_capacity_limit) {
-  MutexLock l(&mutex_);
+  absl::MutexLock l(&mutex_);
   // Allow setting strict capacity limit only when there are no elements in the cache.
   // This is because we disable overflowing single touch cache when strict_capacity_limit_ is true.
   // We cannot ensure that single touch cache has not already overflown when the cache already has
@@ -579,59 +623,45 @@ void LRUCache::SetStrictCapacityLimit(bool strict_capacity_limit) {
 
 Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId query_id,
                                 Statistics* statistics)  {
-  MutexLock l(&mutex_);
-  LRUHandle* e = table_.Lookup(key, hash);
-  if (e != nullptr) {
-    assert(e->in_cache);
-    // Since the entry is now referenced externally, cannot be evicted, so remove from LRU.
-    if (e->refs == 1) {
-      LRU_Remove(e);
-    }
-    // Increase the number of references and move to state 1. (in cache and not in LRU)
-    e->refs++;
-
-    // Now the handle will be added to the multi touch pool only if it exists.
-    if (FLAGS_cache_single_touch_ratio < 1 && e->GetSubCacheType() != MULTI_TOUCH &&
-        e->query_id != query_id) {
-      {
-        LRUHandleDeleter multi_touch_eviction_list(metrics_.get());
-        EvictFromLRU(e->charge, &multi_touch_eviction_list, MULTI_TOUCH);
+  LRUHandle* e;
+  int64_t multi_touch_increment = 0;
+  {
+    absl::MutexLock l(&mutex_);
+    e = table_.Lookup(key, hash);
+    if (e != nullptr) {
+      assert(e->in_cache);
+      // Since the entry is now referenced externally, cannot be evicted, so remove from LRU.
+      if (e->refs == 1) {
+        LRU_Remove(e);
       }
-      // Cannot have any single touch elements in this case.
-      assert(FLAGS_cache_single_touch_ratio != 0);
-      if (!strict_capacity_limit_ ||
-          multi_touch_sub_cache_.Usage() - multi_touch_sub_cache_.LRU_Usage() + e->charge <=
-          multi_touch_capacity_) {
-        e->query_id = kInMultiTouchId;
-        single_touch_sub_cache_.DecrementUsage(e->charge);
-        multi_touch_sub_cache_.IncrementUsage(e->charge);
-        if (metrics_) {
-          metrics_->multi_touch_cache_usage->IncrementBy(e->charge);
-          metrics_->single_touch_cache_usage->DecrementBy(e->charge);
+      // Increase the number of references and move to state 1. (in cache and not in LRU)
+      e->refs++;
+
+      // Now the handle will be added to the multi touch pool only if it exists.
+      if (FLAGS_cache_single_touch_ratio < 1 && e->GetSubCacheType() != MULTI_TOUCH &&
+          e->query_id != query_id) {
+        {
+          LRUHandleDeleter multi_touch_eviction_list(metrics_.get());
+          EvictFromLRU(e->charge, &multi_touch_eviction_list, MULTI_TOUCH);
+        }
+        // Cannot have any single touch elements in this case.
+        assert(FLAGS_cache_single_touch_ratio != 0);
+        if (!strict_capacity_limit_ ||
+            multi_touch_sub_cache_.Usage() - multi_touch_sub_cache_.LRU_Usage() + e->charge <=
+            multi_touch_capacity_) {
+          e->query_id = kInMultiTouchId;
+          single_touch_sub_cache_.DecrementUsage(e->charge);
+          multi_touch_sub_cache_.IncrementUsage(e->charge);
+          multi_touch_increment = e->charge;
         }
       }
     }
-    if (statistics != nullptr) {
-      // overall cache hit
-      statistics->recordTick(BLOCK_CACHE_HIT);
-      if (e->GetSubCacheType() == SubCacheType::SINGLE_TOUCH) {
-        statistics->recordTick(BLOCK_CACHE_SINGLE_TOUCH_HIT);
-      } else if (e->GetSubCacheType() == SubCacheType::MULTI_TOUCH) {
-        statistics->recordTick(BLOCK_CACHE_MULTI_TOUCH_HIT);
-      }
-    }
-  } else {
-    RecordTick(statistics, BLOCK_CACHE_MISS);
   }
 
-  if (metrics_ != nullptr) {
-    metrics_->lookups->Increment();
-    bool was_hit = (e != nullptr);
-    if (was_hit) {
-      metrics_->cache_hits->Increment();
-    } else {
-      metrics_->cache_misses->Increment();
-    }
+  RecordTick(statistics, e ? BLOCK_CACHE_HIT : BLOCK_CACHE_MISS);
+  if (multi_touch_increment && metrics_) {
+    metrics_->multi_touch_cache_usage->IncrementBy(multi_touch_increment);
+    metrics_->single_touch_cache_usage->DecrementBy(multi_touch_increment);
   }
   return reinterpret_cast<Cache::Handle*>(e);
 }
@@ -655,7 +685,7 @@ void LRUCache::Release(Cache::Handle* handle) {
   LRUHandle* e = reinterpret_cast<LRUHandle*>(handle);
   bool last_reference = false;
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     LRUSubCache* sub_cache = GetSubCache(e->GetSubCacheType());
     last_reference = Unref(e);
     if (last_reference) {
@@ -688,7 +718,7 @@ void LRUCache::Release(Cache::Handle* handle) {
 size_t LRUCache::Evict(size_t required) {
   LRUHandleDeleter evicted(metrics_.get());
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     EvictFromLRU(required, &evicted, SINGLE_TOUCH);
     if (required > evicted.TotalCharge()) {
       EvictFromLRU(required, &evicted, MULTI_TOUCH);
@@ -726,12 +756,12 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
   e->query_id = query_id;
   memcpy(e->key_data, key.data(), key.size());
 
+  SubCacheType subcache_type;
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     // Free the space following strict LRU policy until enough space
     // is freed or the lru list is empty.
     // Check if there is a single touch cache.
-    SubCacheType subcache_type;
     if (FLAGS_cache_single_touch_ratio == 0) {
       e->query_id = kInMultiTouchId;
       subcache_type = MULTI_TOUCH;
@@ -783,31 +813,28 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
       }
       s = Status::OK();
     }
-    if (statistics != nullptr) {
-      if (s.ok()) {
-        RecordTick(statistics, BLOCK_CACHE_ADD);
-        RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, charge);
-        if (subcache_type == SubCacheType::SINGLE_TOUCH) {
-          RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_ADD);
-          RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE, charge);
-        } else if (subcache_type == SubCacheType::MULTI_TOUCH) {
-          RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_ADD);
-          RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, charge);
-        }
+  }
+  if (statistics != nullptr) {
+    if (s.ok()) {
+      RecordTick(statistics, BLOCK_CACHE_ADD);
+      RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, charge);
+      if (subcache_type == SubCacheType::MULTI_TOUCH) {
+        RecordTick(statistics, BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, charge);
       } else {
-        RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
+        RecordTick(statistics, BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE, charge);
       }
-    }
-    if (metrics_ != nullptr) {
-      if (subcache_type == MULTI_TOUCH) {
-        metrics_->multi_touch_cache_usage->IncrementBy(charge);
-      } else {
-        metrics_->single_touch_cache_usage->IncrementBy(charge);
-      }
-      metrics_->cache_usage->IncrementBy(charge);
+    } else {
+      RecordTick(statistics, BLOCK_CACHE_ADD_FAILURES);
     }
   }
-
+  if (metrics_ != nullptr) {
+    if (subcache_type == MULTI_TOUCH) {
+      metrics_->multi_touch_cache_usage->IncrementBy(charge);
+    } else {
+      metrics_->single_touch_cache_usage->IncrementBy(charge);
+    }
+    metrics_->cache_usage->IncrementBy(charge);
+  }
   return s;
 }
 
@@ -815,7 +842,7 @@ void LRUCache::Erase(const Slice& key, uint32_t hash) {
   LRUHandle* e;
   bool last_reference = false;
   {
-    MutexLock l(&mutex_);
+    absl::MutexLock l(&mutex_);
     e = table_.Remove(key, hash);
     if (e != nullptr) {
       last_reference = Unref(e);
@@ -843,6 +870,7 @@ class ShardedLRUCache : public Cache {
   uint64_t last_id_;
   size_t num_shard_bits_;
   size_t capacity_;
+  size_t space_consumed_ = 0;
   bool strict_capacity_limit_;
   shared_ptr<yb::CacheMetrics> metrics_;
 
@@ -888,6 +916,31 @@ class ShardedLRUCache : public Cache {
       shards_[s].SetCapacity(per_shard);
     }
     capacity_ = capacity;
+  }
+
+  yb::Result<bool> ConsumeSpace(size_t bytes, ReservationMode mode) override {
+    int num_shards = 1 << num_shard_bits_;
+    const size_t per_shard = (bytes + (num_shards - 1)) / num_shards;
+    MutexLock l(&capacity_mutex_);
+    const bool within_capacity = bytes <= capacity_ - std::min(capacity_, space_consumed_);
+    if (!within_capacity && mode == ReservationMode::kStrict) {
+      return STATUS(TryAgain, "Block cache reservation would exceed capacity");
+    }
+    space_consumed_ += bytes;
+    for (int s = 0; s < num_shards; s++) {
+      shards_[s].ConsumeSpace(per_shard);
+    }
+    return within_capacity;
+  }
+
+  void ReleaseSpace(size_t bytes) override {
+    int num_shards = 1 << num_shard_bits_;
+    const size_t per_shard = (bytes + (num_shards - 1)) / num_shards;
+    MutexLock l(&capacity_mutex_);
+    space_consumed_ = space_consumed_ > bytes ? space_consumed_ - bytes : 0;
+    for (int s = 0; s < num_shards; s++) {
+      shards_[s].ReleaseSpace(per_shard);
+    }
   }
 
   virtual Status Insert(const Slice& key, const QueryId query_id, void* value, size_t charge,

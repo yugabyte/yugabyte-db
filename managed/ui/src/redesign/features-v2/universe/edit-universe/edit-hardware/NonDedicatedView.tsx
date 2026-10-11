@@ -30,13 +30,8 @@ export const NonDedicatedView = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <StyledPane>
         <Box sx={{ display: 'flex', flexDirection: 'row', gap: 2, alignItems: 'center' }}>
-          <Typography
-            variant="subtitle1"
-            fontWeight={500}
-            textTransform={'uppercase'}
-            color="#6D7C88"
-          >
-            {t('totalClusterNodes')}
+          <Typography variant="button" color="textSecondary">
+            {t(isK8s ? 'totalClusterPods' : 'totalClusterNodes')}
           </Typography>
           <Typography variant="body2" color="#0B1117">
             {stats.totalNodes}
@@ -57,6 +52,9 @@ export const NonDedicatedView = () => {
       {readReplicaCluster && (
         <InstanceCard
           title={t('rrInstance', { keyPrefix: 'readReplica.addRR' })}
+          arch={universeData?.info?.arch}
+          cluster={readReplicaCluster}
+          sameAsPrimaryCluster
           nodeSpec={readReplicaCluster.node_spec}
           storageSpec={readReplicaCluster.node_spec?.storage_spec}
           isK8s={isK8s}

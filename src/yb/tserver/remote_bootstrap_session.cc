@@ -39,7 +39,6 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
 
 #include "yb/tablet/tablet.h"
@@ -50,8 +49,10 @@
 
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
@@ -62,17 +63,27 @@
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 DECLARE_bool(enable_flush_retryable_requests);
+DECLARE_int32(log_min_segments_to_retain);
 
 DEFINE_test_flag(int32, rbs_sleep_after_taking_metadata_ms, 0,
-                 "Sleep after tablet metadata was taken during remote boostrap session init.");
+    "Sleep after tablet metadata was taken during remote boostrap session init.");
+
+DEFINE_test_flag(bool, rbs_pause_after_wal_trim, false,
+    "Pause between computing the WAL segments to ship and moving the session's log "
+    "anchor to the front of that plan, to exercise the window in which a concurrent "
+    "GC pass could otherwise reclaim a segment the plan keeps.");
 
 DEFINE_RUNTIME_int32(rbs_init_max_number_of_retries, 5,
-                     "Max number of retries during remote bootstrap session initialisation, "
-                     "when metadata before and after checkpoint does not match. "
-                     "0 - to disable retry logic.");
+    "Max number of retries during remote bootstrap session initialisation, "
+    "when metadata before and after checkpoint does not match. "
+    "0 - to disable retry logic.");
+DEFINE_RUNTIME_bool(rbs_skip_stream_incremental_wal, true,
+    "When true, remote bootstrap serves WAL only up to the session's snapshot "
+    "boundary and leaves post-snapshot catch-up to UpdateConsensus.");
+TAG_FLAG(rbs_skip_stream_incremental_wal, advanced);
 
 DEFINE_test_flag(bool, rbs_fail_checkpoint, false,
-                 "Fail all attempts to checkpoint data when retries still exist.");
+    "Fail all attempts to checkpoint data when retries still exist.");
 
 
 namespace yb {
@@ -83,7 +94,6 @@ using std::vector;
 using std::string;
 
 using consensus::MinimumOpId;
-using strings::Substitute;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
 
@@ -136,7 +146,7 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   // Read the SuperBlock from disk.
   RETURN_NOT_OK(ReadSuperblockFromDisk());
   if (retry == 0 && FLAGS_TEST_rbs_sleep_after_taking_metadata_ms > 0) {
-    LOG(INFO) << "TEST: Sleeping after taking tablet metadata";
+    LOG_WITH_PREFIX(INFO) << "TEST: Sleeping after taking tablet metadata";
     std::this_thread::sleep_for(
         std::chrono::milliseconds(FLAGS_TEST_rbs_sleep_after_taking_metadata_ms));
   }
@@ -148,6 +158,15 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   auto last_logged_opid = tablet_peer_->GetLatestLogEntryOpId();
 
   auto tablet = VERIFY_RESULT(GetRunningTablet());
+
+  // Bail out with a terminal (non-TryAgain) status once the tablet starts shutting down. Otherwise
+  // CreateCheckpoint below keeps failing with TryAgain -- its read operation cannot be acquired
+  // because the pending-op counter is disabled (but not yet stopped) while StartShutdownStorages
+  // drains ops -- and the caller's retry loop would spin until the RPC times out, wedging tablet
+  // shutdown. See issue #32211.
+  if (tablet->IsShutdownRequested()) {
+    return STATUS(ShutdownInProgress, "Tablet is shutting down, aborting checkpoint creation");
+  }
 
   MonoTime now = MonoTime::Now();
   auto* kv_store = tablet_superblock_.mutable_kv_store();
@@ -170,7 +189,7 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
       if (AsString(tablet_superblock_) != AsString(new_superblock)) {
         auto msg = "Metadata changed while creating checkpoint";
         status = retry >= max_retries ? STATUS(IllegalState, msg) : STATUS(TryAgain, msg);
-        LOG(INFO) << status;
+        LOG_WITH_PREFIX(INFO) << status;
         return status;
       }
       if (PREDICT_FALSE(FLAGS_TEST_rbs_fail_checkpoint) && retry + 1 < max_retries) {
@@ -189,15 +208,16 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
 void RemoteBootstrapSession::RemoveCheckpointDir() {
   // Delete checkpoint directory.
   if (checkpoint_dir_.empty()) {
-    LOG(INFO) << "No checkpoint directory was created for this session";
+    LOG_WITH_PREFIX(INFO) << "No checkpoint directory was created for this session";
     return;
   }
   auto s = env()->DeleteRecursively(checkpoint_dir_);
   if (!s.ok()) {
-    LOG(WARNING) << Format("Unable to delete checkpoint directory $0: $1", checkpoint_dir_, s);
+    LOG_WITH_PREFIX(WARNING)
+        << Format("Unable to delete checkpoint directory $0: $1", checkpoint_dir_, s);
     return;
   }
-  LOG(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
+  LOG_WITH_PREFIX(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
 }
 
 Status RemoteBootstrapSession::InitBootstrapSession() {
@@ -235,7 +255,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   // attempt had to ship strictly more data than the last. Registering at rbs_min_op_idx (the
   // earliest op index any consumer still needs) breaks that cycle: GC can continue reclaiming
   // everything strictly below this floor while the session is alive.
-  string anchor_owner_token = Substitute("RemoteBootstrap-$0", session_id_);
+  string anchor_owner_token = Format("RemoteBootstrap-$0", session_id_);
   tablet_peer_->log_anchor_registry()->Register(
       rbs_min_op_idx, anchor_owner_token, &log_anchor_);
 
@@ -266,13 +286,14 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
       retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
       auto copy_result = tablet_peer_->CopyBootstrapStateTo(*retryable_requests_filepath_);
       if (!copy_result.ok()) {
-        LOG(WARNING) << "Copy retryable requests failed: " << s;
+        LOG_WITH_PREFIX(WARNING) << "Copy retryable requests failed: " << s;
         retryable_requests_filepath_.reset();
       } else {
         min_synced_op_id = *copy_result;
       }
     } else {
-      LOG(WARNING) << "Remote bootstrap session: flush retryable requests failed: " << s;
+      LOG_WITH_PREFIX(WARNING)
+          << "Remote bootstrap session: flush retryable requests failed: " << s;
     }
   }
 
@@ -284,7 +305,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   // incorrectly detect them as duplicate.
   if (min_synced_op_id) {
     auto log_msg = Format("wait for OP($0) to be synced", *min_synced_op_id);
-    LOG(INFO) << "Start to " << log_msg;
+    LOG_WITH_PREFIX(INFO) << "Start to " << log_msg;
     auto wait_result = tablet_peer_->log()->WaitForSafeOpIdToApply(*min_synced_op_id);
     if (wait_result.empty()) {
       return STATUS_FORMAT(TimedOut, "Failed to $0", log_msg);
@@ -296,6 +317,34 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   // not have a footer).
   RETURN_NOT_OK(tablet_peer_->log()->GetSegmentsSnapshot(&log_segments_));
 
+  // Pin the whole snapshot before computing the trim below, then raise the anchor to the front of
+  // the trimmed plan once it is known (see the UpdateRegistration further down).
+  //
+  // Why: the plan may keep segments that sit BELOW rbs_min_op_idx, kept by the time-based
+  // retention mirrored in the trim scan. The anchor registered at the top of this function does
+  // not reach those, and the time policy alone does not protect them either, because it expires:
+  // a segment aging out of the window between the trim scan and the anchor update would become
+  // GC-able exactly while it is part of our plan. That is not a survivable blip. The destination
+  // walks segment sequence numbers upward from the front of the plan and treats the first
+  // unresolvable one as end-of-log (RemoteBootstrapClient::DownloadWALs), so losing the FRONT of
+  // the plan makes it stop immediately and download NOTHING -- including the segments at/above
+  // rbs_min_op_idx that it actually needs -- without surfacing an error. (OpenLogSegment now
+  // fails loudly rather than silently for that case; this pin is what keeps it from arising.)
+  //
+  // The pin holds only across the in-memory trim computation below (no I/O, so microseconds) and
+  // is raised before this function returns -- it is NOT the bottom pin that used to make WAL pile
+  // up behind a slow RBS (see the Register() comment above), which sat at index 0 and spanned
+  // both the checkpoint phase and the whole data transfer.
+  int64_t snapshot_pin_index = rbs_min_op_idx;
+  for (const auto& segment : log_segments_) {
+    if (segment->HasFooter() && segment->footer().has_min_replicate_index()) {
+      snapshot_pin_index = std::min(snapshot_pin_index, segment->footer().min_replicate_index());
+      break;
+    }
+  }
+  RETURN_NOT_OK(tablet_peer_->log_anchor_registry()->UpdateRegistration(
+      snapshot_pin_index, &log_anchor_));
+
   // Compute the contiguous prefix of segments that the destination does not need directly from
   // the local `log_segments_` snapshot, instead of re-querying Log::GetSegmentsToGC. Driving the
   // trim off the frozen snapshot we just took eliminates a race with the GC thread: between
@@ -304,16 +353,31 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   // The two calls would then disagree about which segments exist, num_to_skip would under-count,
   // log_segments_ would retain references to a segment whose file is gone, and the destination's
   // later FetchData would hit WAL_SEGMENT_NOT_FOUND -- the exact vicious-cycle symptom this fix
-  // is meant to break.
+  // is meant to break. (With the pin above in place the snapshot is now also stable for the
+  // duration of the computation, so the decision below cannot be invalidated as it is being made.)
   //
-  // The predicate below mirrors the index-based portion of LogReader::GetSegmentPrefixNotIncluding
-  // (stop at the active footer-less segment; stop at the first segment that still contains entries
-  // at/above rbs_min_op_idx). rbs_min_op_idx already folds in the xrepl (CDCSDK/xCluster) retained
-  // index (computed above), so segments the destination will still need for change capture once it
-  // becomes leader are kept here. We do not replicate the other, purely source-side bumps that
-  // Log::GetSegmentsToGC layers on (time-based and min-segments retention, in-flight log-copy
-  // floor): each only ever makes GC retain *more* segments and covers ops no RBS destination needs,
-  // so omitting them at worst ships a few extra segments -- never too few.
+  // The predicate below mirrors what Log::GetSegmentsToGC would decide, evaluated on the frozen
+  // snapshot (it only reads segment footers and Log's atomics, never the live segment state):
+  //   - Index-based reachability: stop at the active footer-less segment; stop at the first
+  //     segment that still contains entries at/above rbs_min_op_idx. rbs_min_op_idx already folds
+  //     in the xrepl (CDCSDK/xCluster) retained index (computed above), so segments the
+  //     destination will still need for change capture once it becomes leader are kept here.
+  //   - Time-based retention: stop at the first segment still inside the wal_retention_secs()
+  //     window (Log::SegmentAgedOutOfTimeRetention is the same per-segment predicate GC's
+  //     ApplyTimeRetentionPolicy applies; close timestamps are non-decreasing across segments, so
+  //     the first in-window segment ends the skippable prefix). The window is an operator-visible
+  //     retention guarantee, not a durability requirement: it is what lets a temporarily-down
+  //     peer catch up from a future leader via the WAL instead of a full remote bootstrap
+  //     (FLAGS_log_min_seconds_to_retain), and it is the time-based safety margin CDCSDK/xCluster
+  //     layer over the xrepl index barrier (FLAGS_cdc_wal_retention_time_secs). A re-bootstrapped
+  //     replica must come back holding that window, or the tablet's effective retention silently
+  //     drops to the weakest replica's WAL tail after a leader change. See GH #32740.
+  //   - FLAGS_log_min_segments_to_retain, applied below together with the lazy-superblock-flush
+  //     clamp.
+  // Two GC-side details are deliberately NOT mirrored: the in-flight log-copy floor (it protects
+  // a source-local Log::CopyTo; the destination never replays those ops), and the max-time /
+  // min-disk-space overrides inside LogReader::GetSegmentPrefixNotIncluding (those only ever let
+  // GC delete MORE under disk pressure, so omitting them only makes RBS ship more, never less).
   size_t num_to_skip = 0;
   for (const auto& segment : log_segments_) {
     if (!segment->HasFooter()) {
@@ -322,31 +386,42 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
     if (segment->footer().max_replicate_index() >= rbs_min_op_idx) {
       break;
     }
+    if (!tablet_peer_->log()->SegmentAgedOutOfTimeRetention(*segment)) {
+      break;
+    }
     ++num_to_skip;
   }
 
-  // When lazy superblock flush is enabled on this tablet (currently colocated tables only),
-  // local bootstrap on the destination needs to replay at least
-  // kMinSegmentsToReplayWithLazySuperblockFlush trailing WAL segments to pick up
-  // committed-but-unflushed CHANGE_METADATA_OPs. GetEarliestNeededLogIndex already accounts
-  // for the actual MinUnflushedChangeMetadataOpId, but bound num_to_skip defensively so the
-  // destination always receives at least min(K, log_segments_.size()) trailing segments. The
-  // min() handles the case where the source itself has fewer than K segments -- e.g. the brief
-  // window during a segment rollover where the new active segment has been allocated and given
-  // a footer-less old active, but the new active has not yet been registered with LogReader
-  // via AppendEmptySegment -- by shipping everything we have rather than letting the snapshot
-  // scan trim further. See the long comment around kMinSegmentsToReplayWithLazySuperblockFlush
-  // in tablet_bootstrap.cc.
+  // Bound num_to_skip so the destination always receives a minimum number of trailing segments:
+  //   - FLAGS_log_min_segments_to_retain mirrors GC's own min-segments clamp (the max_to_delete
+  //     bound in Log::GetSegmentsToGCUnlocked), so a re-bootstrapped replica comes back with at
+  //     least as many trailing segments as the source's GC is required to leave behind.
+  //   - When lazy superblock flush is enabled on this tablet (currently colocated tables only),
+  //     local bootstrap on the destination needs to replay at least
+  //     kMinSegmentsToReplayWithLazySuperblockFlush trailing WAL segments to pick up
+  //     committed-but-unflushed CHANGE_METADATA_OPs. GetEarliestNeededLogIndex already accounts
+  //     for the actual MinUnflushedChangeMetadataOpId, but bound num_to_skip defensively. See the
+  //     long comment around kMinSegmentsToReplayWithLazySuperblockFlush in tablet_bootstrap.cc.
+  // The final min() against the snapshot size handles the case where the source itself has fewer
+  // segments than the floor -- e.g. the brief window during a segment rollover where the new
+  // active segment has been allocated and given a footer-less old active, but the new active has
+  // not yet been registered with LogReader via AppendEmptySegment -- by shipping everything we
+  // have rather than letting the snapshot scan trim further.
+  size_t min_segments_to_keep =
+      static_cast<size_t>(std::max(FLAGS_log_min_segments_to_retain, 0));
   if (tablet_peer_->tablet_metadata()->IsLazySuperblockFlushEnabled()) {
-    const size_t min_segments_to_keep = std::min(
-        tablet::kMinSegmentsToReplayWithLazySuperblockFlush, log_segments_.size());
-    num_to_skip = std::min(num_to_skip, log_segments_.size() - min_segments_to_keep);
+    min_segments_to_keep = std::max(
+        min_segments_to_keep, tablet::kMinSegmentsToReplayWithLazySuperblockFlush);
   }
+  min_segments_to_keep = std::min(min_segments_to_keep, log_segments_.size());
+  num_to_skip = std::min(num_to_skip, log_segments_.size() - min_segments_to_keep);
 
   LOG_WITH_PREFIX(INFO)
       << "Computed WAL segments to ship: keeping=" << log_segments_.size() - num_to_skip
       << " (skipping " << num_to_skip << " of " << log_segments_.size()
       << " on-disk segments below retained op index " << rbs_min_op_idx
+      << ", wal_retention_secs=" << tablet_peer_->log()->wal_retention_secs()
+      << ", min_segments_to_keep=" << min_segments_to_keep
       << ", lazy_sb_flush="
       << tablet_peer_->tablet_metadata()->IsLazySuperblockFlushEnabled()
       << ", last_logged_opid=" << last_logged_opid << ")";
@@ -356,6 +431,28 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
     num_to_skip--;
   }
 
+  if (!log_segments_.empty()) {
+    const auto& snapshot_tail_segment = VERIFY_RESULT(log_segments_.back()).get();
+    snapshot_max_wal_segment_seqno_ = snapshot_tail_segment->header().sequence_number();
+  }
+
+  // Holds the session open between the trim decision and the anchor update below, so a test can
+  // age segments out of the retention window and run a GC pass against the pinned snapshot.
+  TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(TEST_rbs_pause_after_wal_trim);
+
+  // log_anchor_index_ becomes the front of the trimmed plan. With time-based retention mirrored
+  // above, that front can sit BELOW rbs_min_op_idx (in-window segments), where the anchor
+  // registered at the top of this function does not reach; the snapshot pin taken before the trim
+  // scan is what has protected them until this point. The UpdateRegistration below moves the
+  // anchor UP from that pin to the front of the plan: the segments we decided to skip become
+  // GC-able again immediately, while the ones we are about to ship stay pinned for the rest of
+  // the session and cannot age out from under the destination mid-transfer.
+  //
+  // Note that an anchor pins by op index, so a plan front that has a footer but no
+  // min_replicate_index (a closed segment holding no REPLICATE entries) would leave
+  // log_anchor_index_ at last_logged_opid.index and the segment itself unpinned for the whole
+  // transfer. That is not believed to be reachable -- segments roll on size, so a closed segment
+  // has entries -- and OpenLogSegment fails loudly rather than silently if it ever happens.
   log_anchor_index_ = last_logged_opid.index;
   for (const auto& log_segment : log_segments_) {
     if (log_segment->HasFooter() && log_segment->footer().has_min_replicate_index()) {
@@ -504,7 +601,7 @@ Status RemoteBootstrapSession::ValidateDataId(const yb::tserver::DataIdPB& data_
     case DataIdPB::UNKNOWN:
       return STATUS(InvalidArgument, "Type not supported", data_id.ShortDebugString());
   }
-  LOG(FATAL) << "Invalid data id type: " << data_id.type();
+  LOG_WITH_PREFIX(FATAL) << "Invalid data id type: " << data_id.type();
 }
 
 Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) {
@@ -542,7 +639,7 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
     }
     default:
       info->error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
+      return STATUS_FORMAT(InvalidArgument, "Invalid request type $0", data_id.type());
   }
   DCHECK(info->client_maxlen == 0 ||
          info->data.size() <= implicit_cast<size_t>(info->client_maxlen))
@@ -561,7 +658,7 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDat
     info->data_size = opened_log_segment_file_size_;
     file = opened_log_segment_file_;
   }
-  RETURN_NOT_OK(ReadFileChunkToBuf(file.get(), Substitute("log segment $0", segment_seqno), info));
+  RETURN_NOT_OK(ReadFileChunkToBuf(file.get(), Format("log segment $0", segment_seqno), info));
 
   // Note: We do not eagerly close log segment files, since we share ownership
   // of the LogSegment objects with the Log itself.
@@ -586,8 +683,8 @@ Status RemoteBootstrapSession::GetFilePiece(
   auto file_path = JoinPathSegments(path, file_name);
   if (!env->FileExists(file_path)) {
     info->error_code = RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND;
-    return STATUS(NotFound, Substitute("Unable to find RocksDB file $0 in directory $1",
-                                       file_name, path));
+    return STATUS(NotFound, Format("Unable to find RocksDB file $0 in directory $1",
+                                   file_name, path));
   }
 
   std::unique_ptr<RandomAccessFile> readable_file;
@@ -600,7 +697,7 @@ Status RemoteBootstrapSession::GetFilePiece(
           << ", inode: " << inode;
 
   RETURN_NOT_OK(ReadFileChunkToBuf(
-      readable_file.get(), Substitute("rocksdb file $0", file_name), info));
+      readable_file.get(), Format("rocksdb file $0", file_name), info));
 
   return Status::OK();
 }
@@ -633,7 +730,7 @@ Status RemoteBootstrapSession::ReadSuperblockFromDisk(tablet::RaftGroupReplicaSu
   RETURN_NOT_OK(metadata->Flush(tablet::OnlyIfDirty::kTrue));
   RETURN_NOT_OK_PREPEND(
       metadata->ReadSuperBlockFromDisk(out ? out : &tablet_superblock_),
-      Substitute("Unable to access superblock for tablet $0", tablet_id));
+      Format("Unable to access superblock for tablet $0", tablet_id));
 
   return Status::OK();
 }
@@ -657,6 +754,16 @@ Status RemoteBootstrapSession::InitSources() {
 
 Status RemoteBootstrapSession::OpenLogSegment(
     uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code) {
+  // Note(#29963): If we ever fix the slow intent apply problem with increasing num sst files
+  // or enable compaction during tablet bootstrap, we can go back to shipping incremental WALs.
+  if (PREDICT_TRUE(FLAGS_rbs_skip_stream_incremental_wal) &&
+      segment_seqno > snapshot_max_wal_segment_seqno_) {
+    *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
+    return STATUS_FORMAT(
+        NotFound,
+        "WAL segment $0 is past snapshot boundary ($1) for this remote bootstrap session",
+        segment_seqno, snapshot_max_wal_segment_seqno_);
+  }
   auto active_seqno = tablet_peer_->log()->active_segment_sequence_number();
   auto log_segment_result = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
   // Usually active log segment is extended, while sent of the wire. So we cannot send next segment,
@@ -667,6 +774,29 @@ Status RemoteBootstrapSession::OpenLogSegment(
   }
   if (!log_segment_result.ok()) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
+    // Distinguish "fell off the bottom of the log" from "walked past the end of the log".
+    //
+    // The destination requests segments by sequence number starting at the front of the plan and
+    // walking upward, and uses NotFound as its end-of-log terminator: on NotFound it stops
+    // downloading and reports success (RemoteBootstrapClient::DownloadWALs). That is correct for a
+    // seqno above the active segment, but if a segment BELOW the active one is unresolvable it was
+    // GC'd out from under this session, and answering NotFound would make the destination silently
+    // truncate its WAL download there -- when the hole is at the front of the plan, it would come
+    // back having downloaded no WAL at all. Segment sequence numbers are contiguous and GC only
+    // ever reclaims a prefix, so seqno < active_seqno is exactly that case. Fail with a different
+    // status so the destination aborts the download and retries the bootstrap with a fresh
+    // session, which recomputes the plan against what actually survives.
+    //
+    // The status type is what the destination keys off (it is reconstructed from the status PB by
+    // ExtractRemoteError); the error code stays WAL_SEGMENT_NOT_FOUND, so no protocol change and
+    // no dependency on the destination being upgraded.
+    if (segment_seqno < active_seqno) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Log segment $0 was garbage collected on the source mid-session (active segment is "
+          "$1): $2",
+          segment_seqno, active_seqno, log_segment_result.status());
+    }
     return STATUS_FORMAT(
         NotFound, "Log segment $0 not found: $1", segment_seqno, log_segment_result.status());
   }
@@ -742,7 +872,7 @@ void RemoteBootstrapSession::InitRateLimiter() {
       if (nsessions > 0) {
         return FLAGS_remote_bootstrap_rate_limit_bytes_per_sec / nsessions;
       } else {
-        LOG(DFATAL) << "Invalid number of sessions: " << nsessions;
+        LOG_WITH_PREFIX(DFATAL) << "Invalid number of sessions: " << nsessions;
         return FLAGS_remote_bootstrap_rate_limit_bytes_per_sec;
       }
     });

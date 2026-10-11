@@ -17,6 +17,8 @@
 #include <unordered_set>
 
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/vector_index/ann_validation.h"

@@ -1,6 +1,9 @@
 is_cloud={{ is_cloud | default(false) }}
 is_yb_prebuilt_image={{ is_yb_prebuilt_image | default(false) }}
 bin_path="/usr/local/bin"
+# Hosts with umask 0027 create root-owned files as 640; yugabyte (and user
+# systemd) must be able to read /etc/systemd/{system,user}.conf and similar.
+umask 022
 
 {% if os_distribution == "ubuntu" %}
 # Ubuntu's apport service rewrites kernel.core_pattern when it starts, clobbering
@@ -31,14 +34,17 @@ if test ! -f /etc/security/limits.d/20-nproc.conf; then
 else
   echo "File /etc/security/limits.d/20-nproc.conf already exists."
 fi
+chmod 644 /etc/security/limits.d/20-nproc.conf
 # Replace with the desired nproc limit regardless of the current value.
 sed -i 's/\(*[[:space:]]*soft[[:space:]]*nproc[[:space:]]*\)[0-9]\+/\1{{ nproc_limit }}/' /etc/security/limits.d/20-nproc.conf
 
 
-# Determine the PLATFORM_ID
+# Determine the PLATFORM_ID e.g platform:el8
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
+# Extract the EL version from the platform_id e.g 8
+platform_el_version=$(echo "$platform_id" | grep -oP '(?<=platform:el)\d+(?=\D|$)' || echo "0")
 
-if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
+if [[ "$platform_el_version" -ge 8 ]]; then
   # Check and set DefaultLimitNOFILE in /etc/systemd/system.conf
   if ! grep -q "^DefaultLimitNOFILE={{ fd_limit }}" /etc/systemd/system.conf; then
     echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/system.conf
@@ -48,6 +54,8 @@ if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9"
   if ! grep -q "^DefaultLimitNOFILE={{ fd_limit }}" /etc/systemd/user.conf; then
     echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/user.conf
   fi
+  # chmod even when settings already exist (AMI may ship these as 640).
+  chmod 644 /etc/systemd/system.conf /etc/systemd/user.conf
 else
   echo "el8/9 not detected, not updating file limits"
 fi
@@ -133,6 +141,7 @@ EOF
     ! grep -q "^vm.max_map_count=" "/etc/sysctl.d/99-vm-max-map-count.conf" 2>/dev/null; then
     echo "vm.max_map_count={{ vm_max_map_count }}" | \
       sudo tee -a /etc/sysctl.d/99-vm-max-map-count.conf > /dev/null
+    chmod 644 /etc/sysctl.d/99-vm-max-map-count.conf
   fi
   # Set max map count
   sysctl -w vm.max_map_count="{{ vm_max_map_count }}"
@@ -199,11 +208,12 @@ echo "systemd-journald restarted successfully."
 
 # For earlyoom MEMLOCK requirement
 if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/system.conf; then
-    echo 'DefaultLimitMEMLOCK=500000' | tee -a /etc/systemd/system.conf
+    echo 'DefaultLimitMEMLOCK=50M' | tee -a /etc/systemd/system.conf
 fi
 if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/user.conf; then
-    echo 'DefaultLimitMEMLOCK=500000' | tee -a /etc/systemd/user.conf
+    echo 'DefaultLimitMEMLOCK=50M' | tee -a /etc/systemd/user.conf
 fi
+chmod 644 /etc/systemd/system.conf /etc/systemd/user.conf
 
 # Enable linger for user-level systemd services
 {% if use_system_level_systemd == 'False' %}
@@ -216,10 +226,7 @@ if ! grep -qxF "${xdg_runtime_env}" {{ yb_user_home }}/.bashrc >/dev/null 2>&1; 
     su - {{ yb_user }} -c "echo '${xdg_runtime_env}' >> {{ yb_user_home }}/.bashrc"
 fi
 
-# Determine the PLATFORM_ID
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
-
-if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
+if [[ "$platform_el_version" -ge 8 ]]; then
     # Stop user systemd service
     su - {{ yb_user }} -c "XDG_RUNTIME_DIR=$runtime_dir systemctl --user exit >/dev/null 2>&1" || true
     

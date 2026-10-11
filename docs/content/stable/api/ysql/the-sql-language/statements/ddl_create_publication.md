@@ -77,5 +77,5 @@ yugabyte=# select * from pg_publication;
 
 ## See also
 
-- [`ALTER PUBLICATION`](../ddl_alter_publication)
-- [`DROP PUBLICATION`](../ddl_drop_publication)
+- [ALTER PUBLICATION](../ddl_alter_publication)
+- [DROP PUBLICATION](../ddl_drop_publication)

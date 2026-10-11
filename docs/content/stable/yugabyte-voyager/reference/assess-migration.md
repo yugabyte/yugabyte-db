@@ -37,15 +37,6 @@ The valid *arguments* for assess migration are described in the following table:
 
 | :--- | :-------- | :---------- |
 
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-assess-migration:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-
 | --assessment-metadata-dir |
 
 ```yaml{.nocopy}
@@ -236,11 +227,36 @@ log-level:
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
+
 | --start-clean | — | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
 
 | -h, --help | — |Command line help. |
 | -y, --yes | — |Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -c, --config-file | — | Path to a [configuration file](../configuration-file). |
+
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+assess-migration:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 
@@ -285,6 +301,8 @@ The valid *arguments* for assess migration bulk are described in the following t
 | --start-clean | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
 | -y, --yes | Assume answer to all prompts during migration. <br>Default: false |
 | -l, --log-level | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+| --log-max-size-mb | Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+| --log-max-backups | Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 
 ### Example
 

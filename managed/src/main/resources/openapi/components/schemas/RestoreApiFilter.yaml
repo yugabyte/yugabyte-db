@@ -1,0 +1,51 @@
+title: RestoreApiFilter
+description: Optional filter for listing restores.
+type: object
+properties:
+  date_range_start:
+    description: Include restores created on or after this time.
+    type: string
+    format: date-time
+  date_range_end:
+    description: Include restores created on or before this time.
+    type: string
+    format: date-time
+  states:
+    description: Restore states to include.
+    type: array
+    items:
+      $ref: "./RestoreState.yaml"
+  universe_name_list:
+    description: Target universe names to include.
+    type: array
+    items:
+      type: string
+  source_universe_name_list:
+    description: Source universe names to include.
+    type: array
+    items:
+      type: string
+  storage_config_uuid_list:
+    description: Storage config UUIDs to include.
+    type: array
+    items:
+      type: string
+      format: uuid
+  universe_uuid_list:
+    description: Target universe UUIDs to include.
+    type: array
+    items:
+      type: string
+      format: uuid
+  restore_uuid_list:
+    description: Restore UUIDs to include.
+    type: array
+    items:
+      type: string
+      format: uuid
+  only_show_deleted_source_universes:
+    description: 'When true, include restores whose source universe has been deleted.'
+    type: boolean
+  show_hidden:
+    description: 'When true, include hidden restores.'
+    type: boolean

@@ -9,4 +9,8 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
-\set Pnext :iter_Q2
+
+-- Small response pages make the execution metrics of the plan variants
+-- distinct without growing the tables: at the default page size their rows
+-- come back in one read request either way.
+SET yb_fetch_row_limit = 16;

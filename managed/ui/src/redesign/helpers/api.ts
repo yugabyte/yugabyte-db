@@ -83,6 +83,7 @@ export const CONTINUOUS_BACKUP_QUERY_KEY = 'continuousBackup';
 
 export const taskQueryKey = {
   ALL: ['task'],
+  detail: (taskUuid: string) => [...taskQueryKey.ALL, 'detail', taskUuid],
   customer: (customerUuid: string) => [...taskQueryKey.ALL, 'customer', customerUuid],
   universe: (universeUuid: string) => [...taskQueryKey.ALL, 'universe', universeUuid],
   provider: (providerUuid: string) => [...taskQueryKey.ALL, 'provider', providerUuid],
@@ -122,6 +123,11 @@ export const universeQueryKey = {
     ...universeQueryKey.detail(universeUuid),
     'namespaces'
   ],
+  stateTransition: (universeUuid: string | undefined, state?: string | null) => [
+    ...universeQueryKey.detail(universeUuid),
+    'stateTransition',
+    state ?? null
+  ],
   detailsV2: (universeUuid: string | undefined) => [
     ...universeQueryKey.ALL,
     'detailsV2',
@@ -135,6 +141,17 @@ export const runtimeConfigQueryKey = {
   customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid],
   universeScope: (universeUuid: string) => [...runtimeConfigQueryKey.ALL, 'universe', universeUuid],
   providerScope: (providerUuid: string) => [...runtimeConfigQueryKey.ALL, 'provider', providerUuid]
+};
+
+export const supportBundleQueryKey = {
+  ALL: ['supportBundle'],
+  list: (universeUuid: string, useV2Api: boolean, page: number) => [
+    ...supportBundleQueryKey.ALL,
+    'list',
+    universeUuid,
+    useV2Api,
+    page
+  ]
 };
 
 export const instanceTypeQueryKey = {
@@ -380,6 +397,27 @@ export interface GetPagedCustomerTaskResponse {
   totalCount?: number;
 }
 
+/**
+ * `GET /tasks/{tUUID}` payload. Compared to `Task` type: there is no `id` or `typeName`, and
+ * `target` is the target's name rather than its type.
+ */
+export interface TaskStatus {
+  title: string;
+  createTime: string;
+  completionTime?: string;
+  target: string;
+  targetUUID: string;
+  type: string;
+  status: TaskState;
+  percent: number;
+  abortable: boolean;
+  retryable: boolean;
+  canRollback: boolean;
+  originalTaskUUID?: string;
+  userEmail?: string;
+  correlationId?: string;
+}
+
 class ApiService {
   private cancellers: Record<string, Canceler> = {};
 
@@ -424,6 +462,19 @@ class ApiService {
       return axios.get<Universe>(requestUrl).then((resp) => resp.data);
     }
     return Promise.reject('Failed to fetch universe. No universe UUID provided.');
+  };
+
+  fetchStateTransition = (
+    universeUUID: string | undefined,
+    state?: string | null
+  ): Promise<unknown> => {
+    if (universeUUID) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUUID}/state_transition`;
+      return axios
+        .get(requestUrl, { params: state ? { state } : undefined })
+        .then((resp) => resp.data);
+    }
+    return Promise.reject('Failed to fetch state transition. No universe UUID provided.');
   };
 
   fetchUniverseNamespaces = (universeUuid: string | undefined): Promise<UniverseNamespace[]> => {
@@ -833,6 +884,11 @@ class ApiService {
       .then((response) => response.data);
   };
 
+  fetchTaskStatus = (taskUuid: string): Promise<TaskStatus> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}`;
+    return axios.get<TaskStatus>(requestUrl).then((response) => response.data);
+  };
+
   fetchPagedCustomerTasks = (
     getPagedCustomerTaskRequest: GetPagedCustomerTaskRequest
   ): Promise<GetPagedCustomerTaskResponse> => {
@@ -893,11 +949,6 @@ class ApiService {
   importReleases = (payload: any) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
     return axios.post(requestUrl, payload).then((res) => res.data);
-  };
-
-  retryTask = (taskUuid: string) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}/retry`;
-    return axios.post(requestUrl).then((response: any) => response.data);
   };
 
   rollbackTask = (taskUuid: string) => {

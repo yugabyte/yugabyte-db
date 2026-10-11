@@ -28,6 +28,7 @@
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 

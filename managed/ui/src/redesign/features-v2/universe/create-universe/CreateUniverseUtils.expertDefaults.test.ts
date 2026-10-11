@@ -6,12 +6,17 @@ import {
   effectiveUseDedicatedNodes,
   getAZCount,
   getInferredOutageCount,
+  getExpertAvailabilityZonesOrEmpty,
   getExpertNodesStepDefaultPlacement,
+  getExpertRfOptions,
+  getGuidedNodesStepReplicationFactor,
   getNodeCount,
   getNodeSpec,
+  getPlacementRegions,
   inferResilience,
   mapCreateUniversePayload,
-  reduceExpertNodeCountsToAtMostRf
+  reduceExpertNodeCountsToAtMostRf,
+  toExpertResilienceForDefaults
 } from './CreateUniverseUtils';
 import type { createUniverseFormProps } from './CreateUniverseContext';
 import type { OtherAdvancedProps } from './steps/advanced-settings/dtos';
@@ -69,6 +74,20 @@ function expertBaseRegionLevel(regions: Region[], resilienceFactor = 1) {
   };
 }
 
+describe('getExpertRfOptions', () => {
+  it('returns base options when flag is off', () => {
+    expect(getExpertRfOptions(false)).toEqual([1, 3, 5, 7]);
+  });
+
+  it('includes 9 when flag is on', () => {
+    expect(getExpertRfOptions(true)).toEqual([1, 3, 5, 7, 9]);
+  });
+
+  it('preserves RF 9 in options when current RF is 9 and flag is off', () => {
+    expect(getExpertRfOptions(false, 9)).toEqual([1, 3, 5, 7, 9]);
+  });
+});
+
 describe('getExpertNodesStepDefaultPlacement', () => {
   it('returns null for guided mode', () => {
     expect(
@@ -97,9 +116,44 @@ describe('getExpertNodesStepDefaultPlacement', () => {
     ).toBeNull();
   });
 
-  it('returns null when region count is outside Figma table (e.g. 8)', () => {
+  it('applies multi-region defaults for NONE fault tolerance (edit RF=1)', () => {
+    const regions = [makeRegion('a', 3), makeRegion('b', 3), makeRegion('c', 3)];
+    const out = getExpertNodesStepDefaultPlacement({
+      ...expertBase(regions),
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NONE
+    } as any);
+    expect(out).not.toBeNull();
+    expect(Object.keys(out!.availabilityZones).sort()).toEqual(['a', 'b', 'c']);
+    expect(out!.replicationFactor).toBe(3);
+  });
+
+  it('returns null when region count is outside Figma table (e.g. 8) without RF9 flag', () => {
     const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 4));
     expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any)).toBeNull();
+    expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any, false)).toBeNull();
+  });
+
+  it('8 regions with RF9 flag: RF 9, 8 AZs, total nodes >= 9', () => {
+    const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true);
+    expect(out).not.toBeNull();
+    expect(out!.replicationFactor).toBe(9);
+    expect(getAZCount(out!.availabilityZones)).toBe(8);
+    expect(getNodeCount(out!.availabilityZones)).toBeGreaterThanOrEqual(9);
+  });
+
+  it('9 regions with RF9 flag: RF 9, 9 AZs, total nodes >= 9', () => {
+    const regions = Array.from({ length: 9 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true);
+    expect(out).not.toBeNull();
+    expect(out!.replicationFactor).toBe(9);
+    expect(getAZCount(out!.availabilityZones)).toBe(9);
+    expect(getNodeCount(out!.availabilityZones)).toBeGreaterThanOrEqual(9);
+  });
+
+  it('returns null for 10 regions even with RF9 flag', () => {
+    const regions = Array.from({ length: 10 }, (_, i) => makeRegion(`r${i}`, 2));
+    expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any, true)).toBeNull();
   });
 
   it('1 region, >2 AZs: RF 3, up to 3 AZs, total nodes >= 3', () => {
@@ -202,6 +256,65 @@ describe('getExpertNodesStepDefaultPlacement', () => {
       expect(out!.availabilityZones.r1.length).toBe(1);
       expect(out!.availabilityZones.r2.length).toBe(1);
     });
+  });
+});
+
+describe('toExpertResilienceForDefaults / getExpertAvailabilityZonesOrEmpty', () => {
+  it('coerces NODE_LEVEL to AZ_LEVEL and forces expert form mode', () => {
+    const out = toExpertResilienceForDefaults({
+      ...expertBase([makeRegion('a', 3), makeRegion('b', 3)], 5),
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
+      [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED
+    } as any);
+    expect(out[RESILIENCE_FORM_MODE]).toBe(ResilienceFormMode.EXPERT_MODE);
+    expect(out[FAULT_TOLERANCE_TYPE]).toBe(FaultToleranceType.AZ_LEVEL);
+    expect(out[RESILIENCE_FACTOR]).toBe(5);
+  });
+
+  it('never collapses NODE_LEVEL expert empty zones to a single region (no guided assign)', () => {
+    const regions = [makeRegion('us-east-2', 3), makeRegion('eu-west-1', 3), makeRegion('us-west-1', 3)];
+    const out = getExpertAvailabilityZonesOrEmpty({
+      ...expertBase(regions, 5),
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL
+    } as any);
+    expect(Object.keys(out.availabilityZones).sort()).toEqual([
+      'eu-west-1',
+      'us-east-2',
+      'us-west-1'
+    ]);
+    expect(out.replicationFactor).toBe(3);
+  });
+
+  it('returns empty zones when expert tables do not apply (e.g. 8 regions without RF9 flag)', () => {
+    const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 4));
+    const out = getExpertAvailabilityZonesOrEmpty(expertBase(regions, 7) as any);
+    expect(out.availabilityZones).toEqual({});
+    expect(out.replicationFactor).toBe(7);
+  });
+
+  it('fills 8-region defaults when RF9 flag is on', () => {
+    const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 2));
+    const out = getExpertAvailabilityZonesOrEmpty(expertBase(regions, 7) as any, true);
+    expect(out.replicationFactor).toBe(9);
+    expect(getAZCount(out.availabilityZones)).toBe(8);
+  });
+
+  it('getPlacementRegions without zones skips guided assign in expert mode', () => {
+    const regions = [makeRegion('r0', 3), makeRegion('r1', 3), makeRegion('r2', 3)];
+    const regionList = getPlacementRegions({
+      ...expertBase(regions, 5),
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL
+    } as any);
+    // Expert with no zones: empty placement (no guided single-region fill).
+    expect(regionList).toEqual([]);
+  });
+});
+
+describe('GUIDED→EXPERT FT degree to RF', () => {
+  it('converts guided FT degree to raw RF via getGuidedNodesStepReplicationFactor', () => {
+    expect(getGuidedNodesStepReplicationFactor(FaultToleranceType.AZ_LEVEL, 1)).toBe(3);
+    expect(getGuidedNodesStepReplicationFactor(FaultToleranceType.NODE_LEVEL, 2)).toBe(5);
+    expect(getGuidedNodesStepReplicationFactor(FaultToleranceType.NONE, 1)).toBe(1);
   });
 });
 
@@ -535,6 +648,65 @@ describe('getNodeSpec / mapCreateUniversePayload (K8s as dedicated)', () => {
     expect(spec.k8s_tserver_resource_spec?.cpu_core_count).toBe(4);
     expect(spec.k8s_tserver_resource_spec?.memory_gib).toBe(8);
     expect(spec.k8s_master_resource_spec?.cpu_core_count).toBe(4);
+  });
+
+  it('getNodeSpec includes master.storage_spec for K8s from deviceInfo when keepMasterTserverSame', () => {
+    const form = k8sForm();
+    form.instanceSettings!.deviceInfo = {
+      numVolumes: 1,
+      volumeSize: 50,
+      storageClass: 'standard',
+      storageType: null,
+      mountPoints: null,
+      diskIops: null,
+      throughput: null
+    };
+    const spec = getNodeSpec(form);
+    expect(spec.storage_spec).toEqual({
+      num_volumes: 1,
+      volume_size: 50,
+      storage_class: 'standard'
+    });
+    expect(spec.master?.storage_spec).toEqual({
+      num_volumes: 1,
+      volume_size: 50,
+      storage_class: 'standard'
+    });
+  });
+
+  it('getNodeSpec uses masterDeviceInfo for K8s master.storage_spec when different from tserver', () => {
+    const form = k8sForm();
+    form.instanceSettings!.keepMasterTserverSame = false;
+    form.instanceSettings!.deviceInfo = {
+      numVolumes: 1,
+      volumeSize: 100,
+      storageClass: 'ssd',
+      storageType: null,
+      mountPoints: null,
+      diskIops: null,
+      throughput: null
+    };
+    form.instanceSettings!.masterDeviceInfo = {
+      numVolumes: 1,
+      volumeSize: 50,
+      storageClass: 'standard',
+      storageType: null,
+      mountPoints: null,
+      diskIops: null,
+      throughput: null
+    };
+    form.instanceSettings!.masterK8SNodeResourceSpec = { cpuCoreCount: 2, memoryGib: 4 };
+    const spec = getNodeSpec(form);
+    expect(spec.storage_spec).toEqual({
+      num_volumes: 1,
+      volume_size: 100,
+      storage_class: 'ssd'
+    });
+    expect(spec.master?.storage_spec).toEqual({
+      num_volumes: 1,
+      volume_size: 50,
+      storage_class: 'standard'
+    });
   });
 
   it('mapCreateUniversePayload sets dedicated_nodes true for K8s when toggle is false', () => {

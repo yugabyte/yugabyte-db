@@ -9,7 +9,6 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -86,6 +85,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE = "2026.1.0.0-b1";
   public static String MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW = "2.29.0.0-b603";
   public static String MIN_VERSION_FULL_MOVE_SUPPORT_STABLE = "2026.1.0.0-b0";
+  public static String MIN_VERSION_NON_ROOT_DB_PREVIEW = "2.31.0.0-b0";
+  public static String MIN_VERSION_NON_ROOT_DB_STABLE = "2026.1.2.0-b0";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -148,6 +149,80 @@ public class KubernetesUtil {
             MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW,
             true)
         >= 0;
+  }
+
+  public static boolean isNonRootDbByDefault(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_NON_ROOT_DB_STABLE,
+            MIN_VERSION_NON_ROOT_DB_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  /** The UID the DB containers will actually run as, derived from a set of Helm values. */
+  @Nullable
+  public static Integer getEffectiveDbRunAsUser(Map<String, Object> helmValues) {
+    if (MapUtils.isEmpty(helmValues)) {
+      return null;
+    }
+    if (isSecurityContextEnabled(helmValues, "containerSecurityContext")) {
+      return getRunAsUser(helmValues, "containerSecurityContext");
+    }
+    boolean isOcp = getNestedBoolean(helmValues, "ocpCompatibility", "enabled");
+    if (isOcp) {
+      return null;
+    }
+    if (isSecurityContextEnabled(helmValues, "podSecurityContext")) {
+      return getRunAsUser(helmValues, "podSecurityContext");
+    }
+    // No securityContext rendered: the containers run as the image's USER, which is root for the
+    // standard images. UBI images default to 10001, but YBA always enables podSecurityContext for
+    // those, so they are handled above.
+    return 0;
+  }
+
+  private static boolean isSecurityContextEnabled(Map<String, Object> values, String key) {
+    return getNestedBoolean(values, key, "enabled");
+  }
+
+  @Nullable
+  private static int getRunAsUser(Map<String, Object> values, String key) {
+    Object runAsUser = getNested(values, key, "runAsUser");
+    if (runAsUser instanceof Number) {
+      return ((Number) runAsUser).intValue();
+    }
+    if (runAsUser instanceof String && StringUtils.isNumeric((String) runAsUser)) {
+      return Integer.parseInt((String) runAsUser);
+    }
+    throw new IllegalStateException(
+        String.format(
+            "%s is enabled but %s.runAsUser is not a usable value in the helm values: %s (%s)",
+            key,
+            key,
+            runAsUser,
+            runAsUser == null ? "absent" : runAsUser.getClass().getSimpleName()));
+  }
+
+  private static boolean getNestedBoolean(Map<String, Object> values, String key, String subKey) {
+    Object value = getNested(values, key, subKey);
+    if (value == null) {
+      return false;
+    }
+    if (value instanceof Boolean) {
+      return (Boolean) value;
+    }
+    throw new IllegalStateException(
+        String.format(
+            "Expected %s.%s to be a boolean in the helm values, got %s (%s)",
+            key, subKey, value, value.getClass().getSimpleName()));
+  }
+
+  @Nullable
+  @SuppressWarnings("unchecked")
+  private static Object getNested(Map<String, Object> values, String key, String subKey) {
+    Object nested = values.get(key);
+    return nested instanceof Map ? ((Map<String, Object>) nested).get(subKey) : null;
   }
 
   // ToDo: Old k8s provider needs to be fixed, so that we can get
@@ -698,6 +773,16 @@ public class KubernetesUtil {
         + "-";
   }
 
+  public static String getDataVolumeName(String helmReleaseName, boolean newNamingStyle) {
+    if (!newNamingStyle) {
+      return "datadir0";
+    }
+    // trunc then trimSuffix, matching the helm pipeline order: truncation can expose a trailing
+    // "-".
+    String fullName = StringUtils.removeEnd(StringUtils.substring(helmReleaseName, 0, 43), "-");
+    return fullName + "-datadir0";
+  }
+
   /**
    * Replaces the placeholders from the template with given values and return the resultant string.
    *
@@ -960,7 +1045,8 @@ public class KubernetesUtil {
       UniverseDefinitionTaskParams universeParams, ClusterType clusterType) {
     Set<String> namespaces = new HashSet<>();
     for (Cluster cluster : universeParams.clusters) {
-      if (cluster.userIntent.providerType != CloudType.kubernetes) {
+
+      if (!Util.isKubernetesBased(cluster)) {
         continue;
       }
       if ((clusterType != null) && (clusterType != cluster.clusterType)) {
@@ -1007,7 +1093,7 @@ public class KubernetesUtil {
       azsOverridesStr = new HashMap<>();
     }
     for (Cluster cluster : universeParams.clusters) {
-      if (cluster.userIntent.providerType != CloudType.kubernetes) {
+      if (!Util.isKubernetesBased(cluster)) {
         continue;
       }
       if ((clusterType != null) && (clusterType != cluster.clusterType)) {
@@ -1780,15 +1866,15 @@ public class KubernetesUtil {
         continue;
       }
       DeviceInfo oldDeviceInfo, newDeviceInfo;
-      oldDeviceInfo = currCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
-      newDeviceInfo = newCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      oldDeviceInfo = currCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      newDeviceInfo = newCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.TSERVER);
       if (!(newDeviceInfo == null
           || oldDeviceInfo.equals(newDeviceInfo)
           || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
         return true;
       }
-      oldDeviceInfo = currCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
-      newDeviceInfo = newCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      oldDeviceInfo = currCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      newDeviceInfo = newCluster.userIntent.evaluateDeviceInfoForAz(az.uuid, ServerType.MASTER);
       if (!(newDeviceInfo == null
           || oldDeviceInfo.equals(newDeviceInfo)
           || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {

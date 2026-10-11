@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,6 +38,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
   private static final String S3 = Util.S3;
+  private static final String OCI = Util.OCI;
   private static final String NFS = Util.NFS;
 
   private final CloudUtilFactory cloudUtilFactory;
@@ -85,21 +87,25 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
             case S3:
             case GCS:
             case AZ:
+            case OCI:
               for (Backup backup : backupList) {
                 boolean success = true;
                 try {
                   CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(customerConfig.getName());
                   backupLocationsMap = BackupUtil.getBackupLocations(backup);
+                  // getDataObject() deserializes afresh on every call, so resolve the config once
+                  // per backup and stamp it: a federated config carries no credentials of its own,
+                  // and without the identity YBA cannot reach the bucket to remove the objects.
+                  CustomerConfigStorageData configData =
+                      (CustomerConfigStorageData) customerConfig.getDataObject();
+                  backupHelper.applyCrossCloudFederationFromBackup(configData, backup);
                   success =
                       success
                           && cloudUtil.deleteKeyIfExists(
-                              customerConfig.getDataObject(),
+                              configData,
                               backupLocationsMap.get(YbcBackupUtil.DEFAULT_REGION_STRING).get(0));
                   if (success) {
-                    success =
-                        success
-                            && cloudUtil.deleteStorage(
-                                customerConfig.getDataObject(), backupLocationsMap);
+                    success = success && cloudUtil.deleteStorage(configData, backupLocationsMap);
                   }
                 } catch (Exception e) {
                   success = false;

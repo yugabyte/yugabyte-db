@@ -128,8 +128,10 @@ extern void YbHandleSetSessionParam(int yb_client_id);
  *       logical connection via the YSQL Connection Manager.
  * The authentication can happen via the `AUTHENTICATION PASSTHROUGH REQUEST`
  * packet or the lightweight authentication backend.
+ *
+ * Sets *database_oid to the logical client's database when it returns 0.
  */
-extern int  YbCreateClientId();
+extern int  YbCreateClientId(Oid *database_oid);
 extern void YbCreateClientIdWithDatabaseOid(Oid database_oid);
 
 extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);

@@ -12,7 +12,7 @@ import java.time.Duration;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetLoadMovePercentResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class WaitForLeaderBlacklistCompletion extends AbstractTaskBase {
@@ -54,7 +54,7 @@ public class WaitForLeaderBlacklistCompletion extends AbstractTaskBase {
     long startTime = System.currentTimeMillis();
     boolean failOnTimeout =
         confGetter.getConfForScope(universe, UniverseConfKeys.leaderBlacklistFailOnTimeout);
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
 
       while (((double) 100 - percent) > epsilon) {

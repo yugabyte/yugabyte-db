@@ -10,7 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/ddl_mode-test-util.h"
+
 #include "yb/tserver/tablet_service.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_fail_alter_schema_after_abort_transactions);
@@ -22,6 +25,10 @@ class AlterSchemaAbortTxnTest : public PgMiniTestBase {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_schema_after_abort_transactions) = true;
+    // The alter must reach the tablet's abort-active-transactions path while a conflicting
+    // transaction is open. With table locks it instead blocks on the object lock until the
+    // transaction commits, which never happens here.
+    ToggleDDLMode(/* use_legacy = */ true);
     PgMiniTestBase::SetUp();
   }
 };

@@ -55,7 +55,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
           false);
 
       // Generate new nodeDetails from existing node.
-      NodeDetails newNode = PlacementInfoUtil.createToBeAddedNode(currentNode);
+      NodeDetails newNode = PlacementInfoUtil.createToBeAddedNode(universe, currentNode);
       // Set the replacement node to toBeRemoved state.
       setToBeRemovedState(currentNode);
 
@@ -126,6 +126,15 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       // is down externally for >15 minutes and the master leader then marks the node down for
       // real. Then that down TServer will timeout this task and universe expansion will fail.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Configure cross-cloud federated IAM on the cluster's nodes (so the replacement is set up)
+      // only if the universe is already federated.
+      if (isUniverseFederationConfigured()) {
+        createConfigureCloudFederationTasks(
+            taskParamsCluster.userIntent,
+            taskParams().getNodesInCluster(taskParamsCluster.uuid),
+            true);
+      }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

@@ -39,6 +39,12 @@ type: docs
     </a>
   </li>
   <li>
+    <a href="../cloud-permissions-nodes-oci/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
+  <li>
     <a href="../cloud-permissions-nodes-k8s" class="nav-link">
       <i class="fa-regular fa-dharmachakra"></i>
       Kubernetes
@@ -103,7 +109,9 @@ When creating VMs on the public cloud using a [cloud provider configuration](../
 - YBA managed keys. When YBA creates VMs, it will generate and manage the SSH key pair.
 - Provide a custom key pair. Create your own custom SSH keys and upload the SSH keys when you create the provider.
 
-If you will be using your own custom SSH keys, then ensure that you have them when installing YBA and creating your public cloud provider.
+The key pair authenticates as the SSH user you specify on the Linux version. Azure creates that user when it provisions the VM. For the user requirements, see [Software requirements for cloud provider nodes](../../server-nodes-software/software-cloud-provider/).
+
+If you will be using your own custom SSH keys, have them when installing YBA and creating your Azure cloud provider configuration.
 
 | Save for later | To configure |
 | :--- | :--- |

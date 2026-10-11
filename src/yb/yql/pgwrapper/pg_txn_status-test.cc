@@ -28,7 +28,9 @@
 
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
@@ -60,7 +62,7 @@ class TransactionInfoValidator {
     std::sort(response_tablets.begin(), response_tablets.end());
 
     auto not_equal = [&]() {
-      return strings::Substitute(
+      return Format(
           "Tablets received for txn $0 differ from tablets expected. Received: $1 vs. expected: $2",
           data_.transaction_id(), VectorToString(response_tablets), VectorToString(tablets));
     };

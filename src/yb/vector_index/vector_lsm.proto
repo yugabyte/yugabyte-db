@@ -28,10 +28,10 @@ message VectorLSMChunkPB {
   // Used in chunk filename and never changes.
   uint64 serial_no = 1;
 
-  // Used to order chunks in the in-memory list.
-  // After compaction order_no of the first compacted chunk is used as order_no for the generated
-  // one.
-  // When new chunk is added it receives order_no past latest alive chunk.
+  // Position in the in-memory chunk list. Not required to be unique.
+  // Used on the write path to manifest chunks in the correct order.
+  // On flush, set to max(existing order_no) + 1. On compaction, each output chunk gets the
+  // order_no of the latest input chunk that contributed vectors to it.
   uint64 order_no = 2;
 
   VectorLSMBoundaryPB smallest = 4;

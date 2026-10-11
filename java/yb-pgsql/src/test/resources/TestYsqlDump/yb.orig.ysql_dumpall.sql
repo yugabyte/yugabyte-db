@@ -29,8 +29,10 @@ CREATE PROFILE profile_3_failed LIMIT FAILED_LOGIN_ATTEMPTS 3;
 ALTER ROLE regress_priv_user7 PROFILE profile_3_failed;
 
 -- Simulate 4 failed login attempts for user regress_priv_user7.
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 UPDATE pg_catalog.pg_yb_role_profile
 SET rolprfstatus = 'l',
     rolprffailedloginattempts = 4
 WHERE rolprfrole = (SELECT oid FROM pg_roles WHERE rolname = 'regress_priv_user7')
   AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_3_failed');
+SET yb_non_ddl_txn_for_sys_tables_allowed = false;

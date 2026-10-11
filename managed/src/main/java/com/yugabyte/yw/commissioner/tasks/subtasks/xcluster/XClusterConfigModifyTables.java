@@ -23,7 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.AlterUniverseReplicationResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
@@ -141,7 +141,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
 
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(targetUniverse)) {
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
           getClusterConfig(client, targetUniverse.getUniverseUUID());
       CdcConsumer.ProducerEntryPB replicationGroup =
@@ -312,7 +312,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
   }
 
   private void removeTablesFromReplication(
-      YBClient client, XClusterConfig xClusterConfig, Set<String> tableIds, boolean ignoreErrors)
+      YBClientApi client, XClusterConfig xClusterConfig, Set<String> tableIds, boolean ignoreErrors)
       throws Exception {
     if (CollectionUtils.isEmpty(tableIds)) {
       return;

@@ -35,6 +35,7 @@ import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
+import com.yugabyte.yw.cloud.oci.OCICloudImpl;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -55,6 +56,7 @@ import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.LdapUtil;
@@ -79,6 +81,7 @@ import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
@@ -119,6 +122,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -131,6 +135,7 @@ import io.prometheus.metrics.model.snapshots.HistogramSnapshot;
 import io.prometheus.metrics.model.snapshots.HistogramSnapshot.HistogramDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.Label;
 import io.prometheus.metrics.model.snapshots.Labels;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -153,6 +158,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
@@ -161,7 +167,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListLiveTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.util.TabletServerInfo;
 import play.Application;
@@ -231,6 +237,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
   protected GFlagsAuditHandler mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
   protected RestoreManagerYb restoreManagerYb = mock(RestoreManagerYb.class);
+  protected FileHelperService mockFileHelperService = mock(FileHelperService.class);
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -258,6 +265,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected GCPProjectApiClient gcpProjectApiClient = mock(GCPProjectApiClient.class);
 
   protected CloudAPI cloudAPI = mock(CloudAPI.class);
+  protected OCICloudImpl mockOCICloudImpl = mock(OCICloudImpl.class);
 
   protected int failsOnCapacityReservation = 0;
   protected Gauge capacityReservationGauge;
@@ -408,11 +416,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     builder.packagePath(Paths.get("/opt/yugabyte"));
     builder.certDir("/opt/yugabyte/certs");
     lenient()
-        .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
+        .when(mockNodeAgentManager.getInstallerFiles(any(), any()))
         .thenReturn(builder.build());
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
+    lenient()
+        .when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            inv ->
+                Files.createTempFile(
+                    inv.getArgument(0, String.class), inv.getArgument(1, String.class)));
     lenient().when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn("/home/yugabyte");
     lenient()
         .doAnswer(
@@ -445,10 +459,20 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                       })
                   .when(nodeAgent)
                   .saveState(any());
+              lenient()
+                  .doAnswer(
+                      inv1 -> {
+                        NodeAgent.DeployContext ctx = inv1.getArgument(0);
+                        nodeAgent.setState(NodeAgent.State.REGISTERED);
+                        nodeAgent.setCertificateUuid(ctx.getCertificateUuid());
+                        return null;
+                      })
+                  .when(nodeAgent)
+                  .finalizeRegistration(any());
               return nodeAgent;
             })
         .when(mockNodeAgentManager)
-        .create(any(), anyBoolean());
+        .create(any(), any(), anyBoolean());
     Map<String, Set<String>> reservationsByGroup = new HashMap<>();
     lenient()
         .when(
@@ -512,6 +536,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient().when(cloudAPI.isValidCreds(any())).thenReturn(true);
   }
 
+  // The application wiring below is identical for every test method (a fixed set of mock bindings
+  // held in instance fields), so share one application instance across all of the class' methods.
+  // Per-method isolation is restored by the base class (DB truncation + mock reset). Subclasses
+  // that
+  // need genuinely per-method wiring must override this to return false.
+  @Override
+  protected boolean reusableApplication() {
+    return true;
+  }
+
   @Override
   protected Application provideApplication() {
     return configureApplication(
@@ -564,7 +598,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
                 .overrides(
                     bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
+        .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(OCICloudImpl.class).toInstance(mockOCICloudImpl))
         .overrides(bind(GCPProjectApiClientFactory.class).toInstance(gcpClientFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
         .overrides(
@@ -572,11 +608,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .build();
   }
 
-  public void mockWaits(YBClient mockClient) {
+  public void mockWaits(YBClientApi mockClient) {
     mockWaits(mockClient, 1);
   }
 
-  public void mockWaits(YBClient mockClient, int version) {
+  public void mockWaits(YBClientApi mockClient, int version) {
     try {
       // PlacementUtil mock.
       CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
@@ -965,7 +1001,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
   }
 
-  protected void setCheckNodesAreSafeToTakeDown(YBClient mockClient) {
+  protected void setCheckNodesAreSafeToTakeDown(YBClientApi mockClient) {
     try {
       when(mockClient.areNodesSafeToTakeDown(any(), any(), anyLong()))
           .thenReturn(new AreNodesSafeToTakeDownResponse(null));
@@ -1091,6 +1127,29 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .thenReturn(shellResponse2);
   }
 
+  /**
+   * Mocks shell responses for {@code CheckDbNodePortConnectivity} subtasks created by {@code
+   * createDbNodePortConnectivityCheckTasksForCreatedNodes} (bash + python3 connect_ex script).
+   */
+  protected void mockDbNodePortConnectivityResponse(NodeUniverseManager mockNodeUniverseManager) {
+    ShellResponse response =
+        ShellResponse.create(0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "ok");
+    lenient()
+        .when(
+            mockNodeUniverseManager.runCommand(
+                any(),
+                any(),
+                ArgumentMatchers.<List<String>>argThat(
+                    cmd ->
+                        cmd != null
+                            && !cmd.isEmpty()
+                            && "bash".equals(cmd.get(0))
+                            && cmd.stream()
+                                .anyMatch(arg -> arg != null && arg.contains("python3"))),
+                any()))
+        .thenReturn(response);
+  }
+
   protected void mockClockSyncResponse(NodeUniverseManager nodeUniverseManager) {
     when(mockNodeUniverseManager.runCommand(any(), any(), any()))
         .thenReturn(
@@ -1114,7 +1173,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     + "    Leap status     : Normal"));
   }
 
-  protected void setMockLiveTabletServers(YBClient mockClient, Universe universe) {
+  protected void setMockLiveTabletServers(YBClientApi mockClient, Universe universe) {
     try {
       List<TabletServerInfo> tabletServerInfoList = new ArrayList<>();
 
@@ -1445,6 +1504,60 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
 
     // validateMetrics(Common.CloudType.gcp, nodesCounts, 0);
+  }
+
+  /**
+   * Adds the Azure LUN metadata that the devops host-info ("list") command reports for a node. YNP
+   * provisioning recovers Azure LUNs from that output (see YNPProvisioning.ensureAzureLunIndexes),
+   * so node command stubs have to model it for Azure nodes: the persisted LUNs when present,
+   * otherwise one LUN per volume in attachment order. Returns false, leaving the response
+   * untouched, when the node is not an Azure node.
+   */
+  protected boolean addAzureLunIndexes(ObjectNode respJson, NodeTaskParams params) {
+    if (params.getUniverseUUID() == null || params.nodeName == null) {
+      return false;
+    }
+    Universe universe = Universe.maybeGet(params.getUniverseUUID()).orElse(null);
+    if (universe == null) {
+      return false;
+    }
+    NodeDetails node = universe.getNode(params.nodeName);
+    if (node == null) {
+      return false;
+    }
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    if (cluster == null) {
+      return false;
+    }
+    // Resolve the provider per node like YNPProvisioning does: a cluster may mix providers and
+    // a read replica intent may not carry providerType.
+    Provider provider;
+    try {
+      provider = Util.getProviderForNode(node, cluster);
+    } catch (RuntimeException e) {
+      return false;
+    }
+    if (provider == null || provider.getCloudCode() != Common.CloudType.azu) {
+      return false;
+    }
+    ArrayNode lunIndexes = respJson.putArray("lun_indexes");
+    Integer[] persisted = node.cloudInfo == null ? null : node.cloudInfo.lun_indexes;
+    if (persisted != null && persisted.length > 0) {
+      for (Integer lun : persisted) {
+        lunIndexes.add(lun);
+      }
+      return true;
+    }
+    DeviceInfo deviceInfo =
+        params.deviceInfo != null
+            ? params.deviceInfo
+            : cluster.userIntent.evaluateDeviceInfoForNode(node);
+    int numVolumes =
+        deviceInfo != null && deviceInfo.numVolumes != null ? deviceInfo.numVolumes : 1;
+    for (int lun = 0; lun < numVolumes; lun++) {
+      lunIndexes.add(lun);
+    }
+    return true;
   }
 
   protected void verifyNodeInteractionsCapacityReservation(

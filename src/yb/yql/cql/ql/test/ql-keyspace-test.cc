@@ -15,6 +15,8 @@
 
 #include "yb/common/ql_value.h"
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 
@@ -366,7 +368,7 @@ TEST_F(TestQLKeyspace, TestCreateSystemTable) {
   TestQLProcessor *processor = GetQLProcessor();
 
   // Allow writes to system keyspace.
-  client::FLAGS_yb_system_namespace_readonly = false;
+  ANNOTATE_UNPROTECTED_WRITE(client::FLAGS_yb_system_namespace_readonly) = false;
 
   // Create system table.
   EXEC_VALID_STMT("create table system.t (c int primary key, v int);");

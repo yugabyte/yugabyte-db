@@ -45,12 +45,15 @@ done
 
 # Get the status of yb-node-agent Service
 if [ "$(id -u)" -eq 0 ]; then
-    status=$(su - {{ yb_user }} -c \
+    # Need to be careful with su - as it invokes shell login which can have welcome stdout message.
+    # Welcome message is already printed before systemctl command is run, grep does not work.
+    # Do not use shell login to avoid welcome message polluting stdout.
+    status=$(su {{ yb_user }} -c \
     "XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p ActiveState \
-    \"$service_name\" | grep ActiveState | awk -F= '/ActiveState/ {print \$2}'")
+    --value \"$service_name\" | tr -d '[:space:]'")
 else
     status=$(XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p \
-    ActiveState "$service_name" | grep ActiveState | awk -F= '/ActiveState/ {print $2}')
+    ActiveState --value "$service_name" | tr -d '[:space:]')
 fi
 if [ "$status" = "active" ]; then
     echo "\"$service_name\" is active"

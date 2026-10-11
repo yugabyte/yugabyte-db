@@ -42,7 +42,7 @@ import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.ListSnapshotsResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 import play.libs.Json;
 
@@ -53,7 +53,7 @@ public class SnapshotCleanupTest extends FakeDBApplication {
   private SnapshotCleanup mockSnapshotCleanup;
   private Customer testCustomer;
   private Universe testUniverse;
-  private YBClient mockYBClient = null;
+  private YBClientApi mockYBClient = null;
 
   @Before
   public void setup() {
@@ -63,7 +63,7 @@ public class SnapshotCleanupTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             testUniverse, UniverseConfKeys.deleteOrphanSnapshotOnStartup))
         .thenReturn(true);
-    mockYBClient = mock(YBClient.class);
+    mockYBClient = mock(YBClientApi.class);
     when(mockService.getUniverseClient(nullable(Universe.class))).thenReturn(mockYBClient);
   }
 

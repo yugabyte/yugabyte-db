@@ -1,0 +1,6 @@
+# src/test/modules/test_rls_hooks/yb_schedule
+#
+# Exercises the test_rls_hooks module loaded via the LOAD command, validating
+# that the row-level-security policy hooks are installed and applied.
+
+test: yb.port.test_rls_hooks

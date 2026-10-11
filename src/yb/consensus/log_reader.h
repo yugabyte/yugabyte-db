@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -63,25 +64,35 @@ namespace log {
 // are read and parsed, but entries are not.
 // This class is thread safe.
 class LogReader {
+ private:
+  class PrivateTag {};
+
  public:
   ~LogReader();
 
-  // Opens a LogReader on a specific log directory, and sets 'reader' to the newly created
-  // LogReader.
+  LogReader(
+      Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
+      const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
+      std::shared_ptr<MemTracker> read_wal_mem_tracker, PrivateTag);
+
+  // Opens a LogReader on a specific log directory.
   //
   // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
-  static Status Open(
+  static Result<LogReaderPtr> Open(
       Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
       const std::string& tablet_wal_path, const scoped_refptr<MetricEntity>& table_metric_entity,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
-      std::shared_ptr<MemTracker> read_wal_mem_tracker, std::unique_ptr<LogReader>* reader);
+      std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
-  Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
+  Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments,
+                                      std::string* retention_details = nullptr) const;
 
-  Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
-                                      SegmentSequence* segments) const;
+  Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_min_replicated_index,
+                                      SegmentSequence* segments,
+                                      std::string* retention_details = nullptr) const;
 
   // Return the minimum replicate index that is retained in the currently available
   // logs. May return -1 if no replicates have been logged.
@@ -90,6 +101,11 @@ class LogReader {
   // Return a readable segment with the given sequence number, or NotFound error if it
   // cannot be found (e.g. if it has already been GCed).
   Result<scoped_refptr<ReadableLogSegment>> GetSegmentBySequenceNumber(int64_t seq) const;
+
+  // Returns the age in seconds (based on the close timestamp) of the segment with the given
+  // sequence number, or std::nullopt if unknown (segment not found, no footer, or no close
+  // timestamp).
+  std::optional<int64_t> GetSegmentCloseAgeSecs(int64_t segment_seq_num) const;
 
   // Copies a snapshot of the current sequence of segments into 'segments'.
   // 'segments' will be cleared first.
@@ -208,12 +224,6 @@ class LogReader {
   // batch.
   Result<std::shared_ptr<LWLogEntryBatchPB>> ReadBatchUsingIndexEntry(
       const LogIndexEntry& index_entry, ObeyMemoryLimit obey_memory_limit) const;
-
-  LogReader(
-      Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
-      const scoped_refptr<MetricEntity>& table_metric_entity,
-      const scoped_refptr<MetricEntity>& tablet_metric_entity,
-      std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Reads the headers of all segments in 'path_'.
   Status Init(const std::string& path);

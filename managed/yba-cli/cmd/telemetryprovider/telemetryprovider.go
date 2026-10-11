@@ -8,8 +8,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/telemetryprovider/awscloudwatch"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/telemetryprovider/datadog"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/telemetryprovider/dynatrace"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/telemetryprovider/gcpcloudmonitoring"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/telemetryprovider/loki"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/telemetryprovider/otlp"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/telemetryprovider/s3"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/telemetryprovider/splunk"
 )
 
@@ -36,6 +39,10 @@ func init() {
 	TelemetryProviderCmd.AddCommand(awscloudwatch.AWSCloudWatchTelemetryProviderCmd)
 	TelemetryProviderCmd.AddCommand(gcpcloudmonitoring.GCPCloudMonitoringTelemetryProviderCmd)
 	TelemetryProviderCmd.AddCommand(loki.LokiTelemetryProviderCmd)
+	TelemetryProviderCmd.AddCommand(dynatrace.DynatraceTelemetryProviderCmd)
+	TelemetryProviderCmd.AddCommand(s3.S3TelemetryProviderCmd)
+	TelemetryProviderCmd.AddCommand(otlp.OTLPTelemetryProviderCmd)
+	TelemetryProviderCmd.AddCommand(typesTelemetryProviderCmd)
 
 	TelemetryProviderCmd.AddGroup(&cobra.Group{
 		ID:    "action",

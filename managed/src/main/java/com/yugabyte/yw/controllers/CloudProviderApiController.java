@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.annotations.BlockYnpManagedProvider;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -168,6 +169,7 @@ public class CloudProviderApiController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
+  @BlockYnpManagedProvider(operation = "Editing the provider configuration")
   public Result edit(
       UUID customerUUID,
       UUID providerUUID,

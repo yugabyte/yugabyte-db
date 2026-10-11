@@ -66,7 +66,7 @@ typedef struct DuckdbScanDescData *DuckdbScanDesc;
 
 static TableScanDesc
 duckdb_scan_begin(Relation relation, Snapshot snapshot, int nkeys, ScanKey /*key*/, ParallelTableScanDesc parallel_scan,
-                  uint32 flags) {
+                  uint32 flags, struct YbTableScanOptions * /*yb_options*/) {
 	DuckdbScanDesc scan = (DuckdbScanDesc)palloc(sizeof(DuckdbScanDescData));
 
 	scan->rs_base.rs_rd = relation;
@@ -325,7 +325,9 @@ static double
 duckdb_index_build_range_scan(Relation /*tableRelation*/, Relation /*indexRelation*/, IndexInfo * /*indexInfo*/,
                               bool /*allow_sync*/, bool /*anyvisible*/, bool /*progress*/,
                               BlockNumber /*start_blockno*/, BlockNumber /*numblocks*/, IndexBuildCallback /*callback*/,
-                              void * /*callback_state*/, TableScanDesc /*scan*/) {
+                              void * /*callback_state*/, TableScanDesc /*scan*/,
+                              YbBackfillInfo * /*bfinfo*/, YbPgExecOutParam * /*bfresult*/,
+                              YbIndexBuildCallback /*ybcallback*/) {
 	if (pgduckdb::top_level_duckdb_ddl_type == pgduckdb::DDLType::ALTER_TABLE) {
 		return 0;
 	}

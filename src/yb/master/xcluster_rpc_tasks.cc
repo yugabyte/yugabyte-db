@@ -28,6 +28,8 @@
 
 #include "yb/rpc/secure.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"

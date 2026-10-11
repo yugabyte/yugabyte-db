@@ -177,8 +177,10 @@ class CDCStateTable {
   void Shutdown();
 
  private:
-  client::YBClient& client() { return *client_future_.get(); }
-  std::shared_ptr<client::YBSession> MakeSession();
+  // Returns ShutdownInProgress if the client initializer published a null client, which happens
+  // when the server shuts down before the client could be built.
+  Result<client::YBClient&> client();
+  Result<std::shared_ptr<client::YBSession>> MakeSession();
   Status WaitForCreateTableToFinishWithCache() REQUIRES(mutex_);
   Status WaitForCreateTableToFinishWithoutCache();
   Result<std::shared_ptr<client::TableHandle>> GetTable() EXCLUDES(mutex_);

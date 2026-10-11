@@ -156,7 +156,9 @@
   border: 1px solid #dcdcde;
   padding: 20px;
 }
-
+.mt-8 {
+  margin-top: 8px !important;
+}
 .backup-modal {
   position: fixed;
   z-index: 99999 !important;

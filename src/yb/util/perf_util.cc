@@ -23,6 +23,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/tostring.h"
 

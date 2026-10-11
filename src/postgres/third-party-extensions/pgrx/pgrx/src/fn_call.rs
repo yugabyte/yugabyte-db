@@ -8,16 +8,16 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 
+use pgrx_pg_sys::PgTryBuilder;
 use pgrx_pg_sys::errcodes::PgSqlErrorCode;
 use pgrx_pg_sys::ffi::pg_guard_ffi_boundary;
-use pgrx_pg_sys::PgTryBuilder;
 use std::panic::AssertUnwindSafe;
 
 use crate::memcx;
 use crate::pg_catalog::pg_proc::{PgProc, ProArgMode, ProKind};
 use crate::seal::Sealed;
 use crate::{
-    direct_function_call, is_a, list::List, pg_sys, pg_sys::AsPgCStr, Array, FromDatum, IntoDatum,
+    Array, FromDatum, IntoDatum, direct_function_call, is_a, list::List, pg_sys, pg_sys::AsPgCStr,
 };
 
 /// Augments types that can be used as [`fn_call`] arguments.  This is only implemented for the
@@ -69,7 +69,9 @@ pub enum FnCallError {
     #[error("The specified function does not exist")]
     UndefinedFunction,
 
-    #[error("The specified function exists, but has overloaded versions which are ambiguous given the argument types provided")]
+    #[error(
+        "The specified function exists, but has overloaded versions which are ambiguous given the argument types provided"
+    )]
     AmbiguousFunction,
 
     #[error("Can only dynamically call plain functions")]
@@ -81,7 +83,9 @@ pub enum FnCallError {
     #[error("Functions with argument or return types of `internal` are not supported")]
     InternalTypeNotSupported,
 
-    #[error("The requested return type OID `{0:?}` is not compatible with the actual return type OID `{1:?}`")]
+    #[error(
+        "The requested return type OID `{0:?}` is not compatible with the actual return type OID `{1:?}`"
+    )]
     IncompatibleReturnType(pg_sys::Oid, pg_sys::Oid),
 
     #[error("Function call has more arguments than are supported")]
@@ -220,8 +224,7 @@ pub fn fn_call_with_collation<R: FromDatum + IntoDatum>(
         // Right now we only know how to support arguments with the IN mode.  Perhaps in the
         // future we can support IN_OUT and TABLE return types
         return Err(FnCallError::UnsupportedArgumentModes);
-    } else if retoid == pg_sys::INTERNALOID
-        || pg_proc.proargtypes().iter().any(|oid| *oid == pg_sys::INTERNALOID)
+    } else if retoid == pg_sys::INTERNALOID || pg_proc.proargtypes().contains(&pg_sys::INTERNALOID)
     {
         // No idea what to do with the INTERNAL type.  Generally it's just a raw pointer but pgrx
         // has no way to express that with `IntoDatum`.  And passing around raw pointers seem
@@ -397,7 +400,7 @@ fn lookup_fn(fname: &str, args: &[&dyn FnCallArg]) -> Result<pg_sys::Oid> {
                     pg_sys::pfree((*s).val.str_.cast());
                 }
 
-                #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17"))]
+                #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17", feature = "pg18"))]
                 {
                     let s = s.cast::<pg_sys::String>();
                     pg_sys::pfree((*s).sval.cast());
@@ -410,7 +413,7 @@ fn lookup_fn(fname: &str, args: &[&dyn FnCallArg]) -> Result<pg_sys::Oid> {
 
 /// Parses an arbitrary string as if it is a SQL identifier.  If it's not, [`FnCallError::InvalidIdentifier`]
 /// is returned
-fn parse_sql_ident(ident: &str) -> Result<Array<&str>> {
+fn parse_sql_ident(ident: &str) -> Result<Array<'_, &str>> {
     unsafe {
         direct_function_call::<Array<&str>>(
             pg_sys::parse_ident,
@@ -461,11 +464,7 @@ fn create_default_value(pg_proc: &PgProc, argnum: usize) -> Result<Option<pg_sys
             let con: *mut pg_sys::Const = evaluated.cast();
             let con_ref = &*con;
 
-            if con_ref.constisnull {
-                Ok(None)
-            } else {
-                Ok(Some(con_ref.constvalue))
-            }
+            if con_ref.constisnull { Ok(None) } else { Ok(Some(con_ref.constvalue)) }
         } else {
             // NB:  I am not sure this case could ever happen in the context of a function argument
             // `DEFAULT` clause, but if it does, we should let the caller know.  I don't know what

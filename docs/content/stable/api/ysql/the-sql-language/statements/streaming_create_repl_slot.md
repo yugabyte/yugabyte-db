@@ -43,6 +43,7 @@ Determines whether the snapshot will be consumed by the client during slot initi
 
 These options are only available if the YB-TServer flag [ysql_enable_pg_export_snapshot](../../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization) is set to true. When the flag is true, USE_SNAPSHOT is the default behavior. If the flag is not set, the snapshot options are not applicable and will be ignored.
 
+
 ## Examples
 
 Establish a replication connection to the database `yugabyte`.

@@ -1,0 +1,159 @@
+---
+title: Password authentication
+headerTitle: Password authentication
+linkTitle: Password authentication
+description: Use SCRAM-SHA-256 password authentication to strengthen your YugabyteDB security.
+menu:
+  v2025.2:
+    identifier: password-authentication
+    parent: authentication
+    weight: 731
+type: docs
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../password-authentication/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
+
+By default, password authentication is disabled, allowing users and clients to connect to and interact with YugabyteDB with minimal effort. For production clusters, password authentication is important for maximizing security. The password authentication methods work similarly, but differ in how user passwords are stored on the server and how the password provided by the client is sent across the connection.
+
+## YugabyteDB database passwords
+
+YugabyteDB database passwords are separate from operating system passwords. The password for each database user is stored in the `pg_authid` system catalog.
+
+Database passwords can be managed using the following:
+
+- YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/)
+- ysqlsh meta-command: [\password](../../../api/ysqlsh-meta-commands/#password-username)
+
+The [passwordcheck extension](../../../additional-features/pg-extensions/extension-passwordcheck/) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/15/passwordcheck.html).
+
+## Password authentication methods
+
+The following password authentication methods are supported by YugabyteDB.
+
+### SCRAM-SHA-256
+
+SCRAM-SHA-256 is the default authentication method for new universes.
+
+The SCRAM-SHA-256 method (`scram-sha-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/15/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](/stable/develop/drivers-orms/).
+
+- Allows for two parties to verify they both know a secret without exchanging the secret.
+- SCRAM-SHA-256 encryption uses the [SASL authentication mechanism flow](https://www.postgresql.org/docs/15/sasl-authentication.html) to limit security risks from brute force attacks and sniffing.
+
+{{< note title="TLS encryption" >}}
+
+For additional security, SCRAM-SHA-256 password encryption can also be used with [encryption in transit (TLS encryption)](../../../secure/tls-encryption/).
+
+{{< /note >}}
+
+### MD5
+
+The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker obtains password hashes from the server or from clients (by sniffing, man-in-the-middle, or by brute force).
+
+The MD5 hash algorithm is not considered secure against determined attacks. Some of the security risks include:
+
+- If someone has access to a valid username/password combination, or their MD5-styled hash, they can log into any cluster where that user exists with the same username and password.
+- The "shared secret" is effectively shared over the wire every time the MD5 authentication method is used.
+
+To ease transition from MD5 to SCRAM-SHA-256, if `md5` is specified as a method in ysql_hba.conf but the user's password on the server is encrypted for SCRAM, then SCRAM-based authentication will automatically be chosen instead.
+
+## Enable SCRAM-SHA-256 authentication
+
+To configure a YugabyteDB universe that was using MD5 authentication to use SCRAM-SHA-256, follow these steps.
+
+1. Change the password encryption to use SCRAM-SHA-256.
+
+    To change MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag and set the value to `scram-sha-256`:
+
+    ```sh
+    --ysql_pg_conf_csv=password_encryption=scram-sha-256
+    ```
+
+    or in the `yb-tserver.conf`, add the following line:
+
+    ```sh
+    --ysql_pg_conf_csv=password_encryption=scram-sha-256
+    ```
+
+2. Specify the rules for host-based authentication.
+
+    To specify rules for the use of the `scram-sha-256` authentication method, add the YB-TServer [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag and specify rules that satisfy your security requirements.
+
+    In the following example, the `--ysql_hba_conf_csv` flag modifies the default rules that use `trust` to use SCRAM-SHA-256 authentication, changing the default values of `trust` to use `scram-sha-256`:
+
+    ```sh
+    --ysql_hba_conf_csv='host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256'
+    ```
+
+    or in the `yb-tserver.conf`, add the following line:
+
+    ```sh
+    --ysql_hba_conf_csv=host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
+    ```
+
+    For details on using the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag to specify rules that satisfy your security requirements, see [Fine-grained authentication](../host-based-authentication/).
+
+## Migrate existing MD5 passwords to SCRAM-SHA-256
+
+When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authentication) on an existing YugabyteDB cluster that has users and roles, with their MD5 passwords, you need to be aware that:
+
+- All new, or changed, passwords will be encrypted using the SCRAM-SHA-256 hashing algorithm.
+- All existing passwords were encrypted using the MD5 hashing algorithm.
+
+Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For example:
+
+```sh
+--ysql_hba_conf_csv=host all all 0.0.0.0/0 md5,host all all ::0/0 md5,host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
+```
+
+If you follow this approach, you can enhance security, track and migrate passwords, and then remove the much weaker MD5 rules after all passwords have been updated.
+
+To check which passwords remain to be migrated, run the following query as a superuser (for example, the `yugabyte` user; only superusers can read from `pg_authid`):
+
+```sql
+SELECT
+  rolname,
+  CASE
+    WHEN rolpassword LIKE 'SCRAM-SHA-256%' THEN 'scram'
+    WHEN rolpassword LIKE 'md5%' THEN 'md5'
+    ELSE 'none/other'
+  END AS password_type,
+  rolvaliduntil
+FROM pg_authid
+WHERE rolcanlogin
+ORDER BY password_type, rolname;
+```
+
+For any role where `password_type` is `md5`, use [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) or the ysqlsh [\password](../../../api/ysqlsh-meta-commands/#password-username) meta-command to set a new password. The password is re-encrypted using SCRAM-SHA-256.
+
+## Resetting user password
+
+In PostgreSQL, if the administrator password is lost or changed to an unknown value, you can change the `pg_hba.conf` file to allow administrator access without a password. This is a static file that is used to control client authentication. To reset the password for the `postgres` user, you change the parameters in the configuration file, restart the database, and then log in as `postgres` without a password, and reset the password.
+
+The same is also true for YugabyteDB, although the implementation is slightly different. YugabyteDB has a `ysql_hba.conf` file similar to PostgreSQL. However, unlike PostgreSQL, the contents of the file are dynamically generated using the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag at yb-tserver startup.
+
+To change the `ysql_hba.conf` file to allow administrator access without a password, you restart the yb-tserver with the following `--ysql_hba_conf_csv` configuration flag:
+
+```sh
+--ysql_hba_conf_csv=host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5
+```
+
+After restarting the yb-tserver, password authentication is enforced for all users except the `yugabyte` user. Now you can connect without a password:
+
+```sh
+$ ./bin/ysqlsh
+```
+
+And update the password of the user to new desired password:
+
+```sql
+ALTER ROLE yugabyte WITH PASSWORD 'new-password';
+```
+
+Roll back the configuration and restart the yb-tserver to enable password authentication for the `yugabyte` user again.

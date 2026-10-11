@@ -25,7 +25,11 @@ import { SelectTablesConfig } from '../../restore/pages/generalSettings/SelectTa
 import { TablespaceConfig } from '../../restore/pages/generalSettings/TablespaceConfig';
 import { IGeneralSettings } from '../../restore/pages/generalSettings/GeneralSettings';
 import { getPreflightCheck } from '../../restore/api';
-import { isDefinedNotNull, isEmptyString } from '../../../../../utils/ObjectUtils';
+import {
+  createErrorMessage,
+  isDefinedNotNull,
+  isEmptyString
+} from '../../../../../utils/ObjectUtils';
 import { TableType, TableTypeLabel } from '../../../../../redesign/helpers/dtos';
 import { fetchTablesInUniverse } from '../../../../../actions/xClusterReplication';
 import { isDuplicateKeyspaceExistsinUniverse } from '../../restore/RestoreUtils';
@@ -185,8 +189,8 @@ export const GeneralConfigurations = forwardRef<PageRef>((_, forwardRef) => {
         savePreflightResponse(data);
         setDisableSubmit(false);
       },
-      onError: () => {
-        toast.error('Preflight check failed!.');
+      onError: (error: any) => {
+        toast.error(createErrorMessage(error));
         setDisableSubmit(true);
       },
       onSettled: () => {

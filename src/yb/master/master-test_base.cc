@@ -39,14 +39,13 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_ysql_lease.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 
@@ -54,6 +53,7 @@
 #include "yb/rpc/proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -100,6 +100,8 @@ void MasterTestBase::SetUp() {
   proxy_client_ = std::make_unique<MasterClientProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
   proxy_ddl_ = std::make_unique<MasterDdlProxy>(
+      &proxy_cache, mini_master_->bound_rpc_addr());
+  proxy_ysql_lease_ = std::make_unique<MasterYsqlLeaseProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
   proxy_heartbeat_ = std::make_unique<MasterHeartbeatProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
@@ -512,7 +514,7 @@ void MasterTestBase::CheckNamespaces(
     auto search_key = std::make_tuple(namespaces.namespaces(i).name(),
                                       namespaces.namespaces(i).id());
     ASSERT_TRUE(namespace_info.find(search_key) != namespace_info.end())
-                  << strings::Substitute("Couldn't find namespace $0", namespaces.namespaces(i)
+                  << Format("Couldn't find namespace $0", namespaces.namespaces(i)
                       .name());
   }
 
@@ -541,7 +543,7 @@ void MasterTestBase::CheckTables(
                                       tables.tables(i).namespace_().id(),
                                       tables.tables(i).relation_type());
     ASSERT_TRUE(table_info.find(search_key) != table_info.end())
-        << strings::Substitute("Couldn't find table $0.$1",
+        << Format("Couldn't find table $0.$1",
             tables.tables(i).namespace_().name(), tables.tables(i).name());
   }
 

@@ -1,0 +1,10 @@
+title: RestorePagedQuerySpec
+description: |
+  Paged list of universe restores.
+  Rows are ordered by create time. The order is descending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"
+properties:
+  filter:
+    $ref: "./RestoreApiFilter.yaml"

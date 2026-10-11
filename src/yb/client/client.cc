@@ -53,6 +53,7 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/namespace_alterer.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/permissions.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -60,6 +61,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
@@ -77,7 +79,6 @@
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.pb.h"
@@ -302,6 +303,12 @@ DEFINE_test_flag(int32, create_namespace_if_not_exist_inject_delay_ms, 0,
 
 namespace yb::client {
 
+const CDCSDKDynamicTablesOption& DefaultDynamicTablesOption() {
+  static const CDCSDKDynamicTablesOption kDefault =
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED;
+  return kDefault;
+}
+
 namespace {
 
 void FillFromRepeatedTabletLocations(
@@ -474,7 +481,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
   RETURN_NOT_OK(CheckCPUFlags());
 
   std::unique_ptr<YBClient> c(new YBClient());
-  c->data_->client_name_ = data_->client_name_ + "_" + c->data_->id_.ToString();
+  c->data_->client_name_ = data_->client_name_ + "_" + c->id().ToString();
 
   // Init messenger.
   if (messenger) {
@@ -1665,7 +1672,10 @@ Status YBClient::GetCDCStream(
     TableIds* unqualified_table_ids,
     std::optional<ReplicationSlotLsnType>* lsn_type,
     std::optional<ReplicationSlotOrderingMode>* ordering_mode,
-    std::optional<bool>* detect_publication_changes_implicitly) {
+    std::optional<bool>* detect_publication_changes_implicitly,
+    std::optional<std::string>* replication_slot_plugin_name,
+    bool* is_notification_slot,
+    std::optional<bool>* xcluster_use_target_applied_filter) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1724,6 +1734,11 @@ Status YBClient::GetCDCStream(
     *replication_slot_name = resp.stream().cdcsdk_ysql_replication_slot_name();
   }
 
+  if (replication_slot_plugin_name &&
+      resp.stream().has_cdcsdk_ysql_replication_slot_plugin_name()) {
+    *replication_slot_plugin_name = resp.stream().cdcsdk_ysql_replication_slot_plugin_name();
+  }
+
   if (lsn_type && resp.stream().has_cdc_stream_info_options() &&
       resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_lsn_type()) {
     *lsn_type = resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type();
@@ -1738,6 +1753,15 @@ Status YBClient::GetCDCStream(
   if (detect_publication_changes_implicitly &&
       resp.stream().has_detect_publication_changes_implicitly()) {
     *detect_publication_changes_implicitly = resp.stream().detect_publication_changes_implicitly();
+  }
+
+  if (is_notification_slot) {
+    *is_notification_slot = resp.stream().is_notification_slot();
+  }
+
+  if (xcluster_use_target_applied_filter &&
+      resp.stream().has_xcluster_use_target_applied_filter()) {
+    *xcluster_use_target_applied_filter = resp.stream().xcluster_use_target_applied_filter();
   }
 
   return Status::OK();
@@ -1771,9 +1795,12 @@ void YBClient::GetCDCStream(
     const xrepl::StreamId& stream_id,
     std::shared_ptr<TableId> table_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-    StdStatusCallback callback) {
+    StdStatusCallback callback,
+    std::shared_ptr<bool> xcluster_use_target_applied_filter) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  data_->GetCDCStream(this, stream_id, table_id, options, deadline, callback);
+  data_->GetCDCStream(
+      this, stream_id, table_id, options, deadline, std::move(callback),
+      std::move(xcluster_use_target_applied_filter));
 }
 
 Result<std::vector<CDCSDKStreamInfo>> YBClient::ListCDCSDKStreams() {
@@ -2590,40 +2617,19 @@ const std::string& YBClient::proxy_uuid() const {
 }
 
 const ClientId& YBClient::id() const {
-  return data_->id_;
+  return data_->request_id_allocator_->client_id();
 }
 
 const CloudInfoPB& YBClient::cloud_info() const {
   return data_->cloud_info_pb_;
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId() {
-  std::lock_guard lock(data_->tablet_requests_mutex_);
-  auto& requests = data_->requests_;
-  auto id = requests.request_id_seq++;
-  requests.running_requests.insert(id);
-  return std::make_pair(id, *requests.running_requests.begin());
+internal::RequestIdAllocation YBClient::NextRequestIdAndMinRunningRequestId() {
+  return data_->request_id_allocator_->Next();
 }
 
 void YBClient::AddMetaCacheInfo(JsonWriter* writer) const {
   data_->meta_cache_->AddAllTabletInfo(writer);
-}
-
-void YBClient::RequestsFinished(const RetryableRequestIdRange& request_id_range) {
-  if (request_id_range.empty()) {
-    return;
-  }
-  std::lock_guard lock(data_->tablet_requests_mutex_);
-  for (const auto& id : request_id_range) {
-    auto& requests = data_->requests_.running_requests;
-    auto it = requests.find(id);
-    if (it != requests.end()) {
-      requests.erase(it);
-    } else {
-      LOG_WITH_PREFIX(DFATAL) << "RequestsFinished called for an unknown request: "
-                              << id;
-    }
-  }
 }
 
 void YBClient::LookupTabletByKey(
@@ -3266,6 +3272,10 @@ void YBClient::ClearAllMetaCachesOnServer() {
 
 Status YBClient::ClearMetacache(const std::string& namespace_id) {
   return data_->meta_cache_->ClearCacheEntries(namespace_id);
+}
+
+void YBClient::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  data_->meta_cache_->MarkTServersAsFollowers(ts_uuids);
 }
 
 template <class PB>

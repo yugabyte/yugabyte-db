@@ -17,13 +17,6 @@
   {{- end -}}
 
   <div class="main-heading-with-version {{- if and (not $headingImage) (not $headingIcon) }} heading-without-image{{- end }}">
-    {{- if and (.Site.Params.versions) (not .Params.unversioned) -}}
-      <div class="header-version-dropdown dropdown-list">
-        <div class="dropdown">
-          {{- partial "navbar-version-selector.html" . -}}
-        </div>
-      </div>
-    {{- end -}}
     {{- if $headingImage -}}
       <div class="heading-image">
         <img alt="{{ .Title }}" title="{{ .Title }}" src="{{ .Params.image }}" />
@@ -35,19 +28,22 @@
     {{- end -}}
     <div class="heading-content">
       <div>
-        <h1>
-          {{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }}
-          {{ if .Draft }} (Draft){{ end }}
-          {{- if .Params.tags -}}
-            {{- if .Params.tags.feature -}}
-              {{- partial "tags/feature.html" . -}}
-            {{- end -}}
+        <div class="heading-title-row">
+          <h1>
+            {{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }}
+            {{ if .Draft }} (Draft){{ end }}
+            {{- if .Params.tags -}}
+              {{- if .Params.tags.feature -}}
+                {{- partial "tags/feature.html" . -}}
+              {{- end -}}
 
-            {{- if .Params.tags.other -}}
-              {{- partial "tags/other.html" . -}}
+              {{- if .Params.tags.other -}}
+                {{- partial "tags/other.html" . -}}
+              {{- end -}}
             {{- end -}}
-          {{- end -}}
-        </h1>
+          </h1>
+          {{- with .OutputFormats.Get "markdown" }}{{ partial "markdown-actions.html" . }}{{ end -}}
+        </div>
         {{ with .Params.headcontent }}<div class="lead">{{ . | markdownify }}</div>{{ end }}
       </div>
     </div>

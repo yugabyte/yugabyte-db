@@ -51,6 +51,15 @@ func taskUUID() string {
 	return util.NewUUID().String()
 }
 
+func newTestClient(t *testing.T) *grpc.ClientConn {
+	t.Helper()
+	conn, err := grpc.NewClient(serverAddr, dialOpts...)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	return conn
+}
+
 // TestMain is invoked before the tests.
 func TestMain(m *testing.M) {
 	var err error
@@ -84,10 +93,7 @@ func TestMain(m *testing.M) {
 
 // Server test starts here.
 func TestPing(t *testing.T) {
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
+	conn := newTestClient(t)
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
 	req := pb.PingRequest{}
@@ -139,10 +145,7 @@ func TestCheckYugabyteDbStatus(t *testing.T) {
 }
 
 func TestExecuteInvalidCommand(t *testing.T) {
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
+	conn := newTestClient(t)
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -172,10 +175,7 @@ func TestExecuteInvalidCommand(t *testing.T) {
 }
 
 func TestExecuteCommand(t *testing.T) {
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
+	conn := newTestClient(t)
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -209,10 +209,7 @@ func TestExecuteCommand(t *testing.T) {
 }
 
 func TestSubmitTask(t *testing.T) {
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
+	conn := newTestClient(t)
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -226,7 +223,7 @@ func TestSubmitTask(t *testing.T) {
 		},
 	}}
 	t.Logf("Submitting task %s and command %s", taskID, cmd)
-	_, err = client.SubmitTask(ctx, &req)
+	_, err := client.SubmitTask(ctx, &req)
 	if err != nil {
 		t.Fatalf("Failed to submit task - %s", err.Error())
 	}
@@ -286,10 +283,7 @@ outer:
 }
 
 func TestSubmitTaskTimeout(t *testing.T) {
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
+	conn := newTestClient(t)
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -303,7 +297,7 @@ func TestSubmitTaskTimeout(t *testing.T) {
 		},
 	}}
 	t.Logf("Submitting task %s and command %s", taskID, cmd)
-	_, err = client.SubmitTask(ctx, &req)
+	_, err := client.SubmitTask(ctx, &req)
 	if err != nil {
 		t.Fatalf("Failed to submit task - %s", err.Error())
 	}
@@ -352,10 +346,7 @@ outer:
 }
 
 func TestUploadFile(t *testing.T) {
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		t.Fatalf("Failed to dial: %v", err)
-	}
+	conn := newTestClient(t)
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -422,10 +413,7 @@ func TestUploadFile(t *testing.T) {
 }
 
 func TestDownloadFile(t *testing.T) {
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		log.Fatalf("Failed to dial: %v", err)
-	}
+	conn := newTestClient(t)
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -464,10 +452,7 @@ func TestRunPreflightCheck(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping preflight-check as it is platform dependent")
 	}
-	conn, err := grpc.Dial(serverAddr, dialOpts...)
-	if err != nil {
-		log.Fatalf("Failed to dial: %v", err)
-	}
+	conn := newTestClient(t)
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -483,7 +468,7 @@ func TestRunPreflightCheck(t *testing.T) {
 			MountPaths:          []string{"/mnt/d0"},
 		},
 	}}
-	_, err = client.SubmitTask(ctx, &req)
+	_, err := client.SubmitTask(ctx, &req)
 	if err != nil {
 		t.Fatalf("Failed to submit task - %s", err.Error())
 	}

@@ -583,16 +583,16 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * Returns -1 in 'yb_distinct_nkeys' if the pathkeys cannot span the prefix.
  * Returns 0 in 'yb_distinct_nkeys' when the prefix is empty.
  *
- * YB: 'yb_merge_scan_saop_cols' is an out-param.  List of
- * YbMergeScanSaopColInfo.  If NULL is passed, disallow merge scan.  Otherwise,
- * an empty list should be passed.
+ * YB: 'yb_merge_scan_stream_cols' is an out-param.  List of
+ * YbMergeScanStreamColInfo.  If NULL is passed, disallow merge scan.
+ * Otherwise, an empty list should be passed.
  */
 List *
 build_index_pathkeys(PlannerInfo *root,
 					 IndexOptInfo *index,
 					 ScanDirection scandir,
 					 int *yb_distinct_nkeys,
-					 List **yb_merge_scan_saop_cols)
+					 List **yb_merge_scan_stream_cols)
 {
 	List	   *retval = NIL;
 	ListCell   *lc;
@@ -611,7 +611,7 @@ build_index_pathkeys(PlannerInfo *root,
 	yb_distinct_prefixlen = *yb_distinct_nkeys;
 	*yb_distinct_nkeys = yb_distinct_prefixlen == 0 ? 0 : -1;
 
-	Assert(!yb_merge_scan_saop_cols || *yb_merge_scan_saop_cols == NIL);
+	Assert(!yb_merge_scan_stream_cols || *yb_merge_scan_stream_cols == NIL);
 
 	/*
 	 * YB: If the index is hash, check if we have a matching yb_hash_code()
@@ -692,7 +692,7 @@ build_index_pathkeys(PlannerInfo *root,
 						   cpathkey->pk_eclass->ec_sortref != 0)) &&
 			yb_indexcol_can_merge_scan(root, index, indexkey, i,
 									   &yb_merge_scan_cardinality,
-									   yb_merge_scan_saop_cols))
+									   yb_merge_scan_stream_cols))
 		{
 			/* Do nothing */
 		}
@@ -2106,4 +2106,49 @@ yb_get_ecs_for_query_uniqkeys(PlannerInfo *root)
 	}
 
 	return ecs;
+}
+
+/*
+ * Convert a subquery's uniqkeys into the terms of the outer query.
+ */
+List *
+yb_convert_subquery_uniqkeys(RelOptInfo *rel, List *subquery_uniqkeys,
+							 List *subquery_tlist)
+{
+	List	   *retval = NIL;
+	ListCell   *i;
+
+	foreach(i, subquery_uniqkeys)
+	{
+		Expr	   *uniqkey = (Expr *) lfirst(i);
+		Var		   *outer_var = NULL;
+		ListCell   *j;
+
+		foreach(j, subquery_tlist)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(j);
+			Expr	   *tle_expr;
+
+			tle_expr = canonicalize_ec_expression(tle->expr,
+												  exprType((Node *) uniqkey),
+												  exprCollation((Node *) uniqkey));
+			if (!equal(tle_expr, uniqkey))
+				continue;
+
+			outer_var = find_var_for_subquery_tle(rel, tle);
+			if (outer_var)
+				break;
+		}
+
+		/*
+		 * DISTINCT on {a, b} does not imply DISTINCT on {a}.  Therefore,
+		 * if one uniqkey cannot be translated, the whole set must be dropped.
+		 */
+		if (!outer_var)
+			return NIL;
+
+		retval = lappend(retval, outer_var);
+	}
+
+	return retval;
 }

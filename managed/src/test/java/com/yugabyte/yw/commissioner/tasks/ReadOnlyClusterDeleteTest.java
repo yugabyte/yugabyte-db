@@ -21,7 +21,10 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -43,7 +46,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
@@ -73,15 +76,19 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.provider = defaultProvider.getUuid().toString();
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
@@ -109,13 +116,22 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
+    UUID providerUUID = curIntent.maybeGetSingleProviderUUID().get();
+    ProviderInitializer providerInitializer =
+        Util.newProviderInitializer(
+                userIntent,
+                providerUUID,
+                curIntent.getAllCloudTypes().iterator().next(),
+                confGetter)
+            .setAccessCode(curIntent.getAccessKeyCodeForProvider(providerUUID));
+
+    DeviceInfo deviceInfo = curIntent.getBaseDeviceInfo(providerUUID).clone();
+    deviceInfo.numVolumes = 2;
+    providerInitializer.setDeviceInfo(deviceInfo);
+
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
-    userIntent.accessKeyCode = curIntent.accessKeyCode;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = curIntent.providerType;
-    userIntent.provider = curIntent.provider;
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.numVolumes = 2;
+
     PlacementInfo pi = new PlacementInfo();
     for (AvailabilityZone az : region.getAllZones()) {
       PlacementInfoUtil.addPlacementZone(az.getUuid(), pi, 1, 1, false);

@@ -9,4 +9,6 @@ bool IsCatalogTable(Relation rel);
 bool ContainsPostgresTable(Node *node, void *context);
 bool NeedsDuckdbExecution(Query *query);
 bool ShouldTryToUseDuckdbExecution(Query *query);
+/* YB: enforce the lake_io-mode query policy.*/
+void YbCheckAllowedDuckdbQuery(Query *query);
 } // namespace pgduckdb

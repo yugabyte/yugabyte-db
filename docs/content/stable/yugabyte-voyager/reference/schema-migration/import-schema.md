@@ -95,6 +95,15 @@ import-schema:
 
 | Imports the schema objects in the order specified via the `--object-type-list` flag. <br>Default: false<br> Example: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 
+| --target-db-type |
+
+```yaml
+import-schema:
+  target-db-type
+```
+
+| Target database type to import into. <br> Accepted values: yugabytedb (default), yugabytedb-amp (more details coming soon) |
+
 | --target-db-host |
 
 ```yaml{.nocopy}
@@ -216,6 +225,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 
 | --post-snapshot-import | — | **[Deprecated]** Perform schema related tasks on the target YugabyteDB after data import is complete. Use --refresh-mviews along with this flag to refresh materialized views. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --refresh-mviews | — |**[Deprecated]** Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |

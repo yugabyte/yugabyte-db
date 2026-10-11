@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"

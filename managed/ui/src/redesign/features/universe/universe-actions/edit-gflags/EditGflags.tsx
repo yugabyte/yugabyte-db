@@ -254,17 +254,30 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
     if (event.target.checked) {
       if (_.isEmpty(asyncFlags)) setValue('inheritFlagsFromPrimary', true);
       else setOpenInheritRRModal(true);
-    } else setValue('inheritFlagsFromPrimary', false);
+    } else {
+      setValue('inheritFlagsFromPrimary', false);
+      if (_.isEmpty(asyncFlags) && !_.isEmpty(primaryFlags)) {
+        const tserverOnlyFlags = primaryFlags
+          .filter((flag) => flag.TSERVER !== undefined)
+          .map((flag) => _.omit(flag, 'MASTER'));
+        setValue('asyncGflags', tserverOnlyFlags);
+      }
+      setIsPrimary(false);
+    }
   };
 
   useUpdateEffect(() => {
     if (inheritFromPrimary) setIsPrimary(true);
   }, [inheritFromPrimary]);
 
+  // Normalize once: the backend reports 1 when batching cannot be used, but guard against a
+  // missing or non-positive ceiling so the max attribute and the locked state stay consistent.
+  const maxBatchSizePrimary = Math.max(1, rollMaxBatchSize?.primaryBatchSize ?? 1);
+  const isMaxBatchSizeLocked = maxBatchSizePrimary <= 1;
+
   const handleNumNodeChangePrimary = (e: FocusEvent<HTMLInputElement>) => {
     const fieldValue = e.target.value as unknown as number;
-    if (fieldValue > rollMaxBatchSize?.primaryBatchSize)
-      setValue('numNodesToUpgradePrimary', rollMaxBatchSize?.primaryBatchSize);
+    if (fieldValue > maxBatchSizePrimary) setValue('numNodesToUpgradePrimary', maxBatchSizePrimary);
     else if (fieldValue < 1) setValue('numNodesToUpgradePrimary', 1);
     else setValue('numNodesToUpgradePrimary', fieldValue);
   };
@@ -283,24 +296,29 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
             &nbsp;
             {t('universeForm.gFlags.seconds')}
           </div>
-          {isRollingUpgrade && rollMaxBatchSize?.primaryBatchSize > 1 && (
+          {isRollingUpgrade && (
             <div className="gflag-num-nodes-upgrade">
               <span className="vr-line">|</span>
-              {t('universeForm.gFlags.numNodesToRollingUpgrade')}&nbsp;
+              {t('component.rollMaxBatchSize.label')}&nbsp;
               <YBInputField
                 name="numNodesToUpgradePrimary"
                 type="number"
+                disabled={isMaxBatchSizeLocked}
                 inputProps={{
                   min: 1,
-                  max: rollMaxBatchSize.primaryBatchSize,
-                  autoFocus: true,
+                  max: maxBatchSizePrimary,
+                  autoFocus: !isMaxBatchSizeLocked,
                   'data-testid': 'EditGFlags-NumNodesToRollingUpgrade'
                 }}
                 onChange={handleNumNodeChangePrimary}
               />
               <Tooltip
                 className={classes.tooltip}
-                title={t('universeForm.gFlags.rollingUpgradeMsg')}
+                title={
+                  isMaxBatchSizeLocked
+                    ? t('component.rollMaxBatchSize.lockedTooltip')
+                    : t('component.rollMaxBatchSize.tooltip')
+                }
                 arrow
                 placement="top"
               >

@@ -7,22 +7,22 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+use crate::CommandExecute;
 use crate::command::get::get_property;
 use crate::command::run::exec_psql;
 use crate::command::start::start_postgres;
 use crate::manifest::{get_package_manifest, pg_config_and_version};
-use crate::CommandExecute;
 use clap_cargo::Features;
-use eyre::{eyre, WrapErr};
+use eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
-use pgrx_pg_config::{createdb, PgConfig, Pgrx};
+use pgrx_pg_config::{PgConfig, Pgrx, createdb};
 use std::path::PathBuf;
 
 /// Connect, via psql, to a Postgres instance
 #[derive(clap::Args, Debug)]
 #[clap(author)]
 pub(crate) struct Connect {
-    /// Do you want to run against pg13, pg14, pg15, pg16, or pg17?
+    /// Do you want to run against pg13, pg14, pg15, pg16, pg17, or pg18?
     #[clap(env = "PG_VERSION")]
     pg_version: Option<String>,
     /// The database to connect to (and create if the first time).  Defaults to a database with the same name as the current extension name
@@ -39,6 +39,8 @@ pub(crate) struct Connect {
     /// Use an existing `pgcli` on the $PATH.
     #[clap(env = "PGRX_PGCLI", long)]
     pgcli: bool,
+    #[clap(long)]
+    valgrind: bool,
 }
 
 impl CommandExecute for Connect {
@@ -48,8 +50,8 @@ impl CommandExecute for Connect {
 
         let (package_manifest, package_manifest_path) = get_package_manifest(
             &Features::default(),
-            self.package.as_ref(),
-            self.manifest_path.as_ref(),
+            self.package.as_deref(),
+            self.manifest_path.as_deref(),
         )?;
         let (pg_config, _pg_version) = match pg_config_and_version(
             &pgrx,
@@ -73,13 +75,13 @@ impl CommandExecute for Connect {
             Some(dbname) => dbname,
             None => {
                 // We should infer from package
-                get_property(package_manifest_path, "extname")
+                get_property(&package_manifest_path, "extname")
                     .wrap_err("could not determine extension name")?
                     .ok_or(eyre!("extname not found in control file"))?
             }
         };
 
-        connect_psql(&pg_config, &dbname, self.pgcli)
+        connect_psql(&pg_config, &dbname, self.pgcli, self.valgrind)
     }
 }
 
@@ -87,9 +89,14 @@ impl CommandExecute for Connect {
     pg_version = %pg_config.version()?,
     dbname,
 ))]
-pub(crate) fn connect_psql(pg_config: &PgConfig, dbname: &str, pgcli: bool) -> eyre::Result<()> {
+pub(crate) fn connect_psql(
+    pg_config: &PgConfig,
+    dbname: &str,
+    pgcli: bool,
+    use_valgrind: bool,
+) -> eyre::Result<()> {
     // restart postgres
-    start_postgres(pg_config)?;
+    start_postgres(pg_config, &Default::default(), use_valgrind)?;
 
     // create the named database
     if !createdb(pg_config, dbname, false, true, None)? {

@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.nodeui.MetricGroup;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -38,7 +39,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.PeerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -54,12 +55,17 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
     // Create default universe.
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = defaultProvider.getUuid().toString();
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     userIntent.numNodes = 4;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     defaultUniverse = createUniverse(defaultCustomer.getId());
 
     PlacementInfo placementInfo =
@@ -118,7 +124,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
         .when(() -> MetricGroup.getTabletFollowerLagMap(any()))
         .thenReturn(new HashMap<>());
 
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     try {
       when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       when(listMastersResponse.getPeersList()).thenReturn(Collections.singletonList(peerInfo));

@@ -441,6 +441,10 @@ BlockCache::BlockCache(
 
 BlockCache::~BlockCache() = default;
 
+size_t BlockCache::capacity() const {
+  return block_cache_.GetCapacity();
+}
+
 BlockCacheHandle BlockCache::Insert(CachedBlock& block, bool retain) {
   rocksdb::Cache::Handle* result;
   auto status = block_cache_.Insert(

@@ -19,6 +19,7 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import java.sql.Connection;
 import java.sql.Statement;
 import java.sql.ResultSet;
 import java.util.Map;
@@ -71,25 +72,39 @@ public class TestPgAutoExplain extends BasePgSQLTest {
     return 1;
   }
 
+  private boolean preloadAutoExplain = true;
+
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_prefetch_limit", "1024");
     flagMap.put("ysql_session_max_batch_size", "512");
-    appendToYsqlPgConf(flagMap, "shared_preload_libraries=auto_explain");
+    if (preloadAutoExplain) {
+      appendToYsqlPgConf(flagMap, "shared_preload_libraries=auto_explain");
+    }
     return flagMap;
   }
 
   @Before
   public void setUp() throws Exception {
-    // Register log listener
+    registerAutoExplainLogListeners();
+    createAndPopulateTestTable();
+
+    setAutoExplainOption("log_analyze", "true");
+    setAutoExplainOption("log_min_duration", "0");
+    setAutoExplainOption("sample_rate", "1");
+    setAutoExplainOption("log_format", "json");
+  }
+
+  private void registerAutoExplainLogListeners() {
     for (Entry<HostAndPort, MiniYBDaemon> entry : miniCluster.getTabletServers().entrySet()) {
-      int port = entry.getKey().getPort();
       MiniYBDaemon tserver = entry.getValue();
       // ErrorListener is a misnomer, we parse postgres explain analyze logs here
       tserver.getLogPrinter().addErrorListener(new AutoExplainLogListener(autoExplainResults));
     }
+  }
 
+  private void createAndPopulateTestTable() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format(
           "CREATE TABLE %s (c1 bigint, c2 bigint, c3 bigint, c4 text, " +
@@ -101,12 +116,6 @@ public class TestPgAutoExplain extends BasePgSQLTest {
           "FROM generate_series(1, %d) AS i",
           TABLE_NAME, TABLE_ROWS));
     }
-
-    // Remove restriction on timing and sample rate
-    setAutoExplainOption("log_analyze", "true");
-    setAutoExplainOption("log_min_duration", "0");
-    setAutoExplainOption("sample_rate", "1");
-    setAutoExplainOption("log_format", "json");
   }
 
   /**
@@ -190,6 +199,134 @@ public class TestPgAutoExplain extends BasePgSQLTest {
                 .storageTableReadExecutionTime(Checkers.greaterOrEqual(0.0))
                 .build())
             .build());
+  }
+
+  /**
+   * use LOAD command to install auto_explain hook instead of preloading
+   */
+  private void startClusterWithoutAutoExplainPreload() throws Exception {
+    preloadAutoExplain = false;
+    restartCluster();
+    // The restart created a fresh cluster: re-register the log listeners and
+    // recreate the test table
+    registerAutoExplainLogListeners();
+    createAndPopulateTestTable();
+  }
+
+  /** Restore the default cluster (auto_explain preloaded) so subsequent tests are unaffected. */
+  private void restoreDefaultCluster() throws Exception {
+    preloadAutoExplain = true;
+    restartCluster();
+  }
+
+  /**
+   * LOAD installs the auto_explain executor hook in the current backend even when the module is not
+   * preloaded, after which queries on that connection are logged.
+   */
+  @Test
+  public void testLoadEnablesAutoExplain() throws Exception {
+    startClusterWithoutAutoExplainPreload();
+    try {
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("LOAD 'auto_explain'");
+      }
+      setAutoExplainOption("log_analyze", "true");
+      setAutoExplainOption("log_dist", "true");
+      setAutoExplainOption("log_min_duration", "0");
+      setAutoExplainOption("sample_rate", "1");
+      setAutoExplainOption("log_format", "json");
+
+      testAutoExplain(
+          String.format(
+              "/*+ SeqScan(%s) */ SELECT * FROM %s ",
+              TABLE_NAME, TABLE_NAME),
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(NODE_SEQ_SCAN)
+                  .relationName(TABLE_NAME)
+                  .alias(TABLE_NAME)
+                  .storageTableReadRequests(Checkers.greaterOrEqual(0))
+                  .storageTableReadExecutionTime(Checkers.greaterOrEqual(0.0))
+                  .build())
+              .build());
+    } finally {
+      restoreDefaultCluster();
+    }
+  }
+
+  /**
+   * Validate that the effect of LOAD is per-backend and does not persist across a restart.
+   *
+   * Connections used:
+   *   c1 - runs LOAD 'auto_explain'; only this backend should log query plans.
+   *   c2 - opened before the LOAD; must stay unaffected (a different backend).
+   *   c3 - opened after the LOAD; a brand-new backend must also be unaffected.
+   *   c4 - opened after a postmaster restart; the in-memory LOAD state cannot survive the restart.
+   */
+  @Test
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
+  public void testLoadScopeIsPerBackendAndNotPersisted() throws Exception {
+    startClusterWithoutAutoExplainPreload();
+    try {
+      final String probeQuery = String.format("SELECT * FROM %s", TABLE_NAME);
+
+      ConnectionBuilder connBuilder = getConnectionBuilder();
+      try (Connection c1 = connBuilder.connect();
+           Connection c2 = connBuilder.connect()) {
+        // Before LOAD: auto_explain is installed nowhere, so nothing is logged.
+        assertEquals("Query before LOAD must not be logged in c1",
+                     0, countAutoExplainLogsFor(c1, probeQuery));
+        assertEquals("Query before LOAD must not be logged in c2",
+                     0, countAutoExplainLogsFor(c2, probeQuery));
+
+        // Install + enable the executor hook in c1's backend only.
+        try (Statement stmt = c1.createStatement()) {
+          stmt.execute("LOAD 'auto_explain'");
+          stmt.execute("SET auto_explain.log_min_duration = 0");
+          stmt.execute("SET auto_explain.log_format = json");
+          stmt.execute("SET auto_explain.sample_rate = 1");
+        }
+
+        // After LOAD: c1 logs its query; c2 (a different backend) is unaffected.
+        assertEquals("Query after LOAD must be logged in c1",
+                     1, countAutoExplainLogsFor(c1, probeQuery));
+        assertEquals("LOAD in c1 must not affect c2",
+                     0, countAutoExplainLogsFor(c2, probeQuery));
+
+        // A brand-new backend created after the LOAD is also unaffected.
+        try (Connection c3 = connBuilder.connect()) {
+          assertEquals("LOAD in c1 must not affect a new connection c3",
+                       0, countAutoExplainLogsFor(c3, probeQuery));
+        }
+      }
+
+      // A postmaster restart starts fresh processes with fresh address spaces;
+      // the in-memory library list populated by LOAD cannot survive it.
+      restartCluster();
+      registerAutoExplainLogListeners();
+      createAndPopulateTestTable();
+
+      try (Connection c4 = getConnectionBuilder().connect()) {
+        assertEquals("LOAD must not persist across a postmaster restart (c4)",
+                     0, countAutoExplainLogsFor(c4, probeQuery));
+      }
+    } finally {
+      restoreDefaultCluster();
+    }
+  }
+
+  /**
+   * Run the given query on the given connection and return the number of auto_explain plans that
+   * were emitted to the server log as a result.
+   */
+  private int countAutoExplainLogsFor(Connection conn, String query) throws Exception {
+    autoExplainResults.discard();
+    try (Statement stmt = conn.createStatement()) {
+      LOG.info("Probe query: " + query);
+      ResultSet rs = stmt.executeQuery(query);
+      rs.next();
+    }
+    return autoExplainResults.popAll().size();
   }
 
   @Test

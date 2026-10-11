@@ -4,6 +4,8 @@ headerTitle: YSQL major upgrade
 linkTitle: YSQL major upgrade
 description: Upgrade YugabyteDB to PostgreSQL 15 using yugabyted
 headcontent: Upgrade YugabyteDB to a version that supports PG 15
+tags:
+  feature: early-access
 menu:
   stable:
     identifier: ysql-major-upgrade-1
@@ -61,6 +63,8 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
 - If you have PITR enabled, delete the configuration before performing the upgrade. Recreate it only after the major upgrade is either finalized or rolled back.
 
 - Drop the `pg_stat_monitor` extension before upgrading (`DROP EXTENSION pg_stat_monitor;`) and re-enable it after the upgrade is finalized (`CREATE EXTENSION pg_stat_monitor;`).
+
+- If you are upgrading from v2024.2 and use the `vector` (pgvector) extension, export the data in tables that use it, and drop those tables and the extension (`DROP EXTENSION vector;`) before upgrading. Recreate them after the upgrade is finalized. See [Upgrade from v2024.2](../../additional-features/pg-extensions/extension-pgvector/#upgrade-from-v2024-2).
 
 ### Precheck
 
@@ -238,6 +242,5 @@ yugabyted does not currently support rollback.
 
 ## Limitations
 
-- Expression pushdown is not available. {{<issue 24730>}}
-- Upgrading with extensions is not yet supported. {{<issue 24733>}}
+- Expression pushdown is partially available. {{<issue 24730>}}
 - Any backups that are taken in the monitoring phase can only be restored on a PG15 compatible universe (that is, backups cannot be restored if rollback is performed).

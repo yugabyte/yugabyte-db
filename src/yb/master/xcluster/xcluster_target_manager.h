@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <mutex>
+#include <set>
+
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
@@ -38,6 +41,7 @@ struct XClusterSetupUniverseReplicationData;
 class XClusterTargetManager {
  public:
   friend class XClusterFailoverTask;
+  friend class XClusterWalAnchorDeletionTask;
 
   // XCluster Safe Time.
   void CreateXClusterSafeTimeTableAndStartService();
@@ -135,6 +139,10 @@ class XClusterTargetManager {
   Status ClearXClusterFieldsAfterYsqlDDL(
       TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch);
 
+  // Track a table whose pending WAL anchor deletion marker just became durable.
+  // Only call this after the write that set the marker has committed.
+  void MarkWalAnchorDeletionPending(const TableId& table_id) EXCLUDES(wal_anchor_deletion_mutex_);
+
   void NotifyAutoFlagsConfigChanged();
 
   Status ReportNewAutoFlagConfigVersion(
@@ -175,6 +183,20 @@ class XClusterTargetManager {
       const std::set<TableId>& tables_to_clear) EXCLUDES(table_stream_ids_map_mutex_);
 
   bool IsTableReplicated(const TableId& table_id) const;
+
+  // Returns true iff the table is replicated and every replicating stream has the
+  // xcluster_use_target_applied_filter bit set on its consumer_registry entry. Returns false when
+  // the table has no streams or any stream lacks the bit. Returns a non-OK status if the consumer
+  // registry is missing or its state is inconsistent with the in-memory stream map.
+  Result<bool> IsTableUsingTargetAppliedFilter(const TableId& consumer_table_id) const
+      EXCLUDES(table_stream_ids_map_mutex_);
+
+  // For index backfill: returns true iff every index in `index_table_ids` has all its replicating
+  // streams using the target-applied filter (see IsTableUsingTargetAppliedFilter). Colocated
+  // indexes are keyed by their colocation parent table id (since they ride the parent's stream).
+  // Returns a non-OK status on lookup failures (missing table info, inconsistent registry state).
+  Result<bool> ShouldTargetSkipLocalIndexBackfill(
+      const std::vector<TableId>& index_table_ids) const;
 
   Result<TableId> GetTableIdForStreamId(
       const xcluster::ReplicationGroupId& replication_group_id,
@@ -217,7 +239,7 @@ class XClusterTargetManager {
       const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
       const LeaderEpoch& epoch);
 
-  Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+  Result<XClusterBackfillDecision> TryGetXClusterInfoForIndexBackfill(
       const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
       const LeaderEpoch& epoch) const;
 
@@ -248,6 +270,32 @@ class XClusterTargetManager {
 
   Status RefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
   Status DoRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
+
+  // Starts an XClusterWalAnchorDeletionTask if there are pending deletions and no task is running.
+  Status DeletePendingWalAnchorStreams(const LeaderEpoch& epoch)
+      EXCLUDES(wal_anchor_deletion_mutex_);
+
+  std::vector<TableId> GetPendingWalAnchorDeletionTables() const
+      EXCLUDES(wal_anchor_deletion_mutex_);
+
+  void RemovePendingWalAnchorDeletionsFromSet(const std::vector<TableId>& consumer_table_ids)
+      EXCLUDES(wal_anchor_deletion_mutex_);
+
+  Status RegisterWalAnchorDeletionTask(server::MonitoredTaskPtr task)
+      EXCLUDES(wal_anchor_deletion_mutex_);
+  void UnRegisterWalAnchorDeletionTask(server::MonitoredTaskPtr task)
+      EXCLUDES(wal_anchor_deletion_mutex_);
+
+  // Seeds pending_wal_anchor_deletion_tables_ with the durable markers of the tables under
+  // replication. Only runs once per leadership, from SysCatalogLoaded; after that the set is
+  // maintained incrementally by MarkWalAnchorDeletionPending and DeletePendingWalAnchorStreams.
+  void RebuildPendingWalAnchorDeletionTables()
+      EXCLUDES(wal_anchor_deletion_mutex_, table_stream_ids_map_mutex_);
+
+  // Clears the pending WAL anchor deletion marker after the source has deleted the stream.
+  Status ClearWalAnchorDeletionMarkers(
+      const std::vector<TableId>& consumer_table_ids, const LeaderEpoch& epoch)
+      EXCLUDES(wal_anchor_deletion_mutex_);
 
   // Populate the response with the errors for the given replication group.
   Status PopulateReplicationGroupErrors(
@@ -280,6 +328,12 @@ class XClusterTargetManager {
   // Replication groups that had a failover in progress on a previous master leader.
   // Captured during SysCatalogLoaded and marked as Aborted in RunBgTasks.
   std::vector<xcluster::ReplicationGroupId> stale_failover_replication_groups_;
+
+  mutable std::mutex wal_anchor_deletion_mutex_;
+  // Tables with a durable pending WAL anchor deletion marker.
+  std::set<TableId> pending_wal_anchor_deletion_tables_ GUARDED_BY(wal_anchor_deletion_mutex_);
+  std::weak_ptr<server::MonitoredTask> wal_anchor_deletion_task_
+      GUARDED_BY(wal_anchor_deletion_mutex_);
 
   // The Catalog Entity is stored outside of XClusterSafeTimeService, since we may want to move the
   // service out of master at a later time.

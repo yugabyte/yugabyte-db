@@ -34,6 +34,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 
 DEPRECATE_FLAG(int32, cdc_transaction_timeout_ms, "05_2021");
@@ -261,6 +262,22 @@ Result<bool> PopulateChangeMetadataRecord(
     return false;
   }
 
+  if (kIsDebug) {
+    // Today the target skips CM ops that have a colocation id in a non-colocated tablet,
+    // assuming they are for a vector index (XClusterOutputClient::ProcessChangeMetadataOp).
+    const auto& colocated_table_id =
+        msg.change_metadata_request().schema().colocated_table_id();
+    auto metadata = context.tablet_peer->tablet_metadata();
+    if (colocated_table_id.has_colocation_id() &&
+        colocated_table_id.colocation_id() != kColocationIdNotSet && !metadata->colocated()) {
+      auto table_info = metadata->GetTableInfo(colocated_table_id.colocation_id());
+      DCHECK(!table_info.ok() || (*table_info)->IsVectorIndex())
+          << "Table with colocation id " << colocated_table_id.colocation_id()
+          << " in non-colocated tablet " << context.tablet_id
+          << " is not a vector index, but the xCluster target would skip its schema changes";
+    }
+  }
+
   auto* record = context.resp->add_records();
   record->set_operation(CDCRecordPB::CHANGE_METADATA);
   record->set_time(msg.hybrid_time());
@@ -368,8 +385,19 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   // Get the last checkpoint of records read, even if it is external.
   OpId last_checkpoint =
       messages.empty() ? context.from_op_id : OpId::FromPB(messages.back()->id());
-  // Filter out WAL records that are external.
-  EraseIf([](const auto& msg) { return msg->write().has_external_hybrid_time(); }, &messages);
+  // Loop-prevention filter. Streams stamped with xcluster_use_target_applied_filter drop only WAL
+  // entries that were applied by an xCluster consumer; legacy streams use the historical
+  // external_hybrid_time filter.
+  const bool use_target_applied_filter = context.stream_metadata->UseTargetAppliedFilter();
+  EraseIf(
+      [use_target_applied_filter](const auto& msg) {
+        const auto& write = msg->write();
+        if (use_target_applied_filter) {
+          return write.xcluster_target_applied();
+        }
+        return write.has_external_hybrid_time();
+      },
+      &messages);
 
   *context.have_more_messages =
       PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ? HaveMoreMessages::kTrue

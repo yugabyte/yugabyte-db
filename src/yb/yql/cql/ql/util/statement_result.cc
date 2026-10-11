@@ -25,6 +25,7 @@
 #include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/status_log.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"

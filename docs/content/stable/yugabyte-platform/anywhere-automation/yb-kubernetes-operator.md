@@ -10,6 +10,8 @@ menu:
     identifier: yb-kubernetes-operator
     weight: 100
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The YugabyteDB Kubernetes Operator streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
@@ -18,7 +20,7 @@ The Operator establishes `ybuniverse` as a Custom Resource Definition (CRD) in K
 
 You can define and update these custom resources to manage your universe's configuration, including granular resource specifications (CPU and memory for Masters and TServers) and precise regional/zonal placement policies to ensure optimal performance and high availability. Custom resources support seamless upgrades with no downtime, as well as automated, transparent scaling, and cluster-balanced deployments.
 
-{{<tags/feature/ea idea="2004">}}You can additionally convert Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator, using the `operator-import` API. See [Import universe](#import-universe).
+You can additionally convert Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator, using the `operator-import` API. See [Import universe](#import-universe).
 
 ![YugabyteDB Kubernetes Operator](/images/yb-platform/yb-kubernetes-operator.png)
 
@@ -37,7 +39,11 @@ The following additional CRDs support day 2 operations.
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
 | [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
 | [PitrConfig](#configure-pitr) | Configure point-in-time recovery (PITR) for a universe. |
+| [PitrRestore](#restore-from-pitr) | Restore a universe to a point in time using a PITR configuration. |
+| [DrConfig](#configure-xcluster-dr) | Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
 | [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
+| [KMSConfig](#configure-encryption-at-rest) | Configure a KMS for encryption at rest (available in v2026.1.2 or later). |
+| [UniverseKeyRotation](#rotate-the-universe-key) | Rotate the universe key for an encryption-at-rest-enabled universe (available in v2026.1.2 or later). |
 
 For details of each CRD, run `kubectl explain` on the CR.
 
@@ -100,7 +106,7 @@ FIELDS:
  kubernetesOverrides  <Object>
   Kubernetes overrides for the universe. Please refer to yugabyteDB
   documentation for more details.
-  https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides
+  https://docs.yugabyte.com/stable/yugabyte-platform/scale-deployments/edit-helm-overrides/
 
  masterDeviceInfo   <Object>
   Device information for the masters in universe to refer to storage
@@ -330,6 +336,12 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 
 {{< /tabpane >}}
 
+### Operator High Availability
+
+If you deploy YBA across separate Kubernetes clusters with [YBA High Availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
+
+For details, see [Operator High Availability](../../administer-yugabyte-platform/operator-high-availability/).
+
 ## Example workflows
 
 ### Create a provider
@@ -337,7 +349,7 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 Use the YBProvider CRD (available in v2025.2.2 or later) to define a Kubernetes provider that universes can reference via `spec.providerName`. The provider specifies cloud type, image registry, and per-region/per-zone settings such as storage class and namespace.
 
 ```sh
-kubectl apply provider-demo.yaml -n yb-platform
+kubectl apply -f provider-demo.yaml -n yb-platform
 ```
 
 ```yaml
@@ -415,7 +427,7 @@ To use a custom kubeconfig for the provider, specify it in either top-level `spe
 Use the YBUniverse CRD to create a universe using the `kubectl apply` command:
 
 ```sh
-kubectl apply universedemo.yaml -n yb-platform
+kubectl apply -f universedemo.yaml -n yb-platform
 ```
 
 ```yaml
@@ -465,12 +477,16 @@ operator-universe-demo   Ready   {{< yb-version version="stable" format="build">
 
 To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
 
+To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
+
 ### Create a universe with placement information
 
-Starting from YugabyteDB Anywhere v2025.2, you can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+
+`placementInfo` also supports multi-region universes that span multiple Kubernetes clusters. Configure per-zone kubeconfigs in your YBProvider via [kubeConfigSecret](#using-a-custom-kubeconfig). Multi-cluster deployments require proper network connectivity between clusters; see [Configure Kubernetes multi-cluster environment](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) and [Networking for Kubernetes](../../prepare/networking-kubernetes/).
 
 ```sh
-kubectl apply universedemo-placement.yaml -n yb-platform
+kubectl apply -f universedemo-placement.yaml -n yb-platform
 ```
 
 ```yaml
@@ -519,12 +535,57 @@ spec:
           memory: 8Gi
 ```
 
+#### Create a universe with read replicas
+
+Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
+
+```sh
+kubectl apply -f universe-read-replica.yaml -n yb-platform
+```
+
+```yaml
+# universe-read-replica.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: yugabyte-read-replica
+spec:
+  numNodes: 3
+  replicationFactor: 3
+  tserverResourceSpec:
+    cpu: 3
+    memory: 6
+  masterResourceSpec:
+    cpu: 3
+  providerName: operator-provider
+  readReplica:
+    numNodes: 3
+    replicationFactor: 3
+    deviceInfo:
+      numVolumes: 1
+      volumeSize: 80
+    tserverResourceSpec:
+      cpu: 4
+      memory: 6
+  enableYSQL: true
+  enableNodeToNodeEncrypt: false
+  enableClientToNodeEncrypt: false
+  ybSoftwareVersion: 2026.1.0.0-b0
+  enableYSQLAuth: false
+  enableYCQL: false
+  enableYCQLAuth: false
+  enableIPV6: false
+  deviceInfo:
+    numVolumes: 1
+    volumeSize: 80
+```
+
 ### Add a different software release of YugabyteDB
 
 Use the Release CRD to add a different software release of YugabyteDB:
 
 ```sh
-kubectl apply updaterelease.yaml -n yb-platform
+kubectl apply -f updaterelease.yaml -n yb-platform
 ```
 
 ```yaml
@@ -548,7 +609,7 @@ spec:
 Specify a storage configuration CRD to configure backup storage, and perform backup and restore of your YBA universes as per the following example:
 
 ```sh
-kubectl apply backuprestore.yaml -n yb-platform
+kubectl apply -f backuprestore.yaml -n yb-platform
 ```
 
 ```yaml
@@ -583,8 +644,15 @@ spec:
   actionType: RESTORE
   universe:  <name of universe>
   backup: <name of backup to restore>
-  keyspace: <keyspace overide>
+  restoreKeyspaces:
+    - name: <database to restore under a new name>
+      newName: <new database name>
+    - name: <database to restore under its original name>
 ```
+
+Use `spec.restoreKeyspaces` to choose which databases to restore. If you omit it, every database in the backup is restored under its original name. If you set it, only the listed databases are restored; add `newName` to restore a database under a different name. Restore creates each destination database and can't restore into a database that already exists on the target universe, so rename any database whose name is already in use.
+
+`spec.keyspace` is deprecated. It still renames the database of a single-database backup, but you can't use it with a multi-database backup or together with `spec.restoreKeyspaces`.
 
 #### Service account for backup
 
@@ -735,7 +803,7 @@ This example describes how to create and delete scheduled backups, and assumes y
 Use the following CRD to create a scheduled backup:
 
 ```sh
-kubectl apply scheduled-backup-demo.yaml -n schedule-cr
+kubectl apply -f scheduled-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
@@ -849,7 +917,7 @@ This example describes how to create and delete incremental backups, and assumes
 Use the following CRD to create an incremental backup:
 
 ```sh
-kubectl apply operator-backup-demo.yaml -n schedule-cr
+kubectl apply -f operator-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
@@ -895,12 +963,14 @@ No resources found in schedule-cr namespace.
 
 ### Configure PITR
 
-Use the PitrConfig CRD to configure point-in-time recovery (PITR) for a universe.
+Use the PitrConfig CRD to configure point-in-time recovery (PITR) for a universe. Declarative operations include creating a PITR configuration, updating the list of databases, and deleting the configuration.
 
-Currently, only declarative operations are supported, including creating a PITR configuration, updating the list of databases, and deleting the configuration. Imperative operations such as restore from a PITR configuration will be supported in a future release.
+Starting from YugabyteDB Anywhere v2026.1, you can also trigger a PITR restore using the [PitrRestore CR](#restore-from-pitr).
+
+#### Create a PITR configuration
 
 ```sh
-kubectl apply pitr-config.yaml -n test-pitr
+kubectl apply -f pitr-config.yaml -n test-pitr
 ```
 
 ```yaml
@@ -917,12 +987,357 @@ spec:
   tableType: 'YSQL'
 ```
 
+#### Restore from PITR
+
+Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a universe to a state back in time when PITR is enabled for a database.
+
+1. Create a universe:
+
+    ```sh
+    kubectl apply -f pitr-universe.yaml -n test-pitr
+    ```
+
+    ```yaml
+    # pitr-universe.yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: YBUniverse
+    metadata:
+      name: pitr-universe
+    spec:
+      universeName: "pitr-universe"
+      numNodes: 1
+      replicationFactor: 1
+      enableYSQL: true
+      enableNodeToNodeEncrypt: true
+      enableClientToNodeEncrypt: true
+      enableLoadBalancer: false
+      ybSoftwareVersion: "2026.1.0.0-b0"
+      enableYSQLAuth: false
+      enableYCQL: true
+      enableYCQLAuth: false
+      gFlags:
+        tserverGFlags: {}
+        masterGFlags: {}
+      deviceInfo:
+        volumeSize: 400
+        numVolumes: 1
+        storageClass: "yb-standard"
+      kubernetesOverrides:
+        resource:
+          master:
+            requests:
+              cpu: 2
+              memory: 8Gi
+            limits:
+              cpu: 3
+              memory: 8Gi
+    ```
+
+1. Create a PITR configuration:
+
+    ```sh
+    kubectl apply -f pitr-config.yaml -n test-pitr
+    ```
+
+    ```yaml
+    # pitr-config.yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: PitrConfig
+    metadata:
+      name: pitr-config
+    spec:
+      name: pitr-config
+      universe: pitr-universe
+      database: 'yugabyte'
+      tableType: 'YSQL'
+    ```
+
+1. Trigger a PITR restore:
+
+    ```sh
+    kubectl apply -f pitr-restore.yaml -n test-pitr
+    ```
+
+    ```yaml
+    # pitr-restore.yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: PitrRestore
+    metadata:
+      name: my-pitr-restore
+    spec:
+      universe: pitr-universe
+      pitrConfig: pitr-config
+      restoreTime: "2026-02-27T12:50:00Z"
+    ```
+
+### Configure xCluster DR
+
+Starting from YugabyteDB Anywhere v2026.1, use the DrConfig CRD to create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. Both declarative operations (create, update the database list, delete) and imperative operations (switchover, failover, pause/resume, restart, replace replica) are supported.
+
+Before you create a DrConfig CR, ensure that the source and target universes and the storage configuration referenced in the CR exist. The following sections describe the DrConfig CR changes for each supported operation.
+
+#### Create a DR configuration
+
+```sh
+kubectl apply -f dr-config.yaml -n yb-platform
+```
+
+```yaml
+# dr-config.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-target
+  databases:
+    - "db1"
+  storageConfig: trial-backup-config
+```
+
+#### Edit the database list
+
+Update the `databases` list in the DrConfig CR and apply the change:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-target
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+#### Switchover
+
+Swap `sourceUniverse` and `targetUniverse` in the CR to initiate a switchover:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-target
+  targetUniverse: dr-source
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+#### Failover
+
+Fail over to the replica:
+
+1. Set the current target as `sourceUniverse` and use a null string (`""`) for `targetUniverse` to initiate a failover:
+
+    ```yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: DrConfig
+    metadata:
+      name: prod-to-dr-config
+    spec:
+      name: prod-to-dr-config
+      sourceUniverse: dr-source
+      targetUniverse: ""
+      databases:
+        - "db1"
+        - "db2"
+      storageConfig: trial-backup-config
+    ```
+
+1. Restart DR after failover.
+
+    After the universe from which failover was performed (`dr-target`) is in the Ready state, add it back as `targetUniverse`, replacing the empty string. This initiates a restart DR operation and resumes replication:
+
+    ```yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: DrConfig
+    metadata:
+      name: prod-to-dr-config
+    spec:
+      name: prod-to-dr-config
+      sourceUniverse: dr-source
+      targetUniverse: dr-target
+      databases:
+        - "db1"
+        - "db2"
+      storageConfig: trial-backup-config
+    ```
+
+#### Replace the DR replica
+
+To change the DR replica universe, set `targetUniverse` to the new target universe. Replication is re-established to the new target:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-third
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+#### Pause and resume replication
+
+Set `paused: true` to pause replication. When a DR config is created, `paused` defaults to `false`.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-third
+  paused: true
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+Set `paused: false` to resume a paused replication:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-third
+  paused: false
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+### Configure encryption at rest
+
+Starting from YugabyteDB Anywhere v2026.1.2, use the KMSConfig CRD to create a [KMS configuration](../../security/create-kms-config/aws-kms/), then set `encryptionAtRest` on the YBUniverse CR to [enable encryption at rest](../../security/enable-encryption-at-rest/).
+
+Supported KMS providers are AWS, GCP, Azure (`AZU`), OCI, CipherTrust (`CIPHERTRUST`), and HashiCorp Vault (`HASHICORP`). Put credentials in Kubernetes Secrets and reference those Secrets from the CR; don't put secrets in plaintext. `spec.name` and `spec.provider` are immutable after you create the CR.
+
+Wait until the KMSConfig status is `Ready` before you enable encryption at rest on a universe. If the KMS config isn't usable, the operator skips the whole universe edit and not just the EAR change, so other updates in the same apply (for example scale-out, volume changes, or GFlags) are not applied either. The universe stays in `ERROR_UPDATING` status until the config is Ready.
+
+For the full field list, run `kubectl explain kmsconfig.spec` and `kubectl explain ybuniverse.spec.encryptionAtRest`.
+
+#### Create a KMS configuration
+
+```sh
+kubectl apply -f kms-config.yaml -n yb-operator
+```
+
+```yaml
+# kms-config.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-kms-creds
+  namespace: yb-operator
+stringData:
+  access-key-id: <ACCESS_KEY>
+  secret-access-key: <SECRET>
+---
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: KMSConfig
+metadata:
+  name: aws-kms
+spec:
+  name: aws-kms
+  provider: AWS
+  aws:
+    region: us-west-2
+    accessKeyIdSecret:
+      name: aws-kms-creds
+      key: access-key-id
+    secretAccessKeySecret:
+      name: aws-kms-creds
+      key: secret-access-key
+    # Optional. If omitted, YBA creates a CMK.
+    # cmkID: <CMK_ID>
+```
+
+To use the IAM profile of the YBA host instead of static credentials, set `aws.useIAMProfile` to true and omit the access-key Secrets.
+
+Check status:
+
+```sh
+kubectl get kmsconfig -n yb-operator
+```
+
+You can delete a KMSConfig CR to remove the configuration from YBA. Deletion is blocked while the config is in use (`InUse`).
+
+#### Enable encryption at rest on a universe
+
+`encryptionAtRest.kmsConfig` is the KMSConfig CR name in the same namespace. Omit the `encryptionAtRest` block to leave the universe's current encryption-at-rest state unchanged. Setting `enabled` to false is the only way to disable encryption at rest.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe-demo
+spec:
+  # ...other universe fields...
+  encryptionAtRest:
+    enabled: true
+    kmsConfig: aws-kms
+```
+
+To disable encryption at rest without dropping the KMS association, set `enabled` to false. You can re-enable later with the same `kmsConfig`. Changing `kmsConfig` in the same edit as a disable is applied only when you re-enable.
+
+To rotate the master key, change `kmsConfig` to another Ready KMSConfig CR while `enabled` is true. Don't rotate the master key and the universe key in the same operation. See [Rotate keys](../../security/enable-encryption-at-rest/#rotate-keys).
+
+#### Rotate the universe key
+
+Use the UniverseKeyRotation CRD to rotate the universe (data) key. Each CR is a one-shot rotation against the universe's currently active KMS config; listing the CRs for a universe is the rotation history. The spec is immutable.
+
+The universe must already have encryption at rest enabled.
+
+```sh
+kubectl apply -f universe-key-rotation.yaml -n yb-operator
+```
+
+```yaml
+# universe-key-rotation.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: UniverseKeyRotation
+metadata:
+  name: rotate-universe-key-1
+spec:
+  universe: operator-universe-demo
+```
+
+If the rotation task fails, the operator retries automatically (up to five times) before marking the CR `Failed`.
+
+When you restore an encryption-at-rest backup, set `spec.kmsConfig` on the RestoreJob CR to the KMSConfig that can decrypt the backup's universe keys. Leave it unset for unencrypted backups.
+
 ### Configure TLS certificates
 
 Use the YBCertificate CRD to configure TLS certificates for encryption in transit:
 
 ```sh
-kubectl apply yb-certificate.yaml -n yb-operator
+kubectl apply -f yb-certificate.yaml -n yb-operator
 ```
 
 ```yaml
@@ -943,7 +1358,7 @@ spec:
 Use the SupportBundle CRD to create a [support bundle](../../troubleshoot/universe-issues/#use-support-bundles):
 
 ```sh
-kubectl apply supportbundle.yaml -n yb-platform
+kubectl apply -f supportbundle.yaml -n yb-platform
 ```
 
 ```yaml
@@ -973,9 +1388,9 @@ spec:
 
 ## Import universe
 
-{{<tags/feature/ea idea="12874">}} Available in YugabyteDB Anywhere v2025.2.2 and later.
+Available in YugabyteDB Anywhere v2025.2.2 and later.
 
-Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator.
+Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator. After import, change storage class or volume count using the Operator CRD fields described in [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
 Currently, universes with any of the following configurations are not supported for import:
 
@@ -985,7 +1400,7 @@ Currently, universes with any of the following configurations are not supported 
 
 ### Before you begin
 
-- Install the operator. The operator must be enabled on your instance. See [Installing Kubernetes Operator](#installing-kubernetes-operator).
+- Install the operator. The operator must be enabled on your instance. See [Install Kubernetes Operator](#install-kubernetes-operator).
 - Verify namespace configuration.
   - If the operator is configured to watch a single, specific namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
   - If the operator is not watching a specific namespace, the payload should be the namespace you want the resources to be created in.
@@ -1050,15 +1465,12 @@ Importing a universe to the operator creates or adopts the following in the targ
 - Backups.
 - Backup schedules.
 - Storage configurations related to the backups or backup schedules, including secrets to access the storage configuration.
+- KMS configurations used by the universe for encryption at rest, including secrets that hold KMS credentials (available in v2026.1.2 or later).
 - Release, including secrets to access the release.
 
 ## Limitations
 
-- YugabyteDB Kubernetes Operator can only deploy universes on the _same_ Kubernetes cluster it is deployed on.
-- YugabyteDB Kubernetes Operator is single cluster only, and does not support multi-cluster universes.
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:
   - Software upgrade rollback
-  - [xCluster](../../../architecture/docdb-replication/async-replication/)
-  - [Read Replica](../../../architecture/key-concepts/#read-replica-cluster)
-  - [Encryption-At-Rest](../../security/enable-encryption-at-rest/)
-- Only self-signed [encryption in transit](../../security/enable-encryption-in-transit/) is supported. Editing this later is not supported.
+  - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2)
+- [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured.

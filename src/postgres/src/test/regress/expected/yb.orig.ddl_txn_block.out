@@ -565,3 +565,86 @@ SELECT atttypmod FROM pg_attribute
        104
 (1 row)
 
+-- #28502: After a DDL in a SERIALIZABLE transaction, DML with NO WAIT / SKIP
+-- LOCKED must still warn that those clauses are unsupported.
+CREATE TABLE test_nowait (id int PRIMARY KEY);
+CREATE INDEX NONCONCURRENTLY test_nowait_id_idx ON test_nowait (id);
+INSERT INTO test_nowait VALUES (1);
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+CREATE TABLE dummy_nowait (id int);
+SELECT * FROM test_nowait FOR UPDATE NOWAIT;
+WARNING:  NO WAIT clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM test_nowait FOR UPDATE SKIP LOCKED;
+WARNING:  SKIP LOCKED clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+ id 
+----
+  1
+(1 row)
+
+-- Same for an index scan.
+-- TODO(#33411): index scans still stamp the rowmark on every fetch call, so a
+-- one-row point lookup warns twice (row fetch plus end-of-scan call), unlike
+-- the seq scans above, which warn once per scan.
+EXPLAIN (COSTS OFF) SELECT * FROM test_nowait WHERE id = 1 FOR UPDATE NOWAIT;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ LockRows (no-op)
+   ->  Index Scan (Locked FOR UPDATE) using test_nowait_pkey on test_nowait
+         Index Cond: (id = 1)
+(3 rows)
+
+SELECT * FROM test_nowait WHERE id = 1 FOR UPDATE NOWAIT;
+WARNING:  NO WAIT clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+WARNING:  NO WAIT clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM test_nowait WHERE id = 1 FOR UPDATE SKIP LOCKED;
+WARNING:  SKIP LOCKED clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+WARNING:  SKIP LOCKED clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+ id 
+----
+  1
+(1 row)
+
+-- The planner does not choose an index only scan for a locked relation, even
+-- when hinted: locking needs the ybctid junk column, which check_index_only
+-- does not treat as index-returnable, even though secondary indexes do store
+-- it (ybidxbasectid) and yb_enable_primary_key_decode_from_index is enabled.
+-- TODO(#33411): if ybctid ever becomes index-returnable, index only scans
+-- become plannable here, and they do not stamp the rowmark at all: no warning,
+-- and no scan-level lock.
+SET yb_enable_primary_key_decode_from_index = on;
+EXPLAIN (COSTS OFF) /*+ IndexOnlyScan(test_nowait test_nowait_id_idx) */ SELECT id FROM test_nowait WHERE id = 1 FOR UPDATE NOWAIT;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ LockRows (no-op)
+   ->  Index Scan (Locked FOR UPDATE) using test_nowait_id_idx on test_nowait
+         Index Cond: (id = 1)
+(3 rows)
+
+/*+ IndexOnlyScan(test_nowait test_nowait_id_idx) */ SELECT id FROM test_nowait WHERE id = 1 FOR UPDATE NOWAIT;
+WARNING:  NO WAIT clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+WARNING:  NO WAIT clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+ id 
+----
+  1
+(1 row)
+
+/*+ IndexOnlyScan(test_nowait test_nowait_id_idx) */ SELECT id FROM test_nowait WHERE id = 1 FOR UPDATE SKIP LOCKED;
+WARNING:  SKIP LOCKED clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+WARNING:  SKIP LOCKED clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+ id 
+----
+  1
+(1 row)
+
+ROLLBACK;
+DROP TABLE test_nowait;

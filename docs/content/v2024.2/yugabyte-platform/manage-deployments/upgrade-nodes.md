@@ -47,6 +47,8 @@ Upgrades are performed via a rolling update, where one node in the universe is t
 
 If your patching and upgrading process is likely to take longer than 15 minutes, increase the WAL log retention time. Set the WAL log retention time using the `--log_min_seconds_to_retain` YB-TServer flag. Refer to [Edit configuration flags](../edit-config-flags/).
 
+If patching takes longer than the WAL log retention time, the node can be treated as failed and its data re-replicated.
+
 Before you start, make sure that all nodes in the universe are running correctly.
 
 ## Patch nodes
@@ -79,14 +81,16 @@ For each node in the universe, use the following general procedure:
 
     Note that you do not need to manually update transparent hugepages (THP). THP settings are automatically set during automatic provisioning in the next step.
 
-1. After replacing the boot disk, re-provision the node by following the steps in [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+1. If you replaced the boot disk, do the following:
 
-1. Reinstall YugabyteDB on the node using the following API command:
+    - Re-provision the node by following the steps in [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
-    ```shell
-    curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
-    --data-raw '{"nodeAction":"REPROVISION"}'
-    ```
+    - Reinstall YugabyteDB on the node using the following API command:
+
+        ```shell
+        curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
+        --data-raw '{"nodeAction":"REPROVISION"}'
+        ```
 
 1. Start the processes for the node.
 

@@ -61,6 +61,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
     When performing [switchover](../../../deploy/multi-dc/async-replication/async-transactional-switchover/) or [failover](../../../deploy/multi-dc/async-replication/async-transactional-failover/) on xCluster, if you are using CDC, remember to also reconfigure CDC to use the new primary universe.
 
 * Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
+* CDC currently doesn't support [Transactional DDL](../../../architecture/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
 * YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 * [Composite types](../../../explore/ysql-language-features/data-types#composite-types) are currently not supported. Issue {{<issue 25221>}}.
 
@@ -70,7 +71,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
-* Transaction savepoints are supported starting from v2025.1.4.0. Issue {{<issue 10936>}}.
+* Transaction savepoints are not supported in versions earlier than v2025.1.4.0. Issue {{<issue 10936>}}.
 * Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
 * Support for schema evolution with before image is tracked in issue {{<issue 15197>}}.
 

@@ -21,6 +21,7 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
+DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_uint32(vector_index_num_compactions_limit);
 
@@ -35,6 +36,7 @@ class PgVectorIndexITest : public LibPqTestBase {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = false;
     LibPqTestBase::SetUp();
   }
 

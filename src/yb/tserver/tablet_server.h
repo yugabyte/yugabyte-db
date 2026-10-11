@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #pragma once
 
 #include <atomic>
@@ -42,29 +43,23 @@
 #include <utility>
 #include <vector>
 
-#include "yb/common/common_util.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
-#include "yb/consensus/metadata.pb.h"
-
-#include "yb/cdc/cdc_consumer.fwd.h"
-#include "yb/cdc/xrepl_types.h"
-
 #include "yb/client/client_fwd.h"
+
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/docdb/object_lock_shared_fwd.h"
 
 #include "yb/encryption/encryption_fwd.h"
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
-
-#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 
-#include "yb/server/webserver_options.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
@@ -78,7 +73,6 @@
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
 
@@ -132,8 +126,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.
-  static const uint16_t kDefaultPort = 9100;
-  static const uint16_t kDefaultWebPort = 9000;
+  static constexpr uint16_t kDefaultPort = 9100;
+  static constexpr uint16_t kDefaultWebPort = 9000;
 
   // Default tserver and consensus RPC queue length per service.
   static constexpr uint32_t kDefaultSvcQueueLength = 5000;
@@ -141,7 +135,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   static constexpr int32_t kUnknownClusterConfigVersion = -1;
 
   explicit TabletServer(const TabletServerOptions& opts);
-  ~TabletServer();
+  ~TabletServer() override;
 
   // Initializes the tablet server, including the bootstrapping of all
   // existing tablets.
@@ -289,6 +283,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetYsqlDBCatalogInvalMessagesUnlocked(
       const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       uint64_t debug_id) REQUIRES(lock_);
+  void SetYsqlCatalogPrefetchLoad(uint32_t load);
+
   void SetYsqlDBCatalogVersionsWithInvalMessages(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
       const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
@@ -296,18 +292,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void ResetCatalogVersionsFingerprint() EXCLUDES(lock_) override;
   void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
-  uint32_t get_oid_cache_invalidations_count() const override {
-    return oid_cache_invalidations_count_.load();
-  }
-
-  void set_oid_cache_invalidations_count(uint32_t oid_cache_invalidations_count) {
-    uint32_t old_value = oid_cache_invalidations_count_.load();
-    if (old_value < oid_cache_invalidations_count) {
-      LOG(INFO) << "Received higher oid_cache_invalidations_count value ("
-                << oid_cache_invalidations_count << " > " << old_value << ")";
-      oid_cache_invalidations_count_.store(oid_cache_invalidations_count);
-    }
-  }
+  void UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count);
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version,
@@ -374,6 +359,15 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
+  // Opens an internal (yb-tserver-key authenticated) libpq connection to the local postgres.
+  // The connect retry loop is aborted if the tserver starts shutting down, so these connections
+  // never keep a shutdown blocked on a doomed connect (see the definition for details).
+  Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, std::string_view user = kDefaultInternalPgUser,
+      bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
+      std::string_view yb_internal_conn_kind = {}) override;
+
   SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
       const ColocationId& colocation_id) const;
 
@@ -405,6 +399,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status StartYSQLLeaseRefresher();
 
+  /// Stops the ysql lease manager threads, which call back into the PG supervisor to restart or
+  /// kill PG. Idempotent, also invoked by Shutdown.
+  void ShutdownYSQLLeaseManager();
+
   TserverXClusterContextIf& GetXClusterContext() const;
 
   PgMutationCounter& GetPgNodeLevelMutationCounter();
@@ -419,7 +417,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClusterConfigHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
-  Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
+  Status XClusterHandleMasterHeartbeatResponse(
+      const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time);
+
+  void ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
@@ -461,6 +463,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClearMetacache(const std::string& namespace_id) override;
 
+  void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
   Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
@@ -468,6 +472,20 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
 
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) override;
+
+  // Per-database oldest read HybridTime pinned by live PG sessions on this tserver.
+  master::DbOidToHybridTimeMap GetYsqlDbOldestPinnedReadTimes();
+
+  // Stores the cluster-wide per-database history retention pins aggregated by the master across
+  // all live tservers and returned in the heartbeat response locally. If the response sets
+  // cluster_ysql_db_pins_ready to false, the local map is left unchanged.
+  void UpdateClusterYsqlDbOldestPinnedReadTimes(const master::TSHeartbeatResponsePB& resp)
+      EXCLUDES(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+
+  // Returns the cluster-wide history retention pin for the given database, or HybridTime::kInvalid
+  // if none is known (e.g. no live transaction is pinning a read time for that database).
+  HybridTime GetClusterYsqlDbOldestPinnedReadTime(PgOid db_oid) const
+      EXCLUDES(cluster_ysql_db_oldest_pinned_read_times_mutex_);
 
   Result<std::string> GetUniverseUuid() const override;
 
@@ -478,6 +496,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   docdb::ObjectLockSharedStateManager* object_lock_shared_state_manager() {
     return object_lock_shared_state_manager_.get();
   }
+
+  std::optional<docdb::ObjectLockSharedStateHolder> AllocateObjectLockSharedState() const override;
 
   ConnectivityStateResponsePB ConnectivityState() override;
 
@@ -504,11 +524,15 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
-  Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, std::string_view user = kDefaultInternalPgUser,
-      bool simple_query_protocol = false,
-      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
-      std::string_view yb_internal_conn_kind = {}) override;
+  // Loads cluster_ysql_db_oldest_pinned_read_times_ in memory from the persisted pins file
+  // on disk. Called on tserver startup to prevent accidental compaction before heartbeat.
+  // Returns OK immediately if the pins file does not exist.
+  Status LoadClusterYsqlDbOldestPinnedReadTimes()
+      EXCLUDES(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+
+  // Writes pins to disk if at least history_retention_pins_persist_interval_sec has
+  // passed since the last write.
+  void PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(const master::DbOidToHybridTimeMap& pins);
 
   std::atomic<bool> initted_{false};
 
@@ -566,14 +590,29 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
 
-  // Highest value of SysXClusterConfigEntryPB.oid_cache_invalidations_count received from any
-  // TSHeartbeatResponsePB.  This value is bumped to invalidate all the TServer OID caches.
-  std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
+  // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
+  // ApplyXClusterGuardedInfoIfNewer RPCs, and guards the version below.
+  std::mutex xcluster_guarded_info_version_mutex_;
+  // (term, count) of the most recently applied copy; (0, 0) is below any real version.
+  std::pair<int64_t, uint64_t> xcluster_guarded_info_version_
+      GUARDED_BY(xcluster_guarded_info_version_mutex_){0, 0};
 
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ GUARDED_BY(lock_) = 0;
   uint64_t ysql_last_breaking_catalog_version_ GUARDED_BY(lock_) = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
+
+  // Cluster-wide per-database history retention pins, aggregated by the master across all live
+  // tservers and refreshed when a heartbeat response advertises a ready cluster pin map.
+  // Map[db_oid] -> oldest read HybridTime that any live transaction in the cluster may still
+  // need for that database.
+  mutable rw_spinlock cluster_ysql_db_oldest_pinned_read_times_mutex_;
+  master::DbOidToHybridTimeMap cluster_ysql_db_oldest_pinned_read_times_
+      GUARDED_BY(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+
+  // Unsynchronized: only touched by PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded, which runs
+  // on the single heartbeat poller thread.
+  CoarseTimePoint last_ysql_db_pins_persist_time_ = CoarseTimePoint::min();
 
   // This map represents an extended history of pg_yb_invalidation_messages except message_time
   // (i.e., db_oid, current_version, inval messages). For each db_oid, it stores a queue of
@@ -670,6 +709,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void MakeRelcacheInitConnection(const std::string& dbname);
   void RelcacheInitConnectionDone(const std::string& dbname, const Status& status)
       EXCLUDES(lock_);
+  // Completes every pending relcache-init callback with a ShutdownInProgress error. Backends block
+  // synchronously in TriggerRelcacheInitConnection waiting for this callback; if shutdown leaves
+  // them orphaned they hold their inbound connection open and wedge reactor join at teardown.
+  void AbortInFlightRelcacheInitConnections() EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
   std::map<std::string, std::string> ValidateConfCsvViaPg(

@@ -50,10 +50,6 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
         <>
           {commonDetails}
           <li>
-            <label>PagerDuty API Key:</label>
-            <div>{detail.apiKey}</div>
-          </li>
-          <li>
             <label>PagerDuty Service Integration Key:</label>
             <div>{detail.routingKey}</div>
           </li>

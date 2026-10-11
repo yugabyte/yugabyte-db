@@ -248,5 +248,6 @@ extern void PortalHashTableDeleteAll(void);
 extern bool ThereAreNoReadyPortals(void);
 extern void HoldPinnedPortals(void);
 extern void ForgetPortalSnapshots(void);
+extern void YbForEachPortal(void (*callback) (Portal portal));
 
 #endif							/* PORTAL_H */

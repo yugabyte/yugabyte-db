@@ -31,6 +31,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
@@ -261,8 +262,8 @@ Status YBBackupTest::WaitForTabletPostSplitCompacted(
                       << " error: " << resp.error().status().ShortDebugString();
           return false;
         }
-        return resp.tablet_status().has_parent_data_compacted() &&
-                resp.tablet_status().parent_data_compacted();
+        return resp.tablet_status().rocksdb_parent_data_compacted() &&
+               resp.tablet_status().vector_indexes_parent_data_compacted();
       },
       15s * kTimeMultiplier,
       Format("Waiting for tablet $0 post split compacted on tserver $1", tablet_id, ts->id()));

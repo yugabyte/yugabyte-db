@@ -74,6 +74,7 @@ public class UniverseClustersController extends AuthenticatedController {
     // Basically taskParams.clusters[]->userIntent and may be few more things
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
+    UniverseControllerRequestBinder.rejectFipsDisabledOnFipsYba(request);
     UniverseConfigureTaskParams taskParams =
         bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 

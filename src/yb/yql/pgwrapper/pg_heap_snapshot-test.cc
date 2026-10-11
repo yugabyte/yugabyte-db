@@ -15,6 +15,8 @@
 
 #include <chrono>
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -35,6 +37,9 @@ class PgHeapSnapshotTest : public PgMiniTestBase {
   void SetUp() override {
     if (CURRENT_TEST_CASE_AND_TEST_NAME_STR() == "PgHeapSnapshotTest.TestYsqlHeapSnapshotSimple") {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
+      // Object locking and concurrent DDL require invalidation messages (see the gflag validator in
+      // common_flags.cc), so keep them consistent with the flag disabled above.
+      ToggleDDLMode(/* use_legacy = */ true);
     }
     LOG(INFO) << "FLAGS_ysql_yb_enable_invalidation_messages: "
               << FLAGS_ysql_yb_enable_invalidation_messages;

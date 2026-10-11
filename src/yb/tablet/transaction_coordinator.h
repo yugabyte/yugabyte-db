@@ -124,9 +124,14 @@ class TransactionCoordinator {
   // Starts background processes of transaction coordinator.
   void Start();
 
-  // Stop background processes of transaction coordinator.
-  // And like most of other Shutdowns in our codebase it wait until shutdown completes.
-  void Shutdown();
+  // Stops the pollers that drive leader actions, so that no transaction status update operations
+  // are submitted after this returns. Must be called before the tablet pauses its read/write
+  // operations during shutdown. Waits for any in-flight poll to complete.
+  void StartShutdown();
+
+  // Completes the shutdown of the transaction coordinator (deadlock detector and outstanding RPCs).
+  // And like most of other Shutdowns in our codebase it waits until shutdown completes.
+  void CompleteShutdown();
 
   // Prepares tablet for deletion. This waits until the transaction coordinator has stopped
   // accepting new transactions, all running transactions have finished, and all intents

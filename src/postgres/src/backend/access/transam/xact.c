@@ -2147,7 +2147,8 @@ YBRunWithInitTransactionData(YbcStatus (*Callback) (const YbcPgInitTransactionDa
 			.enable_tracing = YBEnableTracing(),
 			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
 			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs(),
+			.origination_time = yb_origination_time
 		};
 
 		HandleYBStatus((*Callback) (&data));
@@ -2305,6 +2306,20 @@ StartTransaction(void)
 	pgstat_report_xact_timestamp(xactStartTimestamp);
 	/* Mark xactStopTimestamp as unset. */
 	xactStopTimestamp = 0;
+
+	if (IsYugaByteEnabled())
+	{
+		YBCSetObjectLockingInfraForCurrTxn();
+
+		/*
+		 * A background worker receives no messages, so it takes a fresh
+		 * origination time for each transaction, before AtStart_Cache
+		 * refreshes the catalog cache the transaction uses.  A parallel
+		 * worker keeps its leader's.
+		 */
+		if (IsBackgroundWorker && !IsParallelWorker())
+			YbRefreshOriginationTime();
+	}
 
 	/*
 	 * initialize other subsystems for new transaction
@@ -3353,21 +3368,21 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 void
 YbCommitTransactionCommandIntermediate(void)
 {
-	NodeTag		yb_node_tag;
-	CommandTag	yb_command_tag;
+	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
 	YbDdlMode	ddl_mode;
+
+	bool		ddl_txn_block_enabled = YBIsDdlTransactionBlockEnabled();
 
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 
 	/*
-	 * Remember the NodeTag and the CommandTag of the DDL currently being
-	 * executed so that we can set it into the next transaction.
+	 * Remember DDL state of the statement currently being executed so that we
+	 * can restore it on the next transaction.
 	 */
-	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
-		yb_node_tag = YBGetCurrentStmtDdlNodeTag();
-		yb_command_tag = YBGetCurrentStmtDdlCommandTag();
+		YBGetDdlOriginalStmtState(&yb_ddl_stmt_state);
 		ddl_mode = YBGetCurrentDdlMode();
 	}
 
@@ -3377,10 +3392,26 @@ YbCommitTransactionCommandIntermediate(void)
 	CommitTransactionCommand();
 	StartTransactionCommand();
 
-	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	/*
+	 * YB: The new transaction latched the object locking infra auto flag
+	 * afresh. If it disagrees with what this statement started with, the rest
+	 * of the statement would run in the other mode while the state it already
+	 * built belongs to this one, so fail the statement instead.
+	 * TODO(#34635): Keep the statement in one mode by pinning the latched
+	 * value across the intermediate commit.
+	 */
+	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("transactional DDL was %s while the statement was "
+						"running",
+						ddl_txn_block_enabled ? "disabled" : "enabled"),
+				 errhint("Retry the statement.")));
+
+	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
 		YBAddDdlTxnState(ddl_mode);
-		YBSetDdlOriginalNodeAndCommandTag(yb_node_tag, yb_command_tag);
+		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
 	}
 }
 
@@ -5130,7 +5161,7 @@ YbBeginInternalSubTransactionForReadCommittedStatement()
 }
 
 bool
-YBTransactionContainsNonReadCommittedSavepoint(void)
+YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_hatch)
 {
 	if (!IsTransactionBlock())
 		return false;
@@ -5154,10 +5185,15 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 			 * correctly catch this, but to avoid breaking existing extensions
 			 * (like pg_partman) during upgrades, we skip returning true if
 			 * the backward-compatibility flag is enabled.
+			 *
+			 * That escape hatch exists only to preserve the behavior of the
+			 * buggy DDL code path, so it must not be extended to other callers.
+			 * Those pass skip_backward_compat_escape_hatch to opt out of it.
 			 */
 			if (s->parent)
 			{
-				if (!*YBCGetGFlags()->ysql_bypass_anonymous_savepoint_ddl_check)
+				if (skip_backward_compat_escape_hatch ||
+					!*YBCGetGFlags()->ysql_bypass_anonymous_savepoint_ddl_check)
 					return true;
 			}
 		}

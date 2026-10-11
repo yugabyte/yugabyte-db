@@ -17,6 +17,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.Map;
@@ -49,9 +50,17 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    // TODO(29141): Fix the test with txn ddl and enable.
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    flagMap.put("enable_object_locking_for_table_locks", "false");
+    // The test suite asserts for DML failing when run concurrent to DROP, and doesn't expect
+    // proper wait-on behavior for DML-DDL interaction. Therefore, the suite runs in the legacy
+    // DDL mode.
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 
@@ -287,6 +296,8 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
 
       statement.execute("DROP TABLE " + tableName);
 
+      // DROP TABLE runs in an autonomous transaction that aborts the enclosing DML transaction,
+      // so COMMIT fails.
       runInvalidQuery(statement, "COMMIT", TRANSACTION_ABORT_ERRORS);
     }
   }

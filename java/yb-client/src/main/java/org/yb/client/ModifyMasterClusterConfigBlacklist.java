@@ -29,13 +29,13 @@ public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClus
 
 
   // This constructor is retained for backward compatibility.
-  public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> modifyHosts,
+  public ModifyMasterClusterConfigBlacklist(YBClientApi client, List<HostPortPB> modifyHosts,
       boolean isAdd) {
     this(client, modifyHosts, isAdd, false);
   }
 
   // This constructor is retained for backward compatibility.
-  public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> modifyHosts,
+  public ModifyMasterClusterConfigBlacklist(YBClientApi client, List<HostPortPB> modifyHosts,
       boolean isAdd, boolean isLeaderBlacklist) {
     super(client);
     if (isAdd) {
@@ -46,12 +46,12 @@ public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClus
     this.isLeaderBlacklist = isLeaderBlacklist;
   }
 
-  public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> addHosts,
+  public ModifyMasterClusterConfigBlacklist(YBClientApi client, List<HostPortPB> addHosts,
       List<HostPortPB> removeHosts) {
     this(client, addHosts, removeHosts, false);
   }
 
-  public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> addHosts,
+  public ModifyMasterClusterConfigBlacklist(YBClientApi client, List<HostPortPB> addHosts,
       List<HostPortPB> removeHosts, boolean isLeaderBlacklist) {
     super(client);
     this.addHosts = addHosts;

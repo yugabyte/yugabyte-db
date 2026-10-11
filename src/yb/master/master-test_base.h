@@ -48,8 +48,6 @@
 
 #include "yb/common/common_types.pb.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
 
@@ -116,7 +114,6 @@ using yb::rpc::RpcController;
 namespace yb {
 namespace master {
 
-using strings::Substitute;
 
 class MiniMaster;
 class MasterClusterClient;
@@ -246,6 +243,7 @@ class MasterTestBase : public YBTest {
   std::unique_ptr<MiniMaster> mini_master_;
   std::unique_ptr<MasterClientProxy> proxy_client_;
   std::unique_ptr<MasterDdlProxy> proxy_ddl_;
+  std::unique_ptr<MasterYsqlLeaseProxy> proxy_ysql_lease_;
   std::unique_ptr<MasterHeartbeatProxy> proxy_heartbeat_;
   std::unique_ptr<MasterReplicationProxy> proxy_replication_;
   std::shared_ptr<RpcController> controller_;

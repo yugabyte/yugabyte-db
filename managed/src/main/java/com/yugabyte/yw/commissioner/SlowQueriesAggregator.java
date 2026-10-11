@@ -88,6 +88,8 @@ public class SlowQueriesAggregator {
       }
       try {
         var node = CommonUtils.getServerToRunYsqlQuery(universe);
+        boolean slowQueryDisableCommandLogging =
+            confGetter.getConfForScope(universe, UniverseConfKeys.slowQueryDisableCommandLogging);
         log.info("Saving slow queries data for universe {}", universe.getName());
         RunQueryFormData runQueryFormData = new RunQueryFormData();
         runQueryFormData.setDbName(Util.SYSTEM_PLATFORM_DB);
@@ -95,7 +97,8 @@ public class SlowQueriesAggregator {
             String.format(CREATE_TABLE_QUERY, Util.SLOW_QUERIES_AGGREGATATION_TABLE));
 
         // Run idempotent create table query.
-        queryExecutor.executeQueryInNodeShell(universe, runQueryFormData, node);
+        queryExecutor.executeQueryInNodeShell(
+            universe, runQueryFormData, node, !slowQueryDisableCommandLogging);
 
         // Delete old data.
         runQueryFormData.setQuery(
@@ -103,7 +106,8 @@ public class SlowQueriesAggregator {
                 DELETE_DATA_QUERY,
                 Util.SLOW_QUERIES_AGGREGATATION_TABLE,
                 confGetter.getConfForScope(universe, UniverseConfKeys.slowQueryRetentionDays)));
-        queryExecutor.executeQueryInNodeShell(universe, runQueryFormData, node);
+        queryExecutor.executeQueryInNodeShell(
+            universe, runQueryFormData, node, !slowQueryDisableCommandLogging);
 
         // Fetch slow queries and insert in the table.
         JsonNode newData = queryHelper.slowQueries(universe);
@@ -128,7 +132,11 @@ public class SlowQueriesAggregator {
                     data.get("mean_time").asText()));
           }
           queryExecutor.executeQueryBatchInNodeShell(
-              universe, Util.SYSTEM_PLATFORM_DB, insertQueries, node);
+              universe,
+              Util.SYSTEM_PLATFORM_DB,
+              insertQueries,
+              node,
+              !slowQueryDisableCommandLogging);
         }
       } catch (Exception e) {
         log.error(

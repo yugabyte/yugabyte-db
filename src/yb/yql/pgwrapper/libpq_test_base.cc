@@ -17,9 +17,11 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
@@ -361,6 +363,9 @@ std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metri
     if (metric["table_name"].IsValid()) {
       labels["table_name"] = EXPECT_RESULT(metric["table_name"].GetString());
     }
+    if (metric["db_oid"].IsValid()) {
+      labels["db_oid"] = EXPECT_RESULT(metric["db_oid"].GetString());
+    }
 
     parsed_metrics.emplace_back(
         metric_name, std::move(labels), EXPECT_RESULT(metric["count"].GetInt64()),
@@ -379,7 +384,7 @@ std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics(size_t ts_idx) {
   faststring buf;
 
   auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+      Format("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
   EXPECT_OK(c.FetchURL(json_metrics_url, &buf));
   return ParseJsonMetrics(buf.ToString());
 }
@@ -393,7 +398,7 @@ std::vector<YsqlMetric> LibPqTestBase::GetPrometheusMetrics() {
   faststring buf;
 
   auto prometheus_metrics_url =
-      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
+      Format("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
   EXPECT_OK(c.FetchURL(prometheus_metrics_url, &buf));
   return ParsePrometheusMetrics(buf.ToString());
 }
@@ -421,38 +426,45 @@ void LibPqTestBase::WaitForCatalogVersionToPropagate() {
 
 Result<int64_t> LibPqTestBase::GetCatCacheTableMissMetric(const std::string& table_name) {
   auto metrics = GetJsonMetrics();
+  int64_t count = 0;
   for (const auto& metric : metrics) {
     if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
         metric.labels.count("table_name") &&
         metric.labels.at("table_name") == table_name) {
-      return metric.value;
+      count += metric.value;
     }
   }
-  return STATUS(NotFound, "metric for " + table_name + " not found");
+  // With the per-db catalog cache metrics, metrics that are 0 are not emitted.
+  // Return 0 instead of an error.
+  return count;
 }
 
 Result<int64_t> LibPqTestBase::GetCatCacheListMissMetric(const std::string& table_name) {
   auto metrics = GetJsonMetrics();
+  int64_t count = 0;
   for (const auto& metric : metrics) {
     if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos &&
         metric.labels.count("table_name") &&
         metric.labels.at("table_name") == table_name) {
-      return metric.value;
+      count += metric.value;
     }
   }
-  return STATUS(NotFound, "list miss metric for " + table_name + " not found");
+
+  return count;
 }
 
 Result<int64_t> LibPqTestBase::GetCatCacheNegMissMetric(const std::string& table_name) {
   auto metrics = GetJsonMetrics();
+  int64_t count = 0;
   for (const auto& metric : metrics) {
     if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos &&
         metric.labels.count("table_name") &&
         metric.labels.at("table_name") == table_name) {
-      return metric.value;
+      count += metric.value;
     }
   }
-  return STATUS(NotFound, "negative miss metric for " + table_name + " not found");
+
+  return count;
 }
 
 } // namespace pgwrapper

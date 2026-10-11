@@ -44,6 +44,7 @@
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -320,7 +321,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
 
   // The write_id is always incremented by one for each new element of the write batch.
   if (put_batch_.size() > numeric_limits<IntraTxnWriteId>::max()) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         NotSupported,
         "Trying to add more than $0 key/value pairs in the same single-shard txn.",
         numeric_limits<IntraTxnWriteId>::max());
@@ -715,7 +716,7 @@ Status DocWriteBatch::ReplaceRedisInList(
       valid = key_data && key_data.key.starts_with(key_prefix_);
     }
     if (!valid) {
-      return STATUS_SUBSTITUTE(Corruption,
+      return STATUS_FORMAT(Corruption,
           "Index Error: $0, reached beginning of list with size $1",
           index - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
           current_index);
@@ -828,7 +829,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       valid = key_data && key_data.key.starts_with(key_prefix_);
     }
     if (!valid) {
-      return STATUS_SUBSTITUTE(
+      return STATUS_FORMAT(
           QLError,
           "Unable to replace items into list, expecting index $0, reached end of list with size $1",
           target_cql_index,

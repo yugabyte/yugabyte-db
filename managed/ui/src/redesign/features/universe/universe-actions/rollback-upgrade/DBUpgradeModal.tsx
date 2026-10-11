@@ -400,10 +400,14 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     return <YBLoadingCircleIcon />;
   }
 
+  // Normalize once: the backend reports 1 when batching cannot be used, but guard against a
+  // missing or non-positive ceiling so the max attribute and the locked state stay consistent.
+  const maxBatchSizePrimary = Math.max(1, rollMaxBatchSize?.primaryBatchSize ?? 1);
+  const isMaxBatchSizeLocked = maxBatchSizePrimary <= 1;
+
   const handleNumNodeChangePrimary = (e: FocusEvent<HTMLInputElement>) => {
     const fieldValue = (e.target.value as unknown) as number;
-    if (fieldValue > rollMaxBatchSize?.primaryBatchSize)
-      setValue('numNodesToUpgradePrimary', rollMaxBatchSize?.primaryBatchSize);
+    if (fieldValue > maxBatchSizePrimary) setValue('numNodesToUpgradePrimary', maxBatchSizePrimary);
     else if (fieldValue < 1) setValue('numNodesToUpgradePrimary', 1);
     else setValue('numNodesToUpgradePrimary', fieldValue);
   };
@@ -539,7 +543,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                     'data-testid': 'DBUpgradeModal-RollingUpgrade'
                   }}
                 />
-                {isRollingUpgradeValue && rollMaxBatchSize?.primaryBatchSize > 1 && (
+                {isRollingUpgradeValue && (
                   <Box
                     display={'flex'}
                     flexDirection={'row'}
@@ -548,26 +552,29 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                     width="100%"
                     alignItems={'center'}
                   >
-                    <YBLabel width="280px">
-                      {t('universeActions.dbRollbackUpgrade.numNodesToRollingUpgrade')}
-                    </YBLabel>
+                    <YBLabel width="280px">{t('component.rollMaxBatchSize.label')}</YBLabel>
                     <Box width="130px" mr={1}>
                       <YBInputField
                         control={control}
                         type="number"
                         name="numNodesToUpgradePrimary"
                         fullWidth
+                        disabled={isMaxBatchSizeLocked}
                         inputProps={{
                           min: 1,
-                          max: rollMaxBatchSize?.primaryBatchSize,
-                          autoFocus: true,
+                          max: maxBatchSizePrimary,
+                          autoFocus: !isMaxBatchSizeLocked,
                           'data-testid': 'DBUpgradeModal-NumNodesToRollingUpgrade'
                         }}
                         onChange={handleNumNodeChangePrimary}
                       />
                     </Box>
                     <Tooltip
-                      title={t('universeActions.dbRollbackUpgrade.rollingUpgradeMsg')}
+                      title={
+                        isMaxBatchSizeLocked
+                          ? t('component.rollMaxBatchSize.lockedTooltip')
+                          : t('component.rollMaxBatchSize.tooltip')
+                      }
                       arrow
                       placement="top"
                     >

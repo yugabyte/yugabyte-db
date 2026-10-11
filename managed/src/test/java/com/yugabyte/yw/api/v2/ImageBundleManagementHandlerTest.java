@@ -6,6 +6,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThrows;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import api.v2.handlers.ImageBundleManagementHandler;
 import api.v2.models.ImageBundleApiFilter;
@@ -61,6 +62,38 @@ public class ImageBundleManagementHandlerTest extends FakeDBApplication {
     detailsArm.setRegions(new HashMap<>(regionImageInfo));
     detailsArm.setArch(Architecture.aarch64);
     ImageBundle.create(provider, "bundle-b", detailsArm, false);
+  }
+
+  @Test
+  public void getImageBundle_returnsBundle() {
+    ImageBundlePagedResp page =
+        handler.pageListImageBundles(customer.getUuid(), provider.getUuid(), getSpec());
+    UUID bundleUuid = page.getEntities().get(0).getInfo().getUuid();
+
+    api.v2.models.ImageBundle got =
+        handler.getImageBundle(customer.getUuid(), provider.getUuid(), bundleUuid);
+
+    assertThat(got.getInfo().getUuid(), is(bundleUuid));
+    assertThat(got.getSpec().getName(), is(page.getEntities().get(0).getSpec().getName()));
+  }
+
+  @Test
+  public void getImageBundle_invalidBundle() {
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.getImageBundle(customer.getUuid(), provider.getUuid(), UUID.randomUUID()));
+    assertThat(e.getHttpStatus(), is(NOT_FOUND));
+  }
+
+  @Test
+  public void getImageBundle_invalidProvider() {
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.getImageBundle(customer.getUuid(), UUID.randomUUID(), UUID.randomUUID()));
+    assertThat(e.getHttpStatus(), is(NOT_FOUND));
   }
 
   @Test

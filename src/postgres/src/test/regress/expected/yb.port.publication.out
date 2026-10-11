@@ -18,12 +18,8 @@ SELECT obj_description(p.oid, 'pg_publication') FROM pg_publication p;
 
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpib_ins_trunct WITH (publish = insert);
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
 ALTER PUBLICATION testpub_default SET (publish = update);
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 -- error cases
 CREATE PUBLICATION testpub_xxx WITH (foo);
 ERROR:  unrecognized publication parameter: "foo"
@@ -34,21 +30,21 @@ ERROR:  conflicting or redundant options
 LINE 1: ...ub_xxx WITH (publish_via_partition_root = 'true', publish_vi...
                                                              ^
 \dRp
-                                             List of publications
-      Name       |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
------------------+--------------------------+------------+---------+---------+---------+-----------+----------
- testpub_default | regress_publication_user | f          | t       | t       | t       | t         | f
-(1 row)
+                                              List of publications
+        Name        |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------+--------------------------+------------+---------+---------+---------+-----------+----------
+ testpib_ins_trunct | regress_publication_user | f          | t       | f       | f       | f         | f
+ testpub_default    | regress_publication_user | f          | f       | t       | f       | f         | f
+(2 rows)
 
 ALTER PUBLICATION testpub_default SET (publish = 'insert, update, delete');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 \dRp
-                                             List of publications
-      Name       |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
------------------+--------------------------+------------+---------+---------+---------+-----------+----------
- testpub_default | regress_publication_user | f          | t       | t       | t       | t         | f
-(1 row)
+                                              List of publications
+        Name        |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------+--------------------------+------------+---------+---------+---------+-----------+----------
+ testpib_ins_trunct | regress_publication_user | f          | t       | f       | f       | f         | f
+ testpub_default    | regress_publication_user | f          | t       | t       | t       | f         | f
+(2 rows)
 
 --- adding tables
 CREATE SCHEMA pub_test;
@@ -57,24 +53,22 @@ CREATE TABLE pub_test.testpub_nopk (foo int, bar int);
 CREATE VIEW testpub_view AS SELECT 1;
 CREATE TABLE testpub_parted (a int) PARTITION BY LIST (a);
 SET client_min_messages = 'ERROR';
--- YB Note: publishing subset of records is unsupported (#19250).
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
--- YB Note: publishing subset of records is unsupported (#19250).
 ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update');
-ERROR:  publication "testpub_foralltables" does not exist
 CREATE TABLE testpub_tbl2 (id serial primary key, data text);
 -- fail - can't add to for all tables publication
 ALTER PUBLICATION testpub_foralltables ADD TABLE testpub_tbl2;
-ERROR:  publication "testpub_foralltables" does not exist
+ERROR:  publication "testpub_foralltables" is defined as FOR ALL TABLES
+DETAIL:  Tables cannot be added to or dropped from FOR ALL TABLES publications.
 -- fail - can't drop from all tables publication
 ALTER PUBLICATION testpub_foralltables DROP TABLE testpub_tbl2;
-ERROR:  publication "testpub_foralltables" does not exist
+ERROR:  publication "testpub_foralltables" is defined as FOR ALL TABLES
+DETAIL:  Tables cannot be added to or dropped from FOR ALL TABLES publications.
 -- fail - can't add to for all tables publication
 ALTER PUBLICATION testpub_foralltables SET TABLE pub_test.testpub_nopk;
-ERROR:  publication "testpub_foralltables" does not exist
+ERROR:  publication "testpub_foralltables" is defined as FOR ALL TABLES
+DETAIL:  Tables cannot be added to or dropped from FOR ALL TABLES publications.
 -- YB Note: TABLES IN SCHEMA is blocked at runtime in YB.
 -- fail - can't add schema to 'FOR ALL TABLES' publication
 ALTER PUBLICATION testpub_foralltables ADD TABLES IN SCHEMA pub_test;
@@ -183,9 +177,10 @@ ALTER PUBLICATION testpub_forschema SET TABLE pub_test.testpub_nopk;
 ERROR:  publication "testpub_forschema" does not exist
 \dRp+ testpub_forschema
 SELECT pubname, puballtables FROM pg_publication WHERE pubname = 'testpub_foralltables';
- pubname | puballtables 
----------+--------------
-(0 rows)
+       pubname        | puballtables 
+----------------------+--------------
+ testpub_foralltables | t
+(1 row)
 
 \d+ testpub_tbl2
                                                 Table "public.testpub_tbl2"
@@ -195,8 +190,16 @@ SELECT pubname, puballtables FROM pg_publication WHERE pubname = 'testpub_forall
  data   | text    |           |          |                                          | extended |              | 
 Indexes:
     "testpub_tbl2_pkey" PRIMARY KEY, lsm (id HASH)
+Publications:
+    "testpub_foralltables"
 
 \dRp+ testpub_foralltables
+                              Publication testpub_foralltables
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | t          | t       | t       | f       | f         | f
+(1 row)
+
 DROP TABLE testpub_tbl2;
 DROP PUBLICATION testpub_foralltables, testpub_fortable, testpub_forschema, testpub_for_tbl_schema;
 ERROR:  DROP multiple objects not supported yet
@@ -245,12 +248,12 @@ RESET client_min_messages;
 CREATE TABLE testpub_parted1 (LIKE testpub_parted);
 CREATE TABLE testpub_parted2 (LIKE testpub_parted);
 ALTER PUBLICATION testpub_forparted1 SET (publish='insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 ALTER TABLE testpub_parted ATTACH PARTITION testpub_parted1 FOR VALUES IN (1);
 ALTER TABLE testpub_parted ATTACH PARTITION testpub_parted2 FOR VALUES IN (2);
 -- works despite missing REPLICA IDENTITY, because updates are not replicated
 UPDATE testpub_parted1 SET a = 1;
+ERROR:  cannot update table "testpub_parted1" because it does not have a replica identity and publishes updates
+HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
 -- only parent is listed as being in publication, not the partition
 ALTER PUBLICATION testpub_forparted ADD TABLE testpub_parted;
 \dRp+ testpub_forparted
@@ -270,6 +273,8 @@ HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
 ALTER TABLE testpub_parted DETACH PARTITION testpub_parted1;
 -- works again, because parent's publication is no longer considered
 UPDATE testpub_parted1 SET a = 1;
+ERROR:  cannot update table "testpub_parted1" because it does not have a replica identity and publishes updates
+HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
 ALTER PUBLICATION testpub_forparted SET (publish_via_partition_root = true);
 \dRp+ testpub_forparted
                                Publication testpub_forparted
@@ -286,6 +291,8 @@ HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
 ALTER PUBLICATION testpub_forparted DROP TABLE testpub_parted;
 -- works again, because update is no longer replicated
 UPDATE testpub_parted2 SET a = 2;
+ERROR:  cannot update table "testpub_parted2" because it does not have a replica identity and publishes updates
+HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
 DROP TABLE testpub_parted1, testpub_parted2;
 DROP PUBLICATION testpub_forparted, testpub_forparted1;
 ERROR:  DROP multiple objects not supported yet
@@ -306,43 +313,76 @@ SET client_min_messages = 'ERROR';
 -- Firstly, test using the option publish='insert' because the row filter
 -- validation of referenced columns is less strict than for delete/update.
 CREATE PUBLICATION testpub5 FOR TABLE testpub_rf_tbl1, testpub_rf_tbl2 WHERE (c <> 'test' AND d < 5) WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
 \dRp+ testpub5
+                                    Publication testpub5
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | f       | f       | f         | f
+Tables:
+    "public.testpub_rf_tbl1"
+    "public.testpub_rf_tbl2" WHERE ((c <> 'test'::text) AND (d < 5))
+
 \d testpub_rf_tbl3
           Table "public.testpub_rf_tbl3"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  e      | integer |           |          | 
+Publications:
+    "testpub_foralltables"
 
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl3 WHERE (e > 1000 AND e < 2000);
-ERROR:  publication "testpub5" does not exist
 \dRp+ testpub5
+                                    Publication testpub5
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | f       | f       | f         | f
+Tables:
+    "public.testpub_rf_tbl1"
+    "public.testpub_rf_tbl2" WHERE ((c <> 'test'::text) AND (d < 5))
+    "public.testpub_rf_tbl3" WHERE ((e > 1000) AND (e < 2000))
+
 \d testpub_rf_tbl3
           Table "public.testpub_rf_tbl3"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  e      | integer |           |          | 
+Publications:
+    "testpub5" WHERE ((e > 1000) AND (e < 2000))
+    "testpub_foralltables"
 
 ALTER PUBLICATION testpub5 DROP TABLE testpub_rf_tbl2;
-ERROR:  publication "testpub5" does not exist
 \dRp+ testpub5
+                                    Publication testpub5
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | f       | f       | f         | f
+Tables:
+    "public.testpub_rf_tbl1"
+    "public.testpub_rf_tbl3" WHERE ((e > 1000) AND (e < 2000))
+
 -- remove testpub_rf_tbl1 and add testpub_rf_tbl3 again (another WHERE expression)
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl3 WHERE (e > 300 AND e < 500);
-ERROR:  publication "testpub5" does not exist
 \dRp+ testpub5
+                                    Publication testpub5
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | f       | f       | f         | f
+Tables:
+    "public.testpub_rf_tbl3" WHERE ((e > 300) AND (e < 500))
+
 \d testpub_rf_tbl3
           Table "public.testpub_rf_tbl3"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  e      | integer |           |          | 
+Publications:
+    "testpub5" WHERE ((e > 300) AND (e < 500))
+    "testpub_foralltables"
 
 -- test \d <tablename> (now it displays filter information)
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_rf_yes FOR TABLE testpub_rf_tbl1 WHERE (a > 1) WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 CREATE PUBLICATION testpub_rf_no FOR TABLE testpub_rf_tbl1;
 RESET client_min_messages;
 \d testpub_rf_tbl1
@@ -352,7 +392,9 @@ RESET client_min_messages;
  a      | integer |           |          | 
  b      | text    |           |          | 
 Publications:
+    "testpub_foralltables"
     "testpub_rf_no"
+    "testpub_rf_yes" WHERE (a > 1)
 
 DROP PUBLICATION testpub_rf_yes, testpub_rf_no;
 ERROR:  DROP multiple objects not supported yet
@@ -362,20 +404,30 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs
 -- some more syntax tests to exercise other parser pathways
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_syntax1 FOR TABLE testpub_rf_tbl1, ONLY testpub_rf_tbl3 WHERE (e < 999) WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
 \dRp+ testpub_syntax1
+                                Publication testpub_syntax1
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | f       | f       | f         | f
+Tables:
+    "public.testpub_rf_tbl1"
+    "public.testpub_rf_tbl3" WHERE (e < 999)
+
 DROP PUBLICATION testpub_syntax1;
-ERROR:  publication "testpub_syntax1" does not exist
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_syntax2 FOR TABLE testpub_rf_tbl1, testpub_rf_schema1.testpub_rf_tbl5 WHERE (h < 999) WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
 \dRp+ testpub_syntax2
+                                Publication testpub_syntax2
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | f       | f       | f         | f
+Tables:
+    "public.testpub_rf_tbl1"
+    "testpub_rf_schema1.testpub_rf_tbl5" WHERE (h < 999)
+
 DROP PUBLICATION testpub_syntax2;
-ERROR:  publication "testpub_syntax2" does not exist
 -- fail - schemas don't allow WHERE clause
 SET client_min_messages = 'ERROR';
 -- YB Note: TABLES IN SCHEMA is blocked at runtime in YB.
@@ -393,18 +445,20 @@ RESET client_min_messages;
 -- fail - duplicate tables are not allowed if that table has any WHERE clause
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_dups FOR TABLE testpub_rf_tbl1 WHERE (a = 1), testpub_rf_tbl1 WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
+ERROR:  conflicting or redundant WHERE clauses for table "testpub_rf_tbl1"
 CREATE PUBLICATION testpub_dups FOR TABLE testpub_rf_tbl1, testpub_rf_tbl1 WHERE (a = 2) WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
+ERROR:  conflicting or redundant WHERE clauses for table "testpub_rf_tbl1"
 RESET client_min_messages;
 -- fail - publication WHERE clause must be boolean
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl3 WHERE (1234);
-ERROR:  publication "testpub5" does not exist
+ERROR:  argument of PUBLICATION WHERE must be type boolean, not type integer
+LINE 1: ...PUBLICATION testpub5 SET TABLE testpub_rf_tbl3 WHERE (1234);
+                                                                 ^
 -- fail - aggregate functions not allowed in WHERE clause
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl3 WHERE (e < AVG(e));
-ERROR:  publication "testpub5" does not exist
+ERROR:  aggregate functions are not allowed in WHERE
+LINE 1: ...ATION testpub5 SET TABLE testpub_rf_tbl3 WHERE (e < AVG(e));
+                                                               ^
 -- fail - user-defined operators are not allowed
 CREATE FUNCTION testpub_rf_func1(integer, integer) RETURNS boolean AS $$ SELECT hashint4($1) > $2 $$ LANGUAGE SQL;
 CREATE OPERATOR =#> (PROCEDURE = testpub_rf_func1, LEFTARG = integer, RIGHTARG = integer);
@@ -416,38 +470,42 @@ DETAIL:  User-defined operators are not allowed.
 -- fail - user-defined functions are not allowed
 CREATE FUNCTION testpub_rf_func2() RETURNS integer AS $$ BEGIN RETURN 123; END; $$ LANGUAGE plpgsql;
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl1 WHERE (a >= testpub_rf_func2());
-ERROR:  publication "testpub5" does not exist
+ERROR:  invalid publication WHERE expression
+LINE 1: ...ON testpub5 ADD TABLE testpub_rf_tbl1 WHERE (a >= testpub_rf...
+                                                             ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
 -- fail - non-immutable functions are not allowed. random() is volatile.
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl1 WHERE (a < random());
-ERROR:  publication "testpub5" does not exist
+ERROR:  invalid publication WHERE expression
+LINE 1: ...ION testpub5 ADD TABLE testpub_rf_tbl1 WHERE (a < random());
+                                                             ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
 -- fail - user-defined collations are not allowed
 CREATE COLLATION user_collation FROM "C";
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl1 WHERE (b < '2' COLLATE user_collation);
-ERROR:  publication "testpub5" does not exist
+ERROR:  invalid publication WHERE expression
+LINE 1: ...ICATION testpub5 ADD TABLE testpub_rf_tbl1 WHERE (b < '2' CO...
+                                                             ^
+DETAIL:  User-defined collations are not allowed.
 -- ok - NULLIF is allowed
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (NULLIF(1,2) = a);
-ERROR:  publication "testpub5" does not exist
 -- ok - built-in operators are allowed
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (a IS NULL);
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE ((a > 5) IS FALSE);
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (a IS DISTINCT FROM 5);
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE ((a, a + 1) < (2, 3));
-ERROR:  publication "testpub5" does not exist
 -- ok - built-in type coercions between two binary compatible datatypes are allowed
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (b::varchar < '2');
-ERROR:  publication "testpub5" does not exist
 -- ok - immutable built-in functions are allowed
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl4 WHERE (length(g) < 6);
-ERROR:  publication "testpub5" does not exist
 -- fail - user-defined types are not allowed
 CREATE TYPE rf_bug_status AS ENUM ('new', 'open', 'closed');
 CREATE TABLE rf_bug (id serial, description text, status rf_bug_status);
 CREATE PUBLICATION testpub6 FOR TABLE rf_bug WHERE (status = 'open') WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
+ERROR:  invalid publication WHERE expression
+LINE 1: ...EATE PUBLICATION testpub6 FOR TABLE rf_bug WHERE (status = '...
+                                                             ^
+DETAIL:  User-defined types are not allowed.
 DROP TABLE rf_bug;
 DROP TYPE rf_bug_status;
 -- fail - row filter expression is not simple
@@ -461,26 +519,17 @@ CREATE PUBLICATION testpub6 FOR TABLE testpub_rf_tbl1 WHERE ('(0,1)'::tid = ctid
 ERROR:  system column "ctid" is not supported yet
 -- ok - conditional expressions are allowed
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl5 WHERE (a IS DOCUMENT);
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl5 WHERE (xmlexists('//foo[text() = ''bar'']' PASSING BY VALUE a));
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (NULLIF(1, 2) = a);
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (CASE a WHEN 5 THEN true ELSE false END);
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (COALESCE(b, 'foo') = 'foo');
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (GREATEST(a, 10) > 10);
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (a IN (2, 4, 6));
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (ARRAY[a] <@ ARRAY[2, 4, 6]);
-ERROR:  publication "testpub5" does not exist
 ALTER PUBLICATION testpub5 SET TABLE testpub_rf_tbl1 WHERE (ROW(a, 2) IS NULL);
-ERROR:  publication "testpub5" does not exist
 -- fail - WHERE not allowed in DROP
 ALTER PUBLICATION testpub5 DROP TABLE testpub_rf_tbl1 WHERE (e < 27);
-ERROR:  publication "testpub5" does not exist
+ERROR:  cannot use a WHERE clause when removing a table from a publication
 -- fail - cannot ALTER SET table which is a member of a pre-existing schema
 SET client_min_messages = 'ERROR';
 -- YB Note: TABLES IN SCHEMA is blocked at runtime in YB.
@@ -509,7 +558,6 @@ DROP TABLE testpub_rf_schema2.testpub_rf_tbl6;
 DROP SCHEMA testpub_rf_schema1;
 DROP SCHEMA testpub_rf_schema2;
 DROP PUBLICATION testpub5;
-ERROR:  publication "testpub5" does not exist
 DROP PUBLICATION testpub6;
 ERROR:  publication "testpub6" does not exist
 DROP OPERATOR =#>(integer, integer);
@@ -666,19 +714,15 @@ DROP TABLE rf_tbl_abcd_part_pk;
 -- fail - duplicate tables are not allowed if that table has any column lists
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_dups FOR TABLE testpub_tbl1 (a), testpub_tbl1 WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
+ERROR:  conflicting or redundant column lists for table "testpub_tbl1"
 CREATE PUBLICATION testpub_dups FOR TABLE testpub_tbl1, testpub_tbl1 (a) WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
+ERROR:  conflicting or redundant column lists for table "testpub_tbl1"
 RESET client_min_messages;
 -- test for column lists
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_fortable FOR TABLE testpub_tbl1;
 ERROR:  publication "testpub_fortable" already exists
 CREATE PUBLICATION testpub_fortable_insert WITH (publish = 'insert');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
 CREATE TABLE testpub_tbl5 (a int PRIMARY KEY, b text, c text,
 	d int generated always as (a + length(b)) stored);
@@ -705,7 +749,6 @@ DETAIL:  publication of table testpub_tbl5 in publication testpub_fortable depen
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 -- ok: for insert-only publication, any column list is acceptable
 ALTER PUBLICATION testpub_fortable_insert ADD TABLE testpub_tbl5 (b, c);
-ERROR:  publication "testpub_fortable_insert" does not exist
 /* not all replica identities are good enough */
 CREATE UNIQUE INDEX testpub_tbl5_b_key ON testpub_tbl5 (b, c);
 ALTER TABLE testpub_tbl5 ALTER b SET NOT NULL, ALTER c SET NOT NULL;
@@ -729,12 +772,16 @@ UPDATE testpub_tbl5 SET a = 1;
 /* But if upd/del are not published, it works OK */
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_table_ins WITH (publish = 'insert, truncate');
-ERROR:  publishing only a subset of DML commands is not yet supported
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
 RESET client_min_messages;
 ALTER PUBLICATION testpub_table_ins ADD TABLE testpub_tbl5 (a);		-- ok
-ERROR:  publication "testpub_table_ins" does not exist
 \dRp+ testpub_table_ins
+                               Publication testpub_table_ins
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | f       | f       | t         | f
+Tables:
+    "public.testpub_tbl5" (a)
+
 -- tests with REPLICA IDENTITY FULL
 CREATE TABLE testpub_tbl6 (a int, b text, c text);
 ALTER TABLE testpub_tbl6 REPLICA IDENTITY FULL;
@@ -758,6 +805,7 @@ ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl7 (a, b);
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, lsm (a HASH)
 Publications:
+    "testpub_foralltables"
     "testpub_fortable" (a, b)
 
 -- ok: the column list is the same, we should skip this table (or at least not fail)
@@ -772,6 +820,7 @@ ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl7 (a, b);
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, lsm (a HASH)
 Publications:
+    "testpub_foralltables"
     "testpub_fortable" (a, b)
 
 -- ok: the column list changes, make sure the catalog gets updated
@@ -786,6 +835,7 @@ ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl7 (a, c);
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, lsm (a HASH)
 Publications:
+    "testpub_foralltables"
     "testpub_fortable" (a, c)
 
 -- column list for partitioned tables has to cover replica identities for
@@ -995,6 +1045,7 @@ Indexes:
     "testpub_tbl_both_filters_pkey" PRIMARY KEY, lsm (a HASH, c ASC)
 Publications:
     "testpub_both_filters" (a, c) WHERE (c <> 1)
+    "testpub_foralltables"
 
 DROP TABLE testpub_tbl_both_filters;
 ERROR:  cannot drop a table which is part of a publication.
@@ -1160,7 +1211,10 @@ SET client_min_messages = 'ERROR';
 CREATE TABLE testpub_tbl4(a int);
 INSERT INTO testpub_tbl4 values(1);
 UPDATE testpub_tbl4 set a = 2;
+ERROR:  cannot update table "testpub_tbl4" because it does not have a replica identity and publishes updates
+HINT:  To enable updating the table, set REPLICA IDENTITY using ALTER TABLE.
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES;
+ERROR:  publication "testpub_foralltables" already exists
 RESET client_min_messages;
 -- fail missing REPLICA IDENTITY
 UPDATE testpub_tbl4 set a = 3;
@@ -1217,7 +1271,6 @@ ALTER PUBLICATION testpub_default ADD TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default SET TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default ADD TABLE pub_test.testpub_nopk;
 ALTER PUBLICATION testpib_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tbl1;
-ERROR:  publication "testpib_ins_trunct" does not exist
 \d+ pub_test.testpub_nopk
                               Table "pub_test.testpub_nopk"
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
@@ -1225,6 +1278,7 @@ ERROR:  publication "testpib_ins_trunct" does not exist
  foo    | integer |           |          |         | plain   |              | 
  bar    | integer |           |          |         | plain   |              | 
 Publications:
+    "testpib_ins_trunct"
     "testpub_default"
     "testpub_fortbl"
 
@@ -1237,6 +1291,7 @@ Publications:
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
 Publications:
+    "testpib_ins_trunct"
     "testpub_default"
     "testpub_fortbl"
 
@@ -1244,7 +1299,7 @@ Publications:
                                 Publication testpub_default
           Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 --------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+ regress_publication_user | f          | t       | t       | t       | f         | f
 Tables:
     "pub_test.testpub_nopk"
     "public.testpub_tbl1"
@@ -1262,6 +1317,7 @@ ERROR:  relation "testpub_nopk" is not part of the publication
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
 Publications:
+    "testpib_ins_trunct"
     "testpub_fortbl"
 
 -- verify relation cache invalidation when a primary key is added using
@@ -1348,7 +1404,7 @@ HINT:  Use pg_publication_tables to find all such publications and retry after d
                                 Publication testpub_default
           Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 --------------------------+------------+---------+---------+---------+-----------+----------
- regress_publication_user | f          | t       | t       | t       | t         | f
+ regress_publication_user | f          | t       | t       | t       | f         | f
 Tables:
     "pub_test.testpub_addpk"
 
@@ -1362,7 +1418,7 @@ ALTER PUBLICATION testpub_default RENAME TO testpub_foo;
                                            List of publications
     Name     |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 -------------+--------------------------+------------+---------+---------+---------+-----------+----------
- testpub_foo | regress_publication_user | f          | t       | t       | t       | t         | f
+ testpub_foo | regress_publication_user | f          | t       | t       | t       | f         | f
 (1 row)
 
 -- rename back to keep the rest simple
@@ -1372,7 +1428,7 @@ ALTER PUBLICATION testpub_default OWNER TO regress_publication_user2;
                                              List of publications
       Name       |           Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
 -----------------+---------------------------+------------+---------+---------+---------+-----------+----------
- testpub_default | regress_publication_user2 | f          | t       | t       | t       | t         | f
+ testpub_default | regress_publication_user2 | f          | t       | t       | t       | f         | f
 (1 row)
 
 -- adding schemas and tables
@@ -1684,7 +1740,6 @@ DETAIL:  One of TABLE or TABLES IN SCHEMA must be specified before a standalone 
 DROP VIEW testpub_view;
 DROP PUBLICATION testpub_default;
 DROP PUBLICATION testpib_ins_trunct;
-ERROR:  publication "testpib_ins_trunct" does not exist
 DROP PUBLICATION testpub_fortbl;
 DROP PUBLICATION testpub1_forschema;
 ERROR:  publication "testpub1_forschema" does not exist
@@ -1727,39 +1782,48 @@ LINE 1: CREATE PUBLICATION pub FOR TABLES IN SCHEMA sch2 WITH (PUBLI...
                                    ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT * FROM pg_publication_tables;
-        pubname         | schemaname |      tablename      | attnames | rowfilter 
-------------------------+------------+---------------------+----------+-----------
- testpub_fortable       | public     | testpub_tbl7        | {a,c}    | 
- testpub_rf_no          | public     | testpub_rf_tbl1     | {a,b}    | 
- testpub_col_list       | public     | testpub_tbl8        | {a,b}    | 
- testpub_forunloggedtbl | public     | testpub_unloggedtbl | {a}      | 
-(4 rows)
+         pubname         | schemaname |      tablename      | attnames | rowfilter 
+-------------------------+------------+---------------------+----------+-----------
+ testpub_fortable        | public     | testpub_tbl7        | {a,c}    | 
+ testpub_rf_yes          | public     | testpub_rf_tbl1     | {a,b}    | (a > 1)
+ testpub_rf_no           | public     | testpub_rf_tbl1     | {a,b}    | 
+ testpub_fortable_insert | public     | testpub_tbl5        | {b,c}    | 
+ testpub_table_ins       | public     | testpub_tbl5        | {a}      | 
+ testpub_col_list        | public     | testpub_tbl8        | {a,b}    | 
+ testpub_forunloggedtbl  | public     | testpub_unloggedtbl | {a}      | 
+(7 rows)
 
 DROP PUBLICATION pub;
 ERROR:  publication "pub" does not exist
 -- Table publication that does not include the parent table
 CREATE PUBLICATION pub FOR TABLE sch2.tbl1_part1 WITH (PUBLISH_VIA_PARTITION_ROOT=1);
 SELECT * FROM pg_publication_tables;
-        pubname         | schemaname |      tablename      | attnames | rowfilter 
-------------------------+------------+---------------------+----------+-----------
- testpub_fortable       | public     | testpub_tbl7        | {a,c}    | 
- testpub_rf_no          | public     | testpub_rf_tbl1     | {a,b}    | 
- testpub_col_list       | public     | testpub_tbl8        | {a,b}    | 
- testpub_forunloggedtbl | public     | testpub_unloggedtbl | {a}      | 
- pub                    | sch2       | tbl1_part1          | {a}      | 
-(5 rows)
+         pubname         | schemaname |      tablename      | attnames | rowfilter 
+-------------------------+------------+---------------------+----------+-----------
+ testpub_fortable        | public     | testpub_tbl7        | {a,c}    | 
+ testpub_rf_yes          | public     | testpub_rf_tbl1     | {a,b}    | (a > 1)
+ testpub_rf_no           | public     | testpub_rf_tbl1     | {a,b}    | 
+ testpub_fortable_insert | public     | testpub_tbl5        | {b,c}    | 
+ testpub_table_ins       | public     | testpub_tbl5        | {a}      | 
+ testpub_col_list        | public     | testpub_tbl8        | {a,b}    | 
+ testpub_forunloggedtbl  | public     | testpub_unloggedtbl | {a}      | 
+ pub                     | sch2       | tbl1_part1          | {a}      | 
+(8 rows)
 
 -- Table publication that includes both the parent table and the child table
 ALTER PUBLICATION pub ADD TABLE sch1.tbl1;
 SELECT * FROM pg_publication_tables;
-        pubname         | schemaname |      tablename      | attnames | rowfilter 
-------------------------+------------+---------------------+----------+-----------
- testpub_fortable       | public     | testpub_tbl7        | {a,c}    | 
- testpub_rf_no          | public     | testpub_rf_tbl1     | {a,b}    | 
- testpub_col_list       | public     | testpub_tbl8        | {a,b}    | 
- testpub_forunloggedtbl | public     | testpub_unloggedtbl | {a}      | 
- pub                    | sch1       | tbl1                | {a}      | 
-(5 rows)
+         pubname         | schemaname |      tablename      | attnames | rowfilter 
+-------------------------+------------+---------------------+----------+-----------
+ testpub_fortable        | public     | testpub_tbl7        | {a,c}    | 
+ testpub_rf_yes          | public     | testpub_rf_tbl1     | {a,b}    | (a > 1)
+ testpub_rf_no           | public     | testpub_rf_tbl1     | {a,b}    | 
+ testpub_fortable_insert | public     | testpub_tbl5        | {b,c}    | 
+ testpub_table_ins       | public     | testpub_tbl5        | {a}      | 
+ testpub_col_list        | public     | testpub_tbl8        | {a,b}    | 
+ testpub_forunloggedtbl  | public     | testpub_unloggedtbl | {a}      | 
+ pub                     | sch1       | tbl1                | {a}      | 
+(8 rows)
 
 DROP PUBLICATION pub;
 -- Schema publication that does not include the schema that has the parent table
@@ -1769,39 +1833,48 @@ LINE 1: CREATE PUBLICATION pub FOR TABLES IN SCHEMA sch2 WITH (PUBLI...
                                    ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT * FROM pg_publication_tables;
-        pubname         | schemaname |      tablename      | attnames | rowfilter 
-------------------------+------------+---------------------+----------+-----------
- testpub_fortable       | public     | testpub_tbl7        | {a,c}    | 
- testpub_rf_no          | public     | testpub_rf_tbl1     | {a,b}    | 
- testpub_col_list       | public     | testpub_tbl8        | {a,b}    | 
- testpub_forunloggedtbl | public     | testpub_unloggedtbl | {a}      | 
-(4 rows)
+         pubname         | schemaname |      tablename      | attnames | rowfilter 
+-------------------------+------------+---------------------+----------+-----------
+ testpub_fortable        | public     | testpub_tbl7        | {a,c}    | 
+ testpub_rf_yes          | public     | testpub_rf_tbl1     | {a,b}    | (a > 1)
+ testpub_rf_no           | public     | testpub_rf_tbl1     | {a,b}    | 
+ testpub_fortable_insert | public     | testpub_tbl5        | {b,c}    | 
+ testpub_table_ins       | public     | testpub_tbl5        | {a}      | 
+ testpub_col_list        | public     | testpub_tbl8        | {a,b}    | 
+ testpub_forunloggedtbl  | public     | testpub_unloggedtbl | {a}      | 
+(7 rows)
 
 DROP PUBLICATION pub;
 ERROR:  publication "pub" does not exist
 -- Table publication that does not include the parent table
 CREATE PUBLICATION pub FOR TABLE sch2.tbl1_part1 WITH (PUBLISH_VIA_PARTITION_ROOT=0);
 SELECT * FROM pg_publication_tables;
-        pubname         | schemaname |      tablename      | attnames | rowfilter 
-------------------------+------------+---------------------+----------+-----------
- testpub_fortable       | public     | testpub_tbl7        | {a,c}    | 
- testpub_rf_no          | public     | testpub_rf_tbl1     | {a,b}    | 
- testpub_col_list       | public     | testpub_tbl8        | {a,b}    | 
- testpub_forunloggedtbl | public     | testpub_unloggedtbl | {a}      | 
- pub                    | sch2       | tbl1_part1          | {a}      | 
-(5 rows)
+         pubname         | schemaname |      tablename      | attnames | rowfilter 
+-------------------------+------------+---------------------+----------+-----------
+ testpub_fortable        | public     | testpub_tbl7        | {a,c}    | 
+ testpub_rf_yes          | public     | testpub_rf_tbl1     | {a,b}    | (a > 1)
+ testpub_rf_no           | public     | testpub_rf_tbl1     | {a,b}    | 
+ testpub_fortable_insert | public     | testpub_tbl5        | {b,c}    | 
+ testpub_table_ins       | public     | testpub_tbl5        | {a}      | 
+ testpub_col_list        | public     | testpub_tbl8        | {a,b}    | 
+ testpub_forunloggedtbl  | public     | testpub_unloggedtbl | {a}      | 
+ pub                     | sch2       | tbl1_part1          | {a}      | 
+(8 rows)
 
 -- Table publication that includes both the parent table and the child table
 ALTER PUBLICATION pub ADD TABLE sch1.tbl1;
 SELECT * FROM pg_publication_tables;
-        pubname         | schemaname |      tablename      | attnames | rowfilter 
-------------------------+------------+---------------------+----------+-----------
- testpub_fortable       | public     | testpub_tbl7        | {a,c}    | 
- testpub_rf_no          | public     | testpub_rf_tbl1     | {a,b}    | 
- testpub_col_list       | public     | testpub_tbl8        | {a,b}    | 
- testpub_forunloggedtbl | public     | testpub_unloggedtbl | {a}      | 
- pub                    | sch2       | tbl1_part1          | {a}      | 
-(5 rows)
+         pubname         | schemaname |      tablename      | attnames | rowfilter 
+-------------------------+------------+---------------------+----------+-----------
+ testpub_fortable        | public     | testpub_tbl7        | {a,c}    | 
+ testpub_rf_yes          | public     | testpub_rf_tbl1     | {a,b}    | (a > 1)
+ testpub_rf_no           | public     | testpub_rf_tbl1     | {a,b}    | 
+ testpub_fortable_insert | public     | testpub_tbl5        | {b,c}    | 
+ testpub_table_ins       | public     | testpub_tbl5        | {a}      | 
+ testpub_col_list        | public     | testpub_tbl8        | {a,b}    | 
+ testpub_forunloggedtbl  | public     | testpub_unloggedtbl | {a}      | 
+ pub                     | sch2       | tbl1_part1          | {a}      | 
+(8 rows)
 
 DROP PUBLICATION pub;
 DROP TABLE sch2.tbl1_part1;
@@ -1817,13 +1890,16 @@ LINE 1: CREATE PUBLICATION pub FOR TABLES IN SCHEMA sch1 WITH (PUBLI...
                                    ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT * FROM pg_publication_tables;
-        pubname         | schemaname |      tablename      | attnames | rowfilter 
-------------------------+------------+---------------------+----------+-----------
- testpub_fortable       | public     | testpub_tbl7        | {a,c}    | 
- testpub_rf_no          | public     | testpub_rf_tbl1     | {a,b}    | 
- testpub_col_list       | public     | testpub_tbl8        | {a,b}    | 
- testpub_forunloggedtbl | public     | testpub_unloggedtbl | {a}      | 
-(4 rows)
+         pubname         | schemaname |      tablename      | attnames | rowfilter 
+-------------------------+------------+---------------------+----------+-----------
+ testpub_fortable        | public     | testpub_tbl7        | {a,c}    | 
+ testpub_rf_yes          | public     | testpub_rf_tbl1     | {a,b}    | (a > 1)
+ testpub_rf_no           | public     | testpub_rf_tbl1     | {a,b}    | 
+ testpub_fortable_insert | public     | testpub_tbl5        | {b,c}    | 
+ testpub_table_ins       | public     | testpub_tbl5        | {a}      | 
+ testpub_col_list        | public     | testpub_tbl8        | {a,b}    | 
+ testpub_forunloggedtbl  | public     | testpub_unloggedtbl | {a}      | 
+(7 rows)
 
 RESET client_min_messages;
 DROP PUBLICATION pub;
@@ -1848,6 +1924,11 @@ DROP PUBLICATION IF EXISTS testpub_forparted1;
 DROP PUBLICATION IF EXISTS testpub_rf_no;
 DROP PUBLICATION IF EXISTS testpub_col_list;
 DROP PUBLICATION IF EXISTS testpub_forunloggedtbl;
+-- YB Note: subset-publish publications are creatable now; the multi-object DROP PUBLICATION
+-- statements above are unsupported in YB (#880) and error out, so drop these individually.
+DROP PUBLICATION IF EXISTS testpub_rf_yes;
+DROP PUBLICATION IF EXISTS testpub_fortable_insert;
+DROP PUBLICATION IF EXISTS testpub_table_ins;
 DROP TABLE IF EXISTS testpub_tbl1;
 DROP TABLE IF EXISTS testpub_tbl5;
 DROP TABLE IF EXISTS testpub_tbl6;

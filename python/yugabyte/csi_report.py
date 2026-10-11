@@ -3,7 +3,8 @@
 import json
 import logging
 import os
-from typing import List, Tuple, Any, Dict
+import time
+from typing import BinaryIO, List, Optional, Tuple, Any, Dict, Set
 from yugabyte.test_descriptor import TestDescriptor, SimpleTestDescriptor
 
 # Non-standard module. Needed in builddir venv for code-checks and in system modules for spark job
@@ -21,10 +22,52 @@ import requests
 # Set by caller (run_tests_on_spark.py), based on other criteria
 # YB_CSI_REPS   - integer (default: 1) Number of times each test is being run.
 # YB_CSI_QID    - integer ID of launch to query
+# YB_CSI_NEW_TEST - non-empty for the extra runs of a test that is new on this lane
+#                 (--new_test_repetitions); set for that job only.
 # ===================================
 # Returned by create_suite(), but put into environment by caller:
 # YB_CSI_C++    - Suite ID for test, by language
 # YB_CSI_Java
+
+
+# The launch this process - or, on a worker, this task - reports to.
+def env_launch() -> str:
+    return os.getenv('YB_CSI_LID', '')
+
+
+def configured() -> bool:
+    return bool(os.getenv('CSI_SERVER', '') and os.getenv('CSI_TOKEN', ''))
+
+
+# Attempts for a GET, matching the retry(3) that csi/lib.groovy wraps every request in: CSI returns
+# the occasional transient 5xx, and a query that gives up on the first one is worse than a slow one.
+GET_ATTEMPTS = 3
+
+# Waited before a retry, multiplied by the attempt just made, so a busy server gets a longer pause
+# each time round.
+GET_RETRY_DELAY_SEC = 1
+
+# Rows per page for a paged CSI query.
+PAGE_SIZE = 100
+
+
+# A GET that survives a transient CSI failure, returning None once the attempts are spent. Only for
+# queries - the reporting calls below are not idempotent, and retrying them is a separate question.
+def get_with_retries(url: str, headers: Dict[str, str],
+                     params: Dict[str, str]) -> Optional[Any]:
+    for attempt in range(1, GET_ATTEMPTS + 1):
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code == 200:
+                return response
+            logging.warning("CSI GET %s returned %d (attempt %d/%d): %s",
+                            url, response.status_code, attempt, GET_ATTEMPTS, response.text)
+        except requests.RequestException as ex:
+            logging.warning("CSI GET %s failed (attempt %d/%d): %s",
+                            url, attempt, GET_ATTEMPTS, ex)
+        if attempt < GET_ATTEMPTS:
+            time.sleep(GET_RETRY_DELAY_SEC * attempt)
+    return None
 
 
 # API & Token should be set via jenkins jobs,
@@ -37,11 +80,12 @@ def csi_env(content: str = 'json') -> Dict[str, Any]:
 
     csi_dict: Dict[str, Any]
     csi_dict = {
-        'launch': os.getenv('YB_CSI_LID', ''),
+        'launch': env_launch(),
         'url': f"https://{server}/api/v2/{project}",
         'url_sync': f"https://{server}/api/v1/{project}",
         'reps': os.getenv('YB_CSI_REPS', '1'),
         'qid': os.getenv('YB_CSI_QID', ''),
+        'new_test': os.getenv('YB_CSI_NEW_TEST', ''),
         'headers': {
             'Authorization': 'Bearer ' + os.getenv('CSI_TOKEN', '')
         }
@@ -60,19 +104,87 @@ def mst(time_sec: float) -> int:
 
 
 # Find the physical ID from the UUID. Required for querying prior test data.
-def launch_qid() -> str:
+def launch_qid(launch: str) -> str:
     csi = csi_env()
-    if not csi['launch']:
+    if not launch or not configured():
         return ''
     q_id = ''
-    response = requests.get(csi['url_sync'] + '/launch/' + csi['launch'], headers=csi['headers'])
-    if response.status_code == 200:
+    response = get_with_retries(csi['url_sync'] + '/launch/' + launch,
+                                headers=csi['headers'], params={})
+    if response is not None:
         q_id = response.json()['id']
     else:
-        logging.error(f"CSI Error: Launch {csi['launch']} not found. {response.text}")
+        logging.error(f"CSI Error: Launch {launch} not found.")
 
     logging.info(f"CSI Launch Query ID: {q_id}")
     return str(q_id)
+
+
+# Test ids reported by the launches matching attr_filter (a CSI compositeAttribute filter,
+# e.g. "launch_type:baseline_test_run,commit_id:<sha>,platform:...").
+#
+# Returned ids are uniqueIds, which create_test sets to a test's
+# descriptor_str_without_attempt_index - so callers can compare them against their own descriptors
+# directly.
+#
+# Returns only tests whose latest execution reached PASSED/FAILED - that is the top-level STEP
+# item's status, with earlier executions nested under it as retries. Without the status filter
+# a test whose last execution was INTERRUPTED would read as already run and never be run again.
+#
+# Returns an empty set if CSI is not configured or the query fails.
+def test_ids_in_launches(attr_filter: str) -> Set[str]:
+    csi = csi_env()
+    ids: Set[str] = set()
+    if not configured():
+        logging.info("CSI not configured, not looking up test ids in launches")
+        return ids
+
+    # Both queries page: a page size is a limit on the response, not on what matches. Reading only
+    # the first page would drop test ids silently, and the caller would run those tests again.
+    num_launches = 0
+    launch_page = 1
+    while True:
+        launch_response = get_with_retries(csi['url_sync'] + '/launch',
+                                           headers=csi['headers'],
+                                           params={'filter.has.compositeAttribute': attr_filter,
+                                                   'page.size': str(PAGE_SIZE),
+                                                   'page.number': str(launch_page)})
+        if launch_response is None:
+            logging.error("CSI Error: launch query for '%s' failed", attr_filter)
+            return set()
+
+        launches = launch_response.json()
+        for launch in launches['content']:
+            num_launches += 1
+            item_page = 1
+            while True:
+                item_response = get_with_retries(csi['url_sync'] + '/item',
+                                                 headers=csi['headers'],
+                                                 params={'filter.eq.launchId': launch['id'],
+                                                         'filter.eq.type': 'STEP',
+                                                         'filter.in.status': 'PASSED,FAILED',
+                                                         'page.size': str(PAGE_SIZE),
+                                                         'page.number': str(item_page)})
+                if item_response is None:
+                    # A partial set would silently under-report what the launches hold, so give up
+                    # on the whole lookup and let the caller treat everything as new.
+                    logging.error("CSI Error: item query for launch %s failed", launch['id'])
+                    return set()
+                items = item_response.json()
+                for item in items['content']:
+                    if item.get('uniqueId'):
+                        ids.add(item['uniqueId'])
+                if item_page >= items.get('page', {}).get('totalPages', 1):
+                    break
+                item_page += 1
+
+        if launch_page >= launches.get('page', {}).get('totalPages', 1):
+            break
+        launch_page += 1
+
+    logging.info("CSI: found %d test ids in %d launches matching %s",
+                 len(ids), num_launches, attr_filter)
+    return ids
 
 
 # Current practice is to name suite by language, return an EV name/value pair, that can be
@@ -83,14 +195,20 @@ def launch_qid() -> str:
 # a file rather than by environment variables. Another option would be to run an entire suite as a
 # single spark task instead of single tests, but that requires larger re-factor.
 def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: int, reps: int,
-                 time_sec: float) -> Tuple[str, str]:
+                 time_sec: float, launch: str) -> Tuple[str, str]:
     csi = csi_env()
     varname = 'YB_CSI_' + suite_name
-    if not csi['launch']:
+    if not launch or not configured():
         return (varname, '')
     suite_uuid = ''
 
-    # Check if suite already exists from previous run
+    # Check if suite already exists from previous run.
+    #
+    # This look-then-create is not atomic, and the baseline launch is shared by every
+    # diff on the same commit and lane, so two peer diffs can both miss here and both create a suite
+    # of the same name. We don't guard against that - the duplicate only shows up in the launch
+    # tree, and everything that consumes the data aggregates STEP items by uniqueId across the whole
+    # launch (test_ids_in_launches, and the Phase 3 join), never by suite.
     if qid:
         query = {
             'filter.eq.launchId': qid,
@@ -98,10 +216,10 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
             'filter.eq.type': 'SUITE',
             'page.size': '1'
         }
-        response = requests.get(csi['url_sync'] + '/item',
-                                headers=csi['headers'],
-                                params=query)
-        if response.status_code == 200:
+        response = get_with_retries(csi['url_sync'] + '/item',
+                                    headers=csi['headers'],
+                                    params=query)
+        if response is not None:
             results = response.json()['content']
             if len(results) > 0:
                 suite_id = str(results[0]['id'])
@@ -110,6 +228,8 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
 
     if suite_uuid:
         # Update attributes of existing suite
+        # new value, same key on rerun -> RP dedupes key+value, not key -> drop old entry first.
+        suite_attrib = [a for a in suite_attrib if a.get('key') != method]
         suite_attrib.append({'key': method, 'value': planned})
         if reps > 1:
             suite_attrib.append({'key': 'repetitions', 'value': reps})
@@ -125,9 +245,11 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
             logging.error(f"CSI Error: Update of {suite_name} failed: {response.text}")
     else:
         # Create suite
-        req_data = {
+        # Declared with a type because the values differ: without it mypy joins them to `object`
+        # and rejects the append below. Used to come out as Any via csi['launch'].
+        req_data: Dict[str, Any] = {
             'name': suite_name,
-            'launchUuid': csi['launch'],
+            'launchUuid': launch,
             'type': 'suite',
             'attributes': [{'key': method, 'value': planned}],
             'startTime': mst(time_sec)
@@ -179,6 +301,53 @@ def query_test(uniqueId: str, wait: bool) -> bool:
     return found_prev
 
 
+# Classify one execution before reporting: the ReportPortal 'retry' flag, the 'retry_kind'
+# item attribute (why this is not a plain first attempt - the empty string for one), and
+# whether a previous-item query must wait. The kinds, in precedence order:
+#   fail_repetition - intentional re-run of a test that failed earlier (--fail_repetitions);
+#                     exists only after a first-attempt failure, so it must never enter a
+#                     first-attempt failure rate;
+#   new_test_repetition - intentional re-run of a test that is new on this lane
+#                     (--new_test_repetitions); dispatched only for a test whose first attempt
+#                     PASSED, so like fail_repetition it must never enter a first-attempt rate,
+#                     and it tells a consumer the first attempt's outcome without reading it;
+#   task_resubmit   - Spark re-ran the task because a worker died; an infra artifact;
+#   repetition      - unconditional extra run (--num_repetitions).
+# The shapes overlap: a Spark task resubmit (attempt > 0) can happen inside the
+# fail-repetition job or inside a --num_repetitions job, since both dispatch through the same
+# task path. Only fail_repetition vs repetition is exclusive by construction. The order above
+# resolves the overlap on purpose: a resubmitted fail-repetition is still a run of a test whose
+# first attempt failed, so it keeps the fail_repetition tag (the "first attempt failed"
+# implication stays exact for consumers), and a resubmitted repetition reports task_resubmit
+# because it needs the resubmit wait semantics. Consequence: task_resubmit undercounts infra
+# resubmits by those that occur inside fail-repetition jobs; it is a best-effort signal.
+# Known gap: a driver-level Spark JOB resubmit starts a fresh task with attempt 0 and is
+# indistinguishable from a first attempt here.
+def classify_execution(rerun: bool, attempt: int, reps: str,
+                       attempt_index: int, new_test: bool = False) -> Tuple[bool, str, bool]:
+    if rerun:
+        # Intentionally re-running a completed (failed) test; serial, no wait needed. Checked
+        # before attempt so a resubmit inside the rerun job keeps this kind (see above).
+        return True, 'fail_repetition', False
+    if new_test:
+        # Intentionally re-running a test that is new on this lane and passed its first attempt.
+        # Dispatched serially after the main pass, like the fail repetitions, so the first attempt
+        # has long reported and no wait is needed. Checked before attempt for the same reason
+        # fail_repetition is: the "first attempt passed" implication has to hold for every
+        # execution of this job, including one Spark resubmitted.
+        return True, 'new_test_repetition', False
+    if attempt > 0:
+        # Spark re-tries happen only if there is some failure, so attempts are serial.
+        # The previous attempt died before reporting completion; the query must wait to
+        # find out whether it reported a start.
+        return True, 'task_resubmit', True
+    # Repetitions are the same test intentionally run multiple times, in parallel and
+    # random order; only the first-indexed one may skip the wait.
+    if reps != '1':
+        return True, 'repetition', attempt_index != 1
+    return False, '', False
+
+
 # Normally, we want to use asynchronous reporting of results to not slow down test runs.
 # For test re-try, though, if the prior attempt did not get reported, then the re-try report will
 # fail and then there is no record. So we need to query to check for the prior attempt and in the
@@ -187,38 +356,26 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
     csi = csi_env()
     parent = os.getenv('YB_CSI_' + test.language, '')
 
-    if not csi['launch'] or not parent:
+    if not csi['launch'] or not parent or not configured():
         return ''
 
     full_name = test.descriptor_str_without_attempt_index
     pt = SimpleTestDescriptor.parse(full_name)
     tname = f"{pt.class_name} - {pt.test_name}"
 
-    if rerun:
-        # In this case, we are intentionally re-running a completed test.
-        retry = True
-    else:
-        if attempt > 0:
-            # Spark re-tries happen only if there is some failure, so attempts are serial.
-            retry = True
-            wait = True
-            # In this case the previous attempt died before having a chance to report completion.
-            # We need to query to find out if the previous attempt reported start or not.
-        else:
-            # Repetitions are same test intentionally run multiple times, in parallel and random
-            # order. We need to query to make sure one has at least started before reporting these
-            # as retry.
-            retry = (csi['reps'] != '1')
-            if test.attempt_index == 1:
-                wait = False
-            else:
-                wait = True
-
-        if retry:
-            prev_test = query_test(full_name, wait)
-            if not prev_test:
-                # Found no previous test, so do not call this one a retry.
-                retry = False
+    retry, retry_kind, wait = classify_execution(rerun, attempt, csi['reps'], test.attempt_index,
+                                                 bool(csi['new_test']))
+    # A repetition runs alongside its first attempt and a resubmit follows a worker death, so
+    # either has to ask whether a previous item exists before calling itself a retry. A fail
+    # repetition or a new-test repetition runs serially after the main pass, in which its first
+    # attempt completed and reported, so neither asks: that would be one query per execution.
+    if retry and not rerun and not csi['new_test']:
+        prev_test = query_test(full_name, wait)
+        if not prev_test:
+            # Found no previous test, so do not call this one a retry. The retry_kind
+            # attribute is kept: the execution is still a repetition/resubmit, it just
+            # happens to be the first one that reported.
+            retry = False
 
     # TestCase ID (used to compare across test runs) seems to depend on codeRef & parameters
     # instead we give uniqueId with fully-specified name.  uniqueID is not shown in web UI.
@@ -235,6 +392,8 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
             {'key': 'lang',  'value': test.language}
         ]
     }
+    if retry_kind:
+        req_data['attributes'].append({'key': 'retry_kind', 'value': retry_kind})
     # For cxx tests, the name might not be unique if in different directories, so we add
     # parameter indicating the cxx_rel_binary that is included in test descriptor.
     if pt.cxx_rel_test_binary:
@@ -267,12 +426,12 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
 
 
 # finish test/suite
-def close_item(item: str, time_sec: float, status: str, tags: List[str]) -> str:
+def close_item(item: str, time_sec: float, status: str, tags: List[str], launch: str) -> str:
     csi = csi_env()
-    if not csi['launch'] or not item:
+    if not launch or not item or not configured():
         return ''
     req_data = {
-        'launchUuid': csi['launch'],
+        'launchUuid': launch,
         'endTime': mst(time_sec),
         'attributes': tags
     }
@@ -292,9 +451,67 @@ def close_item(item: str, time_sec: float, status: str, tags: List[str]) -> str:
     return ''
 
 
+# Marks the interesting part of a failing test log. A truncated copy is centered on the first
+# occurrence instead of ending at the file's tail, which after a failure is usually just teardown
+# noise. Byte strings: the search runs over the raw file, which need not be valid UTF-8.
+LOG_MARKERS = [b'Test failure stack trace:']
+
+# Read size of the marker search, which streams the file rather than loading it.
+MARKER_CHUNK_SIZE = 1 << 20
+
+# Marks a cut edge of the excerpt.
+CUT_MARK = '  ...  '
+
+
+def find_marker(file: BinaryIO, file_size: int, markers: List[bytes]) -> Optional[int]:
+    """Offset of the first occurrence of any marker in file, or None when none is present.
+
+    The first failure is the root cause; the ones after it are usually cascading.
+    """
+    overlap = max(len(marker) for marker in markers) - 1
+    pos = 0
+    while pos < file_size:
+        file.seek(pos)
+        chunk = file.read(MARKER_CHUNK_SIZE + overlap)
+        if not chunk:
+            break
+        found: Optional[int] = None
+        for marker in markers:
+            at = chunk.find(marker)
+            if at >= 0:
+                found = at if found is None else min(found, at)
+        if found is not None:
+            return pos + found
+        pos += MARKER_CHUNK_SIZE
+    return None
+
+
+def truncated_log(path: str, file_size: int, limit: int) -> Tuple[str, bool]:
+    """The at most limit bytes of path to report as a log message, and whether it is centered.
+
+    The excerpt is centered on the first failure marker when the file has one, and is the tail
+    of the file otherwise. Both cut edges are trimmed to a line boundary and marked.
+    """
+    with open(path, 'rb') as file:
+        marker = find_marker(file, file_size, LOG_MARKERS)
+        if marker is None:
+            start = file_size - limit
+        else:
+            start = min(max(marker - limit // 2, 0), file_size - limit)
+        file.seek(start)
+        text = file.read(limit).decode('utf-8', 'replace')
+    if start > 0:
+        text = CUT_MARK + text[text.find('\n') + 1:]       # drop the partial first line
+    if start + limit < file_size:
+        end = text.rfind('\n')
+        if end >= 0:
+            text = text[:end + 1] + CUT_MARK
+    return text, marker is not None
+
+
 def upload_log(item: str, time_sec: float, path_list: List[str]) -> int:
     csi = csi_env()
-    if not csi['launch']:
+    if not csi['launch'] or not configured():
         return 0
     msg_limit = int(os.getenv('YB_CSI_MAX_LOGMSG', '50000'))  # 50K
     file_limit = int(os.getenv('YB_CSI_MAX_FILE', '67108864'))  # 64MB
@@ -309,18 +526,20 @@ def upload_log(item: str, time_sec: float, path_list: List[str]) -> int:
                 continue
             file_size = os.path.getsize(path)
             try:
-                with open(path, 'r') as file:
-                    if file_size > msg_limit:
-                        log_content = base_file
-                        if file_size < file_limit:
-                            log_content += ' [TRUNCATED end of file] (full file attached) =====\n'
-                            large_file = True
-                        else:
-                            log_content += ' [TRUNCATED end of file] (file too large) =====\n'
-                            log_content += f" size: {file_size} limit: {file_limit} =====\n"
-                        file.seek(file_size - msg_limit)
-                        log_content += '  ...  ' + file.read()
+                if file_size > msg_limit:
+                    excerpt, centered = truncated_log(path, file_size, msg_limit)
+                    log_content = base_file
+                    log_content += ' [TRUNCATED around failure]' if centered \
+                        else ' [TRUNCATED end of file]'
+                    if file_size < file_limit:
+                        log_content += ' (full file attached) =====\n'
+                        large_file = True
                     else:
+                        log_content += ' (file too large) =====\n'
+                        log_content += f" size: {file_size} limit: {file_limit} =====\n"
+                    log_content += excerpt
+                else:
+                    with open(path, 'r') as file:
                         log_content = base_file + ' =====\n' + file.read()
             except Exception as e:
                 logging.error(f"CSI Error: Could not read {path}: {e}")
@@ -353,7 +572,7 @@ def upload_log(item: str, time_sec: float, path_list: List[str]) -> int:
 
 def upload_attachment(item: str, time_sec: float, message: str, path: str) -> int:
     csi = csi_env('form')
-    if not csi['launch'] or not item:
+    if not csi['launch'] or not item or not configured():
         return 0
     file_limit = int(os.getenv('YB_CSI_MAX_FILE', '67108864'))  # 64MB
     file_size = os.path.getsize(path)

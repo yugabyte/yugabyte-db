@@ -37,6 +37,21 @@ import play.data.validation.Constraints.Required;
 @NoArgsConstructor
 public class OCICloudInfo implements CloudInfoInterface {
 
+  /** Supported authentication mechanisms for talking to the OCI provider APIs. */
+  public enum OciAuthType {
+    // API signing key: tenancy + user + fingerprint + private key.
+    API_KEY,
+    // OCI Instance Principal (YBA host is part of a dynamic group with a provider policy).
+    INSTANCE_PRINCIPAL;
+
+    public static OciAuthType fromString(String value) {
+      if (StringUtils.isBlank(value)) {
+        return API_KEY;
+      }
+      return valueOf(value.trim().toUpperCase());
+    }
+  }
+
   private static final Map<String, String> configKeyMap =
       ImmutableMap.<String, String>builder()
           .put("ociTenancyId", "OCI_TENANCY_ID")
@@ -48,27 +63,27 @@ public class OCICloudInfo implements CloudInfoInterface {
           .put("ociHostedZoneId", "HOSTED_ZONE_ID")
           .build();
 
+  @ApiModelProperty(value = "OCI authentication type (API_KEY or INSTANCE_PRINCIPAL)")
+  @EditableInUseProvider(name = "OCI Auth Type", allowed = false)
+  public String ociAuthType;
+
   @JsonAlias("OCI_TENANCY_ID")
   @ApiModelProperty(value = "OCI Tenancy OCID")
   @EditableInUseProvider(name = "OCI Tenancy ID", allowed = false)
-  @Required
   public String ociTenancyId;
 
   @JsonAlias("OCI_USER_ID")
   @ApiModelProperty(value = "OCI User OCID")
   @EditableInUseProvider(name = "OCI User ID", allowed = false)
-  @Required
   public String ociUserId;
 
   @JsonAlias("OCI_FINGERPRINT")
   @ApiModelProperty(value = "OCI API Key Fingerprint")
   @EditableInUseProvider(name = "OCI Fingerprint", allowed = false)
-  @Required
   public String ociFingerprint;
 
   @JsonAlias("OCI_PRIVATE_KEY_CONTENT")
   @ApiModelProperty(value = "OCI API Private Key content (PEM format)")
-  @Required
   public String ociPrivateKeyContent;
 
   @JsonAlias("OCI_COMPARTMENT_ID")
@@ -98,20 +113,34 @@ public class OCICloudInfo implements CloudInfoInterface {
   private VPCType vpcType = VPCType.EXISTING;
 
   @JsonIgnore
+  public OciAuthType getOciAuthTypeEnum() {
+    return OciAuthType.fromString(ociAuthType);
+  }
+
+  @JsonIgnore
+  public boolean usesInstancePrincipal() {
+    return getOciAuthTypeEnum() == OciAuthType.INSTANCE_PRINCIPAL;
+  }
+
+  @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();
 
-    if (ociTenancyId != null) {
-      envVars.put("OCI_TENANCY_ID", ociTenancyId);
-    }
-    if (ociUserId != null) {
-      envVars.put("OCI_USER_ID", ociUserId);
-    }
-    if (ociFingerprint != null) {
-      envVars.put("OCI_FINGERPRINT", ociFingerprint);
-    }
-    if (StringUtils.isNotBlank(ociPrivateKeyContent)) {
-      envVars.put("OCI_PRIVATE_KEY_CONTENT", ociPrivateKeyContent);
+    if (usesInstancePrincipal()) {
+      envVars.put("OCI_AUTH_TYPE", OciAuthType.INSTANCE_PRINCIPAL.name());
+    } else {
+      if (ociTenancyId != null) {
+        envVars.put("OCI_TENANCY_ID", ociTenancyId);
+      }
+      if (ociUserId != null) {
+        envVars.put("OCI_USER_ID", ociUserId);
+      }
+      if (ociFingerprint != null) {
+        envVars.put("OCI_FINGERPRINT", ociFingerprint);
+      }
+      if (StringUtils.isNotBlank(ociPrivateKeyContent)) {
+        envVars.put("OCI_PRIVATE_KEY_CONTENT", ociPrivateKeyContent);
+      }
     }
     if (ociCompartmentId != null) {
       envVars.put("OCI_COMPARTMENT_ID", ociCompartmentId);

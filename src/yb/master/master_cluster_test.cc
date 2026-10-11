@@ -11,11 +11,21 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -23,14 +33,18 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(master_list_raft_peers_check_is_leader);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(replication_factor);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 
 namespace yb::master {
 
@@ -58,6 +72,9 @@ class MasterClusterTest : public YBTest {
 
   Status WaitForMasterLeaderToMarkTabletServerDead(
       const std::string& uuid, const MasterClusterClient& client, MonoDelta timeout);
+
+  Status WaitForMasterLeaderToMarkTabletServerLeaseless(
+      const std::string& uuid, MonoDelta timeout);
 
  protected:
   std::unique_ptr<MiniCluster> cluster_;
@@ -143,8 +160,11 @@ TEST_F(RemoveTabletServerTest, HappyPath) {
   ASSERT_OK(ShutdownTabletServer(uuid_to_remove));
 
   // Reduce the timeout so we don't have to wait too long for the tserver to be marked unresponsive.
+  // (The xCluster-guarded lease duration is already shortened to match in SetUp; it is not a
+  // runtime flag.)
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 1000;
   ASSERT_OK(WaitForMasterLeaderToMarkTabletServerDead(uuid_to_remove, cluster_client, 30s));
+  ASSERT_OK(WaitForMasterLeaderToMarkTabletServerLeaseless(uuid_to_remove, 30s));
   ASSERT_OK(cluster_client.RemoveTabletServer(
       std::string(tserver_to_remove.instance_id().permanent_uuid())));
   // Verify the tablet server is removed by calling the list tablet servers rpc.
@@ -187,6 +207,26 @@ TEST_F(RemoveTabletServerTest, StillAlive) {
       std::string(tserver_to_remove.instance_id().permanent_uuid()));
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.ToUserMessage(), "because it is live");
+}
+
+TEST_F(RemoveTabletServerTest, MayStillHoldLease) {
+  // Make the lease outlast the test so the TServer stays in MAYBE_HAS_LEASE after it is dead.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) = 10 * 60 * 1000;
+  auto cluster_client = ASSERT_RESULT(CreateClusterClient());
+  auto tserver_response = ASSERT_RESULT(cluster_client.ListTabletServers());
+  ASSERT_GE(tserver_response.servers().size(), 4);
+  auto tserver_to_remove = tserver_response.servers(0);
+  auto& uuid_to_remove = tserver_to_remove.instance_id().permanent_uuid();
+  ASSERT_OK(DrainTabletServer(uuid_to_remove, cluster_client, 60s));
+  ASSERT_OK(ShutdownTabletServer(uuid_to_remove));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 1000;
+  ASSERT_OK(WaitForMasterLeaderToMarkTabletServerDead(uuid_to_remove, cluster_client, 30s));
+
+  auto s = cluster_client.RemoveTabletServer(
+      std::string(tserver_to_remove.instance_id().permanent_uuid()));
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.ToUserMessage(), "may still hold a xCluster-guarded information");
 }
 
 TEST_F(RemoveTabletServerTest, StillHostingTablets) {
@@ -233,6 +273,71 @@ TEST_F(RemoveTabletServerTest, RemoveMissingTabletServer) {
   auto result = cluster_client.RemoveTabletServer("foobarbaz");
   ASSERT_NOK(result);
   ASSERT_EQ(master::MasterError(result), master::MasterErrorPB::TABLET_SERVER_NOT_FOUND);
+}
+
+// Deleted split parents remain in TableInfo::tablets_, so remove must ignore them.
+TEST_F(RemoveTabletServerTest, DeletedSplitParentWithStaleReplicaDoesNotBlockRemove) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "split_remove_ts_test");
+  ASSERT_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name()));
+
+  client::YBSchema schema;
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  schema_builder.AddColumn("value")->Type(DataType::INT32)->NotNull();
+  ASSERT_OK(schema_builder.Build(&schema));
+  auto table_creator = client->NewTableCreator();
+  ASSERT_OK(table_creator->table_name(table_name)
+                .schema(&schema)
+                .num_tablets(1)
+                .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
+                .Create());
+
+  auto* mini_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto& catalog_manager = mini_master->catalog_manager();
+  auto yb_table = ASSERT_RESULT(client->OpenTable(table_name));
+  auto table_info = catalog_manager.GetTableInfo(yb_table->id());
+  ASSERT_NE(table_info, nullptr);
+  auto parent = ASSERT_RESULT(table_info->GetTablets())[0];
+  ASSERT_OK(WaitFor(
+      [&parent]() -> Result<bool> {
+        return !parent->GetReplicaLocations()->empty();
+      },
+      30s, "Wait for parent tablet replicas to be reported"));
+
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(parent, 1 /* split_hash_code */));
+  ASSERT_OK(WaitFor(
+      [&parent]() -> Result<bool> { return parent->LockForRead()->is_deleted(); }, 60s,
+      "Wait for split parent tablet to be deleted"));
+
+  // Pick a TS still listed on the deleted parent's replica map.
+  const auto stale_parent_replicas = parent->GetReplicaLocations();
+  ASSERT_FALSE(stale_parent_replicas->empty())
+      << "Deleted split parent " << parent->id()
+      << " has an empty replica map; cannot reproduce stale-replica remove failure";
+  const auto uuid_to_remove = stale_parent_replicas->begin()->first;
+
+  auto cluster_client = ASSERT_RESULT(CreateClusterClient());
+  ASSERT_OK(DrainTabletServer(uuid_to_remove, cluster_client, 60s));
+  ASSERT_OK(ShutdownTabletServer(uuid_to_remove));
+  // Reduce the timeout so we don't have to wait too long for the tserver to be marked unresponsive.
+  // (The xCluster-guarded lease duration is already shortened to match in SetUp; it is not a
+  // runtime flag.)
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 1000;
+  ASSERT_OK(WaitForMasterLeaderToMarkTabletServerDead(uuid_to_remove, cluster_client, 30s));
+  ASSERT_OK(WaitForMasterLeaderToMarkTabletServerLeaseless(uuid_to_remove, 30s));
+
+  auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  ASSERT_EQ(
+      mini_master->catalog_manager_impl().GetNumRelevantReplicas(
+          config.server_blacklist(), false /* leaders_only */),
+      0);
+
+  ASSERT_TRUE(parent->GetReplicaLocations()->contains(uuid_to_remove));
+  ASSERT_OK(cluster_client.RemoveTabletServer(std::string(uuid_to_remove)));
 }
 
 void MasterClusterTest::SetUp() {
@@ -302,7 +407,7 @@ Status MasterClusterTest::DrainTabletServer(
   auto ts_proxy = VERIFY_RESULT(CreateTabletServerServiceProxy(uuid));
   std::string message;
   return WaitFor(
-      [this, &ts_proxy, &message, &uuid]() -> Result<bool> {
+      [this, &ts_proxy, &message, &uuid, &client]() -> Result<bool> {
         auto resp = VERIFY_RESULT(ListTabletsForTabletServer(ts_proxy));
         for (const auto& entry : resp.entries()) {
           if (entry.state() != tablet::RaftGroupStatePB::SHUTDOWN) {
@@ -310,6 +415,16 @@ Status MasterClusterTest::DrainTabletServer(
                 "ts $0 is still hosting a tablet peer, example: $1", uuid, entry.DebugString());
             return false;
           }
+        }
+        // The master may still list the ts in a Raft config, e.g. as a PRE_VOTER whose remote
+        // bootstrap has not started yet, so the tserver-side check alone is not sufficient.
+        auto config = VERIFY_RESULT(client.GetMasterClusterConfig());
+        auto* leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+        auto num_replicas = leader->catalog_manager_impl().GetNumRelevantReplicas(
+            config.server_blacklist(), false /* leaders_only */);
+        if (num_replicas != 0) {
+          message = Format("master still lists $0 replicas on ts $1", num_replicas, uuid);
+          return false;
         }
         return true;
       },
@@ -335,9 +450,22 @@ Status MasterClusterTest::WaitForMasterLeaderToMarkTabletServerDead(
       timeout, "Tserver not present or still alive");
 }
 
+Status MasterClusterTest::WaitForMasterLeaderToMarkTabletServerLeaseless(
+    const std::string& uuid, MonoDelta timeout) {
+  return WaitFor(
+      [this, &uuid]() -> Result<bool> {
+        auto* leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+        auto desc = VERIFY_RESULT(leader->ts_manager().LookupTSByUUID(uuid));
+        return !desc->MaybeHasXClusterGuardedLease();
+      },
+      timeout, "TServer may still hold a xCluster-guarded information lease");
+}
+
 void RemoveTabletServerTest::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
+  // Removal requires the TServer to be in DEFINITELY_NO_LEASE; keep the wait short.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) = 5 * 1000;
   MasterClusterTest::SetUp();
 }
 

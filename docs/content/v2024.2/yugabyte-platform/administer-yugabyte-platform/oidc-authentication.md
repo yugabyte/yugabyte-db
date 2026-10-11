@@ -34,7 +34,9 @@ OIDC is an authentication protocol that allows client applications to confirm th
 When OIDC is enabled, users are presented with the following options when signing in to YugabyteDB Anywhere:
 
 - **Login with SSO**: Redirects users to the appropriate identity provider sign in mechanism.
-- **Local User Login**: User signs in to YugabyteDB Anywhere as a local user. You can restrict local user login to Super Admin only by setting the **Allow local login with SSO** Global Runtime Configuration option (config key `yb.security.allow_local_login_with_sso`) to false. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
+- **Local User Login**: User signs in to YugabyteDB Anywhere as a local user.
+
+    You can restrict local user login to Super Admin only by setting the **Allow local login with SSO** Global Runtime Configuration option (config key `yb.security.allow_local_login_with_sso`) to false. Refer to [Manage runtime configuration settings](../manage-runtime-config/).
 
 Note that in versions earlier than v2024.2.7.0, only a Super Admin can sign in locally while OIDC is enabled.
 
@@ -42,7 +44,7 @@ To configure YugabyteDB Anywhere for OIDC, or to set global runtime configuratio
 
 **Learn more**
 
-- For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication, refer to [OIDC authentication](../../security/authentication/oidc-authentication-aad/).
+- For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication for database users, refer to [OIDC database authentication](../../security/authentication/oidc-database-authentication/).
 
 - For information on how to add users, see [Create, modify, and delete users](../anywhere-rbac/#users-and-roles). The email ID that you enter in the **Add User** dialog must be registered with the identity provider, and the role must reflect the user's role on YugabyteDB Anywhere.
 
@@ -58,7 +60,23 @@ To use OIDC groups, ensure the following on your identity provider (IdP):
 
 - Create user groups and add users to this group. This is possible on most IdPs.
 - Configure the IdP so that groups are present in the ID token. As groups is not one of the [Standard Claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims), you will need to add the groups claim in the ID token by configuring your IdP provider settings. Refer to your IdP documentation.
-- For Azure AD/Microsoft Entra ID, Azure doesn't allow obtaining group names in ID tokens. You need to use the [Azure API](https://learn.microsoft.com/en-gb/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http) to get a list of the user's group memberships. Note that to fetch the group membership via Azure API, the IdP administrator will need to assign the GroupMember.Read.All API permission to the registered application on Azure.
+- For Azure AD/Microsoft Entra ID, Azure doesn't allow obtaining group names in ID tokens. You need to use the [Azure API](https://learn.microsoft.com/en-gb/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http) to get a list of the user's group memberships. Note that to fetch the group membership via Azure API, the IdP administrator will need to assign the `GroupMember.Read.All` API permission to the registered application on Azure.
+
+## OIDC callback URI
+
+When registering YugabyteDB Anywhere as a client application with your IdP, you must provide a callback (redirect) URI. This is the URL the IdP redirects users to after authentication. YugabyteDB Anywhere supports the following formats:
+
+- Query (default):
+
+    `https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient`
+
+- Path:
+
+    `https://<YBA_IP_Address>/api/v1/callback/OidcClient`
+
+    Note that Path is only available in v2024.2.9.1 and later.
+
+Only one format is supported at a time. To change the URI format, set the **OIDC Callback Mode** Global Runtime Configuration option (config key `yb.security.oidc_callback_mode`). Refer to [Manage runtime configuration settings](../manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 ## Enable OIDC for YugabyteDB Anywhere
 
@@ -66,7 +84,7 @@ YugabyteDB Anywhere accepts OIDC configuration either using a discovery URL that
 
 For air-gapped installations, where YugabyteDB Anywhere does not have access to the discovery URL, you need to explicitly provide the configuration document.
 
-{{<tags/feature/ea idea="1501">}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+{{<tags/feature/ea idea="1501">}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 You configure OIDC as follows:
 
@@ -93,7 +111,7 @@ You configure OIDC as follows:
       If you are mapping groups, add the name of the groups claim. For example, if your groups claim is called `groups`, you would set the scope to `openid profile email groups`.
     - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
     - If you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
-    - If you have configured [OIDC enhancements](../../security/authentication/oidc-authentication-aad/#enable-oidc-enhancements), you can select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. See [Set up OIDC with Azure AD on YugabyteDB Anywhere](../../security/authentication/oidc-authentication-aad/#set-up-oidc-with-azure-ad-on-yugabytedb-anywhere).
+    - You can select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. See [OIDC database authentication](../../security/authentication/oidc-database-authentication/).
 
 1. To map OIDC groups to YugabyteDB Anywhere roles, complete the **Role Settings**.
 

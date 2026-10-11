@@ -43,6 +43,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
@@ -194,20 +195,19 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     const ReadOperationData& read_operation_data,
     const TransactionOperationContext& txn_op_context,
-    const FastBackwardScan use_fast_backward_scan,
-    const AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek)
+    const IntentAwareIteratorFlags flags)
     : read_time_(read_operation_data.read_time),
       encoded_read_time_(read_operation_data.read_time, read_operation_data.write_id),
       txn_op_context_(txn_op_context),
       upperbound_(&kKeyEntryTypeMaxByte, 1),
       lowerbound_(&kKeyEntryTypeMinByte, 1),
-      use_fast_backward_scan_(use_fast_backward_scan),
+      use_fast_backward_scan_(flags.Test(IntentAwareIteratorFlag::kFastBackwardScan)),
       transaction_status_cache_(
           txn_op_context_, read_operation_data.read_time, read_operation_data.deadline) {
   VTRACE(1, __func__);
   VLOG(2) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
           << ", txn_op_context: " << txn_op_context_ << ", " << TRACE_BOUNDS
-          << ", use_fast_backward_scan: " << use_fast_backward_scan;
+          << ", flags: " << AsString(flags);
 
   if (txn_op_context) {
     intent_iter_ = OptimizedRocksDbIterator<BoundedRocksDbIterator>(
@@ -227,11 +227,23 @@ IntentAwareIterator::IntentAwareIterator(
   // 6) Client reads no values for k1.
   iter_ = OptimizedRocksDbIterator<BoundedRocksDbIterator>(
       BoundedRocksDbIterator(doc_db.regular, read_opts, doc_db.key_bounds));
-  iter_->UseFastNext(FLAGS_use_fast_next_for_iteration);
+  // kNoFastNext keeps all reads on the iterator's creation-time snapshot, see the option
+  // description.
+  iter_->UseFastNext(
+      FLAGS_use_fast_next_for_iteration && !flags.Test(IntentAwareIteratorFlag::kNoFastNext));
 
+  const auto avoid_useless_next_instead_of_seek = AvoidUselessNextInsteadOfSeek(
+      flags.Test(IntentAwareIteratorFlag::kAvoidUselessNextInsteadOfSeek));
   iter_.SetAvoidUselessNextInsteadOfSeek(avoid_useless_next_instead_of_seek);
   intent_iter_.SetAvoidUselessNextInsteadOfSeek(avoid_useless_next_instead_of_seek);
   VTRACE(2, "Created iterator");
+}
+
+IntentAwareIterator::~IntentAwareIterator() {
+  // Fires before iter_ / intent_iter_ are destroyed, i.e. at the start of RocksDB iterator
+  // teardown. A caller that owns a ScopedRWOperation blocking RocksDB shutdown must still hold it
+  // here; see issue #33496.
+  TEST_SYNC_POINT("IntentAwareIterator::~IntentAwareIterator");
 }
 
 void IntentAwareIterator::Seek(const dockv::DocKey &doc_key) {
@@ -593,12 +605,14 @@ void IntentAwareIterator::Prev() {
       } else {
         SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
       }
+    }
 
-      // No need to move regular iterartor, but bounds should be re-checked for the current
-      // regular entry.
-      if (regular_entry_.Valid() && !SatisfyBounds(regular_entry_.key)) {
-        regular_entry_.Reset();
-      }
+    // The regular side is not moved, but the bounds may have been narrowed since it was
+    // positioned, e.g. GetHelperBase sets the lower bound to the row being read. Re-check it even
+    // if intent_iter_ is invalid, as it is then the only candidate. The regular branch needs no
+    // such case: regular_entry_ always matches iter_'s current entry.
+    if (regular_entry_.Valid() && !SatisfyBounds(regular_entry_.key)) {
+      regular_entry_.Reset();
     }
   }
 
@@ -783,7 +797,10 @@ Result<Slice> IntentAwareIterator::FetchValue(Slice key, docdb::UpdateFilterKey 
   Seek(key, SeekFilter::kAll, Full::kTrue);
   auto fetch_result = VERIFY_RESULT_REF(Fetch());
 
-  return fetch_result.key == key ? fetch_result.value : Slice{};
+  // When the seek finds no matching entry, FillEntry() leaves entry_.key pointing at the
+  // previously fetched key, whose backing RocksDB block may already have been freed by this
+  // seek. Guard on validity so we never read that stale slice.
+  return fetch_result && fetch_result.key == key ? fetch_result.value : Slice{};
 }
 
 template <bool kDescending>

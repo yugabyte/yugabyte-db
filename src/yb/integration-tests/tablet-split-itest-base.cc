@@ -61,6 +61,7 @@
 
 #include "yb/tserver/tserver_types.pb.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -374,14 +375,14 @@ void TabletSplitITest::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = kDbBlockSizeBytes;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = DbBlockSizeBytes();
   // We set other block sizes to be small for following test reasons:
   // 1) To have more granular change of SST file size depending on number of rows written.
   // This helps to do splits earlier and have faster tests.
   // 2) To don't have long flushes when simulating slow compaction/flush. This way we can
   // test compaction abort faster.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 2_KB;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = 2_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = DbIndexBlockSizeBytes();
   // Split size threshold less than memstore size is not effective, because splits are triggered
   // based on flushed SST files size.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 100_KB;
@@ -671,8 +672,9 @@ Result<std::vector<tablet::TabletPeerPtr>> TabletSplitITest::ListTestTableActive
 
 Status TabletSplitITest::WaitForTestTableTabletPeersPostSplitCompacted(MonoDelta timeout) {
   auto peer_to_str = [](const tablet::TabletPeerPtr& peer) {
-    return peer->LogPrefix() +
-           (peer->tablet_metadata()->parent_data_compacted() ? "Compacted" : "NotCompacted");
+    return
+        peer->LogPrefix() +
+        (peer->tablet_metadata()->rocksdb_parent_data_compacted() ? "Compacted" : "NotCompacted");
   };
   std::vector<std::string> not_compacted_peers;
   auto s = LoggedWaitFor(
@@ -685,7 +687,7 @@ Status TabletSplitITest::WaitForTestTableTabletPeersPostSplitCompacted(MonoDelta
                   << JoinStrings(*peers | boost::adaptors::transformed(peer_to_str), "\n");
         not_compacted_peers.clear();
         for (auto peer : *peers) {
-          if (!peer->tablet_metadata()->parent_data_compacted()) {
+          if (!peer->tablet_metadata()->rocksdb_parent_data_compacted()) {
             not_compacted_peers.push_back(peer_to_str(peer));
           }
         }
@@ -703,7 +705,7 @@ Result<int> TabletSplitITest::NumTestTableTabletPeersPostSplitCompacted() {
   int count = 0;
   for (auto peer : VERIFY_RESULT(ListTestTableActiveTabletPeers())) {
     const auto tablet = peer->shared_tablet_maybe_null();
-    if (tablet && tablet->metadata()->parent_data_compacted()) {
+    if (tablet && tablet->metadata()->rocksdb_parent_data_compacted()) {
       ++count;
     }
   }

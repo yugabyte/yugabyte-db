@@ -1,0 +1,16 @@
+title: ProviderRegionNodesSpec
+description: 'Region-level node specification, optionally containing per-AZ overrides.'
+type: object
+allOf:
+  - $ref: "./ProviderNodesSpec.yaml"
+  - properties:
+      region_code:
+        description: Region code within the cloud provider.
+        type: string
+      az_nodes_specs:
+        description: Per-availability-zone node specification overrides.
+        type: array
+        items:
+          $ref: "./ProviderAzNodesSpec.yaml"
+    required:
+      - region_code

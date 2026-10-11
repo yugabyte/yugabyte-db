@@ -58,15 +58,8 @@ public class ShellProcessHandler {
   private final boolean cloudLoggingEnabled;
   private final ShellLogsManager shellLogsManager;
 
-  static final Pattern ANSIBLE_FAIL_PAT =
-      Pattern.compile(
-          "(ybops\\.common\\.exceptions\\.YB[^\\s]+Error:.*? Playbook run.*?)with args.* (failed"
-              + " with.*? [0-9]+)");
-  static final Pattern ANSIBLE_FAILED_TASK_PAT =
-      Pattern.compile("TASK\\s+\\[.+\\].*?(fatal:.*?FAILED.*|failed: (?!false).*)", Pattern.DOTALL);
   static final Pattern PYTHON_ERROR_PAT =
       Pattern.compile("(<yb-python-error>)(.*?)(</yb-python-error>)", Pattern.DOTALL);
-  static final String ANSIBLE_IGNORING = "ignoring";
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
   // GRPC and Node Agent environment variables.
   static final String GRPC_KEEPALIVE_TIME_MS_ENV = "grpc_keepalive_time_ms";
@@ -205,7 +198,8 @@ public class ShellProcessHandler {
       if (context.getUuid() != null) {
         Util.setPID(context.getUuid(), process);
       }
-      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
+      boolean timedOut =
+          waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
       boolean logCmdOutput = context.isLogCmdOutput();
@@ -230,11 +224,17 @@ public class ShellProcessHandler {
         response.message = (response.code == ERROR_CODE_SUCCESS) ? processOutput : processError;
         String specificErrMsg = getPythonErrMsg(response.code, processOutput);
         if (specificErrMsg != null) {
-          String ansibleErrMsg = getAnsibleErrMsg(response.code, specificErrMsg, processError);
-          if (ansibleErrMsg != null) {
-            specificErrMsg = ansibleErrMsg;
-          }
           response.message = specificErrMsg;
+        }
+        if (timedOut) {
+          // The process was SIGKILLed, so its exit code carries no information about why it was
+          // stuck. Say so explicitly, otherwise the task fails with an opaque signal code.
+          response.code = ERROR_CODE_GENERIC_ERROR;
+          response.message =
+              String.format(
+                  "Command timed out after %d seconds and was aborted. Output: %s",
+                  context.getTimeoutSecs(),
+                  StringUtils.isBlank(processError) ? processOutput : processError);
         }
       }
     } catch (IOException | InterruptedException e) {
@@ -382,9 +382,12 @@ public class ShellProcessHandler {
     return false;
   }
 
-  private static void waitForProcessExit(
+  // Returns true if the process was aborted because it exceeded endTimeMs, false if it exited on
+  // its own.
+  private static boolean waitForProcessExit(
       Process process, String description, File outFile, File errFile, long endTimeMs)
       throws IOException, InterruptedException {
+    boolean timedOut = false;
     try (FileInputStream outputInputStream = new FileInputStream(outFile);
         InputStreamReader outputReader = new InputStreamReader(outputInputStream);
         FileInputStream errInputStream = new FileInputStream(errFile);
@@ -398,6 +401,7 @@ public class ShellProcessHandler {
         tailStream(errorStream, 10000 /*maxLines*/);
         if (endTimeMs > 0 && (System.currentTimeMillis() >= endTimeMs)) {
           log.warn("Aborting command {} forcibly because it took too long", description);
+          timedOut = true;
           destroyForcibly(process, description);
           break;
         }
@@ -406,6 +410,7 @@ public class ShellProcessHandler {
       tailStream(outputStream);
       tailStream(errorStream);
     }
+    return timedOut;
   }
 
   private static void tailStream(BufferedReader br) throws IOException {
@@ -450,33 +455,6 @@ public class ShellProcessHandler {
     } catch (InterruptedException ie) {
       log.warn("Ignoring problem with forcible process termination '{}'", description, ie);
     }
-  }
-
-  private static String getAnsibleErrMsg(int code, String pythonErrMsg, String stderr) {
-
-    if (pythonErrMsg == null || stderr == null || code == ERROR_CODE_SUCCESS) return null;
-
-    String result = null;
-
-    Matcher ansibleFailMatch = ANSIBLE_FAIL_PAT.matcher(pythonErrMsg);
-    if (ansibleFailMatch.find()) {
-      result = ansibleFailMatch.group(1) + ansibleFailMatch.group(2);
-
-      // By default, python logging module writes to stderr.
-      // Attempt to find a line in ansible stderr for the failed task.
-      // Logs for each task are separated by empty lines.
-      // Some fatal failures are ignored by ansible, so skip them.
-      for (String s : stderr.split("\\R\\R")) {
-        if (s.contains(ANSIBLE_IGNORING)) {
-          continue;
-        }
-        Matcher m = ANSIBLE_FAILED_TASK_PAT.matcher(s);
-        if (m.find()) {
-          result += "\n" + m.group(0);
-        }
-      }
-    }
-    return result;
   }
 
   @VisibleForTesting

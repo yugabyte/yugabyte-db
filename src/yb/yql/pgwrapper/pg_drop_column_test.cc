@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/ddl_mode-test-util.h"
+#include "yb/util/status_format.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using std::string;
@@ -27,7 +30,8 @@ class PgDropColumnSanityTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // These tests disable ddl rollback (which holds back release of global object locks),
     // and expect dmls to go through. This doesn't hold true with object locking enabled.
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 
   virtual void SetupTables();

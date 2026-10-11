@@ -23,17 +23,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -64,6 +65,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
@@ -72,12 +74,13 @@ import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.RollbackAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 import org.yb.master.MasterClusterOuterClass.RollbackAutoFlagsResponsePB;
 import org.yb.util.PeerInfo;
+import play.libs.Json;
 
 @Slf4j
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
@@ -91,7 +94,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     FULL_UPGRADE_TSERVER_ONLY
   }
 
-  protected YBClient mockClient;
+  protected YBClientApi mockClient;
   protected Universe defaultUniverse;
 
   protected Region region;
@@ -139,11 +142,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.ChangeMasterConfig,
+          TaskType.CheckFollowerLag,
           TaskType.UpdateClusterUserIntent,
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.WaitStartingFromTime,
-          TaskType.UpdateUniverseFields);
+          TaskType.UpdateUniverseFields,
+          TaskType.DeleteRootVolumes,
+          TaskType.MarkUniverseForHealthScriptReUpload);
 
   @Before
   public void setUp() {
@@ -177,12 +184,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "2.21.1.1-b1";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     userIntent.useSystemd = true;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
 
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId(), certUUID);
 
@@ -211,10 +221,11 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
 
     // Setup mocks
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     try {
       when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      lenient().when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
@@ -249,6 +260,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient()
           .when(mockClient.changeMasterClusterConfig(any()))
           .thenReturn(mockMasterChangeConfigResponse);
+      ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
+      lenient()
+          .when(
+              mockClient.changeMasterConfig(
+                  anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString()))
+          .thenReturn(mockChangeConfigResponse);
       lenient()
           .when(mockClient.getLeaderBlacklistCompletion())
           .thenReturn(mockGetLoadMovePercentResponse);
@@ -279,7 +296,25 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
     // Create dummy shell response
     ShellResponse dummyShellResponse = new ShellResponse();
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              if (invocation.getArgument(0) == NodeManager.NodeCommandType.List
+                  && invocation.getArgument(1) instanceof NodeTaskParams) {
+                NodeTaskParams params = invocation.getArgument(1);
+                ObjectNode respJson = Json.newObject();
+                if (params.getUniverseUUID() != null) {
+                  respJson.put("universe_uuid", params.getUniverseUUID().toString());
+                }
+                // Azure provisioning recovers disk LUNs from the host-info output.
+                if (addAzureLunIndexes(respJson, params)) {
+                  ShellResponse listResponse = new ShellResponse();
+                  listResponse.message = respJson.toString();
+                  return listResponse;
+                }
+              }
+              return dummyShellResponse;
+            });
 
     defaultUser = ModelFactory.testUser(defaultCustomer);
 
@@ -443,13 +478,16 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.numNodes = numNodes;
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = ybSoftwareVersion;
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     PlacementInfo pi = new PlacementInfo();
     List<UUID> azUUIDs = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
     int idx = 0;

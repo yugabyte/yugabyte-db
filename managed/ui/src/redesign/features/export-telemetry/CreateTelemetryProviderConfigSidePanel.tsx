@@ -2,8 +2,9 @@ import { FC } from 'react';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
-import { useForm, FormProvider } from 'react-hook-form';
-import { Box, Typography, MenuItem, Divider } from '@material-ui/core';
+import { useForm, FormProvider, useFieldArray } from 'react-hook-form';
+import { Box, Typography, MenuItem, Divider, IconButton } from '@material-ui/core';
+import { CloseSharp } from '@material-ui/icons';
 import clsx from 'clsx';
 
 import {
@@ -14,7 +15,8 @@ import {
   RadioGroupOrientation,
   YBSelect,
   YBTooltip,
-  YBPasswordField
+  YBPasswordField,
+  YBButton
 } from '../../components';
 import { YBDropZoneField } from '../../../components/configRedesign/providerRedesign/components/YBDropZone/YBDropZoneField';
 import { createErrorMessage } from '../universe/universe-form/utils/helpers';
@@ -26,6 +28,7 @@ import {
   TelemetryProviderItem
 } from './types';
 import { DATADOG_SITES, LOKI_AUTH_TYPES, OTLP_AUTH_TYPES, OTLP_PROTOCOLS } from './constants';
+import { headerItemsToRecord, headerRecordToItems } from './utils';
 import { api, runtimeConfigQueryKey } from '../../helpers/api';
 import InfoIcon from '../../assets/info-message.svg?img';
 
@@ -56,12 +59,20 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
   const pillClasses = usePillStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const isViewMode = formProps !== null;
-  const formDefaultValues = isViewMode
-    ? formProps
+  const formDefaultValues: ExportLogFormFields = isViewMode
+    ? {
+        ...formProps,
+        config: {
+          ...formProps.config,
+          headerItems: headerRecordToItems(formProps.config?.headers)
+        }
+      }
     : {
+        name: '',
         config: {
           type: TelemetryProviderType.DATA_DOG,
-          site: DATADOG_SITES[0].value
+          site: DATADOG_SITES[0].value,
+          headerItems: []
         }
       };
 
@@ -71,7 +82,15 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     reValidateMode: 'onChange'
   });
 
-  const { control, handleSubmit, watch, setValue } = formMethods;
+  const { control, handleSubmit, watch, setValue, getValues, unregister, clearErrors } = formMethods;
+  const {
+    fields: headerFields,
+    append: appendHeader,
+    remove: removeHeader
+  } = useFieldArray({
+    control,
+    name: 'config.headerItems'
+  });
 
   const createTelemetryProvider = useMutation(
     (values: ExportLogPayload) => {
@@ -91,6 +110,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
   const providerTypeValue = watch('config.type');
   const dataDogSiteValue = watch('config.site');
   const authTypeValue = watch('config.authType');
+
+  // Shared config.endpoint keeps prior RHF rules across provider switches unless cleared.
+  const handleProviderTypeChange = () => {
+    unregister('config.endpoint');
+    clearErrors('config.endpoint');
+  };
 
   const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
     api.fetchRuntimeConfigs()
@@ -170,6 +195,10 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         if (values.config?.bearerToken?.token) {
           payload.config.bearerToken = { token: values.config.bearerToken.token };
         }
+        const headers = headerItemsToRecord(values.config?.headerItems);
+        if (headers) {
+          payload.config.headers = headers;
+        }
         payload.config.logsEndpoint = values.config?.logsEndpoint ?? undefined;
         payload.config.metricsEndpoint = values.config?.metricsEndpoint ?? undefined;
         payload.config.compression = values.config?.compression ?? 'gzip';
@@ -186,11 +215,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('dataDogApiKey')}</YBLabel>
-          <YBInputField
+          <YBPasswordField
             control={control}
             name="config.apiKey"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'DatadogForm-APIKey'
             }}
@@ -265,11 +295,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               <img src={InfoIcon} />
             </YBTooltip>
           </YBLabel>
-          <YBInputField
+          <YBPasswordField
             control={control}
             name="config.token"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'SplunkForm-Token'
             }}
@@ -288,6 +319,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             placeholder={t('splunkURLPlaceholder')}
             fullWidth
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{
               'data-testid': 'SplunkForm-EndPoint'
             }}
@@ -351,6 +383,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             placeholder={t('lokiEndpointPlaceholder')}
             fullWidth
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{
               'data-testid': 'LokiForm-EndPoint'
             }}
@@ -413,11 +446,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         </Box>
         <Box display="flex" flexDirection="column" width="100%" mt={3}>
           <YBLabel>{t('lokiPassword')}</YBLabel>
-          <YBInputField
+          <YBPasswordField
             control={control}
             name="config.basicAuth.password"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'LokiForm-Password'
             }}
@@ -447,12 +481,13 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('awsSecretKey')}</YBLabel>
-          <YBInputField
+          <YBPasswordField
             control={control}
             rules={{ required: 'This field is required' }}
             name="config.secretKey"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'AWSWatchForm-SecretKey'
             }}
@@ -517,6 +552,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             placeholder="https://"
             fullWidth
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{
               'data-testid': 'AWSWatchForm-EndPoint'
             }}
@@ -591,6 +627,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             name="config.endpoint"
             fullWidth
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{
               'data-testid': 'DynatraceForm-EndpointUrl'
             }}
@@ -678,6 +715,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             fullWidth
             placeholder="https://"
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{ 'data-testid': 'OtlpForm-Endpoint' }}
             required={true}
             rules={{ required: t('otlp.validationEndpointRequired') }}
@@ -741,6 +779,79 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
                 rules={{ required: t('otlp.validationFieldRequired') }}
               />
             </Box>
+          )}
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel className={classes.ybLabel}>
+            {t('otlp.headers')}
+            <YBTooltip title={t('otlp.headersTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          {headerFields.map((headerField, headerIndex) => (
+            <Box key={headerField.id} className={classes.headerRow}>
+              <Box className={classes.headerInput}>
+                <YBInputField
+                  control={control}
+                  name={`config.headerItems.${headerIndex}.key`}
+                  fullWidth
+                  disabled={isViewMode}
+                  placeholder={t('otlp.headerKeyPlaceholder')}
+                  inputProps={{
+                    'data-testid': `OtlpForm-HeaderKey-${headerIndex}`
+                  }}
+                  rules={{
+                    validate: (headerKeyValue) => {
+                      const headerValue = getValues(`config.headerItems.${headerIndex}.value`);
+                      if (headerValue && !String(headerKeyValue ?? '').trim()) {
+                        return t('otlp.validationHeaderKeyRequired');
+                      }
+                      return true;
+                    }
+                  }}
+                />
+              </Box>
+              <Box className={classes.headerInput}>
+                <YBInputField
+                  control={control}
+                  name={`config.headerItems.${headerIndex}.value`}
+                  fullWidth
+                  disabled={isViewMode}
+                  placeholder={t('otlp.headerValuePlaceholder')}
+                  inputProps={{
+                    'data-testid': `OtlpForm-HeaderValue-${headerIndex}`
+                  }}
+                />
+              </Box>
+              {!isViewMode && (
+                <IconButton
+                  color="default"
+                  size="medium"
+                  data-testid={`OtlpForm-RemoveHeader-${headerIndex}`}
+                  onClick={() => removeHeader(headerIndex)}
+                >
+                  <CloseSharp />
+                </IconButton>
+              )}
+            </Box>
+          ))}
+          {!isViewMode && (
+            <Box mt={1}>
+              <YBButton
+                variant="secondary"
+                data-testid="OtlpForm-AddHeader"
+                onClick={() => appendHeader({ key: '', value: '' })}
+                size="medium"
+              >
+                <span className="fa fa-plus" />
+                &nbsp;{t('otlp.addHeader')}
+              </YBButton>
+            </Box>
+          )}
+          {isViewMode && headerFields.length === 0 && (
+            <Typography variant="body2" color="textSecondary">
+              —
+            </Typography>
           )}
         </Box>
         <Box mt={3}>
@@ -952,6 +1063,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               options={TELEMETRY_PROVIDER_OPTIONS}
               orientation={RadioGroupOrientation.VERTICAL}
               isDisabled={isViewMode}
+              onRadioChange={handleProviderTypeChange}
             />
             {providerTypeValue === TelemetryProviderType.DATA_DOG && renderDatadogForm()}
             {providerTypeValue === TelemetryProviderType.SPLUNK && renderSplunkForm()}

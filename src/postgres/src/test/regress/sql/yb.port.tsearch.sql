@@ -427,6 +427,14 @@ SELECT ts_headline('english',
 to_tsquery('english','Lorem') && phraseto_tsquery('english','ullamcorper urna'),
 'MaxFragments=100, MaxWords=100, MinWords=1');
 
+-- Test for large values of StartSel, StopSel and FragmentDelimiter
+SELECT ts_headline('english', 'foo barbar', to_tsquery('english', 'foo'),
+  'StartSel=' || repeat('x', 32768));
+SELECT ts_headline('english', 'foo barbar', to_tsquery('english', 'foo'),
+  'StopSel=' || repeat('x', 32768));
+SELECT ts_headline('english', 'foo barbar', to_tsquery('english', 'foo'),
+  'FragmentDelimiter=' || repeat('x', 32768));
+
 --Rewrite sub system
 
 CREATE TABLE test_tsquery (txtkeyword TEXT, txtsample TEXT);

@@ -12,5 +12,5 @@ properties:
     type: string
     readOnly: true
   table_type:
-    $ref: "./TableType.yaml"
+    $ref: "./XClusterTableType.yaml"
     readOnly: true

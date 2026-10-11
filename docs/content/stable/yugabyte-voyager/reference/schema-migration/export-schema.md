@@ -29,15 +29,6 @@ When run at the same time, flags take precedence over configuration flag setting
 
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :------- | :------------------------ | :------------------------ |
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-export-schema:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-
 | --assessment-report-path |
 
 ```yaml{.nocopy}
@@ -88,6 +79,14 @@ export-schema:
 ```
 
 | Disable automatic [performance optimizations](../../../known-issues/postgresql/#performance-optimizations) in the exported schema. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --disable-schema-snapshot-capture |
+
+```yaml{.nocopy}
+export-schema:
+  disable-schema-snapshot-capture:
+```
+
+| Turn off recording of source schema snapshots, which [schema detect-drift](../detect-drift/) reads. Recording is best effort: a failed capture is logged and never fails the export. PostgreSQL only. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-type |
 
 ```yaml{.nocopy}
@@ -232,10 +231,34 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 | --start-clean | — | Starts a fresh schema export after clearing the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help for schema. |
 | -y, --yes | — | Answer "yes" to all prompts during the export schema operation. <br>Default: false |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+export-schema:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 

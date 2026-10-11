@@ -6,13 +6,19 @@ description: |
 type: object
 required:
   - uuid
-  - node_spec
 properties:
-  node_spec:
-    $ref: "./ClusterResizeNodeSpec.yaml"
-  gflags:
-    $ref: "./ClusterGFlags.yaml"
   uuid:
     description: Cluster UUID
     type: string
     format: uuid
+  node_spec:
+    description: 'Deprecated: use provider_nodes_specs for multicloud clusters. Proposed node settings for a single-provider cluster.'
+    $ref: "./ClusterResizeNodeSpec.yaml"
+    deprecated: true
+  provider_nodes_specs:
+    description: Proposed resize node settings per provider for multicloud clusters.
+    type: array
+    items:
+      $ref: "./PerProviderResizeNodesSpec.yaml"
+  gflags:
+    $ref: "./ClusterGFlags.yaml"

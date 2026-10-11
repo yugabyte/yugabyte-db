@@ -52,7 +52,7 @@ extern IndexPath *create_index_path(PlannerInfo *root,
 									Relids required_outer,
 									double loop_count,
 									bool partial_path,
-									List *yb_merge_scan_saop_cols);
+									List *yb_merge_scan_stream_cols);
 extern BitmapHeapPath *create_bitmap_heap_path(PlannerInfo *root,
 											   RelOptInfo *rel,
 											   Path *bitmapqual,
@@ -350,6 +350,9 @@ extern bool yb_has_same_batching_reqs(List *paths);
 extern ParamPathInfo *yb_find_batched_param_path_info(RelOptInfo *rel,
 													  Relids required_outer,
 													  Relids yb_required_batched_outer);
+extern List *yb_clause_batched_groups(List *pclauses,
+									 Relids batchedrelids,
+									 Relids inner_relids);
 extern Path *yb_create_distinct_index_path(PlannerInfo *root,
 										   IndexOptInfo *index,
 										   IndexPath *basepath,

@@ -13,6 +13,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/docdb/docdb_pgapi.h"
+#include "yb/docdb/docdb_pgapi_private.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/schema.h"
@@ -24,8 +25,10 @@
 
 #include "yb/qlexpr/ql_expr.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_value.h"
@@ -115,6 +118,18 @@ const YbcPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type) {
   const auto* type = Singleton<DocPgTypeAnalyzer>::get()->pg_types.Find(pg_type.type_id);
   LOG_IF(INFO, !type) << "Could not find type entity for oid " << pg_type.type_id;
   return type;
+}
+
+Result<uint32_t> DocPgGetTypeOid(uint32_t pg_type_oid, char typtype, uint32_t typbasetype) {
+  // A type DocDB knows is reported as-is; otherwise (e.g. a UDT) resolve it to its primitive type
+  // oid.  This keeps the ybgate calls inside docdb so callers (e.g. master) need not depend on
+  // yb_pgbackend.
+  const YbcPgTypeEntity* type_entity =
+      DocPgGetTypeEntity({.type_id = static_cast<int32_t>(pg_type_oid), .type_mod = -1});
+  if (type_entity == nullptr) {
+    PG_RETURN_NOT_OK(YbgGetPrimitiveTypeOid(pg_type_oid, typtype, typbasetype, &pg_type_oid));
+  }
+  return pg_type_oid;
 }
 
 Status DocPgAddVarRef(
@@ -1373,7 +1388,7 @@ Status SetValueFromQLBinaryHelper(
         datum_message.set_datum_string(decoded_str, strlen(decoded_str));
       } else {
         LOG(INFO) << "For record of type : " << type_id << " no attributes found in the cache";
-        return STATUS_SUBSTITUTE(CacheMissError, "composite");  // Do not change the message.
+        return STATUS_FORMAT(CacheMissError, "composite");  // Do not change the message.
       }
       break;
     }
@@ -1459,7 +1474,7 @@ Status SetValueFromQLBinaryHelper(
         VLOG(2) << "For enum oid: " << enum_oid << " found label" << label;
       } else {
         LOG(INFO) << "For enum oid: " << enum_oid << " no label found in cache";
-        return STATUS_SUBSTITUTE(CacheMissError, "enum");  // Do not change the message.
+        return STATUS_FORMAT(CacheMissError, "enum");  // Do not change the message.
       }
       datum_message.set_datum_string(label.c_str(), strlen(label.c_str()));
       break;

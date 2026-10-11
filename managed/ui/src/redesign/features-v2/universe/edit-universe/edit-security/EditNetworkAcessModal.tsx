@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
@@ -6,9 +7,14 @@ import { AssignPublicIPField, IPV6Field, NetworkAcessField } from '../../create-
 import { useEditUniverse } from '../../../../../v2/api/universe/universe';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
-// import { createErrorMessage } from '../../../../../utils/ObjectUtils';
-import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { createErrorMessage } from '../../../../../utils/ObjectUtils';
+import {
+  ClusterNetworkingSpecAllOfEnableExposingService,
+  ClusterSpecClusterType
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
+import { FullMoveWarning } from '../components';
 
 const { YBModal } = yba;
 const { styled, Box, boxClasses } = mui;
@@ -33,20 +39,21 @@ interface NetworkAcessFormProps {
 export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalProps) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.security' });
   const { universeData } = useEditUniverseContext();
-  // const editUniverse = useEditUniverse();
+  const editUniverse = useEditUniverse();
   const universeUUID = universeData?.info?.universe_uuid;
-  // const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
+  const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
-
-  const assignPublicIPValue = !!universeData?.spec?.networking_spec?.assign_public_ip;
-  const ipv6Value = !!universeData?.spec?.networking_spec?.enable_ipv6;
+  const networkingSpec = universeData?.spec?.networking_spec;
+  const assignPublicIPValue = !!networkingSpec?.assign_public_ip;
+  const ipv6Value = !!networkingSpec?.enable_ipv6;
   const k8sPublicIPValue = Boolean(
     primaryCluster?.networking_spec?.enable_exposing_service === 'EXPOSED'
   );
+  const isK8s = providerCode === CloudType.kubernetes;
 
   const defaultValues =
-    providerCode === CloudType.kubernetes
+    isK8s
       ? {
           enableIPV6: ipv6Value,
           enableExposingService: k8sPublicIPValue
@@ -54,37 +61,63 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
       : { assignPublicIP: assignPublicIPValue };
 
   const methods = useForm<NetworkAcessFormProps>({ defaultValues });
+  const {
+    handleSubmit,
+    reset,
+    formState: { isDirty }
+  } = methods;
 
-  const { handleSubmit } = methods;
+  useEffect(() => {
+    if (open) reset(defaultValues);
+  }, [open]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
-    //TODO: Complete this once API is ready
     if (!universeUUID || !primaryCluster?.uuid) {
       toast.error(t('unableToApplyChanges'));
       return;
     }
-    // editUniverse.mutate(
-    //   {
-    //     uniUUID: universeUUID,
-    //     data: {
-    //       expected_universe_version: -1,
-    //       clusters: [
-    //         {
-    //           uuid: primaryCluster.uuid
-    //         }
-    //       ]
-    //     }
-    //   },
-    //   {
-    //     onSuccess: (response) => {
-    //       handleEditUniverseSuccess(response.task_uuid);
-    //       onClose();
-    //     },
-    //     onError: (error: unknown) => {
-    //       toast.error(createErrorMessage(error));
-    //     }
-    //   }
-    // );
+    const isKubernetes = providerCode === CloudType.kubernetes;
+    const k8sPublicIPEnabled = !!values.enableExposingService;
+    editUniverse.mutate(
+      {
+        uniUUID: universeUUID,
+        data: {
+          expected_universe_version: -1,
+          clusters: [
+            {
+              uuid: primaryCluster.uuid,
+              ...(isKubernetes && {
+                networking_spec: {
+                  enable_exposing_service: k8sPublicIPEnabled
+                    ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
+                    : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED
+                }
+              })
+            }
+          ],
+          networking_spec: {
+            ...networkingSpec,
+            ...(isKubernetes
+              ? {
+                  enable_ipv6: values.enableIPV6
+                }
+              : {
+                  assign_public_ip: values.assignPublicIP
+                })
+          }
+        }
+      },
+      {
+        onSuccess: (response) => {
+          reset(values);
+          handleEditUniverseSuccess(response.task_uuid);
+          onClose();
+        },
+        onError: (error: unknown) => {
+          toast.error(createErrorMessage(error));
+        }
+      }
+    );
   });
 
   return (
@@ -102,16 +135,17 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
     >
       <FormProvider {...methods}>
         <ModalContent>
-          {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(providerCode) && (
+          {isCloudVendorCloudType(providerCode) && (
             <AssignPublicIPField disabled={false} providerCode={providerCode} />
           )}
-          {providerCode === CloudType.kubernetes && (
+          {isK8s && (
             <>
               <IPV6Field disabled={false} />
               <br />
               <NetworkAcessField disabled={false} />
             </>
           )}
+          {isDirty && <FullMoveWarning setting="publicIp" />}
         </ModalContent>
       </FormProvider>
     </YBModal>

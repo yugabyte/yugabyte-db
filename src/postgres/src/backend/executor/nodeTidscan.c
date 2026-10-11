@@ -35,7 +35,8 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_table_scan.h"
+#include "access/yb_table_scan_options.h"
 #include "utils/builtins.h"
 
 
@@ -318,14 +319,14 @@ static void
 YbctidListEval(TidScanState *tidstate)
 {
 	ExprContext *econtext = tidstate->ss.ps.ps_ExprContext;
-	YbScanDesc	ybScan;
+	TableScanDesc tsdesc;
 	Datum	   *ybctidList;
 	int			numAllocYbctids;
 	int			numYbctids;
 	ListCell   *l;
 
-	ybScan = tidstate->ss.ss_currentScanDesc->ybscan;
-	Assert(ybScan);
+	tsdesc = tidstate->ss.ss_currentScanDesc;
+	Assert(tsdesc);
 	Assert(IsYBRelation(tidstate->ss.ss_currentRelation));
 
 	/*
@@ -417,7 +418,7 @@ YbctidListEval(TidScanState *tidstate)
 		qsort(ybctidList, numYbctids, sizeof(Datum), ybctid_comparator);
 		numYbctids = qunique(ybctidList, numYbctids, sizeof(Datum), ybctid_comparator);
 	}
-	HandleYBStatus(YBCPgBindYbctids(ybScan->handle, numYbctids, ybctidList));
+	yb_scan_desc_bind_ybctids(tsdesc, numYbctids, ybctidList);
 	pfree(ybctidList);
 }
 
@@ -536,7 +537,6 @@ YbTidNext(TidScanState *node)
 	ExprContext *econtext;
 	MemoryContext oldcontext;
 	TableScanDesc tsdesc;
-	YbScanDesc	ybScan;
 
 	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
@@ -560,43 +560,33 @@ YbTidNext(TidScanState *node)
 			slot = node->ss.ss_ScanTupleSlot;
 		}
 
-		node->ss.ss_currentScanDesc = tsdesc =
-			palloc(sizeof(TableScanDescData));
-		tsdesc->rs_rd = node->ss.ss_currentRelation;
-		tsdesc->rs_snapshot = estate->es_snapshot;
-		tsdesc->rs_nkeys = 0;
-		tsdesc->rs_key = NULL;
-		tsdesc->rs_flags = SO_TYPE_TIDSCAN;
-		tsdesc->rs_parallel = NULL;
-		tsdesc->ybscan = ybScan = YbBeginScan(tsdesc->rs_rd,
-											  NULL,	/* index */
-											  false,	/* xs_want_itup */
-											  tsdesc->rs_nkeys,
-											  tsdesc->rs_key,
-											  (Scan *) plan,
-											  rel_pushdown,
-											  NULL,	/* idx_pushdown */
-											  node->yb_tss_aggrefs,
-											  0,	/* distinct_prefixlen */
-											  &estate->yb_exec_params,
-											  false,	/* is_internal_scan */
-											  false);	/* fetch_ybctids_only */
+		{
+			YbTableScanOptions yb_options = {
+				.pg_scan_plan = (Scan *) plan,
+				.rel_pushdown = rel_pushdown,
+				.aggrefs = node->yb_tss_aggrefs,
+				.exec_params = &estate->yb_exec_params,
+				.rowmark = YBC_NO_ROW_MARK,
+			};
+
+			node->ss.ss_currentScanDesc = tsdesc =
+				table_beginscan_tid_yb(node->ss.ss_currentRelation,
+									   estate->es_snapshot,
+									   &yb_options);
+		}
 		YbctidListEval(node);
 	}
-	else
-		ybScan = tsdesc->ybscan;
 
 	/* Need to execute the request */
-	if (!ybScan->is_exec_done)
+	if (!yb_scan_desc_is_exec_done(tsdesc))
 	{
-		HandleYBStatus(YBCPgExecSelect(ybScan->handle, ybScan->exec_params));
-		ybScan->is_exec_done = true;
+		yb_scan_desc_exec_select(tsdesc);
 	}
 
 	/* capture all fetch allocations in the short-lived context */
 	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
-	ybFetchNext(ybScan->handle, slot,
-				RelationGetRelid(node->ss.ss_currentRelation));
+	yb_scan_desc_fetch_next(tsdesc, slot,
+							RelationGetRelid(node->ss.ss_currentRelation));
 	MemoryContextSwitchTo(oldcontext);
 
 	return slot;
@@ -667,7 +657,7 @@ ExecReScanTidScan(TidScanState *node)
 	{
 		if (IsYBRelation(node->ss.ss_currentRelation))
 		{
-			ybc_heap_endscan(node->ss.ss_currentScanDesc);
+			table_endscan(node->ss.ss_currentScanDesc);
 			node->ss.ss_currentScanDesc = NULL;
 		}
 		else
@@ -689,12 +679,7 @@ void
 ExecEndTidScan(TidScanState *node)
 {
 	if (node->ss.ss_currentScanDesc)
-	{
-		if (IsYBRelation(node->ss.ss_currentRelation))
-			ybc_heap_endscan(node->ss.ss_currentScanDesc);
-		else
-			table_endscan(node->ss.ss_currentScanDesc);
-	}
+		table_endscan(node->ss.ss_currentScanDesc);
 
 	/*
 	 * Free the exprcontext

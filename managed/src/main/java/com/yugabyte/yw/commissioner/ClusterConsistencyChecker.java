@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class ClusterConsistencyChecker {
@@ -99,7 +99,7 @@ public class ClusterConsistencyChecker {
 
   private CheckClusterConsistency.CheckResult checkUniverseConsistency(
       Universe universe, boolean cloudEnabled) {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       return CheckClusterConsistency.checkCurrentServers(
           client, universe, Collections.emptySet(), false, cloudEnabled);
     } catch (Exception e) {

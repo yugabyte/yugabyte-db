@@ -13,7 +13,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Legacy automatic provisioning is deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned this way continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -46,6 +46,8 @@ Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade Y
 </ul>
 
 When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
+
+Note that the SSH user you provide must not be named `yugabyte`.
 
 ## With Internet or Yum connectivity
 

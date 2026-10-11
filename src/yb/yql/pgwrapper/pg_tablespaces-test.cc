@@ -15,6 +15,7 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/tablespace_parser.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_tablespace_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/master/catalog_manager.h"
@@ -458,7 +459,7 @@ TEST_F(PgTablespacesTest, TestPreferredZone) {
   auto mv_tablet_uuid_set = ListTabletIdsForTable(cluster_.get(), mv_id);
   auto mv_uuids = std::vector<TabletId>(mv_tablet_uuid_set.begin(), mv_tablet_uuid_set.end());
 
-  WaitForStatusTabletsVersion(++current_version);
+  current_version = WaitForStatusTabletsVersionForCreate(current_version);
 
   // Verify that all the tablet leaders are in region 1.
   auto status_tablet_ids = ASSERT_RESULT(GetStatusTablets(1, ExpectedLocality::kLocal));
@@ -482,7 +483,7 @@ TEST_F(PgTablespacesTest, TestPreferredZone) {
   ASSERT_OK(conn.ExecuteFormat("ALTER INDEX $0 SET TABLESPACE tablespace2", index_name));
   ASSERT_OK(conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 SET TABLESPACE tablespace2", mv_name));
 
-  WaitForStatusTabletsVersion(++current_version);
+  current_version = WaitForStatusTabletsVersionForCreate(current_version);
 
   // Now the tablet leaders should be in region 3, which is the most preferred block
   // for tablespace 2.

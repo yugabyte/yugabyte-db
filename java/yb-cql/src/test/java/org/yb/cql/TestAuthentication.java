@@ -121,7 +121,10 @@ public class TestAuthentication extends BaseAuthenticationCQLTest {
     }
   }
 
-  @Test(timeout = 100000)
+  // No explicit per-method timeout: a full cluster restart (whose leader master shutdown can be
+  // legitimately slow under sanitizer builds) plus the connectivity checks can exceed a hardcoded
+  // 100s under ASAN. Rely on BaseYBTest's build-type-adjusted METHOD_TIMEOUT rule instead.
+  @Test
   public void testAlterLoginForExistingRole() throws Exception {
     String roleName = "alter_test_2";
     String password = "!%^()(*~`";

@@ -16,9 +16,12 @@
 #include "yb/client/client_error.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 
@@ -26,7 +29,13 @@
 #include "yb/docdb/doc_vector_index.h"
 
 #include "yb/docdb/docdb_util.h"
+#include "yb/dockv/value_type.h"
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -36,6 +45,7 @@
 
 #include "yb/tablet/kv_formatter.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
 
@@ -47,39 +57,70 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/path_util.h"
+#include "yb/util/logging_test_util.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
+#include "yb/vector_index/vector_lsm_metadata.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
+#include "yb/vector_index/vector_lsm.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
-DECLARE_bool(TEST_skip_process_apply);
-DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(TEST_skip_flush_deactivated_vector_indexes);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_table_owned_vector_reverse_mapping);
+DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
-DECLARE_string(vector_index_backend);
-DECLARE_bool(ysql_enable_packed_row);
-DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
+DECLARE_bool(TEST_disable_wal_retention_time);
+DECLARE_bool(TEST_fail_vector_index_backfill);
+DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_use_custom_varz);
+DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(vector_index_require_parent_data_compacted_before_split);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(max_nexts_to_avoid_seek);
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_int32(priority_thread_pool_size);
+DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(TEST_delay_init_tablet_peer_ms);
+DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
+DECLARE_uint32(vector_index_backfill_retry_delay_ms);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_string(vector_index_backend);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+DECLARE_bool(vector_index_allow_parallel_compactions);
+DECLARE_int32(vector_index_files_number_compaction_trigger);
+DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(priority_thread_pool_size);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -91,21 +132,19 @@ extern size_t TEST_vector_index_max_checked_entries;
 
 } // namespace yb::docdb
 
-namespace yb::internal {
-
-extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
-
-} // namespace yb::internal
-
 namespace yb::tablet {
 
 extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
+extern bool TEST_skip_vector_index_post_split_compaction;
+extern bool TEST_vector_index_force_parent_data_not_compacted;
+extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
 
 } // namespace yb::tablet
 
 namespace yb::vector_index {
 
+extern MonoDelta TEST_sleep_after_saving_chunk;
 extern MonoDelta TEST_sleep_during_flush;
 
 } // namespace yb::vector_index
@@ -114,10 +153,19 @@ namespace yb::pgwrapper {
 
 YB_STRONGLY_TYPED_BOOL(AddFilter);
 YB_STRONGLY_TYPED_BOOL(Backfill);
+YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 YB_STRONGLY_TYPED_BOOL(WaitForIntents);
 
 using FloatVector = std::vector<float>;
 const std::string kVectorIndexName = "vi";
+
+// Default HNSW build parameters used by CreateIndex/MakeIndex. Tests that build large indexes and
+// care about build time (not recall) can pass cheaper parameters instead.
+const std::string kDefaultIndexBuildOptions = "ef_construction = 256, m = 32, m0 = 128";
+
+// Cheapest parameters the reloption bounds allow (m >= 5, ef_construction >= 50), for tests that
+// care about the number of indexes rather than recall.
+const std::string kCheapIndexBuildOptions = "ef_construction = 50, m = 5, m0 = 8";
 
 const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
@@ -125,6 +173,19 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
 
 YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnswUsearch)(kHnswlib)(kYbHnswHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
+
+// Returns the tablet peers matching `filter` that currently host at least one vector index.
+std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
+    MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kAll) {
+  std::vector<tablet::TabletPeerPtr> result;
+  for (const auto& peer : ListTabletPeers(cluster, filter)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (tablet && tablet->vector_indexes().List()) {
+      result.push_back(peer);
+    }
+  }
+  return result;
+}
 
 ////////////////////////////////////////////////////////
 // PgVectorIndexTestBase
@@ -145,6 +206,12 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
+
+    // Preserve the existing test assumption that each compaction produces one output chunk.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+
     auto packing_mode = GetPackingMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
@@ -174,6 +241,14 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     // (Auto-Analyze #28666)
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
     itest::SetupQuickSplit(1_KB);
+    // Most tests assume a stable tablet layout and perform manual splits explicitly.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = false;
+
+    // Some tests (e.g. StatusResolutionDuringBootstrapBackfill) create a vector index while an
+    // uncommitted transaction still holds intents on the indexed table. Object-locking-based DDL
+    // serialization, which defaults on in release builds, would make CREATE INDEX wait for that
+    // transaction to finish, so disable it to keep behavior consistent across build types.
+    ToggleDDLMode(/* use_legacy = */ true);
 
     PgMiniTestBase::SetUp();
 
@@ -186,6 +261,47 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   Result<PGConn> Connect() const override {
     return IsColocated() ? ConnectToDB("colocated_db") : PgMiniTestBase::Connect();
+  }
+
+  Status WaitForTabletSplit(const TableId& table_id, size_t num_splits = 1) {
+    auto active_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+    const auto orig_tablets_count = active_tablet_ids.size();
+
+    auto table = VERIFY_RESULT(client_->OpenTable(table_id));
+    auto partition_list_version = table->GetPartitionListVersion();
+    const auto orig_partition_list_version = partition_list_version;
+
+    LOG(INFO) << "Waiting for " << num_splits << " tablet split(s) on table " << table_id
+              << ", partition_list_version: " << partition_list_version
+              << ", orig_tablets_count: " << orig_tablets_count;
+
+    const auto deadline = CoarseMonoClock::Now() + 60s * kTimeMultiplier;
+    while (partition_list_version == orig_partition_list_version) {
+      if (CoarseMonoClock::Now() > deadline) {
+        return STATUS(TimedOut, "Timed out waiting for partition list version to change");
+      }
+      std::this_thread::sleep_for(250ms);
+      Synchronizer synchronizer;
+      table->RefreshPartitions(client_.get(), synchronizer.AsStdStatusCallback());
+      RETURN_NOT_OK(synchronizer.Wait());
+      partition_list_version = table->GetPartitionListVersion();
+    }
+
+    while (active_tablet_ids.size() < orig_tablets_count + num_splits) {
+      if (CoarseMonoClock::Now() > deadline) {
+        return STATUS(
+            TimedOut,
+            Format(
+                "Timed out waiting for tablet split, active_tablets_count: $0",
+                active_tablet_ids.size()));
+      }
+      std::this_thread::sleep_for(250ms);
+      active_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+    }
+
+    LOG(INFO) << "Tablet split completed, partition_list_version: " << partition_list_version
+              << ", active_tablets_count: " << active_tablet_ids.size();
+    return Status::OK();
   }
 
   Result<PGConn> MakeTable(size_t dimensions = 3) {
@@ -211,24 +327,28 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   Status CreateIndex(
        PGConn& conn, const std::string& index_name = kVectorIndexName,
        std::optional<vector_index::DistanceKind> distance_kind = std::nullopt,
-       const std::string& column = std::string()) {
+       const std::string& column = std::string(),
+       const std::string& build_options = kDefaultIndexBuildOptions) {
     return conn.ExecuteFormat(
-        "CREATE INDEX $1 ON test USING ybhnsw ($2 $0) "
-            "WITH (ef_construction = 256, m = 32, m0 = 128)",
+        "CREATE INDEX $1 ON test USING ybhnsw ($2 $0) WITH ($3)",
         VectorOpsName(distance_kind.value_or(distance_kind_)), index_name,
-        column.empty() ? "embedding" : column);
+        column.empty() ? "embedding" : column, build_options);
   }
 
-  Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
+  Result<PGConn> MakeIndex(
+      size_t dimensions = 3, bool table_exists = false,
+      const std::string& build_options = kDefaultIndexBuildOptions) {
     auto conn =  VERIFY_RESULT(table_exists ? Connect() : MakeTable(dimensions));
-    RETURN_NOT_OK(CreateIndex(conn));
+    RETURN_NOT_OK(CreateIndex(conn, kVectorIndexName, std::nullopt, std::string(), build_options));
     return conn;
   }
 
   Result<PGConn> MakeIndexAndFill(
       size_t num_rows, Backfill backfill = Backfill::kFalse, bool keep_vectors = false);
   Result<PGConn> MakeIndexAndFillRandom(size_t num_rows);
-  Status InsertRows(PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors = false);
+  Status InsertRows(
+      PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors = false,
+      NonTransactionalWrites non_transactional_writes = NonTransactionalWrites::kFalse);
   Status InsertRandomRows(PGConn& conn, size_t num_rows);
 
   // Inserts `count` rows with ids [start_id, start_id + count) as a single multi-row statement, so
@@ -243,6 +363,23 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
       values += Format("($0, '$1')", id, AsString(Vector(id)));
     }
     return conn.Execute("INSERT INTO test VALUES " + values);
+  }
+
+  // Waits until all `expected_num_indexes` vector indexes of the cluster report their backfill as
+  // finished. Fails right away if a backfill failed.
+  Status WaitForVectorIndexBackfills(size_t expected_num_indexes, const std::string& description) {
+    return WaitFor([this, expected_num_indexes]() -> Result<bool> {
+      auto indexes = ListVectorIndexes(cluster_.get());
+      if (indexes.size() != expected_num_indexes) {
+        return false;
+      }
+      for (const auto& index : indexes) {
+        if (!VERIFY_RESULT(index->BackfillDone())) {
+          return false;
+        }
+      }
+      return true;
+    }, 60s * kTimeMultiplier, description);
   }
 
   void VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter);
@@ -403,17 +540,10 @@ Status PgVectorIndexTestBase::WaitNoBackgroundInserts(
     RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get(), timeout));
   }
   auto cond = [this]() -> Result<bool> {
-    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-    for (const auto& peer : peers) {
-      auto list = VERIFY_RESULT(peer->shared_tablet())->vector_indexes().List();
-      if (!list) {
-        continue;
-      }
-      for (const auto& index : *list) {
-        if (index->TEST_HasBackgroundInserts()) {
-          LOG(INFO) << "Index " << index->ToString() << " has background inserts";
-          return false;
-        }
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      if (index->TEST_HasBackgroundInserts()) {
+        LOG(INFO) << "Index " << index->ToString() << " has background inserts";
+        return false;
       }
     }
     return true;
@@ -422,14 +552,21 @@ Status PgVectorIndexTestBase::WaitNoBackgroundInserts(
 }
 
 Status PgVectorIndexTestBase::InsertRows(
-    PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors) {
+    PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors,
+    NonTransactionalWrites non_transactional_writes) {
   SCHECK_GE(end_row, start_row, InvalidArgument, "");
 
   if (keep_vectors) {
     vectors_.reserve(vectors_.capacity() + end_row - start_row + 1);
   }
 
-  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  if (non_transactional_writes) {
+    // Autocommit single-row inserts take the single-shard fast path, so each write is a plain
+    // non-transactional WRITE_OP that feeds vector indexes at apply time.
+    RETURN_NOT_OK(conn.Execute("SET yb_disable_transactional_writes = on"));
+  } else {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  }
   for (auto i = start_row; i <= end_row; ++i) {
     auto vector = Vector(i);
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -438,6 +575,9 @@ Status PgVectorIndexTestBase::InsertRows(
     if (keep_vectors) {
       vectors_.push_back(std::move(vector));
     }
+  }
+  if (non_transactional_writes) {
+    return conn.Execute("RESET yb_disable_transactional_writes");
   }
   return conn.CommitTransaction();
 }
@@ -663,7 +803,9 @@ class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexT
  protected:
   void TestSimple(bool table_exists = false);
   void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
-  void TestRestart(tablet::FlushFlags flush_flags);
+  void TestRestart(
+      tablet::FlushFlags flush_flags,
+      NonTransactionalWrites non_transactional_writes = NonTransactionalWrites::kFalse);
   void TestMetric(const std::string& expected);
   void TestRandom();
 };
@@ -868,19 +1010,10 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
   num_pre_split_tablets_ = 1;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   size_t tablet_entries = 0;
-  for (const auto& peer : peers) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto list = tablet->vector_indexes().List();
-    if (!list) {
-      continue;
-    }
-    auto current_entries = ASSERT_RESULT((*list)[0]->TotalEntries());
-    LOG(INFO) << "P " << peer->permanent_uuid() << ": Total entries: " << current_entries;
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    auto current_entries = ASSERT_RESULT(index->TotalEntries());
+    LOG(INFO) << index->ToString() << ": Total entries: " << current_entries;
     if (tablet_entries) {
       ASSERT_EQ(tablet_entries, current_entries);
     } else {
@@ -956,13 +1089,28 @@ TEST_P(PgVectorIndexTest, ConcurrentInsertAndSearch) {
   std::atomic<int64_t> next_id{1000};
   TestThreadHolder threads;
 
-  // Writers: keep inserting multi-row batches for the whole run. With task_size=1 every batch fans
-  // out into many concurrent add() calls on the chunk's index. Ids come from a shared counter so
-  // they stay unique across writers; once a chunk fills it simply rolls into a new mutable chunk.
+  // Cap the number of inserted rows. For the pure hnswlib backends a chunk's in-memory graph is
+  // never released after it is flushed to disk (DoSaveToFile keeps the original index) and each
+  // chunk additionally reserves its estimated size in the block cache, so tracked memory grows with
+  // every inserted vector, reaching the 6.8GB soft limit somewhere near 1M rows. Past that, writes
+  // are rejected and retried for the whole 10 minute YSQL client timeout, so an insert outlives
+  // kRunTime and wedges the thread holder's JoinAll until the test times out.
+  //
+  // The cap is also what ends the run: reaching it makes the writers exit, which sets the holder's
+  // stop flag, so it bounds how long the insert-vs-search window stays open. Keep it high enough
+  // that the usearch race still reproduces -- with the fix reverted it surfaces in every run at
+  // this cap, but only about a third of runs at 100K, where the fixed build finishes the workload
+  // in a few seconds. At 300K the hnswlib peak stays around 1.9GB, well clear of the soft limit.
+  constexpr int64_t kMaxId = 300000;
+
+  // Writers: keep inserting multi-row batches until the row cap is reached. With task_size=1 every
+  // batch fans out into many concurrent add() calls on the chunk's index. Ids come from a shared
+  // counter so they stay unique across writers; once a chunk fills it rolls into a new mutable one.
   for (size_t w = 0; w != kWriters; ++w) {
     threads.AddThreadFunctor([this, &next_id, &stop_flag = threads.stop_flag()] {
       auto write_conn = ASSERT_RESULT(Connect());
-      while (!stop_flag.load(std::memory_order_acquire)) {
+      while (!stop_flag.load(std::memory_order_acquire) &&
+             next_id.load(std::memory_order_relaxed) < kMaxId) {
         ASSERT_OK(InsertBatch(
             write_conn, next_id.fetch_add(kBatchSize, std::memory_order_relaxed), kBatchSize));
       }
@@ -1025,19 +1173,13 @@ TEST_P(PgVectorIndexTest, CompactionDuringShutdown) {
   // Schedule an asynchronous compaction and keep only a weak reference to the index, so the tablet
   // owns the only strong references and tearing the tablet down frees the VectorLSM.
   std::weak_ptr<docdb::DocVectorIndex> weak_index;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto list = tablet->vector_indexes().List();
-    if (list && !list->empty()) {
-      weak_index = (*list)[0];
-      ASSERT_OK((*list)[0]->Compact());
-      break;
-    }
+  {
+    auto indexes = ListVectorIndexes(cluster_.get());
+    ASSERT_FALSE(indexes.empty()) << "No tablet with a vector index found";
+    weak_index = indexes.front();
+    ASSERT_OK(indexes.front()->Compact());
   }
-  ASSERT_FALSE(weak_index.expired()) << "No tablet with a vector index found";
+  ASSERT_FALSE(weak_index.expired());
 
   ASSERT_TRUE(task_in_window.WaitFor(60s * kTimeMultiplier))
       << "Compaction task did not reach the post-completion window";
@@ -1128,29 +1270,13 @@ TEST_P(PgVectorIndexCompactionPoolTest, ShutdownNotBlockedByCompaction) {
   // Pick the vector tablet leader (it holds the unflushed writes above, so its shutdown must flush)
   // and a follower (we run the pool-hogging compaction there so it keeps holding the worker while
   // the leader shuts down).
-  std::string leader_uuid;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (tablet && tablet->vector_indexes().TEST_HasIndexes()) {
-      leader_uuid = peer->permanent_uuid();
-      break;
-    }
-  }
-  ASSERT_FALSE(leader_uuid.empty()) << "No vector tablet leader found";
+  auto leader_peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_FALSE(leader_peers.empty()) << "No vector tablet leader found";
+  auto leader_uuid = leader_peers.front()->permanent_uuid();
 
-  docdb::DocVectorIndexPtr follower_index;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto list = tablet->vector_indexes().List();
-    if (list && !list->empty()) {
-      follower_index = (*list)[0];
-      break;
-    }
-  }
-  ASSERT_TRUE(follower_index != nullptr) << "No vector tablet follower found";
+  auto follower_indexes = ListVectorIndexes(cluster_.get(), ListPeersFilter::kNonLeaders);
+  ASSERT_FALSE(follower_indexes.empty()) << "No vector tablet follower found";
+  auto follower_index = follower_indexes.front();
 
   size_t shutdown_idx = cluster_->num_tablet_servers();
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -1201,22 +1327,70 @@ TEST_P(PgVectorIndexCompactionPoolTest, ShutdownNotBlockedByCompaction) {
       << "tserver shutdown hung: a vector index compaction starved the flush-on-shutdown";
 }
 
-void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
+void PgVectorIndexTest::TestRestart(
+    tablet::FlushFlags flush_flags, NonTransactionalWrites non_transactional_writes) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
 
+  if (non_transactional_writes) {
+    // Retained retryable requests pin the WAL and force replaying recent segments regardless of
+    // flushed OpIds. The timeout is read at tablet bootstrap, so set it before the table exists.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
+    // Let WAL GC remove every segment that no storage needs.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
+  }
   auto conn = ASSERT_RESULT(MakeIndex());
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
-  for (const auto& peer : peers) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (tablet->vector_indexes().TEST_HasIndexes()) {
-      tablet->TEST_SleepBeforeApplyIntents(5s * kTimeMultiplier);
-      break;
+  if (non_transactional_writes) {
+    // Give vector indexes a flushed OpId above the first WAL entry, so bootstrap has to pick the
+    // replay start from it. These vectors are far from the verified ones.
+    ASSERT_OK(InsertRows(conn, kNumRows * 2 + 1, kNumRows * 2 + 8));
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+  } else {
+    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kNonLeaders);
+    if (!peers.empty()) {
+      peers.front()->shared_tablet_maybe_null()->TEST_SleepBeforeApplyIntents(
+          5s * kTimeMultiplier);
     }
   }
-  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(InsertRows(conn, 1, kNumRows, /* keep_vectors = */ false, non_transactional_writes));
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, flush_flags));
+  if (non_transactional_writes) {
+    // Close the WAL segment holding the writes and add more data to a new one. An open segment is
+    // replayed as a whole, while a closed one is replayed only from the lowest flushed OpId, so
+    // this also covers the choice of the replay start.
+    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
+    for (const auto& peer : peers) {
+      ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+    }
+    ASSERT_OK(InsertRows(
+        conn, kNumRows + 1, kNumRows * 2, /* keep_vectors = */ false, non_transactional_writes));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, flush_flags));
+
+    // Check that the vector indexes lag the regular DB, so the restart below exercises bootstrap
+    // replay of plain writes into vector indexes only.
+    for (const auto& peer : peers) {
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
+      auto op_ids = ASSERT_RESULT(tablet->MaxPersistentOpId());
+      ASSERT_FALSE(op_ids.vector_indexes.empty());
+      for (const auto& vector_index_op_id : op_ids.vector_indexes) {
+        ASSERT_LT(vector_index_op_id.index, op_ids.regular.index) << AsString(op_ids);
+      }
+    }
+
+    // The closed segment is flushed to the regular DB only, so WAL GC must keep it for the
+    // vector indexes.
+    std::vector<size_t> num_segments;
+    for (const auto& peer : peers) {
+      num_segments.push_back(peer->log()->num_segments());
+    }
+    ASSERT_OK(cluster_->CleanTabletLogs());
+    for (size_t i = 0; i != peers.size(); ++i) {
+      ASSERT_EQ(peers[i]->log()->num_segments(), num_segments[i]) << peers[i]->tablet_id();
+    }
+  }
   DisableFlushOnShutdown(*cluster_, true);
   ASSERT_OK(RestartCluster());
   conn = ASSERT_RESULT(Connect());
@@ -1237,6 +1411,12 @@ TEST_P(PgVectorIndexTest, BootstrapFlushedIntentsDB) {
 
 TEST_P(PgVectorIndexTest, BootstrapFlushedVectorIndexes) {
   TestRestart(tablet::FlushFlags::kVectorIndexes);
+}
+
+// Plain non-transactional writes flushed to the regular DB but not to the vector index must be
+// replayed into the vector index after an ungraceful restart. See issue #32797.
+TEST_P(PgVectorIndexTest, BootstrapNonTransactionalWrites) {
+  TestRestart(tablet::FlushFlags::kRegular, NonTransactionalWrites::kTrue);
 }
 
 TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
@@ -1341,6 +1521,52 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
   ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
 
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
+// A restore replaces the vector index storage together with the regular DB, but only the regular
+// DB's flushed frontier is patched to the restore op id. The vector indexes must be stamped with
+// it too, otherwise bootstrap starts replay at their older flushed OpId and re-inserts the rolled
+// back writes into them. See issue #32797.
+TEST_P(PgVectorIndexTest, SnapshotRestoreNonTransactionalWrites) {
+  constexpr size_t kNumRows = 16;
+
+  // One tablet, so every replica's vector index holds all the rows.
+  num_pre_split_tablets_ = 1;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto hybrid_time = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, hybrid_time));
+
+  // These rows take the single-shard fast path, so they feed the vector indexes at apply time.
+  // Flushing the regular DB only keeps the indexes behind it, which is what makes bootstrap
+  // consider the operations for replay into them.
+  ASSERT_OK(InsertRows(
+      conn, kNumRows + 1, kNumRows * 2, /* keep_vectors = */ false,
+      NonTransactionalWrites::kTrue));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.PickSuitableSnapshot(schedule_id, hybrid_time));
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_FALSE(indexes.empty());
+  for (const auto& index : indexes) {
+    ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), kNumRows) << index->ToString();
+  }
 }
 
 uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
@@ -1613,14 +1839,11 @@ TEST_P(PgVectorIndexTest, Options) {
       LOG(INFO) << "Query: " << query;
       ASSERT_OK(conn.Execute(query));
     }
-    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
     std::unordered_map<TabletId, size_t> checked_tablets;
     for (const auto& peer : peers) {
       auto tablet = peer->shared_tablet_maybe_null();
       auto vector_indexes = tablet->vector_indexes().List();
-      if (!vector_indexes) {
-        continue;
-      }
       if (checked_tablets[peer->tablet_id()] != 0) {
         continue;
       }
@@ -1724,6 +1947,779 @@ template <typename TestClass>
 using PgDistributedVectorIndexTestParamsDecorator =
     PgVectorIndexTestParamsDecoratorBase<TestClass, PgDistributedVectorIndexTestParam>;
 
+// Colocation + packing only (engine fixed). Distinct from PgVectorIndexReverseMappingTestParam,
+// which is also tuple<bool, PackingMode> for ownership + packing.
+struct PgVectorIndexColocationPackingTestParam {
+  bool colocated = false;
+  PackingMode packing_mode = PackingMode::kNone;
+
+  friend bool operator==(
+      const PgVectorIndexColocationPackingTestParam& lhs,
+      const PgVectorIndexColocationPackingTestParam& rhs) {
+    return lhs.colocated == rhs.colocated && lhs.packing_mode == rhs.packing_mode;
+  }
+};
+
+template <>
+struct TestParamTraits<PgVectorIndexColocationPackingTestParam> {
+  using ParamType = PgVectorIndexColocationPackingTestParam;
+
+  static bool IsColocated(const ParamType& param) {
+    return param.colocated;
+  }
+
+  static VectorIndexEngine Engine(const ParamType&) {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return param.packing_mode;
+  }
+
+  static auto TestParamGenerator() {
+    std::vector<ParamType> params;
+    for (const bool colocated : {false, true}) {
+      for (const auto packing_mode : kPackingModeArray) {
+        params.push_back(ParamType{ .colocated = colocated, .packing_mode = packing_mode });
+      }
+    }
+    return testing::ValuesIn(params);
+  }
+
+  static auto TestParamNameGenerator() {
+    // Engine is fixed for this suite; keep gtest names as Colocated/Distributed[+Packing].
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      const auto packing_mode = GetPackingMode(param_info.param);
+      return Format(
+          "$0$1",
+          IsColocated(param_info.param) ? "Colocated" : "Distributed",
+          packing_mode == PackingMode::kNone
+              ? ""
+              : "Packing" + ToString(packing_mode).substr(1));
+    };
+  }
+};
+
+template <typename TestClass>
+using PgVectorIndexColocationPackingTestParamsDecorator =
+    PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexColocationPackingTestParam>;
+
+using PgVectorIndexColocatedPackingTestParam = PackingMode;
+
+template <>
+struct TestParamTraits<PgVectorIndexColocatedPackingTestParam> {
+  using ParamType = PgVectorIndexColocatedPackingTestParam;
+
+  static bool IsColocated(const ParamType&) {
+    return true;
+  }
+
+  static VectorIndexEngine Engine(const ParamType&) {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return param;
+  }
+
+  static auto TestParamGenerator() {
+    return testing::ValuesIn(kPackingModeArray);
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      const auto packing_mode = GetPackingMode(param_info.param);
+      // Colocation/engine are fixed; packing is the only name component.
+      if (packing_mode == PackingMode::kNone) {
+        return "None";
+      }
+      return "Packing" + ToString(packing_mode).substr(1);
+    };
+  }
+};
+
+template <typename TestClass>
+using PgVectorIndexColocatedPackingTestParamsDecorator =
+    PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexColocatedPackingTestParam>;
+
+// Colocation only; engine and packing stay kUsearch / kNone.
+using PgVectorIndexColocationOnlyParam = bool;
+
+template <>
+struct TestParamTraits<PgVectorIndexColocationOnlyParam> {
+  using ParamType = PgVectorIndexColocationOnlyParam;
+
+  static bool IsColocated(const ParamType& param) {
+    return param;
+  }
+
+  static VectorIndexEngine Engine(const ParamType&) {
+    return VectorIndexEngine::kUsearch;
+  }
+
+  static PackingMode GetPackingMode(const ParamType&) {
+    return PackingMode::kNone;
+  }
+
+  static auto TestParamGenerator() {
+    return testing::Bool();
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      return param_info.param ? "Colocated" : "Distributed";
+    };
+  }
+};
+
+class PgVectorIndexColocationOnlyTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  void TestDroppedIndexKeepsUnflushedRows(bool skip_deactivation_flush);
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexColocationOnlyTest);
+
+// A vector index dropped while a snapshot schedule retains it stays on the tablets, hidden, until
+// the retention ends. A restore can only bring it back as of a time before the drop, so writes
+// after the drop must not be added to it. See issue #34329.
+TEST_P(PgVectorIndexColocationOnlyTest, DroppedIndexRetainedBySnapshotSchedule) {
+  constexpr size_t kNumRows = 32;
+  const std::string kDroppedIndexName = "dropped_vi";
+
+  // The check counts chunk files, which a compaction would merge.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  // Without its vector index the table becomes splittable under the suite's quick-split setup.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(CreateIndex(conn, kDroppedIndexName, vector_index::DistanceKind::kInnerProduct));
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+
+  // Storage dir of each vector index replica, keyed by whether it belongs to the dropped index.
+  std::map<bool, std::vector<std::string>> index_dirs;
+  TableId dropped_index_id;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
+      const bool dropped = table_info->table_name == kDroppedIndexName;
+      if (dropped) {
+        dropped_index_id = vector_index->table_id();
+      }
+      index_dirs[dropped].push_back(vector_index->path());
+    }
+  }
+  ASSERT_FALSE(dropped_index_id.empty());
+  ASSERT_EQ(index_dirs[false].size(), index_dirs[true].size());
+
+  auto count_chunks = [](const std::string& dir) -> Result<size_t> {
+    auto children = VERIFY_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
+    return std::ranges::count_if(children, [](const std::string& name) {
+      return name.starts_with("vectorindex_");
+    });
+  };
+  std::unordered_map<std::string, size_t> chunks_before;
+  for (const auto& [_, dirs] : index_dirs) {
+    for (const auto& dir : dirs) {
+      chunks_before[dir] = ASSERT_RESULT(count_chunks(dir));
+      ASSERT_GT(chunks_before[dir], 0) << dir;
+    }
+  }
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kDroppedIndexName));
+
+  // Wait until the master has hidden the index and finished any tablet RPCs that come with that.
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto dropped_table = catalog_manager.GetTableInfo(dropped_index_id);
+  ASSERT_NE(dropped_table, nullptr);
+  ASSERT_OK(WaitFor(
+      [&dropped_table] {
+        return dropped_table->LockForRead()->is_hidden_but_not_deleting() &&
+               !dropped_table->HasTasks();
+      },
+      30s * kTimeMultiplier, "Dropped index hidden"));
+
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows * 2));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  for (const auto& dir : index_dirs[false]) {
+    auto chunks_after = ASSERT_RESULT(count_chunks(dir));
+    EXPECT_GT(chunks_after, chunks_before[dir]) << dir;
+  }
+  // The schedule still retains the dropped index, so its storage must stay as it was.
+  for (const auto& dir : index_dirs[true]) {
+    auto chunks_after = ASSERT_RESULT(count_chunks(dir));
+    EXPECT_EQ(chunks_after, chunks_before[dir]) << dir;
+  }
+
+  // Verification skips the dropped index, which lacks the rows written after the drop.
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    ASSERT_OK(ASSERT_RESULT(peer->shared_tablet())->vector_indexes().Verify());
+  }
+}
+
+// Rows applied to a vector index before DROP INDEX but not yet flushed by it must survive a tserver
+// restart that happens after the drop reached the tablets: a restore to before the drop can be
+// served from a snapshot taken after the restart, which checkpoints the retained index as bootstrap
+// left it. With skip_deactivation_flush the deactivated index keeps those rows in memory until the
+// restart, so they come back only through bootstrap replay, and only the flush on tablet start
+// persists them. See issue #34329.
+void PgVectorIndexColocationOnlyTest::TestDroppedIndexKeepsUnflushedRows(
+    bool skip_deactivation_flush) {
+  constexpr size_t kNumRows = 16;
+
+  // Without its vector index the table becomes splittable under the suite's quick-split setup,
+  // and the restore would wait for those splits.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Only the snapshot taken at creation precedes the restore point below, so the restore has to
+  // take a new snapshot, after the restart.
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10min, 20min));
+
+  // Flush only the regular DB, so these rows reach the vector index after a restart only through
+  // bootstrap replay.
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows * 2));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+
+  std::vector<std::pair<tablet::TabletPeerPtr, TableId>> peers_with_indexed_table;
+  TableId index_id;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto vector_indexes = tablet->vector_indexes().List();
+    ASSERT_EQ(vector_indexes->size(), 1);
+    index_id = vector_indexes->front()->table_id();
+    auto index_table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index_id));
+    peers_with_indexed_table.emplace_back(peer, index_table_info->index_info->indexed_table_id());
+  }
+  ASSERT_FALSE(peers_with_indexed_table.empty());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_flush_deactivated_vector_indexes) =
+      skip_deactivation_flush;
+  auto restore_at = cluster_->mini_master(0)->Now();
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+
+  // The drop removes the index from the indexed table's index map on every replica.
+  ASSERT_OK(WaitFor(
+      [&peers_with_indexed_table, &index_id]() -> Result<bool> {
+        for (const auto& [peer, indexed_table_id] : peers_with_indexed_table) {
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          auto index_map = VERIFY_RESULT(tablet->metadata()->index_map(indexed_table_id));
+          if (index_map->contains(index_id)) {
+            return false;
+          }
+        }
+        return true;
+      },
+      30s * kTimeMultiplier, "Index removed from index maps"));
+
+  // The hybrid time after which each replica hosting the index stops adding rows to it.
+  auto deactivated_hts = [this, &index_id]() -> Result<std::vector<HybridTime>> {
+    std::vector<HybridTime> result;
+    for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto table_info = tablet->metadata()->GetTableInfo(index_id);
+      if (table_info.ok()) {
+        result.push_back((*table_info)->vector_index_deactivated_ht);
+      }
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+  };
+  auto deactivated_before_restart = ASSERT_RESULT(deactivated_hts());
+  ASSERT_EQ(deactivated_before_restart.size(), peers_with_indexed_table.size());
+  for (const auto& ht : deactivated_before_restart) {
+    ASSERT_TRUE(ht.is_valid());
+    ASSERT_GT(ht, restore_at);
+  }
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_flush_deactivated_vector_indexes) = false;
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
+  }
+  ASSERT_EQ(ASSERT_RESULT(deactivated_hts()), deactivated_before_restart);
+
+  // Replicas of the index hosted by the tablets.
+  auto index_replicas = [this, &index_id]() {
+    std::vector<docdb::DocVectorIndexPtr> result;
+    for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      auto list = tablet ? tablet->vector_indexes().List() : tablet::VectorIndexList();
+      if (!list) {
+        continue;
+      }
+      for (const auto& index : *list) {
+        if (index->table_id() == index_id) {
+          result.push_back(index);
+        }
+      }
+    }
+    return result;
+  };
+
+  // The deactivated index gets no new rows that would flush it, so the tablet flushes it on start.
+  ASSERT_OK(WaitFor(
+      [&index_replicas] {
+        return std::ranges::all_of(index_replicas(), [](const auto& index) {
+          return index->GetFlushAbility() == storage::FlushAbility::kNoNewData;
+        });
+      },
+      30s * kTimeMultiplier, "Deactivated index flushed"));
+
+  // Every replica of the retained index holds all the rows of its tablet written before the drop.
+  size_t total_entries = 0;
+  for (const auto& index : index_replicas()) {
+    total_entries += ASSERT_RESULT(index->TotalEntries());
+  }
+  ASSERT_EQ(total_entries, kNumRows * 2 * cluster_->num_tablet_servers());
+
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kNumRows * 2, AddFilter::kFalse));
+
+  // The restored index takes new rows again.
+  ASSERT_OK(InsertRows(conn, kNumRows * 2 + 1, kNumRows * 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_NO_FATALS(VerifyRead(conn, kNumRows * 3, AddFilter::kFalse));
+
+  // The restore brings the index back into the index maps, which reactivates it.
+  for (const auto& ht : ASSERT_RESULT(deactivated_hts())) {
+    ASSERT_FALSE(ht.is_valid()) << ht;
+  }
+}
+
+TEST_P(PgVectorIndexColocationOnlyTest, DroppedIndexKeepsUnflushedRowsAcrossRestart) {
+  TestDroppedIndexKeepsUnflushedRows(/* skip_deactivation_flush= */ false);
+}
+
+TEST_P(PgVectorIndexColocationOnlyTest, DroppedIndexKeepsUnflushedRowsAcrossRestartReplay) {
+  TestDroppedIndexKeepsUnflushedRows(/* skip_deactivation_flush= */ true);
+}
+
+// A deactivated index takes no new rows, so nothing advances its flushed OpId. Bootstrap replays
+// from the lowest flushed OpId across all storages, so a frozen one would make every restart replay
+// all the retained WAL for as long as the schedule keeps the index.
+TEST_P(PgVectorIndexColocationOnlyTest, DeactivatedIndexDoesNotHoldBackBootstrap) {
+  constexpr size_t kNumRows = 16;
+  constexpr size_t kNumRowsAfterDrop = 128;
+  const std::string kDroppedIndexName = "dropped_vi";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(CreateIndex(conn, kDroppedIndexName, vector_index::DistanceKind::kInnerProduct));
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10min, 20min));
+
+  TableId dropped_index_id;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
+      if (table_info->table_name == kDroppedIndexName) {
+        dropped_index_id = vector_index->table_id();
+      }
+    }
+  }
+  ASSERT_FALSE(dropped_index_id.empty());
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kDroppedIndexName));
+
+  // Each replica of the dropped index, with its tablet peer.
+  auto dropped_replicas = [this, &dropped_index_id]() -> Result<
+      std::vector<std::pair<tablet::TabletPeerPtr, docdb::DocVectorIndexPtr>>> {
+    std::vector<std::pair<tablet::TabletPeerPtr, docdb::DocVectorIndexPtr>> result;
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      for (const auto& vector_index : *tablet->vector_indexes().List()) {
+        if (vector_index->table_id() == dropped_index_id) {
+          result.emplace_back(peer, vector_index);
+        }
+      }
+    }
+    return result;
+  };
+  ASSERT_OK(WaitFor(
+      [&dropped_replicas]() -> Result<bool> {
+        auto replicas = VERIFY_RESULT(dropped_replicas());
+        return !replicas.empty() &&
+               std::ranges::all_of(replicas, [](const auto& replica) {
+                 return replica.second->IsDeactivated();
+               });
+      },
+      30s * kTimeMultiplier, "Dropped index deactivated"));
+  // Every tablet of the table hosts the index on every tablet server.
+  const auto num_dropped_replicas = ASSERT_RESULT(dropped_replicas()).size();
+  ASSERT_GT(num_dropped_replicas, 0);
+  ASSERT_EQ(num_dropped_replicas % cluster_->num_tablet_servers(), 0);
+
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows + kNumRowsAfterDrop));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // The dropped index's flushed OpId keeps up with the regular DB's, so it does not lower the
+  // OpId bootstrap replays from.
+  auto wait_dropped_index_caught_up =
+      [&dropped_replicas, num_dropped_replicas](const std::string& description) {
+    return WaitFor(
+        [&dropped_replicas, num_dropped_replicas]() -> Result<bool> {
+          auto replicas = VERIFY_RESULT(dropped_replicas());
+          if (replicas.size() != num_dropped_replicas) {
+            LOG(INFO) << "Found " << replicas.size() << " replicas of the dropped index, expected "
+                      << num_dropped_replicas;
+            return false;
+          }
+          for (const auto& [peer, index] : replicas) {
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
+            auto regular = VERIFY_RESULT(tablet->MaxPersistentOpId()).regular;
+            // Without a flushed regular DB OpId there is nothing to compare against.
+            SCHECK(regular.is_valid_not_empty(), IllegalState,
+                   Format("$0no flushed regular DB OpId", tablet->LogPrefix()));
+            auto frontier = index->GetFlushedFrontier();
+            auto index_op_id = frontier ? frontier->op_id() : OpId();
+            if (index_op_id < regular) {
+              LOG(INFO) << tablet->LogPrefix() << "Dropped index flushed OpId " << index_op_id
+                        << " behind the regular DB's " << regular;
+              return false;
+            }
+          }
+          return true;
+        },
+        30s * kTimeMultiplier, description);
+  };
+  ASSERT_OK(wait_dropped_index_caught_up("Dropped index flushed OpId caught up"));
+
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
+  }
+  ASSERT_OK(wait_dropped_index_caught_up("Dropped index flushed OpId caught up after restart"));
+}
+
+// A restore to before a vector index was created removes the index from the indexed table's index
+// map, while the snapshot schedule can keep the hidden index on the tablets. No restore can bring
+// it back, since that would be a forward restore, so it must not take new rows either.
+// The master keeps the index on a distributed table's tablets only when they are already retained
+// by the schedule, e.g. after another index was dropped under it.
+TEST_P(PgVectorIndexColocationOnlyTest, IndexRestoredAwayRetainedBySnapshotSchedule) {
+  constexpr size_t kNumRows = 32;
+  const std::string kRestoredAwayIndexName = "restored_away_vi";
+  const std::string kEarlierDroppedIndexName = "earlier_dropped_vi";
+
+  // The check counts chunk files, which a compaction would merge.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(CreateIndex(conn, kEarlierDroppedIndexName, vector_index::DistanceKind::kCosine));
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Ids of the vector index tables hosted by the tablets, by name.
+  auto index_ids_by_name = [this]() -> Result<std::unordered_map<std::string, TableId>> {
+    std::unordered_map<std::string, TableId> result;
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      for (const auto& vector_index : *tablet->vector_indexes().List()) {
+        auto table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
+        result.emplace(table_info->table_name, vector_index->table_id());
+      }
+    }
+    return result;
+  };
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto wait_hidden = [&catalog_manager](const TableId& table_id) -> Status {
+    auto table = catalog_manager.GetTableInfo(table_id);
+    SCHECK_NOTNULL(table);
+    return WaitFor(
+        [&table] { return table->LockForRead()->is_hidden() && !table->HasTasks(); },
+        30s * kTimeMultiplier, Format("$0 hidden", table->name()));
+  };
+  auto earlier_dropped_index_id = ASSERT_RESULT(index_ids_by_name()).at(kEarlierDroppedIndexName);
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10min, 20min));
+  ASSERT_OK(conn.Execute("DROP INDEX " + kEarlierDroppedIndexName));
+  ASSERT_OK(wait_hidden(earlier_dropped_index_id));
+  auto restore_at = cluster_->mini_master(0)->Now();
+
+  ASSERT_OK(CreateIndex(conn, kRestoredAwayIndexName, vector_index::DistanceKind::kInnerProduct));
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows * 2));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Storage dir of each replica of the kept index (false) and the restored away index (true).
+  std::map<bool, std::vector<std::string>> index_dirs;
+  TableId restored_away_index_id;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
+      if (table_info->table_name == kEarlierDroppedIndexName) {
+        continue;
+      }
+      const bool restored_away = table_info->table_name == kRestoredAwayIndexName;
+      if (restored_away) {
+        restored_away_index_id = vector_index->table_id();
+      }
+      index_dirs[restored_away].push_back(vector_index->path());
+    }
+  }
+  ASSERT_FALSE(restored_away_index_id.empty());
+  ASSERT_EQ(index_dirs[false].size(), index_dirs[true].size());
+
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+  ASSERT_OK(wait_hidden(restored_away_index_id));
+  // Followers apply the restore, which replaces the index storage dirs, after it returns.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+
+  // The restore replaced the storages, so count the chunks it left. A directory the master already
+  // removed from the tablets counts as unchanged.
+  auto count_chunks = [](const std::string& dir) -> Result<std::optional<size_t>> {
+    if (!Env::Default()->FileExists(dir)) {
+      return std::nullopt;
+    }
+    auto children = VERIFY_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
+    return std::ranges::count_if(children, [](const std::string& name) {
+      return name.starts_with("vectorindex_");
+    });
+  };
+  std::unordered_map<std::string, std::optional<size_t>> chunks_before;
+  for (const auto& [_, dirs] : index_dirs) {
+    for (const auto& dir : dirs) {
+      chunks_before[dir] = ASSERT_RESULT(count_chunks(dir));
+    }
+  }
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(InsertRows(conn, kNumRows * 2 + 1, kNumRows * 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  for (const auto& dir : index_dirs[false]) {
+    auto chunks_after = ASSERT_RESULT(count_chunks(dir));
+    ASSERT_TRUE(chunks_after.has_value()) << dir;
+    EXPECT_GT(*chunks_after, chunks_before[dir].value_or(0)) << dir;
+  }
+  for (const auto& dir : index_dirs[true]) {
+    auto chunks_after = ASSERT_RESULT(count_chunks(dir));
+    LOG(INFO) << "Restored away index dir " << dir << " chunks before: "
+              << AsString(chunks_before[dir]) << ", after: " << AsString(chunks_after);
+    EXPECT_EQ(chunks_after, chunks_before[dir]) << dir;
+  }
+}
+
+// The bootstrap variant of #33276: restoring past the ADD COLUMN that introduced the vector column
+// leaves the tablet heap schema without the column, while the vector index stays registered on the
+// tablet and has lost its chunks (the restored checkpoint predates the index). The next bootstrap
+// launches a backfill for the chunkless index, and the backfill projects the vector column out of
+// the live schema, so DoCreateIndex must skip such an index at tablet open instead of letting the
+// backfill read out of bounds.
+TEST_P(PgVectorIndexColocationOnlyTest, SnapshotScheduleRestoreBeforeVectorColumn) {
+  constexpr size_t kNumRows = 16;
+
+  // The suite's quick-split setup lets the indexed table split before the index exists, and the
+  // restore then reverts to the pre-split parent, which never hosted the index at all.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  // The read below runs against a table that has no vector index in the catalog, so it is a plain
+  // scan while the tablets may still host the index.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  // The table starts without the vector column, so MakeTable does not fit here.
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  std::string create_suffix;
+  if (IsColocated()) {
+    create_suffix = " WITH (COLOCATED = 1)";
+    ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db COLOCATION = true"));
+    conn = ASSERT_RESULT(Connect());
+  } else {
+    create_suffix = " SPLIT INTO 1 TABLETS";
+  }
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test (id bigserial PRIMARY KEY)$0", create_suffix));
+
+  // The rows must predate the restore target: they are what the backfill scans after the restore.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (size_t i = 1; i <= kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0)", i));
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+
+  auto hybrid_time = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, hybrid_time));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN embedding vector(3)"));
+  for (size_t i = 1; i <= kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '[$0, 0, 0]' WHERE id = $0", i));
+  }
+  ASSERT_OK(CreateIndex(conn));
+
+  // The restore drops the index from the catalog, and CleanupHiddenObjects then unregisters it
+  // from the tablets, typically before the restart below gets to bootstrap. The removal is a
+  // replicated ChangeMetadata operation, so blocking the RPC on the master is what keeps the
+  // restarted tserver from replaying it during bootstrap.
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"SnapshotScheduleRestoreBeforeVectorColumn::Bootstrapped",
+       "AsyncRemoveTableFromTablet::SendRequest"}});
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearTrace();
+  });
+
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, hybrid_time));
+
+  // Bootstrap is what launches backfills for indexes that have no chunks. Restart a tserver that
+  // does not host PG, to keep the connection above usable; the master has a task thread parked on
+  // the sync point above, so it has to stay up.
+  auto* target_ts = cluster_->mini_tablet_server(kPgTsIndex == 0 ? 1 : 0);
+  ASSERT_OK(target_ts->Restart(tserver::WaitTabletsBootstrapped::kTrue));
+  TEST_SYNC_POINT("SnapshotScheduleRestoreBeforeVectorColumn::Bootstrapped");
+
+  ASSERT_EQ(
+      kNumRows,
+      make_unsigned(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"))));
+}
+
+// After clone, the child's TS-side index_map must list the cloned vector index, not the source
+// Restore does not rewrite those IDs for vector indexes.
+TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr auto kSourceDb = "source_db";
+  constexpr auto kCloneDb = "clone_db";
+  constexpr size_t kNumRows = 8;
+  dimensions_ = 3;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  if (IsColocated()) {
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 COLOCATION = true", kSourceDb));
+  } else {
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0", kSourceDb));
+  }
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  const auto create_suffix = IsColocated() ? " WITH (COLOCATED = 1)" : " SPLIT INTO 1 TABLETS";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))$0", create_suffix));
+  for (size_t i = 1; i <= kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+  }
+  ASSERT_OK(CreateIndex(conn));
+
+  auto find_table_id = [this](const std::string& namespace_name,
+                              const std::string& table_name) -> Result<TableId> {
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.has_table() && table.table_name() == table_name &&
+          table.namespace_name() == namespace_name) {
+        return table.table_id();
+      }
+    }
+    return STATUS_FORMAT(
+        NotFound, "Didn't find table $0 in namespace $1", table_name, namespace_name);
+  };
+
+  const auto source_table_id = ASSERT_RESULT(find_table_id(kSourceDb, "test"));
+  const auto source_index_id = ASSERT_RESULT(find_table_id(kSourceDb, kVectorIndexName));
+
+  // Retention must outlive the clone, which takes minutes under sanitizers; otherwise the source
+  // snapshot is GC'd before the clone is applied.
+  ASSERT_OK(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kSourceDb,
+      client::WaitSnapshot::kTrue, 10s * kTimeMultiplier, 1h));
+
+  ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
+
+  const auto clone_table_id = ASSERT_RESULT(find_table_id(kCloneDb, "test"));
+  const auto clone_index_id = ASSERT_RESULT(find_table_id(kCloneDb, kVectorIndexName));
+  ASSERT_NE(clone_table_id, source_table_id);
+  ASSERT_NE(clone_index_id, source_index_id);
+
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(clone_table_id));
+    std::string index_ids;
+    for (const auto& [id, _] : *table_info->index_map) {
+      if (!index_ids.empty()) {
+        index_ids += ", ";
+      }
+      index_ids += id;
+    }
+    ASSERT_NE(table_info->index_map->find(clone_index_id), table_info->index_map->end())
+        << "cloned tablet " << peer->tablet_id() << " index_map: " << index_ids;
+    ASSERT_EQ(table_info->index_map->find(source_index_id), table_info->index_map->end())
+        << "cloned tablet " << peer->tablet_id()
+        << " still has source index " << source_index_id
+        << " index_map: " << index_ids;
+  }
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), kNumRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
+          "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
+      1);
+}
+
 class PgDistributedVectorIndexTest
     : public PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
   using Base = PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase>;
@@ -1777,6 +2773,10 @@ MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgDistributedVectorIndexTest);
 // before the vector index creation.
 TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
   constexpr size_t kNumRows = 20;
+
+  // Small data blocks so compact rows (and any reverse-mapping records) span multiple blocks;
+  // otherwise GetMiddleKey's single-block fallback can pick an internal key and split fails.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeTable());
@@ -1857,7 +2857,8 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
     for (const auto& vi : *indexes) {
       const auto vi_dir = meta->vector_index_dir(vi->options());
       ASSERT_TRUE(env->DirExists(vi_dir));
-      const auto files = AsString(ASSERT_RESULT(path_utils::GetVectorIndexFiles(*env, vi_dir)));
+      const auto files = AsString(
+          ASSERT_RESULT(vector_index::ListVectorLSMFiles(env, vi_dir)).manifest_and_chunk_files);
       if (unsplit_tablet == tablet->tablet_id()) {
         const auto expected_files = Format(
             "[0.meta, vectorindex_1$0]",
@@ -1865,14 +2866,16 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
         ASSERT_STR_EQ(files, expected_files);
       } else {
         // Wait for compaction is done.
+        // InitFrontiers flushes the frontier (creating manifest 1), then compaction
+        // creates manifest 2 and the compacted chunk file.
         ASSERT_OK(
             LoggedWaitFor([vi]() -> Result<bool> {
-              return vi->TEST_NextManifestFileNo() > 1;
+              return vi->TEST_NextManifestFileNo() > 2;
             }, MonoDelta::FromSeconds(10),
             Format("Vector index compaction,tablet $0", tablet->tablet_id()))
         );
         const auto expected_files = Format(
-            "[0.meta, 1.meta, vectorindex_2$0]",
+            "[0.meta, 1.meta, 2.meta, vectorindex_2$0]",
             docdb::GetVectorIndexChunkFileExtension(vi->options()));
         ASSERT_STR_EQ(files, expected_files);
       }
@@ -1889,6 +2892,107 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
   ASSERT_LE(num_found, kNumRows);
 
   // TODO(vector_index): Verify compacted tablets content once GH29378 is fixed.
+}
+
+// GH#32321: a tablet split should be postponed until its vector index backfill has finished.
+// During backfill the reverse mapping records are written into the tablet's regular RocksDB. That
+// growth pushes the tablet past the split threshold, so without this enhancement the split starts
+// while the backfill is still running.
+TEST_P(PgDistributedVectorIndexTest, AutoSplitDuringBackfill) {
+  constexpr size_t kNumRows = RegularBuildVsSanitizers(500, 200);
+
+  // Split threshold is sized for backfill-written reverse mappings; table-owned skips that path.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+  // Allow splitting of a table that has a vector index; otherwise the split is rejected outright.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = true;
+
+  // Do not split while the base table is being populated; the split should only be considered once
+  // the vector index backfill starts writing reverse mapping records.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  // Backfill the index in many small chunks and slow each chunk down, so the reverse mapping
+  // records accumulate and the backfill stays in progress long enough for the master to trigger
+  // the split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kNumRows / 20 + 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms) =
+      100 * kTimeMultiplier;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Counts the distinct tablets of the "test" table. Grows above one once the tablet splits.
+  auto num_tablets = [this]() -> Result<size_t> {
+    auto peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kAll));
+    std::unordered_set<TabletId> tablet_ids;
+    for (const auto& peer : peers) {
+      tablet_ids.insert(peer->tablet_id());
+    }
+    return tablet_ids.size();
+  };
+
+  // Pick a split threshold that the base table alone does not reach, but that the extra reverse
+  // mapping records written during the backfill will.
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto base_size =
+      ASSERT_RESULT(peers.front()->shared_tablet())->GetCurrentVersionSstFilesSize();
+  LOG(INFO) << "Base table SST size: " << base_size;
+  ASSERT_EQ(ASSERT_RESULT(num_tablets()), 1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = base_size + 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  std::atomic<bool> backfill_done{false};
+
+  TestThreadHolder threads;
+  // Keep flushing the regular RocksDB so the reverse mapping records written during backfill land
+  // in SST files and get reported to the master while the backfill is still running.
+  threads.AddThreadFunctor([this, &backfill_done] {
+    while (!backfill_done.load(std::memory_order_acquire)) {
+      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+      std::this_thread::sleep_for(100ms * kTimeMultiplier);
+    }
+  });
+  // Watch for the tablet split. When it happens, the vector index backfill must already be done:
+  // the split has to wait until the backfill completes.
+  threads.AddThreadFunctor([&backfill_done, &num_tablets, &stop = threads.stop_flag()] {
+    while (!stop.load(std::memory_order_acquire)) {
+      if (ASSERT_RESULT(num_tablets()) > 1) {
+        ASSERT_TRUE(backfill_done.load(std::memory_order_acquire))
+            << "Tablet split started before the vector index backfill finished";
+        break;
+      }
+      std::this_thread::sleep_for(50ms * kTimeMultiplier);
+    }
+  });
+
+  // Backfill the vector index. The reverse mapping growth pushes the tablet over the split
+  // threshold.
+  ASSERT_OK(CreateIndex(conn));
+  backfill_done.store(true, std::memory_order_release);
+  threads.Stop();
+
+  // Consolidate the many small SST files produced by the periodic flushes above into a single SST,
+  // so the tablet has a findable split key.
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // The split should still happen once the backfill completes, confirming the tablet actually
+  // exceeded the split threshold (i.e. the scenario was exercised, not just avoided).
+  ASSERT_OK(WaitFor([&num_tablets]() -> Result<bool> {
+    return VERIFY_RESULT(num_tablets()) > 1;
+  }, 60s * kTimeMultiplier, "Tablet split after backfill"));
+
+  // The index must still return all rows. TEST_vector_index_exact makes the search exact, so every
+  // row must be found.
+  auto query_vector = Vector(RandomUniformInt<size_t>(0, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+  ASSERT_EQ(num_found, kNumRows);
 }
 
 TEST_P(PgDistributedVectorIndexTest, AnotherVectorIndexCreationAfterManualSplit) {
@@ -1971,6 +3075,10 @@ TEST_P(PgDistributedVectorIndexTest, MetaCacheBaseTableStaleLookupAfterSplit) {
 TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
   constexpr size_t kNumRows = 20;
 
+  // Small data blocks so compact rows (and any reverse-mapping records) span multiple blocks;
+  // otherwise GetMiddleKey's single-block fallback can pick an internal key and split fails.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
@@ -1994,6 +3102,188 @@ TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
   // partition information in cache at this point.
   ASSERT_OK(CreateIndex(conn));
   ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+// The test verifies that a split is blocked if parent tablet has uncompacted vector indexes data.
+TEST_P(PgDistributedVectorIndexTest, SplitBlockedWithOrphanedPostSplitData) {
+  constexpr size_t kNumRows = 80;
+
+  // The knobs below are process-wide, restore them to not affect the following tests.
+  auto flags_restorer = ScopeExit([
+      require = FLAGS_vector_index_require_parent_data_compacted_before_split,
+      force_not_compacted = tablet::TEST_vector_index_force_parent_data_not_compacted,
+      skip_compaction = tablet::TEST_skip_vector_index_post_split_compaction] {
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_require_parent_data_compacted_before_split) = require;
+    ANNOTATE_UNPROTECTED_WRITE(
+        tablet::TEST_vector_index_force_parent_data_not_compacted) = force_not_compacted;
+    ANNOTATE_UNPROTECTED_WRITE(
+        tablet::TEST_skip_vector_index_post_split_compaction) = skip_compaction;
+  });
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 0, kNumRows - 1));
+
+  // Wait for all intents are applied and flush tablets.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+
+  // Trigger tablet split for the only tablet.
+  LOG(INFO) << "Splitting tablet " << peers.back()->tablet_id();
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.back()->tablet_id()));
+
+  // Make sure parent tablet got cleaned up.
+  SleepFor(MonoDelta::FromSeconds(
+      2 * ANNOTATE_UNPROTECTED_READ(FLAGS_cleanup_split_tablets_interval_sec)));
+
+  // Make sure all peers meta data was updated.
+  peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), 2 * cluster_->num_tablet_servers());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    LOG(INFO) << "Checking parent data compaction status for peer "
+              << peer->permanent_uuid() << " tablet " << tablet->tablet_id();
+    ASSERT_TRUE(tablet->metadata()->rocksdb_parent_data_compacted());
+    ASSERT_TRUE(tablet->vector_indexes().ParentDataCompacted());
+  }
+
+  // Let's be explicit on the exected parent data compaction state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_require_parent_data_compacted_before_split) = true;
+
+  // Simulate vector index post-split compaction still being in progress.
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  const auto tablet_ids = ListTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_EQ(tablet_ids.size(), 2);
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_force_parent_data_not_compacted) = true;
+
+  // Invoke split and check the required reason for the block is being logged. The logs scan
+  // is required because the split is done asynchronously and has several steps.
+  {
+    auto log_waiter = StringWaiterLogSink("Tablet has orphaned post-split data");
+    auto status = InvokeSplitTabletRpc(cluster_.get(), *tablet_ids.begin());
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  }
+
+  // Validate that the split does not wait for vector index parent data to be compacted if the
+  // flag is not set. Vector index post-split compaction is skipped, so the new children keep
+  // their inherited parent data while RocksDB post-split compaction completes.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_force_parent_data_not_compacted) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_skip_vector_index_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_require_parent_data_compacted_before_split) = false;
+
+  const auto tablet_ids_before_split = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), *tablet_ids.begin()));
+
+  // The wait above returns as soon as RocksDB post-split compaction is done, so the new children
+  // must be RocksDB compacted with vector index parent data still in place. Only the new children
+  // are inspected, hence there's no need to wait for the parent tablet cleanup.
+  size_t new_tablet_peers = 0;
+  for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"))) {
+    if (tablet_ids_before_split.contains(peer->tablet_id())) {
+      continue;
+    }
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    LOG(INFO) << "Checking parent data compaction status for peer "
+              << peer->permanent_uuid() << " tablet " << tablet->tablet_id();
+    ASSERT_TRUE(tablet->metadata()->rocksdb_parent_data_compacted());
+    ASSERT_FALSE(tablet->vector_indexes().ParentDataCompacted());
+    ++new_tablet_peers;
+  }
+
+  ASSERT_EQ(new_tablet_peers, 2 * cluster_->num_tablet_servers());
+}
+
+// Simulates a binary rollback that dropped KvStoreInfo.split_generation (superblock 0) while the
+// vector index still has the generation. Bootstrap must restore it so the next split increments
+// past that value.
+TEST_P(PgDistributedVectorIndexTest, SplitGenerationRestoredAfterSuperblockReset) {
+  constexpr size_t kNumRows = 80;
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 0, kNumRows - 1));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto leaders = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(leaders.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), leaders.front()->tablet_id()));
+  SleepFor(MonoDelta::FromSeconds(
+      2 * ANNOTATE_UNPROTECTED_READ(FLAGS_cleanup_split_tablets_interval_sec)));
+
+  std::unordered_map<TabletId, uint64_t> expected_generation;
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    const auto gen = tablet->metadata()->split_generation();
+    // Parent tablets keep generation 0; only split children have a value to restore.
+    if (gen == 0) {
+      continue;
+    }
+    ASSERT_EQ(tablet->vector_indexes().MaxPersistedSplitGeneration(), gen);
+    expected_generation.emplace(tablet->tablet_id(), gen);
+    tablet->metadata()->set_split_generation(0);
+    ASSERT_OK(tablet->metadata()->Flush());
+    ASSERT_EQ(tablet->metadata()->split_generation(), 0);
+  }
+  ASSERT_FALSE(expected_generation.empty());
+
+  ASSERT_OK(RestartCluster());
+
+  peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  size_t restored_replicas = 0;
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto it = expected_generation.find(tablet->tablet_id());
+    if (it == expected_generation.end()) {
+      continue;
+    }
+    ++restored_replicas;
+    ASSERT_EQ(tablet->metadata()->split_generation(), it->second);
+    ASSERT_EQ(tablet->vector_indexes().MaxPersistedSplitGeneration(), it->second);
+  }
+  ASSERT_EQ(restored_replicas, expected_generation.size() * cluster_->num_tablet_servers());
+
+  // The next split must continue from the restored generation, otherwise the new children would
+  // not treat their inherited vectors as parent data.
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  const auto [split_source_id, source_generation] = *expected_generation.begin();
+  const auto tablet_ids_before_split = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+
+  // A freshly restarted master rejects split candidates until it has refreshed tablespace info.
+  ASSERT_OK(WaitFor([this, id = split_source_id]() -> Result<bool> {
+    auto status = InvokeSplitTabletRpc(cluster_.get(), id);
+    if (!status.ok()) {
+      LOG(INFO) << "Split RPC is not accepted yet: " << status;
+    }
+    return status.ok();
+  }, 60s * kTimeMultiplier, "Split RPC accepted"));
+
+  // The children's split generation is set on tablet open, so there's no need to wait for their
+  // post-split compaction.
+  ASSERT_OK(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_id, tablet_ids_before_split.size() + 1));
+  ASSERT_OK(WaitAllReplicasReady(cluster_.get(), table_id, 30s * kTimeMultiplier));
+
+  size_t next_generation_replicas = 0;
+  for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"))) {
+    if (tablet_ids_before_split.contains(peer->tablet_id())) {
+      continue;
+    }
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_EQ(tablet->metadata()->split_generation(), source_generation + 1);
+    ASSERT_EQ(tablet->vector_indexes().MaxPersistedSplitGeneration(), source_generation + 1);
+    ++next_generation_replicas;
+  }
+  ASSERT_EQ(next_generation_replicas, 2 * cluster_->num_tablet_servers());
 }
 
 ////////////////////////////////////////////////////////
@@ -2022,8 +3312,231 @@ class PgVectorIndexSingleServerTest
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSingleServerTest);
 
+// The vector index reverse mapping records are stored in the regular RocksDB before user data
+// records, below the middle split key lower bound. The index backfill writes only reverse mapping
+// records, so the subsequent flush produces an SST file without user data records.
+// The middle split key calculation should skip such a file instead of failing, otherwise the
+// tablet cannot be split until this file is compacted away.
+TEST_P(PgVectorIndexSingleServerTest, ManualSplitWithReverseMappingOnlySstFile) {
+  if (IsColocated()) {
+    GTEST_SKIP() << "Tablet split is not supported for colocated tables";
+  }
+
+  constexpr size_t kNumRows = 100;
+
+  // Small data blocks so rows span multiple blocks; otherwise GetMiddleKey's single-block
+  // fallback can pick an internal key and split fails.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+
+  // Reverse mappings are written by the backfill only when they are not owned by the table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  // Flush user data records into a separate SST file before the vector index exists.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Create the vector index, its backfill writes reverse mapping records into the regular
+  // RocksDB. Flush them into an SST file consisting of such records only.
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+
+  // Sanity check the setup: there is an SST file with reverse mapping records only.
+  size_t num_reverse_mapping_only_files = 0;
+  for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
+    if (!file.largest.key.empty() &&
+        file.largest.key[0] < dockv::kMinRegularDbTableRowFirstByte) {
+      ++num_reverse_mapping_only_files;
+    }
+  }
+  ASSERT_EQ(num_reverse_mapping_only_files, 1);
+
+  // The middle split key calculation should skip the reverse mapping only file.
+  ASSERT_RESULT(tablet->GetSplitKeys(cluster_->GetSplitFactor()));
+
+  // Make sure the tablet split completes.
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+
+  // Select whole set of vectors and verify.
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+
+  // It's OK if searching for all vectors returns less number of vectors due to
+  // algorithm's recall factor. We can tolerate 90% of recall.
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
+}
+
+// Graceful restart without explicit flushes. The index is created on an empty table, so all
+// vectors live in the vector LSM mutable chunk at shutdown time. See issue #32691.
+TEST_P(PgVectorIndexSingleServerTest, GracefulRestart) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
+// Reproduces a failure seen in pgvector stress tests: an ANN query whose read time precedes
+// a concurrent DELETE fails with "Vector not found". PgsqlVectorFilter checks reverse
+// mappings at the statement read time and accepts the deleted row, while
+// DocVectorIndexImpl::Search resolves vector ids to ybctids at ReadHybridTime::Max() and
+// observes the tombstone written by the DELETE.
+TEST_P(PgVectorIndexSingleServerTest, SnapshotReadWithConcurrentDelete) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  auto read_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(read_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // Pin the transaction read time before the delete happens.
+  ASSERT_RESULT(read_conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1"));
+
+  // Tombstones the reverse mapping for row 2 and marks the tablet as having vector deletions,
+  // so the vector filter is active for the read below.
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+
+  // Row 2 was deleted after the read time, so it should still be visible to the query.
+  ASSERT_NO_FATALS(VerifyRows(read_conn, AddFilter::kFalse, ExpectedRows(kQueryLimit)));
+  ASSERT_OK(read_conn.CommitTransaction());
+}
+
+// Reproduces the "Vector not found" flake from PgVectorIndexTest.SnapshotSchedule by interleaving a
+// committed DELETE's reverse-mapping apply with a vector search: sync points gate the apply to run
+// after the filter reads the live mapping (HandleApplying waits for Search:AfterFilter) and let the
+// query resolve only after it commits (Search:BeforeResolve waits for ApplyIntentsDone). A single
+// tablet server keeps each sync point mapped to one tablet.
+TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearch) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 10;
+
+  // Keep the filter active (could_have_missing_entries == false) so Search resolves on the filter's
+  // reader -- the path the fix exercises. In production this holds when the tablet has deletions;
+  // the racing delete's apply is gated below, so force it on to keep the test deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_no_deletions_skip_filter_check) = false;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      // Hold the DELETE's apply at HandleApplying until the filter has read the live mapping.
+      {"DocVectorIndexImpl::Search:AfterFilter", "TransactionParticipant::HandleApplying"},
+      // Resolve only after the apply commits (its tombstone is visible to a new reader once
+      // ApplyIntents' WriteToRocksDB returns).
+      {"TransactionParticipant::ApplyIntentsDone", "DocVectorIndexImpl::Search:BeforeResolve"},
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] { sync_point->DisableProcessing(); });
+
+  // Commit the racing delete; its apply is gated at HandleApplying, so COMMIT returns first and the
+  // query below reads after the commit.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Same connection: read-your-writes puts the read time at/after the commit. Without fast next
+  // disabled for the reverse mapping reader this could fail with "Vector not found"; with it,
+  // resolution stays on the filter's snapshot and row 1 is excluded when its ybctid is fetched.
+  const auto query = "SELECT id FROM test AS t" + IndexQuerySuffix("[0.0, 0.0, 0.0]", kQueryLimit);
+  auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+
+  // Row 1 is deleted; the query must return the remaining nearest rows without erroring.
+  ASSERT_FALSE(ids.empty());
+  for (auto id : ids) {
+    ASSERT_NE(id, 1);
+  }
+}
+
+// Stress version of ConcurrentDeleteApplyDuringSearch. Instead of pinning one interleaving with
+// sync points, it repeatedly deletes the nearest neighbors while searches run, widening the race
+// window. The filter may accept a live reverse mapping, but before resolving its ybctid, the search
+// may observe the delete tombstone and fail with "Vector not found". This inconsistency occurs when
+// DBIter::FastNext exposes records written after the reverse mapping iterator's snapshot; a high
+// max_nexts_to_avoid_seek makes this path easy to hit. With FastNext disabled for reverse mapping
+// reads, filtering and resolution stay on the same snapshot. Each query must return a full page
+// and exclude rows deleted before it started.
+TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearchStress) {
+  constexpr int64_t kNumRows = 200;
+  constexpr size_t kQueryLimit = 10;
+  // Keep at least 2 * kQueryLimit rows live so every query can fill a full page.
+  constexpr int64_t kMaxDeletes = kNumRows - 2 * kQueryLimit;
+  static constexpr uint64_t kApplyDelayMs = 100;
+  const size_t kNumQueries = RegularBuildVsSanitizers<size_t>(15, 8);
+
+  // Keep the filter active from the first query, before any delete has applied.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_no_deletions_skip_filter_check) = false;
+  // Make forward fetches step to the target instead of seeking, so freshly applied tombstones are
+  // visible to the resolution reader (see the comment above).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_nexts_to_avoid_seek) = 100000;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  // Delay applies so deletes committed shortly before a query stay unapplied when its filter runs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = kApplyDelayMs;
+
+  auto* sync_point = SyncPoint::GetInstance();
+  // Sleep long enough for every apply pending at the filter read to land before resolution.
+  sync_point->SetCallBack("DocVectorIndexImpl::Search:BeforeResolve", [](void*) {
+    std::this_thread::sleep_for(3ms * kApplyDelayMs * kTimeMultiplier);
+  });
+  sync_point->EnableProcessing();
+
+  std::atomic<int64_t> deleted{0};
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this, &deleted, &stop_flag = threads.stop_flag()] {
+    auto delete_conn = ASSERT_RESULT(Connect());
+    for (int64_t id = 1; id <= kMaxDeletes && !stop_flag.load(std::memory_order_acquire); ++id) {
+      // Explicit transaction: a fast-path delete writes its reverse-mapping tombstone inline
+      // instead of at apply time, so it cannot race with a search.
+      ASSERT_OK(delete_conn.Execute("BEGIN"));
+      ASSERT_OK(delete_conn.ExecuteFormat("DELETE FROM test WHERE id = $0", id));
+      ASSERT_OK(delete_conn.Execute("COMMIT"));
+      deleted.store(id, std::memory_order_release);
+      std::this_thread::sleep_for(30ms * kTimeMultiplier);
+    }
+  });
+
+  const auto query = "SELECT id FROM test AS t" + IndexQuerySuffix("[0.0, 0.0, 0.0]", kQueryLimit);
+  for (size_t i = 0; i != kNumQueries; ++i) {
+    auto deleted_before = deleted.load(std::memory_order_acquire);
+    auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+    // Rows 1..deleted_before are deleted at the query read time and at least 2 * kQueryLimit rows
+    // stay live, so a full page of rows above deleted_before is expected.
+    ASSERT_EQ(ids.size(), kQueryLimit);
+    for (auto id : ids) {
+      ASSERT_GT(id, deleted_before);
+    }
+  }
+  threads.Stop();
+}
+
 TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
+  // Make the heartbeat compute (and read OnDiskSize) on every heartbeat, and
+  // heartbeat often.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
+
   constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
+
+  // Hold the writer right after it stores chunk->file, before it takes
+  // VectorLSM::mutex_, so a heartbeat OnDiskSize read overlaps the
+  // unsynchronized store and ThreadSanitizer reliably observes the race.
+  ANNOTATE_UNPROTECTED_WRITE(vector_index::TEST_sleep_after_saving_chunk) = 200ms * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
 
@@ -2034,26 +3547,21 @@ TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
   ASSERT_OK(cluster_->FlushTablets(
       tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes));
 
-  size_t peers_with_vector_index = 0;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet || !tablet->vector_indexes().List()) {
-      continue;
-    }
-    ++peers_with_vector_index;
-
+  auto peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
     // The vector index size is reported via the on-disk size info (which feeds the UI) and must be
     // included in the active on-disk size.
     auto info = peer->GetOnDiskSizeInfo();
     ASSERT_GT(info.vector_index_disk_size, 0);
     ASSERT_GE(info.active_on_disk_size, info.vector_index_disk_size);
   }
-  ASSERT_GT(peers_with_vector_index, 0);
 }
 
 // Expected Key -> Value format:
 // 1) MetaKey(VectorId(uuid), [HT{ ... }]) -> DocKey(...)
-// 2) MetaKey(VectorId(uuid), [HT{ ... }]) -> DEL
+// 2) MetaKey(VectorId(uuid), [HT{ ... }]) -> SubDocKey(DocKey(...), [ColumnId(...)])
+// 3) MetaKey(VectorId(uuid), [HT{ ... }]) -> DEL
 // Value contains only unsigned integer.
 class TestKVFormatter : public tablet::KVFormatter {
   const std::string kKVDelimiter = " -> ";
@@ -2063,6 +3571,8 @@ class TestKVFormatter : public tablet::KVFormatter {
       Slice key, Slice value, docdb::StorageDbType type, const std::string& key_suffix,
       docdb::AllowEmptyValue allow_empty_value) const override {
     auto result = tablet::KVFormatter::Format(key, value, type, key_suffix, allow_empty_value);
+    VLOG(1) << "TestKVFormatter: '" << result << "' | '"
+            << key.ToDebugString() << "' -> '" << value.ToDebugString() << "'";
     if (!key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata)) {
       return result;
     }
@@ -2099,16 +3609,19 @@ class TestKVFormatter : public tablet::KVFormatter {
   }
 
   std::string ExtractIdx(const std::string& ybctid) const {
-    // Expected formats of ybctid: "DocKey([], [1])" or "DocKey(0xeda9, [1], [])".
+    // Expected formats:
+    // - legacy: "DocKey([], [1])" or "DocKey(0xeda9, [1], [])"
+    // - V1:     "SubDocKey(DocKey([], [1]), [ColumnId(...)])"
     static const std::string kDocKeyPrefix = "DocKey(";
     static const std::string kIdxDigits = "0123456789";
 
-    if (ybctid.rfind(kDocKeyPrefix, 0) != 0) {
-        return {};
+    auto doc_key_pos = ybctid.find(kDocKeyPrefix);
+    if (doc_key_pos == std::string::npos) {
+      return {};
     }
 
     // Find the first '[' to skip hash part.
-    auto start = ybctid.find('[', kDocKeyPrefix.length() - 1);
+    auto start = ybctid.find('[', doc_key_pos + kDocKeyPrefix.length() - 1);
     if (start == std::string::npos) {
       return {};
     }
@@ -2138,7 +3651,8 @@ class TestKVFormatter : public tablet::KVFormatter {
     //    the order for a particular ybctid.
     static const std::string kTombstone = "DEL";
     for (const auto& entry : entries_) {
-      if (entry.ybctid == kTombstone) {
+      if (entry.ybctid.starts_with(kTombstone)) {
+        vector_labels_.insert({entry.vector_id, yb::Format("vector_$0", vector_labels_.size())});
         continue;
       }
 
@@ -2147,10 +3661,10 @@ class TestKVFormatter : public tablet::KVFormatter {
         continue;
       }
 
-      vector_labels_.insert({
-        entry.vector_id,
-        yb::Format("$0_vector_$1", FormatYbctid(entry.ybctid), vectors.size())
-      });
+      vector_labels_.insert_or_assign(
+          entry.vector_id,
+          yb::Format("$0_vector_$1", FormatYbctid(entry.ybctid), vectors.size())
+      );
     }
 
     // 3. Build output excluding HT.
@@ -2158,7 +3672,7 @@ class TestKVFormatter : public tablet::KVFormatter {
     for (const auto& entry : entries_) {
       ss << vector_labels_.at(entry.vector_id);
       ss << kKVDelimiter;
-      ss << (entry.ybctid == kTombstone ? entry.ybctid : FormatYbctid(entry.ybctid));
+      ss << (entry.ybctid.starts_with(kTombstone) ? entry.ybctid : FormatYbctid(entry.ybctid));
       ss << std::endl;
     }
     return ss.str();
@@ -2253,19 +3767,10 @@ TEST_P(PgVectorIndexSingleServerTest, ManualCompactionDuringShutdown) {
 
   // Hand the only external strong reference to the compaction thread; keep a weak ref to observe
   // destruction.
-  std::shared_ptr<docdb::DocVectorIndex> index;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto list = tablet->vector_indexes().List();
-    if (list && !list->empty()) {
-      index = (*list)[0];
-      break;
-    }
-  }
-  ASSERT_TRUE(index) << "No tablet with a vector index found";
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_FALSE(indexes.empty()) << "No tablet with a vector index found";
+  std::shared_ptr<docdb::DocVectorIndex> index = indexes.front();
+  indexes.clear();
   std::weak_ptr<docdb::DocVectorIndex> weak_index = index;
 
   TestThreadHolder threads;
@@ -2290,6 +3795,238 @@ TEST_P(PgVectorIndexSingleServerTest, ManualCompactionDuringShutdown) {
   ASSERT_NOK(compact_status) << "Manual compaction was registered on a shutting-down VectorLSM";
   ASSERT_OK(WaitFor([&weak_index] { return weak_index.expired(); }, 60s * kTimeMultiplier,
                     "vector index destruction"));
+}
+
+// Two compactions may run on the same VectorLSM in parallel when allowed by
+// vector_index_allow_parallel_compactions and the per-tserver vector_index_num_compactions_limit.
+// DoCompact used to update immutable_chunks_ by the position remembered at pick time, so when
+// the compaction with the lower position (the manual one, always a whole prefix) finished first,
+// the shifted positions made the other compaction erase wrong chunks, losing their vectors from
+// search results.
+//
+// Forced interleaving (sync point callbacks keyed on the compaction type): the manual compaction
+// picks the whole prefix and parks after merging, before the manifest update; four flushed
+// chunks trigger a background compaction, which picks them and parks too; two more chunks are
+// flushed to keep the stale erase in bounds; the manual compaction updates the chunks, then the
+// background one does. On correct code all rows stay readable.
+TEST_P(PgVectorIndexSingleServerTest, ParallelCompactions) {
+  using vector_index::CompactionType;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_allow_parallel_compactions) = true;
+  // The shared compaction token captures the value at creation, so set before creating the index.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 2;
+  // Chunks locked by the running manual compaction do not count towards the trigger.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_files_number_compaction_trigger) = 4;
+
+  constexpr size_t kBatch = 8;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+
+  size_t num_rows = 0;
+  auto add_chunk = [this, &conn, &num_rows]() -> Status {
+    RETURN_NOT_OK(InsertRows(conn, num_rows + 1, num_rows + kBatch));
+    num_rows += kBatch;
+    RETURN_NOT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+    return cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes);
+  };
+
+  // The manual compaction prefix: the empty creation chunk and one data chunk.
+  ASSERT_OK(add_chunk());
+
+  std::atomic<bool> manual_parked{false};
+  std::atomic<bool> manual_updated{false};
+  std::atomic<bool> background_parked{false};
+  std::atomic<bool> background_updated{false};
+  std::atomic<bool> release_manual{false};
+  std::atomic<bool> release_background{false};
+
+  auto wait_flag = [](std::atomic<bool>& flag, const std::string& description) {
+    return LoggedWaitFor(
+        [&flag]() -> Result<bool> { return flag.load(); }, 20s * kTimeMultiplier, description);
+  };
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::DoCompact:Merged", [&](void* arg) {
+        auto manual = *static_cast<CompactionType*>(arg) == CompactionType::kManual;
+        (manual ? manual_parked : background_parked) = true;
+        auto& release = manual ? release_manual : release_background;
+        while (!release) {
+          std::this_thread::sleep_for(10ms);
+        }
+      });
+  sync_point->SetCallBack(
+      "VectorLSM::DoCompact:ChunksUpdated", [&](void* arg) {
+        auto manual = *static_cast<CompactionType*>(arg) == CompactionType::kManual;
+        (manual ? manual_updated : background_updated) = true;
+      });
+  sync_point->EnableProcessing();
+
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(indexes.size(), 1);
+  ASSERT_OK(indexes.front()->Compact());
+  ASSERT_OK(wait_flag(manual_parked, "Manual compaction parked after merge"));
+
+  // Enough small chunks for the size ratio picker, so a background compaction picks them all.
+  for (int i = 0; i != 4; ++i) {
+    ASSERT_OK(add_chunk());
+  }
+  auto overlap_status = wait_flag(background_parked, "Background compaction parked");
+  LOG(INFO) << "Compactions overlap: " << overlap_status;
+
+  // Keep the background scope away from the last chunk so its stale erase stays in bounds.
+  ASSERT_OK(add_chunk());
+  ASSERT_OK(add_chunk());
+
+  release_manual = true;
+  ASSERT_OK(wait_flag(manual_updated, "Manual compaction chunks update done"));
+
+  release_background = true;
+  if (overlap_status.ok()) {
+    ASSERT_OK(wait_flag(background_updated, "Background compaction chunks update done"));
+  }
+  sync_point->DisableProcessing();
+  sync_point->ClearAllCallBacks();
+
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, ExpectedRows(num_rows)));
+}
+
+// Reproduces a data race between the in-place update of the tablet's vector index list in
+// TabletVectorIndexes::DoCreateIndex and a lock-free reader iterating that same list -- the read
+// that the post-split vector index compaction performs via VectorIndexList::WaitForCompaction().
+//
+// The reader and writer are coordinated only through relaxed atomics: introducing a
+// mutex/latch/acquire-release would add a happens-before edge between the racing read and write and
+// hide the bug. The missing synchronization (a relaxed use_count() load driving an in-place
+// mutation) is exactly the defect under test. On buggy code TSAN reports a data race on the shared
+// std::vector buffer; the copy-on-write fix keeps a published buffer immutable, so the reader's
+// snapshot is never mutated in place.
+TEST_P(PgVectorIndexSingleServerTest, ConcurrentCreateIndexAndListRace) {
+  auto conn = ASSERT_RESULT(MakeIndex());  // Table + first vector index: the list holds one entry.
+
+  // Locate the single tablet that owns the vector index.
+  tablet::TabletPtr tablet;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto candidate = peer->shared_tablet_maybe_null();
+    if (!candidate) {
+      continue;
+    }
+    auto list = candidate->vector_indexes().List();
+    if (list && !list->empty()) {
+      tablet = candidate;
+      break;
+    }
+  }
+  ASSERT_TRUE(tablet) << "No tablet with a vector index found";
+
+  std::atomic<bool> reader_has_snapshot{false};
+  std::atomic<bool> writer_parked{false};
+  std::atomic<bool> reader_done{false};
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "TabletVectorIndexes::DoCreateIndex:BeforeListUpdate",
+      [&writer_parked, &reader_done](void*) {
+        // Let the reader perform its racing read now, then wait until it drops the snapshot so that
+        // use_count() falls back to 1 and DoCreateIndex takes the in-place branch.
+        writer_parked.store(true, std::memory_order_relaxed);
+        while (!reader_done.load(std::memory_order_relaxed)) {}
+      });
+  sync_point->EnableProcessing();
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor(
+      [&tablet, &reader_has_snapshot, &writer_parked, &reader_done] {
+        // Snapshot the list under a brief shared lock (bumps use_count to 2), same as the
+        // compaction path, and release the lock before signalling so the parked writer cannot
+        // deadlock.
+        auto list = tablet->vector_indexes().List();
+        ASSERT_TRUE(list && !list->empty());
+        reader_has_snapshot.store(true, std::memory_order_relaxed);
+
+        // Wait until the writer is parked right before the in-place list update, so the racing read
+        // is fresh, then iterate the buffer exactly as WaitForCompaction() does.
+        while (!writer_parked.load(std::memory_order_relaxed)) {}
+        for (const auto& index : *list) {
+          ASSERT_TRUE(index != nullptr);  // Racing read of the shared vector buffer.
+        }
+
+        list = {};  // Drop the snapshot: use_count() falls back to 1.
+        reader_done.store(true, std::memory_order_relaxed);
+      });
+
+  // Ensure the reader released the shared lock before the writer takes the exclusive lock: the
+  // writer parks while holding vector_indexes_mutex_, so a reader still inside List() would
+  // deadlock.
+  while (!reader_has_snapshot.load(std::memory_order_relaxed)) {}
+
+  // Writer: create a second vector index. DoCreateIndex takes the in-place branch and mutates the
+  // shared buffer that the reader is still holding.
+  ASSERT_OK(CreateIndex(conn, "another"));
+
+  threads.WaitAndStop(60s * kTimeMultiplier);
+  sync_point->DisableProcessing();
+}
+
+// Reproduces issue #32211: shutting a tablet down (e.g. on tombstone) must not deadlock when an
+// intents-DB write is parked in a RocksDB write stall that never clears. RemoveIntents runs on the
+// TabletPeer strand, and TabletPeer::CompleteShutdown drains that strand before it reaches the
+// point that signals the tablet's RocksDB instances to shut down. So a writer parked in
+// DBImpl::DelayWrite (which only escapes the stall once RocksDB is told it is shutting down) is
+// never released, and the strand drain -- hence the whole shutdown -- hangs forever. The fix
+// signals RocksDB shutdown early, in Tablet::StartShutdown, before the strand is drained.
+TEST_P(PgVectorIndexSingleServerTest, ShutdownDuringIntentsWriteStall) {
+  // DROP TABLE tears the tablet down only in the distributed (non-colocated) layout; in a colocated
+  // database the table shares a tablet that stays alive, so the shutdown path under test is not
+  // exercised.
+  if (IsColocated()) {
+    GTEST_SKIP() << "DROP TABLE does not tear the tablet down in colocated mode";
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  constexpr size_t kNumRows = 16;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), 30s * kTimeMultiplier));
+
+  // Locate the tablet peer holding the vector index; its provisional records (intents) DB is the
+  // one we stall.
+  auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
+  ASSERT_EQ(peers.size(), 1) << "Expected exactly one tablet peer with a vector index";
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto* intents_db = down_cast<rocksdb::DBImpl*>(tablet->intents_db());
+
+  CountDownLatch intents_write_stalled{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "DBImpl::DelayWrite:Wait",
+      [&intents_write_stalled](void*) { intents_write_stalled.CountDown(); });
+  sync_point->EnableProcessing();
+
+  // Write provisional intents in a distributed transaction, then force a never-clearing write stall
+  // on the intents DB. Committing applies the transaction and schedules RemoveIntents, which writes
+  // to the intents DB and parks in DelayWrite. The stall is owned by the DB, so it is cleaned up
+  // when the tablet is torn down -- no external token to release.
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.Execute(
+      "INSERT INTO test VALUES (1001, '[1,2,3]'), (1002, '[4,5,6]'), (1003, '[7,8,9]')"));
+  // Force the buffered provisional intents to flush to the tablet before we stop writes (a primary
+  // key read keeps the vector-index seq-scan guard happy).
+  ASSERT_RESULT(txn_conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1001"));
+
+  intents_db->TEST_StopWrites();
+
+  ASSERT_OK(txn_conn.CommitTransaction());
+
+  ASSERT_TRUE(intents_write_stalled.WaitFor(60s * kTimeMultiplier))
+      << "No intents write parked in the write stall";
+
+  // Tear the tablet down. On the buggy code this hangs forever in TabletPeer::CompleteShutdown,
+  // waiting for the parked RemoveIntents to drain from the strand, and the test times out. On the
+  // fixed code Tablet::StartShutdown signals RocksDB shutdown before the strand drain, releasing
+  // the stalled write, so the drop completes.
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
 }
 
 TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
@@ -2350,7 +4087,29 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   // Make some changes to a next SST file.
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
+
+  // Force a chunk flush while the compaction owns the manifest; such a chunk used to be lost
+  // from the manifest, hanging the sync flush below. Wait for vector inserts first so the flush
+  // has a chunk to save; otherwise the compaction would wait on the second dependency forever.
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  auto vector_indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(vector_indexes.size(), 1);
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"VectorLSM::DoCompact:ManifestAcquired", "VectorLSM::DoSaveChunk:BeforeManifestCheck"},
+      {"VectorLSM::DoSaveChunk:ManifestWriteSkipped", "VectorLSM::DoCompact:BeforeManifestUpdate"},
+  });
+  sync_point->EnableProcessing();
+
+  // Compact only schedules; the compaction races with the flush below.
+  ASSERT_OK(vector_indexes.front()->Compact());
+
   ASSERT_OK(flush_tablet_and_wait("Flush for inital updates"));
+
+  ASSERT_OK(vector_indexes.front()->WaitForCompaction());
+  sync_point->DisableProcessing();
 
   // Wait less than retention period and make sure no tombstoned reverse mapping records deleted.
   SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec / 4.0));
@@ -2510,14 +4269,250 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
       output);
 }
 
-class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
+////////////////////////////////////////////////////////
+// PgVectorIndexSmallBlockCacheTest
+////////////////////////////////////////////////////////
+
+// Reproduces #32357: a vector index backed by usearch/hnswlib allocates its graph state on the
+// heap, accounted under the per-tablet "vector_indexes" MemTracker. This consumption is additive
+// on top of whatever the RocksDB block cache already holds, so a server whose block cache is full
+// can be pushed over the soft/hard memory limit purely by building a vector index.
+//
+// The test sizes a small block cache, fills and reads a regular (non-vector) table to populate the
+// cache to its cap, then builds a vector index smaller than the cache. With the fix each chunk is
+// registered in the block cache as reserved (unloadable) space, so building the index evicts cached
+// blocks and the cache releases approximately the index footprint. Without the fix the cache is
+// untouched and the index simply grows total memory -- the regression this reproduces.
+//
+// Parameterized by vector index engine; colocation and packing are fixed since they do not affect
+// the heap footprint or its block cache reservation. All engines build their mutable chunk with
+// usearch/hnswlib on the heap (the yb_hnsw block-cache format is only the saved/loaded form, which
+// this test never reaches because it keeps the index mutable), so the reservation applies to all.
+
+// Consumption of the named direct child of `parent`, or 0 if `parent` or the child is absent.
+int64_t ChildConsumption(const MemTrackerPtr& parent, const std::string& child) {
+  auto tracker = parent ? parent->FindChild(child) : MemTrackerPtr();
+  return tracker ? tracker->consumption() : 0;
+}
+
+MemTrackerPtr ServerMemTracker(MiniCluster* cluster) {
+  return cluster->mini_tablet_server(0)->server()->mem_tracker();
+}
+
+int64_t BlockCacheConsumption(MiniCluster* cluster) {
+  return ChildConsumption(ServerMemTracker(cluster), "BlockBasedTable");
+}
+
+// Peak heap footprint of all vector indexes on the server, summed across tablets. The hierarchy is
+// server -> "Tablets_overhead" -> "tablet-<id>" -> "vector_indexes". We use the peak rather than
+// the current consumption because the index is built on the heap (usearch/hnswlib) but a memtable
+// flush can later seal the chunk and convert it to the on-disk yb_hnsw block-cache form, which
+// frees the heap tracker; the peak still reflects the footprint the build reserved cache space for.
+int64_t VectorIndexPeakConsumption(MiniCluster* cluster) {
+  auto overhead = ServerMemTracker(cluster)->FindChild("Tablets_overhead");
+  if (!overhead) {
+    return 0;
+  }
+  int64_t total = 0;
+  for (const auto& tablet : overhead->ListChildren()) {
+    auto tracker = tablet->FindChild("vector_indexes");
+    total += tracker ? tracker->peak_consumption() : 0;
+  }
+  return total;
+}
+
+// Varies only the vector index engine; colocation and packing are pinned.
+using PgVectorIndexEngineOnlyParam = VectorIndexEngine;
+
+template <>
+struct TestParamTraits<PgVectorIndexEngineOnlyParam> {
+  using ParamType = PgVectorIndexEngineOnlyParam;
+
+  static bool IsColocated(const ParamType&) {
+    return false;
+  }
+
+  static VectorIndexEngine Engine(const ParamType& param) {
+    return param;
+  }
+
+  static PackingMode GetPackingMode(const ParamType&) {
+    return PackingMode::kNone;
+  }
+
+  static auto TestParamGenerator() {
+    return testing::ValuesIn(kVectorIndexEngineArray);
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      // ToString(kUsearch) is "kUsearch"; drop the leading "k" to get "Usearch", "Hnswlib", etc.
+      return ToString(param_info.param).substr(1);
+    };
+  }
+};
+
+class PgVectorIndexSmallBlockCacheTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerTestBase, PgVectorIndexEngineOnlyParam> {
+  using Base = PgVectorIndexTestParamsDecoratorBase<
+      PgVectorIndexSingleServerTestBase, PgVectorIndexEngineOnlyParam>;
+
+ protected:
+  // Small block cache so it fills quickly and so a single vector index comfortably exceeds the
+  // space a chunk reserves. The index footprint we build below stays under this, so the cache is
+  // not driven empty -- it releases approximately the index footprint and keeps the rest.
+  static constexpr int64_t kBlockCacheBytes = 80_MB;
+
+  void SetUp() override {
+    // db_block_cache_size_bytes is read once when the shared block cache is built during cluster
+    // startup, so unlike the other flags this test tweaks it cannot be set from the test body.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = kBlockCacheBytes;
+    Base::SetUp();
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSmallBlockCacheTest);
+
+TEST_P(PgVectorIndexSmallBlockCacheTest, IndexReservesBlockCacheSpace) {
+  constexpr size_t kVectorDimensions = 768;
+  // Width of the filler column. The block cache holds uncompressed data blocks, so total filler
+  // bytes must exceed kBlockCacheBytes for the cache to fill to its cap once read back. Wider rows
+  // mean fewer of them for the same byte volume, which keeps the insert (per-row bound) fast; the
+  // column uses PLAIN storage so PG keeps the value inline instead of TOASTing/compressing it.
+  constexpr int kFillerRowBytes = 4000;
+  // Filler bytes (rows * kFillerRowBytes) must exceed kBlockCacheBytes so the cache fills to cap.
+  constexpr auto kFillerRows = static_cast<size_t>(kBlockCacheBytes * 11 / 10 / kFillerRowBytes);
+  // Keep the resulting index footprint comfortably below kBlockCacheBytes so the cache releases
+  // approximately the index size rather than being driven empty (which would cap the release).
+  constexpr auto kVectorRows = RegularBuildVsDebugVsSanitizers<int64_t>(8000, 8000, 6000);
+  constexpr size_t kFillerChunkRows = 5000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kVectorRows;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+
+  // 1. Regular table without a vector index. Fill it, compact it to disk, then read it back so the
+  // block cache fills with its data blocks.
+  ASSERT_OK(conn.Execute("CREATE TABLE filler (id bigserial PRIMARY KEY, payload text)"));
+  // PLAIN storage keeps the wide payload inline and uncompressed, so reading it actually fills the
+  // block cache (a TOASTed/compressed value would occupy far less cache than its logical size).
+  ASSERT_OK(conn.Execute("ALTER TABLE filler ALTER COLUMN payload SET STORAGE PLAIN"));
+  for (size_t start = 0; start < kFillerRows; start += kFillerChunkRows) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO filler (payload) SELECT repeat('x', $0) FROM generate_series(1, $1)",
+        kFillerRowBytes, std::min(kFillerChunkRows, kFillerRows - start)));
+  }
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // Read the whole table to populate the block cache up to its cap.
+  ASSERT_OK(conn.FetchRow<int64_t>("SELECT count(length(payload)) FROM filler"));
+  const auto cache_before = BlockCacheConsumption(cluster_.get());
+  ASSERT_GT(cache_before, kBlockCacheBytes * 80 / 100)
+      << "Block cache was not filled to at least 80% of its capacity; adjust filler sizing.";
+
+  // Cheap build parameters: this test measures memory, not recall, and a large ef_construction
+  // would make the build too slow to fit the time budget.
+  auto index_conn = ASSERT_RESULT(MakeIndex(
+      kVectorDimensions, /* table_exists= */ false, "ef_construction = 50, m = 16, m0 = 32"));
+
+  // Insert the vectors and wait until they have all been added to the index (the build is async, so
+  // the graph keeps growing after the inserts return).
+  constexpr int64_t kBatchRows = 1000;
+  for (int64_t start = 1; start <= kVectorRows; start += kBatchRows) {
+    ASSERT_OK(InsertBatch(index_conn, start, std::min(kBatchRows, kVectorRows - start + 1)));
+  }
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  // The fix registers each vector index chunk in the block cache as reserved (unloadable) space, so
+  // building the index evicts cached blocks instead of growing total memory. Without the fix the
+  // cache is untouched (release ~ 0), which is exactly the regression #32357 describes.
+  const auto index_size = VectorIndexPeakConsumption(cluster_.get());
+  const auto cache_after = BlockCacheConsumption(cluster_.get());
+  const auto released = cache_before - cache_after;
+  const auto free_space_before = kBlockCacheBytes - cache_before;
+  LOG(INFO) << "Block cache released " << released << " bytes (before=" << cache_before
+            << ", after=" << cache_after << ", free before=" << free_space_before
+            << ") for a vector index of " << index_size << " bytes";
+
+  ASSERT_GT(index_size, 0);
+  // The cache must be full enough that the index cannot simply fit in the unused space -- otherwise
+  // building it would not need to evict anything and the test would not exercise the reservation.
+  ASSERT_LT(free_space_before, index_size / 2)
+      << "Block cache had too much free space before the index build; increase the filler so the "
+         "index build is forced to evict.";
+  // Building the index reserves index_size bytes in the cache. Up to free_space_before of that fits
+  // in the unused capacity; the remainder must be reclaimed by evicting cached blocks. Require at
+  // least half of that remainder to be freed -- a deliberately loose bound that absorbs the
+  // difference between the heap build peak and the more compact on-disk form that ends up resident,
+  // plus estimate-vs-actual reservation rounding, while still failing hard when nothing is freed.
+  ASSERT_GE(released, (index_size - free_space_before) / 2)
+      << "Block cache did not release space for the vector index; the index footprint is not being "
+         "accounted within the block cache budget.";
+}
+
+class PgVectorIndexSingleServerDumpTestBase : public PgVectorIndexSingleServerTestBase {
+ protected:
+  // Flushes the single tablet and returns the vector index reverse mapping entries currently
+  // persisted in the Regular DB.
+  Result<std::string> DumpSingleTabletReverseMapping(
+      const std::string& table_name = "test") {
+    RETURN_NOT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    const auto table_id = VERIFY_RESULT(FindTableId(cluster_.get(), table_name));
+    auto table_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK(!table_peers.empty(), IllegalState, "Expected at least one active tablet leader");
+
+    TestKVFormatter formatter;
+    for (const auto& peer : table_peers) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
+      SCHECK(!rocksdb_dir.empty(), IllegalState, "Empty RocksDB dir");
+      LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
+      RETURN_NOT_OK(RunSstDump(formatter, rocksdb_dir));
+    }
+    auto output = formatter.FormatVectorsMeta();
+    LOG(INFO) << "Parsed SST dump output:\n" << output;
+    return output;
+  }
+
+  Status CompactTabletForTable(const std::string& table_name = "test") {
+    const auto table_id = VERIFY_RESULT(FindTableId(cluster_.get(), table_name));
+    auto table_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK(!table_peers.empty(), IllegalState, "Expected at least one active tablet leader");
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get(), 10s * kTimeMultiplier));
+
+    std::vector<rocksdb::DBImpl*> db_impls;
+    db_impls.reserve(table_peers.size());
+    for (const auto& peer : table_peers) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      db_impls.push_back(down_cast<rocksdb::DBImpl*>(tablet->regular_db()));
+      RETURN_NOT_OK(tablet->Flush(
+          tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs, rocksdb::FlushReason::kTestOnly));
+      RETURN_NOT_OK(tablet->ForceManualRocksDBCompact(docdb::SkipFlush::kTrue));
+    }
+    return LoggedWaitFor([db_impls]() -> Result<bool> {
+      for (auto* db_impl : db_impls) {
+        if (db_impl->TEST_NumBackgroundCompactionsScheduled() != 0 ||
+            db_impl->TEST_NumTotalRunningCompactions() != 0) {
+          return false;
+        }
+      }
+      return true;
+    }, 30s * kTimeMultiplier, "Wait for reverse-mapping compaction");
+  }
+};
+
+class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
  protected:
   bool IsColocated() const override {
     return false;
   }
 
   VectorIndexEngine Engine() const override {
-    return VectorIndexEngine::kUsearch;
+    return VectorIndexEngine::kYbHnswHnswlib;
   }
 
   size_t NumTabletServers() override {
@@ -2527,51 +4522,57 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
-
-  // Flushes the single tablet and returns the vector index reverse mapping entries currently
-  // persisted in the Regular DB.
-  Result<std::string> DumpSingleTabletReverseMapping() {
-    RETURN_NOT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
-    RETURN_NOT_OK(cluster_->FlushTablets());
-
-    auto table_peers = VERIFY_RESULT(
-        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
-    SCHECK_EQ(table_peers.size(), 1, IllegalState, "Expected exactly one tablet leader");
-    auto tablet = VERIFY_RESULT(table_peers.front()->shared_tablet());
-    auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
-    SCHECK(!rocksdb_dir.empty(), IllegalState, "Empty RocksDB dir");
-    LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
-
-    TestKVFormatter formatter;
-    RETURN_NOT_OK(RunSstDump(formatter, rocksdb_dir));
-    auto output = formatter.FormatVectorsMeta();
-    LOG(INFO) << "Parsed SST dump output:\n" << output;
-    return output;
-  }
 };
 
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
 
   constexpr size_t kNumRows = 5;
-  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
 
-  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  auto before_backfill = ASSERT_RESULT(DumpSingleTabletReverseMapping());
 
-  // No reverse mapping entries are expected: backfill skipped them and the rows predate the index.
-  ASSERT_TRUE(output.empty()) << "Unexpected reverse mapping entries:\n" << output;
+  // Table owned vector reverse mapping populating reuses insert logic, which updates write_id
+  // component for the hybrid time. That's why the output is ordered by the timestamp.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+      )#",
+      before_backfill);
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto after_backfill = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(before_backfill, after_backfill);
 }
 
 TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
 
   constexpr size_t kNumRows = 5;
-  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
 
-  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  auto before_backfill = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", before_backfill);
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto after_backfill = ASSERT_RESULT(DumpSingleTabletReverseMapping());
 
   // The order is deterministic and stable, but follows [HT, str(hash, id)] ordering, where
   // HT is the backfill time and is the same for all entries for this particular backfill case.
+  // The difference from the insertion logic is that backfill does not increment the write_id
+  // component for the hybrid time, and that's how each entry has the same timestamp.
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
           ybctid_3_vector_1 -> ybctid_3
@@ -2580,7 +4581,7 @@ TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
           ybctid_2_vector_1 -> ybctid_2
           ybctid_1_vector_1 -> ybctid_1
       )#",
-      output);
+      after_backfill);
 }
 
 TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
@@ -2621,6 +4622,10 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_skip_filter_check) = true;
 
+  // Needs legacy ownership: pre-index inserts must not write reverse mappings so that skipping
+  // backfill leaves rows 1..kNumRows unresolvable during search.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertRows(conn, /* start_row = */ 1, kNumRows));
 
@@ -2628,9 +4633,9 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   // The search will drop these results with vector_index_skip_filter_check enabled, so the first
   // page will resolve fewer than kQueryLimit rows while could_have_more_data stays true, forcing
   // a second fetch with num_top_vectors_to_remove_ > 0.
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = true;
   ASSERT_OK(CreateIndex(conn));
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = false;
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   // Insert the second half of the rows with the reverse mapping entries.
@@ -2650,6 +4655,131 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
 
   // Make sure the test hit the test path that clears result entries.
   ASSERT_FALSE(ANNOTATE_UNPROTECTED_READ(docdb::TEST_vector_index_clear_result_entries_once));
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/30262.
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr size_t kNumRows = 10;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+  auto parent_tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto* parent_db = parent_tablet->regular_db();
+
+  TestKVFormatter formatter;
+  auto run_sst_dump = [this, &formatter](rocksdb::DB* db, bool clean_vectors = false) -> Status {
+    formatter.Clear(clean_vectors);
+    for (const auto& live_file : db->GetLiveFilesMetaData()) {
+      RETURN_NOT_OK(RunSstDump(formatter, live_file.BaseFilePath()));
+    }
+    return Status::OK();
+  };
+
+  ASSERT_OK(run_sst_dump(parent_db, /*clean_vectors=*/true));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_6_vector_1 -> ybctid_6
+          ybctid_7_vector_1 -> ybctid_7
+          ybctid_8_vector_1 -> ybctid_8
+          ybctid_9_vector_1 -> ybctid_9
+          ybctid_10_vector_1 -> ybctid_10
+      )#",
+      formatter.FormatVectorsMeta());
+
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(run_sst_dump(parent_db, /* clean_vectors = */ true));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_6_vector_1 -> ybctid_6
+          ybctid_7_vector_1 -> ybctid_7
+          ybctid_8_vector_1 -> ybctid_8
+          ybctid_9_vector_1 -> ybctid_9
+          ybctid_10_vector_1 -> ybctid_10
+          ybctid_2_vector_1 -> DEL
+          ybctid_2_vector_2 -> ybctid_2
+      )#",
+      formatter.FormatVectorsMeta());
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), parent_tablet_id));
+
+  peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  std::erase_if(peers, [&](const auto& peer) {
+    return peer->tablet_id() == parent_tablet_id;
+  });
+  ASSERT_EQ(peers.size(), 2);
+  std::ranges::sort(peers, [](const auto& peer1, const auto& peer2) {
+    const auto& part1 = peer1->tablet_metadata()->partition()->partition_key_start();
+    const auto& part2 = peer2->tablet_metadata()->partition()->partition_key_start();
+    return part1 < part2;
+  });
+
+  auto child0_tablet = ASSERT_RESULT(peers[0]->shared_tablet());
+  ASSERT_OK(run_sst_dump(child0_tablet->regular_db()));
+  const auto child0_dump = formatter.FormatVectorsMeta();
+  LOG(INFO) << "Tablet " << peers[0]->tablet_id() << " reverse mapping dump:\n" << child0_dump;
+
+  auto child1_tablet = ASSERT_RESULT(peers[1]->shared_tablet());
+  ASSERT_OK(run_sst_dump(child1_tablet->regular_db()));
+  const auto child1_dump = formatter.FormatVectorsMeta();
+  LOG(INFO) << "Tablet " << peers[1]->tablet_id() << " reverse mapping dump:\n" << child1_dump;
+
+  const bool child0_has_row2 = child0_dump.find("ybctid_2") != std::string::npos;
+  const bool child1_has_row2 = child1_dump.find("ybctid_2") != std::string::npos;
+  ASSERT_NE(child0_has_row2, child1_has_row2);
+
+  const auto& without_row2_dump = child0_has_row2 ? child1_dump : child0_dump;
+  const auto& with_row2_dump = child0_has_row2 ? child0_dump : child1_dump;
+
+  // The child that does not own row 2 must not retain any ybctid_2 reverse mapping records
+  // after post-split compaction (neither the bare tombstone nor the stale mapping entry).
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_7_vector_1 -> ybctid_7
+          ybctid_9_vector_1 -> ybctid_9
+          ybctid_10_vector_1 -> ybctid_10
+      )#",
+      without_row2_dump);
+
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_6_vector_1 -> ybctid_6
+          ybctid_8_vector_1 -> ybctid_8
+          ybctid_2_vector_1 -> DEL
+          ybctid_2_vector_2 -> ybctid_2
+      )#",
+      with_row2_dump);
 }
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {
@@ -2677,6 +4807,391 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
           ybctid_4_vector_2 -> ybctid_4
       )#",
       output);
+}
+
+// With vector_index_store_payload enabled the vector index writes no reverse mapping entries
+// at all, neither on insert nor on delete.
+TEST_F(PgVectorIndexUtilTest, SstDumpStoredYbctid) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
+
+  // Neither the deleted vector of row 2 nor the vector replaced by the update of row 4 add a
+  // reverse mapping entry.
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  // Search resolves rows from the ybctids stored in the vector index and skips both the deleted
+  // row and the vector left behind by the update, because it fetches the row they point to.
+  const auto query = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  std::ranges::sort(rows);
+  ASSERT_EQ(AsString(rows), "[1, 3, 4, 5]");
+}
+
+// The reverse mapping decision is fixed for the table, so an index created after the gflag is
+// turned off still stores payloads and the table keeps writing no reverse mapping entries.
+TEST_F(PgVectorIndexUtilTest, StoredYbctidFixedForTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows * 2));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+}
+
+// An index which stores payloads has no reverse mapping entries, so compaction cannot detect
+// deleted vectors and keeps them in the index. Search skips them anyway, because the rows their
+// stored ybctids point to are gone.
+TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  // The range DELETE below is planned as a seq scan.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr size_t kNumRows = 10;
+  constexpr size_t kNumDeletedRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  auto vector_indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(vector_indexes.size(), 1);
+  auto& index = *vector_indexes.front();
+  ASSERT_OK(index.Flush());
+  ASSERT_OK(index.WaitForFlush());
+
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id <= $0", kNumDeletedRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  // TODO(vector_index): the deleted vectors are expected to be removed by compaction once
+  // deletions are delivered to the vector index, see VectorMergeFilter::Filter.
+  ASSERT_OK(index.Compact());
+  ASSERT_OK(index.WaitForCompaction());
+  ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
+
+  const auto query = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  std::ranges::sort(rows);
+  ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
+}
+
+// Verifies table-owned V1 reverse-mapping values dump as SubDocKey(..., [ColumnId(...)]).
+TEST_F(PgVectorIndexUtilTest, ReverseMappingDumpFormatV1) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 1));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto lines = ASSERT_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), "test"));
+  size_t v1_meta_values = 0;
+  for (const auto& line : lines) {
+    if (line.find("MetaKey(VectorId(") == std::string::npos) {
+      continue;
+    }
+    // Legacy: MetaKey(...) -> DocKey(...)
+    // V1:     MetaKey(...) -> SubDocKey(DocKey(...), [ColumnId(...)])
+    ASSERT_NE(line.find("SubDocKey("), std::string::npos) << line;
+    ASSERT_NE(line.find("ColumnId("), std::string::npos) << line;
+    ++v1_meta_values;
+  }
+  ASSERT_EQ(v1_meta_values, 1);
+}
+
+// ysql_dump recreates the table from the surviving columns, so DocDB assigns those columns dense
+// ids. The ybhnsw index records that dense id. ImportSnapshot puts the source column ids back on
+// the master catalog. Restore merges the snapshot superblock, which still has the source
+// vector_idx_options, onto the tablet. Search has to use that id: the restored graph was built
+// against it.
+class PgVectorIndexBackupRestoreTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV1;
+  }
+
+  Result<TableId> GetTableId(const std::string& db, const std::string& name) {
+    master::GetNamespaceInfoResponsePB ns;
+    RETURN_NOT_OK(client_->GetNamespaceInfo(db, YQL_DATABASE_PGSQL, &ns));
+    const auto& namespace_id = ns.namespace_().id();
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.has_table() && table.table_name() == name && table.namespace_id() == namespace_id) {
+        return table.table_id();
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Didn't find $0.$1", db, name);
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexBackupRestoreTest);
+
+TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
+  }
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  constexpr auto kSourceDb = "vec_restore_db";
+  constexpr auto kRestoredDb = "vec_restored_db";
+  constexpr auto kTable = "t";
+  constexpr auto kIndex = "v_idx";
+
+  auto column_id = [this, kTable](
+      const std::string& db, const std::string& column) -> Result<int32_t> {
+    auto table = VERIFY_RESULT(client_->OpenTable(VERIFY_RESULT(GetTableId(db, kTable))));
+    const auto& schema = table->schema();
+    const auto& columns = schema.columns();
+    for (size_t i = 0; i < columns.size(); ++i) {
+      if (columns[i].name() == column) {
+        return schema.ColumnId(i);
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Column $0 not found in $1.$2", column, db, kTable);
+  };
+
+  {
+    auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(admin.ExecuteFormat(
+        "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+    auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id int PRIMARY KEY, embedding vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN extra vector(3)", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN extra", kTable));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v vector(3)", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
+    ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (7, '[1, 0, 0]', '[0, 1, 0]')", kTable));
+  }
+  const auto source_v_column_id = ASSERT_RESULT(column_id(kSourceDb, "v"));
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
+
+  const auto restored_v_column_id = ASSERT_RESULT(column_id(kRestoredDb, "v"));
+  ASSERT_EQ(restored_v_column_id, source_v_column_id);
+  auto index = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kIndex))));
+  ASSERT_TRUE(index->index_info().is_vector_index());
+  ASSERT_EQ(index->index_info().vector_idx_options().column_id(), source_v_column_id);
+
+  // The tablet skips opening a vector index whose column id is not in the schema.
+  size_t num_restored_indexes = 0;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      if (vector_index->table_id() != index->id()) {
+        continue;
+      }
+      ++num_restored_indexes;
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index->id()));
+      ASSERT_EQ(table_info->doc_read_context->vector_idx_options->column_id(), source_v_column_id);
+    }
+  }
+  ASSERT_EQ(num_restored_indexes, 1);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
+  // One row is otherwise a sequential scan plus a sort, which never opens the vector index.
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT id FROM $0 ORDER BY v <-> '[0, 1, 0]' LIMIT 1", kTable)));
+  ASSERT_EQ(rows, (std::vector<int32_t>{7}));
+}
+
+// CREATE INDEX on restore takes the backend and store_payload from the restore cluster's flags,
+// but the restored chunk files were written with the source's. Restore has to apply the source
+// options.
+TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
+  }
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  constexpr auto kSourceDb = "vec_restore_db";
+  constexpr auto kRestoredDb = "vec_restored_db";
+  constexpr auto kTable = "t";
+  constexpr auto kIndex = "v_idx";
+  constexpr int kNumRows = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  {
+    auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(admin.ExecuteFormat(
+        "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+    auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id int PRIMARY KEY, v vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
+    ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
+        kNumRows));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto source_index =
+      ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kSourceDb, kIndex))));
+  const auto source_options = source_index->index_info().vector_idx_options();
+  ASSERT_TRUE(source_options.store_payload());
+  ASSERT_EQ(source_options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
+
+  auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
+    ASSERT_EQ(options.store_payload(), source_options.store_payload());
+    ASSERT_EQ(options.hnsw().backend(), source_options.hnsw().backend());
+    ASSERT_EQ(options.id(), source_options.id());
+  };
+
+  auto index = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kIndex))));
+  ASSERT_NO_FATALS(check_options(index->index_info().vector_idx_options()));
+  auto table = ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kRestoredDb, kTable))));
+  const auto* index_in_table = ASSERT_RESULT(table->index_map().FindIndex(index->id()));
+  ASSERT_NO_FATALS(check_options(index_in_table->vector_idx_options()));
+
+  size_t num_restored_indexes = 0;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      if (vector_index->table_id() != index->id()) {
+        continue;
+      }
+      ++num_restored_indexes;
+      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(index->id()));
+      ASSERT_NO_FATALS(check_options(*table_info->doc_read_context->vector_idx_options));
+    }
+  }
+  ASSERT_EQ(num_restored_indexes, 1);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT id FROM $0 ORDER BY v <-> '[0, 0, 0]' LIMIT 3", kTable)));
+  ASSERT_EQ(rows, (std::vector<int32_t>{1, 2, 3}));
+}
+
+// Covers table-owned V1 reverse-mapping packing GC across packing modes.
+class PgVectorIndexReverseMappingCompactionGcTestBase
+    : public PgVectorIndexSingleServerDumpTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_timestamp_history_retention_interval_sec) = kRetentionIntervalSec;
+
+    // Keep a single active tablet so dump/compact helpers stay deterministic.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+    PgVectorIndexSingleServerDumpTestBase::SetUp();
+
+    // Enable table-owned V1 reverse mappings for compaction GC tests.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+  }
+
+  static constexpr auto kRetentionIntervalSec = 2;
+};
+
+class PgVectorIndexReverseMappingCompactionGcTest
+    : public PgVectorIndexColocationPackingTestParamsDecorator<
+          PgVectorIndexReverseMappingCompactionGcTestBase> {};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexReverseMappingCompactionGcTest);
+
+TEST_P(PgVectorIndexReverseMappingCompactionGcTest, DropColumn) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN embedding"));
+
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
+  ASSERT_OK(CompactTabletForTable());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+}
+
+// Table-owned reverse mappings survive DROP INDEX.
+TEST_P(PgVectorIndexReverseMappingCompactionGcTest, DropIndexKeepsMapping) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  const auto before = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      before);
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
+  ASSERT_OK(CompactTabletForTable());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(before, ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+}
+
+// Covers colocation is being dropped.
+class PgVectorIndexReverseMappingCompactionGcColocatedTest
+    : public PgVectorIndexColocatedPackingTestParamsDecorator<
+          PgVectorIndexReverseMappingCompactionGcTestBase> {};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexReverseMappingCompactionGcColocatedTest);
+
+TEST_P(PgVectorIndexReverseMappingCompactionGcColocatedTest, DropTable) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(conn.Execute("CREATE TABLE dummy (id int PRIMARY KEY) WITH (COLOCATED = 1)"));
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
+  // Keep the colocated tablet alive via dummy; compact and dump through that table.
+  ASSERT_OK(CompactTabletForTable("dummy"));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping("dummy")));
 }
 
 TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
@@ -2718,6 +5233,1039 @@ TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
 
     tablet_peers.pop_back();
   }
+}
+
+TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = true;
+
+  constexpr size_t kNumRows = RegularBuildVsSanitizers(500, 64);
+  constexpr size_t kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  ASSERT_OK(WaitForTabletSplit(table_id));
+
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
+using PgVectorIndexReverseMappingTestParam = std::tuple<bool, PackingMode>;
+
+template <>
+struct TestParamTraits<PgVectorIndexReverseMappingTestParam> {
+  using ParamType = PgVectorIndexReverseMappingTestParam;
+
+  static bool TableOwnsReverseMapping(const ParamType& param) {
+    return std::get<0>(param);
+  }
+
+  static bool IsColocated(const ParamType&) {
+    return false;
+  }
+
+  static VectorIndexEngine Engine(const ParamType&) {
+    return VectorIndexEngine::kUsearch;
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return std::get<1>(param);
+  }
+
+  static auto TestParamGenerator() {
+    return testing::Combine(testing::Bool(), testing::ValuesIn(kPackingModeArray));
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      const auto table_owned = TableOwnsReverseMapping(param_info.param);
+      const auto packing_mode = GetPackingMode(param_info.param);
+      return Format(
+          "$0$1",
+          table_owned ? "TableOwned" : "LegacyOwned",
+          packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
+    };
+  }
+};
+
+class PgVectorIndexReverseMappingTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerDumpTestBase, PgVectorIndexReverseMappingTestParam> {
+ protected:
+  void SetUp() override {
+    PgVectorIndexSingleServerDumpTestBase::SetUp();
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) =
+        TableOwnsVectorReverseMapping();
+  }
+
+  bool TableOwnsVectorReverseMapping() const {
+    return ParamTraits::TableOwnsReverseMapping(GetParam());
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexReverseMappingTest);
+
+TEST_P(PgVectorIndexReverseMappingTest, InsertReverseMapping_NoIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+        )#",
+        output);
+  } else {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED("", output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, InsertReverseMapping_OneIndex) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      output);
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, InsertReverseMapping_MultipleIndexes) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn, "vi_1"));
+  ASSERT_OK(CreateIndex(conn, "vi_2"));
+  ASSERT_OK(InsertRows(conn, 1, 3));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      output);
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, BackfillReverseMapping_NoIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+        )#",
+        output);
+  } else {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED("", output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, BackfillReverseMapping_OneIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+        )#",
+        output);
+  } else {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_1_vector_1 -> ybctid_1
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, BackfillReverseMapping_MultipleIndexes) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(CreateIndex(conn, "vi_1"));
+  ASSERT_OK(CreateIndex(conn, "vi_2"));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+        )#",
+        output);
+  } else {
+    // Each index backfill writes reverse mapping entries for all rows.
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_1_vector_1 -> ybctid_1
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_NoIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    // Fast path writes the new reverse-mapping entry before tombstoning the old vector id.
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_2 -> ybctid_2
+            ybctid_2_vector_1 -> DEL
+        )#",
+        output);
+  } else {
+    // Legacy update does tombstone the reverse mapping despite the index existence.
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            vector_0 -> DEL
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_OneIndex) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+            ybctid_2_vector_2 -> ybctid_2
+        )#",
+        output);
+  } else {
+    // Legacy tables with an index still tombstone obsolete vector ids on update (#24064).
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+            ybctid_2_vector_2 -> ybctid_2
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_MultipleIndexes) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn, "vi_1"));
+  ASSERT_OK(CreateIndex(conn, "vi_2"));
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+            ybctid_2_vector_2 -> ybctid_2
+        )#",
+        output);
+  } else {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+            ybctid_2_vector_2 -> ybctid_2
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, DeleteReverseMapping_NoIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+        )#",
+        output);
+  } else {
+    // Legacy delete tombstones the reverse mapping despite the index existence.
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            vector_0 -> DEL
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, DeleteReverseMapping_OneIndex) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_2_vector_1 -> DEL
+      )#",
+      output);
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, DeleteReverseMapping_MultipleIndexes) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn, "vi_1"));
+  ASSERT_OK(CreateIndex(conn, "vi_2"));
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_2_vector_1 -> DEL
+      )#",
+      output);
+}
+
+namespace {
+
+// kNoTypePrefix marks packed V2 column values, which do not carry a ValueEntryType prefix byte.
+constexpr char kNoTypePrefix = '\0';
+
+char ParseTypePrefixFromValueDump(const std::string& value_dump, PackingMode packing_mode) {
+  if (value_dump.starts_with("VECTOR_DATA")) {
+    return dockv::ValueEntryTypeAsChar::kVector;
+  }
+  if (packing_mode == PackingMode::kV2) {
+    return kNoTypePrefix;
+  }
+  return dockv::ValueEntryTypeAsChar::kString; // Legacy vector value format.
+}
+
+std::optional<std::string> ExtractPackedColumnValueDump(
+    const std::string& value_dump, ColumnId column_id) {
+  const auto packed_col = Format(" $0: ", column_id);
+  const auto pos = value_dump.find(packed_col);
+  if (pos == std::string::npos) {
+    return std::nullopt;
+  }
+  return value_dump.substr(pos + packed_col.size());
+}
+
+Status CheckTypePrefixes(const std::vector<char>& prefixes, char expected, size_t expected_count) {
+  if (prefixes.size() != expected_count) {
+    return STATUS_FORMAT(
+        IllegalState, "Expected $0 type prefixes, got $1", expected_count, prefixes.size());
+  }
+  for (size_t i = 0; i < prefixes.size(); ++i) {
+    if (prefixes[i] != expected) {
+      return STATUS_FORMAT(IllegalState,
+          "Type prefix mismatch at index $0: got $1, expected $2", i, prefixes[i], expected);
+    }
+  }
+  return Status::OK();
+}
+
+} // namespace
+
+class PgVectorValueFormatTest :
+    public PgMiniTestBase, public ::testing::WithParamInterface<PackingMode> {
+ protected:
+  static constexpr char kTypedTable[] = "typed_table";
+  static constexpr char kLegacyTable[] = "legacy_table";
+  static constexpr char kVectorColumn[] = "embedding";
+  static constexpr char kTypedPrefix = dockv::ValueEntryTypeAsChar::kVector;
+  static constexpr char kLegacyPrefix = dockv::ValueEntryTypeAsChar::kString;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+    // CollectTypePrefixes dumps leader peers only, so a load balancer leader stepdown racing the
+    // dump would leave it with nothing to read.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+    const auto packing_mode = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
+
+    PgMiniTestBase::SetUp();
+  }
+
+  // Dumps table SST files and collects type prefixes for the vector column.
+  // Table must have only one vector column.
+  Result<std::vector<char>> CollectTypePrefixes(
+      const std::string& table_name, const std::string& vector_column_name,
+      PackingMode packing_mode) {
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+    const auto yb_table = VERIFY_RESULT(client_->OpenTable(table_id));
+    ColumnId vector_column_id = kInvalidColumnId;
+    const auto& columns = yb_table->schema().columns();
+    for (size_t i = 0; i < columns.size(); ++i) {
+      if (columns[i].is_vector()) {
+        vector_column_id = ColumnId(yb_table->schema().ColumnId(i));
+        break;
+      }
+    }
+    SCHECK(vector_column_id != kInvalidColumnId, NotFound,
+           "Vector column $0 not found in table $1", vector_column_name, table_name);
+
+    const auto dump = VERIFY_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), table_name));
+    const auto column_subkey = Format("[ColumnId($0)]", vector_column_id);
+
+    std::vector<char> prefixes;
+    for (const auto& line : dump) {
+      // V1 reverse-mapping values also contain [ColumnId(N)] in their dump text, so the
+      // column_subkey search below would count them as vector-column cells. Skip those lines.
+      if (line.find("MetaKey(VectorId(") != std::string::npos) {
+        continue;
+      }
+      std::optional<std::string> value;
+      if (line.find(column_subkey) != std::string::npos) {
+        value = line.substr(line.find(" -> ") + 4);
+      } else {
+        value = ExtractPackedColumnValueDump(line, vector_column_id);
+      }
+      if (!value) {
+        continue;
+      }
+      prefixes.push_back(ParseTypePrefixFromValueDump(*value, packing_mode));
+    }
+    return prefixes;
+  }
+
+  Status ValidateVectorColumnPrefixes(const std::string& table_name, size_t expected_count) {
+    return ValidateVectorColumnPrefixes(table_name, expected_count, GetParam());
+  }
+
+  // packing_mode - packed row version the vector values are expected to be stored in.
+  Status ValidateVectorColumnPrefixes(
+      const std::string& table_name, size_t expected_count, PackingMode packing_mode) {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    const auto prefixes = VERIFY_RESULT(CollectTypePrefixes(
+        table_name, kVectorColumn, packing_mode));
+
+    const auto expected_prefix = packing_mode == PackingMode::kV2
+        ? kNoTypePrefix : table_name == kLegacyTable ? kLegacyPrefix : kTypedPrefix;
+    return CheckTypePrefixes(prefixes, expected_prefix, expected_count);
+  }
+
+  Result<bool> TableOwnsVectorReverseMapping(const std::string& table_name) {
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+    const auto yb_table = VERIFY_RESULT(client_->OpenTable(table_id));
+    return yb_table->schema().table_properties().owns_vector_reverse_mapping();
+  }
+
+  Status RestartClusterWithTableOwnedFlag() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+    RETURN_NOT_OK(cluster_->RestartSync());
+    return cluster_->WaitForAllTabletServers();
+  }
+};
+
+TEST_P(PgVectorValueFormatTest, TableOwnedEncodingSurvivesClusterRestart) {
+  constexpr char kCreateQuery[] =
+      "CREATE TABLE $0 (id INT PRIMARY KEY, $1 vector(3)) SPLIT INTO 1 TABLETS";
+
+  // Force legacy ownership for kLegacyTable before it is created.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat(kCreateQuery, kLegacyTable, kVectorColumn));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[1, 2, 3]')", kLegacyTable));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_FALSE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kLegacyTable)));
+
+  ASSERT_OK(ValidateVectorColumnPrefixes(kLegacyTable, 1));
+
+  ASSERT_OK(RestartClusterWithTableOwnedFlag());
+  conn = ASSERT_RESULT(Connect());
+
+  ASSERT_FALSE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kLegacyTable)));
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, '[4, 5, 6]')", kLegacyTable));
+  ASSERT_OK(conn.ExecuteFormat(kCreateQuery, kTypedTable, kVectorColumn));
+  ASSERT_TRUE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kTypedTable)));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[7, 8, 9]')", kTypedTable));
+
+  ASSERT_OK(ValidateVectorColumnPrefixes(kLegacyTable, 2));
+  ASSERT_OK(ValidateVectorColumnPrefixes(kTypedTable, 1));
+
+  const auto get_count = [&conn](const std::string& table_name) {
+    return conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", table_name));
+  };
+  ASSERT_EQ(2, ASSERT_RESULT(get_count(kLegacyTable)));
+  ASSERT_EQ(1, ASSERT_RESULT(get_count(kTypedTable)));
+}
+
+// Compaction merges column updates older than the history cutoff into the packed row and packs
+// the result with the version ysql_use_packed_row_v2 selects at that moment. Columns the update
+// did not touch are carried over from the old packed row, so flipping the flag between the insert
+// and the compaction converts the stored vector value from one version to the other (DB-23864).
+TEST_P(PgVectorValueFormatTest, RepackOnVersionSwitch) {
+  constexpr int kNumRows = 10;
+  constexpr int kRetentionIntervalSec = 2;
+
+  if (GetParam() == PackingMode::kNone) {
+    GTEST_SKIP() << "Requires packed rows";
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      kRetentionIntervalSec;
+
+  const std::vector<std::string> tables = {kLegacyTable, kTypedTable};
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  for (const auto& table : tables) {
+    // The vector value format is chosen at table creation.
+    const auto typed = table == kTypedTable;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = typed;
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id INT PRIMARY KEY, $1 vector(3), value INT) SPLIT INTO 1 TABLETS",
+        table, kVectorColumn));
+    ASSERT_EQ(ASSERT_RESULT(TableOwnsVectorReverseMapping(table)), typed);
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, ARRAY[i, i * 2, i * 3]::vector, 0 FROM generate_series(1, $1) i",
+        table, kNumRows));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto fetch = [&conn](const std::string& table) {
+    return conn.FetchRows<int32_t, std::string>(
+        Format("SELECT id, $0::text FROM $1 ORDER BY id", kVectorColumn, table));
+  };
+  std::vector<std::decay_t<decltype(*fetch(""))>> expected;
+  for (const auto& table : tables) {
+    expected.push_back(ASSERT_RESULT(fetch(table)));
+    ASSERT_EQ(expected.back().size(), kNumRows);
+  }
+
+  const auto new_packing_mode =
+      GetParam() == PackingMode::kV2 ? PackingMode::kV1 : PackingMode::kV2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = new_packing_mode == PackingMode::kV2;
+  for (const auto& table : tables) {
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value = 1", table));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  // Separate column entries are gone only when the update was merged into the packed rows, which
+  // happens once the history cutoff passes the update.
+  ASSERT_OK(WaitFor([this, &tables]() -> Result<bool> {
+    RETURN_NOT_OK(cluster_->CompactTablets());
+    for (const auto& table : tables) {
+      auto dump = VERIFY_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), table));
+      for (const auto& line : dump) {
+        // Reverse mapping values also mention ColumnId.
+        if (line.find("ColumnId(") != std::string::npos &&
+            line.find("MetaKey(VectorId(") == std::string::npos) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Merge updates into packed rows"));
+
+  for (size_t i = 0; i != tables.size(); ++i) {
+    SCOPED_TRACE(tables[i]);
+    ASSERT_EQ(ASSERT_RESULT(fetch(tables[i])), expected[i]);
+    // The V1 reader accepts either type byte, so check the stored one.
+    ASSERT_OK(ValidateVectorColumnPrefixes(tables[i], kNumRows, new_packing_mode));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorValueFormatTest,
+    ::testing::Values(PackingMode::kNone, PackingMode::kV1, PackingMode::kV2),
+    [](const testing::TestParamInfo<PackingMode>& param_info) {
+      switch (param_info.param) {
+        case PackingMode::kNone: return "None";
+        case PackingMode::kV1: return "PackingV1";
+        case PackingMode::kV2: return "PackingV2";
+      }
+      FATAL_INVALID_ENUM_VALUE(PackingMode, param_info.param);
+    });
+
+// Reproduces the SIGSEGV in MvccManager::SafeTimeForFollower during tablet bootstrap.
+//
+// On bootstrap, a tablet that has a vector index runs the index backfill from
+// Tablet::OpenKeyValueTablet -> TabletVectorIndexes::DoCreateIndex -> ScheduleBackfill, i.e. before
+// TabletPeer::InitTabletPeer publishes tablet_. The backfill reads the table; when it hits a
+// provisional record it resolves the transaction status (DecodeStrongWriteIntent ->
+// RequestStatusAt). If that transaction is aborted, the async status response
+// (RunningTransaction::DoStatusReceived) enqueues a remove and walks the remove queue
+// (ProcessRemoveQueueUnlocked -> SafeTimeForTransactionParticipant). The participant is not
+// closing, so the CheckClosing() guard from [#31374] does not apply, and tablet_ is not yet
+// assigned, so the raw access dereferences a null tablet. RF>1 is required so the transaction
+// status coordinator is available to answer the status request while the tablet reopens.
+TEST_P(PgVectorIndexTest, StatusResolutionDuringBootstrapBackfill) {
+  num_pre_split_tablets_ = 1;
+
+  // Hold the initial vector index backfill until the tablet starts shutting down, so it never
+  // finishes before we shut the target tserver down. On the restart below the predecessor is
+  // already cleared, so the backfill runs immediately.
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"Tablet::StartShutdown", "TabletVectorIndexes::Backfill:Start"}});
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearTrace();
+  });
+
+  auto conn = ASSERT_RESULT(MakeTable(/* dimensions= */ 1));
+
+  // The uncommitted-transaction connection lives on the PG tserver (kPgTsIndex), so shut a
+  // different tserver down to keep that connection alive for the abort below. With RF3 the target
+  // tserver hosts a replica of the single test tablet.
+  const size_t target_idx = kPgTsIndex == 0 ? 1 : 0;
+  const auto target_uuid = cluster_->mini_tablet_server(target_idx)->server()->permanent_uuid();
+
+  // Populate via an uncommitted transaction, leaving provisional records (intents) on the tablet.
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(InsertBatch(txn_conn, /* start_id= */ 1, /* count= */ 16));
+  // Intentionally not committed.
+
+  // Create the vector index. Its backfill blocks at the sync point above and CREATE INDEX blocks
+  // until backfill completes, so run it on a background thread; it is expected to fail when we shut
+  // the target tserver down.
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    WARN_NOT_OK(CreateIndex(index_conn), "CreateIndex interrupted by shutdown");
+  });
+
+  // Wait until the vector index is registered on the tserver we are going to shut down (by then it
+  // has also replicated the uncommitted transaction's intents).
+  ASSERT_OK(WaitFor([this, &target_uuid]() -> Result<bool> {
+    auto peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kAll));
+    for (const auto& peer : peers) {
+      if (peer->permanent_uuid() != target_uuid) {
+        continue;
+      }
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (tablet && tablet->vector_indexes().TEST_HasIndexes()) {
+        return true;
+      }
+    }
+    return false;
+  }, 60s * kTimeMultiplier, "Vector index registered on target tserver"));
+
+  // Shut the target tserver down; its blocked backfill is released (and interrupted) by the tablet
+  // shutdown.
+  cluster_->mini_tablet_server(target_idx)->Shutdown();
+
+  // Abort the transaction; the coordinator (available on the surviving tservers) marks it ABORTED.
+  ASSERT_OK(txn_conn.RollbackTransaction());
+
+  // Delay InitTabletPeer so that, if the backfill were (incorrectly) launched during bootstrap, its
+  // aborted-status response would walk the remove queue while tablet_ is still null.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_init_tablet_peer_ms) = 5000 * kTimeMultiplier;
+
+  ASSERT_OK(cluster_->mini_tablet_server(target_idx)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(target_idx)->WaitStarted());
+
+  // Reaching here without the tserver crashing means the fix holds.
+  threads.Stop();
+}
+
+// A truncate pauses the tablet's read/write operation counters while it replaces the storages, so a
+// vector index backfill running at that moment fails to acquire its scoped operation and aborts
+// with TryAgain. Backfills were launched only from Tablet::Start(), so nothing resumed the aborted
+// one: the index stayed not backfilled until the tserver restarted, blocking tablet splits and
+// never reaching the master through vector_index_finished_backfills (GH#33102). In a debug build
+// the abort also hit a DFATAL.
+TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
+  constexpr size_t kNumRows = 64;
+
+  if (IsColocated()) {
+    // A colocated table shares its tablet with the rest of the database, so TRUNCATE tombstones the
+    // table instead of replacing the storages.
+    GTEST_SKIP() << "Truncate does not replace tablet storages of a colocated table";
+  }
+
+  // Park the backfills until the truncate below has paused the blocking operations, so that reading
+  // the indexed table fails with TryAgain. The dependency is satisfied by that first pause, so the
+  // retried backfill runs without parking.
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"Tablet::StartShutdownStorages:BlockingPaused", "TabletVectorIndexes::Backfill:Start"}});
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearTrace();
+  });
+
+  // Retry rapidly, so that retries land all over the truncate: while it still holds the pause, and
+  // in the window where it has torn the vector indexes down and not re-opened them yet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backfill_retry_delay_ms) = 10 * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+
+  // The backfill is parked, so CREATE INDEX does not return until the truncate below releases it.
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+
+  ASSERT_OK(WaitFor([this] {
+    return !ListVectorIndexes(cluster_.get()).empty();
+  }, 60s * kTimeMultiplier, "Vector index created on tablets"));
+
+  // Truncate through the client rather than through YSQL: a YSQL TRUNCATE either rewrites the table
+  // instead of truncating the tablet, or conflicts with the catalog version bump of the CREATE
+  // INDEX still running above.
+  ASSERT_OK(client_->TruncateTable(ASSERT_RESULT(GetTableIDFromTableName("test"))));
+
+  // CREATE INDEX returns once the backfill is reported to the master, so by now every peer has the
+  // index and the expected count is stable.
+  threads.JoinAll();
+  const auto num_indexes = ListVectorIndexes(cluster_.get()).size();
+  ASSERT_GT(num_indexes, 0);
+
+  ASSERT_OK(WaitForVectorIndexBackfills(num_indexes, "Backfill done after truncate"));
+}
+
+// When the backfill fails with something other than TryAgain/ShutdownInProgress, CREATE INDEX
+// should fail with that error instead of hanging.
+TEST_P(PgVectorIndexTest, CreateIndexFailsOnFailedBackfill) {
+  constexpr size_t kNumRows = 64;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  // So the test fails instead of hanging if the error isn't reported.
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET statement_timeout = $0", ToMilliseconds(60s * kTimeMultiplier)));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = true;
+  ASSERT_NOK_STR_CONTAINS(CreateIndex(conn), "Injected vector index backfill failure");
+
+  // The failed CREATE INDEX got rolled back, so this should work now.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = false;
+  ASSERT_OK(CreateIndex(conn));
+}
+
+// VectorLSM::Insert counts its tasks on the mutable chunk before allocating them in the insert
+// registry. When the allocation failed because the registry was already shut down, the count
+// stayed elevated, so a chunk that a flush had meanwhile handed to the save path never saved and
+// the shutdown waited for it forever (GH#34199). Only an index removal can shut the registry down
+// under a running insert: a tablet shutdown drains the operations first.
+TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
+  constexpr size_t kNumRows = 64;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+
+  // Park a follower's backfill insert before it allocates its tasks. CREATE INDEX waits for the
+  // leader's backfill only, so the leader proceeds and the DROP INDEX below can run. The follower
+  // is picked once the index is registered on the tablets, so every insert first waits for that
+  // choice.
+  std::string parked_dir;
+  CountDownLatch follower_picked{1};
+  CountDownLatch insert_parked{1};
+  CountDownLatch resume_insert{1};
+  CountDownLatch registries_stopped{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::Insert:BeforeAllocateTasks", [&](void* arg) {
+    ASSERT_TRUE(follower_picked.WaitFor(60s * kTimeMultiplier));
+    if (*static_cast<const std::string*>(arg) != parked_dir) {
+      return;
+    }
+    insert_parked.CountDown();
+    ASSERT_TRUE(resume_insert.WaitFor(60s * kTimeMultiplier));
+  });
+  sync_point->SetCallBack("VectorLSM::CompleteShutdown:RegistriesStopped", [&](void* arg) {
+    if (*static_cast<const std::string*>(arg) == parked_dir) {
+      registries_stopped.CountDown();
+    }
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+
+  // Keep only a weak reference to the parked index: the removal destroys it once its shutdown
+  // completes, which is what the test waits for.
+  std::weak_ptr<docdb::DocVectorIndex> weak_index;
+  ASSERT_OK(WaitFor([this, &weak_index, &parked_dir] {
+    auto indexes = ListVectorIndexes(cluster_.get(), ListPeersFilter::kNonLeaders);
+    if (indexes.empty()) {
+      return false;
+    }
+    weak_index = indexes.front();
+    parked_dir = indexes.front()->path();
+    return true;
+  }, 60s * kTimeMultiplier, "Vector index registered on a follower"));
+  follower_picked.CountDown();
+
+  ASSERT_TRUE(insert_parked.WaitFor(60s * kTimeMultiplier)) << "Backfill insert did not park";
+  threads.JoinAll();
+
+  // Let the other replicas finish their backfills, so the removal below overtakes the parked insert
+  // only.
+  ASSERT_OK(WaitFor([this, &parked_dir]() -> Result<bool> {
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      if (index->path() != parked_dir && !VERIFY_RESULT(index->BackfillDone())) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Other replicas backfilled"));
+
+  // The removal shuts the insert registry down, then waits for all chunks to save. Resume the
+  // insert only after that, so its allocation fails. The drop runs off the main thread in case it
+  // waits for the parked replica.
+  threads.AddThreadFunctor([this] {
+    auto drop_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(drop_conn.ExecuteFormat("DROP INDEX $0", kVectorIndexName));
+  });
+  ASSERT_TRUE(registries_stopped.WaitFor(60s * kTimeMultiplier))
+      << "Index removal did not reach the registry shutdown";
+  resume_insert.CountDown();
+
+  ASSERT_OK(WaitFor([&weak_index] { return weak_index.expired(); }, 30s * kTimeMultiplier,
+                    "Index removal hung waiting for the chunk of the failed insert"));
+  threads.JoinAll();
+}
+
+////////////////////////////////////////////////////////
+// PgVectorIndexStorageSetCapacityTest
+////////////////////////////////////////////////////////
+
+// GH#33923: docdb::StorageSet used to be a std::bitset<64> where bit 0 is the regular DB and bit
+// 1 + i is vector index i, so a tablet could address only 63 vector indexes: the writers and the
+// bootstrap threw std::out_of_range for the 64th one and aborted the tserver.
+// Colocated tables share one tablet, so one index per table is enough to get there; a
+// non-colocated table has to carry all the indexes itself, one per vector column.
+class PgVectorIndexStorageSetCapacityTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  // One more than the 63 vector indexes the old StorageSet could address.
+  static constexpr size_t kNumIndexes = 64;
+  static constexpr int64_t kNumRows = 2;
+
+  static std::string TableName(size_t idx) {
+    return Format("test_$0", idx);
+  }
+
+  static std::string ColumnName(size_t idx) {
+    return Format("embedding_$0", idx);
+  }
+
+  std::string TableForIndex(size_t idx) {
+    return TableName(IsColocated() ? idx : 0);
+  }
+
+  std::string ColumnForIndex(size_t idx) {
+    return ColumnName(IsColocated() ? 0 : idx);
+  }
+
+  Status CreateVectorIndex(PGConn& conn, size_t idx) {
+    return conn.ExecuteFormat(
+        "CREATE INDEX vi_$0 ON $1 USING ybhnsw ($2 $3) WITH ($4)",
+        idx, TableForIndex(idx), ColumnForIndex(idx), VectorOpsName(), kCheapIndexBuildOptions);
+  }
+
+  Result<PGConn> MakeTabletWithIndexes() {
+    dimensions_ = 3;
+    auto conn = VERIFY_RESULT(PgMiniTestBase::Connect());
+    if (IsColocated()) {
+      RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0 COLOCATION = true", DbName()));
+      conn = VERIFY_RESULT(Connect());
+    }
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+
+    if (IsColocated()) {
+      for (size_t i = 0; i != kNumIndexes; ++i) {
+        RETURN_NOT_OK(conn.ExecuteFormat(
+            "CREATE TABLE $0 (id bigserial PRIMARY KEY, $1 vector($2)) WITH (COLOCATED = 1)",
+            TableForIndex(i), ColumnForIndex(i), dimensions_));
+      }
+    } else {
+      std::string columns;
+      for (size_t i = 0; i != kNumIndexes; ++i) {
+        columns += Format(", $0 vector($1)", ColumnForIndex(i), dimensions_);
+      }
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0 (id bigserial PRIMARY KEY$1) SPLIT INTO 1 TABLETS",
+          TableName(0), columns));
+    }
+
+    for (size_t i = 0; i != kNumIndexes; ++i) {
+      RETURN_NOT_OK(CreateVectorIndex(conn, i));
+    }
+    return conn;
+  }
+
+  // An explicit transaction, so that the write is applied through the intents path and is replayed
+  // from the WAL with a computed StorageSet. Every vector column is populated, because the apply
+  // skips null columns before it reaches the index in the last slot.
+  Status InsertRowsInTransaction(PGConn& conn) {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (int64_t id = 1; id <= kNumRows; ++id) {
+      if (IsColocated()) {
+        for (size_t i = 0; i != kNumIndexes; ++i) {
+          RETURN_NOT_OK(conn.ExecuteFormat(
+              "INSERT INTO $0 VALUES ($1, '$2')", TableForIndex(i), id, AsString(Vector(id))));
+        }
+      } else {
+        std::string values;
+        for (size_t i = 0; i != kNumIndexes; ++i) {
+          values += Format(", '$0'", AsString(Vector(id)));
+        }
+        RETURN_NOT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0 VALUES ($1$2)", TableName(0), id, values));
+      }
+    }
+    return conn.CommitTransaction();
+  }
+
+  Result<size_t> NumVectorIndexesOnTablet() {
+    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected exactly one tablet with vector indexes");
+    auto tablet = VERIFY_RESULT(peers.front()->shared_tablet());
+    auto list = tablet->vector_indexes().List();
+    return list ? list->size() : 0;
+  }
+
+  void VerifyAllIndexesReturnAllRows() {
+    std::string expected;
+    for (int64_t id = 1; id <= kNumRows; ++id) {
+      if (!expected.empty()) {
+        expected += "; ";
+      }
+      expected += std::to_string(id);
+    }
+
+    auto conn = ASSERT_RESULT(Connect());
+    for (size_t i = 0; i != kNumIndexes; ++i) {
+      // TEST_fail_on_seq_scan_with_vector_indexes is on, so the read has to go through the index.
+      auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
+          "SELECT id FROM $0 ORDER BY $1 $2 '$3' LIMIT $4",
+          TableForIndex(i), ColumnForIndex(i), VectorOp(), AsString(Vector(1)), kNumRows)));
+      ASSERT_EQ(rows, expected) << "Vector index " << i;
+    }
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexStorageSetCapacityTest);
+
+// The live apply of a transactional write to a tablet with 64 vector indexes, followed by a restart
+// that replays the WAL.
+TEST_P(PgVectorIndexStorageSetCapacityTest, ApplyWith64VectorIndexes) {
+  auto conn = ASSERT_RESULT(MakeTabletWithIndexes());
+  ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
+  ASSERT_OK(InsertRowsInTransaction(conn));
+
+  // No flush here and none on shutdown, so the WAL holds the only copy of the writes.
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+
+  ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
+  ASSERT_NO_FATALS(VerifyAllIndexesReturnAllRows());
+}
+
+// The bootstrap half on its own. TEST_skip_process_apply skips the live apply, so the APPLYING
+// record is applied only by the WAL replay, which uses a StorageSet computed by
+// ComputeApplyToStorages rather than StorageSet::All(). Replay runs on every tablet open, so a
+// crash here means the tablet never comes back.
+TEST_P(PgVectorIndexStorageSetCapacityTest, BootstrapReplayWith64VectorIndexes) {
+  auto conn = ASSERT_RESULT(MakeTabletWithIndexes());
+  ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+  ASSERT_OK(InsertRowsInTransaction(conn));
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = false;
+  ASSERT_OK(RestartCluster());
+
+  ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
+  ASSERT_NO_FATALS(VerifyAllIndexesReturnAllRows());
 }
 
 }  // namespace yb::pgwrapper

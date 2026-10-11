@@ -44,11 +44,11 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/compare_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -131,9 +131,9 @@ void ColumnSchema::DoDebugCellAppend(const void* cell, std::string* ret) const {
 // TODO: include attributes_.ToString() -- need to fix unit tests
 // first
 string ColumnSchema::ToString() const {
-  return strings::Substitute("$0[$1]",
-                             name_,
-                             TypeToString());
+  return Format("$0[$1]",
+                name_,
+                TypeToString());
 }
 
 string ColumnSchema::TypeToString() const {
@@ -201,6 +201,8 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   pb->set_is_ysql_catalog_table(is_ysql_catalog_table_);
   pb->set_retain_delete_markers(retain_delete_markers_);
   pb->set_partitioning_version(partitioning_version_);
+  pb->set_owns_vector_reverse_mapping(owns_vector_reverse_mapping_);
+  pb->set_skip_vector_reverse_mapping(!writes_vector_reverse_mapping_);
   if (HasReplicaIdentity()) {
     pb->set_ysql_replica_identity(*ysql_replica_identity_);
   }
@@ -237,6 +239,8 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   }
   table_properties.set_partitioning_version(
       pb.has_partitioning_version() ? pb.partitioning_version() : 0);
+  table_properties.owns_vector_reverse_mapping_ = pb.owns_vector_reverse_mapping();
+  table_properties.writes_vector_reverse_mapping_ = !pb.skip_vector_reverse_mapping();
   return table_properties;
 }
 
@@ -265,7 +269,14 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   if (pb.has_ysql_replica_identity()) {
     SetReplicaIdentity(pb.ysql_replica_identity());
   }
+
+  // TODO: partitioning_version is supposed to be immutable after table creation. This code
+  // and the setter should be removed (refer to owns_vector_reverse_mapping handling).
   set_partitioning_version(pb.has_partitioning_version() ? pb.partitioning_version() : 0);
+
+  // owns_vector_reverse_mapping and writes_vector_reverse_mapping are fixed at table creation
+  // (master CreateTable) and restored from backup metadata. They are intentionally not merged here
+  // so ALTER TABLE cannot change the values after table creation.
 }
 
 void TableProperties::Reset() {
@@ -281,6 +292,8 @@ void TableProperties::Reset() {
       PREDICT_TRUE(FLAGS_TEST_partitioning_version < 0) ? kCurrentPartitioningVersion
                                                         : FLAGS_TEST_partitioning_version;
   ysql_replica_identity_ = std::nullopt;
+  owns_vector_reverse_mapping_ = false;
+  writes_vector_reverse_mapping_ = true;
 }
 
 bool TableProperties::IsValidTTL(int64_t ttl_msec) {
@@ -292,19 +305,19 @@ bool TableProperties::IsEffectiveTTL(int64_t ttl_msec) {
 }
 
 string TableProperties::ToString() const {
-  std::string result("{ ");
+  auto fields = YB_FIELDS_TO_STRING((BOOST_PP_IDENTITY(_)),
+      contain_counters, is_transactional, consistency_level, is_ysql_catalog_table,
+      partitioning_version, owns_vector_reverse_mapping, writes_vector_reverse_mapping) " ";
+
   if (HasDefaultTimeToLive()) {
-    result += Format("default_time_to_live: $0 ", default_time_to_live_);
+    fields += Format("default_time_to_live: $0 ", default_time_to_live_);
   }
-  result += Format("contain_counters: $0 is_transactional: $1 ",
-                   contain_counters_, is_transactional_);
-  result + Format(
-               "consistency_level: $0 is_ysql_catalog_table: $1 partitioning_version: $2 ",
-               consistency_level_, is_ysql_catalog_table_, partitioning_version_);
+
   if (HasReplicaIdentity()) {
-    result + Format("replica_identity: $0 }", *ysql_replica_identity_);
+    fields += Format("ysql_replica_identity: $0 ", *ysql_replica_identity_);
   }
-  return result;
+
+  return Format("{$0}", fields);
 }
 
 // ------------------------------------------------------------------------------------------------

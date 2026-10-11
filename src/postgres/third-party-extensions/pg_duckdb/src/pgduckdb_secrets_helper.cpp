@@ -60,6 +60,23 @@ appendOptions(StringInfoData &buf, List *options) {
 char *
 MakeDuckDBCreateSecretQuery(const char *server_name, const char *type, List *server_options,
                             List *mapping_options = nullptr) {
+	/*
+	 * YB: the "credential_chain" S3 secret provider is supplied by DuckDB's "aws" extension, which
+	 * is not part of YB's DuckDB bundle -- only httpfs/json/icu are compiled in, and the bundled
+	 * httpfs registers just the "config" provider (explicit keys) for S3 secrets.
+	 */
+	const char *yb_provider = FindOption(server_options, "provider");
+	if (yb_provider == NULL) {
+		yb_provider = FindOption(mapping_options, "provider");
+	}
+	if (yb_provider != NULL && pg_strcasecmp(yb_provider, "credential_chain") == 0) {
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("the \"credential_chain\" secret provider is not supported on YugabyteDB"),
+		         errhint("Specify credentials explicitly (e.g. via KEY_ID and SECRET) in the SERVER or "
+		                 "USER MAPPING options instead.")));
+	}
+
 	StringInfoData buf;
 	initStringInfo(&buf);
 	appendStringInfo(&buf, "CREATE SECRET pgduckdb_secret_%s (", server_name);

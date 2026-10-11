@@ -25,7 +25,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CheckServiceLivenessTest extends CommissionerBaseTest {
@@ -34,7 +34,7 @@ public class CheckServiceLivenessTest extends CommissionerBaseTest {
   private static final String NODE_IP = "1.2.3.4";
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() {
@@ -54,7 +54,7 @@ public class CheckServiceLivenessTest extends CommissionerBaseTest {
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     // mockYBClient is the YBClientService mock provided by CommissionerBaseTest.
     // isServerAlive() in UniverseTaskBase calls ybService.getClient(masterAddrs, certificate).
     // For a non-TLS universe created by ModelFactory the certificate arg is null.

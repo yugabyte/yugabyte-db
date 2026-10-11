@@ -42,6 +42,7 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/posix_logger.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/file_system_posix.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"

@@ -28,23 +28,23 @@ INSERT INTO text_books (id, author, year)
 SELECT $$
 :P SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT id FROM text_books
   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- Drop INDEX and run again.
 DROP index text_books_author_first_name;
 SELECT $$
 :P SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT id FROM text_books
   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 --
 -- Logical test on small size table, using JSONB expression index.
 --
@@ -82,21 +82,21 @@ SELECT $$
 :P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
   ORDER BY details->>'name';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
   ORDER BY details->>'name';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- Drop INDEX and run again.
 DROP index books_author_first_name;
 SELECT $$
 :P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
   ORDER BY details->>'name';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
   ORDER BY details->>'name';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query

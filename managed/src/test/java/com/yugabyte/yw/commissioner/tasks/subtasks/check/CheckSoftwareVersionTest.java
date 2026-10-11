@@ -29,7 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @RunWith(JUnitParamsRunner.class)
 public class CheckSoftwareVersionTest extends CommissionerBaseTest {
@@ -38,7 +38,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private NodeDetails node;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() {
@@ -52,7 +52,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     details.nodeDetailsSet.add(node);
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     try {
       lenient().when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     } catch (Exception ignored) {

@@ -29,9 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#pragma once
 
-#include <shared_mutex>
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -57,9 +56,9 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/shared_ptr_tuple.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/shared_ptr_tuple.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -103,6 +102,10 @@ using ProxyTuple = util::SharedPtrTuple<
 
 struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
   bool IsLive() const;
+  // If this returns false then we can be sure the TServer does not currently have a
+  // xCluster-guarded information lease.  False positives (i.e., returning true when it does not
+  // have a lease) are possible.
+  bool MaybeHasXClusterGuardedLease() const;
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
   std::string placement_uuid() const;
 };
@@ -136,7 +139,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
-  virtual ~TSDescriptor() = default;
+  ~TSDescriptor() override = default;
 
   // Updates TS metadata -
   //     hybrid time on the TS
@@ -240,6 +243,18 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
     return leader_count_;
   }
 
+  void inc_pending_leader_drain_notification() {
+    pending_leader_drain_notification_++;
+  }
+
+  bool pending_leader_drain_notification() const {
+    return pending_leader_drain_notification_;
+  }
+
+  bool exchg_pending_leader_drain_notification(uint32_t old_value, uint32_t new_value) {
+    return pending_leader_drain_notification_.compare_exchange_strong(old_value, new_value);
+  }
+
   MicrosTime physical_time() const {
     SharedLock<decltype(mutex_)> l(mutex_);
     return physical_time_;
@@ -254,6 +269,11 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
     SharedLock<decltype(mutex_)> l(mutex_);
     return hybrid_time_;
   }
+
+  DbOidToHybridTimeMap GetYsqlDbOldestPinnedReadTimes() const;
+
+  bool has_ysql_db_pins() const;
+  void ResetYsqlDbPins();
 
   MonoDelta heartbeat_rtt() const {
     SharedLock<decltype(mutex_)> l(mutex_);
@@ -298,6 +318,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   struct TSPathMetrics {
     uint64_t used_space = 0;
     uint64_t total_space = 0;
+    std::string storage_tier;
   };
 
   std::unordered_map<std::string, TSPathMetrics> path_metrics() {
@@ -339,6 +360,11 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   bool IsLive() const;
 
+  // If this returns false then we can be sure the TServer does not currently have a
+  // xCluster-guarded information lease.  False positives (i.e., returning true when it does not
+  // have a lease) are possible.
+  bool MaybeHasXClusterGuardedLease() const;
+
   bool IsLiveAndHasReported() const;
 
   bool HasYsqlCatalogLease() const;
@@ -348,6 +374,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
+  // Transition this TServer to UNRESPONSIVE and/or DEFINITELY_NO_LEASE if enough time has passed
+  // since its last heartbeat.
   std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
  private:
@@ -415,6 +443,11 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   MonoTime last_heartbeat_ GUARDED_BY(mutex_);
   const bool registered_through_heartbeat_;
 
+  // True after the first heartbeat from this tserver is received by this master leader.
+  // Until every live tserver has this set, the master advertises cluster pins as not ready
+  // so tservers do not replace their last applied cluster pin map.
+  bool has_ysql_db_pins_ GUARDED_BY(mutex_) = false;
+
   // The physical and hybrid times on the tserver represented by this object at the time it sent the
   // last heartbeat received by this master.
   MicrosTime physical_time_ GUARDED_BY(mutex_);
@@ -449,6 +482,13 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // The number of tablets for which this ts is a leader.
   int leader_count_ GUARDED_BY(mutex_);
+
+  // State reflecting that the tserver might be unaware of the leader rebalancing
+  // due to leader blacklist.
+  std::atomic<uint32> pending_leader_drain_notification_{0};
+
+  // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
+  DbOidToHybridTimeMap ts_ysql_db_oldest_pinned_read_times_ GUARDED_BY(mutex_);
 
   std::string placement_id_ GUARDED_BY(mutex_);
 

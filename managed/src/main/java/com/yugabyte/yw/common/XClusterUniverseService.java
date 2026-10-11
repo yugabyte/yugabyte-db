@@ -52,7 +52,7 @@ import org.yb.client.GetReplicationStatusResponse;
 import org.yb.client.GetXClusterSafeTimeResponse;
 import org.yb.client.IsBootstrapRequiredResponse;
 import org.yb.client.ListCDCStreamsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
@@ -300,7 +300,7 @@ public class XClusterUniverseService {
       UUID sourceUniverseUuid,
       boolean ignoreErrors)
       throws Exception {
-    log.debug(
+    log.trace(
         "XClusterUniverseService.isBootstrapRequired is called with xClusterConfig={}, "
             + "tableIds={}, and universeUuid={}",
         xClusterConfig,
@@ -345,13 +345,13 @@ public class XClusterUniverseService {
             sourceUniverseCertificate,
             ybClientTimeout,
             ybClientTimeout);
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       try {
         int partitionSize =
             XClusterConfigTaskBase.supportsMultipleTablesWithIsBootstrapRequired(sourceUniverse)
                 ? IS_BOOTSTRAP_REQUIRED_RPC_PARTITION_SIZE
                 : 1;
-        log.info("Partition size used for isBootstrapRequiredParallel is {}", partitionSize);
+        log.debug("Partition size used for isBootstrapRequiredParallel is {}", partitionSize);
 
         // Partition the tableIdStreamIdMap.
         List<Map<String, String>> tableIdStreamIdMapPartitions = new ArrayList<>();
@@ -365,7 +365,7 @@ public class XClusterUniverseService {
             partition.put(entry.getKey(), entry.getValue());
           }
         }
-        log.debug("Partitioned the tableIds to {}", tableIdStreamIdMapPartitions);
+        log.trace("Partitioned the tableIds to {}", tableIdStreamIdMapPartitions);
 
         // Make the requests for all the partitions in parallel.
         List<Future<Map<String, Boolean>>> fs = new ArrayList<>();
@@ -387,7 +387,7 @@ public class XClusterUniverseService {
                     while (iterationNumber < IS_BOOTSTRAP_REQUIRED_RPC_MAX_RETRIES_NUMBER
                         && Objects.isNull(resp)) {
                       try {
-                        log.debug(
+                        log.trace(
                             "Running IsBootstrapRequired RPC for tableIdStreamIdPartition {}",
                             tableIdStreamIdPartition);
                         resp = client.isBootstrapRequired(tableIdStreamIdPartition);
@@ -483,7 +483,7 @@ public class XClusterUniverseService {
 
   public Set<CDCStreamInfo> getAllCDCStreamInfoInUniverse(
       YBClientService ybClientService, Universe universe) {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       ListCDCStreamsResponse cdcStreamsResponse = client.listCDCStreams(null, null, null);
       if (cdcStreamsResponse.hasError()) {
         throw new RuntimeException(
@@ -508,7 +508,7 @@ public class XClusterUniverseService {
   public List<ReplicationStatusPB> getReplicationStatus(XClusterConfig xClusterConfig) {
     log.debug(
         "XClusterUniverseService.getReplicationStatus is called with xClusterConfig={}",
-        xClusterConfig);
+        xClusterConfig.getUuid());
 
     Set<String> streamIds =
         xClusterConfig.getTableDetails().stream()
@@ -526,7 +526,7 @@ public class XClusterUniverseService {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YbClientConfig clientConfig =
         ybClientConfigFactory.create(targetUniverseMasterAddresses, targetUniverseCertificate);
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       GetReplicationStatusResponse resp =
           client.getReplicationStatus(xClusterConfig.getReplicationGroupName());
       if (resp.hasError()) {
@@ -536,7 +536,7 @@ public class XClusterUniverseService {
                 xClusterConfig.getReplicationGroupName(), xClusterConfig, resp.errorMessage()));
       }
       List<ReplicationStatusPB> statuses = resp.getStatuses();
-      log.debug(
+      log.trace(
           "GetReplicationStatus RPC call with {} returned {}",
           xClusterConfig.getReplicationGroupName(),
           statuses);
@@ -579,7 +579,7 @@ public class XClusterUniverseService {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YbClientConfig clientConfig =
         ybClientConfigFactory.create(targetUniverseMasterAddresses, targetUniverseCertificate);
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       GetXClusterSafeTimeResponse resp = client.getXClusterSafeTime();
       if (resp.hasError()) {
         throw new RuntimeException(
@@ -594,7 +594,7 @@ public class XClusterUniverseService {
 
   public Map<String, String> getSourceTableIdTargetTableIdMap(
       Universe targetUniverse, String replicationGroupName) {
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(targetUniverse)) {
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
       if (clusterConfigResp.hasError()) {
         String errMsg =
@@ -636,7 +636,7 @@ public class XClusterUniverseService {
             .collect(
                 Collectors.toMap(
                     StreamEntryPB::getProducerTableId, StreamEntryPB::getConsumerTableId));
-    log.debug(
+    log.trace(
         "XClusterUniverseService.getSourceTableIdTargetTableIdMap: "
             + "sourceTableIdTargetTableIdMap is {}",
         sourceTableIdTargetTableIdMap);

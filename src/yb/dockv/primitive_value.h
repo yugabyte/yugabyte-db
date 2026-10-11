@@ -319,6 +319,18 @@ inline std::ostream& operator<<(std::ostream& out, const SortOrder sort_order) {
 // SortingType::kDescending gets converted to SortOrder::kDescending.
 SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 
+constexpr char EncodedBinaryValueDefaultTypePrefix();
+
+void AppendEncodedNullValue(ValueBuffer* out);
+void AppendEncodedNullValue(std::string* out);
+
+void AppendEncodedBinaryValue(char value_type_prefix, const QLValuePB& value, ValueBuffer* out);
+void AppendEncodedBinaryValue(char value_type_prefix, const QLValuePB& value, std::string* out);
+void AppendEncodedBinaryValue(char value_type_prefix, const LWQLValuePB& value, ValueBuffer* out);
+void AppendEncodedBinaryValue(char value_type_prefix, const LWQLValuePB& value, std::string* out);
+size_t EncodedBinaryValueSize(const QLValuePB& value);
+size_t EncodedBinaryValueSize(const LWQLValuePB& value);
+
 void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out);
 void AppendEncodedValue(const QLValuePB& value, std::string* out);
 void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out);

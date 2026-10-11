@@ -8,4 +8,12 @@ properties:
     description: Whether YBA instance is FIPS compliant
     type: boolean
     readOnly: true
+  version:
+    description: YBA software version
+    type: string
+    readOnly: true
+  customer_count:
+    description: number of customers created on this YBA instance
+    type: integer
+    readOnly: true
 x-yba-api-visibility: internal

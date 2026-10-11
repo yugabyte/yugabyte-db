@@ -8,13 +8,16 @@ import {
   ClusterPlacementSpec
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { Region } from '@app/redesign/helpers/dtos';
-import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
+import { ResilienceAndRegionsProps, ResilienceFormMode } from '../../create-universe/steps/resilence-regions/dtos';
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
 import {
+  getAZCount,
   getEffectiveReplicationFactorForResilience,
   getNodeCount,
-  getPlacementRegions
+  getPlacementRegions,
+  isCurrentConfigSupportedByGuidedMode,
+  toExpertResilienceForDefaults
 } from '../../create-universe/CreateUniverseUtils';
 import {
   getExistingGeoPartitions
@@ -27,6 +30,8 @@ import {
   isKubernetesCluster,
   mapUniversePayloadToResilienceAndRegionsProps
 } from '../EditUniverseUtils';
+import { isDefinedNotNull } from '@yugabytedb/perf-advisor-ui';
+import { toClusterStorageSpec } from '../edit-hardware/EditHardwareStorageUtils';
 
 export const useGetEditPlacementContext = (): EditPlacementContextMethods => {
   const context = useContext(EditPlacementContext);
@@ -43,6 +48,10 @@ export const getResilienceAndRegionsProps = (
 ): ResilienceAndRegionsProps => {
   const hasGeoPartitions = getExistingGeoPartitions(universeData!).length > 0;
   const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
+  const resilienceFormMode = getUniverseCreationMode(universeData);
+  let resilience: ResilienceAndRegionsProps;
+  let clusterReplicationFactor = 1;
+
   if (hasGeoPartitions) {
     const selectedPartition = primaryCluster?.partitions_spec?.find(
       (partition) => partition.uuid === selectedPartitionUUID
@@ -52,8 +61,9 @@ export const getResilienceAndRegionsProps = (
     }
     const effectiveReplicationFactor =
       selectedPartition.replication_factor ?? primaryCluster?.replication_factor ?? 1;
+    clusterReplicationFactor = effectiveReplicationFactor;
     const stats = countRegionsAzsAndNodes(selectedPartition.placement);
-    return mapUniversePayloadToResilienceAndRegionsProps(
+    resilience = mapUniversePayloadToResilienceAndRegionsProps(
       providerRegions!,
       stats,
       {
@@ -61,10 +71,39 @@ export const getResilienceAndRegionsProps = (
         replication_factor: effectiveReplicationFactor
       }
     );
+
   } else {
+    clusterReplicationFactor = primaryCluster?.replication_factor ?? 1;
     const stats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
-    return mapUniversePayloadToResilienceAndRegionsProps(providerRegions!, stats, primaryCluster!);
+    resilience = mapUniversePayloadToResilienceAndRegionsProps(providerRegions!, stats, primaryCluster!);
+    
   }
+
+  const guidedSupported =
+    resilienceFormMode === ResilienceFormMode.GUIDED
+      ? isCurrentConfigSupportedByGuidedMode(
+          resilience,
+          getNodesAvailabilityDefaultsForEditPlacement(universeData, selectedPartitionUUID)
+        ).isSupported
+      : false;
+  const effectiveFormMode =
+    resilienceFormMode === ResilienceFormMode.GUIDED && !guidedSupported
+      ? ResilienceFormMode.EXPERT_MODE
+      : resilienceFormMode;
+
+  // Expert form uses raw RF and AZ/REGION FT — not guided NODE_LEVEL collapse.
+  const result =
+    effectiveFormMode === ResilienceFormMode.EXPERT_MODE
+      ? {
+          ...toExpertResilienceForDefaults(resilience),
+          resilienceFactor: clusterReplicationFactor
+        }
+      : {
+          ...resilience,
+          resilienceFormMode: effectiveFormMode
+        };
+
+  return result;
 };
 
 /** Defaults for edit-placement nodes step (honors dedicated nodes and geo partition/default partition placement). */
@@ -99,6 +138,17 @@ export const getNodesAvailabilityDefaultsForEditPlacement = (
 
   return defaults;
 };
+
+/** Re-seed universe placement when ResilienceAndRegions clears nodes to {}. */
+export function resolveEditPlacementNodesOnSave(
+  incoming: NodeAvailabilityProps | undefined,
+  universeDefaults: NodeAvailabilityProps
+): NodeAvailabilityProps {
+  if (!incoming || getAZCount(incoming.availabilityZones ?? {}) === 0) {
+    return universeDefaults;
+  }
+  return incoming;
+}
 
 const buildPlacementSpecFromRegionList = (
   existingPlacementSpec: ClusterPlacementSpec,
@@ -141,6 +191,29 @@ export const buildPrimaryPlacementEditPayload = (
     placementSpec: buildPlacementSpecFromRegionList(primaryCluster.placement_spec, regionList)
   };
 };
+
+/** Payload shape used to detect no-op placement edits (matches submit path). */
+export function buildPlacementEditComparePayload(
+  universeData: Universe,
+  resilience: ResilienceAndRegionsProps,
+  nodesAndAvailability: NodeAvailabilityProps | undefined,
+  selectedPartitionUUID?: string
+) {
+  if (selectedPartitionUUID) {
+    return buildGeoPartitionPlacementEditPayload(
+      universeData,
+      selectedPartitionUUID,
+      resilience,
+      nodesAndAvailability
+    );
+  }
+  return {
+    ...buildPrimaryPlacementEditPayload(universeData, resilience, nodesAndAvailability),
+    num_nodes: nodesAndAvailability
+      ? getNodeCount(nodesAndAvailability.availabilityZones)
+      : undefined
+  };
+}
 
 export const buildGeoPartitionPlacementEditPayload = (
   universeData: Universe,
@@ -195,20 +268,6 @@ export type MasterAllocationEditMutationCluster = {
   partitions_spec?: ClusterPartitionSpec[];
 };
 
-const toClusterStorageSpec = (
-  currentStorageSpec: NonNullable<ClusterSpec['node_spec']>['storage_spec'] | undefined,
-  deviceInfo: InstanceSettingProps['deviceInfo'] | undefined
-) => ({
-  ...currentStorageSpec,
-  volume_size: deviceInfo?.volumeSize ?? currentStorageSpec?.volume_size,
-  num_volumes: deviceInfo?.numVolumes ?? currentStorageSpec?.num_volumes,
-  disk_iops: deviceInfo?.diskIops ?? currentStorageSpec?.disk_iops,
-  throughput: deviceInfo?.throughput ?? currentStorageSpec?.throughput,
-  storage_class: deviceInfo?.storageClass ?? currentStorageSpec?.storage_class,
-  storage_type: deviceInfo?.storageType ?? currentStorageSpec?.storage_type,
-  mount_points: deviceInfo?.mountPoints ?? currentStorageSpec?.mount_points
-});
-
 const toK8sResourceSpec = (resourceSpec: InstanceSettingProps['tserverK8SNodeResourceSpec']) =>
   resourceSpec
     ? {
@@ -239,7 +298,7 @@ export const buildMasterAllocationEditPayload = (
 
   if (instanceSettings) {
     const tserverInstanceType = instanceSettings.instanceType ?? node_spec.instance_type;
-    const tserverStorageSpec = toClusterStorageSpec(node_spec.storage_spec, instanceSettings.deviceInfo);
+    const tserverStorageSpec = toClusterStorageSpec(instanceSettings.deviceInfo, node_spec.storage_spec);
 
     node_spec.instance_type = tserverInstanceType;
     node_spec.storage_spec = tserverStorageSpec;
@@ -274,8 +333,8 @@ export const buildMasterAllocationEditPayload = (
 
       const masterInstanceType = instanceSettings.masterInstanceType ?? tserverInstanceType;
       const masterStorageSpec = toClusterStorageSpec(
-        node_spec.master?.storage_spec ?? tserverStorageSpec,
-        instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo
+        instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo,
+        node_spec.master?.storage_spec ?? tserverStorageSpec
       );
 
       node_spec.master = {
@@ -340,3 +399,12 @@ export const buildMasterAllocationEditPayload = (
     placement_spec: placementSpec
   };
 };
+
+export const getUniverseCreationMode = (universeData: Universe): ResilienceFormMode => {
+  return isDefinedNotNull(universeData.spec?.universe_settings?.expert_mode) ? 
+  universeData.spec?.universe_settings?.expert_mode ? 
+  ResilienceFormMode.EXPERT_MODE : ResilienceFormMode.GUIDED : 
+  ResilienceFormMode.EXPERT_MODE; 
+};
+
+export { isCurrentConfigSupportedByGuidedMode };

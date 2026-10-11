@@ -13,7 +13,7 @@ YB_LISCENCE = '''
 
 '''
 
-AWS_OS_VERSION = "9.5"
+AWS_OS_VERSION = "9.8"
 GCP_OS_VERSION = "9"
 AZU_OS_VERSION = "9-gen2"
 
@@ -63,7 +63,13 @@ def get_aws_image_for_cmd(cmd, reg):
             print('Auth Error for region: ' + reg)
             return None
         result_json = json.loads(result)
-        return result_json['Images'][0]
+        images = result_json.get('Images', [])
+        if not images:
+            print('No matching images found for region: ' + reg)
+            return None
+        # AWS does not guarantee DescribeImages response ordering.
+        return max(images, key=lambda image: (image.get('CreationDate', ''),
+                                              image.get('ImageId', '')))
     except Exception as e:
         print('Exception while fetching image for region ' + reg)
         print(e)

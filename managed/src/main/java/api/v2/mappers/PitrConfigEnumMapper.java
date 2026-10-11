@@ -3,12 +3,11 @@
 package api.v2.mappers;
 
 import api.v2.models.PitrConfigInfo;
-import api.v2.models.PitrConfigSpec;
+import api.v2.models.TableType;
 import org.mapstruct.Mapper;
 import org.mapstruct.ReportingPolicy;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
-import org.yb.CommonTypes.TableType;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 /** Explicit v1-to-v2 PITR config enum mappings with compile-time exhaustiveness checks. */
@@ -23,7 +22,7 @@ public interface PitrConfigEnumMapper {
         target = "TRANSACTION_STATUS_TABLE_TYPE",
         source = "TRANSACTION_STATUS_TABLE_TYPE")
   })
-  PitrConfigSpec.TableTypeEnum toTableTypeEnum(TableType tableType);
+  TableType toTableType(org.yb.CommonTypes.TableType tableType);
 
   @ValueMappings({
     @ValueMapping(target = "UNKNOWN", source = "UNKNOWN"),

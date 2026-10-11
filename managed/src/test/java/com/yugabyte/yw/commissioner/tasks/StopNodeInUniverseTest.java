@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -63,7 +64,7 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
@@ -73,7 +74,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
-  private YBClient mockClient = mock(YBClient.class);
+  private YBClientApi mockClient = mock(YBClientApi.class);
 
   private Region region;
 
@@ -84,14 +85,17 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.ybSoftwareVersion = "2.21.1.1-b1";
     userIntent.numNodes = 4;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     defaultUniverse = createUniverse(defaultCustomer.getId());
     defaultUniverse =
         Universe.saveDetails(
@@ -644,12 +648,17 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "2.16.7.0-b1";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             ClusterType.PRIMARY,
@@ -692,12 +701,16 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 5;
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "2.16.7.0-b1";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
     universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),
@@ -731,12 +744,16 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 5;
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "2.16.7.0-b1";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             ClusterType.PRIMARY,
@@ -843,12 +860,15 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "2.16.7.0-b1";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             ClusterType.PRIMARY,

@@ -72,7 +72,14 @@ SET enable_sort TO off;
 --
 -- awk '{if($1<10){print $0;}else{next;}}' onek.data | sort +0n -1
 --
-SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10;
+-- YB divergence: upstream relies on the index scan emitting rows in index order to prove the
+-- partial index is used. onek2 has no primary key, so its ybctid is a random ybrowid, and the YB
+-- batched ybctid fetch does not preserve that incidental order, so asserting row order would be
+-- non-reproducible. Instead, assert the partial index is chosen via EXPLAIN, and use an explicit
+-- ORDER BY for the deterministic row-set check.
+EXPLAIN (COSTS OFF)
+SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10 ORDER BY unique1;
+SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10 ORDER BY unique1;
 
 --
 -- awk '{if($1<20){print $1,$14;}else{next;}}' onek.data | sort +0nr -1
@@ -84,8 +91,14 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 --
 -- awk '{if($1>980){print $1,$14;}else{next;}}' onek.data | sort +1d -2
 --
+-- YB divergence: see note above (no-PK onek2 -> non-reproducible incidental order). Assert the
+-- partial index (second arm of its predicate) is chosen via EXPLAIN, order explicitly for the
+-- row-set check.
+EXPLAIN (COSTS OFF)
 SELECT onek2.unique1, onek2.stringu1 FROM onek2
-   WHERE onek2.unique1 > 980;
+   WHERE onek2.unique1 > 980 ORDER BY unique1;
+SELECT onek2.unique1, onek2.stringu1 FROM onek2
+   WHERE onek2.unique1 > 980 ORDER BY unique1;
 
 RESET enable_seqscan;
 RESET enable_bitmapscan;

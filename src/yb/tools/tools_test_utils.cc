@@ -137,12 +137,18 @@ Status RunYbControllerCommand(
 }
 
 namespace {
+// Plain-text dumps are wrapped in psql restricted mode, and ysql_dump picks a random key per run
+// unless one is given. Callers compare dumps from two clusters, so pin the key to keep them
+// comparable.
+constexpr const char* kRestrictKeyFlag = "--restrict-key=test";
+
 Result<std::string> RunYSQLDumpHelper(
     HostPort& pg_host_port, const std::string& database_name, const std::string& dump_type) {
   const auto kHostFlag = "--host=" + pg_host_port.host();
   const auto kPortFlag = "--port=" + std::to_string(pg_host_port.port());
-  std::vector<std::string> args = {GetPgToolPath("ysql_dump"), kHostFlag,    kPortFlag, dump_type,
-                                   "--include-yb-metadata",    database_name};
+  std::vector<std::string> args = {
+      GetPgToolPath("ysql_dump"), kHostFlag,        kPortFlag,    dump_type,
+      "--include-yb-metadata",    kRestrictKeyFlag, database_name};
   LOG(INFO) << "Run tool: " << AsString(args);
   std::string output;
   RETURN_NOT_OK(Subprocess::Call(args, &output));

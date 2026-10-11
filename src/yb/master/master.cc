@@ -64,6 +64,7 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
 
@@ -86,6 +87,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
@@ -93,6 +95,7 @@
 #include "yb/util/ntp_clock.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
 
@@ -134,6 +137,10 @@ TAG_FLAG(master_tserver_svc_queue_length, advanced);
 DEFINE_NON_RUNTIME_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
+
+DEFINE_NON_RUNTIME_int32(master_ysql_lease_svc_queue_length, 1000,
+             "RPC queue length for master YSQL lease service");
+TAG_FLAG(master_ysql_lease_svc_queue_length, advanced);
 
 DEFINE_NON_RUNTIME_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
@@ -205,7 +212,7 @@ string Master::ToString() const {
   if (state_.load() != kRunning) {
     return "Master (stopped)";
   }
-  return strings::Substitute("Master@$0", yb::ToString(first_rpc_address()));
+  return Format("Master@$0", yb::ToString(first_rpc_address()));
 }
 
 Status Master::Init() {
@@ -216,6 +223,10 @@ Status Master::Init() {
   RETURN_NOT_OK(DbServerBase::Init());
 
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
+
+  WARN_NOT_OK(
+      ysql_manager_impl().CleanupStalePgUpgradeSocketDir(),
+      "Failed to clean up stale pg_upgrade socket directory");
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
@@ -281,7 +292,7 @@ const std::string& Master::permanent_uuid() const {
 void Master::SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) {
   async_client_init->builder()
       .set_master_address_flag_name("master_addresses")
-      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
+      .default_admin_operation_timeout(default_client_timeout())
       .AddMasterAddressSource([this] {
         return catalog_manager_->GetMasterAddresses();
   });
@@ -307,6 +318,9 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDclService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDdlService(this)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_ysql_lease_svc_queue_length, MakeMasterYsqlLeaseService(this),
+      rpc::ServicePriority::kHigh));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterEncryptionService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
@@ -526,6 +540,10 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
       return STATUS(NotFound, "No raft config found.");
   }
 
+  // Per-follower heartbeat delay; empty unless this master is the Raft leader.
+  const auto follower_heartbeat_delay_map =
+      catalog_manager_impl()->GetMasterFollowerHeartbeatDelaysMs();
+
   for (const RaftPeerPB& peer : cpb.config().peers()) {
     // Get all network addresses associated with this peer master
     std::vector<HostPort> addrs;
@@ -559,6 +577,13 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
       reg->mutable_private_rpc_addresses()->CopyFrom(peer.last_known_private_addr());
       reg->mutable_broadcast_addresses()->CopyFrom(peer.last_known_broadcast_addr());
     }
+
+    // Annotate with heartbeat delay when this master is the leader.
+    const auto it = follower_heartbeat_delay_map.find(peer.permanent_uuid());
+    if (it != follower_heartbeat_delay_map.end()) {
+      peer_entry.set_heartbeat_delay_ms(it->second);
+    }
+
     masters->push_back(peer_entry);
   }
 

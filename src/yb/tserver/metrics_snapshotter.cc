@@ -57,7 +57,6 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_defaults.h"
 
@@ -84,6 +83,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/safe_math.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"

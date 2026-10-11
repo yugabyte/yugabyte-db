@@ -32,6 +32,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("TEST_yb_test_table_rewrite_keep_old_table", "true");
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 
@@ -40,7 +41,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     // The test suite asserts for DML failing when run in concurrent to ALTER,
     // and doesn't expect proper wait-on behavior for DML-DDL interaction.
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("enable_object_locking_for_table_locks", "false");
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 

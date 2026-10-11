@@ -59,10 +59,11 @@ public class DevopsReleaseManifestTest {
           .build();
 
   private static final Set<String> PREFIXES_TO_SKIP =
-      ImmutableSet.of("build", "python_virtual_env", "tests", "third-party", "venv", ".idea");
+      ImmutableSet.of(
+          "build", "python_virtual_env", "tests", "third-party", "vars", "venv", ".idea");
 
   private static final Set<String> FILE_EXTENSIONS_TO_SKIP =
-      ImmutableSet.of("gitignore", "retry", "pyc", "orig");
+      ImmutableSet.of("gitignore", "retry", "pyc", "orig", "iml");
 
   @Test
   public void testReleaseManifestFiles() throws IOException {
@@ -101,7 +102,7 @@ public class DevopsReleaseManifestTest {
       String childPrefix =
           StringUtils.isEmpty(prefix) ? childDir.getName() : prefix + "/" + childDir.getName();
       if (PREFIXES_TO_SKIP.contains(childPrefix)) {
-        return;
+        continue;
       }
       checkDirectory(childPrefix, childDir, releaseManifestFiles);
     }

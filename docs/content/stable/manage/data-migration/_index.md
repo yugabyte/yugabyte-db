@@ -16,7 +16,7 @@ Migrating to YugabyteDB, a high-performance distributed SQL database, involves a
 
 ## YugabyteDB Voyager
 
-Yugabyte ships [YugabyteDB Voyager](/stable/yugabyte-voyager/), a comprehensive data migration tool designed specifically to help users migrate from traditional databases like PostgreSQL, Oracle, MySQL, and others to YugabyteDB. It offers a variety of features that make the migration process smoother, more reliable, and less error-prone.
+Yugabyte ships [YugabyteDB Voyager](/stable/yugabyte-voyager/), a comprehensive data migration tool designed specifically to help users migrate from PostgreSQL to YugabyteDB. (Offline migration from MySQL and Oracle is deprecated and will no longer be supported after October 13, 2026.) It offers a variety of features that make the migration process smoother, more reliable, and less error-prone.
 
 {{<lead link="/stable/yugabyte-voyager/migrate/">}}
 To learn more about how to methodically export using YB Voyager, see [Migrate](/stable/yugabyte-voyager/migrate/).

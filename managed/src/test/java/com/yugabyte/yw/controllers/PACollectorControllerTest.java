@@ -11,8 +11,10 @@ https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
@@ -25,10 +27,12 @@ import com.yugabyte.yw.common.pa.PerfAdvisorServiceTest;
 import com.yugabyte.yw.forms.PACollectorExt;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PACollector;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -101,6 +105,82 @@ public class PACollectorControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testRegisterUniverseRejectsOnlineWithoutEndpoint() throws IOException {
+    // The collector rejects this too, but failing here keeps the user out of a task that can only
+    // fail, and out of the memory precheck that would run first.
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      PACollector collector = registerCollector(server);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthToken(
+                      "PUT", registerUrl(universe, collector) + "?mode=ONLINE", authToken));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
+      assertThat(contentAsString(result), containsString("Perf Advisor Endpoint is required"));
+    }
+  }
+
+  @Test
+  public void testRegisterUniverseRejectsEndpointOutsideOnline() throws IOException {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      PACollector collector = registerCollector(server);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthToken(
+                      "PUT",
+                      registerUrl(universe, collector)
+                          + "?mode=ADVANCED&paEndpointUUID="
+                          + UUID.randomUUID(),
+                      authToken));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
+      assertThat(contentAsString(result), containsString("only applies to ONLINE mode"));
+    }
+  }
+
+  @Test
+  public void testRegisterUniverseRejectsUnknownMode() throws IOException {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      PACollector collector = registerCollector(server);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthToken(
+                      "PUT", registerUrl(universe, collector) + "?mode=SIDEWAYS", authToken));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
+      assertThat(contentAsString(result), containsString("Unknown registration mode"));
+    }
+  }
+
+  private PACollector registerCollector(MockWebServer server) {
+    HttpUrl baseUrl = server.url("/api/customer/" + customer.getUuid() + "/metadata");
+    PACollector collector =
+        PerfAdvisorServiceTest.createTestPlatform(
+            customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+    server.enqueue(
+        new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(collector)));
+    return perfAdvisorService.save(collector, false);
+  }
+
+  private String registerUrl(Universe universe, PACollector collector) {
+    return "/api/customers/"
+        + customer.getUuid()
+        + "/universes/"
+        + universe.getUniverseUUID()
+        + "/pa_collector/"
+        + collector.getUuid();
+  }
+
+  @Test
   public void testCreatePACollector() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
@@ -153,6 +233,88 @@ public class PACollectorControllerTest extends FakeDBApplication {
       assertThat(queriedPlatform.getPaUrl(), equalTo(platform.getPaUrl()));
       assertThat(queriedPlatform.getYbaUrl(), equalTo(platform.getYbaUrl()));
       assertThat(queriedPlatform.getMetricsUrl(), equalTo(platform.getMetricsUrl()));
+    }
+  }
+
+  @Test
+  public void testCreatePACollectorRejectsEmbeddedFlag() throws IOException {
+    // The embedded flag on PACollector marks the collector managed by
+    // PACollectorSync. External API callers must not be able to set it -
+    // otherwise a client could impersonate the embedded collector and confuse
+    // PACollectorSync's lookup after an HA restore.
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
+              customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+      platform.setEmbedded(true);
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthTokenAndBody(
+                      "POST",
+                      "/api/customers/" + customer.getUuid() + "/pa_collector",
+                      authToken,
+                      Json.toJson(platform)));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
+    }
+  }
+
+  @Test
+  public void testEditPACollectorRejectsFlippingEmbeddedFlag() throws IOException {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
+              customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+      server.enqueue(
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform)));
+      perfAdvisorService.save(platform, false);
+
+      platform.setEmbedded(true);
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthTokenAndBody(
+                      "PUT",
+                      "/api/customers/"
+                          + customer.getUuid()
+                          + "/pa_collector/"
+                          + platform.getUuid(),
+                      authToken,
+                      Json.toJson(platform)));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
+    }
+  }
+
+  @Test
+  public void testDeletePACollectorRejectsEmbedded() throws IOException {
+    // Embedded collector is fully owned by PACollectorSync, so DELETE via the
+    // API is blocked (it would just get recreated on the next initializer tick).
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
+              customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+      platform.setEmbedded(true);
+      server.enqueue(
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform)));
+      perfAdvisorService.save(platform, false);
+
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthToken(
+                      "DELETE",
+                      "/api/customers/"
+                          + customer.getUuid()
+                          + "/pa_collector/"
+                          + platform.getUuid(),
+                      authToken));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
     }
   }
 

@@ -1,0 +1,7 @@
+required: true
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/NodeAgentUpgradeSpec.yaml"
+x-yba-api-since: 2025.2.7.0
+x-yba-api-visibility: preview

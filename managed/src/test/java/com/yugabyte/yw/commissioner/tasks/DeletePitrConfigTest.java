@@ -29,13 +29,13 @@ import org.yb.CommonTypes;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 public class DeletePitrConfigTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private PitrConfig pitrConfig;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private Users defaultUser;
 
   @Before
@@ -55,7 +55,7 @@ public class DeletePitrConfigTest extends CommissionerBaseTest {
 
     pitrConfig = PitrConfig.create(defaultUniverse.getUniverseUUID(), createParams);
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
   }
 
   private DeletePitrConfig.Params createParams() {

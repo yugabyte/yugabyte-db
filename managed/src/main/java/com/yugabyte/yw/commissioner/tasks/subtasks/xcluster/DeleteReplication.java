@@ -14,7 +14,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.MasterErrorException;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
@@ -63,7 +63,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
         taskParams().ignoreErrors || xClusterConfig.getSourceUniverseUUID() == null;
 
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(targetUniverse)) {
 
       if (xClusterConfig.getType() != ConfigType.Db) {
         // Sync the state for the tables.

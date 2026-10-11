@@ -10,12 +10,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,7 +58,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.client.YbcClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
@@ -72,6 +74,13 @@ import play.inject.guice.GuiceApplicationBuilder;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateBackupTest extends CommissionerBaseTest {
+
+  // Verified safe to reuse the application across this class' methods (green strict-stubs + green
+  // assertions) despite the strict MockitoJUnitRunner. See reuseAppDespiteStrictMockito().
+  @Override
+  protected boolean reuseAppDespiteStrictMockito() {
+    return true;
+  }
 
   private Universe defaultUniverse;
   private CustomerConfig storageConfig;
@@ -147,12 +156,12 @@ public class CreateBackupTest extends CommissionerBaseTest {
     tableInfoList1.add(ti1);
     tableInfoList2.add(ti3);
     tableInfoList2.add(ti4);
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     GetTableSchemaResponse mockSchemaResponse1 = mock(GetTableSchemaResponse.class);
     GetTableSchemaResponse mockSchemaResponse2 = mock(GetTableSchemaResponse.class);
     GetTableSchemaResponse mockSchemaResponse3 = mock(GetTableSchemaResponse.class);
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
@@ -556,5 +565,94 @@ public class CreateBackupTest extends CommissionerBaseTest {
       assertEquals(
           "enableBackupsDuringDDL should be true", true, enableBackupsDuringDDLNode.booleanValue());
     }
+  }
+
+  @Test
+  public void testBackupEntryNotCreatedWhenStorageConfigPreCheckFails()
+      throws InterruptedException {
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, "true");
+    defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
+
+    // Enable YBC so that the storage config pre-check validation runs.
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.setYbcInstalled(true);
+          universeDetails.setEnableYbc(true);
+          u.setUniverseDetails(universeDetails);
+        });
+
+    // Simulate an unusable storage config during asynchronous task execution.
+    Mockito.doThrow(new RuntimeException("Invalid storage config"))
+        .when(mockBackupHelper)
+        .validateStorageConfigForBackupOnUniverse(any(CustomerConfig.class), any(Universe.class));
+
+    BackupRequestParams params = new BackupRequestParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.customerUUID = defaultCustomer.getUuid();
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
+    params.storageConfigUUID = storageConfig.getConfigUUID();
+
+    UUID taskUUID = commissioner.submit(TaskType.CreateBackup, params);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                subTask ->
+                    subTask.getTaskType().equals(TaskType.BackupStorageConfigValidate)
+                        && subTask.getTaskState().equals(Failure)
+                        && subTask.getTaskError() != null
+                        && subTask.getTaskError().getMessage().contains("Invalid storage config")));
+    assertEquals(
+        0,
+        Backup.fetchByUniverseUUID(defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID())
+            .size());
+    verify(mockBackupHelper, times(1))
+        .validateStorageConfigForBackupOnUniverse(any(CustomerConfig.class), any(Universe.class));
+  }
+
+  @Test
+  public void testBackupEntryNotCreatedWhenYbaStorageConfigPreCheckFails()
+      throws InterruptedException {
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, "true");
+    defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
+
+    Mockito.doThrow(new RuntimeException("Storage config credentials cannot list objects"))
+        .when(mockBackupHelper)
+        .validateStorageConfig(any(CustomerConfig.class));
+
+    BackupRequestParams params = new BackupRequestParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.customerUUID = defaultCustomer.getUuid();
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
+    params.storageConfigUUID = storageConfig.getConfigUUID();
+
+    UUID taskUUID = commissioner.submit(TaskType.CreateBackup, params);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                subTask ->
+                    subTask.getTaskType().equals(TaskType.BackupStorageConfigValidate)
+                        && subTask.getTaskState().equals(Failure)
+                        && subTask.getTaskError() != null
+                        && subTask
+                            .getTaskError()
+                            .getMessage()
+                            .contains("Storage config credentials cannot list objects")));
+    assertEquals(
+        0,
+        Backup.fetchByUniverseUUID(defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID())
+            .size());
+    verify(mockBackupHelper, times(1)).validateStorageConfig(any(CustomerConfig.class));
+    verify(mockBackupHelper, never())
+        .validateStorageConfigForBackupOnUniverse(any(CustomerConfig.class), any(Universe.class));
   }
 }

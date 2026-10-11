@@ -87,6 +87,7 @@ YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
+YB_STRONGLY_TYPED_BOOL(IncludeVectorIndexes);
 YB_STRONGLY_TYPED_BOOL(VectorIndexOnly);
 
 enum class FlushFlags {
@@ -98,6 +99,14 @@ enum class FlushFlags {
   kVectorIndexes = 8,
 
   kAllDbs = kRegular | kIntents | kVectorIndexes
+};
+
+// Selects which of the three CDC retention barriers a revision request should move.
+// The default moves all of them, as was always done before per-barrier selection was added.
+struct CDCRetentionBarrierMoveSelector {
+  bool move_cdc_min_replicated_index = true;
+  bool move_cdc_sdk_min_checkpoint_op_id = true;
+  bool move_cdc_sdk_safe_time = true;
 };
 
 } // namespace yb::tablet

@@ -19,6 +19,5 @@ step s1_commit { COMMIT; }
 session s2
 step s2_insert { INSERT INTO test VALUES (1, 1); }
 
-# TODO(#29328): Enable the test permutation with the 2nd s1_select
-# permutation s1_begin_rr s1_select s2_insert s1_drop_table_test2 s1_select s1_commit
+permutation s1_begin_rr s1_select s2_insert s1_drop_table_test2 s1_select s1_commit
 permutation s1_begin_rr s1_select s2_insert s1_drop_table_test2 s1_commit

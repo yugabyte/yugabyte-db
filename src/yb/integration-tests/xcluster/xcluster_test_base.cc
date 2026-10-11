@@ -43,6 +43,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_poller.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
@@ -535,8 +536,42 @@ Status XClusterTestBase::GetCDCStreamForTable(
       return false;
     }
     Status s = (*leader_mini_master)->catalog_manager().ListCDCStreams(&req, resp);
-    return s.ok() && !resp->has_error() && resp->streams_size() == 1;
+    if (!s.ok() || resp->has_error()) {
+      return false;
+    }
+
+    // Remove the WAL anchor streams.
+    for (int i = resp->streams_size() - 1; i >= 0; --i) {
+      if (resp->streams(i).xcluster_is_wal_anchor()) {
+        resp->mutable_streams()->DeleteSubrange(i, 1);
+      }
+    }
+
+    return resp->streams_size() == 1;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
+}
+
+Status XClusterTestBase::WaitForConsumerPollersToSleep(
+    const std::unordered_set<TabletId>& producer_tablet_ids, MonoDelta timeout) {
+  return LoggedWaitFor(
+      [this, &producer_tablet_ids]() -> Result<bool> {
+        std::unordered_set<TabletId> sleeping;
+        for (const auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+          auto* tserver = mini_tserver->server();
+          tserver::XClusterConsumerIf* xcluster_consumer;
+          if (!tserver || !(xcluster_consumer = tserver->GetXClusterConsumer())) {
+            continue;
+          }
+          for (const auto& poller : xcluster_consumer->TEST_ListPollers()) {
+            const auto& tablet_id = poller->GetProducerTabletInfo().tablet_id;
+            if (producer_tablet_ids.contains(tablet_id) && poller->TEST_Is_Sleeping()) {
+              sleeping.insert(tablet_id);
+            }
+          }
+        }
+        return sleeping.size() == producer_tablet_ids.size();
+      },
+      timeout, "Wait for consumer pollers to sleep on simulated lag");
 }
 
 uint32_t XClusterTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {

@@ -24,6 +24,7 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 DECLARE_bool(TEST_running_test);

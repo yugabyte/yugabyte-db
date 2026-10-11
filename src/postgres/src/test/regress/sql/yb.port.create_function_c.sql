@@ -16,12 +16,7 @@
 -- Check LOAD command.  (The alternative of implicitly loading the library
 -- is checked in many other test scripts.)
 --
--- TODO Not yet supported in YB.
--- Until it is supported, commenting out the original query and replacing
--- with a stub because the error message contains the local path.
--- (The query will currently fail before processing the path argument anyway.)
--- LOAD :'regresslib';
-LOAD 'regress.so';
+LOAD :'regresslib';
 
 -- Things that shouldn't work:
 

@@ -1,0 +1,6 @@
+# src/test/regress/yb_pg_subscription_schedule
+#
+####################################################################################################
+# Postgres Testsuites: This suite includes tests on subscription statements.
+####################################################################################################
+test: subscription

@@ -14,8 +14,10 @@
 #pragma once
 
 #include <chrono>
+#include <string_view>
 #include <thread>
 
+#include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -168,5 +170,16 @@ Status LoggedWaitFor(
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
     double delay_multiplier = kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(kDefaultMaxWaitDelayMs));
+
+// Busy-waits until `is_done()` returns true, sleeping `poll_interval` between checks. Unlike the
+// Wait/WaitFor family above, this wait is unbounded - there is no deadline - so use it only when
+// the condition is guaranteed to eventually hold. Once the wait has been outstanding for
+// `warn_after`, logs a warning tagged with `description` every `warn_after`, so that a stuck wait
+// is visible in the logs. `description` should read naturally after "still waiting for ".
+void BusyWait(
+    const LWFunction<bool()>& is_done,
+    std::string_view description,
+    MonoDelta poll_interval = MonoDelta::FromMilliseconds(10),
+    MonoDelta warn_after = MonoDelta::FromSeconds(1));
 
 } // namespace yb

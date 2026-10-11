@@ -42,6 +42,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
 namespace yb {
@@ -73,8 +74,14 @@ std::string Operation::LogPrefix() const {
 }
 
 std::string Operation::ToString() const {
+  auto ht = hybrid_time_even_if_unset();
+  // ConsensusRound::ToString() calls ShortDebugString() on the replicate_msg_ proto, while
+  // Operation::AddedToLeader() modifies replicate_msg_ (op id, committed op id, hybrid time)
+  // under mutex_, so format under mutex_ to avoid a data race.
+  // hybrid_time_even_if_unset() is EXCLUDES(mutex_), so read it before locking.
+  std::lock_guard l(mutex_);
   return Format("{ type: $0 consensus_round: $1 ht: $2 }",
-                operation_type(), consensus_round(), hybrid_time_even_if_unset());
+                operation_type(), consensus_round(), ht);
 }
 
 Status Operation::Replicated(int64_t leader_term, WasPending was_pending) {

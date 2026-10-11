@@ -50,8 +50,11 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/util/compare_util.h"
 #include "yb/util/env.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status.h"
@@ -129,7 +132,7 @@ struct LogEntryMetadata {
   }
 };
 
-// A sequence of segments, ordered by increasing sequence number.
+// A sequence of log entries, ordered by increasing sequence number.
 using LogEntries = std::vector<std::shared_ptr<LWLogEntryPB>>;
 
 struct ReadEntriesResult {

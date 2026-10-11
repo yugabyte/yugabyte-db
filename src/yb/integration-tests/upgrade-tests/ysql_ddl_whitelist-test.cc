@@ -11,12 +11,11 @@
 // under the License.
 //
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_string(allowed_preview_flags_csv);
 
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_bool(TEST_ysql_require_force_catalog_modifications);
 
@@ -35,8 +34,7 @@ class YsqlDdlWhitelistTest : public pgwrapper::PgMiniTestBase {
   void SetUp() override {
     // TODO(#28742): Fix interaction of ysql_yb_ddl_transaction_block_enabled with
     // yb_force_catalog_update_on_next_ddl. For now, disable table locks for this test.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     pgwrapper::PgMiniTestBase::SetUp();
   }
 };

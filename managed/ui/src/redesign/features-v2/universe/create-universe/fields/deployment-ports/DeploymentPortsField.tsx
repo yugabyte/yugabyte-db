@@ -9,7 +9,7 @@
  */
 
 import { FC } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, Controller } from 'react-hook-form';
 import { mui, YBInput } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
@@ -18,23 +18,23 @@ import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, styled, Typography } = mui;
 
 const MAX_PORT = 65535;
 interface DeploymentPortsProps {
-  disabled: boolean;
   providerCode: string;
   ysql: boolean;
   ycql: boolean;
   enableConnectionPooling?: boolean;
+  isEditMode?: boolean;
 }
 
 const PortContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
-  width: '800px',
+  width: '734px',
   padding: theme.spacing(3),
   gap: theme.spacing(4),
   borderRadius: '8px',
@@ -62,18 +62,27 @@ const StyledLabelIcon = styled(Box)(({ theme }) => ({
 }));
 
 export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
-  disabled,
   ysql,
   ycql,
   providerCode,
-  enableConnectionPooling
+  enableConnectionPooling,
+  isEditMode
 }) => {
-  const { control } = useFormContext<OtherAdvancedProps>();
+  const {
+    formState: { errors, isSubmitted }
+  } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
   });
 
-  const PORT_GROUPS = getAccessiblePorts(ysql, ycql, providerCode, enableConnectionPooling, t);
+  const PORT_GROUPS = getAccessiblePorts(
+    ysql,
+    ycql,
+    providerCode,
+    enableConnectionPooling,
+    t,
+    isEditMode
+  );
 
   return (
     <PortContainer>
@@ -84,23 +93,48 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
             <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '24px' }}>
               <NextLineIcon />
               <Box
-                sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: '16px'
+                }}
               >
-                {pg.PORTS_LIST.map((item) => (
+                {pg.PORTS_LIST.map((item: any) => (
                   <Controller
                     name={item.id}
                     render={({ field: { value, onChange } }) => {
+                      const fieldError = errors[item.id as keyof OtherAdvancedProps];
+                      const showError = isSubmitted && !!fieldError;
                       return (
                         <YBInput
+                          sx={{ width: 180 }}
                           value={value}
                           onChange={onChange}
                           label={
                             <StyledLabelIcon>
                               <span>{t(item.id)}</span>
-                              <InfoIcon />
+                              {/* <InfoIcon /> */}
                             </StyledLabelIcon>
                           }
-                          helperText={'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}
+                          error={showError}
+                          helperText={
+                            showError ? (
+                              (fieldError as { message?: string })?.message
+                            ) : (
+                              <>
+                                {'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}{' '}
+                                {item?.helperText ? (
+                                  <>
+                                    <br />
+                                    <Trans i18nKey={`${item.id}Helper`} t={t} />
+                                  </>
+                                ) : (
+                                  <></>
+                                )}
+                              </>
+                            )
+                          }
                           dataTestId={`deployment-ports-field-${item.id}`}
                           onBlur={(event) => {
                             let port =
@@ -110,7 +144,7 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                             onChange(port);
                           }}
                           defaultValue={DEFAULT_COMMUNICATION_PORTS[item.id]}
-                          // trimWhitespace={false}
+                          disabled={item.disabled}
                         />
                       );
                     }}

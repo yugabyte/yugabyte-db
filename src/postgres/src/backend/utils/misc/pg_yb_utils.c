@@ -53,6 +53,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_aggregate.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
@@ -97,7 +98,7 @@
 #include "commands/yb_cmds.h"
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/execdesc.h"
 #include "executor/spi.h"
 #include "executor/ybExpr.h"
@@ -136,6 +137,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
@@ -153,6 +155,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_dist_trace.h"
 #include "yb_internal_conn.h"
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
@@ -160,6 +163,26 @@
 static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_last_known_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+
+/*
+ * Set when this session commits a transaction that bumped the catalog version. The next DDL that
+ * is going to bump it again clears the flag and calls
+ * YbWaitForMasterCatalogPrefetchDrain() before executing, so that DDL does not start until the
+ * master has worked through the prefetches the earlier bump caused.
+ *
+ * The flag records that this session bumped the version. It does not record whether the master is
+ * still serving the prefetches that bump caused -- by the time the next DDL arrives the master may
+ * have finished them. That is what the wait itself checks: it reads the load level the master
+ * reports and returns immediately if it is below busy.
+ *
+ * A session that bumps and then issues no further DDL never waits, and load caused by other
+ * sessions never delays this one -- that is bounded on the master side, by admission control.
+ *
+ * Nothing resets this between logical connections, so under the connection manager a bump made by
+ * one of them arms the next to share a backend. That is the behaviour we want: the wave is the
+ * node's either way, and whoever runs the next DDL is the one about to add to it.
+ */
+static bool yb_catalog_prefetch_wave_pending = false;
 
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static bool yb_need_invalidate_all_table_cache = false;
@@ -180,7 +203,7 @@ static int YbGetNumRollbackToSavepointStmts();
 static bool YBIsCurrentStmtCreateFunction();
 
 static void yb_maybe_test_fail_ddl(void);
-static bool YbCanSkipIntentsRead(Relation rel);
+static YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoRead(Relation rel);
 
 uint64_t
 YBGetActiveCatalogCacheVersion()
@@ -375,7 +398,6 @@ int			ybc_disable_pg_locking = -1;
 
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
-static void YbMaybeDisableSkipIntentsForCurrentTxn(Relation rel);
 
 bool		yb_enable_docdb_tracing = false;
 bool		yb_enable_spi_dist_tracing = true;
@@ -826,7 +848,8 @@ bool
 YbNeedAdditionalCatalogTables()
 {
 	return (*YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
-			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list));
+			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
+			YbCatalogPreloadCacheListIsSet());
 }
 
 static const char *
@@ -850,115 +873,6 @@ FetchUniqueConstraintName(Oid relation_id)
 
 	RelationClose(rel);
 	return name;
-}
-
-/*
- * GetStatusMsgAndArgumentsByCode - get error message arguments out of the
- * status codes
- *
- * We already have cases when DocDB returns status with SQL code and
- * relation Oid, but without error message, assuming the message is generated
- * on Postgres side, with relation name retrieved by Oid. We have to keep
- * the functionality for backward compatibility.
- *
- * Same approach can be used for similar cases, when status is originated from
- * DocDB: by known SQL code the function may set or amend the error message and
- * message arguments.
- */
-void
-GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
-							   const char **msg_buf, size_t *msg_nargs,
-							   const char ***msg_args, const char **detail_buf,
-							   size_t *detail_nargs, const char ***detail_args,
-							   const char **detail_log_buf,
-							   size_t *detail_log_nargs,
-							   const char ***detail_log_args)
-{
-	const char *status_msg = YBCMessageAsCString(s);
-	size_t		status_nargs;
-	const char **status_args = YBCStatusArguments(s, &status_nargs);
-
-
-	/* Initialize message and detail buffers with default values */
-	*msg_buf = status_msg;
-	*msg_nargs = status_nargs;
-	*msg_args = status_args;
-	*detail_buf = NULL;
-	*detail_nargs = 0;
-	*detail_args = NULL;
-	*detail_log_buf = NULL;
-	*detail_log_nargs = 0;
-	*detail_log_args = NULL;
-	elog(DEBUG2, "status_msg=%s pg_err_code=%d", status_msg, pg_err_code);
-
-	switch (pg_err_code)
-	{
-		case ERRCODE_UNIQUE_VIOLATION:
-			*msg_buf = "duplicate key value violates unique constraint \"%s\"";
-			*msg_nargs = 1;
-			*msg_args = (const char **) palloc(sizeof(const char *));
-			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
-			break;
-		case ERRCODE_YB_TXN_ABORTED:
-			*msg_buf = "current transaction is expired or aborted";
-			*msg_nargs = 0;
-			*msg_args = NULL;
-
-			*detail_buf = status_msg;
-			*detail_nargs = status_nargs;
-			*detail_args = status_args;
-			break;
-		case ERRCODE_YB_TXN_CONFLICT:
-			*msg_buf = "could not serialize access due to concurrent update";
-			*msg_nargs = 0;
-			*msg_args = NULL;
-
-			*detail_buf = status_msg;
-			*detail_nargs = status_nargs;
-			*detail_args = status_args;
-			break;
-		case ERRCODE_YB_RESTART_READ:
-			*msg_buf = "Restart read required";
-			*msg_nargs = 0;
-			*msg_args = NULL;
-
-			/*
-			 * Read restart errors occur when writes fall within the uncertianty
-			 * interval [read_time, global_limit).
-			 *
-			 * Moreover, read_time can be less than the current time since it
-			 * is picked as the docdb tablet's safe time as an optimization in
-			 * some cases.
-			 *
-			 * As a consequence, read_time may be lower than the commit time of the
-			 * previous transaction from the same session.
-			 *
-			 * In this case, a read restart error may be issued to move the read
-			 * time past the commit time.
-			 *
-			 * To capture such cases, print the start time of the statement. This
-			 * allows comparison between the start time and the original read time.
-			 */
-			*detail_log_buf = psprintf("%s, stmt_start_time: %s, txn_start_time: %s, iso:%d",
-									   status_msg,
-									   timestamptz_to_str(GetCurrentStatementStartTimestamp()),
-									   timestamptz_to_str(GetCurrentTransactionStartTimestamp()),
-									   XactIsoLevel);
-			*detail_log_nargs = status_nargs;
-			*detail_log_args = status_args;
-			break;
-		case ERRCODE_YB_DEADLOCK:
-			*msg_buf = "deadlock detected";
-			*msg_nargs = 0;
-			*msg_args = NULL;
-
-			*detail_buf = status_msg;
-			*detail_nargs = status_nargs;
-			*detail_args = status_args;
-			break;
-		default:
-			break;
-	}
 }
 
 void
@@ -1131,6 +1045,8 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 						   YbSwitchPgGateMemoryContext, YbCreatePgGateMemoryContext,
 						   YbDeletePgGateMemoryContext));
 
+	YbRefreshOriginationTime();
+
 	/*
 	 * Enable "YB mode" for PostgreSQL so that we will initiate a connection
 	 * to the YugaByte cluster right away from every backend process. We only
@@ -1150,7 +1066,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
-			.CheckForInterrupts = &YBCheckForInterrupts,
+			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.IsInParallelMode = &IsInParallelMode,
 		};
 
@@ -1206,7 +1122,10 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			hex_encode((const char *) YbGetLocalTServerUuid(), UUID_LEN, hex_uuid);
 			hex_uuid[2 * UUID_LEN] = '\0';
 
-			YBCInitDistTrace(MyProcPid, hex_uuid);
+			YBCInitDistTrace(hex_uuid);
+
+			/* Hooks that close node spans left open by a query abort. */
+			YbDistTraceInstallExecutorHooks();
 		}
 	}
 }
@@ -1214,23 +1133,19 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 void
 YBOnPostgresBackendShutdown()
 {
-	YBCDestroyPgGate();
-
 	if (YBCIsDistTraceEnabled())
-		YBCCleanupDistTrace();
+		YBCShutdownDistTrace();
+
+	YBCDestroyPgGate();
 }
 
 void
 YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 {
-	if (!YbIsInvalidationMessageEnabled())
-		return;
-
 	/*
-	 * When incremental catalog cache is enabled, we want to wait
-	 * for the yb_new_catalog_version to propagate to shared
-	 * memory of this node to allow proper ordering of the following
-	 * scenario:
+	 * We want to wait for 'version' to propagate to shared memory of this
+	 * node. One reason is to allow proper ordering of the following
+	 * scenario when incremental catalog cache refresh is enabled:
 	 * SELECT * FROM foo;
 	 * \! ysqlsh -f ddl_script.sql
 	 * SELECT * FROM foo;
@@ -1252,6 +1167,11 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 	 * we avoid the above ERROR because now we ask for inval messages
 	 * of version 2, 3, 4, 5 and the read RPC of the second SELECT will
 	 * not see the ERROR as described above.
+	 *
+	 * Another reason is YSQL connection manager: a logical connection can
+	 * run its next statement on a different physical backend of this node,
+	 * and that backend learns about catalog changes from shared memory. See
+	 * the caller in YBCommitTransactionContainingDDL.
 	 */
 	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
 
@@ -1291,11 +1211,14 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 		shared_catalog_version = YbGetSharedCatalogVersion();
 	}
 	if (shared_catalog_version >= version)
-		ereport(LOG,
-				(errmsg("shared catalog version has reached %" PRIu64,
-						shared_catalog_version),
-				 errhidestmt(true),
-				 errhidecontext(true)));
+	{
+		if (count > 0)
+			ereport(LOG,
+					(errmsg("shared catalog version has reached %" PRIu64,
+							shared_catalog_version),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+	}
 	else
 		ereport(WARNING,
 				(errmsg("shared catalog version %" PRIu64 " has not reached %" PRIu64,
@@ -1355,6 +1278,22 @@ typedef struct
 	NodeTag		current_stmt_node_tag;
 	CommandTag	current_stmt_ddl_command_tag;
 	CommandTag	last_stmt_ddl_command_tag;
+	/*
+	 * Command tag of the last top-level DDL statement of this DDL transaction.
+	 * Unlike current_stmt_ddl_command_tag, this is only set for DDL statements
+	 * arriving with context PROCESS_UTILITY_TOPLEVEL, so subcommands that the
+	 * statement executes through SPI (for example the DDLs issued by an event
+	 * trigger function) do not overwrite it. Used for reporting only.
+	 */
+	CommandTag	top_level_stmt_ddl_command_tag;
+	/*
+	 * Command tags of the statements that first made this DDL transaction a
+	 * global-impact DDL and a breaking change. A top-level statement can
+	 * acquire either aspect from a subcommand it executes, so these record
+	 * which statement is responsible. Used for reporting only.
+	 */
+	CommandTag	global_ddl_command_tag;
+	CommandTag	breaking_ddl_command_tag;
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
@@ -1368,6 +1307,16 @@ typedef struct
 	 * transaction block. Only used when ddl transaction block is enabled.
 	 */
 	int			num_rollback_to_savepoint_stmts;
+	/*
+	 * This indicates whether we need to increment logical client version at
+	 * commit. This is needed by Connection Manager to handle `ALTER ... SET`
+	 * commands and is irrelevant when it is disabled.
+	 * Note that we don't handle savepoint rollbacks here i.e. we don't unset
+	 * it when we rollback to a savepoint. This is fine since an additional
+	 * logical client version bump will only cause a recycling of backends used
+	 * by Connection Manager, and that is harmless.
+	 */
+	bool increment_logical_client_version;
 	/*
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
@@ -2291,6 +2240,7 @@ bool		yb_enable_nop_alter_role_optimization = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
+bool		yb_enable_xcluster_analyze_replication = false;
 
 /* Deprecated; see pg_yb_utils.h. Value is not read for lock behavior. */
 bool		yb_silence_advisory_locks_not_supported_error = false;
@@ -2298,6 +2248,7 @@ bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 8192;
+int			yb_ddl_wait_for_master_prefetch_drain_ms = 30000;
 bool		yb_enable_parallel_scan_colocated = true;
 bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
@@ -2306,7 +2257,7 @@ bool        yb_test_make_all_ddl_statements_incrementing = false;
 bool		yb_always_increment_catalog_version_on_ddl = true;
 bool		yb_enable_negative_catcache_entries = true;
 bool		yb_enable_new_relation_fastpath_write = true;
-bool		yb_enable_new_relation_fastpath_write_in_txn_blocks = false;
+bool		yb_enable_new_relation_fastpath_write_in_txn_blocks = kEnableDdlTransactionBlocks;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -2327,7 +2278,7 @@ YbQpmConfiguration yb_qpm_configuration = {
 	.plan_format = EXPLAIN_FORMAT_JSON,
 	.verbose_plans = false,
 	.compress_text = true,
-	.show_max_exec_params = false
+	.show_max_exec_params = true
 };
 
 bool		yb_speculatively_execute_pl_statements = false;
@@ -2395,6 +2346,7 @@ int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
 double		yb_test_delay_next_ddl = 0;
 int			yb_test_reset_retry_counts = -1;
 int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
+bool		yb_test_walsender_keepalive_after_each_record = false;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -2654,16 +2606,7 @@ YBResetDdlState()
 bool
 YBIsDdlTransactionBlockEnabled()
 {
-	bool		enabled = yb_ddl_transaction_block_enabled;
-
-	if (!IsYBReadCommitted())
-		return enabled;
-
-	/*
-	 * For READ COMMITTED isolation, also check if DDL transaction support has
-	 * been explicitly disabled.
-	 */
-	return enabled && !yb_disable_ddl_transaction_block_for_read_committed;
+	return YBCIsDdlTransactionBlockEnabled();
 }
 
 int
@@ -2682,6 +2625,24 @@ CommandTag
 YBGetCurrentStmtDdlCommandTag()
 {
 	return ddl_transaction_state.current_stmt_ddl_command_tag;
+}
+
+CommandTag
+YBGetTopLevelStmtDdlCommandTag()
+{
+	return ddl_transaction_state.top_level_stmt_ddl_command_tag;
+}
+
+CommandTag
+YBGetGlobalDdlCommandTag()
+{
+	return ddl_transaction_state.global_ddl_command_tag;
+}
+
+CommandTag
+YBGetBreakingDdlCommandTag()
+{
+	return ddl_transaction_state.breaking_ddl_command_tag;
 }
 
 bool
@@ -2703,17 +2664,33 @@ YBGetDdlUseRegularTransactionBlock()
 }
 
 void
-YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
-								  CommandTag commandTag)
+YBGetDdlOriginalStmtState(YbDdlOriginalStmtState *state)
 {
-	ddl_transaction_state.current_stmt_node_tag = nodeTag;
-	ddl_transaction_state.current_stmt_ddl_command_tag = commandTag;
+	state->node_tag = ddl_transaction_state.current_stmt_node_tag;
+	state->command_tag = ddl_transaction_state.current_stmt_ddl_command_tag;
+	state->is_top_level_ddl_active = ddl_transaction_state.is_top_level_ddl_active;
+}
+
+void
+YBSetDdlOriginalStmtState(const YbDdlOriginalStmtState *state)
+{
+	ddl_transaction_state.current_stmt_node_tag = state->node_tag;
+	ddl_transaction_state.current_stmt_ddl_command_tag = state->command_tag;
+	ddl_transaction_state.is_top_level_ddl_active = state->is_top_level_ddl_active;
 }
 
 void
 YbSetIsGlobalDDL()
 {
 	ddl_transaction_state.is_global_ddl = true;
+	/*
+	 * Remember which statement made this DDL global-impact. Only the first one
+	 * is recorded: that is the statement that introduced the global impact,
+	 * the ones after it merely inherit it.
+	 */
+	if (ddl_transaction_state.global_ddl_command_tag == CMDTAG_UNKNOWN)
+		ddl_transaction_state.global_ddl_command_tag =
+			ddl_transaction_state.current_stmt_ddl_command_tag;
 }
 
 static bool
@@ -2791,7 +2768,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
-	Assert(yb_ddl_transaction_block_enabled);
+	Assert(YBIsDdlTransactionBlockEnabled());
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
@@ -2857,7 +2834,7 @@ YBAddDdlTxnState(YbDdlMode mode)
 void
 YBMergeDdlTxnState()
 {
-	Assert(yb_ddl_transaction_block_enabled);
+	Assert(YBIsDdlTransactionBlockEnabled());
 
 	const bool	has_change = YbHasDdlMadeChanges();
 	MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
@@ -3076,7 +3053,118 @@ YbCheckNewLocalCatalogVersionOptimization()
 		 * latest version is >= x + 2, let's wait for shared memory to catch up
 		 * to x + 2.
 		 */
-		YbWaitForSharedCatalogVersionToCatchup(new_version);
+		if (YbIsInvalidationMessageEnabled())
+			YbWaitForSharedCatalogVersionToCatchup(new_version);
+	}
+}
+
+#define YB_PREFETCH_DRAIN_POLL_MS 100
+
+static const char *
+YbCatalogPrefetchLoadName(YbCatalogPrefetchLoad load)
+{
+	switch (load)
+	{
+		case YB_CATALOG_PREFETCH_LOAD_UNKNOWN:
+			return "unknown";
+		case YB_CATALOG_PREFETCH_LOAD_LOW:
+			return "low";
+		case YB_CATALOG_PREFETCH_LOAD_BUSY:
+			return "busy";
+		case YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY:
+			return "super busy";
+	}
+	return "invalid";
+}
+
+/*
+ * Wait for the master leader to work through the catalog prefetches the previous catalog version
+ * bump caused, before letting this session cause another one.
+ *
+ * Every bump invalidates the cached prefetch on every tserver, so the next connection on each of
+ * them goes to the leader for a fresh copy of the catalog. The version is part of that cache's
+ * key, so a second bump before the first wave drains does not replace that work, it adds to it:
+ * each node ends up fetching a separate snapshot per version, of which only the newest is of any
+ * use. A run of DDLs issued back to back multiplies the load on the leader accordingly.
+ *
+ * Called at the start of a DDL that is going to bump the version, rather than after the previous
+ * one committed. Waiting at the end would run inside the HOLD_INTERRUPTS window around commit,
+ * where neither a cancel nor statement_timeout can be serviced, and would hold the committing
+ * transaction's heavyweight locks and its pending invalidations for the length of the wait. Here
+ * the wait is interruptible and statement_timeout bounds it, and the DDL that ends a script does
+ * not make any later statement wait.
+ *
+ * The caller only calls this when this session is the one that bumped, so a session is never
+ * delayed for load another session caused -- that is bounded on the master side instead, by
+ * admission control. What this paces is a migration running DDLs in a row, whether as separate
+ * statements or as a run of transaction blocks.
+ *
+ * The wait is capped, and is never fatal: if the leader is still busy when the cap is reached the
+ * session simply carries on.
+ *
+ * The level this reads is only as fresh as the last heartbeat. Reading it from the master directly
+ * instead would cost an RPC on every DDL.
+ */
+void
+YbWaitForMasterCatalogPrefetchDrain(void)
+{
+	int			max_count;
+	int			count = 0;
+	YbCatalogPrefetchLoad load;
+
+	if (yb_ddl_wait_for_master_prefetch_drain_ms <= 0)
+		return;
+
+	/* Round up, so that a setting below one poll interval still waits once. */
+	max_count = (yb_ddl_wait_for_master_prefetch_drain_ms / YB_PREFETCH_DRAIN_POLL_MS +
+				 (yb_ddl_wait_for_master_prefetch_drain_ms % YB_PREFETCH_DRAIN_POLL_MS != 0));
+	load = (YbCatalogPrefetchLoad) YBCGetSharedYsqlCatalogPrefetchLoad();
+
+	while (load >= YB_CATALOG_PREFETCH_LOAD_BUSY)
+	{
+		/*
+		 * Super busy means the leader is refusing even the reads that continue a prefetch it has
+		 * already begun, so it is discarding work it has done rather than merely refusing new
+		 * work. Adding a wave to that is worse than adding one to a leader that is only past the
+		 * new-prefetch watermark, so allow twice as long to get out of its way. The budget
+		 * follows the level as it changes, rather than the level this wait happened to start at.
+		 */
+		int			budget = (load >= YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY ?
+							  2 * max_count : max_count);
+
+		if (count >= budget)
+			break;
+		count++;
+
+		/* Avoid flooding the log file, but always print for the first time. */
+		if (count % 20 == 1)
+			ereport(LOG,
+					(errmsg("waiting for master catalog prefetch load to drain "
+							"before incrementing catalog version (load is %s)",
+							YbCatalogPrefetchLoadName(load)),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+		CHECK_FOR_INTERRUPTS();
+		pg_usleep(YB_PREFETCH_DRAIN_POLL_MS * 1000);
+		load = (YbCatalogPrefetchLoad) YBCGetSharedYsqlCatalogPrefetchLoad();
+	}
+
+	if (count > 0)
+	{
+		if (load >= YB_CATALOG_PREFETCH_LOAD_BUSY)
+			ereport(WARNING,
+					(errmsg("proceeding with catalog version increment while master catalog "
+							"prefetch load is still %s after waiting %d ms",
+							YbCatalogPrefetchLoadName(load),
+							count * YB_PREFETCH_DRAIN_POLL_MS),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+		else
+			ereport(LOG,
+					(errmsg("master catalog prefetch load has drained after waiting %d ms",
+							count * YB_PREFETCH_DRAIN_POLL_MS),
+					 errhidestmt(true),
+					 errhidecontext(true)));
 	}
 }
 
@@ -3348,9 +3436,19 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
+		/*
+		 * Report the tag of the statement that caused this increment, which may
+		 * be a subcommand executed through SPI, for example by an event trigger
+		 * function. When that tag is not available -- YbGetDdlMode clears it for
+		 * statements that do not increment the catalog version -- prefer the
+		 * top-level statement the user ran over last_stmt_ddl_command_tag, which
+		 * may hold the tag of an unrelated sibling subcommand.
+		 */
 		CommandTag ddl_cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
 		if (ddl_cmdtag == CMDTAG_UNKNOWN)
-			 ddl_cmdtag = ddl_transaction_state.last_stmt_ddl_command_tag;
+			ddl_cmdtag = ddl_transaction_state.top_level_stmt_ddl_command_tag;
+		if (ddl_cmdtag == CMDTAG_UNKNOWN)
+			ddl_cmdtag = ddl_transaction_state.last_stmt_ddl_command_tag;
 		const char *command_tag_name = GetCommandTagName(ddl_cmdtag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
@@ -3387,6 +3485,12 @@ YBCommitTransactionContainingDDL()
 
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 	bool		use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
+	bool		is_global_ddl = ddl_transaction_state.is_global_ddl;
+	bool increment_logical_client_version =
+		ddl_transaction_state.increment_logical_client_version;
+
+	if (increment_logical_client_version)
+		YbIncrementMasterLogicalClientVersionTableEntry();
 
 	YBClearDdlTransactionState();
 
@@ -3426,11 +3530,19 @@ YBCommitTransactionContainingDDL()
 			 * That is even if the DDL has global impact, we only set the new
 			 * catalog version of MyDatabaseId in shared memory because we do
 			 * not know the new catalog version of any other databases for a
-			 * global impact DDL.
+			 * global impact DDL. For a breaking global impact DDL that is not
+			 * enough: a session on another database of this node would still
+			 * see its own database's stale shared catalog version, would not
+			 * refresh, and its next statement would fail with an invalidated
+			 * catalog snapshot. Wait for the heartbeat instead, it brings the
+			 * new catalog versions of all the databases.
 			 */
-			YbCheckNewSharedCatalogVersionOptimization(is_breaking_change,
-													   currentInvalMessages,
-													   nmsgs);
+			if (is_global_ddl && is_breaking_change)
+				YbWaitForSharedCatalogVersionToCatchup(YbGetNewCatalogVersion());
+			else
+				YbCheckNewSharedCatalogVersionOptimization(is_breaking_change,
+														   currentInvalMessages,
+														   nmsgs);
 			YbCheckNewLocalCatalogVersionOptimization();
 		}
 		else if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
@@ -3447,24 +3559,59 @@ YBCommitTransactionContainingDDL()
 			 YbCheckTserverResponseCacheForAuthGflags()))
 		{
 			/*
-			 * Wait for tserver heartbeat in case this was a conn mgr backend or
-			 * if conn mgr is enabled and tserver response cache is used for
-			 * auth processing to allow heartbeat to signal cache invalidation.
+			 * A conn mgr logical connection may run its next statement on a
+			 * different physical backend, so we want to make sure that the new
+			 * catalog version is available in local shared mem, so that the next
+			 * physical backend is aware of this DDL.
 			 *
-			 * YbIsClientYsqlConnMgr() is false if any DDL (which might change
-			 * authorization/login privileges) was triggered by a direct-to-PG
-			 * connection. This would be a vulnerability if a stale tserver
-			 * response cache is used for auth processing, hence the extra
-			 * condition to allow wait.
+			 * If a ROLE DDL was run against a direct PG conn, we also want to try
+			 * and ensure that the conn mgr auth backends see it across all nodes.
+			 * That is why we also check for conn mgr being enabled, not just a conn
+			 * mgr client active.
 			 */
-			int32_t		sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
+			uint64_t	target_version = YbGetNewCatalogVersion();
 
-			elog(LOG_SERVER_ONLY,
-				 "connection manager: adding sleep of %d microseconds "
-				 "after DDL commit",
-				 sleep);
-			pg_usleep(sleep);
+			bool		auth_may_be_stale =
+				!*YBCGetGFlags()->ysql_conn_mgr_use_auth_backend ||
+				YbCheckTserverResponseCacheForAuthGflags();
+
+			if (!(is_global_ddl && auth_may_be_stale) &&
+				target_version != YB_CATCACHE_VERSION_UNINITIALIZED)
+			{
+				YbWaitForSharedCatalogVersionToCatchup(target_version);
+			}
+			else
+			{
+				/*
+				 * For a ROLE DDL like DROP ROLE, regular YSQL
+				 * usually guarantees that a new physical backend will fail to connect
+				 * to this role. In conn mgr case, this may not be guaranteed in two
+				 * cases
+				 * 1. Auth passthrough, where auth is performed against a pool of
+				 * control backends
+				 * 2. Auth backend, but using the tserver response cache for auth
+				 * In these, cases, given we are using cached auth, maintaining this
+				 * guarantee requires that we ensure this catalog version is propagated
+				 * to all other nodes.
+				 *
+				 * TODO(#33073): Note: The sleep below is a hack that ideally needs to
+				 * be replaced with an equivalent of WaitForYsqlBackendsCatalogVersions check.
+				 */
+				int32_t		sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
+
+				elog(LOG_SERVER_ONLY,
+					 "connection manager: adding sleep of %d microseconds "
+					 "after global impact DDL commit",
+					 sleep);
+				pg_usleep(sleep);
+			}
 		}
+	}
+
+	if (increment_logical_client_version)
+	{
+		elog(LOG, "Logical client version incremented");
+		YbSendMasterLogicalClientVersionToFrontend();
 	}
 
 	List	   *handles = YBGetDdlHandles();
@@ -3493,8 +3640,11 @@ YBCommitTransactionContainingDDL()
 	}
 	YBClearDdlHandles();
 	if (increment_done)
+	{
 		YBC_LOG_INFO("%s: got %d invalidation messages, local catalog version %" PRIu64,
 			 __func__, nmsgs, yb_catalog_cache_version);
+		yb_catalog_prefetch_wave_pending = true;
+	}
 }
 
 void
@@ -3602,9 +3752,19 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
+	/*
+	 * During a YSQL major version upgrade the cluster runs in compatibility
+	 * mode and yb-master rejects (and in debug builds crashes on) writes to the
+	 * catalog version table until the upgrade is finalized; catalog versions are
+	 * fixed up later in UpdateCatalogVersions. So forced DDLs that are still
+	 * allowed to run during the upgrade (e.g. a forced COMMENT executed after
+	 * yb_force_catalog_update_on_next_ddl is set) must not bump the catalog
+	 * version by default.
+	 */
 	bool		should_increment_version_by_default =
-		yb_test_make_all_ddl_statements_incrementing ||
-		yb_always_increment_catalog_version_on_ddl;
+		(yb_test_make_all_ddl_statements_incrementing ||
+		 yb_always_increment_catalog_version_on_ddl) &&
+		!YBCPgYsqlMajorVersionUpgradeInProgress();
 	bool		is_version_increment = should_increment_version_by_default;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
@@ -3887,13 +4047,31 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * (eg: partitions) cannot be created using this statement.
 			 */
 		case T_CreateTableAsStmt:
-			/*
-			 * Simple add objects are not breaking changes, and they do not even require
-			 * a version increment because we do not do any negative caching for them.
-			 */
-			is_version_increment = should_increment_version_by_default;
-			is_breaking_change = false;
-			break;
+			{
+				CreateTableAsStmt *stmt = castNode(CreateTableAsStmt, parsetree);
+
+				/*
+				 * Simple add objects are not breaking changes, and they do not even require
+				 * a version increment because we do not do any negative caching for them.
+				 *
+				 * Temp tables are session-local, so they do not need catalog version
+				 * increments. They also alter existing data since they create relations
+				 * visible only to this transaction/session.
+				 */
+				if (stmt->into && stmt->into->rel &&
+					stmt->into->rel->relpersistence == RELPERSISTENCE_TEMP)
+				{
+					is_version_increment = false;
+					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
+				}
+				else
+				{
+					is_version_increment = should_increment_version_by_default;
+				}
+				is_breaking_change = false;
+				break;
+			}
 
 		case T_CreateSeqStmt:
 			is_breaking_change = false;
@@ -4314,6 +4492,20 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	if (YbIsTopLevelOrAtomicStatement(context))
 		ddl_transaction_state.is_top_level_ddl_active = is_ddl;
 
+	/*
+	 * Remember the command tag of the top-level DDL statement. Subcommands
+	 * executed through SPI (for example the DDLs issued by an event trigger
+	 * function) arrive with context PROCESS_UTILITY_QUERY, which
+	 * YbIsTopLevelOrAtomicStatement treats as top-level, so they overwrite
+	 * current_stmt_ddl_command_tag above. Keeping the top-level tag separately
+	 * lets catalog version increments report the statement the user ran. This
+	 * is only used for reporting, and is cleared with the rest of the DDL
+	 * transaction state.
+	 */
+	if (is_top_level && is_ddl)
+		ddl_transaction_state.top_level_stmt_ddl_command_tag =
+			ddl_transaction_state.current_stmt_ddl_command_tag;
+
 	if (!is_ddl)
 	{
 		/*
@@ -4377,7 +4569,18 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		aspects |= YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT;
 
 	if (is_breaking_change)
+	{
 		aspects |= YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
+		/*
+		 * Remember which statement made this DDL a breaking change, for the
+		 * same reason as global_ddl_command_tag above. This is past the
+		 * yb_make_next_ddl_statement_nonbreaking handling, so it reflects the
+		 * final decision.
+		 */
+		if (ddl_transaction_state.breaking_ddl_command_tag == CMDTAG_UNKNOWN)
+			ddl_transaction_state.breaking_ddl_command_tag =
+				ddl_transaction_state.current_stmt_ddl_command_tag;
+	}
 
 	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction;
@@ -4452,6 +4655,8 @@ CheckAlterDatabaseDdl(PlannedStmt *pstmt)
 		 */
 		ddl_transaction_state.database_oid = get_database_oid(dbname, false);
 		ddl_transaction_state.is_global_ddl = false;
+		/* The global impact is cleared, so is its attribution. */
+		ddl_transaction_state.global_ddl_command_tag = CMDTAG_UNKNOWN;
 	}
 	else
 		ddl_transaction_state.database_oid = InvalidOid;
@@ -4469,6 +4674,17 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 {
 
 	bool		should_run_in_autonomous_transaction = false;
+
+	/*
+	 * Taken before YbGetDdlMode, which may set any of them. Unlike the rest of the state it
+	 * records, these are assigned only while still unset, so a statement that throws before it
+	 * finishes would leave them to be reported against someone else's catalog version bump.
+	 */
+	const bool	prev_is_global_ddl = ddl_transaction_state.is_global_ddl;
+	const CommandTag prev_global_ddl_command_tag =
+		ddl_transaction_state.global_ddl_command_tag;
+	const CommandTag prev_breaking_ddl_command_tag =
+		ddl_transaction_state.breaking_ddl_command_tag;
 	const YbDdlModeOptional ddl_mode =
 		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
 
@@ -4483,6 +4699,43 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	const bool	use_separate_ddl_transaction =
 		is_ddl && (should_run_in_autonomous_transaction ||
 				   !YBIsDdlTransactionBlockEnabled());
+
+	/*
+	 * A bump this session made may still have the master leader fetching catalog snapshots for the
+	 * whole cluster. Wait for that to drain before this transaction adds another wave.
+	 *
+	 * A transaction bumps the version once however many DDLs it contains, so this fires on the
+	 * first version-bumping DDL of each one: the session waits once per transaction, not once per
+	 * DDL. In an explicit block that DDL need not be the first statement, so the wait can extend a
+	 * lock hold that was going to last until commit anyway. Running at statement start rather than
+	 * in the commit path keeps it interruptible and bounded by statement_timeout.
+	 *
+	 * The condition is the version-increment aspect YbGetDdlMode has already computed, so a
+	 * statement waits exactly when it is the one that will bump: a DDL the client sent, on its own
+	 * or inside a transaction block, one run from a function body, and one run from a procedure
+	 * that commits between its DDLs.
+	 */
+	if (yb_catalog_prefetch_wave_pending &&
+		is_ddl &&
+		(ddl_mode.value & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
+	{
+		PG_TRY();
+		{
+			YbWaitForMasterCatalogPrefetchDrain();
+		}
+		PG_CATCH();
+		{
+			if (YbIsTopLevelOrAtomicStatement(context))
+				ddl_transaction_state.is_top_level_ddl_active = false;
+			ddl_transaction_state.is_global_ddl = prev_is_global_ddl;
+			ddl_transaction_state.global_ddl_command_tag = prev_global_ddl_command_tag;
+			ddl_transaction_state.breaking_ddl_command_tag = prev_breaking_ddl_command_tag;
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+		/* Cleared after the wait, so that a cancelled one leaves the next DDL to pay for it. */
+		yb_catalog_prefetch_wave_pending = false;
+	}
 
 	elog(DEBUG3, "is_ddl %d", is_ddl);
 	PG_TRY();
@@ -4519,7 +4772,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 				 */
 				if (!(yb_enable_ddl_savepoint_infra &&
 					  *YBCGetGFlags()->ysql_yb_enable_ddl_savepoint_support) &&
-					YBTransactionContainsNonReadCommittedSavepoint())
+					YBTransactionContainsNonReadCommittedSavepoint(false /* skip_backward_compat_escape_hatch */ ))
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interleaving SAVEPOINT & DDL in transaction"
@@ -4527,14 +4780,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 							 errhint("Consider enabling ysql_yb_enable_ddl_savepoint_support.")));
 
 				YBAddDdlTxnState(ddl_mode.value);
-			}
-
-			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
-				YbIsClientYsqlConnMgr() &&
-				YbIncrementMasterLogicalClientVersionTableEntry())
-			{
-				elog(LOG, "Logical client version incremented");
-				YbSendMasterLogicalClientVersionToFrontend();
 			}
 		}
 
@@ -4550,6 +4795,10 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		if (is_ddl)
 		{
 			CheckAlterDatabaseDdl(pstmt);
+
+			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
+				YbIsClientYsqlConnMgr())
+				ddl_transaction_state.increment_logical_client_version = true;
 
 			if (use_separate_ddl_transaction)
 				YBDecrementDdlNestingLevel();
@@ -5183,7 +5432,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 		size += typesize;
 	}
 
-	arg_buf = alloca(size);
+	arg_buf = palloc(size);
 
 	/* TODO(Tanuj): Look into caching the above buffer */
 
@@ -5219,6 +5468,8 @@ yb_hash_code(PG_FUNCTION_ARGS)
 
 	/* hash the contents of the buffer and return */
 	uint16_t	hashed_val = YBCCompoundHash(arg_buf, total_bytes);
+
+	pfree(arg_buf);
 
 	PG_RETURN_UINT16(hashed_val);
 }
@@ -6816,7 +7067,8 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 	 */
 	int			sys_only_filter_attr = InvalidAttrNumber;
 	int			db_id = MyDatabaseId;
-	int			sys_table_index_id = InvalidOid;
+	int			mandatory_index_id = InvalidOid;
+	int			index_id = InvalidOid;
 	bool		fetch_ybctid = true;
 
 	switch (sys_table_id)
@@ -6824,17 +7076,17 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			/* TemplateDb tables */
 		case AuthMemRelationId: /* pg_auth_members */
 			db_id = Template1DbOid;
-			sys_table_index_id = AuthMemMemRoleIndexId;
+			mandatory_index_id = AuthMemMemRoleIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			sys_table_index_id = AuthIdRolnameIndexId;
+			index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */
 			db_id = Template1DbOid;
-			sys_table_index_id = DatabaseNameIndexId;
+			mandatory_index_id = DatabaseNameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 
@@ -6855,96 +7107,99 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 
 			/* MyDb tables */
+		case AggregateRelationId:	/* pg_aggregate */
+			sys_only_filter_attr = Anum_pg_aggregate_aggfnoid;
+			break;
 		case AccessMethodProcedureRelationId:	/* pg_amproc */
-			sys_table_index_id = AccessMethodProcedureIndexId;
+			mandatory_index_id = AccessMethodProcedureIndexId;
 			sys_only_filter_attr = Anum_pg_amproc_oid;
 			break;
 		case AccessMethodRelationId:	/* pg_am */
-			sys_table_index_id = AmNameIndexId;
+			index_id = AmNameIndexId;
 			sys_only_filter_attr = Anum_pg_am_oid;
 			break;
 		case AttrDefaultRelationId: /* pg_attrdef */
-			sys_table_index_id = AttrDefaultIndexId;
+			index_id = AttrDefaultIndexId;
 			sys_only_filter_attr = Anum_pg_attrdef_oid;
 			break;
 		case AttributeRelationId:	/* pg_attribute */
-			sys_table_index_id = AttributeRelidNameIndexId;
+			index_id = AttributeRelidNameIndexId;
 			sys_only_filter_attr = Anum_pg_attribute_attrelid;
 			break;
 		case CastRelationId:	/* pg_cast */
-			sys_table_index_id = CastSourceTargetIndexId;
+			mandatory_index_id = CastSourceTargetIndexId;
 			sys_only_filter_attr = Anum_pg_cast_oid;
 			break;
 		case ConstraintRelationId:	/* pg_constraint */
-			sys_table_index_id = ConstraintRelidTypidNameIndexId;
+			mandatory_index_id = ConstraintRelidTypidNameIndexId;
 			sys_only_filter_attr = Anum_pg_constraint_oid;
 			break;
 		case EnumRelationId:	/* pg_enum */
-			sys_table_index_id = EnumTypIdLabelIndexId;
+			mandatory_index_id = EnumTypIdLabelIndexId;
 			sys_only_filter_attr = Anum_pg_enum_oid;
 			break;
 		case IndexRelationId:	/* pg_index */
-			sys_table_index_id = IndexIndrelidIndexId;
+			index_id = IndexIndrelidIndexId;
 			sys_only_filter_attr = Anum_pg_index_indexrelid;
 			break;
 		case InheritsRelationId:	/* pg_inherits */
-			sys_table_index_id = InheritsParentIndexId;
+			mandatory_index_id = InheritsParentIndexId;
 			sys_only_filter_attr = Anum_pg_inherits_inhrelid;
 			break;
 		case NamespaceRelationId:	/* pg_namespace */
-			sys_table_index_id = NamespaceNameIndexId;
+			mandatory_index_id = NamespaceNameIndexId;
 			sys_only_filter_attr = Anum_pg_namespace_oid;
 			break;
 		case OperatorClassRelationId:	/* pg_opclass */
-			sys_table_index_id = OpclassAmNameNspIndexId;
+			index_id = OpclassAmNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_opclass_oid;
 			break;
 		case OperatorRelationId:	/* pg_operator */
-			sys_table_index_id = OperatorNameNspIndexId;
+			mandatory_index_id = OperatorNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_operator_oid;
 			break;
 		case PolicyRelationId:	/* pg_policy */
-			sys_table_index_id = PolicyPolrelidPolnameIndexId;
+			mandatory_index_id = PolicyPolrelidPolnameIndexId;
 			sys_only_filter_attr = Anum_pg_policy_oid;
 			break;
 		case ProcedureRelationId:	/* pg_proc */
-			sys_table_index_id = ProcedureNameArgsNspIndexId;
+			mandatory_index_id = ProcedureNameArgsNspIndexId;
 			sys_only_filter_attr = Anum_pg_proc_oid;
 			break;
 		case RelationRelationId:	/* pg_class */
-			sys_table_index_id = ClassNameNspIndexId;
+			index_id = ClassNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_class_oid;
 			break;
 		case CollationRelationId:	/* pg_collation */
-			sys_table_index_id = CollationNameEncNspIndexId;
+			index_id = CollationNameEncNspIndexId;
 			break;
 		case RangeRelationId:	/* pg_range */
 			sys_only_filter_attr = Anum_pg_range_rngtypid;
 			break;
 		case RewriteRelationId: /* pg_rewrite */
-			sys_table_index_id = RewriteRelRulenameIndexId;
+			mandatory_index_id = RewriteRelRulenameIndexId;
 			sys_only_filter_attr = Anum_pg_rewrite_oid;
 			break;
 		case StatisticRelationId:	/* pg_statistic */
 			sys_only_filter_attr = Anum_pg_statistic_starelid;
 			break;
 		case StatisticExtRelationId:	/* pg_statistic_ext */
-			sys_table_index_id = StatisticExtNameIndexId;
+			mandatory_index_id = StatisticExtNameIndexId;
 			sys_only_filter_attr = Anum_pg_statistic_ext_oid;
 			break;
 		case StatisticExtDataRelationId:	/* pg_statistic_ext_data */
 			sys_only_filter_attr = Anum_pg_statistic_ext_data_stxoid;
 			break;
 		case TriggerRelationId: /* pg_trigger */
-			sys_table_index_id = TriggerRelidNameIndexId;
+			index_id = TriggerRelidNameIndexId;
 			sys_only_filter_attr = Anum_pg_trigger_oid;
 			break;
 		case TypeRelationId:	/* pg_type */
-			sys_table_index_id = TypeNameNspIndexId;
+			index_id = TypeNameNspIndexId;
 			sys_only_filter_attr = Anum_pg_type_oid;
 			break;
 		case AccessMethodOperatorRelationId:	/* pg_amop */
-			sys_table_index_id = AccessMethodOperatorIndexId;
+			mandatory_index_id = AccessMethodOperatorIndexId;
 			sys_only_filter_attr = Anum_pg_amop_oid;
 			break;
 		case PartitionedRelationId: /* pg_partitioned_table */
@@ -6964,7 +7219,11 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 	if (!YbUseMinimalCatalogCachesPreload())
 		sys_only_filter_attr = InvalidAttrNumber;
 
-	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id,
+	Assert(mandatory_index_id == InvalidOid || index_id == InvalidOid);
+	if (*YBCGetGFlags()->ysql_catalog_prefetch_minimize_index_scans)
+		index_id = InvalidOid;
+	const int actual_index_id = mandatory_index_id == InvalidOid ? index_id : mandatory_index_id;
+	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, actual_index_id,
 									  sys_only_filter_attr, fetch_ybctid);
 }
 
@@ -7093,6 +7352,35 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		return false;
 	}
 
+	/*
+	 * Disallow setting yb_read_time inside an explicit transaction block.
+	 * Setting it resets the backend's local catalog version, which is not
+	 * refreshed while a transaction is already open, and can surface as a
+	 * confusing "Catalog Version Mismatch" error on a subsequent statement.
+	 * yb_read_time is meant to be set at the session level, before any
+	 * transaction is started.
+	 *
+	 * Carve-outs:
+	 *  - yb_disable_catalog_version_check: the caller has explicitly opted out
+	 *    of the catalog version check (e.g. xCluster, non-superuser CDC
+	 *    connector), so resetting the local catalog version is
+	 *    harmless.
+	 *  - walsender: logical replication snapshot consumers legitimately use
+	 *    SET LOCAL yb_read_time inside the snapshot transaction, and their
+	 *    reads do not send a catalog version anyway.
+	 */
+	if (!yb_disable_catalog_version_check &&
+		!am_walsender &&
+		IsTransactionBlock())
+	{
+		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+		GUC_check_errmsg("yb_read_time cannot be set inside a transaction block");
+		GUC_check_errdetail("Set yb_read_time at the session level, outside an "
+							"explicit transaction block (BEGIN/COMMIT), or set "
+							"yb_disable_catalog_version_check first.");
+		return false;
+	}
+
 	/* Read time should be convertable to unsigned long long */
 	unsigned long long read_time_ull;
 	unsigned long long value_ull;
@@ -7143,6 +7431,67 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		return false;
 	}
 	return true;
+}
+
+/*
+ * Origination time, in Unix microseconds, stamped on the DocDB writes and
+ * commits this backend issues, so that StopPersisting/StartPersisting can
+ * block work by when it originated.  It must precede every write of the
+ * transaction (so writes cannot predate the stamp) and precede the shared
+ * catalog version check that the transaction's catalog cache rests on.
+ * Hence it is refreshed only at backend start, in the PostgresMain preamble
+ * for messages received outside a transaction (before
+ * YBCheckSharedCatalogCacheVersion), and before exit cleanup; parallel
+ * workers take their leader's value.  It is handed to pggate once per
+ * transaction, at transaction start.
+ */
+uint64_t	yb_origination_time = 0;
+
+/* Value of yb_origination_time_override; 0 means unset. */
+static uint64_t yb_origination_time_override = 0;
+
+void
+YbRefreshOriginationTime(void)
+{
+	if (yb_origination_time_override != 0)
+		yb_origination_time = yb_origination_time_override;
+	else
+		yb_origination_time = GetCurrentTimestamp() +
+			((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) *
+			 SECS_PER_DAY * USECS_PER_SEC);
+}
+
+bool
+yb_check_origination_time_override(char **newval, void **extra,
+								   GucSource source)
+{
+	unsigned long long value;
+	char	   *endptr;
+	uint64_t   *myextra;
+
+	errno = 0;
+	value = strtoull(*newval, &endptr, 10);
+	if (endptr == *newval || *endptr != '\0' || errno == ERANGE ||
+		**newval == '-')
+	{
+		GUC_check_errdetail("Accepted value is a Unix timestamp in "
+							"microseconds, e.g., 1694673026673528, or 0 "
+							"for none.");
+		return false;
+	}
+
+	myextra = (uint64_t *) malloc(sizeof(uint64_t));
+	if (!myextra)
+		return false;
+	*myextra = value;
+	*extra = myextra;
+	return true;
+}
+
+void
+yb_assign_origination_time_override(const char *newval, void *extra)
+{
+	yb_origination_time_override = *((uint64_t *) extra);
 }
 
 void
@@ -7228,27 +7577,27 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 {
 	/* User Table stats */
 	instr->tbl_reads.count += exec_stats->tables.reads;
-	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
-	instr->tbl_read_ops += exec_stats->tables.read_ops;
-	instr->tbl_writes += exec_stats->tables.writes;
+	instr->tbl_reads.ops_count += exec_stats->tables.read_ops;
 	instr->tbl_reads.rows_scanned += exec_stats->tables.rows_scanned;
 	instr->tbl_reads.rows_received += exec_stats->tables.rows_received;
+	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
+	instr->tbl_writes += exec_stats->tables.writes;
 
 	/* Secondary Index stats */
 	instr->index_reads.count += exec_stats->indices.reads;
-	instr->index_reads.wait_time += exec_stats->indices.read_wait;
-	instr->index_read_ops += exec_stats->indices.read_ops;
-	instr->index_writes += exec_stats->indices.writes;
+	instr->index_reads.ops_count += exec_stats->indices.read_ops;
 	instr->index_reads.rows_scanned += exec_stats->indices.rows_scanned;
 	instr->index_reads.rows_received += exec_stats->indices.rows_received;
+	instr->index_reads.wait_time += exec_stats->indices.read_wait;
+	instr->index_writes += exec_stats->indices.writes;
 
 	/* System Catalog stats */
 	instr->catalog_reads.count += exec_stats->catalog.reads;
-	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
-	instr->catalog_read_ops += exec_stats->catalog.read_ops;
-	instr->catalog_writes += exec_stats->catalog.writes;
+	instr->catalog_reads.ops_count += exec_stats->catalog.read_ops;
 	instr->catalog_reads.rows_scanned += exec_stats->catalog.rows_scanned;
 	instr->catalog_reads.rows_received += exec_stats->catalog.rows_received;
+	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
+	instr->catalog_writes += exec_stats->catalog.writes;
 
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
@@ -7432,6 +7781,12 @@ YbRecordCommitLatency(uint64_t latency_us)
 	yb_session_stats.current_state.stats.commit_wait += latency_us;
 }
 
+uint64_t
+YbGetTableRowsScanned()
+{
+	return yb_session_stats.current_state.stats.tables.rows_scanned;
+}
+
 void
 YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture)
 {
@@ -7505,14 +7860,15 @@ YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy)
 {
 	LockWaitPolicy result = pg_wait_policy;
 
-	if (!YBCPgIsDdlMode() && IsolationIsSerializable())
+	if (!YBIsCurrentStmtDdl() && IsolationIsSerializable())
 	{
 		/*
 		 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable
 		 * isolation level.
 		 *
-		 * The !YBCPgIsDdlMode() check is to avoid the warning for DDLs because they try to acquire a
-		 * row lock on the catalog version with LockWaitError for Fail-on-Conflict semantics.
+		 * The !YBIsCurrentStmtDdl() check is to avoid the warning for DDLs because they try to
+		 * acquire a row lock on the catalog version with LockWaitError for Fail-on-Conflict
+		 * semantics.
 		 */
 		if (pg_wait_policy == LockWaitSkip || pg_wait_policy == LockWaitError)
 			elog(WARNING,
@@ -8000,18 +8356,35 @@ YbSplitOptionsToPresplitString(YbOptSplit *split_options)
 }
 
 /*
- * Reconcile a statement's SPLIT clause and its yb_presplit reloption so that
- * both representations are kept in sync prior to relation creation.
+ * Reconcile a statement's SPLIT clause and its yb_presplit reloption prior
+ * to relation creation.
  *
- *   - If *split_options is set, attempt to serialize it into a yb_presplit
- *     entry appended to *options. If the SPLIT clause contains expressions
- *     that cannot be serialized, *split_options is left intact (so the
- *     relation is still created with the original clause) and no yb_presplit
- *     entry is added. It is an error if yb_presplit is already present in
- *     *options, since that would conflict with the SPLIT clause.
- *   - Otherwise, if a yb_presplit entry is present in *options, parse it back
- *     into *split_options so the relation is created with the persisted
- *     pre-split values (e.g., on pg_dump restore).
+ *   - If *split_options is set and yb_presplit is also in *options, the
+ *     user has specified both: the SPLIT clause governs the relation's
+ *     initial tablet layout, and the yb_presplit entry is persisted as-is
+ *     into pg_class.reloptions to serve as the user-recorded intent for
+ *     future operations (TRUNCATE/REFRESH/dump/restore).  The two are
+ *     allowed to disagree; the SPLIT clause "wins" for the immediate
+ *     layout, and the reloption "wins" for everything that later asks
+ *     "what did the user want?".  As a special case, an empty-string
+ *     yb_presplit is a "suppress auto-derive" sentinel: drop the entry so
+ *     it does not persist (ysql_dump --include-yb-metadata uses this on
+ *     CREATE statements for relations whose source had no yb_presplit but
+ *     for which the dump still emits a SPLIT clause to preserve the
+ *     current tablet count; without the sentinel, the auto-derive would
+ *     add yb_presplit=N to the restored relation and diverge from the
+ *     source).
+ *
+ *   - If *split_options is set and yb_presplit is not in *options, serialize
+ *     the SPLIT clause into a yb_presplit entry and append it to *options
+ *     so that the reloption tracks what the user just asked for.  If the
+ *     SPLIT clause contains expressions that cannot be serialized,
+ *     *split_options is left intact (so the relation is still created with
+ *     the original clause) and no yb_presplit entry is added.
+ *
+ *   - Otherwise, if a yb_presplit entry is present in *options, parse it
+ *     back into *split_options so the relation is created with the
+ *     persisted pre-split values (e.g., on pg_dump restore).
  *
  * Used by both CREATE TABLE and CREATE INDEX paths.
  */
@@ -8023,27 +8396,49 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 	if (*split_options)
 	{
 		char	   *presplit_str;
+		ListCell   *presplit_cell = NULL;
+		bool		presplit_is_sentinel = false;
 
-		/*
-		 * Error if yb_presplit already exists in options (e.g., from
-		 * WITH (yb_presplit=...) alongside SPLIT INTO/AT).
-		 */
 		foreach(lc, *options)
 		{
 			DefElem    *def = (DefElem *) lfirst(lc);
 
 			if (strcmp(def->defname, "yb_presplit") == 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("yb_presplit cannot be specified together with SPLIT INTO or SPLIT AT VALUES")));
+			{
+				char	   *val = defGetString(def);
+
+				presplit_cell = lc;
+				presplit_is_sentinel = (val != NULL && val[0] == '\0');
+				break;
+			}
+		}
+
+		if (presplit_cell != NULL)
+		{
+			if (presplit_is_sentinel)
+			{
+				/*
+				 * Drop the empty sentinel so it does not persist; the
+				 * SPLIT clause alone governs the relation's layout and no
+				 * yb_presplit reloption is recorded.
+				 */
+				*options = list_delete_cell(*options, presplit_cell);
+			}
+			/*
+			 * Otherwise keep both: the SPLIT clause governs the immediate
+			 * layout and the user-supplied yb_presplit is recorded as-is.
+			 */
+			return;
 		}
 
 		/*
-		 * If the split options contain expressions we can't serialize (e.g.
-		 * function calls), YbSplitOptionsToPresplitString returns NULL and we
-		 * skip storing yb_presplit.  *split_options is left intact so the
-		 * relation is still created with the original SPLIT clause; those
-		 * expressions are evaluated at creation time by
+		 * No yb_presplit in *options: auto-derive it from the SPLIT clause
+		 * so the reloption tracks what the user just asked for.  If the
+		 * split options contain expressions we can't serialize (e.g.
+		 * function calls), YbSplitOptionsToPresplitString returns NULL and
+		 * we skip storing yb_presplit.  *split_options is left intact so
+		 * the relation is still created with the original SPLIT clause;
+		 * those expressions are evaluated at creation time by
 		 * YBTransformPartitionSplitValue.
 		 */
 		presplit_str = YbSplitOptionsToPresplitString(*split_options);
@@ -8055,14 +8450,26 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 		return;
 	}
 
-	/* Derive split_options from yb_presplit if not already set. */
+	/*
+	 * Derive split_options from yb_presplit if not already set.  An empty
+	 * sentinel here (no SPLIT clause given) is meaningless -- nothing to
+	 * suppress -- so strip it to avoid persisting an empty value into
+	 * pg_class.reloptions.
+	 */
 	foreach(lc, *options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
 
 		if (strcmp(def->defname, "yb_presplit") == 0)
 		{
-			*split_options = YbParsePresplitString(defGetString(def));
+			char	   *val = defGetString(def);
+
+			if (val != NULL && val[0] == '\0')
+			{
+				*options = list_delete_cell(*options, lc);
+				return;
+			}
+			*split_options = YbParsePresplitString(val);
 			break;
 		}
 	}
@@ -8095,14 +8502,6 @@ bool		yb_ysql_conn_mgr_superuser_existed = false;
  * are/were held by the current session.
  */
 bool		yb_ysql_conn_mgr_sticky_locks = false;
-
-/*
- * When enabled, DEALLOCATE commands sent via YSQL Connection Manager selectively
- * deallocates prepared statements (cached plans are invalid or if connection is sticky).
- * Valid plans are retained so they can be reused across logical connections
- * sharing the same backend. Updated at runtime via GUC (PGC_SIGHUP).
- */
-bool		yb_conn_mgr_selective_deallocate = true;
 
 bool		yb_enable_mage = false;
 
@@ -8256,8 +8655,9 @@ yb_use_tserver_key_auth_check_hook(bool *newval, void **extra, GucSource source)
 	if (MyProcPort->raddr.addr.ss_family != AF_UNIX)
 		ereport(FATAL,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("yb_use_tserver_key_auth can only be set if the "
-						"connection is made over unix domain socket")));
+				 errmsg("%s can only be set if the connection is made over "
+						"unix domain socket",
+						YB_YCM_USE_TSERVER_KEY_AUTH)));
 
 	/*
 	 * If yb_use_tserver_key_auth is set, authentication method used
@@ -8596,7 +8996,51 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 
 	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);
 	assign_yb_read_time(read_time, NULL);
+	YBCPgResetHistoricalReadContext();
 	YbRelationCacheInvalidate();
+}
+
+void
+YBCSetHistoricalReadContext(uint64_t read_time_ht,
+							uint64_t in_txn_limit_ht,
+							const char *docdb_txn_id)
+{
+	elog(DEBUG1,
+		 "Setting historical read context to read_time_ht: %" PRIu64
+		 ", in_txn_limit_ht: %" PRIu64 ", docdb_txn_id: %s",
+		 read_time_ht, in_txn_limit_ht, docdb_txn_id);
+
+	YbcReadHybridTime read_time = {
+		.read = read_time_ht,
+		.local_limit = read_time_ht,
+		.global_limit = read_time_ht,
+		.in_txn_limit = in_txn_limit_ht,
+		.serial_no = 0
+	};
+
+	YBCPgSetHistoricalReadContext(read_time, docdb_txn_id);
+}
+
+void
+YBCInvalidateCachesForHistoricalReadContext(void)
+{
+	YbRelationCacheInvalidate();
+}
+
+void
+YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
+											   uint64_t in_txn_limit_ht,
+											   const char *docdb_txn_id)
+{
+	YBCSetHistoricalReadContext(read_time_ht, in_txn_limit_ht, docdb_txn_id);
+	YBCInvalidateCachesForHistoricalReadContext();
+}
+
+void
+YBCResetHistoricalReadContextAndInvalidateRelcache(void)
+{
+	YBCPgResetHistoricalReadContext();
+	YBCInvalidateCachesForHistoricalReadContext();
 }
 
 void
@@ -8960,7 +9404,6 @@ YbInvalidationMessagesTableExists()
 }
 
 bool		yb_is_calling_internal_sql_for_ddl = false;
-bool		yb_is_internal_connection = false;
 char *
 YbGetPotentiallyHiddenOidText(Oid oid)
 {
@@ -9403,11 +9846,59 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
+typedef struct
+{
+	Oid			docdb_oid;		/* hash key; must be first */
+	Oid			relid;
+} YbDocdbOidToRelidEntry;
+
+/*
+ * Map from docdb oid (relfilenode, or original oid for mapped catalogs) to
+ * pg_class.oid. Caller must hash_destroy the result.
+ */
+static HTAB *
+yb_build_docdb_oid_to_relid_map(void)
+{
+	HASHCTL		hash_ctl;
+	HTAB	   *map;
+	Relation	pg_class;
+	SysScanDesc scan;
+	HeapTuple	tuple;
+
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+	hash_ctl.keysize = sizeof(Oid);
+	hash_ctl.entrysize = sizeof(YbDocdbOidToRelidEntry);
+	hash_ctl.hcxt = CurrentMemoryContext;
+	map = hash_create("yb_stat_auto_analyze docdb oid map",
+					  1024,
+					  &hash_ctl,
+					  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
+	pg_class = table_open(RelationRelationId, AccessShareLock);
+	scan = systable_beginscan(pg_class, InvalidOid, false, NULL, 0, NULL);
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_class classform = (Form_pg_class) GETSTRUCT(tuple);
+		YbDocdbOidToRelidEntry *entry;
+		Oid			docdb_oid = OidIsValid(classform->relfilenode)
+			? classform->relfilenode
+			: classform->oid;
+
+		entry = hash_search(map, &docdb_oid, HASH_ENTER, NULL);
+		entry->relid = classform->oid;
+	}
+	systable_endscan(scan);
+	table_close(pg_class, AccessShareLock);
+
+	return map;
+}
+
 Datum
 yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	int			i;
+	HTAB	   *docdb_oid_map;
 
 #define YB_AUTO_ANALYZE_TABLE_COLS 5
 
@@ -9417,22 +9908,32 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 
 	HandleYBStatus(YBCQueryAutoAnalyze(MyDatabaseId, &auto_analyze_info, &num_rows));
 
+	docdb_oid_map = yb_build_docdb_oid_to_relid_map();
+
 	for (i = 0; i < num_rows; ++i)
 	{
 		YbcAutoAnalyzeInfo *row_info = (YbcAutoAnalyzeInfo *) auto_analyze_info + i;
+		YbDocdbOidToRelidEntry *entry;
+		Relation	rel;
 		Datum		values[YB_AUTO_ANALYZE_TABLE_COLS];
 		bool		nulls[YB_AUTO_ANALYZE_TABLE_COLS];
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
-		Relation rel = RelationIdGetRelation(row_info->table_oid);
+
 		/*
-		 * A table could be deleted, but auto analyze hasn't cleaned up its
-		 * entry from its service table yet.
+		 * We may temporarily have stale YCQL rows corresponding to older
+		 * DocDB oids for this table; skip them.
 		 */
+		entry = hash_search(docdb_oid_map, &row_info->table_oid, HASH_FIND,
+							NULL);
+		if (!entry)
+			continue;
+
+		rel = RelationIdGetRelation(entry->relid);
 		if (!RelationIsValid(rel))
 			continue;
-		values[0] = ObjectIdGetDatum(row_info->table_oid);
+		values[0] = ObjectIdGetDatum(entry->relid);
 		values[1] = CStringGetTextDatum(get_namespace_name(RelationGetNamespace(rel)));
 		values[2] = CStringGetTextDatum(RelationGetRelationName(rel));
 		values[3] = UInt64GetDatum(row_info->mutations);
@@ -9448,6 +9949,8 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 		RelationClose(rel);
 	}
+
+	hash_destroy(docdb_oid_map);
 
 #undef YB_AUTO_ANALYZE_TABLE_COLS
 
@@ -9544,7 +10047,7 @@ YbNewSample(Relation rel,
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewSample(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), YbCanSkipIntentsRead(rel),
+								  YbBuildTableLocalityInfo(rel), YbGetSkipIntentsOptimizationInfoRead(rel),
 								  targrows, rstate_w, rand_state_s0,
 								  rand_state_s1, &result));
 	return result;
@@ -9553,12 +10056,10 @@ YbNewSample(Relation rel,
 YbcPgStatement
 YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params)
 {
-	if (unlikely(skip_intents_txn_state.has_skipped_write))
-		YbMaybeDisableSkipIntentsForCurrentTxn(rel);
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel), prepare_params,
 								  YbBuildTableLocalityInfo(rel),
-								  YbCanSkipIntentsRead(rel), &result));
+								  YbGetSkipIntentsOptimizationInfoRead(rel), &result));
 	return result;
 }
 
@@ -9568,7 +10069,7 @@ YbNewUpdateForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_s
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewUpdate(db_oid, YbGetRelfileNodeId(rel),
 								  YbBuildTableLocalityInfo(rel), transaction_setting,
-								  YbCanSkipIntentsWrite(rel), &result));
+								  YbGetSkipIntentsOptimizationInfoWrite(rel), &result));
 	return result;
 }
 
@@ -9584,7 +10085,7 @@ YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting)
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewDelete(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
 								  YbBuildTableLocalityInfo(rel), transaction_setting,
-								  YbCanSkipIntentsWrite(rel), &result));
+								  YbGetSkipIntentsOptimizationInfoWrite(rel), &result));
 	return result;
 }
 
@@ -9594,7 +10095,7 @@ YbNewInsertForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_s
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewInsert(db_oid, YbGetRelfileNodeId(rel),
 								  YbBuildTableLocalityInfo(rel), transaction_setting,
-								  YbCanSkipIntentsWrite(rel), &result));
+								  YbGetSkipIntentsOptimizationInfoWrite(rel), &result));
 	return result;
 }
 
@@ -9610,7 +10111,7 @@ YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting)
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewInsertBlock(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
 									   YbBuildTableLocalityInfo(rel), transaction_setting,
-									   YbCanSkipIntentsWrite(rel), &result));
+									   YbGetSkipIntentsOptimizationInfoWrite(rel), &result));
 	return result;
 }
 
@@ -9840,11 +10341,20 @@ YBHasSkippedIntentsWrite()
 	return skip_intents_txn_state.has_skipped_write;
 }
 
-static bool
-YbCanSkipIntents(Relation rel, bool is_write)
+/*
+ * Decides both halves of the skip intents optimization for one operation on rel. See
+ * YbcPgSkipIntentsOptimizationInfo: the relation-static checks below decide
+ * read_at_in_txn_limit and hold for the whole transaction, while the transaction-state checks
+ * after them gate skip_intents alone and may disable the optimization for the rest of the
+ * transaction.
+ */
+static YbcPgSkipIntentsOptimizationInfo
+YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
+	YbcPgSkipIntentsOptimizationInfo info = {0};
+
 	if (!yb_enable_new_relation_fastpath_write)
-		return false;
+		return info;
 
 	/*
 	 * 1. rd_createSubid: The logical table was created in this txn.
@@ -9855,35 +10365,47 @@ YbCanSkipIntents(Relation rel, bool is_write)
 		rel->rd_newRelfilenodeSubid == InvalidSubTransactionId)
 	{
 		elog(DEBUG3, "Skip intents not applicable: relation %u was neither created nor swapped in this txn", rel->rd_id);
-		return false;
+		return info;
 	}
-
-	if (skip_intents_txn_state.disabled)
-		return false;
 
 	if (rel->rd_id < FirstNormalObjectId)
 	{
 		elog(DEBUG3, "Skip intents not applicable: relation %u is a system catalog", rel->rd_id);
-		return false;
+		return info;
 	}
 
 	if (YbIsTempRelation(rel))
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u is a temporary relation", rel->rd_id);
-		return false;
+		return info;
 	}
 
 	if (YbGetTableDistribution(rel) == YB_COLOCATED)
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u is colocated", rel->rd_id);
-		return false;
+		return info;
 	}
 
-	bool is_rc = IsYBReadCommitted();
 	/*
-	 * In non-RC isolation, only do skip intents optimization for top-level DDL.
+	 * Only this transaction can write to the relation, and it may already have put rows in the
+	 * regular db, so the read time has to account for them regardless of what the checks below
+	 * decide about this particular operation.
 	 */
-	bool top_level_only = !yb_enable_new_relation_fastpath_write_in_txn_blocks || !is_rc;
+	info.read_at_in_txn_limit = true;
+
+	if (skip_intents_txn_state.disabled)
+		return info;
+
+	/*
+	 * Serializable is the one isolation level restricted to top-level DDL. Its operations
+	 * carry no read time and read at the latest time, so there is no read time to point at
+	 * in_txn_limit. Nor is there an in_txn_limit to point it at, which
+	 * leaves the Halloween problem open even without this optimization (#33802). Every
+	 * other isolation level carries a read time that read_at_in_txn_limit moves, so it may
+	 * run inside a transaction block.
+	 */
+	bool is_serializable = XactIsoLevel == XACT_SERIALIZABLE;
+	bool top_level_only = !yb_enable_new_relation_fastpath_write_in_txn_blocks || is_serializable;
 	bool is_top_level = !IsTransactionBlock() &&
 						GetCurrentTransactionNestLevel() == 1 &&
 						YbGetTriggerDepth() == 0 &&
@@ -9895,25 +10417,24 @@ YbCanSkipIntents(Relation rel, bool is_write)
 			elog(DEBUG1, "Disable skip intents due to non-toplevel ddl, "
 						 "relation %u", rel->rd_id);
 			skip_intents_txn_state.disabled = true;
-			return false;
+			return info;
 		}
 		/*
-		 * Here we assume that a top-level DDL (e.g. CREATE TABLE AS SELECT) never
-		 * needs to read its own newly created table. Otherwise in non-RC isolation
-		 * this optimization will not be valid.
+		 * A top-level statement is the whole transaction, so nothing reads the relation
+		 * after it. Here we assume that a top-level DDL (e.g. CREATE TABLE AS SELECT)
+		 * never needs to read its own newly created table. Otherwise this optimization
+		 * will not be valid in Serializable, which cannot read at the in_txn_limit.
 		 */
 	}
 
 	/*
-	 * In RC isolation, non-top-level requires transactional DDL support.
+	 * Non-top-level work requires transactional DDL support. Only a transaction block can
+	 * reach here with is_top_level false, so the GUC that allows it is known to be on.
 	 */
-	bool requires_transactional_ddl = !is_top_level && is_rc;
-	bool fastpath_in_txn_blocks_supported =
-		yb_enable_new_relation_fastpath_write_in_txn_blocks && YBIsDdlTransactionBlockEnabled();
-	if (requires_transactional_ddl && !fastpath_in_txn_blocks_supported)
+	if (!is_top_level && !YBIsDdlTransactionBlockEnabled())
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u requires transactional DDL support", rel->rd_id);
-		return false;
+		return info;
 	}
 
 	/*
@@ -9929,101 +10450,31 @@ YbCanSkipIntents(Relation rel, bool is_write)
 	 * retries are blocked if this optimization is active.
 	 */
 	if (GetCurrentSubTransactionId() > TopSubTransactionId &&
-		YBTransactionContainsNonReadCommittedSavepoint())
+		YBTransactionContainsNonReadCommittedSavepoint(true /* skip_backward_compat_escape_hatch */ ))
 	{
 		elog(DEBUG1, "Disable skip intents due to savepoint on relation %u write", rel->rd_id);
 		skip_intents_txn_state.disabled = true;
-		return false;
+		return info;
 	}
 
 	if (is_write)
 		skip_intents_txn_state.has_skipped_write = true;
 	elog(DEBUG2, "Skipping intents db %s for relation %u",
 		 is_write ? "write" : "read", rel->rd_id);
-	return true;
+	info.skip_intents = true;
+	return info;
 }
 
-bool
-YbCanSkipIntentsWrite(Relation rel)
+YbcPgSkipIntentsOptimizationInfo
+YbGetSkipIntentsOptimizationInfoWrite(Relation rel)
 {
-	return YbCanSkipIntents(rel, true /* is_write */ );
+	return YbGetSkipIntentsOptimizationInfo(rel, true /* is_write */ );
 }
 
-void
-YbDisableSkipIntentsIfModifyingCTE(struct QueryDesc *queryDesc)
+static YbcPgSkipIntentsOptimizationInfo
+YbGetSkipIntentsOptimizationInfoRead(Relation rel)
 {
-	if (skip_intents_txn_state.disabled)
-		return;
-
-	if (queryDesc && queryDesc->plannedstmt && queryDesc->plannedstmt->hasModifyingCTE)
-	{
-		elog(DEBUG1, "Disable skip intents due to modifying CTE");
-		skip_intents_txn_state.disabled = true;
-	}
-}
-
-static bool
-YbCanSkipIntentsRead(Relation rel)
-{
-	return YbCanSkipIntents(rel, false /* is_write */ );
-}
-
-static void
-YbMaybeDisableSkipIntentsForCurrentTxn(Relation rel)
-{
-	/*
-	 * TODO(GH-31588): Track disabling skip intents per table.
-	 * For example, it would be nice if something like below worked:
-	 * begin;
-	 * create table test...;
-	 * create table dummy...;
-	 * insert ... select ... on dummy; ----> This causes disabling the optimization due to halloween problem
-	 * bulk load into table test ----> This should still be able to work.
-	 */
-	if (skip_intents_txn_state.disabled)
-		return;
-
-	if (rel->rd_createSubid == InvalidSubTransactionId)
-		return;
-
-	/* 1. Environment check (functions / triggers only). */
-	int stmt_may_write_reason = 0;
-	if (YbGetSPIStackDepth() > 0)
-		stmt_may_write_reason = 1;
-	else if (YbGetTriggerDepth() > 0)
-		stmt_may_write_reason = 2;
-
-	/*
-	 * 2. Top-level statement shape (Halloween / read-your-writes guard).
-	 * For same-txn-created relations we relax only when we are clearly in a
-	 * plain read-only SELECT (no MERGE/INSERT/...). If portal context is
-	 * missing, stay conservative.
-	 */
-	else
-	{
-		QueryDesc  *qd = ActivePortal ? ActivePortal->queryDesc : NULL;
-
-		if (!qd)
-			stmt_may_write_reason = 3;
-		else if (qd->operation != CMD_SELECT)
-			stmt_may_write_reason = 4;
-	}
-
-	/*
-	 * Unfortunately, we cannot allow skip intents read due to the "Halloween Problem".
-	 * It occurs when a statement's own writes change the result set of its own scan,
-	 * potentially causing an infinite loop or duplicate processing. Here we do not
-	 * have enough context to exactly detect the situation such as
-	 *   INSERT INTO self_insert_test SELECT id + 100 FROM self_insert_test;
-	 * so we simply turn off the optimization entirely once we see a read on a table
-	 * created in the same transaction.
-	 */
-	if (stmt_may_write_reason > 0)
-	{
-		elog(DEBUG1, "Disable skip intents due to relation %u read, reason: %u",
-			 rel->rd_id, stmt_may_write_reason);
-		skip_intents_txn_state.disabled = true;
-	}
+	return YbGetSkipIntentsOptimizationInfo(rel, false /* is_write */ );
 }
 
 /* Session-level cache for YbDatabaseHasPublications(). */
@@ -10190,4 +10641,166 @@ HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
 						   RelationIdGetRelation(status.error_info.conflicting_table_id) :
 						   NULL),
 						   status.error_info.pg_wait_policy);
+}
+
+static int
+YBCAdjustElevel(int elevel, YbcStatus status)
+{
+	return (elevel < FATAL && YBCStatusIsUnknownSession(status)) ? FATAL : elevel;
+}
+
+static YbStatusErrorData
+YBCMakeStatusErrorData(YbcStatus status)
+{
+	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
+	YbStatusErrorData result = {};
+	YbStatusErrorDataFormatText *msg = &result.msg;
+	YbStatusErrorDataFormatText *detail = &result.detail;
+	YbStatusErrorDataFormatText *detail_log = &result.detail_log;
+
+	msg->fmt = YBCMessageAsCString(status);
+	msg->args = YBCStatusArguments(status, &msg->nargs);
+
+	elog(DEBUG2, "status_msg=%s pg_err_code=%d", msg->fmt, pg_err_code);
+
+	switch (pg_err_code)
+	{
+		case ERRCODE_UNIQUE_VIOLATION:
+			{
+				const Oid	relation_oid = YBCStatusRelationOid(status);
+
+				/*
+				 * A status without a relation OID (e.g. an index backfill
+				 * failure) already carries a full PG error message.
+				 */
+				if (!OidIsValid(relation_oid))
+					break;
+				*msg = (YbStatusErrorDataFormatText) {"duplicate key value violates unique constraint \"%s\"",
+													   1, (const char **) palloc(sizeof(const char *))};
+				(msg->args)[0] = FetchUniqueConstraintName(relation_oid);
+				break;
+			}
+		case ERRCODE_YB_TXN_ABORTED:
+			*detail = *msg;
+			*msg = (YbStatusErrorDataFormatText) {"current transaction is expired or aborted"};
+			break;
+		case ERRCODE_YB_TXN_CONFLICT:
+			*detail = *msg;
+			*msg = (YbStatusErrorDataFormatText) {"could not serialize access due to concurrent update"};
+			break;
+		case ERRCODE_YB_RESTART_READ:
+			/*
+			 * Read restart errors occur when writes fall within the uncertianty
+			 * interval [read_time, global_limit).
+			 *
+			 * Moreover, read_time can be less than the current time since it
+			 * is picked as the docdb tablet's safe time as an optimization in
+			 * some cases.
+			 *
+			 * As a consequence, read_time may be lower than the commit time of the
+			 * previous transaction from the same session.
+			 *
+			 * In this case, a read restart error may be issued to move the read
+			 * time past the commit time.
+			 *
+			 * To capture such cases, print the start time of the statement. This
+			 * allows comparison between the start time and the original read time.
+			 */
+			*detail_log = *msg;
+			detail_log->fmt = psprintf("%s, stmt_start_time: %s, txn_start_time: %s, iso:%d",
+									   detail_log->fmt,
+									   timestamptz_to_str(GetCurrentStatementStartTimestamp()),
+									   timestamptz_to_str(GetCurrentTransactionStartTimestamp()),
+									   XactIsoLevel);
+			*msg = (YbStatusErrorDataFormatText) {"Restart read required"};
+			break;
+		case ERRCODE_YB_DEADLOCK:
+			*detail = *msg;
+			*msg = (YbStatusErrorDataFormatText) {"deadlock detected"};
+			break;
+		default:
+			break;
+	}
+	YbcStatusErrorLocationInfo loc = YBCStatusErrorLocation(status);
+	result.location = (YbStatusErrorDataErrorLocation) {loc.filename, loc.lineno, loc.funcname};
+	return result;
+}
+
+void
+HandleYBStatusAtErrorLevelImpl(YbcStatus status, int elevel, const char *text_domain,
+							   const char *filename, int lineno, const char *funcname)
+{
+	Assert(status);
+	const int adjusted_elevel = YBCAdjustElevel(elevel, status);
+	if (adjusted_elevel >= ERROR)
+	{
+		/*
+		 * Execution is going to be interrupted (adjusted_elevel >= ERROR) because of
+		 * the error status, check for postgres interruptions first to prefer native postgres error
+		 * over the error status.
+		 */
+		PG_TRY();
+		{
+			CHECK_FOR_INTERRUPTS();
+		}
+		PG_CATCH();
+		{
+			YBCFreeStatus(status);
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
+	if (errstart(adjusted_elevel, text_domain))
+	{
+		const uint32_t pg_err_code = YBCStatusPgsqlError(status);
+		const YbStatusErrorData status_data = YBCMakeStatusErrorData(status);
+		YBCFreeStatus(status);
+		yb_errapply_yb_status(&status_data, 1);
+		errcode(pg_err_code);
+		errhidecontext(true);
+		if (yb_debug_log_docdb_error_backtrace)
+			errbacktrace();
+		errfinish(filename, lineno, funcname);
+		if (adjusted_elevel >= ERROR)
+			pg_unreachable();
+	}
+	else
+		YBCFreeStatus(status);
+}
+
+Oid
+YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
+{
+	ListCell   *lc;
+	char	   *schema_name = NULL;
+	char	   *table_name = NULL;
+
+	if (!yb_is_federated_yb_foreign_table(ft_relid))
+		return InvalidOid;
+
+	/*
+	 * The backing schema is read from the foreign table options rather than
+	 * hardcoded to pg_catalog: yb_create_global_view can create the foreign
+	 * table and its aux view in any schema (only the base view must live in
+	 * pg_catalog), ad-hoc global views can't be created in pg_catalog.
+	 */
+	foreach(lc, GetForeignTable(ft_relid)->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "schema_name") == 0)
+			schema_name = defGetString(def);
+		else if (strcmp(def->defname, "table_name") == 0)
+			table_name = defGetString(def);
+	}
+
+	if (!schema_name || !table_name)
+		return InvalidOid;
+
+	Oid			namespace_oid = get_namespace_oid(schema_name, true /* missing_ok */ );
+
+	if (!OidIsValid(namespace_oid))
+		return InvalidOid;
+
+	return get_relname_relid(table_name, namespace_oid);
 }

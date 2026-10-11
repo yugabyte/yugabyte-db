@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 import argparse
+import os
 import signal
 import socket
 import sys
@@ -35,6 +36,14 @@ OPTIONAL_RESOURCES = {
     "RLIMIT_FSIZE": (-1, "file size"),
     "RLIMIT_CPU": (-1, "cpu time"),
 }
+
+# Matches FLAGS_big_shared_memory_allocated_limit. Kubernetes defaults
+# container /dev/shm to 64 MiB; PG-TServer shared memory can allocate up
+# to this limit into that tmpfs. Opt-in via --check_shm so existing helm
+# (which runs `all` on master and tserver) is not broken until tserver
+# pods mount a larger Memory emptyDir.
+DEFAULT_MIN_SHM_BYTES = 128 * 1024 * 1024
+SHM_PATH = "/dev/shm"
 
 
 def wait_for_dns_resolve(addr):
@@ -149,6 +158,25 @@ def verify_ulimit(ulimit, alert_msgs):
             )
 
 
+def verify_shm(min_bytes, alert_msgs):
+    try:
+        st = os.statvfs(SHM_PATH)
+    except OSError as e:
+        alert_msgs.append(
+            "/dev/shm | Expected size : {} bytes | Current : unavailable ({})".format(
+                min_bytes, e
+            )
+        )
+        return
+    current = st.f_blocks * st.f_frsize
+    if current < min_bytes:
+        alert_msgs.append(
+            "/dev/shm | Expected size : {} bytes | Current size : {} bytes".format(
+                min_bytes, current
+            )
+        )
+
+
 if __name__ == "__main__":
     # Parse CLI args.
     parser = argparse.ArgumentParser()
@@ -163,6 +191,19 @@ if __name__ == "__main__":
     )
     subparser_common.add_argument(
         "--skip_ulimit", action="store_const", const=True, help="Skip Ulimit"
+    )
+    subparser_common.add_argument(
+        "--check_shm",
+        action="store_true",
+        help="Require /dev/shm >= --min_shm_bytes. Enable on tservers after "
+        "mounting a Memory emptyDir of at least 128Mi (256Mi recommended).",
+    )
+    subparser_common.add_argument(
+        "--min_shm_bytes",
+        type=int,
+        default=DEFAULT_MIN_SHM_BYTES,
+        help="Minimum /dev/shm size in bytes when --check_shm is set "
+        "(default: 134217728, FLAGS_big_shared_memory_allocated_limit)",
     )
 
     # DNS Preflight
@@ -214,3 +255,15 @@ if __name__ == "__main__":
 
                     if exit_action:
                         sys.exit(1)
+
+        if args.check_shm:
+            shm_alerts = [
+                "/dev/shm is too small for PG-TServer shared memory "
+                "(big_shared_memory_allocated_limit). Mount a Memory emptyDir "
+                "of at least 128Mi at /dev/shm (256Mi recommended). Omit "
+                "--check_shm to skip this check."
+            ]
+            verify_shm(args.min_shm_bytes, shm_alerts)
+            if len(shm_alerts) > 1:
+                print("\n".join(shm_alerts), file=sys.stderr)
+                sys.exit(1)

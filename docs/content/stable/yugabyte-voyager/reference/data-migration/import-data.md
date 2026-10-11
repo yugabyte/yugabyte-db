@@ -55,15 +55,6 @@ When run at the same time, flags take precedence over configuration flag setting
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-import-data:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-
 | --batch-size |
 
 ```yaml{.nocopy}
@@ -161,6 +152,16 @@ import-data:
 ```
 
 | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
+
+| --target-db-type |
+
+```yaml
+import-data:
+  target-db-type
+```
+
+| Target database type to import into. <br> Accepted values: yugabytedb (default), yugabytedb-amp (more details coming soon) |
+
 | --use-public-ip |
 
 ```yaml{.nocopy}
@@ -213,6 +214,34 @@ import-data:
 
 | For partitioned tables during live migration, controls whether CDC data is imported via the root table or child partitions only: <ul><li><code>true</code> (default): Import CDC data only via the root table.</li><li><code>false</code>: Import CDC data only via child partitions.</li></ul>**Note**: Supported only for YugabyteDB target {{<release "2025.2.3.0">}} and later.<br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 
+| --cdc-partition-key |
+
+```yaml{.nocopy}
+import-data:
+  cdc-partition-key:
+```
+
+| Global strategy for all tables on how CDC events are partitioned across parallel channels. Strategy is one of the following:
+
+- `auto` (default): Automatically pick `pk` or `table` per table (for example, expression unique-index tables use `table`).
+- `pk`: Partition CDC events by primary key.
+- `table`: Partition CDC events by table (all events for a table share one channel). |
+
+| --cdc-partition-key-overrides |
+
+```yaml{.nocopy}
+import-data:
+  cdc-partition-key-overrides:
+```
+
+| Per-table CDC partition-key overrides in the form `schema.table:strategy`, separated by ';'. Strategy is one of the following:
+
+- `pk`: Partition CDC events by primary key. Example: `sales.events:pk`
+- `table`: Partition CDC events by table (all events for a table share one channel). Example: `public.orders:table`
+- `(col1,col2)`: Partition CDC events by the given column values (immutable columns), in the form `(col1,col2)`. Example: `public.payments:(customer_id,region)`
+
+Unlisted tables keep the global `--cdc-partition-key`. For information on how to choose a strategy, see [Improve import CDC streaming performance](../../performance/#improve-import-cdc-streaming-performance). |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -235,6 +264,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 
 | --target-db-host |
 
@@ -328,6 +373,14 @@ target:
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+import-data:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 
@@ -462,6 +515,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -530,14 +599,6 @@ When run at the same time, flags take precedence over configuration flag setting
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-import-data-to-source:
-  run-guardrails-checks:
-```
-
-|Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 | --parallel-jobs |
 
 ```yaml{.nocopy}
@@ -589,6 +650,22 @@ log-level:
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
+
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -601,6 +678,14 @@ source:
 | --start-clean | — |Starts a fresh import with exported data files present in the export-dir/data directory. <br> If any table on YugabyteDB database is non-empty, it prompts whether you want to continue the import without truncating those tables. <br>Note that for the cases where a table doesn't have a primary key, this may lead to insertion of duplicate data. To avoid this, exclude the table using the --exclude-file-list or truncate those tables manually before using the start-clean flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | — | Answer yes to all prompts during the migration. <br>Default: false |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+import-data-to-source:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 
@@ -705,6 +790,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 
 | --source-replica-db-host |
 

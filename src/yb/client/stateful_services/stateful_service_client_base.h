@@ -19,7 +19,9 @@
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using namespace std::placeholders;
 

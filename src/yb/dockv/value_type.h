@@ -55,6 +55,9 @@ namespace yb::dockv {
     /* Value type that is greater than any of intent types. */ \
     /* It is NOT stored in DB, so should be updated if we add new intent value type */ \
     ((kGreaterThanIntentType, 21)) \
+    /* Update to transaction metadata. Only used for intentsdb. This is less than kHybridTime */ \
+    /* so that all metadata records are grouped together, before any reverse index records. */ \
+    ((kTransactionMetadataUpdateTime, 25)) \
     /* This indicates the end of the "hashed" or "range" group of components of the primary */ \
     /* key. This needs to sort before all other value types, so that a DocKey that has a prefix */ \
     /* of the sequence of components of another key sorts before the other key. kGroupEnd is */ \
@@ -180,6 +183,7 @@ namespace yb::dockv {
     ((kInt32, 'H'))  /* ASCII code 72 */ \
     ((kInt64, 'I'))  /* ASCII code 73 */ \
     ((kUInt32, 'O'))  /* ASCII code 79 */ \
+    ((kVector, 'R'))  /* ASCII code 82 */ \
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \

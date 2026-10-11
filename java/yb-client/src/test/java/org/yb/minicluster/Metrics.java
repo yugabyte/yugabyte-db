@@ -16,6 +16,7 @@ package org.yb.minicluster;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLConnection;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Scanner;
@@ -30,6 +31,10 @@ import com.google.gson.JsonPrimitive;
  * A class to retrieve metrics from a YB server.
  */
 public class Metrics {
+
+  // Bound the metrics HTTP fetch so a wedged/unresponsive server webserver worker cannot block
+  // the caller forever (which otherwise manifests as a whole-test timeout during verification).
+  private static final int METRICS_HTTP_TIMEOUT_MS = 60000;
 
   /**
    * The base metric.
@@ -248,7 +253,10 @@ public class Metrics {
   public Metrics(String host, int port, String type) throws IOException {
     try {
       URL url = new URL(String.format("http://%s:%d/metrics", host, port));
-      Scanner scanner = new Scanner(url.openConnection().getInputStream());
+      URLConnection connection = url.openConnection();
+      connection.setConnectTimeout(METRICS_HTTP_TIMEOUT_MS);
+      connection.setReadTimeout(METRICS_HTTP_TIMEOUT_MS);
+      Scanner scanner = new Scanner(connection.getInputStream());
       JsonParser parser = new JsonParser();
       JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
       for (JsonElement elem : tree.getAsJsonArray()) {

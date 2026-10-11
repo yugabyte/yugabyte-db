@@ -76,8 +76,6 @@ class TabletServerIf : public LocalTabletServer {
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
 
-  virtual uint32_t get_oid_cache_invalidations_count() const = 0;
-
   // use_cache: on the master implementation, when true and the heartbeat catalog version cache
   // is enabled, read from the cache instead of disk. Stale-tolerant callers (Read RPCs) can opt
   // in for the fast path; callers that need authoritative versions (e.g. WaitForYsqlBackends
@@ -192,6 +190,9 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status RestartPG() const = 0;
 
   virtual Status KillPg() const = 0;
+
+  virtual std::optional<docdb::ObjectLockSharedStateHolder> AllocateObjectLockSharedState() const
+      = 0;
 
   virtual ConnectivityStateResponsePB ConnectivityState() = 0;
 

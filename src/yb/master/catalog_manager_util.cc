@@ -13,11 +13,15 @@
 
 #include "yb/master/catalog_manager_util.h"
 
+#include <algorithm>
+
 #include "yb/common/common_net.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/dockv/partition.h"
+
+#include "yb/gutil/strings/numbers.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
@@ -30,7 +34,9 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/math_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 
@@ -49,7 +55,6 @@ DECLARE_int32(replication_factor);
 namespace yb {
 namespace master {
 
-using strings::Substitute;
 
 Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_descs) {
   ZoneToDescMap zone_to_ts;
@@ -73,9 +78,9 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
                 << " for placement uuid " << entry.first;
 
       if (std_dev >= FLAGS_balancer_load_max_standard_deviation) {
-        return STATUS(IllegalState, Substitute("Load not balanced: deviation=$0 in $1 for "
-                                               "placement uuid $2.",
-                                               std_dev, zone.first, entry.first));
+        return STATUS(IllegalState, Format("Load not balanced: deviation=$0 in $1 for "
+                                           "placement uuid $2.",
+                                           SimpleDtoa(std_dev), zone.first, entry.first));
       }
     }
   }
@@ -159,7 +164,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
         if (!accepting_leader_load.contains(replica.first)) {
           return STATUS(
               IllegalState,
-              Substitute("Tserver $0 not expected to have leader of tablet $1",
+              Format("Tserver $0 not expected to have leader of tablet $1",
                   replica.first, tablet->id()));
         }
       }
@@ -325,7 +330,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
       cloud_info_string.insert(ci_string);
     } else {
       return STATUS(IllegalState,
-                    Substitute("Placement information specified should not contain duplicates. "
+                    Format("Placement information specified should not contain duplicates. "
                     "Given placement block: $0 is a duplicate", ci.ShortDebugString()));
     }
   }
@@ -353,7 +358,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
 
     if (!star_star_star && !c_star_star && !c_r_star && !c_r_z) {
       return STATUS(IllegalState,
-                        Substitute("Placement information specified should be prefixes."
+                        Format("Placement information specified should be prefixes."
                         "Given placement block: $0 isn't a prefix", pb.ShortDebugString()));
     }
   }
@@ -374,7 +379,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
         // pb1 shouldn't be prefix of pb2.
         if (CatalogManagerUtil::IsCloudInfoPrefix(pb1, pb2)) {
           return STATUS(IllegalState,
-                        Substitute("Placement information specified should not overlap. $0 and"
+                        Format("Placement information specified should not overlap. $0 and"
                         " $1 overlap. For instance, c1.r1.z1,c1.r1 is invalid while "
                         "c1.r1.z1,c1.r1.z2 is valid. Also note that c1.r1,c1.r1 is valid.",
                         pb1.ShortDebugString(), pb2.ShortDebugString()));
@@ -383,14 +388,72 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
     }
   }
 
-  int total_min_replica_count = 0;
-  for (auto& placement_block : placement_info.placement_blocks()) {
+  int64_t total_min_replica_count = 0;
+  for (const auto& placement_block : placement_info.placement_blocks()) {
     total_min_replica_count += placement_block.min_num_replicas();
   }
   if (total_min_replica_count > placement_info.num_replicas()) {
     return STATUS_FORMAT(IllegalState, "num_replicas ($0) should be greater than or equal to the "
         "total of replica counts specified in placement_info ($1).", placement_info.num_replicas(),
         total_min_replica_count);
+  }
+
+  RETURN_NOT_OK(ValidateMaxNumReplicasFields(placement_info));
+
+  return Status::OK();
+}
+
+Status CatalogManagerUtil::ValidateMaxNumReplicasFields(const PlacementInfoPB& placement_info) {
+  if (std::none_of(
+          placement_info.placement_blocks().begin(), placement_info.placement_blocks().end(),
+          [](const auto& block) { return block.has_max_num_replicas(); })) {
+    return Status::OK();
+  }
+
+  // Enforcing per-block maximums requires unambiguously attributing every tserver to a single
+  // placement block. Wildcard (partially-specified) blocks can overlap fully-qualified ones, so
+  // when any block has an explicit maximum, every block in the placement must be fully qualified
+  // and no block may be duplicated. Otherwise a tserver in a capped block could be attributed to
+  // an overlapping wildcard block, bypassing the cap.
+  int64_t total_max_replica_count = 0;
+  std::unordered_set<std::string> placement_ids;
+  for (const auto& placement_block : placement_info.placement_blocks()) {
+    const auto& cloud_info = placement_block.cloud_info();
+    if (!cloud_info.has_placement_cloud() || !cloud_info.has_placement_region() ||
+        !cloud_info.has_placement_zone()) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "max_num_replicas is not supported in combination with wildcard placement blocks: $0",
+          placement_block.ShortDebugString());
+    }
+    if (!placement_ids.insert(TSDescriptor::generate_placement_id(cloud_info)).second) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "max_num_replicas is not supported in combination with duplicate placement blocks: $0",
+          placement_block.ShortDebugString());
+    }
+    if (placement_block.has_max_num_replicas()) {
+      if (placement_block.max_num_replicas() < 1) {
+        return STATUS_FORMAT(
+            IllegalState, "max_num_replicas ($0) must be greater than or equal to 1",
+            placement_block.max_num_replicas());
+      }
+      if (placement_block.max_num_replicas() < placement_block.min_num_replicas()) {
+        return STATUS_FORMAT(
+            IllegalState,
+            "max_num_replicas ($0) must be greater than or equal to min_num_replicas ($1)",
+            placement_block.max_num_replicas(), placement_block.min_num_replicas());
+      }
+    }
+    total_max_replica_count += placement_block.has_max_num_replicas()
+        ? placement_block.max_num_replicas()
+        : placement_info.num_replicas();
+  }
+  if (total_max_replica_count < placement_info.num_replicas()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "num_replicas ($0) should be less than or equal to the total maximum replica count ($1).",
+        placement_info.num_replicas(), total_max_replica_count);
   }
 
   return Status::OK();
@@ -574,7 +637,8 @@ const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklis
 
 Status ExecutePgsqlStatements(
     const std::string& database_name, const std::vector<std::string>& statements,
-    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback) {
+    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback,
+    std::string_view yb_internal_conn_kind) {
   SCHECK(!database_name.empty(), InvalidArgument, "Database name is empty");
   if (statements.empty()) {
     return Status::OK();
@@ -588,6 +652,9 @@ Status ExecutePgsqlStatements(
   req.set_database_name(database_name);
   for (const auto& statement : statements) {
     req.add_pgsql_statements(statement);
+  }
+  if (!yb_internal_conn_kind.empty()) {
+    req.set_yb_internal_conn_kind(std::string(yb_internal_conn_kind));
   }
 
   auto resp = std::make_shared<tserver::AdminExecutePgsqlResponsePB>();

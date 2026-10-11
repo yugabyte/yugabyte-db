@@ -1,6 +1,11 @@
 import { http, HttpResponse } from 'msw';
 
 import type { Task } from '@app/redesign/features/tasks/dtos';
+import {
+  ReleaseState,
+  ReleaseYbType,
+  type YbdbRelease
+} from '@app/redesign/features/universe/universe-actions/software-upgrade/dtos';
 import type {
   Universe,
   UniverseInfo,
@@ -10,6 +15,39 @@ import type {
 export type DbUpgradeManagementPanelMswOptions = {
   /** Merged into the GET universe mock `info` (e.g. `software_upgrade_state` per story). */
   universeInfoOverrides?: Partial<UniverseInfo>;
+};
+
+const createActiveYbdbReleaseMock = (version: string): YbdbRelease => ({
+  release_uuid: `release-uuid-${version}`,
+  version,
+  yb_type: ReleaseYbType.YBDB,
+  release_type: 'LTS',
+  state: ReleaseState.ACTIVE,
+  artifacts: [
+    { platform: 'LINUX', architecture: 'x86_64' },
+    { platform: 'LINUX', architecture: 'aarch64' }
+  ]
+});
+
+/**
+ * Active YBDB releases for DB upgrade modal stories: current universe version plus any
+ * versions on the task.
+ */
+export const buildDbUpgradeStoryReleaseMocks = (universe: Universe, task: Task): YbdbRelease[] => {
+  const versions = new Set<string>();
+  const currentVersion = universe.spec?.yb_software_version;
+  if (currentVersion) {
+    versions.add(currentVersion);
+  }
+  const targetVersion = task.details?.versionNumbers?.ybSoftwareVersion;
+  if (targetVersion) {
+    versions.add(targetVersion);
+  }
+  const previousVersion = task.details?.versionNumbers?.ybPrevSoftwareVersion;
+  if (previousVersion) {
+    versions.add(previousVersion);
+  }
+  return Array.from(versions).map(createActiveYbdbReleaseMock);
 };
 
 /**
@@ -31,6 +69,8 @@ export const dbUpgradeManagementPanelMswHandlers = (
         }
       : universe;
 
+  const dbReleases = buildDbUpgradeStoryReleaseMocks(universeResponse, task);
+
   return [
     http.get('http://localhost:9000/api/v1/customers/customer-uuid/tasks_list', ({ request }) => {
       const url = new URL(request.url);
@@ -48,6 +88,13 @@ export const dbUpgradeManagementPanelMswHandlers = (
     ),
     http.post(`http://localhost:9000/api/v1/customers/customer-uuid/tasks/${task.id}`, () =>
       HttpResponse.json({ taskUUID: task.id })
+    ),
+    http.get('http://localhost:9000/api/v1/customers/customer-uuid/ybdb_release', () =>
+      HttpResponse.json(dbReleases)
+    ),
+    http.get(
+      `http://localhost:9000/api/v1/customers/customer-uuid/runtime_config/${universeUuid}`,
+      () => HttpResponse.json({ configEntries: [] })
     )
   ];
 };

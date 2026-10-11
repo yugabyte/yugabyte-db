@@ -122,7 +122,7 @@ TEST_F(SequencesUtilTest, ScanWhenSequencesDataTableNonexistentGivesNotFound) {
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
   ASSERT_NOK_STR_CONTAINS(
-      result.status(), "Table with identifier 0000ffff00003000800000000000ffff not found");
+      result.status(), "Table with id 0000ffff00003000800000000000ffff does not exist");
 }
 
 TEST_F(SequencesUtilTest, ScanReturnsNothingForNoSequences) {

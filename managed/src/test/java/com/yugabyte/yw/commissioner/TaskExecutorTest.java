@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSortedSet;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -40,6 +41,7 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -95,11 +97,14 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.UpdateKubernetesDiskSize,
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
+          TaskType.RollbackEditUniverse,
           TaskType.ReplaceNodeInUniverse,
           TaskType.EditKubernetesUniverse,
+          TaskType.RollbackEditKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.ReadOnlyClusterDelete,
           TaskType.AddNodeToUniverse,
+          TaskType.RollbackAddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
           TaskType.ReleaseInstanceFromUniverse,
@@ -107,6 +112,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.MultiTableBackup,
           TaskType.BackupUniverse,
           TaskType.ResizeNode,
+          TaskType.RollbackResizeNode,
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
           TaskType.CloudProviderDelete,
@@ -136,6 +142,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ModifyQueryLoggingConfig,
           TaskType.ModifyMetricsExportConfig,
           TaskType.ConfigureExportTelemetryConfig,
+          TaskType.KubernetesConfigureExportTelemetryConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
@@ -171,8 +178,11 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.UpdatePitrConfig,
           TaskType.DeletePitrConfig,
           TaskType.RestoreSnapshotSchedule,
+          TaskType.CreateKMSConfig,
+          TaskType.EditKMSConfig,
+          TaskType.DeleteKMSConfig,
           TaskType.ProvisionUniverseNodes,
-          TaskType.ProvisionUniverseNodes);
+          TaskType.RollbackEditKubernetesUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -564,7 +574,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(task)
         .run();
 
-    // CompletableFuture.supplyAsync(() -> TaskExecutor.this.shutdown(Duration.ofMinutes(5))));
     RunnableTask taskRunner1 = taskExecutor.createRunnableTask(task, null);
     UUID taskUUID = taskExecutor.submit(taskRunner1, executor);
     // Wait for the task to be running.
@@ -572,31 +581,51 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     // Submit executor service shutdown to mimic shutdown hook.
     CompletableFuture.supplyAsync(
         () -> MoreExecutors.shutdownAndAwaitTermination(executor, 2, TimeUnit.SECONDS));
-    // Submit task executor shutdown to mimic shutdown hook.
-    CompletableFuture.supplyAsync(() -> taskExecutor.shutdown(Duration.ofSeconds(2)));
-    // Wait for the task to be cancelled.
-    waitForTask(taskUUID);
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    // Aborted due to shutdown.
-    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
-    RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
-    // This should get rejected as the executor is already shutdown.
-    assertThrows(
-        PlatformServiceException.class,
-        () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
-    taskInfo = TaskInfo.getOrBadRequest(taskRunner2.getTaskUUID());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // Submit task executor shutdown via the registered shutdown hook.
+    ShutdownHookHandler shutdownHookHandler = app.injector().instanceOf(ShutdownHookHandler.class);
+    try {
+      // Trigger the shutdown hook.
+      CompletableFuture.runAsync(
+          () ->
+              shutdownHookHandler.shutdownHooks(
+                  ShutdownHookHandler.ShutdownPhase.BEFORE_SERVICE_UNBIND));
+      // Wait for the task to be cancelled.
+      waitForTask(taskUUID);
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+      // Aborted due to shutdown.
+      assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+      RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
+      // This should get rejected as the executor is already shutdown.
+      assertThrows(
+          PlatformServiceException.class,
+          () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
+      taskInfo = TaskInfo.getOrBadRequest(taskRunner2.getTaskUUID());
+      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    } finally {
+      Util.resetYbaShutdownStarted();
+    }
   }
 
   @Test
   public void testRunnableTaskCallstack() {
-    ITask task = mockTaskCommon(false);
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
-    String[] callstack = taskRunner.getCreatorCallstack();
-    assertThat(
-        callstack[0],
-        containsString("com.yugabyte.yw.commissioner.TaskExecutor.createRunnableTask"));
-    assertThat(callstack.length, lessThanOrEqualTo(16));
+    // The creator callstack is only captured when DEBUG is enabled for the TaskExecutor logger
+    // (see TaskExecutor.RunnableTask); logback-test.xml pins that logger to WARN to cut noise, so
+    // enable DEBUG just for this test and restore it afterwards.
+    ch.qos.logback.classic.Logger taskExecutorLogger =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(TaskExecutor.class);
+    ch.qos.logback.classic.Level previousLevel = taskExecutorLogger.getLevel();
+    taskExecutorLogger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+    try {
+      ITask task = mockTaskCommon(false);
+      RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+      String[] callstack = taskRunner.getCreatorCallstack();
+      assertThat(
+          callstack[0],
+          containsString("com.yugabyte.yw.commissioner.TaskExecutor.createRunnableTask"));
+      assertThat(callstack.length, lessThanOrEqualTo(16));
+    } finally {
+      taskExecutorLogger.setLevel(previousLevel);
+    }
   }
 
   @Test
@@ -648,7 +677,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         TaskType.filteredValues().stream()
             .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
             .collect(Collectors.toCollection(TreeSet::new));
-    assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
+    Set<TaskType> missingInExpected = Sets.difference(retryableTaskTypes, RETRYABLE_TASKS);
+    Set<TaskType> missingInActual = Sets.difference(RETRYABLE_TASKS, retryableTaskTypes);
+    String msg =
+        String.format(
+            "Missing in expected: %s, missing in actual: %s", missingInExpected, missingInActual);
+    assertEquals(msg, RETRYABLE_TASKS, retryableTaskTypes);
   }
 
   @Test

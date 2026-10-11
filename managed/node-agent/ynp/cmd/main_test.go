@@ -18,6 +18,7 @@ import (
 )
 
 const (
+	// YNP cloud config passed down from YBA.
 	ynpCloudConfig = `
 {
   "ynp" : {
@@ -49,7 +50,61 @@ const (
   }
 }
 `
+
+	// YNP onprem manual config.
+	ynpOnpremConfigYamlContent = `
+ynp:
+  chrony_servers: []
+  yb_home_dir: /home/yugabyte
+  yb_user_home: /home/yugabyte
+  yb_user_id: 1004
+  no_proxy_list: []
+  is_airgap: false
+  node_ip: 127.0.0.1
+  tmp_directory: /tmp
+  node_agent_port: 9070
+  node_exporter_port: 9300
+  is_configure_clockbound: false
+  configure_cgroup: true
+yba:
+  url: https://yba.example.com
+  skip_tls_verify: true
+  customer_uuid: 11111111-1111-1111-1111-111111111111
+  api_key: test-api-key
+  node_name: node-1
+  node_external_fqdn: 10.0.0.1
+  provider:
+    name: onprem-provider-1
+    region:
+      name: us-west-1
+      zone:
+        name: us-west-1a
+      latitude: 37.77
+      longitude: -122.42
+  instance_type:
+    name: c5.large
+    cores: 4
+    memory_size: 16
+    volume_size: 100
+    mount_points: ["/mnt/d0"]
+logging:
+  level: INFO
+  directory: ./logs
+  file: app.log
+`
 )
+
+func yamlConfigFilePath(t *testing.T, content string) string {
+	tmpFile, err := os.CreateTemp("/tmp", "ynp_config_*.yaml")
+	if err != nil {
+		t.Fatalf("Failed to create temp YAML config: %v", err)
+	}
+	defer tmpFile.Close()
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatalf("Failed to write temp YAML config: %v", err)
+	}
+	return tmpFile.Name()
+}
 
 func testRootCmd() *cobra.Command {
 	return &cobra.Command{
@@ -104,6 +159,22 @@ func checkLine(t *testing.T, iniFile string, searchStrings []string) {
 	if len(unprocessed) > 0 {
 		t.Fatalf("Not all search strings are found in the file")
 	}
+}
+
+// Returns the set of section names in the generated config.ini file.
+func iniSections(t *testing.T, iniFile string) map[string]bool {
+	data, err := os.ReadFile(iniFile)
+	if err != nil {
+		t.Fatalf("unable to read file: %v", err)
+	}
+	sections := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			sections[strings.Trim(line, "[]")] = true
+		}
+	}
+	return sections
 }
 
 func configFilePath(t *testing.T, content string) string {
@@ -226,7 +297,60 @@ func TestNoDuplicateConfig(t *testing.T) {
 	}
 }
 
-// TestConfigOverride tests that the config overrides are applied correctly and reflected in the generated config.
+// TestSchemaValidationOnPremManual verifies that when extra_vars is not set,
+// the YAML config is validated against the schema (onprem manual case).
+func TestSchemaValidationOnPremManual(t *testing.T) {
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+
+	mountPointsAsString := strings.Replace(
+		ynpOnpremConfigYamlContent,
+		`mount_points: ["/mnt/d0"]`,
+		`mount_points: "/mnt/d0"`,
+		1,
+	)
+	mountPointsAsStringPath := yamlConfigFilePath(t, mountPointsAsString)
+	defer os.Remove(mountPointsAsStringPath)
+
+	cases := []struct {
+		name       string
+		configPath string
+	}{
+		{
+			name:       "placeholder yaml",
+			configPath: filepath.Join(projectDir, "resources/node-agent-provision.yaml"),
+		},
+		{
+			name:       "mount_points as string", /* Invalid case */
+			configPath: mountPointsAsStringPath,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			testRootCmd := testRootCmd()
+			testRootCmd.SetArgs([]string{
+				"--ynp_base_path",
+				ynpBasePath,
+				"--config_file",
+				tc.configPath,
+				"--dry_run",
+				"--skip_module",
+				"InstallNodeAgent", /* This needs YBA */
+				"--skip_module",
+				"ConfigureSystemd", /* This requires some setup */
+			})
+			setupCommand(testRootCmd)
+			if err := testRootCmd.Execute(); err == nil {
+				t.Fatalf("Expected schema validation to fail when extra_vars is not set")
+			} else if !strings.Contains(err.Error(), "Failed to validate config") {
+				t.Fatalf("Expected schema validation error, got %v", err)
+			}
+		})
+	}
+}
+
+// TestConfigOverride tests that the config overrides are applied correctly and reflected
+// in the generated config.
 func TestConfigOverride(t *testing.T) {
 	configPath := configFilePath(t, ynpCloudConfig)
 	projectDir := os.Getenv("PROJECT_DIR")
@@ -380,4 +504,61 @@ func TestYNPProvisionWithYbHomeDir(t *testing.T) {
 	getScriptPath(t, tmpDir, "_precheck")
 	// Verify the precheck script is present.
 	getScriptPath(t, tmpDir, "_run")
+}
+
+// TestCgroupModulesSplitByPrivilege verifies that in split provisioning the root-only cgroup
+// setup runs in the --root step and the yb user side in the --noroot step.
+func TestCgroupModulesSplitByPrivilege(t *testing.T) {
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+	yamlConfigPath := filepath.Join(projectDir, "resources/node-agent-provision.yaml")
+	iniFile := filepath.Join(ynpBasePath, "configs/config.ini")
+	rootOnly := []string{"ConfigureRootSystemd", "ConfigureRootCgroups"}
+	nonRootOnly := []string{"ConfigureRuntimeCgroups", "ConfigureSystemd"}
+	cases := []struct {
+		mode    string
+		present []string
+		absent  []string
+	}{
+		{mode: "--root", present: rootOnly, absent: nonRootOnly},
+		{mode: "--noroot", present: nonRootOnly, absent: rootOnly},
+	}
+	for _, tc := range cases {
+		t.Run(tc.mode, func(t *testing.T) {
+			configPath := configFilePath(t, ynpCloudConfig)
+			testRootCmd := testRootCmd()
+			testRootCmd.SetArgs([]string{
+				"--ynp_base_path",
+				ynpBasePath,
+				"--config_file",
+				yamlConfigPath,
+				"--extra_vars",
+				configPath,
+				"--dry_run",
+				tc.mode,
+				"--skip_module",
+				"InstallNodeAgent", /* This needs YBA */
+				"--skip_module",
+				// Skipping only stops script generation; config.ini still has the section.
+				"ConfigureSystemd", /* This requires some setup */
+				"--config_override",
+				"ynp.configure_cgroup=true",
+			})
+			setupCommand(testRootCmd)
+			if err := testRootCmd.Execute(); err != nil {
+				t.Fatalf("Error executing command: %v\n", err)
+			}
+			sections := iniSections(t, iniFile)
+			for _, name := range tc.present {
+				if !sections[name] {
+					t.Errorf("Expected section %s in %s config", name, tc.mode)
+				}
+			}
+			for _, name := range tc.absent {
+				if sections[name] {
+					t.Errorf("Unexpected section %s in %s config", name, tc.mode)
+				}
+			}
+		})
+	}
 }

@@ -54,6 +54,7 @@ set(CQLSERVER_SRCS
 
 add_library(yb-cql ${CQLSERVER_SRCS})
 target_link_libraries(yb-cql
+  PUBLIC
   ql_api
   protobuf
   log
@@ -63,7 +64,12 @@ target_link_libraries(yb-cql
   server_common
   server_process
   ldap
-  lber)
+  lber
+  # yb-cql uses ybgate (CQL ident/usermap auth, memory contexts) only in its .cc files;
+  # cql_service.h keeps the memory context as void*, so the header is ybgate-free and this is
+  # PRIVATE (not re-exported to yb-cql's consumers).
+  PRIVATE
+  yb_pgbackend)
 add_dependencies(yb-cql postgres)
 
 # Tests

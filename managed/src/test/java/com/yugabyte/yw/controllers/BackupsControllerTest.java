@@ -26,7 +26,6 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
@@ -618,19 +617,18 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfigService mockCCS = mock(CustomerConfigService.class);
     when(mockCCS.getOrBadRequest(any(), any())).thenReturn(customerConfig);
     when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
-    doThrow(new PlatformServiceException(PRECONDITION_FAILED, "error"))
-        .when(mockBackupHelper)
-        .validateStorageConfig(any());
     ReflectionTestUtils.setField(mockBackupHelper, "customerConfigService", mockCCS);
+    ReflectionTestUtils.setField(mockBackupHelper, "commissioner", mockCommissioner);
+    ReflectionTestUtils.setField(mockBackupHelper, "confGetter", confGetter);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
-    Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
+    Result r = createBackupYb(bodyJson, null);
     JsonNode resultJson = Json.parse(contentAsString(r));
-    assertValue(resultJson, "error", "error");
-    assertEquals(PRECONDITION_FAILED, r.status());
-    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
+    assertEquals(OK, r.status());
+    verify(mockCommissioner, times(1)).submit(any(), any());
   }
 
   @Test

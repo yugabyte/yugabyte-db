@@ -15,6 +15,7 @@
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/cdc/xrepl_types.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
 
 namespace yb::master {
@@ -23,6 +24,30 @@ class CDCStreamInfo;
 
 // Map[NamespaceId]:xClusterSafeTime
 typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
+
+struct XClusterBackfillDecision {
+  enum class Kind {
+    // Run local backfill with safe time chosen by BackfillTable itself.
+    kRunLocalWithTabletSafeTime,
+    // Run local backfill using hybrid_time.
+    kRunLocalAtHybridTime,
+    // Skip local backfill, and wait for safe time to cross hybrid_time.
+    kDeferToReplicatedBackfill,
+  };
+
+  Kind kind = Kind::kRunLocalWithTabletSafeTime;
+  HybridTime hybrid_time;
+
+  static XClusterBackfillDecision RunLocalWithTabletSafeTime() {
+    return {Kind::kRunLocalWithTabletSafeTime, HybridTime::kInvalid};
+  }
+  static XClusterBackfillDecision RunLocalAtHybridTime(HybridTime ht) {
+    return {Kind::kRunLocalAtHybridTime, ht};
+  }
+  static XClusterBackfillDecision DeferToReplicatedBackfill(HybridTime ht) {
+    return {Kind::kDeferToReplicatedBackfill, ht};
+  }
+};
 
 struct NamespaceCheckpointInfo {
   bool initial_bootstrap_required = false;

@@ -16,6 +16,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -36,6 +37,7 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -46,6 +48,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,12 +63,19 @@ import org.yb.CommonTypes.TableType;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.client.YBTable;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
+
+  // Verified safe to reuse the application across this class' methods (green strict-stubs + green
+  // assertions) despite the strict MockitoJUnitRunner. See reuseAppDespiteStrictMockito().
+  @Override
+  protected boolean reuseAppDespiteStrictMockito() {
+    return true;
+  }
 
   private Universe defaultUniverse;
   private Integer universeVersion = 2;
@@ -84,7 +94,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private String universeName = "TestUniverse";
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() {
@@ -332,7 +342,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private void setupCommon() {
     // Table RPCs.
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     // WaitForTServerHeartBeats mock.
     ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
@@ -386,12 +396,15 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForServer,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
           TaskType.CreateTable,
           TaskType.UpdateConsistencyCheck,
           TaskType.PodDisruptionBudgetPolicy,
-          TaskType.UniverseUpdateSucceeded);
+          TaskType.UniverseUpdateSucceeded,
+          // CreateAlertDefinitions now runs AFTER UniverseUpdateSucceeded so alert definitions
+          // are only produced for universes whose initial creation actually succeeded (the
+          // preceding subtask flips creationSucceeded=true which the alert service gates on).
+          TaskType.CreateAlertDefinitions);
 
   private static final ImmutableMap<String, String> EXPECTED_RESULT_FOR_CREATE_TABLE_TASK =
       ImmutableMap.of("tableType", "REDIS_TABLE_TYPE", "tableName", "redis");
@@ -415,8 +428,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("removeFile", false)),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -715,6 +728,29 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testCreateKubernetesUniverseCreatesYbStorageDb() {
+    setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS enabled */ true, false);
+    setupCommon();
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.createYbStorageDb.getKey(), "true");
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(any(), any(), any()))
+        .thenReturn(Json.newObject().put("result", "CREATE DATABASE"));
+    TaskInfo taskInfo = submitTask(new UniverseDefinitionTaskParams());
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskType> taskTypes =
+        taskInfo.getSubTasks().stream()
+            .collect(Collectors.groupingBy(TaskInfo::getPosition))
+            .entrySet()
+            .stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(e -> e.getValue().get(0).getTaskType())
+            .collect(Collectors.toList());
+    assertEquals(
+        TaskType.CreateYbStorageDatabase,
+        taskTypes.get(taskTypes.indexOf(TaskType.UpdateConsistencyCheck) + 1));
+    verify(mockYsqlQueryExecutor, times(1)).executeQueryInNodeShell(any(), any(), any());
+  }
+
+  @Test
   public void testCreateKubernetesUniverseFailure() {
     setupUniverse(
         /* Create Masters */ true, /* YEDIS/REDIS enabled */ true, /* set namespace */ false);
@@ -738,6 +774,25 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverse(
         /* Create Masters */ false, /* YEDIS/REDIS disabled */ false, /* set namespace */ false);
     testCreateKubernetesUniverseSubtasksWithoutYedis(1);
+  }
+
+  @Test
+  public void testCreateKubernetesUniverseWithPaAutoRegistration() {
+    setupUniverse(
+        /* Create Masters */ false, /* YEDIS/REDIS enabled */ true, /* set namespace */ false);
+    setupCommon();
+    factory.forCustomer(defaultCustomer).setValue("yb.pa.auto_registration.enabled", "true");
+    TaskInfo taskInfo = submitTask(new UniverseDefinitionTaskParams());
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskType> subTaskTypes =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparingInt(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    int registerIndex = subTaskTypes.indexOf(TaskType.RegisterUniverseWithPaCollector);
+    assertTrue(registerIndex >= 0);
+    assertTrue(registerIndex < subTaskTypes.indexOf(TaskType.UniverseUpdateSucceeded));
   }
 
   private void testCreateKubernetesUniverseSubtasksWithoutYedis(int tasksNum) {

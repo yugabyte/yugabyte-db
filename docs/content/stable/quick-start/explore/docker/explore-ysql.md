@@ -8,7 +8,7 @@ block_indexing = true
 To open the YSQL shell, run ysqlsh.
 
 ```sh
-$ docker exec -it yugabyte /home/yugabyte/bin/ysqlsh --echo-queries
+$ docker exec -it yugabyte bash -c '/home/yugabyte/bin/ysqlsh --echo-queries --host $(hostname)'
 ```
 
 ```output

@@ -1,0 +1,15 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin s1_analyze s2_analyze s1_commit
+step s1_begin: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_analyze: ANALYZE t;
+step s2_analyze: ANALYZE t; <waiting ...>
+step s1_commit: COMMIT;
+step s2_analyze: <... completed>
+
+starting permutation: s1_begin s1_create_trigger s2_create_index_i2 s1_commit
+step s1_begin: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_create_trigger: CREATE TRIGGER trig AFTER UPDATE ON t FOR EACH ROW EXECUTE FUNCTION trig_fn();
+step s2_create_index_i2: CREATE INDEX NONCONCURRENTLY i2 ON t (v); <waiting ...>
+step s1_commit: COMMIT;
+step s2_create_index_i2: <... completed>

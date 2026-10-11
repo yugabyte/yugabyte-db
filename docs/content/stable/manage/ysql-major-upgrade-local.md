@@ -62,6 +62,8 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
 
 - Drop the `pg_stat_monitor` extension before upgrading (`DROP EXTENSION pg_stat_monitor;`) and re-enable it after the upgrade is finalized (`CREATE EXTENSION pg_stat_monitor;`).
 
+- If you are upgrading from v2024.2 and use the `vector` (pgvector) extension, export the data in tables that use it, and drop those tables and the extension (`DROP EXTENSION vector;`) before upgrading. Recreate them after the upgrade is finalized. See [Upgrade from v2024.2](../../additional-features/pg-extensions/extension-pgvector/#upgrade-from-v2024-2).
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.
@@ -111,7 +113,7 @@ In addition, refer to the following:
 
 ### Enable mixed mode
 
-Because the upgrade is fully online, your cluster will temporarily consist of a mix of nodes running both PostgreSQL 11 and 15 (mixed mode). These processes need to be able to talk with each other and correctly process your SQL commands. Specifically, the PostgreSQL expressions that are used in the SQL statements get pushed down from the compute layer to the YugabyteDB storage layer. Because the expressions used by PostgreSQL have changed across the major version, you need to disable this optimization during the upgrade. (This will be addressed in v2025.1 (issue {{<issue 24730>}}).)
+Because the upgrade is fully online, your cluster will temporarily consist of a mix of nodes running both PostgreSQL 11 and 15 (mixed mode). These processes need to be able to talk with each other and correctly process your SQL commands.
 
 Set the `ysql_yb_major_version_upgrade_compatibility` flag to `11` on all YB-Master and YB-TServer processes. For example:
 
@@ -264,6 +266,5 @@ Now that all the YB-Master and YB-TServer processes are on the same version, you
 
 ## Limitations
 
-- Expression pushdown is not available. {{<issue 24730>}}
-- Upgrading with extensions is not yet supported. {{<issue 24733>}}
+- Expression pushdown is partially available. {{<issue 24730>}}
 - Any backups that are taken in the monitoring phase can only be restored on a PG15 compatible universe (that is, backups cannot be restored if rollback is performed).

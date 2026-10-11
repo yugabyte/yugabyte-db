@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -47,12 +48,24 @@ FetchDataFunction FetchDataFunctionCreator(const std::shared_ptr<T>& proxy) {
 
 class RemoteBootstrapFileDownloader {
  public:
-  RemoteBootstrapFileDownloader(const std::string* log_prefix, FsManager* fs_manager);
+  // `is_cancelled`, if set, is polled on every FetchData retry; when it returns true the in-flight
+  // download stops retrying and returns ShutdownInProgress, so a bootstrap downloading from a
+  // source that is shutting down (or while this server itself is shutting down) exits promptly
+  // instead of retrying until session_idle_timeout. See issue #32211.
+  RemoteBootstrapFileDownloader(
+      const std::string* log_prefix, FsManager* fs_manager,
+      std::function<bool()> is_cancelled = {});
 
   void Start(
       FetchDataFunction fetch_data, std::string session_id,
       MonoDelta session_idle_timeout,
       std::optional<FetchDataFunction> uncompressed_fetch_data = std::nullopt);
+
+  // Returns true when the download should stop (the is_cancelled predicate set at construction is
+  // present and returns true). See issue #32211.
+  bool IsCancelled() const {
+    return is_cancelled_ && is_cancelled_();
+  }
 
   Status DownloadFile(
       const tablet::FilePB& file_pb, const std::string& dir, DataIdPB* data_id,
@@ -94,6 +107,7 @@ class RemoteBootstrapFileDownloader {
   std::optional<FetchDataFunction> fetch_data_uncompressed_;
   std::string session_id_;
   MonoDelta session_idle_timeout_ = MonoDelta::kZero;
+  std::function<bool()> is_cancelled_;
   std::unordered_map<uint64_t, std::string> inode2file_;
 };
 

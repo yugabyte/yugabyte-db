@@ -45,7 +45,7 @@ void SyncPoint::LoadDependency(const std::vector<Dependency>& dependencies) {
 }
 
 bool SyncPoint::PredecessorsAllCleared(const std::string& point) {
-  if (!enabled_) {
+  if (!IsEnabled()) {
     return true;
   }
 
@@ -73,13 +73,13 @@ void SyncPoint::ClearAllCallBacks() {
 void SyncPoint::EnableProcessing() {
   DCHECK(FLAGS_TEST_enable_sync_points);
   std::unique_lock lock(mutex_);
-  enabled_ = true;
+  enabled_.store(true, std::memory_order_release);
 }
 
 void SyncPoint::DisableProcessing() {
   {
     std::unique_lock lock(mutex_);
-    enabled_ = false;
+    enabled_.store(false, std::memory_order_release);
   }
   YB_PROFILE(cv_.notify_all());
 }
@@ -90,9 +90,28 @@ void SyncPoint::ClearTrace() {
 }
 
 void SyncPoint::Process(const std::string& point, void* cb_arg) {
+  if (!IsEnabled()) {
+    return;
+  }
+  ProcessInternal(point, cb_arg);
+}
+
+void SyncPoint::Process(const char* point, void* cb_arg) {
+  // Avoid constructing a std::string on the disabled (production) path.
+  if (!IsEnabled()) {
+    return;
+  }
+  ProcessInternal(std::string(point), cb_arg);
+}
+
+void SyncPoint::ProcessInternal(const std::string& point, void* cb_arg) {
   std::unique_lock lock(mutex_);
 
-  if (!enabled_) return;
+  // Re-check under the mutex, since DisableProcessing() could have raced with the lock-free check
+  // in the public entry points.
+  if (!IsEnabled()) {
+    return;
+  }
 
   const auto callback_pair = callbacks_.find(point);
   if (callback_pair != callbacks_.end()) {
@@ -116,7 +135,13 @@ void SyncPoint::Process(const std::string& point, void* cb_arg) {
 
 void TEST_sync_point(const std::string& point, void* cb_arg) {
   if (PREDICT_FALSE(FLAGS_TEST_enable_sync_points)) {
-    yb::SyncPoint::GetInstance()->Process(point, cb_arg);
+    SyncPoint::GetInstance()->Process(point, cb_arg);
+  }
+}
+
+void TEST_sync_point(const char* point, void* cb_arg) {
+  if (PREDICT_FALSE(FLAGS_TEST_enable_sync_points)) {
+    SyncPoint::GetInstance()->Process(point, cb_arg);
   }
 }
 }  // namespace yb

@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.*;
@@ -479,6 +480,41 @@ public class AccessManagerTest extends FakeDBApplication {
     runCommand(testRegion.getUuid(), "delete-key", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), shellProcessContext.capture());
+  }
+
+  @Test
+  public void testDeleteKeyWithValidRegionInOCI() {
+    Provider testProvider = ModelFactory.ociProvider(defaultCustomer);
+    Region testRegion = Region.create(testProvider, "us-sanjose-1", "US San Jose", "yb-image");
+    runCommand(testRegion.getUuid(), "delete-key", false);
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), shellProcessContext.capture());
+  }
+
+  @Test
+  public void testAddKeySetsDefaultSshUserInOCI() {
+    Provider testProvider = ModelFactory.ociProvider(defaultCustomer);
+    Region testRegion = Region.create(testProvider, "us-sanjose-1", "US San Jose", "yb-image");
+    addKeyForProvider(testProvider, testRegion.getUuid());
+    testProvider.refresh();
+    assertEquals(Common.CloudType.oci.getSshUser(), testProvider.getDetails().sshUser);
+  }
+
+  private void addKeyForProvider(Provider provider, UUID regionUUID) {
+    String keyDir = TMP_KEYS_PATH + File.separator + provider.getUuid() + File.separator;
+    createTempFile(keyDir, "private.key", "PRIVATE_KEY_FILE");
+    createTempFile(keyDir, "public.key", "PUBLIC_KEY_FILE");
+    ShellResponse response = new ShellResponse();
+    response.code = 0;
+    response.message =
+        "{\"public_key\":\""
+            + keyDir
+            + "public.key\" ,"
+            + "\"private_key\": \""
+            + keyDir
+            + "private.key\"}";
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
+    accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null, false);
   }
 
   @Test

@@ -27,6 +27,7 @@
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/util/hash.h"
 
+#include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {

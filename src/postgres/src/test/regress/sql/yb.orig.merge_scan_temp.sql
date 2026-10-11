@@ -20,5 +20,5 @@ INSERT INTO tmp SELECT r1, r2, r3, r4, r5 FROM r5n;
 -- Merge scan should not be used.
 SET enable_bitmapscan = off;
 \set query ':explain :Q SELECT * FROM tmp WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5;'
-\i :iter_Q2
+\i :run_query
 RESET enable_bitmapscan;

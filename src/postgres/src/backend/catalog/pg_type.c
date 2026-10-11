@@ -513,11 +513,13 @@ TypeCreate(Oid newTypeOid,
 			typeObjectId = binary_upgrade_next_pg_type_oid;
 			binary_upgrade_next_pg_type_oid = InvalidOid;
 		}
-		else if (IsYsqlUpgrade && isSystem && relationKind != RELKIND_VIEW)
+		else if (IsYsqlUpgrade && isSystem && relationKind != RELKIND_VIEW &&
+				 relationKind != RELKIND_FOREIGN_TABLE)
 		{
 			/*
-			 * Views in yb_system_views.sql don't define their oids, we
-			 * auto-assign them.
+			 * Views in yb_system_views.sql and foreign tables in
+			 * yb_global_views.sql don't define their oids, we auto-assign
+			 * them.
 			 *
 			 * Also, there's actually a bunch of system relations without
 			 * explicit type OIDs created by initdb - e.g.
@@ -665,11 +667,11 @@ GenerateTypeDependencies(HeapTuple typeTuple,
 	ObjectAddressSet(myself, TypeRelationId, typeObjectId);
 
 	/*
-	 * For non-view/non-implicit-arrays during YSQL upgrade, we do not need to
-	 * do anything.
+	 * For non-view/non-foreign-table/non-implicit-arrays during YSQL upgrade,
+	 * we do not need to do anything.
 	 */
 	if (IsYsqlUpgrade && ybRelationIsSystem && relationKind != RELKIND_VIEW &&
-		!isImplicitArray)
+		relationKind != RELKIND_FOREIGN_TABLE && !isImplicitArray)
 	{
 		if (rebuild)
 			elog(ERROR, "cannot rebuild dependencies for a system relation rowtype");

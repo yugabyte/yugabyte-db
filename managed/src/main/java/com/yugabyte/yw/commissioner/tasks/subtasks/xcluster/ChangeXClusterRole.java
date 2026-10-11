@@ -14,7 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.ChangeXClusterRoleResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class ChangeXClusterRole extends XClusterConfigTaskBase {
@@ -91,7 +91,7 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
       throw new IllegalArgumentException("No role change is requested");
     }
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       // Sync roles in YBA with YBDB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
       XClusterRole currentXClusterRole =

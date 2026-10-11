@@ -19,8 +19,10 @@
 //
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 #include <functional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -61,15 +63,26 @@ class SyncPoint {
   // remove the execution trace of all sync points
   void ClearTrace();
 
+  // Returns true if sync point processing is currently enabled. This is a cheap, lock-free check
+  // that callers can use to skip constructing arguments for Process on the disabled path.
+  bool IsEnabled() const {
+    return enabled_.load(std::memory_order_acquire);
+  }
+
   // triggered by TEST_SYNC_POINT and DEBUG_ONLY_TEST_SYNC_POINT, blocking execution until all
-  // predecessors are executed. And/or call registered callback function, with argument `cb_arg`
+  // predecessors are executed. And/or call registered callback function, with argument `cb_arg`.
+  // Both overloads short-circuit without acquiring the mutex when processing is disabled. The
+  // const char* overload additionally avoids constructing a std::string on the disabled path.
   void Process(const std::string& point, void* cb_arg = nullptr);
+  void Process(const char* point, void* cb_arg = nullptr);
 
   // TODO: it might be useful to provide a function that blocks until all
   // sync points are cleared.
 
  private:
   SyncPoint() {}
+
+  void ProcessInternal(const std::string& point, void* cb_arg);
 
   bool PredecessorsAllCleared(const std::string& point);
 
@@ -82,11 +95,13 @@ class SyncPoint {
   std::condition_variable cv_;
   // sync points that have been passed through
   std::unordered_set<std::string> cleared_points_;
-  bool enabled_ = false;
+  // Checked before acquiring mutex_ on the hot path, so it must be atomic.
+  std::atomic<bool> enabled_{false};
   int num_callbacks_running_ = 0;
 };
 
 void TEST_sync_point(const std::string& point, void* cb_arg = nullptr);
+void TEST_sync_point(const char* point, void* cb_arg = nullptr);
 
 // Use TEST_SYNC_POINT to specify sync points inside code base.
 // Sync points can have happens-after depedency on other sync points,

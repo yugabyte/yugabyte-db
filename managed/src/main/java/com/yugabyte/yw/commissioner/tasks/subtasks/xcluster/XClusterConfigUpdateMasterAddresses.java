@@ -29,7 +29,7 @@ import org.yb.CommonNet;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.AlterUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase {
@@ -65,7 +65,7 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
     try {
       checkUniverseVersion();
       Universe targetUniverse = lockUniverse(-1 /* expectedUniverseVersion */);
-      try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+      try (YBClientApi client = ybService.getUniverseClient(targetUniverse)) {
         GetMasterClusterConfigResponse getMasterClusterConfigResp = client.getMasterClusterConfig();
         if (getMasterClusterConfigResp.hasError()) {
           String errMsg =

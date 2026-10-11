@@ -13,7 +13,7 @@ import api.v2.models.DrConfigReplicationDetailStatus;
 import api.v2.models.DrConfigTableDetail;
 import api.v2.models.TableInfo;
 import api.v2.models.TableRelationType;
-import api.v2.models.TableType;
+import api.v2.models.XClusterTableType;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
@@ -43,7 +43,7 @@ public class DrConfigDetailMapperTest {
     assertEquals(TABLE_ID, mapped.getTableId());
     assertEquals(TABLE_UUID, mapped.getTableUuid());
     assertEquals("yugabyte", mapped.getKeyspace());
-    assertEquals(TableType.YSQL, mapped.getTableType());
+    assertEquals(XClusterTableType.YSQL, mapped.getTableType());
     assertEquals("towns", mapped.getTableName());
     assertEquals(TableRelationType.USER_TABLE_RELATION, mapped.getRelationType());
     assertEquals(Double.valueOf(0.0), mapped.getSizeBytes());

@@ -20,6 +20,7 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
@@ -83,7 +84,7 @@ Result<dockv::KeyEntryValue> TEST_GetKeyEntryValue(
     const rocksdb::UserBoundaryValues& values, size_t index) {
   auto value = rocksdb::TEST_UserValueWithTag(values, TagForRangeComponent(index));
   if (!value) {
-    return STATUS_SUBSTITUTE(NotFound, "Not found value for index $0", index);
+    return STATUS_FORMAT(NotFound, "Not found value for index $0", index);
   }
   return dockv::KeyEntryValue::FullyDecodeFromKey(value->AsSlice());
 }

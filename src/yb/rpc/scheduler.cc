@@ -26,6 +26,7 @@
 #include <boost/multi_index/ordered_index.hpp>
 
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 
@@ -74,8 +75,9 @@ class Scheduler::Impl {
         timer_.cancel(ec);
         LOG_IF(DFATAL, ec) << "Failed to cancel timer: " << ec.message();
 
+        // Same status as DoSchedule after shutdown, so callers see Aborted regardless of timing.
         auto status = STATUS(
-            ServiceUnavailable, "Scheduler is shutting down", "" /* msg2 */, Errno(ESHUTDOWN));
+            Aborted, "Scheduler is shutting down", "" /* msg2 */, Errno(ESHUTDOWN));
         // Abort all scheduled tasks. It is ok to run task earlier than it was scheduled because
         // we pass error status to it.
         for (auto task : tasks_) {

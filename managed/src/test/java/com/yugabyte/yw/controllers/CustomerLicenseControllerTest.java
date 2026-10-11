@@ -11,6 +11,7 @@ import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
@@ -56,7 +57,10 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     customerLicenseManager = new CustomerLicenseManager();
-    when(mockFileHelperService.createTempFile(anyString(), anyString()))
+    // Defensive setUp stub only used by the license-upload tests; declared lenient so
+    // MockitoJUnitRunner's strict-stub check does not fail on runs whose ordering leaves it unused.
+    lenient()
+        .when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenAnswer(
             i -> {
               String fileName = i.getArgument(0);

@@ -1,0 +1,6 @@
+title: RestoreKeyspacePagedResp
+description: Paged list response for restore keyspaces.
+type: object
+x-data-container: PaginationResp
+x-data-item: RestoreKeyspaceInfo
+x-data-entities-description: Restore keyspaces for this page.

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade, where each node is upgraded one at a time. YugabyteDB [automatically re-balances](../../../explore/linear-scalability/data-distribution/) the universe as nodes are taken down and brought back up during the upgrade.
+YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade, where each node is upgraded one at a time. YugabyteDB [automatically rebalances](../../../explore/linear-scalability/data-distribution/) the universe as nodes are taken down and brought back up during the upgrade.
 
 If you have issues after upgrading a universe, you can roll back in-place and restore the universe to its state before the upgrade.
 <!-- Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later. -->

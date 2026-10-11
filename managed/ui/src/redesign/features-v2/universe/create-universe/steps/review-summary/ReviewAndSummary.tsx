@@ -19,11 +19,13 @@ import {
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
+  CreateUniverseSteps,
   StepsRef
 } from '../../CreateUniverseContext';
-import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
+import { mapCreateUniversePayload, getDedicatedTserverMasterCounts } from '../../CreateUniverseUtils';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 //icons
 import UniverseIcon from '../../../../../assets/clusters.svg';
@@ -55,7 +57,8 @@ const StyledUniverseName = styled('span')(({ theme }) => ({
   fontWeight: 600,
   lineHeight: '20px',
   color: theme.palette.primary[600],
-  textDecoration: 'underline'
+  textDecoration: 'underline',
+  cursor: 'pointer'
 }));
 
 const StyledAttrib = styled('div')(({ theme }) => ({
@@ -91,16 +94,23 @@ const StyledBoldValue = styled('div')(({ theme }) => ({
 }));
 
 export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
-  const [context, { moveToPreviousPage }] = (useContext(
+  const [context, { moveToPreviousPage, setActiveStep }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const { resilienceAndRegionsSettings } = context;
+  const { resilienceAndRegionsSettings, nodesAvailabilitySettings, generalSettings } = context;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
   const toast = useYBToast();
   const payload = mapCreateUniversePayload({ ...context });
   const createUniverse = useCreateUniverse();
+  const dedicatedCounts = getDedicatedTserverMasterCounts(
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings
+  );
   const { data: pricingData, isLoading: isLoadingPricing } = useQuery(
     ['getUniversePricing', payload],
     () => getUniverseResources(payload),
@@ -152,6 +162,9 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const costDaily = pricingData?.price_per_hour ? pricingData.price_per_hour * 24 : 0.0;
   const costMonthly = costDaily * 31;
+  const nodesDisplay = dedicatedCounts
+    ? dedicatedCounts.total
+    : pricingData?.num_nodes;
 
   return (
     <div style={{ display: 'flex', gap: '24px' }}>
@@ -176,7 +189,11 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
           <div style={{ display: 'flex', gap: '8px', flexDirection: 'row', marginRight: 'auto' }}>
             <UniverseIcon />
             <div style={{ display: 'flex', gap: '8px', flexDirection: 'column' }}>
-              <StyledUniverseName>{t('universe')}</StyledUniverseName>
+              <StyledUniverseName
+                onClick={() => {
+                  setActiveStep(CreateUniverseSteps.NODES_AVAILABILITY);
+                }}
+              >{t('universe')}</StyledUniverseName>
               <div
                 style={{
                   display: 'flex',
@@ -185,8 +202,8 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
                   justifyContent: 'space-between'
                 }}
               >
-                <StyledAttrib>{t('nodes')}</StyledAttrib>
-                <StyledValue>{pricingData?.num_nodes}</StyledValue>
+                <StyledAttrib>{t(isK8s ? 'pods' : 'nodes')}</StyledAttrib>
+                <StyledValue>{nodesDisplay}</StyledValue>
               </div>
               <div
                 style={{
@@ -257,6 +274,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
           zoom: 1,
           center: [0, 0]
         }}
+        showBoundaries={false}
       >
         {
           resilienceAndRegionsSettings?.regions?.map((region: Region) => {

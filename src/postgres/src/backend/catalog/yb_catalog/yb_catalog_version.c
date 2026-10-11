@@ -14,7 +14,8 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
-#include "access/yb_scan.h"
+#include "access/xact.h"
+#include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid_d.h"
@@ -149,6 +150,48 @@ GetInvalidationMessages(const SharedInvalidationMessage *invalMessages, int nmsg
 	return PointerGetDatum(bstr);
 }
 
+/*
+ * Append ", <label>: <command tag>" to buf, unless cmdtag is unset or names
+ * the statement that is already being reported as the node tag.
+ */
+static void
+AppendDdlAttribution(char *buf, size_t bufsize, const char *label,
+					 CommandTag cmdtag, const char *command_tag)
+{
+	const char *tag_name;
+	size_t		len = strlen(buf);
+
+	if (cmdtag == CMDTAG_UNKNOWN)
+		return;
+
+	tag_name = GetCommandTagName(cmdtag);
+	if (command_tag && strcmp(command_tag, tag_name) == 0)
+		return;
+
+	snprintf(buf + len, bufsize - len, ", %s: %s", label, tag_name);
+}
+
+/*
+ * Format the attribution part of the catalog version increment log details
+ * below. An increment is often caused by a subcommand executed through SPI,
+ * for example a DDL issued by an event trigger function, so report the
+ * top-level statement the user ran, and which statement made this DDL
+ * global-impact or a breaking change. Each part is omitted when it names the
+ * statement reported as the node tag, so a plain top-level DDL that is
+ * breaking on its own adds nothing here.
+ */
+static void
+FormatDdlAttribution(char *buf, size_t bufsize, const char *command_tag)
+{
+	buf[0] = '\0';
+	AppendDdlAttribution(buf, bufsize, "top-level",
+						 YBGetTopLevelStmtDdlCommandTag(), command_tag);
+	AppendDdlAttribution(buf, bufsize, "global",
+						 YBGetGlobalDdlCommandTag(), command_tag);
+	AppendDdlAttribution(buf, bufsize, "breaking",
+						 YBGetBreakingDdlCommandTag(), command_tag);
+}
+
 static void
 YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 								  const char *command_tag)
@@ -163,11 +206,19 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 
 	/* Save old values and set new values to enable the call. */
 	bool		saved = yb_non_ddl_txn_for_sys_tables_allowed;
+	bool		saved_xact_read_only = XactReadOnly;
 
 	yb_non_ddl_txn_for_sys_tables_allowed = true;
 	Oid			save_userid;
 	int			save_sec_context;
 
+	/*
+	 * See YbCallNewSQLIncrementCatalogVersionHelper. This is only defensive
+	 * here: this function is used for a global-impact DDL, and no command
+	 * known to be allowed in a read-only transaction (e.g. ANALYZE) is a
+	 * global-impact DDL.
+	 */
+	XactReadOnly = false;
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
 						   SECURITY_RESTRICTED_OPERATION);
@@ -181,11 +232,14 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	{
 		bool		log_ysql_catalog_versions =
 			*YBCGetGFlags()->log_ysql_catalog_versions;
+		char		tmpbuf[160];
 
+		FormatDdlAttribution(tmpbuf, sizeof(tmpbuf), command_tag);
 		ereport(LOG,
 				(errmsg("%s: incrementing all master db catalog versions (%sbreaking)",
 						__func__, is_breaking_change ? "" : "non"),
-				 errdetail("Node tag: %s.", command_tag ? command_tag : "n/a"),
+				 errdetail("Node tag: %s%s.",
+						   command_tag ? command_tag : "n/a", tmpbuf),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}
@@ -196,6 +250,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 		FunctionCallInvoke(fcinfo);
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		XactReadOnly = saved_xact_read_only;
 		yb_is_calling_internal_sql_for_ddl = false;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
@@ -205,6 +260,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	{
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		XactReadOnly = saved_xact_read_only;
 		yb_is_calling_internal_sql_for_ddl = false;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
@@ -240,6 +296,7 @@ MaybeLogNewSQLIncrementCatalogVersion(bool success,
 			*YBCGetGFlags()->log_ysql_catalog_versions;
 		char		tmpbuf1[20] = "";
 		char		tmpbuf2[60] = " failed";
+		char		tmpbuf3[160];
 
 		/* Log MyDatabaseId to if it differs from db_oid. */
 		if (db_oid != MyDatabaseId)
@@ -248,6 +305,7 @@ MaybeLogNewSQLIncrementCatalogVersion(bool success,
 			snprintf(tmpbuf2, sizeof(tmpbuf2),
 					 ", new version for database %u is %" PRIu64,
 					 db_oid, new_version);
+		FormatDdlAttribution(tmpbuf3, sizeof(tmpbuf3), command_tag);
 
 		char	   *action = is_global_ddl ? "all master db catalog versions"
 			: "master db catalog version";
@@ -257,10 +315,11 @@ MaybeLogNewSQLIncrementCatalogVersion(bool success,
 						"(%sbreaking) with inval messages%s%s",
 						__func__, action, is_breaking_change ? "" : "non",
 						tmpbuf1, tmpbuf2),
-				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
+				 errdetail("Local version: %" PRIu64 ", %snode tag: %s%s.",
 						   YbGetCatalogCacheVersion(),
 						   LastDdlInTransactionBlock() ? "last ddl " : "",
-						   command_tag ? command_tag : "n/a"),
+						   command_tag ? command_tag : "n/a",
+						   tmpbuf3),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}
@@ -292,6 +351,7 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 
 	/* Save old values and set new values to enable the call. */
 	bool		saved = yb_non_ddl_txn_for_sys_tables_allowed;
+	bool		saved_xact_read_only = XactReadOnly;
 
 	yb_non_ddl_txn_for_sys_tables_allowed = true;
 	bool		saved_enable_seqscan = enable_seqscan;
@@ -305,6 +365,15 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 	Oid			save_userid;
 	int			save_sec_context;
 
+	/*
+	 * Commands that are allowed in a read-only transaction, such as ANALYZE,
+	 * can also increment the catalog version. The SQL function used to do so
+	 * is an internal implementation detail that must not be rejected by the
+	 * executor's read-only transaction check. Only the PG-level XactReadOnly
+	 * is cleared: the pggate transaction state is left as is, and is the same
+	 * as for the catalog writes the command itself has already done.
+	 */
+	XactReadOnly = false;
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
 						   SECURITY_RESTRICTED_OPERATION);
@@ -322,6 +391,7 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		XactReadOnly = saved_xact_read_only;
 		yb_is_calling_internal_sql_for_ddl = false;
 		enable_seqscan = saved_enable_seqscan;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
@@ -348,6 +418,7 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 	{
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		XactReadOnly = saved_xact_read_only;
 		yb_is_calling_internal_sql_for_ddl = false;
 		enable_seqscan = saved_enable_seqscan;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
@@ -595,15 +666,18 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
 	{
 		bool		log_ysql_catalog_versions = *YBCGetGFlags()->log_ysql_catalog_versions;
+		char		tmpbuf[160];
 
+		FormatDdlAttribution(tmpbuf, sizeof(tmpbuf), command_tag);
 		ereport(LOG,
 				(errmsg("%s: incrementing master catalog version (%sbreaking) "
 						"for database %u",
 						__func__, is_breaking_change ? "" : "non", db_oid),
-				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
+				 errdetail("Local version: %" PRIu64 ", %snode tag: %s%s.",
 						   YbGetCatalogCacheVersion(),
 						   LastDdlInTransactionBlock() ? "last ddl " : "",
-						   command_tag ? command_tag : "n/a"),
+						   command_tag ? command_tag : "n/a",
+						   tmpbuf),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}
@@ -900,7 +974,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 								  YBCatalogVersionRelationId,
 								  NULL /* prepare_params */ ,
 								  YbBuildSystemTableLocalityInfo(YBCatalogVersionRelationId),
-								  false /* skip_intents_read */ ,
+								  YB_SKIP_INTENTS_OPTIMIZATION_INFO_NONE,
 								  &ybc_stmt));
 
 	if (!(acquire_row_lock && yb_use_internal_auto_analyze_service_conn))

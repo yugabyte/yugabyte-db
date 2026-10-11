@@ -18,7 +18,9 @@ type: docs
 
 {{< /tip >}}
 
-Three data center deployments of YugabyteDB are essentially a natural extension of the three availability zone (AZ) deployments documented in the [Manual deployment](../../manual-deployment/) section. Equal number of nodes are placed in each of the three data centers. Inside a single data center, a multi-AZ deployment is recommended to ensure resilience against zone failures. This approach works fine for any odd number of AZs or data centers. Given YugabyteDB's distributed consensus-based replication, which requires majority quorum for continuous availability of write requests, deploying a single universe across an even number of AZs or data centers is not recommended.
+Three data center deployments of YugabyteDB are essentially a natural extension of the three availability zone (AZ) deployments documented in [Single data center deployments](../../manual-deployment/).
+
+An equal number of nodes are placed in each of the three data centers. Inside a single data center, a multi-AZ deployment is recommended to ensure resilience against zone failures. This approach works fine for any odd number of AZs or data centers. Given YugabyteDB's distributed consensus-based replication, which requires majority quorum for continuous availability of write requests, deploying a single universe across an even number of AZs or data centers is not recommended.
 
 ## Example scenario
 
@@ -158,7 +160,7 @@ $ ./bin/yb-admin \
     aws.us-west.us-west-2a
 ```
 
-Looking again at the cluster configuration, you should see `affinitized_leaders` added:
+Looking again at the cluster configuration, you should see `multi_affinitized_leaders` added:
 
 ```json
 replication_info {
@@ -188,7 +190,9 @@ replication_info {
       }
       min_num_replicas: 1
     }
-    affinitized_leaders {
+  }
+  multi_affinitized_leaders {
+    zones {
       placement_cloud: "aws"
       placement_region: "us-west"
       placement_zone: "us-west-2a"

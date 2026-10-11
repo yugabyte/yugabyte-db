@@ -19,6 +19,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"

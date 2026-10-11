@@ -34,9 +34,10 @@ export default class CpuUsagePanel extends Component {
     try {
       if (isNonEmptyArray(metric.data)) {
         if (isKubernetes) {
-          usage.total = parseFloat(
-            metric.data.find((item) => item.name === 'cpu_usage').y.slice(-1)[0]
-          );
+          // The container_cpu_usage graph exposes a single series aliased "Usage" (was "cpu_usage"
+          // before the metrics line-name rename). Fall back to the only series if the alias changes.
+          const cpuData = metric.data.find((item) => item.name === 'Usage') ?? metric.data[0];
+          usage.total = parseFloat(cpuData.y.slice(-1)[0]);
         } else {
           usage.total = parseFloat(
             metric.data.find((item) => item.name === 'Total').y.slice(-1)[0]
@@ -46,9 +47,9 @@ export default class CpuUsagePanel extends Component {
 
       if (masterMetric && isNonEmptyArray(masterMetric.data)) {
         if (isKubernetes) {
-          masterUsage.total = parseFloat(
-            masterMetric.data.find((item) => item.name === 'cpu_usage').y.slice(-1)[0]
-          );
+          const masterCpuData =
+            masterMetric.data.find((item) => item.name === 'Usage') ?? masterMetric.data[0];
+          masterUsage.total = parseFloat(masterCpuData.y.slice(-1)[0]);
         } else {
           masterUsage.total = parseFloat(
             masterMetric.data.find((item) => item.name === 'Total').y.slice(-1)[0]

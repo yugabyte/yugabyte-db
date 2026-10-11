@@ -51,6 +51,11 @@ INSERT INTO tmp3
 
 ANALYZE tmp1, tmp2, tmp3;
 
+-- Load t1m non-transactionally; the provisional records the transactional path
+-- writes for this much data exhaust the test cluster's tserver memory limit,
+-- which then gets the ANALYZE below rejected for memory pressure.
+SET yb_disable_transactional_writes = true;
+
 /*+
   Leading(((tmp1 tmp2) tmp3))
   MergeJoin(tmp1 tmp2)
@@ -61,11 +66,21 @@ INSERT INTO t1m
       lpad(sha512((tmp1.v#tmp2.v#tmp3.v)::bpchar::bytea)::bpchar, 1536, '-')
   FROM tmp1 JOIN tmp2 USING (id) JOIN tmp3 USING(id);
 
+SET yb_disable_transactional_writes = false;
+
 ALTER TABLE t1m ALTER COLUMN k1 SET STATISTICS 500;
 ALTER TABLE t1m ALTER COLUMN k2 SET STATISTICS 500;
 ALTER TABLE t1m ALTER COLUMN k3 SET STATISTICS 500;
 
 ANALYZE t1m;
+
+-- Create t10k here rather than next to its use below: the first non-temp
+-- CREATE TABLE of a session scans pg_class for relfilenodes, and after the
+-- reconnect that scan races the commits of explain_filters.sql, yielding a read
+-- restart CREATE TABLE cannot retry.  This session's scan is already cached.
+CREATE TABLE t10k (id int, k1 int, k2 int, k3 int, v char(1536),
+    PRIMARY KEY (id ASC)) WITH (COLOCATION = on);
+INSERT INTO t10k SELECT * FROM t1m WHERE id <= 10000;
 
 
 \c colocated_db
@@ -174,8 +189,10 @@ SELECT id, k1, k2, k3, length(v) FROM t1m t ORDER BY id;
 -- Should choose PARALLEL index only scan
 --
 
+-- An expensive skip scan on the 3rd key column makes this parallel-worthy, but
+-- the matching row count must stay moderate to keep the gather cost low.
 EXPLAIN (COSTS off, SUMMARY off)
-SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(900/2 - 1) AND 5000+(900/2);
+SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(400/2 - 1) AND 5000+(400/2);
 
 
 --
@@ -236,6 +253,86 @@ SELECT 0 FROM t1m t;
 
 
 --
+-- Should choose SERIAL batched nested loop join.  A parallel BNL divides
+-- the outer row estimate, and with it the inner batch count, by the
+-- parallel divisor (#32653); at this size that win does not pay for
+-- parallel_setup_cost, which #33413 calibrated against the division.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
+
+-- Undercharging the setup cost (the pre-#33413 default of 1700) flips it.
+/*+ Set(parallel_setup_cost 1700) */
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
+
+
+--
+-- Should choose SERIAL plans under a small LIMIT.  A serial scan's first
+-- read request is trimmed to the pushed-down bound, so one small RPC
+-- satisfies the LIMIT, while parallel workers fetch whole parallel ranges
+-- with the fetch limits lifted regardless of any LIMIT
+-- (yb_scan_apply_next_parallel_range), each range costing far more than the
+-- whole serial plan (#33137: 438s parallel vs 2.3s serial for LIMIT 50
+-- OFFSET 100).
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT id, k1, k2, k3, length(v) FROM t1m t LIMIT 5000;
+
+-- The PK provides the requested order: the pushed-down bound satisfies the
+-- query in one RPC; the parallel alternative is Gather Merge over full-range
+-- fetches.
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT id, k1, k2, k3, length(v) FROM t1m t ORDER BY id LIMIT 100;
+
+-- Presorted index plus a storage filter, LIMIT+OFFSET needing a few rows:
+-- the pushed-down bound (count + offset) satisfies the query in one trimmed
+-- RPC.
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT k1, k2, id FROM t1m t WHERE id <= 100000
+ORDER BY k1, k2, k3 OFFSET 100 LIMIT 50;
+
+-- DISTINCT resolved by a Unique over the index order passes the bound
+-- through to the scan (#32804).
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT DISTINCT k1, k2, k3 FROM t1m t WHERE id % 499 = 232
+ORDER BY k1 LIMIT 10;
+
+
+--
+-- Should choose PARALLEL batched nested loop join: with twice the rows the
+-- divided batch work exceeds the setup cost.  Flips serial if the outer
+-- row estimate loses its parallel-divisor division.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(330/2-1) AND 5000+(330/2);
+
+
+--
+-- Should still choose PARALLEL plans when the LIMIT takes most of the table,
+-- or when the consumer needs rows past the pushed-down bound: the first-batch
+-- startup charge must not push scans that gain from parallelism to serial
+-- plans.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT id, k1, k2, k3, length(v) FROM t1m t LIMIT 900000;
+
+-- An Incremental Sort reads past the bound to close its last group, and the
+-- scan's second request is default-sized; with the size-limited fetches
+-- here that request costs more than a parallel range per worker.
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT k1, k2, id FROM t1m t WHERE id % 499 = 232
+ORDER BY k1, id OFFSET 100 LIMIT 50;
+
+
+--
 -- Correctness tests
 --
 
@@ -249,9 +346,6 @@ SELECT 0 FROM t1m t;
 \set filename :abs_srcdir '/yb_commands/explain_filters.sql'
 \i :filename
 
-CREATE TABLE t10k (id int, k1 int, k2 int, k3 int, v char(1536),
-    PRIMARY KEY (id ASC)) WITH (COLOCATION = on);
-INSERT INTO t10k SELECT * FROM t1m WHERE id <= 10000;
 -- Ensure no stats even if we start auto-analyzing in the future.
 SELECT yb_reset_analyze_statistics('t10k'::regclass);
 

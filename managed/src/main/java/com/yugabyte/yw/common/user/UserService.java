@@ -14,6 +14,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -28,15 +29,25 @@ public class UserService {
 
   private final Environment environment;
 
+  private final RoleBindingUtil roleBindingUtil;
+
   @Inject
-  public UserService(Environment environment) {
+  public UserService(Environment environment, RoleBindingUtil roleBindingUtil) {
     this.environment = environment;
+    this.roleBindingUtil = roleBindingUtil;
   }
 
   public UserWithFeatures getUserWithFeatures(Customer customer, Users user) {
     try {
       UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
-      String configFile = user.getRole().getFeaturesFile();
+      // A SuperAdmin granted through a role binding still reads as ConnectOnly in users.role, so
+      // keying the feature set off that column alone would hand them a stripped-down UI.
+      Users.Role effectiveRole =
+          roleBindingUtil.isSuperAdmin(user) ? Users.Role.SuperAdmin : user.getRole();
+      if (effectiveRole == null) {
+        return userWithFeatures;
+      }
+      String configFile = effectiveRole.getFeaturesFile();
       if (configFile == null) {
         return userWithFeatures;
       }

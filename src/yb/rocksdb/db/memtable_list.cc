@@ -155,8 +155,9 @@ UserFrontierRange MemTableList::MergeFrontiersWith(UserFrontierRange result) {
   using yb::storage::UpdateUserValueType;
   for (const auto& mem : current_->memlist_) {
     auto current = mem->GetFrontiers();
-    UserFrontier::Update(current.first.get(), UpdateUserValueType::kSmallest, &result.first);
-    UserFrontier::Update(current.second.get(), UpdateUserValueType::kLargest, &result.second);
+    UserFrontier::Update(
+        current.smallest.get(), UpdateUserValueType::kSmallest, &result.smallest);
+    UserFrontier::Update(current.largest.get(), UpdateUserValueType::kLargest, &result.largest);
   }
   return result;
 }

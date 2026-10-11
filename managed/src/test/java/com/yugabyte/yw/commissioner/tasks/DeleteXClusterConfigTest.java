@@ -59,7 +59,7 @@ import org.yb.cdc.CdcConsumer;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import org.yb.master.MasterTypes.MasterErrorPB;
@@ -82,7 +82,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   private String exampleStreamID2;
   private Set<String> exampleTables;
   private XClusterConfigCreateFormData createFormData;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   List<TaskType> DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE =
       ImmutableList.of(
@@ -128,7 +128,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     createFormData.targetUniverseUUID = targetUniverseUUID;
     createFormData.tables = exampleTables;
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {

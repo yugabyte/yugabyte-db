@@ -91,7 +91,7 @@ For some xCluster setups, before upgrading, you should run a verification script
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel append (yb_enable_parallel_append=true, yb_parallel_range_rows=10000)
 
-- If you are upgrading from v2025.1 series and your database includes a [vector index](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing), the upgrade will fail. Drop the indexes and then re-add them after the upgrade is finalized.
+- If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrade vector indexes](../../additional-features/pg-extensions/extension-pgvector/#upgrade-vector-indexes) before you upgrade. Upgrading from v2024.2 requires dropping the `vector` extension first. Upgrading from the v2025.1 series fails if a vector index exists, and tables with vector indexes created on earlier releases must be recreated after the upgrade is finalized.
 
 ## Upgrade YugabyteDB cluster
 
@@ -269,7 +269,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 - Roll back is {{<tags/feature/ea>}} in v2.20.3.0 and {{<tags/feature/ga>}} in v2024.1.0 and higher.
 - Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 to higher versions (for example, v2.20.3.0, v2024.1.0, and so on). If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
-- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
+- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data-ysql/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
 {{< /warning >}}
 
 In order to roll back to the version that you were on before the upgrade, you need to restart all YB-Master and YB-TServers on the old version. All YB-TServers have to be rolled back before you roll back YB-Masters.

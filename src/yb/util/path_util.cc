@@ -46,10 +46,14 @@
 #include <sys/sysinfo.h>
 #endif
 
+#include <algorithm>
+
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 
 using std::string;
@@ -157,19 +161,6 @@ Result<string> path_utils::GetToolPath(const string& rel_path, const string& too
     return STATUS_FORMAT(IOError, Format("$0 tool not found at: $1", tool_name, tool_path));
   }
   return tool_path;
-}
-
-Result<std::vector<std::string>> path_utils::GetVectorIndexFiles(
-    Env& env, const std::string& vector_index_storage_dir) {
-  auto files = VERIFY_RESULT(env.GetChildren(vector_index_storage_dir));
-  std::erase_if(files, [](const auto& file) {
-    return !file.ends_with(".meta") && !file.contains("vectorindex");
-  });
-  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs){
-    // Refer to VectorLSMMetadataLoad().
-    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
-  });
-  return files;
 }
 
 } // namespace yb

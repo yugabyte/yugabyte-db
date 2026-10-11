@@ -16,7 +16,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class WaitForLeadersOnPreferredOnly extends AbstractTaskBase {
@@ -47,7 +47,7 @@ public class WaitForLeadersOnPreferredOnly extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     boolean ret;
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info("Running {}: masterAddresses={}.", getName(), universe.getMasterAddresses());
 
       ret = client.waitForAreLeadersOnPreferredOnlyCondition(TIMEOUT_SERVER_WAIT_MS);

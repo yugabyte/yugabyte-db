@@ -1,0 +1,10 @@
+title: UniverseServerLogsExporterConfig
+type: object
+description: |
+  UniverseServerLogsExporterConfig
+
+  Universe Server Logs Exporter Config. Part of MasterLogConfig.
+allOf:
+  - $ref: "./UniverseExporterConfig.yaml"
+  - $ref: "./BatchedExporterConfig.yaml"
+  - $ref: "./MemoryLimitedExporterConfig.yaml"

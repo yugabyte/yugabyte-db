@@ -14,6 +14,7 @@
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
 #include <algorithm>
+#include <map>
 
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
@@ -46,12 +47,15 @@
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+#include "yb/master/xcluster/xcluster_wal_anchor_deletion_task.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::placeholders;
 
@@ -61,6 +65,9 @@ DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 *
     "Time in seconds within which index must be created on other universe when the indexed table "
     "is part of bidirectional xCluster replication. Applies only when "
     "--ysql_auto_add_new_index_to_bidirectional_xcluster is set.");
+
+DEFINE_test_flag(bool, xcluster_pause_wal_anchor_deletion, false,
+    "If set, skip send request for deleting the source WAL_ANCHOR streams.");
 
 DECLARE_bool(ysql_auto_add_new_index_to_bidirectional_xcluster);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
@@ -113,6 +120,11 @@ void XClusterTargetManager::Clear() {
     std::lock_guard l(table_stream_ids_map_mutex_);
     table_stream_ids_map_.clear();
   }
+
+  {
+    std::lock_guard l(wal_anchor_deletion_mutex_);
+    pending_wal_anchor_deletion_tables_.clear();
+  }
 }
 
 Status XClusterTargetManager::RunLoaders() {
@@ -139,6 +151,8 @@ void XClusterTargetManager::SysCatalogLoaded() {
       stale_failover_replication_groups_.push_back(universe->ReplicationGroupId());
     }
   }
+
+  RebuildPendingWalAnchorDeletionTables();
 
   safe_time_service_->ScheduleTaskIfNeeded();
 }
@@ -432,6 +446,10 @@ void XClusterTargetManager::RunBgTasks(const LeaderEpoch& epoch) {
   WARN_NOT_OK(
       CleanupStaleFailovers(epoch),
       "Failed to clean up stale in-progress failovers");
+
+  WARN_NOT_OK(
+      DeletePendingWalAnchorStreams(epoch),
+      "Failed to delete pending xCluster WAL_ANCHOR streams on source");
 }
 
 Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch) {
@@ -612,6 +630,7 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
       replication_info_pb.replication_group_id());
   if (producer_map) {
     result.master_addrs = PBListAsString(producer_map->master_addrs());
+    result.source_master_addrs.CopyFrom(producer_map->master_addrs());
     result.disable_stream = producer_map->disable_stream();
     result.compatible_auto_flag_config_version =
         producer_map->compatible_auto_flag_config_version();
@@ -776,6 +795,8 @@ Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
                          << ") in namespace " << table_info->namespace_id();
   }
 
+  const auto source_table_id = table_pb.xcluster_table_info().xcluster_source_table_id();
+
   // Clear xcluster_table_info if present.  Exception: leave just xcluster_backfill_hybrid_time if
   // present: we will clear that when the backfill succeeds.  (We need it to start the backfill,
   // which begins after this DDL finishes.)
@@ -789,6 +810,137 @@ Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
     }
   }
 
+  // Written in the same catalog upsert as the DDL commit. Our caller calls
+  // MarkWalAnchorDeletionPending once that write commits. Colocated tables share their parent's
+  // stream, so they are not anchored.
+  if (!source_table_id.empty() && IsXClusterWalAnchorStreamEnabled() &&
+      !table_info->IsSecondaryTable()) {
+    table_pb.set_xcluster_pending_wal_anchor_deletion_source_table_id(source_table_id);
+  }
+
+  return Status::OK();
+}
+
+void XClusterTargetManager::MarkWalAnchorDeletionPending(const TableId& table_id) {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  pending_wal_anchor_deletion_tables_.insert(table_id);
+}
+
+Status XClusterTargetManager::DeletePendingWalAnchorStreams(const LeaderEpoch& epoch) {
+  if (FLAGS_TEST_xcluster_pause_wal_anchor_deletion) {
+    return Status::OK();
+  }
+
+  {
+    std::lock_guard guard(wal_anchor_deletion_mutex_);
+    // Nothing to delete, or the previous task is still working on it.
+    if (pending_wal_anchor_deletion_tables_.empty() || wal_anchor_deletion_task_.lock()) {
+      return Status::OK();
+    }
+  }
+
+  auto task = std::make_shared<XClusterWalAnchorDeletionTask>(
+      catalog_manager_, *master_.messenger(), *this, epoch);
+  task->Start();
+  return Status::OK();
+}
+
+Status XClusterTargetManager::RegisterWalAnchorDeletionTask(server::MonitoredTaskPtr task) {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  SCHECK(
+      !wal_anchor_deletion_task_.lock(), AlreadyPresent,
+      "xCluster WAL_ANCHOR stream deletion is already in progress");
+  wal_anchor_deletion_task_ = task;
+  return Status::OK();
+}
+
+void XClusterTargetManager::UnRegisterWalAnchorDeletionTask(server::MonitoredTaskPtr task) {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  if (wal_anchor_deletion_task_.lock() == task) {
+    wal_anchor_deletion_task_.reset();
+  }
+}
+
+std::vector<TableId> XClusterTargetManager::GetPendingWalAnchorDeletionTables() const {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  return {pending_wal_anchor_deletion_tables_.begin(), pending_wal_anchor_deletion_tables_.end()};
+}
+
+void XClusterTargetManager::RemovePendingWalAnchorDeletionsFromSet(
+    const std::vector<TableId>& consumer_table_ids) {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  for (const auto& consumer_table_id : consumer_table_ids) {
+    pending_wal_anchor_deletion_tables_.erase(consumer_table_id);
+  }
+}
+
+void XClusterTargetManager::RebuildPendingWalAnchorDeletionTables() {
+  std::vector<TableId> consumer_table_ids;
+  {
+    SharedLock table_stream_l(table_stream_ids_map_mutex_);
+    consumer_table_ids.reserve(table_stream_ids_map_.size());
+    for (const auto& [table_id, _] : table_stream_ids_map_) {
+      consumer_table_ids.push_back(xcluster::StripSequencesDataAliasIfPresent(table_id));
+    }
+  }
+
+  std::set<TableId> tables_with_marker;
+  for (const auto& consumer_table_id : consumer_table_ids) {
+    auto table_info = catalog_manager_.GetTableInfo(consumer_table_id);
+    if (!table_info) {
+      continue;
+    }
+    if (!table_info->LockForRead()
+             ->pb.xcluster_pending_wal_anchor_deletion_source_table_id()
+             .empty()) {
+      tables_with_marker.insert(consumer_table_id);
+    }
+  }
+
+  LOG_IF(INFO, !tables_with_marker.empty())
+      << "Found " << tables_with_marker.size()
+      << " table(s) with a pending xCluster WAL_ANCHOR stream deletion marker: "
+      << yb::ToString(tables_with_marker);
+
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  pending_wal_anchor_deletion_tables_.insert(tables_with_marker.begin(), tables_with_marker.end());
+}
+
+Status XClusterTargetManager::ClearWalAnchorDeletionMarkers(
+    const std::vector<TableId>& consumer_table_ids, const LeaderEpoch& epoch) {
+  const std::set<TableId> sorted_table_ids(consumer_table_ids.begin(), consumer_table_ids.end());
+
+  std::vector<std::pair<TableInfoPtr, TableInfo::WriteLock>> tables_and_locks;
+  for (const auto& consumer_table_id : sorted_table_ids) {
+    auto table_info = catalog_manager_.GetTableInfo(consumer_table_id);
+    if (!table_info) {
+      continue;
+    }
+    auto l = table_info->LockForWrite();
+    l.mutable_data()->pb.clear_xcluster_pending_wal_anchor_deletion_source_table_id();
+    tables_and_locks.emplace_back(std::move(table_info), std::move(l));
+  }
+
+  if (tables_and_locks.empty()) {
+    return Status::OK();
+  }
+
+  std::vector<TableInfo*> tables_to_upsert;
+  tables_to_upsert.reserve(tables_and_locks.size());
+  for (const auto& [table_info, l] : tables_and_locks) {
+    tables_to_upsert.push_back(table_info.get());
+  }
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, tables_to_upsert));
+  for (auto& [table_info, l] : tables_and_locks) {
+    l.Commit();
+  }
+
+  // The markers these tables were tracked for are gone, so stop carrying them. The table locks are
+  // committed above, so this does not take wal_anchor_deletion_mutex_ while holding one.
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  for (const auto& [table_info, l] : tables_and_locks) {
+    pending_wal_anchor_deletion_tables_.erase(table_info->id());
+  }
   return Status::OK();
 }
 
@@ -964,6 +1116,7 @@ void XClusterTargetManager::StoreReplicationStatus(
             stream_tablet_status.error(), ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED);
         tablet_status_map->consumer_term = stream_tablet_status.consumer_term();
         tablet_status_map->error = stream_tablet_status.error();
+        tablet_status_map->error_detail = stream_tablet_status.error_detail();
         VLOG_WITH_FUNC(2) << "Storing error for replication group: " << replication_group_id
                           << ", consumer table: " << consumer_table_id
                           << ", tablet: " << producer_tablet_id
@@ -1050,8 +1203,13 @@ Status XClusterTargetManager::PopulateReplicationGroupErrors(
 
     // Map from error to list of producer tablet IDs/Pollers reporting them.
     std::unordered_map<ReplicationErrorPb, std::vector<TabletId>> errors;
+    // First non-empty detail reported for each error.
+    std::unordered_map<ReplicationErrorPb, std::string> error_details;
     for (const auto& [tablet_id, error_info] : tablet_error_map) {
       errors[error_info.error].push_back(tablet_id);
+      if (!error_info.error_detail.empty()) {
+        error_details.try_emplace(error_info.error, error_info.error_detail);
+      }
     }
 
     if (errors.empty()) {
@@ -1076,8 +1234,12 @@ Status XClusterTargetManager::PopulateReplicationGroupErrors(
       } else {
         // Only include the first 20 tablet IDs to limit response size.
         // VLOG(4) will write all tablet to the log.
-        resp_error->set_error_detail(
-            Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20)));
+        auto detail =
+            Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20));
+        if (auto* reported_detail = FindOrNull(error_details, error_pb)) {
+          detail += Format(". $0", *reported_detail);
+        }
+        resp_error->set_error_detail(detail);
       }
 
       if (VLOG_IS_ON(4)) {
@@ -1152,6 +1314,57 @@ XClusterTargetManager::GetStreamIdsForTable(const TableId& table_id) const {
 
 bool XClusterTargetManager::IsTableReplicated(const TableId& table_id) const {
   return !GetStreamIdsForTable(table_id).empty();
+}
+
+Result<bool> XClusterTargetManager::IsTableUsingTargetAppliedFilter(
+    const TableId& consumer_table_id) const {
+  // Currently N:1 replication is not supported, so there should be only one stream_id for the
+  // table. If support is added in the future, a mixed config conservatively returns false so the
+  // target falls back to running a local backfill, which can cause duplicate applies but is safer
+  // than having missed writes.
+  const auto stream_ids = GetStreamIdsForTable(consumer_table_id);
+  if (stream_ids.empty()) {
+    return false;
+  }
+  auto cluster_config = catalog_manager_.ClusterConfig();
+  SCHECK(cluster_config, IllegalState, "ClusterConfig is not available");
+
+  const auto& consumer_registry = cluster_config->LockForRead()->pb.consumer_registry();
+  const auto& producer_map = consumer_registry.producer_map();
+  for (const auto& [replication_group_id, stream_id] : stream_ids) {
+    const auto* producer_entry = FindOrNull(producer_map, replication_group_id.ToString());
+    SCHECK_FORMAT(
+        producer_entry, IllegalState,
+        "Producer entry for replication group $0 not found in consumer registry while checking "
+        "table $1",
+        replication_group_id, consumer_table_id);
+    const auto* stream_entry = FindOrNull(producer_entry->stream_map(), stream_id.ToString());
+    SCHECK_FORMAT(
+        stream_entry, IllegalState,
+        "Stream entry $0 not found in consumer registry under replication group $1 while checking "
+        "table $2",
+        stream_id, replication_group_id, consumer_table_id);
+    if (!stream_entry->xcluster_use_target_applied_filter()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Result<bool> XClusterTargetManager::ShouldTargetSkipLocalIndexBackfill(
+    const std::vector<TableId>& index_table_ids) const {
+  for (const auto& index_table_id : index_table_ids) {
+    auto index_info = VERIFY_RESULT(catalog_manager_.GetTableById(index_table_id));
+    auto table_id = index_table_id;
+    if (index_info->colocated()) {
+      // Colocated indexes don't have their own stream, they use the colocation parent's stream.
+      table_id = index_info->LockForRead()->pb.parent_table_id();
+    }
+    if (!VERIFY_RESULT(IsTableUsingTargetAppliedFilter(table_id))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 Result<TableId> XClusterTargetManager::GetTableIdForStreamId(
@@ -1456,7 +1669,7 @@ Status XClusterTargetManager::AddTableToReplicationGroup(
       master_, catalog_manager_, data, epoch);
 }
 
-Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+Result<XClusterBackfillDecision> XClusterTargetManager::TryGetXClusterInfoForIndexBackfill(
     const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
     const LeaderEpoch& epoch) const {
   auto& xcluster_manager = *master_.xcluster_manager();
@@ -1476,7 +1689,7 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
         "Failed while preparing index for xCluster");
 
     LOG(INFO) << "Using " << backfill_ht << " as the backfill read time";
-    return backfill_ht;
+    return XClusterBackfillDecision::RunLocalAtHybridTime(backfill_ht);
   }
 
   if (IsNamespaceInAutomaticDDLMode(indexed_table->namespace_id())) {
@@ -1498,23 +1711,30 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
       RETURN_NOT_OK(ht.FromUint64(xcluster_table_info.xcluster_backfill_hybrid_time()));
       if (!ht.is_special()) {
         SCHECK(
-            !xcluster_backfill_hybrid_time || ht != xcluster_backfill_hybrid_time, InvalidArgument,
+            !xcluster_backfill_hybrid_time || ht == xcluster_backfill_hybrid_time, InvalidArgument,
             "Indexes have different xCluster backfill hybrid times");
         xcluster_backfill_hybrid_time = ht;
       }
     }
 
-      if (xcluster_backfill_hybrid_time) {
-        LOG(INFO) << "Using provided xcluster_backfill_hybrid_time "
-                  << xcluster_backfill_hybrid_time << " as the backfill read time";
-        return xcluster_backfill_hybrid_time;
+    if (xcluster_backfill_hybrid_time) {
+      // When the target-applied filter is enabled, the source now replicates backfill writes.
+      // At this point, the target should've received the backfill writes, so skip local backfill.
+      if (VERIFY_RESULT(ShouldTargetSkipLocalIndexBackfill(index_table_ids))) {
+        LOG(INFO) << "Skipping local index backfill for indexed_table " << indexed_table->id();
+        return XClusterBackfillDecision::DeferToReplicatedBackfill(xcluster_backfill_hybrid_time);
       }
 
-      // Possible to get here for manually created indexes.  Fallback to DB-scoped flow.
-      // (We allow this because we want to be able to create an index manually via backdoors that
-      // don't have this time set.)
-      LOG(WARNING) << "No xCluster backfill hybrid time set for indexes in automatic mode, "
-                   << "falling back to non-automatic mode flow.";
+      LOG(INFO) << "Using provided xcluster_backfill_hybrid_time "
+                << xcluster_backfill_hybrid_time << " as the backfill read time";
+      return XClusterBackfillDecision::RunLocalAtHybridTime(xcluster_backfill_hybrid_time);
+    }
+
+    // Possible to get here for manually created indexes.  Fallback to DB-scoped flow.
+    // (We allow this because we want to be able to create an index manually via backdoors that
+    // don't have this time set.)
+    LOG(WARNING) << "No xCluster backfill hybrid time set for indexes in automatic mode, "
+                 << "falling back to non-automatic mode flow.";
   }
 
   if (is_colocated) {
@@ -1526,7 +1746,7 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
     // entries use the same external HT field.  To ensure transactional correctness we just need to
     // pick a time higher than the time that was picked on the source side.  Since the table is
     // created on the source universe before the target this is always guaranteed to be true.
-    return std::nullopt;
+    return XClusterBackfillDecision::RunLocalWithTabletSafeTime();
   }
 
   if (xcluster_manager.IsTableReplicationConsumer(indexed_table_id)) {
@@ -1537,20 +1757,20 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
           "Invalid xCluster safe time for namespace ", indexed_table->namespace_id());
 
       LOG(INFO) << "Using xCluster safe time " << *safe_time_result << " as the backfill read time";
-      return *safe_time_result;
+      return XClusterBackfillDecision::RunLocalAtHybridTime(*safe_time_result);
     }
 
     if (safe_time_result.status().IsNotFound()) {
       VLOG(1) << "Table " << indexed_table->id()
               << "does not belong to transactional replication, continue with "
                  "GetSafeTimeForTablet";
-      return std::nullopt;
+      return XClusterBackfillDecision::RunLocalWithTabletSafeTime();
     }
 
     return safe_time_result.status();
   }
 
-  return std::nullopt;
+  return XClusterBackfillDecision::RunLocalWithTabletSafeTime();
 }
 
 Result<HybridTime> XClusterTargetManager::PrepareAndGetBackfillTimeForBiDirectionalIndex(

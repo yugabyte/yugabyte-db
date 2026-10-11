@@ -26,6 +26,7 @@
 
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/sync_point.h"

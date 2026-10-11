@@ -89,6 +89,14 @@ import play.libs.Json;
 @RunWith(JUnitParamsRunner.class)
 public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestBase {
 
+  // Overrides provideApplication() to bind per-method @Mock instances (recreated by the MockitoRule
+  // each method) into the application, so it must be rebuilt per method - not reused across
+  // methods.
+  @Override
+  protected boolean reusableApplication() {
+    return false;
+  }
+
   private Customer customer;
   private String authToken;
 

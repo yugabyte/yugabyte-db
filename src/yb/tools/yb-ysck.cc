@@ -34,13 +34,13 @@
 // the tablets are in a consistent state.
 
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_defaults.h"
 
 #include "yb/tools/ysck_remote.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #define PUSH_PREPEND_NOT_OK(s, statuses, msg) do { \
@@ -56,7 +56,6 @@ using std::endl;
 using std::shared_ptr;
 using std::vector;
 using std::string;
-using strings::Substitute;
 
 DEFINE_NON_RUNTIME_string(master_address, "", "Address of master server to run against.");
 
@@ -74,7 +73,7 @@ namespace yb {
 namespace tools {
 
 static string GetYsckUsage(const char* progname) {
-  string msg = Substitute("Usage: $0 --master_address=<addr> <flags>\n\n", progname);
+  string msg = Format("Usage: $0 --master_address=<addr> <flags>\n\n", progname);
   msg += "Check the health of a YB cluster.\n\n"
          "By default, ysck checks that master and tablet server processes are running,\n"
          "and that table metadata is consistent. Use the 'checksum' flag to check that\n"

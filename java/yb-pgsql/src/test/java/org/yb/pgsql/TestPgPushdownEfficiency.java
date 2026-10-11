@@ -20,8 +20,14 @@ public class TestPgPushdownEfficiency extends BasePgSQLTestWithRpcMetric {
     // RPCs that are sent to the tablet servers. Enabling table locks causes us to use more RPCs.
     // So let's just disble the table locks here. The functionality tested here does not require
     // table locks.
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("enable_object_locking_for_table_locks", "false");
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 
