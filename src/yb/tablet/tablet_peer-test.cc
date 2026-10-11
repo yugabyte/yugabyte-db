@@ -88,7 +88,6 @@ DECLARE_uint64(rpc_max_message_size);
 DECLARE_int32(retryable_request_timeout_secs);
 
 DECLARE_bool(enable_flush_retryable_requests);
-DECLARE_bool(quick_leader_election_on_create);
 DECLARE_bool(TEST_pause_before_copying_bootstrap_state);
 DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
 DECLARE_bool(TEST_pause_before_submitting_flush_bootstrap_state);
@@ -257,13 +256,8 @@ class TabletPeerTest : public YBTabletTest {
     RETURN_NOT_OK(tablet_peer_->Start(info));
 
     return LoggedWaitFor([&]() -> Result<bool> {
-      if (FLAGS_quick_leader_election_on_create) {
-        return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
-      }
-      RETURN_NOT_OK(VERIFY_RESULT(tablet_peer_->GetConsensus())->EmulateElection());
-      return true;
-    }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
-                                         "leader, otherwise emulate.");
+      return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+    }, MonoDelta::FromMilliseconds(500), "Wait for peer to be a leader.");
   }
 
   void TabletPeerStateChangedCallback(
