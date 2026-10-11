@@ -47,6 +47,7 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
@@ -54,12 +55,15 @@
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/to_stream.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::chrono_literals;
 
 METRIC_DECLARE_entity(tablet);
 DECLARE_int32(stuck_peer_call_threshold_ms);
 DECLARE_bool(force_recover_from_stuck_peer_call);
+DECLARE_int32(consensus_commit_index_propagation_delay_ms);
+DECLARE_int32(raft_heartbeat_interval_ms);
 
 namespace yb::consensus {
 
@@ -75,6 +79,77 @@ const char* kTableId = "test-peers-table";
 const char* kTabletId = "test-peers-tablet";
 const char* kLeaderUuid = "peer-0";
 const char* kFollowerUuid = "peer-1";
+
+// Peer proxy that records what each UpdateConsensus request carried and answers a request only
+// when the test asks it to. DelayablePeerProxy is not enough for the committed OpId propagation
+// tests below: they assert on the contents of each request, and answer requests one at a time.
+class CapturingPeerProxy : public TestPeerProxy {
+ public:
+  struct CapturedRequest {
+    size_t num_ops;
+    int64_t committed_index;
+  };
+
+  CapturingPeerProxy(ThreadPool* pool, const RaftPeerPB& peer_pb)
+      : TestPeerProxy(pool), peer_pb_(peer_pb) {}
+
+  void UpdateAsync(const LWConsensusRequestPB* request,
+                   RequestTriggerMode trigger_mode,
+                   LWConsensusResponsePB* response,
+                   rpc::RpcController* controller,
+                   const rpc::ResponseCallback& callback) override {
+    // Register first: the test treats a recorded request as one it is allowed to answer.
+    RegisterCallback(Method::kUpdate, callback);
+
+    std::lock_guard lock(lock_);
+    if (!request->ops().empty()) {
+      last_received_ = OpId::FromPB(request->ops().back().id());
+    }
+    const auto committed_index = request->committed_op_id().index();
+
+    response->Clear();
+    response->ref_responder_uuid(peer_pb_.permanent_uuid());
+    response->set_responder_term(request->caller_term());
+    last_received_.ToPB(response->mutable_status()->mutable_last_received());
+    last_received_.ToPB(response->mutable_status()->mutable_last_received_current_leader());
+    response->mutable_status()->set_last_committed_idx(committed_index);
+
+    requests_.push_back(CapturedRequest {
+      .num_ops = request->ops().size(),
+      .committed_index = committed_index,
+    });
+  }
+
+  void RequestConsensusVoteAsync(const VoteRequestPB* request,
+                                 VoteResponsePB* response,
+                                 rpc::RpcController* controller,
+                                 const rpc::ResponseCallback& callback) override {
+    response->set_responder_uuid(peer_pb_.permanent_uuid());
+    response->set_responder_term(request->candidate_term());
+    response->set_vote_granted(true);
+    RegisterCallbackAndRespond(Method::kRequestVote, callback);
+  }
+
+  // Answers the request that is currently in flight.
+  void RespondToRequest() {
+    Respond(Method::kUpdate);
+  }
+
+  size_t num_requests() const {
+    std::lock_guard lock(lock_);
+    return requests_.size();
+  }
+
+  std::vector<CapturedRequest> requests() const {
+    std::lock_guard lock(lock_);
+    return requests_;
+  }
+
+ private:
+  const RaftPeerPB peer_pb_;
+  OpId last_received_ GUARDED_BY(lock_);
+  std::vector<CapturedRequest> requests_ GUARDED_BY(lock_);
+};
 
 class ConsensusPeersTest : public YBTest {
  public:
@@ -154,6 +229,48 @@ class ConsensusPeersTest : public YBTest {
         nullptr /* multi raft batcher */, raft_pool_token_.get(),
         nullptr /* consensus */, messenger_.get()));
     return proxy_ptr;
+  }
+
+  CapturingPeerProxy* NewCapturingRemotePeer(
+      const string& peer_name, std::shared_ptr<Peer>* peer) {
+    RaftPeerPB peer_pb;
+    peer_pb.set_permanent_uuid(peer_name);
+    auto* proxy_ptr = new CapturingPeerProxy(raft_pool_.get(), peer_pb);
+    *peer = CHECK_RESULT(Peer::NewRemotePeer(
+        peer_pb, kTabletId, kLeaderUuid, PeerProxyPtr(proxy_ptr), message_queue_.get(),
+        nullptr /* multi raft batcher */, raft_pool_token_.get(),
+        nullptr /* consensus */, messenger_.get()));
+    return proxy_ptr;
+  }
+
+  Status WaitForRequests(CapturingPeerProxy* proxy, size_t count) {
+    return LoggedWaitFor(
+        [proxy, count] { return proxy->num_requests() >= count; },
+        MonoDelta(30s * kTimeMultiplier), Format("$0 requests to be sent to the peer", count));
+  }
+
+  // Replicates operation 1 to the peer behind 'proxy' and waits until it is committed on the
+  // leader, leaving the peer with no request in flight. The first request to a peer is a
+  // status-only negotiation round, so operation 1 only goes out once that one is answered.
+  void ReplicateAndCommitFirstOperation(
+      const std::shared_ptr<Peer>& peer, CapturingPeerProxy* proxy) {
+    AppendReplicateMessagesToQueue(
+        message_queue_.get(), clock_, /* first_index */ 1, /* count */ 1);
+    ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
+
+    ASSERT_OK(WaitForRequests(proxy, 1));
+    ASSERT_EQ(proxy->requests()[0].num_ops, 0U);
+    proxy->RespondToRequest();
+
+    ASSERT_OK(WaitForRequests(proxy, 2));
+    ASSERT_EQ(proxy->requests()[1].num_ops, 1U);
+    ASSERT_EQ(proxy->requests()[1].committed_index, 0);
+    proxy->RespondToRequest();
+
+    consensus_->WaitForMajorityReplicatedIndex(1);
+    ASSERT_OK(LoggedWaitFor(
+        [this] { return message_queue_->TEST_GetCommittedIndex().index == 1; },
+        MonoDelta(30s * kTimeMultiplier), "the committed OpId to advance on the leader"));
   }
 
   void CheckLastLogEntry(int64_t term, int64_t index) {
@@ -418,6 +535,103 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   // OK to have called UpdateConsensus() a few times due to regularly
   // scheduled heartbeats.
   ASSERT_LT(mock_proxy->update_count() - initial_update_count, 5);
+}
+
+
+// A peer keeps a single UpdateConsensus request in flight, so the request the leader sends to
+// advance a follower's committed OpId as soon as an operation commits delays the operation that
+// follows it by a whole round trip. With the deferral disabled, that is what happens.
+TEST_F(ConsensusPeersTest, TestCommitIndexOnlyRequestDelaysNextOperation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_commit_index_propagation_delay_ms) = 0;
+  // The heartbeater would send the committed OpId on its own schedule, which these tests are not
+  // about.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 60000;
+
+  std::shared_ptr<Peer> peer;
+  auto* proxy = NewCapturingRemotePeer(kFollowerUuid, &peer);
+  auto se = ScopeExit([&peer] {
+    // This guarantees that the Peer object doesn't get destroyed if there is a pending request.
+    peer->Close();
+  });
+
+  ASSERT_NO_FATALS(ReplicateAndCommitFirstOperation(peer, proxy));
+
+  // Stands in for RaftConsensus::UpdateMajorityReplicated(), which signals every peer as soon as
+  // the committed OpId advances.
+  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
+  ASSERT_OK(WaitForRequests(proxy, 3));
+  ASSERT_EQ(proxy->requests()[2].num_ops, 0U);
+  ASSERT_EQ(proxy->requests()[2].committed_index, 1);
+
+  // Operation 2 arrives while that request is in flight, so it cannot be sent.
+  AppendReplicateMessagesToQueue(message_queue_.get(), clock_, /* first_index */ 2, /* count */ 1);
+  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
+  SleepFor(MonoDelta::FromMilliseconds(500 * kTimeMultiplier));
+  ASSERT_EQ(proxy->num_requests(), 3U);
+
+  // It goes out only once the follower has answered the request that carried the committed OpId.
+  proxy->RespondToRequest();
+  ASSERT_OK(WaitForRequests(proxy, 4));
+  ASSERT_EQ(proxy->requests()[3].num_ops, 1U);
+  proxy->RespondToRequest();
+  consensus_->WaitForMajorityReplicatedIndex(2);
+}
+
+// With the deferral enabled the request carrying only the committed OpId is held back, so the next
+// operation is sent immediately and carries that committed OpId itself.
+TEST_F(ConsensusPeersTest, TestDeferredCommitIndexPropagationDoesNotDelayNextOperation) {
+  // Long enough that the deferred request cannot fire while the test runs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_commit_index_propagation_delay_ms) = 60000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 60000;
+
+  std::shared_ptr<Peer> peer;
+  auto* proxy = NewCapturingRemotePeer(kFollowerUuid, &peer);
+  auto se = ScopeExit([&peer] {
+    peer->Close();
+  });
+
+  ASSERT_NO_FATALS(ReplicateAndCommitFirstOperation(peer, proxy));
+
+  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
+  SleepFor(MonoDelta::FromMilliseconds(500 * kTimeMultiplier));
+  ASSERT_EQ(proxy->num_requests(), 2U) << "committed OpId propagation should have been deferred";
+
+  AppendReplicateMessagesToQueue(message_queue_.get(), clock_, /* first_index */ 2, /* count */ 1);
+  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
+  ASSERT_OK(WaitForRequests(proxy, 3));
+  ASSERT_EQ(proxy->requests()[2].num_ops, 1U);
+  ASSERT_EQ(proxy->requests()[2].committed_index, 1)
+      << "the operation should carry the committed OpId whose propagation was deferred";
+  ASSERT_EQ(proxy->num_requests(), 3U);
+
+  proxy->RespondToRequest();
+  consensus_->WaitForMajorityReplicatedIndex(2);
+}
+
+// If no operation follows, the deferred request is sent once the deferral expires: propagation of
+// the committed OpId is delayed, not dropped.
+TEST_F(ConsensusPeersTest, TestDeferredCommitIndexPropagationIsSentWhenIdle) {
+  constexpr int32_t kDelayMs = 100;
+  const auto kDelay = MonoDelta::FromMilliseconds(kDelayMs * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_commit_index_propagation_delay_ms) =
+      kDelayMs * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 60000;
+
+  std::shared_ptr<Peer> peer;
+  auto* proxy = NewCapturingRemotePeer(kFollowerUuid, &peer);
+  auto se = ScopeExit([&peer] {
+    peer->Close();
+  });
+
+  ASSERT_NO_FATALS(ReplicateAndCommitFirstOperation(peer, proxy));
+
+  const auto start_time = MonoTime::Now();
+  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
+  ASSERT_OK(WaitForRequests(proxy, 3));
+  ASSERT_GE(MonoTime::Now() - start_time, kDelay);
+  ASSERT_EQ(proxy->requests()[2].num_ops, 0U);
+  ASSERT_EQ(proxy->requests()[2].committed_index, 1);
+  proxy->RespondToRequest();
 }
 
 } // namespace yb::consensus
