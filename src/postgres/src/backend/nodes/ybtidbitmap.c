@@ -128,12 +128,16 @@ yb_tbm_union_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 	if (a->work_mem_exceeded || b->work_mem_exceeded)
 	{
 		a->work_mem_exceeded = true;
+		yb_tbm_free(b);
 		return;
 	}
 
 	/* Nothing to do if b is empty */
 	if (b->nentries == 0)
+	{
+		yb_tbm_free(b);
 		return;
+	}
 
 	size_t		added_size = YBCBitmapUnionSet(a->ybctid_set, b->ybctid_set);
 
@@ -161,12 +165,16 @@ yb_tbm_intersect_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 	if (a->work_mem_exceeded || b->work_mem_exceeded)
 	{
 		a->work_mem_exceeded = true;
+		yb_tbm_free(b);
 		return;
 	}
 
 	/* Nothing to do if a is empty */
 	if (a->nentries == 0)
+	{
+		yb_tbm_free(b);
 		return;
+	}
 
 	size_t		total_bytes = a->bytes_consumed + b->bytes_consumed;
 	size_t		total_length = a->nentries + b->nentries;
