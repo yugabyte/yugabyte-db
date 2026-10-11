@@ -1625,9 +1625,10 @@ Status TSTabletManager::DoApplyCloneTablet(
         "Adding table $0 to the tablet: $1", colocated_table.table_id(), target_tablet_id);
     auto table_info = VERIFY_RESULT(
         tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table));
-    // The master does not fill these in. Stamp them like the primary table above: a vector index
-    // only takes intent applies committed after its hybrid time, so an invalid one would keep
-    // every transactional write to the clone out of the index.
+    // The master does not fill these in. Stamp every table, as AddTable would, not just vector
+    // indexes: they are the only readers today, but a vector index only takes intent applies
+    // committed after its hybrid time, so an invalid one keeps every transactional write to the
+    // clone out of the index.
     table_info->op_id = clone_op_id;
     table_info->hybrid_time = operation->hybrid_time();
     colocated_tables_infos.push_back(std::move(table_info));
