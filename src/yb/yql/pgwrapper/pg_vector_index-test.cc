@@ -2280,7 +2280,9 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneIndexesNewTransactionalWrites) {
   }
   ASSERT_OK(clone_conn.CommitTransaction());
 
-  // The index covers every row, the copied ones and the ones written into the clone.
+  // The index covers every row, the copied ones and the ones written into the clone. A seq scan
+  // would return them all without the fix, so make sure the read goes through the index.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
   auto ids = ASSERT_RESULT(clone_conn.FetchRows<int64_t>(Format(
       "SELECT id FROM test ORDER BY $0 LIMIT $1", DistanceToQuery(Vector(1)), 4 * kNumRows)));
   std::ranges::sort(ids);
