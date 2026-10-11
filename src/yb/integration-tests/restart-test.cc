@@ -265,6 +265,42 @@ class PersistRetryableRequestsTest : public RestartTest {
   }
 };
 
+// After an unclean restart, the bootstrap state rebuilt by WAL replay is persisted right after the
+// tablet opens, without waiting for a log roll-over (#30760).
+TEST_F(PersistRetryableRequestsTest, BootstrapStateFlushedAfterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
+  string tablet_id;
+  ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
+  auto tablet_peer = ASSERT_RESULT(
+      tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
+
+  PutKeyValue("key_1", "value_1");
+  PutKeyValue("key_2", "value_2");
+  const auto last_write_op_id =
+      ASSERT_RESULT(tablet_peer->GetRetryableRequests()).GetMaxReplicatedOpId();
+  ASSERT_GT(last_write_op_id.index, 0);
+  // Nothing rolled the log, so nothing has persisted the bootstrap state yet.
+  ASSERT_FALSE(tablet_peer->TEST_HasBootstrapStateOnDisk());
+  tablet_peer.reset();
+
+  // Emulate a crash: nothing is flushed on shutdown, so bootstrap has to rebuild the state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  ASSERT_OK(tablet_server->Restart());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = false;
+  ASSERT_OK(tablet_server->WaitStarted());
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto peer_result = tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id);
+    if (!peer_result.ok()) {
+      return false;
+    }
+    const auto retryable_requests = VERIFY_RESULT((*peer_result)->GetRetryableRequests());
+    return (*peer_result)->TEST_HasBootstrapStateOnDisk() &&
+           retryable_requests.GetLastFlushedOpId() == last_write_op_id;
+  }, 10s, "Bootstrap state persisted after the tablet opened"));
+}
+
 // Test for scenario:
 // 1. Replicated an WriteOp on tablet 1 and tserver crashed before replying to client.
 // 2. Restart the tserver.
