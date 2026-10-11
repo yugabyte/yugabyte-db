@@ -50,6 +50,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
@@ -808,6 +809,7 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     }
   } // Loop to process the next batch until fully iterated.
 
+  bool report_accepted = true;
   if (!report.is_incremental()) {
     // A full report may take multiple heartbeats.
     // The TS communicates how much is left to process for the full report beyond this specific HB.
@@ -820,15 +822,15 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
                 << (completed_full_report ? " finished" : " receiving") << " first full report: "
                 << reported_tablets.size() << " tablets.";
     }
-    if (completed_full_report) {
-      // We have a tablet report only once we're done processing all the chunks of the initial
-      // report.
-      ts_desc->set_has_tablet_report(completed_full_report);
-    } else if (!ts_desc->receiving_full_report_seq_no()) {
-      LOG_WITH_FUNC(INFO)
-          << ts_desc->permanent_uuid() << " set full report seq no: "
-          << report.full_report_seq_no();
-      ts_desc->set_receiving_full_report_seq_no(report.full_report_seq_no());
+    TEST_SYNC_POINT_CALLBACK(
+        "MasterHeartbeatServiceImpl::ProcessTabletReport:BeforeUpdateFullReportState",
+        const_cast<TabletReportPB*>(&report));
+    if (!report.has_full_report_seq_no()) {
+      if (completed_full_report) {
+        ts_desc->set_has_tablet_report(true);
+      }
+    } else {
+      report_accepted = ts_desc->UpdateFullReportState(report, completed_full_report);
     }
   }
 
@@ -837,7 +839,7 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     catalog_manager_->WakeBgTaskIfPendingUpdates();
   }
 
-  return true;
+  return report_accepted;
 }
 
 int64_t GetCommittedConsensusStateOpIdIndex(const ReportedTabletPB& report) {

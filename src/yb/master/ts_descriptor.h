@@ -171,7 +171,12 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   void set_has_tablet_report_unlocked(bool has_report) REQUIRES(mutex_);
 
   std::optional<int32_t> receiving_full_report_seq_no() const;
-  void set_receiving_full_report_seq_no(int32_t value);
+
+  // Records a processed chunk of a full tablet report. Returns false if the master has no complete
+  // full report and must ask for a new one: the chunk continues a report whose first chunk this
+  // master did not accept, or a newer report from this tserver arrived while this one was
+  // processed.
+  bool UpdateFullReportState(const TabletReportPB& report, bool completed);
 
   bool has_faulty_drive() const;
 
