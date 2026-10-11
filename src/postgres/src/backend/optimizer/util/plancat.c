@@ -1304,13 +1304,24 @@ get_relation_data_width(Oid relid, int32 *attr_widths)
 /*
  * yb_prefetch_column_stats
  *		Warm the catalog cache with all of a relation's pg_statistic rows in one
- *		batched list lookup, so the planner's per-column get_attavgwidth() calls
+ *		batched list lookup, so the planner's per-column pg_statistic lookups
  *		hit warm cache instead of issuing a catalog RPC each.
+ *
+ * The list lookup only runs when some column's entry is missing.  Any
+ * pg_statistic invalidation drops every list in the cache, so relying on the
+ * list itself would re-read the stats of every relation after an ANALYZE of
+ * any one of them; the per-column entries of relations that were not
+ * analyzed survive it.
  */
 static void
 yb_prefetch_column_stats(Relation relation)
 {
-	CatCList   *list;
+	Oid			relid = RelationGetRelid(relation);
+	TupleDesc	tupdesc = RelationGetDescr(relation);
+	Datum	   *keys;
+	int			nkeys = 0;
+	bool		inh;
+	int			i;
 
 	switch (relation->rd_rel->relkind)
 	{
@@ -1325,13 +1336,23 @@ yb_prefetch_column_stats(Relation relation)
 	}
 
 	/*
-	 * Prefix scan on the leading key (starelid).  Releasing the list keeps the
-	 * per-tuple member entries cached for the upcoming point lookups; we only
-	 * want the side effect of populating the cache, not the list itself.
+	 * Use the keys the planner looks up: get_attavgwidth() reads
+	 * stainherit = false rows, but a partitioned table only has
+	 * stainherit = true rows, which examine_variable() reads for it.
 	 */
-	list = SearchSysCacheList1(STATRELATTINH,
-							   ObjectIdGetDatum(RelationGetRelid(relation)));
-	ReleaseSysCacheList(list);
+	inh = relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
+	keys = palloc(tupdesc->natts * 3 * sizeof(Datum));
+	for (i = 1; i <= tupdesc->natts; i++)
+	{
+		if (TupleDescAttr(tupdesc, i - 1)->attisdropped)
+			continue;
+		keys[nkeys * 3] = ObjectIdGetDatum(relid);
+		keys[nkeys * 3 + 1] = Int16GetDatum(i);
+		keys[nkeys * 3 + 2] = BoolGetDatum(inh);
+		nkeys++;
+	}
+	YbSysCachePrefetchList(STATRELATTINH, ObjectIdGetDatum(relid), nkeys, keys);
+	pfree(keys);
 }
 
 
