@@ -350,6 +350,28 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testCreateFipsUniverseRebootsEachNodeOnce() {
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    taskParams.fipsEnabled = true;
+    int numNodes = taskParams.nodeDetailsSet.size();
+    assertTrue(numNodes > 1);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    List<TaskInfo> reboots =
+        subTasks.stream()
+            .filter(t -> t.getTaskType() == TaskType.RebootServer)
+            .collect(Collectors.toList());
+    assertEquals(numNodes, reboots.size());
+    assertEquals(1, reboots.stream().map(TaskInfo::getPosition).distinct().count());
+    // A group added once per node used to leave duplicate subtasks behind in Created.
+    assertTrue(subTasks.stream().allMatch(t -> t.getTaskState() == Success));
+  }
+
+  @Test
   public void testCreateUniverseWithCRAzureSuccess() {
     factory
         .globalRuntimeConf()
