@@ -160,10 +160,12 @@ class PeerMessageQueue {
     // The WAL pin metadata requested by this peer, applicable to PRE_VOTERs alone.
     struct RequestedWalPinInfo {
       OpId op_id = OpId::Max();
-      MonoTime first_requested_time = MonoTime::kUninitialized;
+      // Voter majority-replicated op id at last_pinned_time.
+      OpId majority_replicated_op_id = OpId::Max();
+      MonoTime last_pinned_time = MonoTime::kUninitialized;
 
       std::string ToString() const {
-        return YB_STRUCT_TO_STRING(op_id, first_requested_time);
+        return YB_STRUCT_TO_STRING(op_id, majority_replicated_op_id, last_pinned_time);
       }
     };
     RequestedWalPinInfo requested_wal_pin_info;
@@ -318,10 +320,9 @@ class PeerMessageQueue {
   // Recomputes WAL-GC retention components from current queue state without mutating cached
   // majority_replicated_op_id or notifying observers.
   // - majority_replicated_op_id is the live voter majority watermark when available.
-  // - min_progressing_pre_voter_op_id is the min last_received among PRE_VOTER peers that:
-  //   * have progressed at least as fast as voter-majority advancement since the last
-  //     GetWalGcPeerRetentionInfo() pass; and
-  //   * are still within retain_wal_secs_for_progressing_prevoter from first WAL pin request.
+  // - min_progressing_pre_voter_op_id is the min last_received among PRE_VOTER peers that are
+  //   either within retain_wal_secs_for_progressing_prevoter of their last WAL pin, or have
+  //   advanced at least as far as the voter majority since that pin (which renews the pin).
   WalGcPeerRetentionInfo GetWalGcPeerRetentionInfo();
 
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely

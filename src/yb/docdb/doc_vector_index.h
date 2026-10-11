@@ -188,6 +188,11 @@ class DocVectorIndex {
   // it is reserved for storage replacement and not used to advance an idle index.
   virtual Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) = 0;
 
+  // Advances the flushed OpId of an index that holds nothing unflushed, without a chunk file.
+  // Unlike ModifyFlushedFrontier, repeated calls keep a single frontier only chunk, so it can be
+  // used to advance an idle index. Returns false when the index has unflushed data.
+  virtual Result<bool> AdvanceFlushedOpId(const OpId& op_id) = 0;
+
   // Computes the requested frontiers (flushed and/or in-memory) atomically, so the views are
   // mutually consistent. This is the single primitive subclasses override; the accessors below are
   // expressed in terms of it.
@@ -221,6 +226,20 @@ class DocVectorIndex {
   Result<bool> BackfillDone() EXCLUDES(backfill_status_mutex_);
   void SetBackfillStatus(const Status& status) EXCLUDES(backfill_status_mutex_);
 
+  // Rows committed after this hybrid time are not added to the index. Invalid while the index is
+  // active. See tablet::TableInfo::vector_index_deactivated_ht.
+  HybridTime deactivated_hybrid_time() const {
+    return deactivated_hybrid_time_.load(std::memory_order_acquire);
+  }
+
+  bool IsDeactivated() const {
+    return deactivated_hybrid_time().is_valid();
+  }
+
+  void SetDeactivatedHybridTime(HybridTime hybrid_time) {
+    deactivated_hybrid_time_.store(hybrid_time, std::memory_order_release);
+  }
+
   // Returns true if all inherited parent-tablet chunks have been compacted away.
   // Caches the true result; ComputeParentDataCompacted() is the uncached check.
   bool ParentDataCompacted();
@@ -238,6 +257,7 @@ class DocVectorIndex {
   std::atomic<bool> parent_data_compacted_cache_{false};
   std::mutex backfill_status_mutex_;
   Status backfill_status_ GUARDED_BY(backfill_status_mutex_);
+  std::atomic<HybridTime> deactivated_hybrid_time_{HybridTime()};
 };
 
 struct DocVectorIndexThreadPools {
