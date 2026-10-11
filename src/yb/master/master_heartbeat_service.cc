@@ -132,6 +132,13 @@ DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
     "on the heartbeat response.");
 TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
 
+DEFINE_RUNTIME_bool(send_blacklisted_tservers_on_heartbeat, false,
+    "When set, the master will send the list of blacklisted tservers that host no tablets "
+    "on the heartbeat response, so tservers can stop routing to their stale cached replicas. "
+    "Off by default; tservers that do not understand the field ignore it, so it can be enabled "
+    "once the tservers that should act on it are upgraded.");
+TAG_FLAG(send_blacklisted_tservers_on_heartbeat, advanced);
+
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
 
@@ -591,6 +598,18 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
             }
           }
           ts_desc->exchg_pending_leader_drain_notification(leader_drain_version, 0);
+        }
+      }
+
+      // Unlike the leader-blacklist hint above, this is sent on every heartbeat while the
+      // condition holds rather than once: a lost response, a master failover, or a recipient that
+      // was unresponsive at the time all self-heal on the next heartbeat, with no master-side
+      // state to persist. The set is derived from the replica maps by the background task, so a
+      // tserver that died mid-drain is named once the load balancer has moved its replicas, and
+      // keeps being named until it is removed from the registry.
+      if (FLAGS_send_blacklisted_tservers_on_heartbeat) {
+        for (const auto& uuid : catalog_manager_->GetDrainedBlacklistedTServers()) {
+          resp->add_blacklisted_tservers_with_no_tablets(uuid);
         }
       }
     } else {

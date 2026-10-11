@@ -235,6 +235,8 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
       catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers(epoch),
       "Failed to update sys catalog with unresponsive TServers");
 
+  catalog_manager_->RefreshDrainedBlacklistedTServers();
+
   TabletInfos to_delete;
   TableToTabletInfos to_process;
 

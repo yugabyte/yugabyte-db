@@ -1149,6 +1149,12 @@ class YBClient {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  // Applies the master's heartbeat hint naming the blacklisted tservers that host no tablets, and
+  // the tservers it counts as live. Cached replicas on a drained tserver are permanently failed
+  // until the hint drops it and it is live again. See MetaCache::UpdateDrainedTServers.
+  void UpdateDrainedTServers(
+      const std::vector<std::string>& drained, const std::vector<std::string>& live);
+
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the
   // RemoteTablet was indeed refreshed, false otherwise.
@@ -1188,6 +1194,7 @@ class YBClient {
   friend class XClusterRemoteClientHolder;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
+  FRIEND_TEST(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
   FRIEND_TEST(ClientTest, MetaCacheIgnoreNonTargetTable);

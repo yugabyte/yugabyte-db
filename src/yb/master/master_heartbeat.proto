@@ -394,6 +394,12 @@ message TSHeartbeatResponsePB {
   // If present, this heartbeat response grants the TServer a xCluster-guarded information lease
   // of this duration from when the TServer sent the heartbeat request.
   optional uint32 xcluster_guarded_lease_duration_ms = 36;
+
+  // UUIDs of tservers that are blacklisted and host no tablets as per master's view. Tservers use
+  // this to proactively mark replicas hosted by these tservers as failed in their meta-cache, so
+  // that stale cached replicas are not routed to once the tserver is taken down. Sent on every
+  // heartbeat while the condition holds; the tserver applies each UUID once per appearance.
+  repeated string blacklisted_tservers_with_no_tablets = 37;
 }
 
 service MasterHeartbeat {

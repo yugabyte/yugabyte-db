@@ -103,6 +103,7 @@
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
@@ -2765,6 +2766,20 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
 
 void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
   client()->MarkTServersAsFollowers(ts_uuids);
+}
+
+void TabletServer::UpdateDrainedTServers(
+    const std::vector<std::string>& drained, const std::vector<std::string>& live) {
+  // Only the shared client routes to this universe's tservers; xCluster consumer clients point at
+  // the source universe, so a hint from the local master does not apply to them. Do not block the
+  // heartbeat thread on a client that is still initializing.
+  const auto& future = client_future();
+  if (!IsReady(future)) {
+    return;
+  }
+  if (auto* shared_client = future.get()) {
+    shared_client->UpdateDrainedTServers(drained, live);
+  }
 }
 
 Status TabletServer::ClearYCQLMetaDataCache() {

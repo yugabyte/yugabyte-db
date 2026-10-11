@@ -126,6 +126,14 @@ inline bool CheckIfConsensusInfoUnexpectedlyMissing(const Req& request, const Re
 // See class comment for TabletRpc.
 class TabletInvoker {
  public:
+  // Passed to the TabletInvoker::BeforeSendRpcToTserver sync point so tests can observe which
+  // tserver an RPC is about to be dispatched to.
+  struct RpcSendTestData {
+    YBClient* client;
+    const TabletId& tablet_id;
+    const std::string& ts_uuid;
+  };
+
   // If table is specified, TabletInvoker can detect that table partitions are stale in case tablet
   // is no longer available and return ClientErrorCode::kTablePartitionListIsStale.
   //
