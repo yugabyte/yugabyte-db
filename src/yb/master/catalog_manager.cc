@@ -9907,6 +9907,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     }
     ns_l = ns->LockForWrite();
     SysNamespaceEntryPB *metadata = &ns_l.mutable_data()->pb;
+    // Non-zero only when reusing the namespace during ysql major upgrade.
+    const auto prev_next_normal_pg_oid = metadata->next_normal_pg_oid();
     metadata->set_name(req->name());
     metadata->set_database_type(db_type);
     metadata->set_colocated(req->colocated());
@@ -9971,6 +9973,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           metadata->set_next_normal_pg_oid(source_ns_lock->pb.next_normal_pg_oid());
         }
       }
+      // Never move the OID counter back: reusing OIDs of dropped relations reuses their DocDB
+      // table ids, which tservers may still map to deleted tablets.
+      metadata->set_next_normal_pg_oid(
+          std::max(metadata->next_normal_pg_oid(), prev_next_normal_pg_oid));
     }
 
     // NS with a Transaction should be rolled back if the transaction does not get Committed.
