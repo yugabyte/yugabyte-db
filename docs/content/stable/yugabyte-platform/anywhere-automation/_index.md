@@ -15,12 +15,12 @@ showRightNav: true
 
 Use the following automation tools to manage your YugabyteDB Anywhere installation and universes:
 
-| Automation | Description |
-| :--------- | :---------- |
-| [REST API](anywhere-api/) | Deploy and manage database universes using a REST API. |
-| [Terraform provider](anywhere-terraform/) | Provider for automating YugabyteDB Anywhere resources that are accessible via the API. |
-| [CLI](anywhere-cli/) | Manage YugabyteDB Anywhere resources from the command line. |
-| [YugabyteDB Kubernetes Operator](yb-kubernetes-operator/) | Automate the deployment and management of YugabyteDB universes in Kubernetes environments, and import existing universes for operator management. |
+| Automation | Description | Agent skill |
+| :--------- | :---------- | :---------- |
+| [REST API](anywhere-api/) | Deploy and manage database universes using a REST API. | [yba-api](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-api) |
+| [Terraform provider](anywhere-terraform/) | Provider for automating YugabyteDB Anywhere resources that are accessible via the API. | [yba-terraform](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-terraform) |
+| [CLI](anywhere-cli/) | Manage YugabyteDB Anywhere resources from the command line. | |
+| [YugabyteDB Kubernetes Operator](yb-kubernetes-operator/) | Automate the deployment and management of YugabyteDB universes in Kubernetes environments, and import existing universes for operator management. | [yb-k8s-operator](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-k8s-operator) |
 
 ## Authentication
 

@@ -24,6 +24,22 @@ You can additionally convert Kubernetes universes that are managed via Helm char
 
 ![YugabyteDB Kubernetes Operator](/images/yb-platform/yb-kubernetes-operator.png)
 
+## Use the operator with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) generates operator custom resources for you, install the official [yb-k8s-operator skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-k8s-operator) first. The skill supplies the operator's resource rules, so the agent makes fewer errors and uses fewer tokens.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-k8s-operator
+```
+
+The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
+
+{{< note title="YugabyteDB Anywhere operator only" >}}
+The skill targets the YugabyteDB Anywhere Kubernetes Operator. It does not fully apply to the [open source YugabyteDB Kubernetes Operator](../../../deploy/kubernetes/single-zone/oss/yugabyte-operator/).
+{{< /note >}}
+
 ## YugabyteDB Kubernetes Operator CRDs
 
 The Operator is built around the **YBUniverse CRD**, which defines and manages a YugabyteDB universe.

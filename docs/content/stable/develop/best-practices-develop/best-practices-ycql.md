@@ -16,6 +16,18 @@ type: docs
 
 To build high-performance and scalable applications using YCQL, developers should follow key schema design and operational best practices tailored for YugabyteDB's distributed architecture. This guide covers strategies for using indexes efficiently, optimizing read/write paths with batching and prepared statements, managing JSON and collection data types, and ensuring memory settings align with your query layer. These practices help ensure reliable performance, especially under real-world workloads.
 
+## Use YCQL with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) writes YCQL schema or client code for you, install the official [ycql skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/ycql) first. The skill supplies partition-key, index, and batching guidance, so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s ycql
+```
+
+The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
+
 ## Global secondary indexes
 
 Indexes use multi-shard transactional capability of YugabyteDB and are global and strongly consistent (ACID). To add secondary indexes, you need to create tables with [transactions enabled](../../../api/ycql/ddl_create_table/#table). They can also be used as materialized views by using the [INCLUDE clause](../../../api/ycql/ddl_create_index#included-columns).
