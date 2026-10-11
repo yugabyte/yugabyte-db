@@ -89,6 +89,13 @@
   (::yb::flags_internal::SetFlagDefaultAndCurrent( \
       &BOOST_PP_CAT(FLAGS_, name), BOOST_PP_STRINGIZE(name), value))
 
+// Copy of a string flag's current value, taken under the gflags registry lock. SetFlag assigns
+// string flags in place under that lock, so reading FLAGS_<name> directly on a thread that can run
+// concurrently with a runtime update is a data race. The lock is process-wide: keep this off hot
+// paths.
+#define GET_STRING_FLAG(name) \
+  (::yb::flags_internal::GetStringFlag(&BOOST_PP_CAT(FLAGS_, name), BOOST_PP_STRINGIZE(name)))
+
 namespace yb {
 
 // Looks for flags in argv and parses them.  Rearranges argv to put
@@ -204,6 +211,11 @@ T GetMaskedValueIfSensitive(const std::string& flag_name, T value) {
 
 // Check if the flag can be set to the new value. Does not actually set the flag.
 Status ValidateFlagValue(const std::string& flag_name, const std::string& value);
+
+std::string GetStringFlag(const std::string* flag_ptr, const char* flag_name);
+
+// Tags as advertised to external tooling (--dump_flags_xml, YBA).
+std::unordered_set<FlagTag> GetExternalFlagTags(const gflags::CommandLineFlagInfo& flag);
 
 }  // namespace flags_internal
 

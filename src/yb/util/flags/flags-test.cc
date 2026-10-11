@@ -12,9 +12,11 @@
 //
 
 #include <filesystem>
+#include <thread>
 
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
@@ -53,6 +55,11 @@ DEFINE_validator(flagstest_secret_flag, &ValidateSecretFlag);
 
 DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "",
     "This is a duplicate flag used only for testing");
+
+DEFINE_RUNTIME_string(flagstest_runtime_string, "", "Runtime string flag");
+
+DEFINE_RUNTIME_string(flagstest_locked_reads_string, "", "Runtime string flag read under the lock");
+TAG_FLAG(flagstest_locked_reads_string, locked_reads);
 
 namespace yb {
 
@@ -345,6 +352,41 @@ TEST_F(FlagsTest, AllowList) {
 
   // Not allowed string flag.
   ASSERT_TRUE(is_flag_private("ysql_cron_database_name"));
+}
+
+TEST_F(FlagsTest, ExternalRuntimeTag) {
+  auto advertised_as_runtime = [](const char* flag_name) {
+    return flags_internal::GetExternalFlagTags(gflags::GetCommandLineFlagInfoOrDie(flag_name))
+        .contains(FlagTag::kRuntime);
+  };
+
+  ASSERT_TRUE(advertised_as_runtime("preview_flag"));
+  ASSERT_FALSE(advertised_as_runtime("flagstest_testflag"));
+  ASSERT_FALSE(advertised_as_runtime("flagstest_runtime_string"));
+  ASSERT_TRUE(advertised_as_runtime("flagstest_locked_reads_string"));
+}
+
+// Alternating values of different lengths makes an unlocked read observe a mix of the two.
+TEST_F(FlagsTest, GetStringFlagDuringConcurrentSet) {
+  const std::string short_value = "a";
+  const std::string long_value(1000, 'b');
+
+  std::atomic<bool> stop{false};
+  std::thread setter([&] {
+    for (bool use_long = true; !stop.load(std::memory_order_acquire); use_long = !use_long) {
+      CHECK_OK(SET_FLAG(flagstest_locked_reads_string, use_long ? long_value : short_value));
+    }
+  });
+  auto join_setter = ScopeExit([&] {
+    stop.store(true, std::memory_order_release);
+    setter.join();
+  });
+
+  for (int i = 0; i < 100000; ++i) {
+    const auto value = GET_STRING_FLAG(flagstest_locked_reads_string);
+    ASSERT_TRUE(value.empty() || value == short_value || value == long_value)
+        << "Torn read of size " << value.size();
+  }
 }
 
 } // namespace yb
