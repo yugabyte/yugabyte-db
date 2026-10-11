@@ -63,6 +63,7 @@ using std::vector;
 using namespace std::literals;
 
 DECLARE_bool(track_stack_traces);
+DECLARE_bool(stack_trace_symbolize);
 DECLARE_bool(TEST_disable_thread_stack_collection_wait);
 
 namespace yb {
@@ -147,6 +148,32 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
 #else
   ASSERT_GE(without_file_line, 0);
 #endif
+}
+
+TEST_F(DebugUtilTest, TestStackTraceNoSymbolize) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_stack_trace_symbolize) = false;
+  auto se = ScopeExit([] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_stack_trace_symbolize) = true; });
+
+  StackTrace t;
+  t.Collect(1);
+  for (const auto& trace : {t.Symbolize(), GetStackTrace()}) {
+    LOG(INFO) << "Trace:\n" << trace;
+    // Every frame is "@ 0x<pc> (<module>+0x<offset>)", no symbol names.
+    const std::regex kLineRe(R"#(^\s*@\s+0x[0-9a-f]+ \(\S+\+0x[0-9a-f]+\)$)#");
+    std::stringstream ss(trace);
+    std::string line;
+    int num_lines = 0;
+    while (std::getline(ss, line)) {
+      SCOPED_TRACE(line);
+      ASSERT_TRUE(std::regex_match(line, kLineRe));
+      ++num_lines;
+    }
+    ASSERT_GT(num_lines, 2);
+    ASSERT_STR_NOT_CONTAINS(trace, "TestBody");
+    // TestBody is the top frame, or the second one when GetStackTrace() reports itself first.
+    auto second_newline = trace.find('\n', trace.find('\n') + 1);
+    ASSERT_STR_CONTAINS(trace.substr(0, second_newline), "debug-util-test");
+  }
 }
 
 // DumpThreadStack is only supported on Linux, since the implementation relies
