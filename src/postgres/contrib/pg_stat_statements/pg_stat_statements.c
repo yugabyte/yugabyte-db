@@ -1729,6 +1729,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	int			saved_stmt_location = pstmt->stmt_location;
 	int			saved_stmt_len = pstmt->stmt_len;
 
+	bool		yb_is_backfill = IsA(parsetree, YbBackfillIndexStmt);
+
 	/*
 	 * Force utility statements to get queryId zero.  We do this even in cases
 	 * where the statement contains an optimizable statement for which a
@@ -1833,7 +1835,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		 * For BACKFILL INDEX commands, generate a normalized query string so
 		 * that all backfill calls for the same index are aggregated.
 		 */
-		if (IsA(parsetree, YbBackfillIndexStmt))
+		if (yb_is_backfill)
 		{
 			char	   *norm_query;
 			int			norm_query_len;
