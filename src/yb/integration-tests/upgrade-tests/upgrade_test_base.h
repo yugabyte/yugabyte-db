@@ -22,10 +22,10 @@ namespace yb {
 struct BuildInfo {
   std::string version;
   std::string build_number;
-  std::string linux_debug_x86_url;
   std::string linux_release_x86_url;
+  // Optional. Used by fastdebug builds of the current version when set.
+  std::string linux_fastdebug_x86_url;
   std::string linux_release_aarch64_url;
-  std::string darwin_debug_arm64_url;
   std::string darwin_release_arm64_url;
 };
 
