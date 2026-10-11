@@ -510,6 +510,11 @@ Status HeartbeatPoller::TryHeartbeat() {
     heartbeat_rtt_ = end_time.GetDeltaSince(start_time);
   }
 
+  // The master rejects ysql lease requests from a tablet server until it registers.
+  if (req.has_registration() && !last_hb_response_.needs_reregister()) {
+    server_.TriggerYSQLLeaseRefresh();
+  }
+
   if (last_hb_response_.has_cluster_uuid() && !last_hb_response_.cluster_uuid().empty()) {
     server_.set_cluster_uuid(last_hb_response_.cluster_uuid());
   }

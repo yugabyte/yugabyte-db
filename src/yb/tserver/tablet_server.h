@@ -398,6 +398,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void RegisterConnectionManagerRestarter(std::function<Status(void)> restarter);
 
   Status StartYSQLLeaseRefresher();
+  void TriggerYSQLLeaseRefresh();
 
   /// Stops the ysql lease manager threads, which call back into the PG supervisor to restart or
   /// kill PG. Idempotent, also invoked by Shutdown.

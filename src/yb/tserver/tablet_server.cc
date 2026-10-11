@@ -2689,6 +2689,8 @@ Status TabletServer::StartYSQLLeaseRefresher() {
   return ysql_lease_manager_->StartYSQLLeaseRefresher();
 }
 
+void TabletServer::TriggerYSQLLeaseRefresh() { ysql_lease_manager_->TriggerLeaseRefresh(); }
+
 void TabletServer::ShutdownYSQLLeaseManager() { ysql_lease_manager_->Shutdown(); }
 
 Status TabletServer::SetCDCServiceEnabled() {
