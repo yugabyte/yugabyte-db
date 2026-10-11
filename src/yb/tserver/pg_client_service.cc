@@ -1887,6 +1887,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   Status ListSlotEntries(
       const PgListSlotEntriesRequestPB& req, PgListSlotEntriesResponsePB* resp,
       rpc::RpcContext* context) {
+    // Without the cdc_state table there are no slot entries. Return right away instead of
+    // waiting for the table to be created, which would hold this RPC worker until the admin
+    // operation timeout.
+    if (!VERIFY_RESULT(cdc_state_table_->TableExists())) {
+      return Status::OK();
+    }
+
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
         cdc::CDCStateTableEntrySelector()

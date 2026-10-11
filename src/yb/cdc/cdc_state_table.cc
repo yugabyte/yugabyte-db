@@ -565,6 +565,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
   if (!cdc_table_) {
     RETURN_NOT_OK(WaitForCreateTableToFinishWithCache());
     cdc_table_ = VERIFY_RESULT(OpenTable());
+    table_opened_.store(true, std::memory_order_release);
   }
   return cdc_table_;
 }
@@ -702,6 +703,15 @@ Result<CDCStateTableRange> CDCStateTable::GetTableRangeAsync(
       kCdcStateYBTableName, &creation_in_progress));
   SCHECK(!creation_in_progress, Uninitialized, "CDC State Table creation is in progress");
   return GetTableRange(std::move(field_filter), iteration_status);
+}
+
+Result<bool> CDCStateTable::TableExists() {
+  // Don't take mutex_ here: GetTable() holds it exclusively while waiting for the table to be
+  // created, which can last until the admin operation timeout.
+  if (table_opened_.load(std::memory_order_acquire)) {
+    return true;
+  }
+  return VERIFY_RESULT_REF(client()).TableExists(kCdcStateYBTableName);
 }
 
 Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
