@@ -498,7 +498,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
       // by our regular expressions in common-test-env.sh.
       LOG_WITH_PREFIX(INFO) << "Terminating " << process_name_and_pid << " using 'SIGTERM' signal";
       WARN_NOT_OK(process_->Kill(SIGTERM), "Killing process failed");
-      CoarseBackoffWaiter waiter(start_time + max_graceful_shutdown_wait, 100ms);
+      CoarseBackoffWaiter waiter(start_time + max_graceful_shutdown_wait, 10ms);
       while (IsProcessAlive(require_exit_code_0)) {
         YB_LOG_EVERY_N_SECS(INFO, 1)
             << LogPrefix() << "Waiting for process termination: " << process_name_and_pid;
