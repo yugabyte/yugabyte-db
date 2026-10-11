@@ -804,6 +804,58 @@ Status TSTabletManager::Init() {
             << elapsed.ToMilliseconds() << " ms";
   ts_open_metadata_time_us_->IncrementBy(elapsed.ToMicroseconds());
 
+  // Certify the data roots before any tablet is opened or registered, and in particular before
+  // RegisterDataAndWalDir() below, which registers the root derived from the superblock rather than
+  // the root the superblock was found under -- on a swapped node that populates the drive
+  // assignment maps with the wrong disk, and new replicas then land wherever looks emptier.
+  //
+  // The evidence is already in memory: FsManager remembers where it found each superblock, and the
+  // superblock records its own data directory as an absolute path written when the layout was
+  // correct. If the device now at root R carries a superblock naming R, that device has not moved.
+  {
+    std::vector<TabletSuperblockEvidence> evidence;
+    evidence.reserve(tablet_ids.size());
+    const auto collect = [this, &evidence](const RaftGroupMetadataPtr& meta) {
+      TabletSuperblockEvidence e;
+      e.tablet_id = meta->raft_group_id();
+      // Both sides are normalized to the data root, since data_root_dir() ends in ".../data",
+      // wal_root_dir() in ".../wals", and GetTabletPath() in ".../<server_type>".
+      auto tablet_path = fs_manager_->GetTabletPath(e.tablet_id);
+      if (!tablet_path.ok()) {
+        // Should not happen: ListTabletIds() populated this map for every id we opened.
+        LOG(DFATAL) << "No metadata path recorded for tablet " << e.tablet_id << ": "
+                    << tablet_path.status();
+        return;
+      }
+      e.containing_root = FsRootOfYbDataPath(*tablet_path);
+      // A tombstoned tablet carries no RocksDB directory; it stays in the list (so the root's
+      // tablet count is right) but proves nothing, and EvaluateFsRootPins ignores it.
+      e.recorded_data_root = FsRootOfYbDataPath(meta->data_root_dir());
+      e.recorded_wal_root = FsRootOfYbDataPath(meta->wal_root_dir());
+      evidence.push_back(std::move(e));
+    };
+    {
+      std::lock_guard lock(metas.ready_metas_mutex);
+      for (const auto& meta : metas.ready_metas) {
+        collect(meta);
+      }
+    }
+    {
+      std::lock_guard lock(metas.non_ready_metas_mutex);
+      for (const auto& meta : metas.non_ready_metas) {
+        collect(meta);
+      }
+    }
+    // On refusal this carries one aggregated message naming every affected root and the tablets
+    // whose metadata disagrees. LOG_AND_RETURN_FROM_MAIN_NOT_OK in the TServer main turns it into
+    // one FATAL per start attempt, rather than a FATAL per tablet. A supervisor such as systemd
+    // may keep restarting the process, but every attempt refuses here, before anything is created
+    // or registered, so the retries change nothing on disk. It fires one boot earlier than the
+    // duplicate-superblock FATAL, before any replacement replica exists, so nothing has been lost
+    // and the fix is to remount and restart.
+    RETURN_NOT_OK(fs_manager_->CertifyDataRoots(evidence));
+  }
+
   // Validator should be created before tablets are open.
   tablet_metadata_validator_ = std::make_unique<TabletMetadataValidator>(LogPrefix(), this);
 

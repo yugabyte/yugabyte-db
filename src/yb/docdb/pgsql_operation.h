@@ -249,6 +249,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   boost::container::small_vector<dockv::PgWireEncoderEntry, 0x10> target_encoders_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;
+  // Rows read while processing this request, counted once each.  PgsqlRequestMetricsPB in
+  // pgsql_protocol.proto defines what that means.
   uint64_t scanned_table_rows_ = 0;
   uint64_t scanned_index_rows_ = 0;
   Status delayed_failure_;

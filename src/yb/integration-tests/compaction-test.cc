@@ -2316,8 +2316,11 @@ TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
           CorruptRange{kCorruptionOffset, kCorruptionSize}}) {
       ASSERT_OK(yb::CorruptFile(
           data_file_path, corrupt_range.offset, corrupt_range.size, CorruptionType::kZero));
+      // Corrupt range boundaries are not aligned with on-disk data block boundaries, so the block
+      // holding the start of the range is destroyed on top of the fully covered ones.
       tablet_num_corrupt_data_blocks_estimate +=
-          RoundUpToBlockSize(corrupt_range.size * compression_ratio) / FLAGS_db_block_size_bytes;
+          RoundUpToBlockSize(corrupt_range.size * compression_ratio) / FLAGS_db_block_size_bytes +
+          1;
       // RocksDB record started before or ending after corrupt region is likely to be also corrupt.
       num_max_corrupt_keys_estimate += 2;
     }

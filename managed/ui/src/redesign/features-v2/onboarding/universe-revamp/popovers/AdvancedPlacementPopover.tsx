@@ -1,6 +1,7 @@
 import { FC, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import { TourStep, dismissTourStep, isTourStepDismissed, subscribeTourProgressReady } from '../tour-progress';
 import { OnboardingTourPopper } from './OnboardingTourPopper';
 
 /** Gap between the dropdown trigger and the left-placed tip. */
@@ -13,22 +14,20 @@ const POPOVER_DISTANCE = 8;
  */
 const ARROW_CENTER_FROM_CARD_EDGE = 28;
 
-export const ADVANCED_PLACEMENT_POPOVER_DISMISS_KEY = 'yb_advanced_placement_popover_dismissed';
-
 interface AdvancedPlacementPopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
   /** Permanent Hide Tip. */
   onClose: () => void;
-  /** Transient click-away close (no localStorage). */
+  /** Transient click-away close. */
   onClickAway: () => void;
 }
 
 export const isAdvancedPlacementPopoverDismissed = (): boolean =>
-  localStorage.getItem(ADVANCED_PLACEMENT_POPOVER_DISMISS_KEY) === 'true';
+  isTourStepDismissed(TourStep.AdvPlacement);
 
 export const dismissAdvancedPlacementPopover = (): void => {
-  localStorage.setItem(ADVANCED_PLACEMENT_POPOVER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.AdvPlacement);
 };
 
 export const useAdvancedPlacementPopover = (autoOpen = false) => {
@@ -36,10 +35,14 @@ export const useAdvancedPlacementPopover = (autoOpen = false) => {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!autoOpen || isAdvancedPlacementPopoverDismissed()) {
+    if (!autoOpen) {
       return;
     }
-    setOpen(true);
+    return subscribeTourProgressReady(() => {
+      if (!isAdvancedPlacementPopoverDismissed()) {
+        setOpen(true);
+      }
+    });
   }, [autoOpen]);
 
   const handleClose = useCallback(() => {
@@ -47,15 +50,11 @@ export const useAdvancedPlacementPopover = (autoOpen = false) => {
     setOpen(false);
   }, []);
 
-  const handleClickAway = useCallback(() => {
-    setOpen(false);
-  }, []);
-
   return {
     open,
     anchorRef,
     handleClose,
-    handleClickAway
+    handleClickAway: handleClose
   };
 };
 

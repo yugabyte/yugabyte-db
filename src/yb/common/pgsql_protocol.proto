@@ -324,6 +324,28 @@ message PgsqlWriteRequestPB {
 
   // Optimization to skip intents write and directly writes to regular db.
   optional bool skip_intents_write = 30;
+
+  // Read this operation at the statement's in_txn_limit instead of at the transaction read time.
+  // Set for a relation the skip intents optimization can apply to: one created, or with its
+  // storage swapped, in the current transaction, while yb_enable_new_relation_fastpath_write is
+  // on. Rows an earlier skip intents write put in the regular db sit above the transaction read
+  // time, so only a read at the in_txn_limit still sees them. Unlike skip_intents_write this
+  // stays set after the optimization is disabled mid-transaction, which is what keeps those rows
+  // visible from then on.
+  //
+  // Like skip_intents_write this is a client-side signal; docdb does not read it.
+  optional bool read_at_in_txn_limit = 31;
+
+  // Fences the write against a caller-held lease: the leader rejects the op if this hybrid time has
+  // already passed when the op is about to be assigned its own. An RPC deadline cannot express
+  // this -- nothing cancels an operation once it is handed to Raft, so a write the caller saw time
+  // out can still commit. 0 means no fence.
+  //
+  // Each leader evaluates the fence independently, so a batch spanning tablets can be partially
+  // applied when it straddles the boundary; non-transactional single-shard writes have no
+  // all-or-nothing to fall back on. Like any hybrid time comparison it is only as tight as
+  // max_clock_skew_usec.
+  optional fixed64 ignore_after_hybrid_time = 32;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -602,6 +624,9 @@ message PgsqlReadRequestPB {
   optional uint32 tablespace_oid = 45;
 
   optional bool skip_intents_read = 46;
+
+  // See PgsqlWriteRequestPB::read_at_in_txn_limit.
+  optional bool read_at_in_txn_limit = 47;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -631,9 +656,13 @@ message PgsqlRequestMetricsPB {
   repeated PgsqlRequestCounterMetricPB counter_metrics = 2;
   // Event stats metrics changes as a result of processing the request.
   repeated PgsqlRequestEventMetricPB event_metrics = 3;
-  // Count of table rows scanned as a result of processing the request.
+  // Rows read from the table while processing this request.  A row that a pushed down filter
+  // rejected was read, so it counts, and so does a row that an aggregate folded into its result.
+  // A row excluded by a bound was not read, so it does not count.  Each row of a scan is counted
+  // by exactly one of its requests, so the last row of a response that reached the size limit,
+  // which is dropped from it, is counted by the request that reads it again.  See GH #33551.
   optional int64 scanned_table_rows = 4;
-  // Count of secondary index rows scanned as a result of processing the request.
+  // The same for the rows read from a secondary index that drives the scan.
   optional int64 scanned_index_rows = 5;
 }
 

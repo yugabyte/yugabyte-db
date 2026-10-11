@@ -67,6 +67,7 @@ public class StateTransitionDetails {
   }
 
   /** Reconstructs pre-task universe details from {@code delta}. */
+  @JsonIgnore
   public UniverseDefinitionTaskParams getBeforeUniverseDetails() {
     JsonNode beforeJson = DeltaEvaluator.generateOldValue(requireDelta());
     if (beforeJson == null || beforeJson.isNull()) {
@@ -77,6 +78,7 @@ public class StateTransitionDetails {
   }
 
   /** Reconstructs the failed task's target universe details from {@code delta}. */
+  @JsonIgnore
   public UniverseDefinitionTaskParams getTargetUniverseDetails() {
     JsonNode targetJson = DeltaEvaluator.generateNewValue(requireDelta());
     if (targetJson == null || targetJson.isNull()) {

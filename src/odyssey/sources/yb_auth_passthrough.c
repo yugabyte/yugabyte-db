@@ -134,13 +134,13 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 
 	/* override the remote host sent to the control backend. */
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   YB_NAME_AND_SIZEOF("yb_auth_remote_host"));
+			YB_NAME_AND_SIZEOF(YB_YCM_AUTH_REMOTE_HOST));
 	yb_kiwi_set_fe_arg(&argv[argc++], client_address,
-			   strlen(client_address) + 1);
+			strlen(client_address) + 1);
 
 	/* send the connection type to the control backend. */
 	yb_kiwi_set_fe_arg(&argv[argc++],
-			   YB_NAME_AND_SIZEOF("yb_logical_conn_type"));
+			YB_NAME_AND_SIZEOF(YB_YCM_LOGICAL_CONN_TYPE));
 	yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
 
 	if (route->id.physical_rep) {
@@ -696,10 +696,10 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			}
 
 			/* Explicitly ignoring these variables. We don't want to replay these */
-			if ((name_len == sizeof("yb_is_client_ysqlconnmgr") &&
-			     strcmp(name, "yb_is_client_ysqlconnmgr") == 0) ||
-			    (name_len == sizeof("yb_use_tserver_key_auth") &&
-			     strcmp(name, "yb_use_tserver_key_auth") == 0)) {
+			if ((name_len == sizeof(YB_YCM_IS_CLIENT_YSQLCONNMGR) &&
+			     strcmp(name, YB_YCM_IS_CLIENT_YSQLCONNMGR) == 0) ||
+			    (name_len == sizeof(YB_YCM_USE_TSERVER_KEY_AUTH) &&
+			     strcmp(name, YB_YCM_USE_TSERVER_KEY_AUTH) == 0)) {
 				machine_msg_free(msg);
 				break;
 			}

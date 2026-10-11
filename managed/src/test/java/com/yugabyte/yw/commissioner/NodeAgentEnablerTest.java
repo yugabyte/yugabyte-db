@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
@@ -25,14 +27,18 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
@@ -42,16 +48,19 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -291,6 +300,91 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     assertEquals(3, group1.getSubTaskCount());
     // Node agent installation tasks should be added instead of marking.
     assertEquals(3, group2.getSubTaskCount());
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testCreateInstallNodeAgentTasksCertificateUsage(boolean useUniverseCertificates)
+      throws Exception {
+    CertificateInfo certificateInfo =
+        ModelFactory.createCertificateInfo(
+            customer1.getUuid(),
+            TestHelper.createTempFile("node_agent_install_test", "ca.crt", "test-cert-data"),
+            CertConfigType.SelfSigned);
+    configureUniverseNodeToNodeCertificate(universeUuid1, certificateInfo.getUuid());
+    settableRuntimeConfigFactory
+        .forProvider(provider1)
+        .setValue(
+            ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey(),
+            String.valueOf(useUniverseCertificates));
+
+    Universe universe = Universe.getOrBadRequest(universeUuid1);
+    SubTaskGroup group =
+        universeTaskBase.createInstallNodeAgentTasks(universe, universe.getNodes());
+    List<UUID> certificateUuids = getInstallNodeAgentCertificateUuids(group);
+    UUID expectedCertificateUuid = useUniverseCertificates ? certificateInfo.getUuid() : null;
+
+    assertEquals(universe.getNodes().size(), certificateUuids.size());
+    for (UUID certificateUuid : certificateUuids) {
+      assertEquals(expectedCertificateUuid, certificateUuid);
+    }
+  }
+
+  @Test
+  public void testCreateInstallNodeAgentTasksOmitsCertificateWhenEncryptDisabled()
+      throws Exception {
+    CertificateInfo certificateInfo =
+        ModelFactory.createCertificateInfo(
+            customer1.getUuid(),
+            TestHelper.createTempFile("node_agent_install_test", "ca.crt", "test-cert-data"),
+            CertConfigType.SelfSigned);
+    configureUniverseNodeToNodeCertificate(universeUuid1, certificateInfo.getUuid());
+    Universe universe =
+        Universe.saveDetails(
+            universeUuid1,
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt =
+                    false);
+    settableRuntimeConfigFactory
+        .forProvider(provider1)
+        .setValue(ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey(), "true");
+
+    SubTaskGroup group =
+        universeTaskBase.createInstallNodeAgentTasks(universe, universe.getNodes());
+    List<UUID> certificateUuids = getInstallNodeAgentCertificateUuids(group);
+
+    assertEquals(universe.getNodes().size(), certificateUuids.size());
+    for (UUID certificateUuid : certificateUuids) {
+      assertNull(certificateUuid);
+    }
+  }
+
+  private void configureUniverseNodeToNodeCertificate(UUID universeUuid, UUID certificateUuid) {
+    Universe.saveDetails(
+        universeUuid,
+        u -> {
+          u.getUniverseDetails().rootCA = certificateUuid;
+          u.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+        });
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<UUID> getInstallNodeAgentCertificateUuids(SubTaskGroup group)
+      throws Exception {
+    Field subTasksField = TaskExecutor.SubTaskGroup.class.getDeclaredField("subTasks");
+    subTasksField.setAccessible(true);
+    Set<TaskExecutor.RunnableSubTask> subTasks =
+        (Set<TaskExecutor.RunnableSubTask>) subTasksField.get(group);
+    List<UUID> certificateUuids = new ArrayList<>();
+    for (TaskExecutor.RunnableSubTask runnableSubTask : subTasks) {
+      JsonNode taskParams = runnableSubTask.getTask().getTaskParams();
+      if (taskParams.hasNonNull("certificateUuid")) {
+        certificateUuids.add(UUID.fromString(taskParams.get("certificateUuid").asText()));
+      } else {
+        certificateUuids.add(null);
+      }
+    }
+    return certificateUuids;
   }
 
   @Test

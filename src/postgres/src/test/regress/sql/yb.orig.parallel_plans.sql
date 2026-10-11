@@ -189,8 +189,10 @@ SELECT id, k1, k2, k3, length(v) FROM t1m t ORDER BY id;
 -- Should choose PARALLEL index only scan
 --
 
+-- An expensive skip scan on the 3rd key column makes this parallel-worthy, but
+-- the matching row count must stay moderate to keep the gather cost low.
 EXPLAIN (COSTS off, SUMMARY off)
-SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(900/2 - 1) AND 5000+(900/2);
+SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(400/2 - 1) AND 5000+(400/2);
 
 
 --
@@ -248,6 +250,35 @@ SELECT 0 FROM t1m t;
 /*+ Set(parallel_tuple_cost 0.01) */
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT 0 FROM t1m t;
+
+
+--
+-- Should choose SERIAL batched nested loop join.  A parallel BNL divides
+-- the outer row estimate, and with it the inner batch count, by the
+-- parallel divisor (#32653); at this size that win does not pay for
+-- parallel_setup_cost, which #33413 calibrated against the division.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
+
+-- Undercharging the setup cost (the pre-#33413 default of 1700) flips it.
+/*+ Set(parallel_setup_cost 1700) */
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
+
+
+--
+-- Should choose PARALLEL batched nested loop join: with twice the rows the
+-- divided batch work exceeds the setup cost.  Flips serial if the outer
+-- row estimate loses its parallel-divisor division.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(330/2-1) AND 5000+(330/2);
 
 
 --

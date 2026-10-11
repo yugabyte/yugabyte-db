@@ -1419,21 +1419,18 @@ EXPLAIN (costs off)
  Nested Loop Left Join
    ->  Values Scan on "*VALUES*"
    ->  Finalize Aggregate
-         InitPlan 1 (returns $1)
+         InitPlan 1 (returns $0)
            ->  Finalize Aggregate
-                 ->  Gather
-                       Workers Planned: 2
-                       ->  Noop Aggregate
-                             ->  Parallel Seq Scan on pctest2
-                                   Partial Aggregate: true
+                 ->  Seq Scan on pctest2
+                       Partial Aggregate: true
          ->  Gather
                Workers Planned: 2
-               Params Evaluated: $1
+               Params Evaluated: $0
                ->  Noop Aggregate
                      ->  Parallel Index Scan using pctest1_pkey on pctest1
-                           Index Cond: (k > $1)
+                           Index Cond: (k > $0)
                            Partial Aggregate: true
-(17 rows)
+(14 rows)
 
 /*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
  count | x 
@@ -1445,26 +1442,23 @@ EXPLAIN (costs off)
 
 EXPLAIN (costs off)
 /*+ SeqScan(pctest1) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Nested Loop Left Join
    ->  Values Scan on "*VALUES*"
    ->  Finalize Aggregate
-         InitPlan 1 (returns $1)
+         InitPlan 1 (returns $0)
            ->  Finalize Aggregate
-                 ->  Gather
-                       Workers Planned: 2
-                       ->  Noop Aggregate
-                             ->  Parallel Seq Scan on pctest2
-                                   Partial Aggregate: true
+                 ->  Seq Scan on pctest2
+                       Partial Aggregate: true
          ->  Gather
                Workers Planned: 2
-               Params Evaluated: $1
+               Params Evaluated: $0
                ->  Noop Aggregate
                      ->  Parallel Seq Scan on pctest1
-                           Storage Filter: (k > $1)
+                           Storage Filter: (k > $0)
                            Partial Aggregate: true
-(17 rows)
+(14 rows)
 
 /*+ SeqScan(pctest1) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
  count | x 

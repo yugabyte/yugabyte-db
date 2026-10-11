@@ -172,6 +172,9 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
 
 namespace yb {
 
@@ -563,7 +566,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint64_t session_id = kVWALSessionId1,
       const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
       bool include_oid_to_relfilenode = false,
-      int timeout = kRpcTimeout);
+      int timeout = kRpcTimeout,
+      const std::vector<uint32_t>& publication_oids = {},
+      bool pub_all_tables = false);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -620,7 +625,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      uint64_t session_id = kVWALSessionId1, bool include_oid_to_relfilenode = false);
+      uint64_t session_id = kVWALSessionId1, bool include_oid_to_relfilenode = false,
+      int timeout = kRpcTimeout);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -932,6 +938,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval(
       bool use_consistent_snapshot_stream);
+
+  Result<std::string> CleanupStaleCDCStreams(bool dry_run);
 
   void TestNonEligibleTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 

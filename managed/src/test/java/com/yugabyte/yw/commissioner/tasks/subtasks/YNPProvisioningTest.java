@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -150,6 +151,11 @@ public class YNPProvisioningTest extends FakeDBApplication {
     lenient()
         .when(
             confGetter.getConfForScope(
+                any(Provider.class), eq(ProviderConfKeys.minPrometheusSpaceGb)))
+        .thenReturn(5);
+    lenient()
+        .when(
+            confGetter.getConfForScope(
                 any(Customer.class), eq(CustomerConfKeys.enableEarlyoomFeature)))
         .thenReturn(false);
 
@@ -215,6 +221,32 @@ public class YNPProvisioningTest extends FakeDBApplication {
                 .overrides(
                     bind(com.yugabyte.yw.common.CustomWsClientFactory.class)
                         .toProvider(CustomWsClientFactoryProvider.class)));
+  }
+
+  private JsonNode generateYnpConfig(
+      Universe universe,
+      NodeDetails node,
+      Provider testProvider,
+      boolean isSoftwarePresent,
+      boolean isDataPresent)
+      throws Exception {
+    YNPProvisioning.Params params = new YNPProvisioning.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = node.nodeName;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.numVolumes = 1;
+    params.isSoftwarePresent = isSoftwarePresent;
+    params.isDataPresent = isDataPresent;
+    setTaskParams(params);
+
+    Path tempFile = Files.createTempFile("ynp-test-precheck-", ".json");
+    Path nodeAgentHome = Paths.get("/tmp/node-agent");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
+    ynpProvisioning.generateProvisionConfig(universe, node, testProvider, nodeAgentHome, null);
+
+    JsonNode rootNode = objectMapper.readTree(Files.readAllBytes(tempFile));
+    Files.deleteIfExists(tempFile);
+    return rootNode.get("ynp");
   }
 
   private void verifyCommunicationPorts(JsonNode primaryRoot, Map<String, Integer> expectedPorts) {
@@ -328,8 +360,56 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertNotNull(extraNode);
     assertEquals("aws", extraNode.get("cloud_type").asText());
     assertEquals("/tmp/node-agent/thirdparty", extraNode.get("package_path").asText());
+    assertTrue(extraNode.path("path_to_uuid_mapping").isMissingNode());
 
     // Clean up
+    Files.deleteIfExists(tempFile);
+  }
+
+  @Test
+  public void testPathToUuidMappingIncludedInConfig() throws Exception {
+    Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.aws));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    NodeDetails primaryNode = universe.getNodes().iterator().next();
+
+    Map<String, String> pathToUuid = new HashMap<>();
+    pathToUuid.put("/mnt/d0", "11111111-1111-1111-1111-111111111111");
+    pathToUuid.put("/mnt/d1", "22222222-2222-2222-2222-222222222222");
+
+    YNPProvisioning.Params params = new YNPProvisioning.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = primaryNode.nodeName;
+    params.isYbPrebuiltImage = false;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.numVolumes = 2;
+    params.pathToUUIDMapping = pathToUuid;
+    setTaskParams(params);
+
+    primaryNode.cloudInfo = new CloudSpecificInfo();
+    primaryNode.cloudInfo.cloud = "aws";
+    primaryNode.cloudInfo.private_ip = "10.0.0.1";
+    primaryNode.cloudInfo.region = "us-west-2";
+    primaryNode.cloudInfo.instance_type = "m5.large";
+
+    UserIntent primaryUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    primaryUserIntent.providerType = CloudType.aws;
+    primaryUserIntent.provider = provider.getUuid().toString();
+    primaryUserIntent.deviceInfo = new DeviceInfo();
+    primaryUserIntent.deviceInfo.numVolumes = 2;
+
+    Path tempFile = Files.createTempFile("ynp-test-mapping-", ".json");
+    Path nodeAgentHome = Paths.get("/tmp/node-agent");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
+
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome, null);
+
+    JsonNode rootNode = objectMapper.readTree(Files.readAllBytes(tempFile));
+    String encoded = rootNode.get("extra").get("path_to_uuid_mapping").asText();
+    assertTrue(encoded.contains("/mnt/d0=11111111-1111-1111-1111-111111111111"));
+    assertTrue(encoded.contains("/mnt/d1=22222222-2222-2222-2222-222222222222"));
+
     Files.deleteIfExists(tempFile);
   }
 
@@ -373,8 +453,8 @@ public class YNPProvisioningTest extends FakeDBApplication {
     params.nodeName = primaryNode.nodeName;
     params.deviceInfo = new DeviceInfo();
     params.deviceInfo.numVolumes = 1;
-    // Re-provisioning an existing universe node: honor the persisted flag, ignore provider config.
-    params.isReprovision = true;
+    // Existing universe node: not greenfield provisioning.
+    params.isDataPresent = true;
     setTaskParams(params);
 
     Path tempFile = Files.createTempFile("ynp-test-cgroup-off-", ".json");
@@ -420,8 +500,8 @@ public class YNPProvisioningTest extends FakeDBApplication {
     params.nodeName = primaryNode.nodeName;
     params.deviceInfo = new DeviceInfo();
     params.deviceInfo.numVolumes = 1;
-    // Re-provisioning an existing universe node: honor the persisted flag.
-    params.isReprovision = true;
+    // Existing universe node: not greenfield provisioning.
+    params.isDataPresent = true;
     setTaskParams(params);
 
     Path tempFile = Files.createTempFile("ynp-test-cgroup-on-", ".json");
@@ -472,8 +552,6 @@ public class YNPProvisioningTest extends FakeDBApplication {
     params.nodeName = primaryNode.nodeName;
     params.deviceInfo = new DeviceInfo();
     params.deviceInfo.numVolumes = 1;
-    // Brand-new provisioning path.
-    params.isReprovision = false;
     setTaskParams(params);
 
     Path tempFile = Files.createTempFile("ynp-test-cgroup-new-", ".json");
@@ -485,6 +563,69 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertEquals(true, rootNode.get("ynp").get("configure_cgroup").asBoolean());
 
     Files.deleteIfExists(tempFile);
+  }
+
+  @Test
+  public void testPrecheckConfigRelaxedBasedOnNodeState() throws Exception {
+    Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.aws));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    NodeDetails node = universe.getNodes().iterator().next();
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    userIntent.providerType = CloudType.aws;
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.numVolumes = 1;
+
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.cloud = "aws";
+    node.cloudInfo.private_ip = "10.0.0.1";
+    node.cloudInfo.region = "us-west-2";
+    node.cloudInfo.instance_type = "m5.large";
+
+    JsonNode blankNode = generateYnpConfig(universe, node, provider, false, false);
+    assertEquals("5", blankNode.get("min_mount_point_dir_space_gb").asText());
+    assertEquals("5", blankNode.get("min_home_dir_space_gb").asText());
+    assertEquals("5", blankNode.get("min_tmp_dir_space_gb").asText());
+    assertEquals("5", blankNode.get("min_prometheus_space_gb").asText());
+    assertFalse(blankNode.get("check_clean_dirs").asBoolean());
+    assertFalse(blankNode.get("check_available_ports").asBoolean());
+
+    JsonNode dataPresentOnly = generateYnpConfig(universe, node, provider, false, true);
+    assertEquals("0", dataPresentOnly.get("min_mount_point_dir_space_gb").asText());
+    assertEquals("5", dataPresentOnly.get("min_home_dir_space_gb").asText());
+    assertEquals("5", dataPresentOnly.get("min_tmp_dir_space_gb").asText());
+    assertEquals("5", dataPresentOnly.get("min_prometheus_space_gb").asText());
+    assertFalse(dataPresentOnly.get("check_clean_dirs").asBoolean());
+
+    JsonNode softwarePresentOnly = generateYnpConfig(universe, node, provider, true, false);
+    assertEquals("5", softwarePresentOnly.get("min_mount_point_dir_space_gb").asText());
+    assertEquals("0", softwarePresentOnly.get("min_home_dir_space_gb").asText());
+    assertEquals("0", softwarePresentOnly.get("min_tmp_dir_space_gb").asText());
+    assertEquals("0", softwarePresentOnly.get("min_prometheus_space_gb").asText());
+    assertFalse(softwarePresentOnly.get("check_clean_dirs").asBoolean());
+
+    JsonNode softwareAndDataPresent = generateYnpConfig(universe, node, provider, true, true);
+    assertEquals("0", softwareAndDataPresent.get("min_mount_point_dir_space_gb").asText());
+    assertEquals("0", softwareAndDataPresent.get("min_home_dir_space_gb").asText());
+    assertEquals("0", softwareAndDataPresent.get("min_tmp_dir_space_gb").asText());
+    assertEquals("0", softwareAndDataPresent.get("min_prometheus_space_gb").asText());
+    assertFalse(softwareAndDataPresent.get("check_clean_dirs").asBoolean());
+
+    Provider manualOnPremProvider = ModelFactory.onpremProvider(customer);
+    manualOnPremProvider.getDetails().skipProvisioning = true;
+
+    JsonNode manualOnPremBlankNode =
+        generateYnpConfig(universe, node, manualOnPremProvider, false, false);
+    assertTrue(manualOnPremBlankNode.get("check_clean_dirs").asBoolean());
+    assertTrue(manualOnPremBlankNode.get("check_available_ports").asBoolean());
+
+    JsonNode manualOnPremDataPresent =
+        generateYnpConfig(universe, node, manualOnPremProvider, false, true);
+    assertFalse(manualOnPremDataPresent.get("check_clean_dirs").asBoolean());
+    assertFalse(manualOnPremDataPresent.get("check_available_ports").asBoolean());
   }
 
   @Test

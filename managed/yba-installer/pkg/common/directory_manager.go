@@ -222,6 +222,24 @@ func GetPACollectorPackagePath() string {
 	return AbsoluteBundlePath(bundlePACollectorPackagePath())
 }
 
+// bundleYsqlDumpClientPath returns the ysql_dump client bundle path relative to
+// the extracted yba_installer_full bundle, for copyBits.
+func bundleYsqlDumpClientPath() string {
+	return GetFileMatchingGlobOrFatal(YsqlDumpClientBundleGlob)
+}
+
+// GetYsqlDumpClientBundlePath returns an absolute path to the ysql_dump client
+// bundle, preferring the copy stashed under GetInstallerSoftwareDir() the same
+// way GetPACollectorPackagePath does, so a later reconfigure works without the
+// extracted bundle still being present.
+func GetYsqlDumpClientBundlePath() string {
+	installedGlob := filepath.Join(GetInstallerSoftwareDir(), YsqlDumpClientBundleName)
+	if path, matches, err := GetFileMatchingGlob(installedGlob); err == nil && matches == 1 {
+		return path
+	}
+	return AbsoluteBundlePath(bundleYsqlDumpClientPath())
+}
+
 // Gets 0 or 1 matches of YBDB package path.
 // Fatal error if more than 1 match.
 func MaybeGetYbdbPackagePath() string {

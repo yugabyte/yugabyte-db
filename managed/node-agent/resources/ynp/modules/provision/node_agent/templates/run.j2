@@ -243,20 +243,25 @@ if systemctl list-units --all 2>/dev/null | grep -qF yb-node-agent.service; then
 fi
 
 # Install node agent as a systemd service.
+{% if certificate_name is defined and certificate_name %}
+certificate_name_flag="--certificate_name {{ certificate_name }}"
+{% else %}
+certificate_name_flag=""
+{% endif %}
 if [ "$SUDO_ACCESS" = "true" ]; then
     su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
         -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
         --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
         --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
         --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag \
-        --install_path {{ yb_home_dir }}"
+        --install_path {{ yb_home_dir }} $certificate_name_flag"
 else
     "$installer_dir/node-agent-installer.sh" -c install \
         -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
         --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
         --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
         --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag \
-        --install_path {{ yb_home_dir }}
+        --install_path {{ yb_home_dir }} $certificate_name_flag
 fi
 
 if [ $? -eq 0 ]; then

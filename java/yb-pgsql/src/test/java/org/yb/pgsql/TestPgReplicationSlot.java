@@ -45,6 +45,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Ignore;
@@ -290,6 +291,39 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   private void validateChange(JsonObject jsonObject, int origin_id, int count) {
     assertEquals(jsonObject.get("origin").getAsInt(), origin_id);
     assertEquals(jsonObject.getAsJsonArray("change").size(), count);
+  }
+
+  private PGReplicationStream openStream(
+      Connection conn, String slotName, String pubName, int walSenderTimeoutMs) throws Exception {
+    if (walSenderTimeoutMs > 0) {
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("SET wal_sender_timeout = " + walSenderTimeoutMs);
+        stmt.execute("SET yb_test_walsender_keepalive_after_each_record = true");
+      }
+    }
+    return conn.unwrap(PGConnection.class).getReplicationAPI().replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", pubName)
+        .withStatusInterval(60, TimeUnit.SECONDS)
+        .start();
+  }
+
+  private int drainInserts(PGReplicationStream stream, long deadlineMs) throws Exception {
+    int inserts = 0;
+    while (System.currentTimeMillis() < deadlineMs) {
+      ByteBuffer buf = stream.readPending();
+      if (buf == null) {
+        Thread.sleep(50);
+        continue;
+      }
+      if (buf.array()[buf.arrayOffset()] == 'I') {
+        inserts++;
+      }
+    }
+    return inserts;
   }
 
   // TODO(#20726): Add more test cases covering:
@@ -1975,6 +2009,55 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  private LogSequenceNumber getConfirmedFlushLSN(Connection connection, String slotName)
+      throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery(String.format(
+          "select confirmed_flush_lsn from pg_replication_slots where slot_name = '%s'", slotName));
+      assertTrue(res.next());
+      return LogSequenceNumber.valueOf(res.getString("confirmed_flush_lsn"));
+    }
+  }
+
+  @Test
+  public void testRestartLSNAdvancesForFilteredTransactions() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test");
+      stmt.execute("CREATE TABLE test (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "test_filtered_transactions_ack";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
+      stmt.execute("INSERT INTO test VALUES(2, 'defg')");
+      stmt.execute("INSERT INTO test VALUES(3, 'xyz')");
+    }
+
+    // Streaming starts at LSN 2 and we have 3 txns with one insert each. Start with
+    // a large start_lsn (100) that so that all three transactions are dropped by
+    // the decoder and nothing is streamed to the client.
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(100L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    // The stream is deliberately not read from: the client sends no feedback at all, so the
+    // restart LSN can only advance past the dropped transactions if the walsender acknowledges
+    // them itself. Without that it stays at the snapshot LSN (1).
+    waitForRestartLSN(connection, slotName, 10L);
+    assertEquals(LogSequenceNumber.valueOf(10L), getConfirmedFlushLSN(connection, slotName));
+
+    stream.close();
+  }
+
   @Test
   public void testReplicationConnectionUpdateRestartLSNWithRestarts() throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -2525,86 +2608,157 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
-  // The reorderbuffer spills transactions with more than yb_reorderbuffer_max_changes_in_memory
-  // changes on the disk. This test asserts that such transactions also work correctly.
+  // The reorder buffer spills transactions that exceed the configured memory limit.
   @Test
   public void testReplicationWithSpilledTransaction() throws Exception {
-    // Set the value of ysql_yb_reorderbuffer_max_changes_in_memory to 1000.
-    // The default value of the flag is 4096.
+    // Set the reorder buffer memory limit low enough that this transaction spills.
+    // The 5000 inserted rows are expected to exceed 512 KB in the reorder buffer.
+    final String defaultMemoryLimitKb = "4096";
+    final String memoryLimitKb = "512";
     Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
     for (HostAndPort tServer : tServers) {
-      setServerFlag(tServer, "ysql_yb_reorderbuffer_max_changes_in_memory", "1000");
+      setServerFlag(tServer, "ysql_yb_reorderbuffer_max_memory_kb", memoryLimitKb);
     }
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("DROP TABLE IF EXISTS t1");
-      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c bool)");
-      // CHANGE is the default replica identity but we explicitly set it here so that don't need to
-      // update this test in case we change the default.
-      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE");
-      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
-    }
-    String slotName = "test_with_spilled_txn";
-    // This must be more than max_changes_in_memory defined in reorderbuffer.c
-    int numInserts = 5000;
 
-    Connection conn =
-        getConnectionBuilder().withTServer(0).replicationConnect();
-    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-
-    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("BEGIN");
-      for (int i = 0; i < numInserts; i++) {
-        stmt.execute(
-            String.format("INSERT INTO t1 VALUES(%s, '%s', true)", i, String.format("text_%d", i)));
+    try {
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("DROP TABLE IF EXISTS t1");
+        stmt.execute("CREATE TABLE t1 (a int primary key, b text, c bool)");
+        // CHANGE is the default replica identity but we explicitly set it here so that don't need
+        // to update this test in case we change the default.
+        stmt.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE");
+        stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
       }
-      stmt.execute("UPDATE t1 SET b = 'UPDATED_text_1' WHERE a = 1");
-      stmt.execute("COMMIT");
-    }
+      String slotName = "test_with_spilled_txn";
+      // Keep enough rows to exceed the 512 KB reorder buffer memory limit.
+      int numInserts = 5000;
 
-    PGReplicationStream stream = replConnection.replicationStream()
-                                     .logical()
-                                     .withSlotName(slotName)
-                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
-                                     .withSlotOption("proto_version", 1)
-                                     .withSlotOption("publication_names", "pub")
-                                     .start();
+      Connection conn =
+          getConnectionBuilder().withTServer(0).replicationConnect();
+      PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // 1 Relation, 1 begin, 5000 insert, 1 update, 1 commit.
-    result.addAll(receiveMessage(stream, 5004));
-
-    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
-      {
-        // Note: 0x138C = 5004 in decimal which is the lsn of the commit record as expected.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138C"), 2));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
-            Arrays.asList(
-                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
-                PgOutputRelationMessageColumn.CreateForComparison("b", 25),
-                PgOutputRelationMessageColumn.CreateForComparison("c", 16))));
+      createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("BEGIN");
+        for (int i = 0; i < numInserts; i++) {
+          stmt.execute(String.format(
+              "INSERT INTO t1 VALUES(%s, '%s', true)", i, String.format("text_%d", i)));
+        }
+        stmt.execute("UPDATE t1 SET b = 'UPDATED_text_1' WHERE a = 1");
+        stmt.execute("COMMIT");
       }
-    };
-    for (int i = 0; i < numInserts; i++) {
-      expectedResult.add(
-          PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+
+      PGReplicationStream stream = replConnection.replicationStream()
+                                       .logical()
+                                       .withSlotName(slotName)
+                                       .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                       .withSlotOption("proto_version", 1)
+                                       .withSlotOption("publication_names", "pub")
+                                       .start();
+
+      List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+      // 1 Relation, 1 begin, 5000 insert, 1 update, 1 commit.
+      result.addAll(receiveMessage(stream, 5004));
+
+      List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+        {
+          // Note: 0x138C = 5004 in decimal which is the lsn of the commit record as expected.
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138C"), 2));
+          add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
               Arrays.asList(
-                  new PgOutputMessageTupleColumnValue(String.format("%d", i)),
-                  new PgOutputMessageTupleColumnValue(String.format("text_%d", i)),
-                  new PgOutputMessageTupleColumnValue("t")))));
-    }
-    expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
-        null,
-        new PgOutputMessageTuple((short) 3,
-            Arrays.asList(
-                new PgOutputMessageTupleColumnValue("1"),
-                new PgOutputMessageTupleColumnValue("UPDATED_text_1"),
-                new PgOutputMessageTupleColumnToasted()))));
-    expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/138C"), LogSequenceNumber.valueOf("0/138D")));
+                  PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                  PgOutputRelationMessageColumn.CreateForComparison("b", 25),
+                  PgOutputRelationMessageColumn.CreateForComparison("c", 16))));
+        }
+      };
+      for (int i = 0; i < numInserts; i++) {
+        expectedResult.add(
+            PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+                Arrays.asList(
+                    new PgOutputMessageTupleColumnValue(String.format("%d", i)),
+                    new PgOutputMessageTupleColumnValue(String.format("text_%d", i)),
+                    new PgOutputMessageTupleColumnValue("t")))));
+      }
+      expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
+          null,
+          new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("1"),
+                  new PgOutputMessageTupleColumnValue("UPDATED_text_1"),
+                  new PgOutputMessageTupleColumnToasted()))));
+      expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/138C"), LogSequenceNumber.valueOf("0/138D")));
 
-    assertEquals(expectedResult, result);
-    stream.close();
+      assertEquals(expectedResult, result);
+      try (Statement stmt = connection.createStatement();
+           ResultSet rs = stmt.executeQuery(
+               "SELECT spill_count FROM pg_stat_replication_slots "
+                   + "WHERE slot_name = '" + slotName + "'")) {
+        assertTrue(rs.next());
+        assertTrue("Expected the transaction to spill to disk", rs.getLong("spill_count") > 0);
+      }
+      stream.close();
+    } finally {
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "ysql_yb_reorderbuffer_max_memory_kb",
+            defaultMemoryLimitKb);
+      }
+    }
+  }
+
+  @Test
+  public void testReplicationSpillsBasedOnMemoryConsumption() throws Exception {
+    final String defaultMemoryLimitKb = "4096";
+    final String memoryLimitKb = "64";
+    Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+    for (HostAndPort tServer : tServers) {
+      setServerFlag(tServer, "ysql_yb_reorderbuffer_max_memory_kb", memoryLimitKb);
+    }
+
+    try {
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("CREATE TABLE memory_spill_test (id int primary key, value text)");
+        stmt.execute("CREATE PUBLICATION memory_spill_pub FOR ALL TABLES");
+      }
+
+      String slotName = "test_memory_based_spill";
+      Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+      PGReplicationConnection replConnection =
+          conn.unwrap(PGConnection.class).getReplicationAPI();
+      createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+      try (Statement stmt = connection.createStatement()) {
+        // Three changes are well below the legacy 4096-record threshold, but their payloads
+        // exceed the 64 KB memory limit.
+        stmt.execute(
+            "INSERT INTO memory_spill_test "
+                + "SELECT i, repeat('x', 131072) FROM generate_series(1, 3) AS i");
+      }
+
+      PGReplicationStream stream = replConnection.replicationStream()
+          .logical()
+          .withSlotName(slotName)
+          .withStartPosition(LogSequenceNumber.valueOf(0L))
+          .withSlotOption("proto_version", 1)
+          .withSlotOption("publication_names", "memory_spill_pub")
+          .start();
+
+      assertEquals(6, receiveMessage(stream, 6).size());
+      stream.close();
+      conn.close();
+
+      try (Statement stmt = connection.createStatement();
+           ResultSet result = stmt.executeQuery(
+               "SELECT spill_count FROM pg_stat_replication_slots "
+                   + "WHERE slot_name = 'test_memory_based_spill'")) {
+        assertTrue(result.next());
+        assertTrue(result.getLong("spill_count") > 0);
+      }
+    } finally {
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "ysql_yb_reorderbuffer_max_memory_kb", defaultMemoryLimitKb);
+      }
+    }
   }
 
   private void testReplicationWithSpilledTransactionAndRestart(boolean differentNode)
@@ -4278,7 +4432,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       long total_bytes = r1.getLong("total_bytes");
 
       assertEquals(1, spill_txns);
-      assertEquals(2, spill_count); // ceil(spill_bytes/yb_reorderbuffer_max_changes_in_memory)
+      assertEquals(2, spill_count); // ceil(spill_bytes / (ysql_yb_reorderbuffer_max_memory_kb KB))
       assertEquals(5920000, spill_bytes); // 148*40000
       assertEquals(1, total_txns);
       assertEquals(5920000, total_bytes);
@@ -6914,5 +7068,67 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertReplicationSlotExists(slotName, false);
     replConn1.close();
     replConn0.close();
+  }
+
+  @Test
+  public void testHybridTimeKeepAliveAutoFlushCausesDataLoss() throws Exception {
+    final int kSmallRows = 10;
+    final int kLargeRows = 1200;
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t");
+      stmt.execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS");
+      stmt.execute("ALTER TABLE t REPLICA IDENTITY DEFAULT");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t");
+      stmt.execute("SELECT pg_create_logical_replication_slot("
+          + "'slot', 'pgoutput', false, false, 'HYBRID_TIME')");
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(1, 10) i");
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(100, 1299) i");
+    }
+
+    Connection c1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s1 = openStream(c1, "slot", "pub", 3000);
+    List<PgOutputMessage> txn1 = receiveMessage(s1, kSmallRows + 3);
+    assertEquals(kSmallRows,
+        (int) txn1.stream().filter(m -> m instanceof PgOutputInsertMessage).count());
+    LogSequenceNumber afterTxn1 = s1.getLastReceiveLSN();
+    s1.setFlushedLSN(afterTxn1);
+    s1.forceUpdateStatus();
+    s1.close();
+    c1.close();
+
+    // txn2: Wait for the driver's auto flush, transmit it, then disconnect mid delivery.
+    Connection c2 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s2 = openStream(c2, "slot", "pub", 3000);
+    long deadline = System.currentTimeMillis() + 60_000L * kMultiplier;
+    // A keep alive echoing the slot's confirmed_flush is harmless, only an
+    // auto flush past txn1 proves an undelivered transaction was acked.
+    while (s2.getLastFlushedLSN().asLong() <= afterTxn1.asLong()) {
+      assertTrue("timed out waiting for the keep alive auto flush past txn1",
+          System.currentTimeMillis() < deadline);
+      if (s2.readPending() == null) {
+        Thread.sleep(50);
+      }
+    }
+    for (int i = 0; i < 15; i++) {
+      s2.forceUpdateStatus();
+      Thread.sleep(200);
+    }
+    s2.close();
+    c2.close();
+
+    // txn3: committed after the disconnect.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(5000, 5009) i");
+    }
+
+    Connection c3 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s3 = openStream(c3, "slot", "pub", 3000);
+    int received = drainInserts(s3, System.currentTimeMillis() + 60_000L * kMultiplier);
+    s3.close();
+    c3.close();
+
+    assertEquals("txn2 must be re-streamed after the disconnect, losing it means the keep alive"
+        + " auto flush acked an undelivered transaction", kLargeRows + kSmallRows, received);
   }
 }

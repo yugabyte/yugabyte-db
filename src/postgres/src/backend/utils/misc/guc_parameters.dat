@@ -3835,15 +3835,6 @@
 
 # YB: Internal GUCs written by YSQL Connection Manager on every logical
 # client attach.
-{ name => 'yb_conn_mgr_client_addr', type => 'string', context => 'PGC_USERSET', group => 'UNGROUPED',
-  short_desc => 'IP address of the logical client connected through YSQL Connection Manager.',
-  flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
-  variable => 'yb_conn_mgr_client_addr',
-  boot_val => '""',
-  check_hook => 'check_yb_conn_mgr_client_addr',
-  assign_hook => 'assign_yb_conn_mgr_client_addr',
-},
-
 # YB: Internal GUCs written by YSQL Connection Manager on every logical
 # client attach.
 { name => 'yb_conn_mgr_client_hostname', type => 'string', context => 'PGC_USERSET', group => 'UNGROUPED',
@@ -3857,17 +3848,6 @@
 
 # YB: Internal GUCs written by YSQL Connection Manager on every logical
 # client attach.
-{ name => 'yb_conn_mgr_client_port', type => 'int', context => 'PGC_USERSET', group => 'UNGROUPED',
-  short_desc => 'TCP port of the logical client connected through YSQL Connection Manager.',
-  flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
-  variable => 'yb_conn_mgr_client_port',
-  boot_val => '-1',
-  min => '-1',
-  max => '65535',
-  check_hook => 'check_yb_conn_mgr_client_port',
-  assign_hook => 'assign_yb_conn_mgr_client_port',
-},
-
 { name => 'yb_conn_mgr_selective_deallocate', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
   short_desc => 'Enables connection-manager-aware DEALLOCATE behavior.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -4224,7 +4204,7 @@
   short_desc => 'Enables index backfill scan optimizations. If true, index build/backfill reads only the columns needed for the index and pushes partial index predicates down to the base table scan.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_enable_index_backfill_scan_optimization',
-  boot_val => 'false',
+  boot_val => 'true',
 },
 
 { name => 'yb_enable_inplace_index_update', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_OTHER',
@@ -4670,14 +4650,6 @@
   max => 'INT_MAX',
 },
 
-{ name => 'yb_is_client_ysqlconnmgr', type => 'bool', context => 'PGC_BACKEND', group => 'UNGROUPED',
-  short_desc => 'Identifies that connection is created by Ysql Connection Manager.',
-  variable => 'yb_is_client_ysqlconnmgr',
-  boot_val => 'false',
-  check_hook => 'yb_is_client_ysqlconnmgr_check_hook',
-  assign_hook => 'yb_is_client_ysqlconnmgr_assign_hook',
-},
-
 { name => 'yb_lock_pk_single_rpc', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_OTHER',
   short_desc => 'Use single RPC to select and lock when PK is specified.',
   long_desc => 'If possible (no conflicting filters in the plan), use a single RPC to select and lock, when a locking clause is provided, in isolation levels REPEATABLE READ and READ COMMITTED.',
@@ -5028,11 +5000,20 @@
 },
 
 { name => 'yb_reorderbuffer_max_changes_in_memory', type => 'int', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
-  short_desc => 'Maximum number of changes kept in memory per transaction in reorder buffer, which is used in streaming changes via logical replication. After that, changes are spooled to disk.',
+  short_desc => 'DEPRECATED: Use yb_reorderbuffer_max_memory_kb instead. Maximum number of changes kept in memory per transaction in reorder buffer, which is used in streaming changes via logical replication. After that, changes are spooled to disk.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_reorderbuffer_max_changes_in_memory',
   boot_val => '4096',
   min => '0',
+  max => 'INT_MAX',
+},
+
+{ name => 'yb_reorderbuffer_max_memory_kb', type => 'int', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Maximum reorder buffer memory in kilobytes before logical replication changes are streamed or spilled to disk.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_UNIT_KB',
+  variable => 'yb_reorderbuffer_max_memory_kb',
+  boot_val => '4096',
+  min => '64',
   max => 'INT_MAX',
 },
 
@@ -5290,6 +5271,13 @@
   boot_val => 'false',
 },
 
+{ name => 'yb_test_walsender_keepalive_after_each_record', type => 'bool', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'When set, the walsender sends a keepalive after every decoded record.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_test_walsender_keepalive_after_each_record',
+  boot_val => 'false',
+},
+
 { name => 'yb_test_ybgin_disable_cost_factor', type => 'real', context => 'PGC_USERSET', group => 'QUERY_TUNING_COST',
   short_desc => 'The multiplier to disable_cost to add when costing ybgin index scans that may not be supported.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -5389,14 +5377,6 @@
   boot_val => 'false',
 },
 
-{ name => 'yb_use_tserver_key_auth', type => 'bool', context => 'PGC_BACKEND', group => 'UNGROUPED',
-  short_desc => 'If set, the client connection will be authenticated via \'yb-tserver-key\' auth',
-  flags => 'GUC_NOT_IN_SAMPLE',
-  variable => 'yb_use_tserver_key_auth',
-  boot_val => 'false',
-  check_hook => 'yb_use_tserver_key_auth_check_hook',
-},
-
 { name => 'yb_user_ddls_preempt_auto_analyze', type => 'bool', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent DDLs might face a conflict error on the catalog version increment at the end after doing all the work. Setting this flag enables a fail-fast strategy by locking the catalog version at the start of DDLs, causing conflict errors to occur before useful work is done. This flag is only applicable without object locking. If object locking is enabled, it ensures that concurrent DDLs block on each other for serialization. Also, this flag is valid only if yb_enable_invalidation_messages is enabled.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -5453,6 +5433,42 @@
   boot_val => '"database"',
   check_hook => 'check_yb_xcluster_consistency_level',
   assign_hook => 'assign_yb_xcluster_consistency_level',
+},
+
+{ name => 'yb_ycm_internal_client_addr', type => 'string', context => 'PGC_USERSET', group => 'UNGROUPED',
+  short_desc => 'IP address of the logical client connected through YSQL Connection Manager.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
+  variable => 'yb_ycm_internal_client_addr',
+  boot_val => '""',
+  check_hook => 'check_yb_conn_mgr_client_addr',
+  assign_hook => 'assign_yb_conn_mgr_client_addr',
+},
+
+{ name => 'yb_ycm_internal_client_port', type => 'int', context => 'PGC_USERSET', group => 'UNGROUPED',
+  short_desc => 'TCP port of the logical client connected through YSQL Connection Manager.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
+  variable => 'yb_ycm_internal_client_port',
+  boot_val => '-1',
+  min => '-1',
+  max => '65535',
+  check_hook => 'check_yb_conn_mgr_client_port',
+  assign_hook => 'assign_yb_conn_mgr_client_port',
+},
+
+{ name => 'yb_ycm_internal_is_client_ysqlconnmgr', type => 'bool', context => 'PGC_BACKEND', group => 'UNGROUPED',
+  short_desc => 'Identifies that connection is created by Ysql Connection Manager.',
+  variable => 'yb_is_client_ysqlconnmgr',
+  boot_val => 'false',
+  check_hook => 'yb_is_client_ysqlconnmgr_check_hook',
+  assign_hook => 'yb_is_client_ysqlconnmgr_assign_hook',
+},
+
+{ name => 'yb_ycm_internal_use_tserver_key_auth', type => 'bool', context => 'PGC_BACKEND', group => 'UNGROUPED',
+  short_desc => 'If set, the client connection will be authenticated via \'yb-tserver-key\' auth',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_use_tserver_key_auth',
+  boot_val => 'false',
+  check_hook => 'yb_use_tserver_key_auth_check_hook',
 },
 
 { name => 'ysql_conn_mgr_sticky_object_count', type => 'int', context => 'PGC_INTERNAL', group => 'CUSTOM_OPTIONS',

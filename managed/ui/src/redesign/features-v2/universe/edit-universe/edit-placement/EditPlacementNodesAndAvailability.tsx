@@ -49,6 +49,11 @@ export const EditPlacementNodesAndAvailability = () => {
     )
   );
 
+  const universeNodesDefaults = useMemo(
+    () => getNodesAvailabilityDefaultsForEditPlacement(universeData!, selectedPartitionUUID),
+    [universeData, selectedPartitionUUID]
+  );
+
   const baselineRegionCodes = useMemo(
     () =>
       getResilienceAndRegionsProps(universeData!, providerRegions, selectedPartitionUUID).regions.map(
@@ -56,6 +61,14 @@ export const EditPlacementNodesAndAvailability = () => {
       ),
     [universeData, providerRegions, selectedPartitionUUID]
   );
+
+  const baselineZoneUuidsByRegion = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const [regionCode, zones] of Object.entries(universeNodesDefaults.availabilityZones ?? {})) {
+      map[regionCode] = (zones ?? []).map((z) => z.uuid).filter(Boolean);
+    }
+    return map;
+  }, [universeNodesDefaults]);
 
   const calculateNodesandAvailability = useMemo(
     () => normalizeEditPlacementNodesAvailability(addEditPlacementData),
@@ -121,6 +134,7 @@ export const EditPlacementNodesAndAvailability = () => {
             isGeoPartition
             hideDedicatedNodes
             baselineRegionCodes={baselineRegionCodes}
+            baselineZoneUuidsByRegion={baselineZoneUuidsByRegion}
           />
         </Box>
         <UniverseActionButtons

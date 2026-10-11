@@ -159,8 +159,11 @@ public class HealthChecker {
   private final Map<Pair<UUID, String>, NodeInfo> uploadedNodeInfo = new ConcurrentHashMap<>();
   private final Map<UUID, Instant> ddlAtomicitySuccessfulCheckTimestamp = new ConcurrentHashMap<>();
 
+  // Names of the node health script metrics seen so far - what the next run cleans up before saving
+  // fresh values. Seeded with the metrics of runtime-disableable checks, which stop republishing
+  // their names once disabled.
   private final Set<String> healthScriptMetrics =
-      Collections.newSetFromMap(new ConcurrentHashMap<>());
+      Sets.newConcurrentHashSet(RUNTIME_DISABLEABLE_CHECK_METRICS);
 
   final ApplicationLifecycle lifecycle;
 
@@ -900,6 +903,10 @@ public class HealthChecker {
               || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
               || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
             nodeInfo.setOtelCollectorEnabled(true);
+            nodeInfo.setOtelCollectorInstalled(
+                nodeInfo.isK8s()
+                    ? nodeDetails.isTserver
+                    : nodeDetails.isMaster || nodeDetails.isTserver);
           }
         }
         nodeInfo.setClockboundEnabled(
@@ -1211,16 +1218,17 @@ public class HealthChecker {
       commandToRun.add("--cronbased");
     }
 
-    // Only run the YNP version skew check when the global runtime config is enabled. When it is
-    // disabled, we skip passing the YBA YNP version so the node health script reports no skew and
-    // the YNP_VERSION_SKEW alert does not fire.
+    // --yba_ynp_version doubles as the on switch for the node's YNP version check - the script
+    // skips the check without it. That has to be all-or-nothing rather than skew-only, because the
+    // check also publishes yb_node_ynp_version == 0 for a node with no version file, and the
+    // YNP_VERSION_SKEW alert fires on that independently of any skew.
     if (!nodeInfo.isK8s() && confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck)) {
       Object ynpVersion =
           configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
       if (ynpVersion != null) {
         commandToRun.add("--yba_ynp_version=" + ynpVersion.toString());
       } else {
-        log.warn("YNP version not found in YugawareMetadata, skipping version skew check");
+        log.warn("YNP version not found in YugawareMetadata, skipping YNP version check");
       }
     }
     ShellResponse response =
@@ -1453,6 +1461,7 @@ public class HealthChecker {
     private int ybcPort = 18018;
     private UUID universeUuid;
     private boolean otelCollectorEnabled = false;
+    private boolean otelCollectorInstalled = false;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
 

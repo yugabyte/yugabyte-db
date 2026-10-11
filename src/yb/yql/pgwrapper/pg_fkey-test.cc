@@ -52,6 +52,7 @@ DECLARE_string(placement_zone);
 DECLARE_bool(TEST_track_last_transaction);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb::pgwrapper {
 namespace {
@@ -790,6 +791,8 @@ class PgFKeyTestRegionLocal : public PgFKeyTestNoFKCache {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablespace_based_transaction_placement) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
     PgFKeyTestNoFKCache::SetUp();
   }
 

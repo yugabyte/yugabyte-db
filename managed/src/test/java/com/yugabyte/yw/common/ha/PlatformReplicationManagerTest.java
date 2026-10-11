@@ -41,7 +41,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
-import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
+import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.NodeAgent;
@@ -87,7 +87,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
 
   @Mock OperatorResourceRestorer mockOperatorResourceRestorer;
 
-  @Mock EmbeddedCollectorInitializer mockEmbeddedCollectorInitializer;
+  @Mock PACollectorSync mockPACollectorSync;
 
   private static final String STORAGE_PATH = "yb.storage.path";
   private static final String PG_DUMP_PATH = "/tmp/pg_dump";
@@ -112,7 +112,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
                 mockConfigHelper,
                 runtimeConfGetter,
                 mockOperatorResourceRestorer,
-                mockEmbeddedCollectorInitializer));
+                mockPACollectorSync));
   }
 
   private void setupConfig(
@@ -258,7 +258,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             mockConfigHelper,
             runtimeConfGetter,
             mockOperatorResourceRestorer,
-            mockEmbeddedCollectorInitializer);
+            mockPACollectorSync);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -315,7 +315,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
                   mockConfigHelper,
                   runtimeConfGetter,
                   mockOperatorResourceRestorer,
-                  mockEmbeddedCollectorInitializer));
+                  mockPACollectorSync));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

@@ -278,20 +278,20 @@ auto kTxn1 = docdb::ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 auto kTxn2 = docdb::ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 auto kTxn3 = docdb::ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 
-constexpr uint64_t kDatabaseID = 1;
-constexpr uint64_t kRelationId = 1;
-constexpr uint64_t kRelationId2 = 2;
-constexpr uint64_t kRelationId3 = 3;
-constexpr uint64_t kDefaultObjectId = 0;
-constexpr uint64_t kDefaultObjectSubId = 0;
+constexpr uint32_t kDatabaseID = 1;
+constexpr uint32_t kRelationId = 1;
+constexpr uint32_t kRelationId2 = 2;
+constexpr uint32_t kRelationId3 = 3;
+constexpr uint32_t kDefaultObjectId = 0;
+constexpr uint32_t kDefaultObjectSubId = 0;
 constexpr uint64_t kLeaseEpoch = 1;
 const MonoDelta kTimeout = MonoDelta::FromSeconds(8);
 constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
 
 template <typename Request>
 Request AcquireRequestFor(
-    const std::string& session_host_uuid, const docdb::ObjectLockOwner& owner, uint64_t database_id,
-    uint64_t relation_id, TableLockType lock_type, uint64_t lease_epoch, server::ClockPtr clock,
+    const std::string& session_host_uuid, const docdb::ObjectLockOwner& owner, uint32_t database_id,
+    uint32_t relation_id, TableLockType lock_type, uint64_t lease_epoch, server::ClockPtr clock,
     std::optional<HybridTime> deadline, TransactionId background_txn) {
   Request req;
   owner.PopulateLockRequest(&req);
@@ -351,7 +351,7 @@ void CallProxyMethod(
 template <typename Request, typename Response, typename Proxy>
 std::future<Status> AcquireLockAsync(
     Proxy* proxy, const std::string& session_host_uuid, const docdb::ObjectLockOwner& owner,
-    uint64_t database_id, uint64_t relation_id, TableLockType type, uint64_t lease_epoch,
+    uint32_t database_id, uint32_t relation_id, TableLockType type, uint64_t lease_epoch,
     server::ClockPtr clock, std::optional<HybridTime> opt_deadline, MonoDelta rpc_timeout,
     TransactionId background_txn) {
   auto resp = std::make_shared<Response>();
@@ -380,7 +380,7 @@ std::future<Status> AcquireLockAsync(
 
 std::future<Status> AcquireLockAsyncAt(
     tserver::TabletServerServiceProxy* proxy, const std::string& session_host_uuid,
-    const docdb::ObjectLockOwner& owner, uint64_t database_id, uint64_t relation_id,
+    const docdb::ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
     uint64_t lease_epoch = kLeaseEpoch, server::ClockPtr clock = nullptr,
     std::optional<HybridTime> deadline = std::nullopt, MonoDelta rpc_timeout = kTimeout,
     TransactionId background_txn = TransactionId::Nil()) {
@@ -393,7 +393,7 @@ std::future<Status> AcquireLockAsyncAt(
 
 Status AcquireLockAt(
     tserver::TabletServerServiceProxy* proxy, const std::string& session_host_uuid,
-    const docdb::ObjectLockOwner& owner, uint64_t database_id, uint64_t relation_id,
+    const docdb::ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
     uint64_t lease_epoch = kLeaseEpoch, server::ClockPtr clock = nullptr,
     std::optional<HybridTime> deadline = std::nullopt, MonoDelta rpc_timeout = kTimeout,
     TransactionId background_txn = TransactionId::Nil()) {
@@ -405,7 +405,7 @@ Status AcquireLockAt(
 
 std::future<Status> AcquireLockGloballyAsync(
     master::MasterDdlProxy* proxy, const std::string& session_host_uuid,
-    const docdb::ObjectLockOwner& owner, uint64_t database_id, uint64_t relation_id,
+    const docdb::ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
     uint64_t lease_epoch = kLeaseEpoch, server::ClockPtr clock = nullptr,
     std::optional<HybridTime> deadline = std::nullopt, MonoDelta rpc_timeout = kTimeout,
     TransactionId background_txn = TransactionId::Nil()) {
@@ -418,7 +418,7 @@ std::future<Status> AcquireLockGloballyAsync(
 
 Status AcquireLockGlobally(
     master::MasterDdlProxy* proxy, const std::string& session_host_uuid,
-    const docdb::ObjectLockOwner& owner, uint64_t database_id, uint64_t relation_id,
+    const docdb::ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
     uint64_t lease_epoch = kLeaseEpoch, server::ClockPtr clock = nullptr,
     std::optional<HybridTime> deadline = std::nullopt, MonoDelta rpc_timeout = kTimeout,
     TransactionId background_txn = TransactionId::Nil()) {
@@ -430,7 +430,7 @@ Status AcquireLockGlobally(
 
 std::future<Status> AcquireLockGloballyAsync(
     client::YBClient* client, const std::string& session_host_uuid,
-    const docdb::ObjectLockOwner& owner, uint64_t database_id, uint64_t relation_id,
+    const docdb::ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
     uint64_t lease_epoch = kLeaseEpoch, std::optional<HybridTime> opt_deadline = std::nullopt,
     MonoDelta rpc_timeout = kTimeout, TransactionId background_txn = TransactionId::Nil()) {
   auto promise = std::make_shared<std::promise<Status>>();
@@ -529,7 +529,7 @@ Status ReleaseLockGlobally(
 
 std::future<Status> WaitForLockersGloballyAsync(
     master::MasterDdlProxy* proxy, const std::string& session_host_uuid,
-    uint64_t database_id, uint64_t relation_id, TableLockType lock_type,
+    uint32_t database_id, uint32_t relation_id, TableLockType lock_type,
     uint64_t lease_epoch = kLeaseEpoch, MonoDelta rpc_timeout = kTimeout) {
   auto resp = std::make_shared<master::WaitForLockersMultipleGlobalResponsePB>();
   auto controller = std::make_shared<rpc::RpcController>();
@@ -560,7 +560,7 @@ std::future<Status> WaitForLockersGloballyAsync(
 
 std::future<Status> WaitForLockersGloballyAsync(
     client::YBClient* client, const std::string& session_host_uuid,
-    uint64_t database_id, uint64_t relation_id, TableLockType lock_type,
+    uint32_t database_id, uint32_t relation_id, TableLockType lock_type,
     uint64_t lease_epoch = kLeaseEpoch, MonoDelta rpc_timeout = kTimeout) {
   auto promise = std::make_shared<std::promise<Status>>();
   auto future = promise->get_future();
@@ -811,14 +811,14 @@ TEST_F(ObjectLockTest, DDLLockWaitsAtMaster) {
 
 TEST_F(ObjectLockTest, DDLLocksCleanupAtMaster) {
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
-  constexpr uint64_t kNumHosts = 2;
-  constexpr uint64_t kNumDDLsPerHost = 3;
-  constexpr uint64_t kNumObjectsPerDDL = 3;
-  constexpr uint64_t kLocksPerHost = kNumDDLsPerHost * kNumObjectsPerDDL;
-  constexpr uint64_t kNumLocksTotal = kLocksPerHost * kNumHosts;
+  constexpr uint32_t kNumHosts = 2;
+  constexpr uint32_t kNumDDLsPerHost = 3;
+  constexpr uint32_t kNumObjectsPerDDL = 3;
+  constexpr uint32_t kLocksPerHost = kNumDDLsPerHost * kNumObjectsPerDDL;
+  constexpr uint32_t kNumLocksTotal = kLocksPerHost * kNumHosts;
 
   auto ddl_txns = CreateRandomExclusiveLockOwners(kNumDDLsPerHost * kNumHosts);
-  for (uint64_t relation_id = 0; relation_id < kNumLocksTotal; relation_id++) {
+  for (uint32_t relation_id = 0; relation_id < kNumLocksTotal; relation_id++) {
     auto host_idx = relation_id / kLocksPerHost;
     auto ddl_idx = (relation_id / kNumObjectsPerDDL) % kNumDDLsPerHost;
     ASSERT_OK(AcquireLockGlobally(

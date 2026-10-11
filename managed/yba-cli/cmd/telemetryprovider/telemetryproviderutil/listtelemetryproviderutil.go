@@ -81,18 +81,7 @@ func ListAndFilterTelemetryProviders(
 		r = rName
 	}
 
-	switch providerType {
-	case "datadog":
-		providerType = util.DataDogTelemetryProviderType
-	case "loki":
-		providerType = util.LokiTelemetryProviderType
-	case "splunk":
-		providerType = util.SplunkTelemetryProviderType
-	case "awscloudwatch", "aws":
-		providerType = util.AWSCloudWatchTelemetryProviderType
-	case "gcpcloudmonitoring", "gcp":
-		providerType = util.GCPCloudMonitoringTelemetryProviderType
-	}
+	providerType = ResolveTelemetryProviderType(providerType)
 
 	rType := make([]util.TelemetryProvider, 0)
 	if !util.IsEmptyString(providerType) {
@@ -105,4 +94,29 @@ func ListAndFilterTelemetryProviders(
 		r = rType
 	}
 	return r
+}
+
+// ResolveTelemetryProviderType maps a command alias ("gcp") or wire value
+// ("GCP_CLOUD_MONITORING") to the wire value, case insensitively. An unrecognized value is
+// returned unchanged, so filtering matches nothing rather than listing everything.
+func ResolveTelemetryProviderType(providerType string) string {
+	switch strings.ToLower(providerType) {
+	case "datadog", "dd", "data_dog":
+		return util.DataDogTelemetryProviderType
+	case "loki", "lo":
+		return util.LokiTelemetryProviderType
+	case "splunk", "sp":
+		return util.SplunkTelemetryProviderType
+	case "awscloudwatch", "aws", "cloudwatch", "aws_cloudwatch":
+		return util.AWSCloudWatchTelemetryProviderType
+	case "gcpcloudmonitoring", "gcp", "gcp_cloud_monitoring":
+		return util.GCPCloudMonitoringTelemetryProviderType
+	case "dynatrace", "dt":
+		return util.DynatraceTelemetryProviderType
+	case "s3", "awss3":
+		return util.S3TelemetryProviderType
+	case "otlp", "opentelemetry":
+		return util.OTLPTelemetryProviderType
+	}
+	return providerType
 }

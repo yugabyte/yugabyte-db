@@ -15,12 +15,21 @@ processors:
     - {action: upsert, key: ddsource, value: yugabyte}
     - {action: upsert, key: service, value: yb-otel-collector}
     - {action: upsert, key: host, value: test-node}
-    - {action: upsert, key: yugabyte.node_name, value: test-node}
-    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: node_name, value: test-node}
+    - {action: upsert, key: node_address, value: 127.0.0.1}
+    - {action: upsert, key: node_prefix, value: yb-tc-test-universe}
+    - {action: upsert, key: node_region, value: ''}
+    - {action: upsert, key: node_az, value: ''}
+    - {action: upsert, key: node_cluster_type, value: PRIMARY}
+    - {action: upsert, key: node_cloud, value: ''}
+    - {action: upsert, key: export_purpose, value: DATA_DOG_NODE_AGENT_LOG_EXPORT}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
-    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.region, value: ''}
     - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.purpose, value: DATA_DOG_NODE_AGENT_LOG_EXPORT}
     - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
     - {action: delete, key: log.file.name}

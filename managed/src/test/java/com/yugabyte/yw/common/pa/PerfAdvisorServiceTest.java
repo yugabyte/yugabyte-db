@@ -121,7 +121,7 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
 
   @Test
   public void testListByEmbeddedFlag() throws IOException {
-    // The embedded flag is how EmbeddedCollectorInitializer identifies "its" collector
+    // The embedded flag is how PACollectorSync identifies "its" collector
     // after an HA restore (paUrl still points at the old active's PA and can't be used).
     // Verify the filter picks up only the embedded row.
     try (MockWebServer server = new MockWebServer()) {

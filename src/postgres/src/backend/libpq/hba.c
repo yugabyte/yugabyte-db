@@ -52,6 +52,7 @@
 #endif
 
 /* YB includes */
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "yb_ysql_conn_mgr_helper.h"
@@ -3285,8 +3286,8 @@ yb_set_hba_tserver_key(Port *port)
 
 	/*
 	 * Parsing and setting startup parameter happen after authentication.
-	 * Therefore, the startup parameter "yb_use_tserver_key_auth" is not yet
-	 * set, we need to parse the startup parameter list.
+	 * Therefore, the YSQL Connection Manager tserver-key authentication
+	 * startup parameter is not yet set, so parse the startup parameter list.
 	 */
 	gucopts = list_head(port->guc_options);
 	while (gucopts)
@@ -3300,7 +3301,7 @@ yb_set_hba_tserver_key(Port *port)
 		value = lfirst(gucopts);
 		gucopts = lnext(port->guc_options, gucopts);
 
-		if (strcasecmp(name, "yb_use_tserver_key_auth") == 0)
+		if (strcasecmp(name, YB_YCM_USE_TSERVER_KEY_AUTH) == 0)
 		{
 			bool		result;
 

@@ -240,6 +240,14 @@ func (gen *YNPConfigGenerator) registerResolvers() error {
 	gen.resolvers["yba_skip_tls_verify"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return gen.args.YnpConfigPathValue("yba.skip_tls_verify")
 	}
+	gen.resolvers["yba_certificate_name"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
+		value, err := gen.args.YnpConfigPathValue("yba.certificate_name")
+		if err != nil {
+			// Fall back to YBA-generated self-signed certs.
+			return "", nil
+		}
+		return value, nil
+	}
 
 	gen.resolvers["yba_customer_uuid"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		sessionInfo, err := dataProvider.GetSessionInfo(ctx)

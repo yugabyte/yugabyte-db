@@ -16,9 +16,6 @@ import {
 
 const { Box, Typography } = mui;
 
-export const BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY =
-  'yb_before_proceed_with_new_modal_dismissed';
-
 interface BeforeProceedWithNewModalProps {
   open: boolean;
   onClose: () => void;
@@ -50,7 +47,8 @@ export const BeforeProceedWithNewModal: FC<BeforeProceedWithNewModalProps> = ({
 
   const handleClose = useCallback(() => {
     onClose();
-    requestOpenDetailSettingsPopover();
+    // Defer so the close click does not immediately click-away the Settings tip.
+    window.setTimeout(() => requestOpenDetailSettingsPopover(), 0);
   }, [onClose]);
 
   return (
