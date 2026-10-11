@@ -2960,6 +2960,102 @@ SELECT * FROM pk_nn_drop ORDER BY k;
  5 | 11 | 20
 (1 row)
 
+-- Test NOT NULL constraint enforcement on a stored generated column in
+-- single-row UPDATE: the column is not in the SET list, but it is recomputed
+-- from columns that are, so it must still be checked.
+CREATE TABLE gen_nn (k int PRIMARY KEY, a int, b int,
+    g int GENERATED ALWAYS AS (a + b) STORED NOT NULL);
+-- The dropped column makes the leaf's attribute numbers differ from the root's.
+CREATE TABLE gen_nn_part (k int, dropme int, a int, b int,
+    g int GENERATED ALWAYS AS (a + b) STORED NOT NULL, PRIMARY KEY (k))
+    PARTITION BY RANGE (k);
+ALTER TABLE gen_nn_part DROP COLUMN dropme;
+CREATE TABLE gen_nn_part1 PARTITION OF gen_nn_part FOR VALUES FROM (1) TO (100);
+INSERT INTO gen_nn VALUES (5, 1, 2);
+INSERT INTO gen_nn_part VALUES (5, 1, 2);
+-- All plans should USE single-row.  The first two updates should fail because
+-- g becomes NULL; the third should succeed.
+\set Q1 'a = NULL, b = 5'
+\set Q2 'a = 1, b = NULL'
+\set Q3 'a = 3, b = 4'
+\set R1 'gen_nn'
+\set R2 'gen_nn_part'
+\set query ':P UPDATE :R SET :Q WHERE k = 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) UPDATE gen_nn SET a = NULL, b = 5 WHERE k = 5;
+     QUERY PLAN      
+---------------------
+ Update on gen_nn
+   ->  Result gen_nn
+(2 rows)
+
+EXPLAIN (COSTS OFF) UPDATE gen_nn_part SET a = NULL, b = 5 WHERE k = 5;
+              QUERY PLAN              
+--------------------------------------
+ Update on gen_nn_part
+   Update on gen_nn_part1 gen_nn_part
+   ->  Result gen_nn_part
+(3 rows)
+
+EXPLAIN (COSTS OFF) UPDATE gen_nn SET a = 1, b = NULL WHERE k = 5;
+     QUERY PLAN      
+---------------------
+ Update on gen_nn
+   ->  Result gen_nn
+(2 rows)
+
+EXPLAIN (COSTS OFF) UPDATE gen_nn_part SET a = 1, b = NULL WHERE k = 5;
+              QUERY PLAN              
+--------------------------------------
+ Update on gen_nn_part
+   Update on gen_nn_part1 gen_nn_part
+   ->  Result gen_nn_part
+(3 rows)
+
+EXPLAIN (COSTS OFF) UPDATE gen_nn SET a = 3, b = 4 WHERE k = 5;
+     QUERY PLAN      
+---------------------
+ Update on gen_nn
+   ->  Result gen_nn
+(2 rows)
+
+EXPLAIN (COSTS OFF) UPDATE gen_nn_part SET a = 3, b = 4 WHERE k = 5;
+              QUERY PLAN              
+--------------------------------------
+ Update on gen_nn_part
+   Update on gen_nn_part1 gen_nn_part
+   ->  Result gen_nn_part
+(3 rows)
+
+UPDATE gen_nn SET a = NULL, b = 5 WHERE k = 5;
+ERROR:  null value in column "g" of relation "gen_nn" violates not-null constraint
+DETAIL:  Failing row contains (5, null, 5, null).
+UPDATE gen_nn_part SET a = NULL, b = 5 WHERE k = 5;
+ERROR:  null value in column "g" of relation "gen_nn_part1" violates not-null constraint
+DETAIL:  Failing row contains (5, null, 5, null).
+UPDATE gen_nn SET a = 1, b = NULL WHERE k = 5;
+ERROR:  null value in column "g" of relation "gen_nn" violates not-null constraint
+DETAIL:  Failing row contains (5, 1, null, null).
+UPDATE gen_nn_part SET a = 1, b = NULL WHERE k = 5;
+ERROR:  null value in column "g" of relation "gen_nn_part1" violates not-null constraint
+DETAIL:  Failing row contains (5, 1, null, null).
+UPDATE gen_nn SET a = 3, b = 4 WHERE k = 5;
+UPDATE gen_nn_part SET a = 3, b = 4 WHERE k = 5;
+\unset Q3
+SELECT * FROM gen_nn ORDER BY k;
+ k | a | b | g 
+---+---+---+---
+ 5 | 3 | 4 | 7
+(1 row)
+
+SELECT * FROM gen_nn_part ORDER BY k;
+ k | a | b | g 
+---+---+---+---
+ 5 | 3 | 4 | 7
+(1 row)
+
 -- Test single-shard transactions in a partition table.
 -- The absence of flushes and storage scans in the EXPLAIN plan indicate the use
 -- of single-shard transactions.
@@ -3473,6 +3569,8 @@ DROP TABLE p_test;
 DROP TABLE pk;
 DROP TABLE pk_nn;
 DROP TABLE pk_nn_drop;
+DROP TABLE gen_nn;
+DROP TABLE gen_nn_part;
 DROP TABLE t_simple;
 DROP TABLE t_temp;
 DROP TYPE rt;
