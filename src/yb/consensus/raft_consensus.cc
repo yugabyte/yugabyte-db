@@ -4021,6 +4021,10 @@ Result<std::unique_ptr<RetryableRequests>> RaftConsensus::TakeSnapshotOfRetryabl
   return state_->TakeSnapshotOfRetryableRequests();
 }
 
+std::unique_ptr<RetryableRequests> RaftConsensus::TakeSnapshotOfRetryableRequestsUnlocked() const {
+  return state_->TakeSnapshotOfRetryableRequestsUnlocked();
+}
+
 OpId RaftConsensus::GetLastFlushedOpIdInRetryableRequests() {
   return state_->GetLastFlushedOpIdInRetryableRequests();
 }
