@@ -17,9 +17,9 @@
     {
       "series": "v2025.2",
       "display": "v2025.2 (LTS)",
-      "version": "2025.2.7.0",
-      "versionShort": "2025.2.7",
-      "appVersion": "2025.2.7.0-b107",
+      "version": "2025.2.8.0",
+      "versionShort": "2025.2.8",
+      "appVersion": "2025.2.8.0-b31",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2025-12-11",

@@ -1607,6 +1607,32 @@ When enabled, the PostgreSQL backend processes preload the `pg_am`, `pg_amproc`,
 
 If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional-table-list) is also specified, the union of `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` and the tables specified in `ysql_catalog_preload_additional_table_list` is preloaded.
 
+##### --ysql_yb_catalog_preload_attname_cache
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+When `true`, catalog preload fills the `pg_attribute` cache used to look up a column by name. When `false`, that cache stays empty until a lookup needs it. Preload still fetches `pg_attribute`. v2025.2.8.0 and later only.
+
+On a schema with many columns, this cache and [ysql_yb_catalog_preload_attnum_cache](#ysql-yb-catalog-preload-attnum-cache) are most of the catalog cache memory in each PostgreSQL backend. Leaving either cache empty lowers the memory held after startup. The first lookup that needs the cache loads the entry.
+
+The flag applies to connections started after you change it, and to the next full catalog cache refresh. Preload runs at connection startup when [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tables) is `true` or [ysql_use_relcache_file](#ysql-use-relcache-file) is `false`, and on every full catalog cache refresh.
+
+See [Skip preloading the pg_attribute caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/#skip-pg-attribute-cache-preload).
+
+##### --ysql_yb_catalog_preload_attnum_cache
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+When `true`, catalog preload fills the `pg_attribute` cache used to look up a column by number. When `false`, that cache stays empty until a lookup needs it. Preload still fetches `pg_attribute`. v2025.2.8.0 and later only.
+
+The flag applies to connections started after you change it, and to the next full catalog cache refresh. See [ysql_yb_catalog_preload_attname_cache](#ysql-yb-catalog-preload-attname-cache).
+
 ##### --ysql_enable_read_request_caching
 
 {{% tags/wrap %}}
@@ -2579,6 +2605,23 @@ Default: `false`
 Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled.
 
 When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
+
+##### --openssl_require_fips
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Requires the YB-TServer and its YSQL processes to use the OpenSSL FIPS provider. In v2025.2.8.0 and later, this includes YSQL Connection Manager. When enabled, these processes fail to start if the FIPS provider can't be loaded.
+
+Set the same value on every YB-Master and YB-TServer. See [--openssl_require_fips](../yb-master/#openssl-require-fips) for the YB-Master.
+
+The flag selects the OpenSSL FIPS provider. To encrypt client connections, also enable [use_client_to_server_encryption](#use-client-to-server-encryption).
+
+When [ysql_enable_auth](#ysql-enable-auth) is enabled, the auto-generated `ysql_hba.conf` entry uses `scram-sha-256` and ignores `ysql_auth_method`. Rules in [ysql_hba_conf_csv](#ysql-hba-conf-csv) are checked first, so an earlier `md5` rule still applies to the connections it matches. A role whose password is stored as an MD5 hash cannot sign in through the SCRAM rule until you change that password. [Migrate existing MD5 passwords](../../../secure/authentication/password-authentication/#migrate-existing-md5-passwords-to-scram-sha-256) before you enable this flag.
+
+The flag also sets `pgcrypto.builtin_crypto_enabled` to `fips`. pgcrypto then rejects built-in algorithms that are not FIPS-validated.
 
 ##### --cipher_list
 

@@ -475,14 +475,18 @@ To confirm that catalog caching is the cause of this, see [Confirm that catalog 
 
 - [Use connection pooling](#connection-pooling) to reuse existing connections.
 - [Preload additional system tables](#preload-additional-system-tables).
+- In v2025.2.8.0 and later, the YB-Master leader limits how many catalog prefetches it serves at once. See [enable_ysql_catalog_prefetch_admission](../../reference/configuration/yb-master/#enable-ysql-catalog-prefetch-admission).
 
 ### High memory usage on PostgreSQL backends
 
 On the flip side, automatic preloading of caches may result in higher memory usage of PostgreSQL backends than desired.
 
-**Possible solution**
+In v2025.2.8.0 and later, that cost is lower in two places: peak memory while a connection is starting, and the memory the PostgreSQL backend holds after startup. See [Memory during catalog preload](#catalog-preload-memory).
+
+**Possible solutions**
 
 - [Minimal catalog cache preloading](#minimal-catalog-cache-preloading).
+- [Skip preloading the pg_attribute caches](#skip-pg-attribute-cache-preload) on a schema with many columns.
 
 ## Solution details
 
@@ -498,7 +502,7 @@ To set up connection pooling, explore the following approaches:
 
 ### Preload additional system tables {#preload-additional-system-tables}
 
-When enabled, all catalog cache entries corresponding to specific PostgreSQL catalog tables are preloaded (both on regular PostgreSQL backend startup and after a schema change). This decreases warm up time for these caches, thereby decreasing the latency impact of initial queries on new connections. The downside is that it causes more memory consumption on all backends.
+When enabled, all catalog cache entries corresponding to specific PostgreSQL catalog tables are preloaded (both on regular PostgreSQL backend startup and after a schema change). This decreases warm up time for these caches, thereby decreasing the latency impact of initial queries on new connections. The downside is that it causes more memory consumption on all backends. In v2025.2.8.0 and later, [preload uses less memory](#catalog-preload-memory) while a connection is starting and after it is idle.
 
 To preload system tables, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags)  `--ysql_catalog_preload_additional_tables=true` to preload caches for the following tables:
 
@@ -520,6 +524,30 @@ For example:
 ```yaml
 --ysql_catalog_preload_additional_table_list=pg_operator,pg_amop,pg_cast,pg_aggregate
 ```
+
+### Memory during catalog preload {#catalog-preload-memory}
+
+In v2025.2.8.0 and later, enabling catalog preload uses less memory in two places:
+
+- Peak memory while a connection is starting.
+- Idle memory of the PostgreSQL backend after startup.
+
+This reduction applies whenever preload runs. You keep the same preload settings.
+
+On a schema with many columns, the two `pg_attribute` caches can still be most of what each backend holds after startup. [Skip preloading those caches](#skip-pg-attribute-cache-preload) when you want a further drop in that idle memory.
+
+### Skip preloading the pg_attribute caches {#skip-pg-attribute-cache-preload}
+
+`pg_attribute` has one row per column. Preload fetches those rows either way. By default it also fills two caches from them: one for lookup by column name, and one for lookup by column number. On a schema with many columns, those caches are most of the catalog cache memory in each PostgreSQL backend, and they stay resident after the connection is idle.
+
+In v2025.2.8.0 and later, two [YB-TServer flags](../../reference/configuration/yb-tserver/#ysql-yb-catalog-preload-attname-cache) leave a cache empty at preload. A lookup loads the entry the first time it is needed. Later queries on that connection use the cached entry. Connections that are already open keep the caches they have already filled.
+
+| Flag | Default | Set to `false` to |
+| :--- | :--- | :--- |
+| ysql_yb_catalog_preload_attname_cache | true | Skip the column-name cache |
+| ysql_yb_catalog_preload_attnum_cache | true | Skip the column-number cache |
+
+Preload runs at connection startup when `--ysql_catalog_preload_additional_tables=true` or `--ysql_use_relcache_file=false`, and on every full catalog cache refresh. Changing either flag applies to connections started afterward and to the next full refresh.
 
 ### Minimal catalog cache preloading {#minimal-catalog-cache-preloading}
 
