@@ -12,11 +12,24 @@
 
 #include "yb/util/tcmalloc_util.h"
 
+#if defined(__linux__)
+#include <dlfcn.h>
+#include <sys/syscall.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+#endif
+
+#include <cerrno>
 #include <cstdint>
+#include <cstdio>
+#include <fstream>
+#include <string>
+#include <tuple>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -286,6 +299,70 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
 #elif YB_GPERFTOOLS_TCMALLOC
   MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
 #endif
+}
+
+#if YB_GOOGLE_TCMALLOC && defined(__linux__)
+namespace {
+
+// Linux 6.19.0 through 7.0.13 do not rewrite rseq cpu_id_start on every return to user space, which
+// TCMalloc per-CPU caches rely on, so they can crash or corrupt memory there.
+bool KernelBreaksTCMallocRseq(const std::string& kernel_version) {
+  int major = 0, minor = 0, patch = 0;
+  if (sscanf(kernel_version.c_str(), "%d.%d.%d", &major, &minor, &patch) < 2) {
+    return false;
+  }
+  const auto version = std::make_tuple(major, minor, patch);
+  return version >= std::make_tuple(6, 19, 0) && version < std::make_tuple(7, 0, 14);
+}
+
+// Ubuntu kernels keep the patch level at 0 in the release (7.0.0-NN-generic) and report the
+// upstream version they are based on as the last field of /proc/version_signature, for example
+// "Ubuntu 6.8.0-1069.77~22.04.1-gcp 6.8.12".
+std::string UpstreamKernelVersion(const char* kernel_release) {
+  std::ifstream file("/proc/version_signature");
+  std::string signature;
+  if (std::getline(file, signature) && signature.starts_with("Ubuntu ")) {
+    return signature.substr(signature.rfind(' ') + 1);
+  }
+  return kernel_release;
+}
+
+}  // namespace
+#endif  // YB_GOOGLE_TCMALLOC && defined(__linux__)
+
+void CheckTCMallocPerCpuCaches() {
+#if YB_GOOGLE_TCMALLOC && defined(__linux__)
+  if (::tcmalloc::MallocExtension::PerCpuCachesActive()) {
+    struct utsname uts;
+    if (uname(&uts) != 0) {
+      LOG(WARNING) << "Failed to get the kernel release: " << ErrnoToString(errno);
+      return;
+    }
+    const auto kernel_version = UpstreamKernelVersion(uts.release);
+    if (KernelBreaksTCMallocRseq(kernel_version)) {
+      LOG(WARNING) << "TCMalloc per-CPU caches are active on Linux " << uts.release
+                   << " (upstream version " << kernel_version << "). They can crash or corrupt "
+                   << "memory on Linux 6.19.0 through 7.0.13. Upgrade the kernel to 7.0.14 or "
+                   << "later, or, if GLIBC_TUNABLES sets glibc.pthread.rseq=0, remove it.";
+    }
+    return;
+  }
+
+  // __rseq_size is only exported by glibc 2.35+ (and backports such as RHEL 9's glibc 2.34).
+  const auto* glibc_rseq_size =
+      static_cast<const unsigned int*>(dlsym(RTLD_DEFAULT, "__rseq_size"));
+  if (glibc_rseq_size && *glibc_rseq_size > 0) {
+    LOG(WARNING) << "TCMalloc per-CPU caches are inactive because glibc registered rseq. Set "
+                 << "GLIBC_TUNABLES=glibc.pthread.rseq=0 in the environment to enable them.";
+#ifdef __NR_rseq
+  } else if (syscall(__NR_rseq, nullptr, 0, 0, 0) == -1 && errno == ENOSYS) {
+    LOG(WARNING) << "TCMalloc per-CPU caches are inactive because the kernel does not support "
+                 << "rseq. They require Linux 4.18 or later.";
+#endif
+  } else {
+    LOG(WARNING) << "TCMalloc per-CPU caches are inactive";
+  }
+#endif  // YB_GOOGLE_TCMALLOC && defined(__linux__)
 }
 
 }  // namespace yb
