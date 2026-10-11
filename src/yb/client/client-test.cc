@@ -3068,9 +3068,9 @@ class ColocationClientTest: public ClientTest {
     pgwrapper::PgProcessConf pg_process_conf =
         VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
             AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
+            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
+            /* force_disable_log_file = */ true));
     pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-    pg_process_conf.force_disable_log_file = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
 
     LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses

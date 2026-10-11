@@ -26,8 +26,9 @@ import xml.etree.ElementTree as ET
 import json
 import signal
 import glob
+import re
 
-from typing import Any, Dict, AnyStr
+from typing import Any, Dict, AnyStr, List
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -115,22 +116,39 @@ from yugabyte import parse_test_failure  # noqa
 SIGNALS = [name for name in dir(signal) if name.startswith('SIG') and 'SIG_' not in name]
 SIGNAL_FORMAT_STRING = 'signal_{}'
 
+# The WARNINGs that PG's MEMORY_CONTEXT_CHECKING reports memory corruption with.
+MEMORY_CONTEXT_CHECK_PATTERN = (
+    r'detected write past chunk end in |problem in (alloc set|slab|Generation) ')
+
 # Derived from build-support/common-test-env.sh:did_test_succeed()
 FAIL_TAG_AND_PATTERN: Dict[str, str] = {
     'timeout': 'Timeout reached',
     'memory_leak': 'LeakSanitizer: detected memory leaks',
     'asan_heap_use_after_free': 'AddressSanitizer: heap-use-after-free',
+    'asan_error': 'ERROR: AddressSanitizer: ',
     'asan_undefined': 'AddressSanitizer: undefined-behavior',
     'undefined_behavior': 'UndefinedBehaviorSanitizer: undefined-behavior',
     'tsan_race': 'ThreadSanitizer: data race',
     'tsan_deadlock': 'ThreadSanitizer: lock-order-inversion',
     'leak_check_failure': 'Leak check.*detected leaks',
     'segmentation_fault': 'Segmentation fault: ',
+    'memory_context_corruption': MEMORY_CONTEXT_CHECK_PATTERN,
     'gtest': r'^\[  FAILED  \]',
     SIGNAL_FORMAT_STRING: '|'.join(SIGNALS),
     'check_failed': 'Check failed: ',
     'java_build': r'^\[INFO\] BUILD FAILURE$',
 }
+
+# The first line of each report of a memory error, by what reports it.
+SANITIZER_REPORT_PATTERNS: Dict[str, str] = {
+    'AddressSanitizer': r'ERROR: AddressSanitizer: ',
+    'LeakSanitizer': r'ERROR: LeakSanitizer: ',
+    'ThreadSanitizer': r'WARNING: ThreadSanitizer: ',
+    'UndefinedBehaviorSanitizer': r'SUMMARY: UndefinedBehaviorSanitizer: ',
+    'MemoryContextCheck': MEMORY_CONTEXT_CHECK_PATTERN,
+}
+MAX_SANITIZER_REPORT_LINES = 10
+MAX_SANITIZER_REPORT_LINE_LEN = 300
 
 
 def rename_key(d: Dict[str, Any], key: str, new_key: str) -> None:
@@ -303,6 +321,30 @@ class Postprocessor:
                     )
                     test_kvs['processing_errors'] = grep_command.stderr.decode('utf-8').split()
 
+    def set_sanitizer_reports(self, test_kvs: Dict[str, Any]) -> None:
+        """
+        Record the sanitizer and memory context check reports in the log of any test, passing or
+        not. A report does not always fail the test, e.g. when the test is rerun and passes.
+        """
+        grep_command = subprocess.run(
+            ['zgrep', '-Eh', '|'.join(SANITIZER_REPORT_PATTERNS.values()), self.test_log_path],
+            capture_output=True)
+        if grep_command.returncode != 0:
+            return
+        counts: Dict[str, int] = {}
+        lines: List[str] = []
+        for line in grep_command.stdout.decode('utf-8', errors='replace').splitlines():
+            name = next((name for name, pattern in SANITIZER_REPORT_PATTERNS.items()
+                         if re.search(pattern, line)), None)
+            if name is None:
+                continue
+            counts[name] = counts.get(name, 0) + 1
+            if len(lines) < MAX_SANITIZER_REPORT_LINES:
+                lines.append(line.strip()[:MAX_SANITIZER_REPORT_LINE_LEN])
+        if counts:
+            test_kvs['sanitizer_reports'] = counts
+            test_kvs['sanitizer_report_lines'] = lines
+
     def run(self) -> None:
         junit_xml_path = self.args.junit_xml_path
         if not os.path.exists(junit_xml_path):
@@ -355,6 +397,7 @@ class Postprocessor:
             rename_key(test_kvs, 'classname', 'class_name')
             self.set_common_test_kvs(test_kvs)
             self.set_fail_tags(test_kvs)
+            self.set_sanitizer_reports(test_kvs)
             tests.append(test_kvs)
 
         output_path = os.path.splitext(junit_xml_path)[0] + '_test_report.json'
