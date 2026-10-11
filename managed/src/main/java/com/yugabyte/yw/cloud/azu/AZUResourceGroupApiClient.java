@@ -26,10 +26,14 @@ import com.azure.resourcemanager.compute.models.Sku;
 import com.azure.resourcemanager.compute.models.SubResourceReadOnly;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.marketplaceordering.MarketplaceOrderingManager;
+import com.azure.resourcemanager.network.NetworkManager;
+import com.azure.resourcemanager.network.fluent.NetworkInterfacesClient;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.LoadBalancerInner;
 import com.azure.resourcemanager.network.fluent.models.NetworkInterfaceInner;
 import com.azure.resourcemanager.network.models.LoadBalancerBackendAddress;
+import com.azure.resourcemanager.network.models.TagsObject;
+import com.azure.resourcemanager.resources.fluentcore.arm.ResourceUtils;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
@@ -39,7 +43,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -61,11 +64,23 @@ public class AZUResourceGroupApiClient {
     this.azureMarketplaceOrderingManager = getAzureMarketplaceOrderingManager(azureCloudInfo);
   }
 
-  public BackendAddressPoolInner createNewBackendPoolForIPs(
-      String lbName, Map<String, String> ipToVmName, SubResource virtualNetwork) {
-    String backendPoolName = "bp-" + UUID.randomUUID().toString();
-    BackendAddressPoolInner backendPool = new BackendAddressPoolInner().withName(backendPoolName);
-    return updateIPsInBackendPool(lbName, ipToVmName, backendPool, virtualNetwork);
+  public BackendAddressPoolInner createBackendPool(String lbName, String poolName) {
+    return azureResourceManager
+        .networks()
+        .manager()
+        .serviceClient()
+        .getLoadBalancerBackendAddressPools()
+        .createOrUpdate(
+            resourceGroup, lbName, poolName, new BackendAddressPoolInner().withName(poolName));
+  }
+
+  public BackendAddressPoolInner getBackendPool(String lbName, String poolName) {
+    return azureResourceManager
+        .networks()
+        .manager()
+        .serviceClient()
+        .getLoadBalancerBackendAddressPools()
+        .get(resourceGroup, lbName, poolName);
   }
 
   public BackendAddressPoolInner updateIPsInBackendPool(
@@ -114,6 +129,43 @@ public class AZUResourceGroupApiClient {
           BAD_REQUEST, "Cannot find Load Balancer with given name: " + lbName);
     }
     return loadBalancer;
+  }
+
+  /** Returns null when the load balancer does not exist. */
+  public LoadBalancerInner getLoadBalancerIfExists(String lbName) {
+    try {
+      return azureResourceManager
+          .networks()
+          .manager()
+          .serviceClient()
+          .getLoadBalancers()
+          .getByResourceGroup(resourceGroup, lbName);
+    } catch (ManagementException e) {
+      if (e.getResponse() != null && e.getResponse().getStatusCode() == 404) {
+        return null;
+      }
+      throw e;
+    }
+  }
+
+  /** Also deletes the pools, rules and probes of the load balancer. */
+  public void deleteLoadBalancer(String lbName) {
+    azureResourceManager
+        .networks()
+        .manager()
+        .serviceClient()
+        .getLoadBalancers()
+        .delete(resourceGroup, lbName);
+  }
+
+  /** Replaces all the tags of the load balancer. */
+  public void updateLoadBalancerTags(String lbName, Map<String, String> tags) {
+    azureResourceManager
+        .networks()
+        .manager()
+        .serviceClient()
+        .getLoadBalancers()
+        .updateTags(resourceGroup, lbName, new TagsObject().withTags(tags));
   }
 
   public String createCapacityReservationGroup(
@@ -350,20 +402,39 @@ public class AZUResourceGroupApiClient {
     return disk;
   }
 
-  public NetworkInterfaceInner getNetworkInterfaceByName(String networkInterfaceName) {
+  public NetworkInterfaceInner getNetworkInterface(String id) {
     NetworkInterfaceInner networkInterface =
-        azureResourceManager
-            .networks()
-            .manager()
-            .serviceClient()
-            .getNetworkInterfaces()
-            .getByResourceGroup(resourceGroup, networkInterfaceName);
+        networkInterfaces(id)
+            .getByResourceGroup(
+                ResourceUtils.groupFromResourceId(id), ResourceUtils.nameFromResourceId(id));
     if (networkInterface == null) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
-          "Cannot find network interface with name: " + networkInterfaceName);
+          INTERNAL_SERVER_ERROR, "Cannot find network interface: " + id);
     }
     return networkInterface;
+  }
+
+  public void updateNetworkInterface(NetworkInterfaceInner networkInterface) {
+    networkInterfaces(networkInterface.id())
+        .createOrUpdate(
+            ResourceUtils.groupFromResourceId(networkInterface.id()),
+            networkInterface.name(),
+            networkInterface);
+  }
+
+  // Devops creates the interfaces in the network subscription and resource group, which can differ
+  // from this client's, so each call goes where the ID says.
+  private NetworkInterfacesClient networkInterfaces(String id) {
+    NetworkManager network = azureResourceManager.networks().manager();
+    String subscription = ResourceUtils.subscriptionFromResourceId(id);
+    if (!network.subscriptionId().equalsIgnoreCase(subscription)) {
+      network =
+          NetworkManager.authenticate(
+              network.httpPipeline(),
+              new AzureProfile(
+                  azureResourceManager.tenantId(), subscription, network.environment()));
+    }
+    return network.serviceClient().getNetworkInterfaces();
   }
 
   private AzureResourceManager getResourceManager(AzureCloudInfo azCloudInfo) {
