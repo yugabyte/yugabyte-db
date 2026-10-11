@@ -18,6 +18,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/status_format.h"
 
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
@@ -29,14 +30,14 @@ PgSelectIndex::PgSelectIndex(const PgSessionPtr& pg_session)
 }
 
 Status PgSelectIndex::PrepareSubquery(
-    const PgObjectId& index_id, bool skip_intents_read,
+    const PgObjectId& index_id, const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
     std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
   // Setup target and bind descriptor.
   target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(index_id)));
 
   read_req_ = std::move(read_req);
-  if (read_req_ && skip_intents_read) {
-    read_req_->set_skip_intents_read(skip_intents_read);
+  if (read_req_) {
+    ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_);
   }
   read_req_->dup_table_id(index_id.GetYbTableId()); // TODO(LW_PERFORM)
 
@@ -60,12 +61,12 @@ Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(
     const PgSessionPtr& pg_session, const PgObjectId& index_id,
     const YbcPgTableLocalityInfo& locality_info,
-    bool skip_intents_read,
+    const YbcPgSkipIntentsOptimizationInfo& skip_intents_info,
     std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
   std::unique_ptr<PgSelectIndex> result{new PgSelectIndex{pg_session}};
   RETURN_NOT_OK(read_req
-      ? result->PrepareSubquery(index_id, skip_intents_read, std::move(read_req))
-      : result->Prepare(index_id, locality_info, skip_intents_read));
+      ? result->PrepareSubquery(index_id, skip_intents_info, std::move(read_req))
+      : result->Prepare(index_id, locality_info, skip_intents_info));
   return result;
 }
 

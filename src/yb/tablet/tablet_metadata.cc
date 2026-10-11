@@ -2258,6 +2258,57 @@ Status RaftGroupMetadata::CheckColocationPacking(
   return packing.status();
 }
 
+// Apply path: table tombstone written for this colocation id, invalidate its tombstone-time cache.
+void RaftGroupMetadata::NotifyTableTombstoneWritten(
+    ColocationId colocation_id, HybridTime write_ht) {
+  auto table_info = GetTableInfo(colocation_id);
+  if (!table_info.ok()) {
+    // Table may have been dropped; nothing to invalidate.
+    return;
+  }
+  if ((*table_info)->doc_read_context) {
+    (*table_info)->doc_read_context->OnTableTombstoneWritten(write_ht);
+  }
+}
+
+// Cotable-id overload of the apply-path cache invalidate. Does nothing today: reads consult the
+// cache only when the schema has a colocation_id, and only those contexts are armed. Kept so this
+// is not missed if cotable-keyed tables (sys catalog, YCQL) ever use the cache.
+void RaftGroupMetadata::NotifyTableTombstoneWritten(const Uuid& cotable_id, HybridTime write_ht) {
+  if (cotable_id.IsNil()) {
+    return;
+  }
+  auto table_info = GetTableInfo(cotable_id.ToHexString());
+  if (!table_info.ok()) {
+    return;
+  }
+  if ((*table_info)->doc_read_context) {
+    (*table_info)->doc_read_context->OnTableTombstoneWritten(write_ht);
+  }
+}
+
+// Turn on colocated tombstone-time caches at serve-ready SafeTime (watermark was kMax / off).
+// Walks every colocated TableInfo on this tablet, so an ALTER of one table also re-arms (and
+// bumps generation on) the others - a known cost in multi-table colocated databases.
+//
+// Fresh contexts start unarmed; skipping this only disables the cache (fail-closed). That claim
+// does not cover RestoreCheckpoint, which can swap the regular DB under an already-armed context
+// that still holds a warm value: there the gap is a content change with no invalidation (tracked
+// follow-up), not a missing arm.
+void RaftGroupMetadata::ArmColocatedTombstoneCaches(HybridTime safe_time) {
+  // kMin.is_valid() is true and would make every read eligible; require a real HT so unarmed
+  // stays fail-closed by construction (last_replicated_ defaults to kMin on an empty tablet).
+  if (!safe_time.is_valid() || safe_time == HybridTime::kMax ||
+      safe_time < HybridTime::kInitial) {
+    return;
+  }
+  for (const auto& table_info : GetColocatedTableInfos()) {
+    if (table_info->doc_read_context && table_info->schema().has_colocation_id()) {
+      table_info->doc_read_context->AdvanceTombstoneCacheWatermark(safe_time);
+    }
+  }
+}
+
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
   std::lock_guard lock(data_mutex_);
   return JoinPathSegments(DirName(wal_dir_), MakeTabletDirName(raft_group_id));

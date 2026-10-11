@@ -18,6 +18,14 @@
 
 export LC_ALL=C
 
+# Every linter script sources this file with the linted path as $1 before
+# touching the file.  A symlink's target is linted under the target's own
+# path, so skip symlinks rather than lint the same content again under the
+# symlink's name.
+if [ -L "$1" ]; then
+  exit 0
+fi
+
 # Sets the global $merge_base variable to the divergence point between HEAD and
 # its upstream tracking branch. If no upstream tracking branch is configured,
 # emits a warning and returns 1.
@@ -91,9 +99,8 @@ all_ctags_types() {
 yb_typedefs_list=src/postgres/src/tools/pgindent/yb_typedefs.list
 
 # Print the macros that mint Ybc handle type names, joined with | so that the
-# result works as a grep -E pattern, such as
-# YB_DEFINE_HANDLE_TYPE|YB_DEFINE_YB_HANDLE_TYPE.  Read them from the header
-# rather than naming them here since the set can grow.
+# result works as a grep -E pattern, such as YB_DEFINE_HANDLE_TYPE.  Read them
+# from the header rather than naming them here since the set can grow.
 handle_type_macros() {
   local macros pattern
   pattern='#define +YB[A-Z_]*\(name\) typedef struct name \*Ybc##name'

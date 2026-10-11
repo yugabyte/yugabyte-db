@@ -185,7 +185,13 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
           />
           <StyledSubText sx={{ marginLeft: '48px' }}>
             {t('toggleHelper')}&nbsp;
-            <StyledLink>{t('learnMore')}</StyledLink>
+            <StyledLink
+              href="https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universes-wizard/#proxy-configuration"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t('learnMore')}
+            </StyledLink>
           </StyledSubText>
         </Box>
       </Box>

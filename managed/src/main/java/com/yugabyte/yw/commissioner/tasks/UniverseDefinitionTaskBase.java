@@ -2369,21 +2369,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task to do the provisioning via YNP.
-   *
-   * @param nodes a collection of nodes to be processed.
-   */
-  public SubTaskGroup createYNPProvisioningTask(
-      Universe universe, Collection<NodeDetails> nodes, boolean isYbPrebuiltImage) {
-    return createYNPProvisioningTask(universe, nodes, isYbPrebuiltImage, false /* isReprovision */);
-  }
-
   public SubTaskGroup createYNPProvisioningTask(
       Universe universe,
       Collection<NodeDetails> nodes,
-      boolean isYbPrebuiltImage,
-      boolean isReprovision) {
+      BiConsumer<NodeDetails, YNPProvisioning.Params> paramsCustomizer) {
     Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2410,12 +2399,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
-          params.isYbPrebuiltImage = isYbPrebuiltImage;
-          params.isReprovision = isReprovision;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
           params.userIntent = userIntent;
+          paramsCustomizer.accept(n, params);
           YNPProvisioning task = createTask(YNPProvisioning.class);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
@@ -2469,8 +2457,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Set<NodeDetails> nodesToBeCreated,
       boolean ignoreNodeStatus,
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
-
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -2537,7 +2523,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 boolean isYbPrebuiltImage =
                     !shouldInstallDbSoftware(
                         universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
-                createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
+                createYNPProvisioningTask(
+                        universe, filteredNodes, (n, p) -> p.isYbPrebuiltImage = isYbPrebuiltImage)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               }
               createInstallNodeAgentTasks(universe, filteredNodes)

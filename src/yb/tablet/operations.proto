@@ -110,6 +110,9 @@ message WritePB {
 
   // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
   optional bool xcluster_target_applied = 23;
+
+  // Earliest PgsqlWriteRequestPB.ignore_after_hybrid_time over this batch; 0 means no fence.
+  optional fixed64 ignore_after_hybrid_time = 24;
 }
 
 message ChangeMetadataRequestPB {

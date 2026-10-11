@@ -45,6 +45,8 @@ func SetupConfigureCommand(parentCmd *cobra.Command) {
 	configureCmd.PersistentFlags().StringP("id", "i", "", "Node agent ID")
 	configureCmd.PersistentFlags().String("customer_id", "", "Customer ID")
 	configureCmd.PersistentFlags().String("cert_dir", "", "Node agent cert directory")
+	configureCmd.PersistentFlags().
+		String("certificate_name", "", "YBA certificate config name for node-agent TLS")
 	/* Required only for silent configuration mode. */
 	configureCmd.PersistentFlags().String("provider_id", "", "Provider config ID or name")
 	configureCmd.PersistentFlags().String("instance_type", "", "Instance type")
@@ -240,6 +242,11 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Error storing skip_verify_cert value - %s", err.Error())
+	}
+	// Do not persist in config.yml — the name can go out of sync on cert rotation.
+	certificateName, err := cmd.Flags().GetString("certificate_name")
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to read certificate name - %s", err.Error())
 	}
 	err = server.RetrieveUser(ctx, apiToken)
 	if err != nil {
@@ -469,7 +476,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 		util.ConsoleLogger().Infof(ctx, "Node Agent is already registered with IP %s", nodeIp)
 	} else if err == util.ErrNotExist {
 		util.ConsoleLogger().Infof(ctx, "Registering Node Agent with IP %s", nodeIp)
-		err = server.RegisterNodeAgent(ctx, apiToken)
+		err = server.RegisterNodeAgent(ctx, apiToken, certificateName)
 		if err != nil {
 			util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
 		}

@@ -42,7 +42,7 @@
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -214,5 +214,23 @@ class TableLocalityMap {
 };
 
 bool SkipIntents(const PgsqlOp& op);
+
+// Records both skip intents optimization decisions on a read or write request.
+template <class ReqPB>
+void ApplySkipIntentsOptimizationInfo(const YbcPgSkipIntentsOptimizationInfo& info, ReqPB& req) {
+  if (info.skip_intents) {
+    if constexpr (requires { req.set_skip_intents_write(true); }) {
+      req.set_skip_intents_write(true);
+    } else {
+      static_assert(requires { req.set_skip_intents_read(true); });
+      req.set_skip_intents_read(true);
+    }
+  }
+  if (info.read_at_in_txn_limit) {
+    req.set_read_at_in_txn_limit(true);
+  }
+}
+
+Status CheckForPgInterrupts();
 
 } // namespace yb::pggate

@@ -1,0 +1,13 @@
+title: SupportBundleStatus
+description: Current status of a support bundle collection task.
+type: string
+enum:
+  - Running
+  - Success
+  - Failed
+  - Aborted
+x-enum-varnames:
+  - SupportBundleRunning
+  - SupportBundleSuccess
+  - SupportBundleFailed
+  - SupportBundleAborted

@@ -70,7 +70,7 @@ DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_bool(TEST_block_apply_intent);
 DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
@@ -216,6 +216,8 @@ class XClusterDDLReplicationConcurrentDDLTest
   void SetUp() override {
     auto [object_locking, concurrent_ddl] = GetParam();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = object_locking;
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = object_locking;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = object_locking;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
     XClusterDDLReplicationTest::SetUp();
@@ -302,9 +304,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
   }
 }
 
-// We have a temporary fix for this test that we are applying only in non-debug builds.  We do this
-// so we will catch other tests that need the same permanent fix.  See #27622.
-TEST_F(XClusterDDLReplicationTest, YB_NEVER_DEBUG_TEST(CheckpointMultipleDatabases)) {
+TEST_F(XClusterDDLReplicationTest, CheckpointMultipleDatabases) {
   ASSERT_OK(SetUpClusters());
 
   std::vector<NamespaceName> namespaces{namespace_name};
@@ -1282,6 +1282,40 @@ TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
       GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", "test_table_2"))));
 
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
+}
+
+TEST_F(XClusterDDLReplicationTest, RenameConstraint) {
+  // Test renaming various types of constraints.
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE parent_table (id int PRIMARY KEY)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE child_table (id int PRIMARY KEY, parent_id int REFERENCES parent_table(id), "
+      "val int CONSTRAINT val_check CHECK (val > 0), uval int CONSTRAINT uval_uniq UNIQUE)"));
+
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT child_table_parent_id_fkey TO fkey_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT val_check TO val_check_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT uval_uniq TO uval_uniq_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT child_table_pkey TO pkey_renamed"));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto kConstraintNamesQuery =
+      "SELECT conname FROM pg_constraint WHERE conrelid = 'child_table'::regclass "
+      "ORDER BY conname";
+  auto producer_constraints =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kConstraintNamesQuery));
+  auto consumer_constraints =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kConstraintNamesQuery));
+  ASSERT_EQ(producer_constraints, consumer_constraints);
+  ASSERT_STR_CONTAINS(consumer_constraints, "fkey_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "val_check_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "uval_uniq_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "pkey_renamed");
 }
 
 TEST_F(XClusterDDLReplicationTest, FailAsyncInsertPackedSchema) {

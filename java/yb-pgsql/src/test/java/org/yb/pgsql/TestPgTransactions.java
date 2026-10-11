@@ -101,6 +101,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     flags.put("ysql_enable_auto_analyze", "false");
     flags.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
     flags.put("ysql_yb_ddl_transaction_block_enabled", String.valueOf(objectLockingEnabled));
+    flags.put("ysql_yb_enable_ddl_savepoint_support", String.valueOf(objectLockingEnabled));
     flags.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
     flags.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));
     return flags;

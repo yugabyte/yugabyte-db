@@ -337,6 +337,9 @@ public class CustomerTask extends Model {
     @EnumValue("CreateSupportBundle")
     CreateSupportBundle,
 
+    @EnumValue("CreateSupportBundleV2")
+    CreateSupportBundleV2,
+
     @EnumValue("CreateTableSpaces")
     CreateTableSpaces,
 
@@ -589,6 +592,8 @@ public class CustomerTask extends Model {
         case Abort:
           return completed ? "Task aborted" : "Aborting task";
         case CreateSupportBundle:
+          return completed ? "Created Support Bundle in" : "Creating Support Bundle in";
+        case CreateSupportBundleV2:
           return completed ? "Created Support Bundle in" : "Creating Support Bundle in";
         case ThirdpartySoftwareUpgrade:
           return completed

@@ -188,7 +188,7 @@ public class BackupAndRestoreHandlerTest extends FakeDBApplication {
     assertThat(resp.getEntities().size(), greaterThanOrEqualTo(1));
     Restore entity = resp.getEntities().get(0);
     assertEquals(restore.getRestoreUUID(), entity.getInfo().getUuid());
-    assertEquals(RestoreState.InProgress, entity.getInfo().getState());
+    assertEquals(RestoreState.RestoreInProgress, entity.getInfo().getState());
     assertEquals(universe.getUniverseUUID(), entity.getInfo().getUniverseUuid());
     assertEquals(universe.getName(), entity.getInfo().getUniverseName());
     assertEquals(customer.getUuid(), entity.getInfo().getCustomerUuid());
@@ -200,7 +200,7 @@ public class BackupAndRestoreHandlerTest extends FakeDBApplication {
 
     RestorePagedQuerySpec matchingSpec = new RestorePagedQuerySpec();
     matchingSpec.offset(0).limit(10);
-    matchingSpec.setFilter(new RestoreApiFilter().states(List.of(RestoreState.InProgress)));
+    matchingSpec.setFilter(new RestoreApiFilter().states(List.of(RestoreState.RestoreInProgress)));
     RestorePagedResp matching = handler.pageListRestores(customer.getUuid(), matchingSpec);
     assertTrue(
         matching.getEntities().stream()
@@ -208,7 +208,8 @@ public class BackupAndRestoreHandlerTest extends FakeDBApplication {
 
     RestorePagedQuerySpec nonMatchingSpec = new RestorePagedQuerySpec();
     nonMatchingSpec.offset(0).limit(10);
-    nonMatchingSpec.setFilter(new RestoreApiFilter().states(List.of(RestoreState.Completed)));
+    nonMatchingSpec.setFilter(
+        new RestoreApiFilter().states(List.of(RestoreState.RestoreCompleted)));
     RestorePagedResp nonMatching = handler.pageListRestores(customer.getUuid(), nonMatchingSpec);
     assertTrue(
         nonMatching.getEntities().stream()
@@ -339,7 +340,8 @@ public class BackupAndRestoreHandlerTest extends FakeDBApplication {
     RestorePagedQuerySpec spec = new RestorePagedQuerySpec();
     spec.offset(0).limit(10);
     spec.setFilter(
-        new RestoreApiFilter().states(List.of(RestoreState.InProgress, RestoreState.Completed)));
+        new RestoreApiFilter()
+            .states(List.of(RestoreState.RestoreInProgress, RestoreState.RestoreCompleted)));
     RestorePagedResp resp = handler.pageListRestores(customer.getUuid(), spec);
 
     assertEquals(2, resp.getTotalCount());
@@ -369,7 +371,7 @@ public class BackupAndRestoreHandlerTest extends FakeDBApplication {
     spec.offset(0).limit(10);
     spec.setFilter(
         new RestoreApiFilter()
-            .states(List.of(RestoreState.Completed))
+            .states(List.of(RestoreState.RestoreCompleted))
             .universeUuidList(List.of(universe.getUniverseUUID())));
     RestorePagedResp resp = handler.pageListRestores(customer.getUuid(), spec);
 
@@ -504,7 +506,7 @@ public class BackupAndRestoreHandlerTest extends FakeDBApplication {
 
     RestoreKeyspaceInfo entity = resp.getEntities().get(0);
     assertEquals(restore.getRestoreUUID(), entity.getRestoreUuid());
-    assertEquals(RestoreState.InProgress, entity.getState());
+    assertEquals(RestoreState.RestoreInProgress, entity.getState());
   }
 
   @Test

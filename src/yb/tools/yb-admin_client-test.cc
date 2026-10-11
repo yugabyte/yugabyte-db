@@ -27,6 +27,7 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_hang_on_namespace_transition);
+DECLARE_bool(yb_admin_force_use_private_ip);
 
 namespace yb {
 namespace tools {
@@ -294,6 +295,13 @@ master::ListTabletServersResponsePB::Entry MakeTabletServerEntry(
   return entry;
 }
 
+void AddBroadcastAddress(
+    master::ListTabletServersResponsePB::Entry* entry, const std::string& host, uint16_t port) {
+  HostPortToPB(
+      HostPort(host, port),
+      entry->mutable_registration()->mutable_common()->add_broadcast_addresses());
+}
+
 }  // namespace
 
 TEST(ListTabletServerSortTest, AliveBeforeDeadThenHost) {
@@ -312,6 +320,92 @@ TEST(ListTabletServerSortTest, AliveBeforeDeadThenHost) {
   EXPECT_EQ("uuid-alive-30-b", servers.Get(2).instance_id().permanent_uuid());
   EXPECT_EQ("uuid-dead-10", servers.Get(3).instance_id().permanent_uuid());
   EXPECT_EQ("uuid-dead-20", servers.Get(4).instance_id().permanent_uuid());
+}
+
+TEST(SelectTabletServerAddressTest, PrefersBroadcastAddress) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("ts.example.com", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, FallsBackToPrivateAddress) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, SkipsDeadServers) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-dead", "192.0.2.1", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive", "192.0.2.2", 9100, true);
+
+  EXPECT_EQ("192.0.2.2", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, UsesDeadServerWhenNoServerIsAlive) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-1", "192.0.2.1", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-2", "192.0.2.2", 9100, false);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, TreatsUnreportedLivenessAsAlive) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-unknown", "192.0.2.1", 9100, true);
+  server->clear_alive();
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, ReturnsEmptyWhenNoAddressIsRegistered) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  master::ListTabletServersResponsePB::Entry entry;
+  entry.mutable_instance_id()->set_permanent_uuid("uuid-no-address");
+  entry.set_alive(true);
+  *servers.Add() = entry;
+
+  EXPECT_TRUE(SelectTabletServerAddress(servers).host().empty());
+}
+
+TEST(SelectTabletServerAddressTest, ReturnsEmptyWhenRegistrationHasNoAddresses) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  server->mutable_instance_id()->set_permanent_uuid("uuid-empty-registration");
+  server->set_alive(true);
+  server->mutable_registration()->mutable_common();
+
+  EXPECT_TRUE(SelectTabletServerAddress(servers).host().empty());
+}
+
+TEST(SelectTabletServerAddressTest, ForceUsePrivateIpPrefersPrivateAddress) {
+  google::FlagSaver flag_saver;
+  FLAGS_yb_admin_force_use_private_ip = true;
+
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  *server = MakeTabletServerEntry("uuid-alive", "192.0.2.1", 9100, true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("192.0.2.1", SelectTabletServerAddress(servers).host());
+}
+
+TEST(SelectTabletServerAddressTest, ForceUsePrivateIpFallsBackToBroadcastAddress) {
+  google::FlagSaver flag_saver;
+  FLAGS_yb_admin_force_use_private_ip = true;
+
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  auto* server = servers.Add();
+  server->mutable_instance_id()->set_permanent_uuid("uuid-broadcast-only");
+  server->set_alive(true);
+  AddBroadcastAddress(server, "ts.example.com", 9100);
+
+  EXPECT_EQ("ts.example.com", SelectTabletServerAddress(servers).host());
 }
 
 }  // namespace tools

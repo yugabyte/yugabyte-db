@@ -88,7 +88,8 @@ TEST_F(RobustLentObjectTest, TestPointerNotDestroyedEarly) {
   }));
 }
 
-TEST_F(RobustLentObjectTest, TestCrash) {
+// macOS has no PTHREAD_MUTEX_ROBUST, so the parent would block forever on the dead child's lock.
+TEST_F(RobustLentObjectTest, YB_DISABLE_TEST_ON_MACOS(TestCrash)) {
   std::optional<RobustLendGuard<int>> guard{ASSERT_RESULT(MakeAndLend(/*value=*/1234))};
 
   // Test that child process exiting with lock held doesn't block parent from destroying object.

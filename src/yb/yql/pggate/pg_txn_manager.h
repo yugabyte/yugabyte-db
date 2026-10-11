@@ -40,6 +40,7 @@
 #include "yb/yql/pggate/pg_callbacks.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {

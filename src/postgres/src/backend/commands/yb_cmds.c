@@ -2095,8 +2095,9 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	int			save_sec_context;
 	int			save_nestlevel;
 	double		index_tuples;
-	Datum		values[2];
-	bool		nulls[2] = {0};
+	double		num_rows_scanned = 0;
+	Datum		values[3];
+	bool		nulls[3] = {0};
 
 	if (*YBCGetGFlags()->ysql_disable_index_backfill)
 		ereport(ERROR,
@@ -2159,7 +2160,8 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 									 indexInfo,
 									 false,
 									 stmt->bfinfo,
-									 out_param);
+									 out_param,
+									 &num_rows_scanned);
 
 	index_close(indexRel, RowExclusiveLock);
 	table_close(heapRel, AccessShareLock);
@@ -2176,6 +2178,7 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 
 	values[0] = CStringGetTextDatum(out_param->bfoutput->data);
 	values[1] = Float8GetDatum(index_tuples);
+	values[2] = Float8GetDatum(num_rows_scanned);
 
 	/* send it to dest */
 	do_tup_output(tstate, values, nulls);
@@ -2187,10 +2190,12 @@ YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt)
 {
 	TupleDesc	tupdesc;
 
-	tupdesc = CreateTemplateTupleDesc(2);
+	tupdesc = CreateTemplateTupleDesc(3);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
 					   TEXTOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "ROWS INSERTED",
+					   FLOAT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "ROWS SCANNED",
 					   FLOAT8OID, -1, 0);
 	TupleDescFinalize(tupdesc);
 	return tupdesc;

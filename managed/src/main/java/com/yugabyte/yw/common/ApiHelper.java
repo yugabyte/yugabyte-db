@@ -337,10 +337,32 @@ public class ApiHelper {
   }
 
   public JsonNode putRequest(String url, JsonNode data, @Nullable Map<String, String> headers) {
+    return putHttpRequest(url, data, headers).getBodyOrThrow();
+  }
+
+  /**
+   * Unlike {@link #putRequest}, keeps the response body on a non-2xx status so the caller can
+   * report what the remote service actually said instead of just its status code.
+   */
+  public HttpResponse putHttpRequest(
+      String url, JsonNode data, @Nullable Map<String, String> headers) {
     return handleHttpRequest(
-            requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */),
-            r -> r.put(data))
-        .getBodyOrThrow();
+        requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */),
+        r -> r.put(data));
+  }
+
+  /** See {@link #putHttpRequest} for why this returns the response rather than the body. */
+  public HttpResponse getHttpRequest(
+      String url, @Nullable Map<String, String> headers, @Nullable Map<String, String> params) {
+    return handleHttpRequest(
+        requestWithHeaders(url, headers, params, null /* timeout */), WSRequest::get);
+  }
+
+  /** See {@link #putHttpRequest} for why this returns the response rather than the body. */
+  public HttpResponse deleteHttpRequest(String url, @Nullable Map<String, String> headers) {
+    return handleHttpRequest(
+        requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */),
+        WSRequest::delete);
   }
 
   // Helper method to create URL object for a given web page string.

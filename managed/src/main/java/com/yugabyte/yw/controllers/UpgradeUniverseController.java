@@ -565,9 +565,11 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @ApiOperation(
       notes =
-          "WARNING: This is a preview API that could change. Modifies the audit logging"
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2026.1.2.0.</b></p>"
+              + " Use the v2 POST /api/v2/customers/{cUUID}/universes/{uniUUID}"
+              + "/export-telemetry-configs API instead. Modifies the audit logging"
               + " configuration for a universe.",
-      value = "Modify Audit Logging Configuration",
+      value = "Modify Audit Logging Configuration - deprecated",
       nickname = "modifyAuditLogging",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -577,7 +579,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.AuditLogConfigParams",
           required = true,
           paramType = "body"))
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  @Deprecated
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2026.1.2.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

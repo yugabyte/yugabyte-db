@@ -85,7 +85,7 @@ Specify the provider and geolocations for the nodes in the universe:
 
 Specify the instance to use for the universe nodes:
 
-- Choose the **CPU Architecture**, either x86 (Intel) or AArch6 (ARM).
+- Choose the **CPU Architecture**, either x86 (Intel) or AArch64 (ARM).
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
   This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider.

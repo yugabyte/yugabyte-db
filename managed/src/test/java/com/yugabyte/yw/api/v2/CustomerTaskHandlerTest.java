@@ -88,6 +88,35 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
   }
 
   @Test
+  public void pageListTasks_mapsOriginalTaskUuid() {
+    UUID originalTaskUuid = UUID.randomUUID();
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("originalTaskUUID", originalTaskUuid.toString());
+    CustomerTask task =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Update,
+            TaskType.EditUniverse,
+            universe.getName(),
+            "Running",
+            10.0,
+            responseJson);
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
+
+    TaskPagedQuerySpec spec = new TaskPagedQuerySpec();
+    spec.offset(0).limit(10);
+
+    TaskPagedResp resp = handler.pageListTasks(customer.getUuid(), spec);
+
+    assertThat(resp.getEntities().size(), greaterThanOrEqualTo(1));
+    assertEquals(originalTaskUuid, resp.getEntities().get(0).getInfo().getOriginalTaskUuid());
+  }
+
+  @Test
   public void pageListTasks_returnsSoftwareUpgradeProgressWithAzUpgradeState() {
     UUID azUuid = UUID.randomUUID();
     UUID clusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;

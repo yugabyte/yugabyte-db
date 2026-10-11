@@ -20,6 +20,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/group"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ha"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/perfadvisor"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
@@ -148,7 +149,8 @@ func init() {
 	// Add commands to be marked as preview in the list below
 	util.PreviewCommand(
 		rootCmd,
-		[]*cobra.Command{alert.AlertCmd, oidc.OIDCCmd, telemetryprovider.TelemetryProviderCmd},
+		[]*cobra.Command{alert.AlertCmd, oidc.OIDCCmd, telemetryprovider.TelemetryProviderCmd,
+			perfadvisor.PerfAdvisorCmd},
 	)
 
 }

@@ -32,14 +32,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -66,10 +69,20 @@ public class YNPConfigGenerator {
     private Universe universe;
     private boolean isYbPrebuiltImage;
     private UserIntent userIntent;
-    // True when re-provisioning a node of an existing universe (vs. provisioning a brand-new
-    // node). Controls whether the cgroup decision honors the persisted flag or falls back to the
-    // provider default. See configure_cgroup handling in populateFromNodeDetails.
-    private boolean isReprovision;
+    // True if DB software is already present on the node.
+    private boolean isSoftwarePresent;
+    // True if DB data is already present on the node.
+    private boolean isDataPresent;
+
+    // Returns true if the node is a blank node (new node - no software and no data present).
+    private boolean isBlankNode() {
+      return !isSoftwarePresent && !isDataPresent;
+    }
+
+    // Mount path -> disk UUID mapping captured from /etc/fstab (e.g. before OS/root-volume
+    // upgrade). When set, mount_ephemeral_drives remounts by these UUIDs instead of rediscovering
+    // devices.
+    private Map<String, String> pathToUUIDMapping;
   }
 
   @Inject
@@ -131,22 +144,35 @@ public class YNPConfigGenerator {
       ynpNode.put("use_system_level_systemd", true);
     }
     ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
-    ynpNode.put("check_available_ports", provider.isManualOnprem());
-    ynpNode.put("check_clean_dirs", provider.isManualOnprem());
+    // Skip available_ports checks for CSPs because it sometimes fails.
+    ynpNode.put("check_available_ports", params.isBlankNode() && provider.isManualOnprem());
+    // Skip clean_dirs checks for CSPs because it sometimes fails.
+    ynpNode.put("check_clean_dirs", params.isBlankNode() && provider.isManualOnprem());
+
     ynpNode.put(
         "min_home_dir_space_gb",
-        String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minHomeDirSpaceGb)));
+        params.isSoftwarePresent
+            ? "0"
+            : String.valueOf(
+                confGetter.getConfForScope(provider, ProviderConfKeys.minHomeDirSpaceGb)));
     ynpNode.put(
         "min_mount_point_dir_space_gb",
         String.valueOf(
-            confGetter.getConfForScope(provider, ProviderConfKeys.minMountPointDirSpaceGb)));
+            params.isDataPresent
+                ? "0"
+                : confGetter.getConfForScope(provider, ProviderConfKeys.minMountPointDirSpaceGb)));
     ynpNode.put(
         "min_tmp_dir_space_gb",
-        String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minTempDirSpaceGb)));
+        params.isSoftwarePresent
+            ? "0"
+            : String.valueOf(
+                confGetter.getConfForScope(provider, ProviderConfKeys.minTempDirSpaceGb)));
     ynpNode.put(
         "min_prometheus_space_gb",
-        String.valueOf(
-            confGetter.getConfForScope(provider, ProviderConfKeys.minPrometheusSpaceGb)));
+        params.isSoftwarePresent
+            ? "0"
+            : String.valueOf(
+                confGetter.getConfForScope(provider, ProviderConfKeys.minPrometheusSpaceGb)));
     extraNode.put("is_cloud", !provider.isManualOnprem());
     extraNode.put("cloud_type", provider.getCode());
     ynpNode.put("configure_cgroup", Util.configureCgroup(provider, true, confGetter));
@@ -167,8 +193,14 @@ public class YNPConfigGenerator {
     InstanceType instanceType =
         InstanceType.get(provider.getUuid(), nodeInstance.getInstanceTypeCode());
     ynpNode.put("node_ip", nodeInstance.getDetails().ip);
-    extraNode.put(
-        "mount_paths", instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).mountPath);
+    String mountPaths =
+        instanceType.getInstanceTypeDetails().volumeDetailsList.stream()
+            .map(vd -> vd.mountPath)
+            .filter(Objects::nonNull)
+            .filter(s -> !s.isBlank())
+            .map(String::trim)
+            .collect(Collectors.joining(" "));
+    extraNode.put("mount_paths", mountPaths);
     extraNode.put(
         "volume_size", instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeSizeGB);
   }
@@ -199,23 +231,17 @@ public class YNPConfigGenerator {
     // TODO(vivek): revisit this flag. isCpuCgroupConfigured lives in UserIntent (the user spec) but
     // records what was configured; it should be a separate persisted universe attribute.
     UserIntent persistedUserIntent = universe.getCluster(node.placementUuid).userIntent;
-    boolean isForProvision = !params.isReprovision();
+    // No software and no data means this is a brand-new node.
     ynpNode.put(
         "configure_cgroup",
-        Util.configureCgroup(persistedUserIntent, provider, isForProvision, confGetter));
+        Util.configureCgroup(persistedUserIntent, provider, params.isBlankNode(), confGetter));
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
-    if (deviceInfo.mountPoints != null) {
-      extraNode.put("mount_paths", deviceInfo.mountPoints);
-    } else {
-      StringBuilder volumePaths = new StringBuilder();
-      for (int i = 0; i < deviceInfo.numVolumes; i++) {
-        if (i > 0) {
-          volumePaths.append(" ");
-        }
-        volumePaths.append("/mnt/d").append(i);
-      }
-      extraNode.put("mount_paths", volumePaths.toString());
-    }
+    extraNode.put(
+        "mount_paths",
+        Util.getMountPoints(deviceInfo).stream()
+            .map(String::trim)
+            .filter(s -> !s.isBlank())
+            .collect(Collectors.joining(" ")));
     if (userIntent.providerType == Common.CloudType.azu && node.cloudInfo.lun_indexes.length > 0) {
       StringBuilder sb = new StringBuilder();
       for (int i = 0; i < node.cloudInfo.lun_indexes.length; i++) {
@@ -336,7 +362,19 @@ public class YNPConfigGenerator {
       // Set up node universe specific fields.
       populateFromUniverse(params, rootNode);
     }
+    if (MapUtils.isNotEmpty(params.getPathToUUIDMapping())) {
+      // Encoded as "path=uuid path2=uuid2".
+      // Consumed by mount_ephemeral_drives when remounting preserved disks.
+      ((ObjectNode) rootNode.get("extra"))
+          .put("path_to_uuid_mapping", encodePathToUuidMapping(params.getPathToUUIDMapping()));
+    }
     return rootNode;
+  }
+
+  static String encodePathToUuidMapping(Map<String, String> pathToUUIDMapping) {
+    return pathToUUIDMapping.entrySet().stream()
+        .map(e -> e.getKey() + "=" + e.getValue())
+        .collect(Collectors.joining(" "));
   }
 
   /**
