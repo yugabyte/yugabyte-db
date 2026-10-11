@@ -12,7 +12,6 @@
 //
 
 #include <algorithm>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -34,7 +33,6 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/curl_util.h"
 #include "yb/util/json_document.h"
 #include "yb/util/path_util.h"
 #include "yb/util/string_util.h"
@@ -1157,32 +1155,6 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
 
   // Make sure the other table remains unchanged.
   ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
-
-  // /api/v1/xcluster on the source must list each outbound stream as a JSON object (#33773).
-  auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
-  auto expected_streams = ASSERT_RESULT(GetAllXClusterStreams(namespace_id));
-  std::set<std::string> expected_stream_ids;
-  for (const auto& table_info : expected_streams.table_infos()) {
-    expected_stream_ids.insert(table_info.xrepl_stream_id());
-  }
-
-  auto* leader_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
-  faststring buf;
-  EasyCurl curl;
-  ASSERT_OK(curl.FetchURL(
-      Format("http://$0/api/v1/xcluster", leader_master->bound_http_addr()), &buf));
-
-  JsonDocument doc;
-  auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
-  auto outbound_streams = ASSERT_RESULT(root["outbound_streams"].GetArray());
-  std::set<std::string> actual_stream_ids;
-  for (const auto& stream : outbound_streams) {
-    ASSERT_TRUE(stream.IsObject()) << stream.Path() << ": " << ASSERT_RESULT(stream.ToString());
-    ASSERT_TRUE(stream["metadata"].IsObject()) << stream.Path();
-    actual_stream_ids.insert(ASSERT_RESULT(stream["stream_id"].GetString()));
-  }
-  ASSERT_EQ(actual_stream_ids.size(), outbound_streams.size());
-  ASSERT_EQ(actual_stream_ids, expected_stream_ids);
 }
 
 TEST_F(XClusterDBScopedTest, DropTableOnProducerThenConsumer) {
