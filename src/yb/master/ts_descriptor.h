@@ -33,8 +33,10 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include <gtest/gtest_prod.h>
@@ -254,6 +256,11 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   bool exchg_pending_leader_drain_notification(uint32_t old_value, uint32_t new_value) {
     return pending_leader_drain_notification_.compare_exchange_strong(old_value, new_value);
   }
+
+  void EnqueueRemovedTServer(const std::string& uuid) EXCLUDES(mutex_);
+
+  // Consumes one of three delivery attempts per UUID. Hints are not persisted or acknowledged.
+  std::set<std::string> TakeRemovedTServers() EXCLUDES(mutex_);
 
   MicrosTime physical_time() const {
     SharedLock<decltype(mutex_)> l(mutex_);
@@ -486,6 +493,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // State reflecting that the tserver might be unaware of the leader rebalancing
   // due to leader blacklist.
   std::atomic<uint32> pending_leader_drain_notification_{0};
+
+  std::map<std::string, int> pending_removed_tservers_ GUARDED_BY(mutex_);
 
   // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
   DbOidToHybridTimeMap ts_ysql_db_oldest_pinned_read_times_ GUARDED_BY(mutex_);

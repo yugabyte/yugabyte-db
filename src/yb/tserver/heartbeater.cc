@@ -65,6 +65,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 
@@ -408,6 +409,7 @@ Status HeartbeatPoller::TryHeartbeat() {
     master::TSHeartbeatResponsePB resp;
     RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
                           "Failed to send heartbeat");
+    TEST_SYNC_POINT_CALLBACK("Heartbeater::HeartbeatResponse", &resp);
     MonoTime end_time = MonoTime::Now();
     if (!resp.universe_uuid().empty()) {
       RETURN_NOT_OK(server_.ValidateAndMaybeSetUniverseUuid(
@@ -501,6 +503,11 @@ Status HeartbeatPoller::TryHeartbeat() {
           resp.leader_blacklisted_tservers_with_no_leaders().begin(),
           resp.leader_blacklisted_tservers_with_no_leaders().end());
       server_.MarkTServersAsFollowers(blacklisted_uuids);
+    }
+
+    if (!resp.needs_reregister() && !resp.removed_tserver_uuids().empty()) {
+      server_.InvalidateTServerReplicas({
+          resp.removed_tserver_uuids().begin(), resp.removed_tserver_uuids().end()});
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as

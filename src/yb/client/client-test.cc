@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <mutex>
 #include <regex>
 #include <set>
 #include <thread>
@@ -108,6 +109,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -131,6 +133,9 @@ DECLARE_int32(master_inject_latency_on_tablet_lookups_ms);
 DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(replication_factor);
+DECLARE_int32(retry_failed_replica_ms);
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
 
 DEFINE_NON_RUNTIME_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 DECLARE_int32(min_backoff_ms_exponent);
@@ -3018,6 +3023,313 @@ TEST_F(ClientTest, TestMetacachePartialRefreshCachesUnknownRaftPeer) {
       ApplyConsensusInfoConcurrently(client_.get(), next_info, /* num_threads= */ 16);
   ASSERT_EQ(next_result.num_accepted, 1);
   ASSERT_EQ(next_result.num_escalated, 0);
+}
+
+class MetaCacheInvalidationTest : public ClientTest {
+ protected:
+  internal::MetaCache& cache() { return *client_->data_->meta_cache_; }
+
+  master::TabletLocationsPB Locations(const TabletId& id = "invalidation-tablet") {
+    master::TabletLocationsPB location;
+    location.set_tablet_id(id);
+    location.add_table_ids("invalidation-table");
+    location.mutable_partition()->set_partition_key_start("a");
+    location.mutable_partition()->set_partition_key_end("z");
+    location.set_split_depth(2);
+    location.set_split_parent_tablet_id("split-parent");
+    location.set_raft_config_opid_index(10);
+    location.set_expected_live_replicas(4);
+    location.set_expected_read_replicas(1);
+    for (int i = 0; i != 5; ++i) {
+      auto& replica = *location.add_replicas();
+      replica.set_role(i == 0 ? PeerRole::LEADER :
+          i == 2 ? PeerRole::READ_REPLICA : PeerRole::FOLLOWER);
+      replica.set_member_type(i == 2 ? consensus::PeerMemberType::OBSERVER
+                                    : consensus::PeerMemberType::VOTER);
+      auto& ts_info = *replica.mutable_ts_info();
+      ts_info.set_permanent_uuid(Format("server-$0", i));
+      auto& cloud_info = *ts_info.mutable_cloud_info();
+      cloud_info.set_placement_cloud(FLAGS_placement_cloud);
+      cloud_info.set_placement_region(FLAGS_placement_region);
+      auto& address = *ts_info.add_private_rpc_addresses();
+      address.set_host("192.0.2.1");
+      address.set_port(9100 + i);
+    }
+    return location;
+  }
+
+  Result<internal::RemoteTabletPtr> CacheLocations(const master::TabletLocationsPB& location) {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+    *locations.Add() = location;
+    const auto context = VERIFY_RESULT(internal::LookupContext::Create(nullptr, std::nullopt));
+    auto& meta_cache = cache();
+    RETURN_NOT_OK(meta_cache.ProcessTabletLocations(
+        locations, internal::AllowSplitTablet::kFalse, context));
+    SharedLock lock(meta_cache.mutex_);
+    return meta_cache.tablets_by_id_.at(location.tablet_id());
+  }
+
+  std::vector<internal::RemoteReplica> Replicas(const internal::RemoteTabletPtr& tablet) {
+    SharedLock lock(tablet->mutex_);
+    std::vector<internal::RemoteReplica> result;
+    for (const auto& replica : tablet->replicas_) {
+      result.push_back(*replica);
+    }
+    return result;
+  }
+
+  internal::ReplicasCount Counts(const internal::RemoteTabletPtr& tablet) {
+    return tablet->replicas_count_.load();
+  }
+
+  void CheckInvalidationLocksReleased(const internal::RemoteTabletPtr& tablet) {
+    auto& meta_cache = cache();
+    std::unique_lock cache_lock(meta_cache.mutex_, std::try_to_lock);
+    ASSERT_TRUE(cache_lock.owns_lock());
+    std::unique_lock tablet_lock(tablet->mutex_, std::try_to_lock);
+    ASSERT_TRUE(tablet_lock.owns_lock());
+  }
+};
+
+TEST_F(MetaCacheInvalidationTest, RemovesReplicasAndPreservesOtherState) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_replica_ms) = 600000;
+  auto first = ASSERT_RESULT(CacheLocations(Locations("first")));
+  auto second_location = Locations("second");
+  second_location.mutable_replicas(0)->set_role(PeerRole::FOLLOWER);
+  second_location.mutable_replicas(1)->set_role(PeerRole::LEADER);
+  auto second = ASSERT_RESULT(CacheLocations(second_location));
+  const auto servers = first->GetRemoteTabletServers();
+  ASSERT_EQ(servers.size(), 5);
+  for (const auto& tablet : {first, second}) {
+    ASSERT_TRUE(tablet->MarkReplicaFailed(servers[3], STATUS(NetworkError, "removed replica")));
+    ASSERT_TRUE(tablet->MarkReplicaFailed(servers[4], STATUS(NetworkError, "surviving replica")));
+  }
+  first->MarkStale();
+  const auto before = Replicas(first);
+  const auto refresh_time = first->full_refresh_time();
+  const auto lookups = first->lookups_without_new_replicas();
+  std::vector<TabletId> changed;
+  int batches = 0;
+  auto* sync_point = SyncPoint::GetInstance();
+  auto cleanup = ScopeExit([&] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  sync_point->SetCallBack("MetaCache::InvalidateTServerReplicas:Done", [&](void* arg) {
+    const auto& data = *static_cast<internal::MetaCache::InvalidationTestData*>(arg);
+    ASSERT_EQ(data.client, client_.get());
+    changed = data.changed_tablets;
+    ++batches;
+    ASSERT_NO_FATALS(CheckInvalidationLocksReleased(first));
+  });
+  sync_point->EnableProcessing();
+
+  client_->InvalidateTServerReplicas({"server-0", "server-2", "server-3", "unknown", "server-0"});
+  ASSERT_EQ(batches, 1);
+  ASSERT_EQ((std::set<TabletId>(changed.begin(), changed.end())),
+            (std::set<TabletId>{"first", "second"}));
+  ASSERT_EQ(first->LeaderTServer(), nullptr);
+  ASSERT_TRUE(first->current_leader_uuid().empty());
+  ASSERT_EQ(second->LeaderTServer(), servers[1]);
+  ASSERT_EQ(second->current_leader_uuid(), "server-1");
+  const auto lookup_serial = internal::TEST_GetLookupSerial();
+  ASSERT_EQ(ASSERT_RESULT(GetRemoteTablet("second", true, client_.get())), second);
+  ASSERT_EQ(internal::TEST_GetLookupSerial(), lookup_serial);
+  ASSERT_FALSE(second->stale());
+  ASSERT_TRUE(first->stale());
+  ASSERT_EQ(first->raft_config_opid_index(), 10);
+  ASSERT_EQ(first->full_refresh_time(), refresh_time);
+  ASSERT_EQ(first->lookups_without_new_replicas(), lookups);
+  const auto after = Replicas(first);
+  ASSERT_EQ(after.size(), 2);
+  for (size_t i = 0; i != after.size(); ++i) {
+    const auto& expected = before[i == 0 ? 1 : 4];
+    ASSERT_EQ(after[i].ts, expected.ts);
+    ASSERT_EQ(after[i].role, expected.role);
+    ASSERT_EQ(after[i].last_failed_time, expected.last_failed_time);
+    ASSERT_EQ(after[i].state, expected.state);
+  }
+  ASSERT_EQ(first->GetNumFailedReplicas(), 1);
+  ASSERT_EQ(first->GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue),
+            (std::vector<internal::RemoteTabletServer*>{servers[1], servers[4]}));
+  ASSERT_EQ(first->GetRemoteTabletServers(),
+            (std::vector<internal::RemoteTabletServer*>{servers[1]}));
+  const auto counts = Counts(first);
+  ASSERT_EQ(counts.expected_live_replicas, 4);
+  ASSERT_EQ(counts.expected_read_replicas, 1);
+  ASSERT_EQ(counts.num_alive_live_replicas, 1);
+  ASSERT_EQ(counts.num_alive_read_replicas, 0);
+  ASSERT_FALSE(first->IsReplicasCountConsistent());
+
+  client_->InvalidateTServerReplicas({"server-0", "server-2", "server-3", "unknown"});
+  ASSERT_EQ(batches, 2);
+  ASSERT_TRUE(changed.empty());
+  ASSERT_FALSE(first->RemoveTServerReplicas({servers[0]}));
+  ASSERT_EQ(servers[0]->permanent_uuid(), "server-0");
+}
+
+TEST_F(MetaCacheInvalidationTest, MetadataRestoresReplicasWithoutRememberedExclusion) {
+  auto location = Locations();
+  auto tablet = ASSERT_RESULT(CacheLocations(location));
+  const auto servers = tablet->GetRemoteTabletServers();
+  ASSERT_TRUE(tablet->MarkReplicaFailed(servers[0], STATUS(NetworkError, "failed replica")));
+  client_->InvalidateTServerReplicas({"server-0"});
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_replica_ms) = 0;
+  ASSERT_EQ(tablet->GetRemoteTabletServers().size(), 4);
+  ASSERT_EQ(tablet->LeaderTServer(), nullptr);
+  ASSERT_EQ(tablet->raft_config_opid_index(), 10);
+
+  for (int index : {10, 9}) {
+    location.set_raft_config_opid_index(index);
+    ASSERT_EQ(ASSERT_RESULT(CacheLocations(location)), tablet);
+    ASSERT_EQ(tablet->GetRemoteTabletServers(), servers);
+    ASSERT_EQ(tablet->LeaderTServer(), servers[0]);
+    ASSERT_EQ(tablet->raft_config_opid_index(), index);
+    client_->InvalidateTServerReplicas({"server-0"});
+    ASSERT_EQ(tablet->GetRemoteTabletServers().size(), 4);
+  }
+
+  auto info = MakeTabletConsensusInfo(location, "server-0", 10);
+  ASSERT_OK(cache().RefreshTabletInfoWithConsensusInfo(info));
+  ASSERT_EQ(tablet->LeaderTServer(), servers[0]);
+  ASSERT_EQ(tablet->GetRemoteTabletServers(), servers);
+  client_->InvalidateTServerReplicas({"server-1"});
+  ASSERT_TRUE(cache().RefreshTabletInfoWithConsensusInfo(info).IsIncomplete());
+  ASSERT_EQ(tablet->GetRemoteTabletServers().size(), 4);
+  info.mutable_consensus_state()->set_leader_uuid("server-1");
+  ASSERT_OK(cache().RefreshTabletInfoWithConsensusInfo(info));
+  ASSERT_EQ(tablet->LeaderTServer(), servers[1]);
+  ASSERT_EQ(tablet->GetRemoteTabletServers(), servers);
+
+  client_->InvalidateTServerReplicas({"unknown"});
+  auto new_location = Locations("later-tablet");
+  new_location.mutable_replicas(0)->mutable_ts_info()->set_permanent_uuid("unknown");
+  auto later = ASSERT_RESULT(CacheLocations(new_location));
+  auto* later_leader = later->LeaderTServer();
+  ASSERT_NE(later_leader, nullptr);
+  ASSERT_EQ(later_leader->permanent_uuid(), "unknown");
+  ASSERT_EQ(ASSERT_RESULT(CacheLocations(location)), tablet);
+  client_->InvalidateTServerReplicas({"server-0"});
+  ASSERT_EQ(tablet->LeaderTServer(), nullptr);
+  ASSERT_EQ(tablet->GetRemoteTabletServers().size(), 4);
+
+  cache().ClearAll();
+  auto replacement = ASSERT_RESULT(CacheLocations(location));
+  ASSERT_NE(replacement, tablet);
+  ASSERT_EQ(replacement->GetRemoteTabletServers(), servers);
+  client_->InvalidateTServerReplicas({"server-1"});
+  ASSERT_EQ(tablet->GetRemoteTabletServers().size(), 4);
+  ASSERT_EQ(tablet->GetRemoteTabletServers().front(), servers[1]);
+  ASSERT_EQ(replacement->GetRemoteTabletServers().size(), 4);
+}
+
+TEST_F(MetaCacheInvalidationTest, NonlocalInvalidationPreservesLocalityUntilRefresh) {
+  const auto all_local = Locations();
+  auto tablet = ASSERT_RESULT(CacheLocations(all_local));
+  ASSERT_TRUE(tablet->IsLocalRegion());
+  client_->InvalidateTServerReplicas({"server-1"});
+  ASSERT_TRUE(tablet->IsLocalRegion());
+
+  auto location = all_local;
+  location.mutable_replicas(4)->mutable_ts_info()->mutable_cloud_info()->set_placement_region(
+      FLAGS_placement_region + "-remote");
+  ASSERT_EQ(ASSERT_RESULT(CacheLocations(location)), tablet);
+  const auto servers = tablet->GetRemoteTabletServers();
+  ASSERT_FALSE(tablet->IsLocalRegion());
+  ASSERT_TRUE(tablet->MarkReplicaFailed(servers.back(), STATUS(NetworkError, "failed replica")));
+  ASSERT_FALSE(tablet->IsLocalRegion());
+  client_->InvalidateTServerReplicas({"server-4"});
+  ASSERT_EQ(tablet->GetRemoteTabletServers().size(), 4);
+  ASSERT_FALSE(tablet->IsLocalRegion());
+
+  client_->InvalidateTServerReplicas({"server-4", "server-1", "unknown"});
+  ASSERT_EQ(tablet->GetRemoteTabletServers().size(), 3);
+  ASSERT_FALSE(tablet->IsLocalRegion());
+  for (int index : {9, 10}) {
+    ASSERT_TRUE(cache().RefreshTabletInfoWithConsensusInfo(
+        MakeTabletConsensusInfo(all_local, "server-0", index)).IsIncomplete());
+    ASSERT_FALSE(tablet->IsLocalRegion());
+  }
+  ASSERT_OK(cache().RefreshTabletInfoWithConsensusInfo(
+      MakeTabletConsensusInfo(all_local, "server-0", 11)));
+  ASSERT_TRUE(tablet->IsLocalRegion());
+
+  ASSERT_EQ(ASSERT_RESULT(CacheLocations(location)), tablet);
+  client_->InvalidateTServerReplicas({"server-4"});
+  ASSERT_FALSE(tablet->IsLocalRegion());
+  ASSERT_EQ(ASSERT_RESULT(CacheLocations(all_local)), tablet);
+  ASSERT_TRUE(tablet->IsLocalRegion());
+}
+
+TEST_F(MetaCacheInvalidationTest, ConcurrentInvalidationRefreshAndSelection) {
+  auto location = Locations();
+  location.mutable_replicas(2)->mutable_ts_info()->mutable_cloud_info()->set_placement_region(
+      FLAGS_placement_region + "-remote");
+  auto tablet = ASSERT_RESULT(CacheLocations(location));
+  const auto servers = tablet->GetRemoteTabletServers();
+  const std::unordered_set<internal::RemoteTabletServer*> known(servers.begin(), servers.end());
+  CountDownLatch start(1);
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([&] {
+    start.Wait();
+    for (int i = 0; i != 100; ++i) {
+      ASSERT_RESULT(CacheLocations(location));
+    }
+  });
+  threads.AddThreadFunctor([&] {
+    start.Wait();
+    for (int i = 0; i != 100; ++i) {
+      const auto info = MakeTabletConsensusInfo(
+          location, "server-0", location.raft_config_opid_index() + i + 1);
+      ASSERT_OK(cache().RefreshTabletInfoWithConsensusInfo(info));
+    }
+  });
+  threads.AddThreadFunctor([&] {
+    start.Wait();
+    for (int i = 0; i != 100; ++i) {
+      client_->InvalidateTServerReplicas({"server-0", "server-1", "server-2"});
+    }
+  });
+  threads.AddThreadFunctor([&] {
+    start.Wait();
+    for (int i = 0; i != 1000; ++i) {
+      ASSERT_FALSE(tablet->IsLocalRegion());
+      auto candidates = tablet->GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
+      for (auto* server : candidates) {
+        ASSERT_TRUE(known.contains(server));
+        ASSERT_FALSE(server->permanent_uuid().empty());
+      }
+      auto* leader = tablet->LeaderTServer();
+      if (leader) {
+        ASSERT_EQ(leader, servers[0]);
+        ASSERT_EQ(leader->permanent_uuid(), "server-0");
+      }
+    }
+  });
+  start.CountDown();
+  threads.JoinAll();
+  ASSERT_EQ(ASSERT_RESULT(CacheLocations(location)), tablet);
+  ASSERT_EQ(tablet->GetRemoteTabletServers(), servers);
+}
+
+TEST_F(MetaCacheInvalidationTest, EmptyReplicaListUsesBoundedMasterLookup) {
+  ASSERT_NO_FATALS(InsertTestRows(client_table2_, 1));
+  const auto tablet_id = GetFirstTabletId(client_table2_.table().get());
+  auto tablet = ASSERT_RESULT(GetRemoteTablet(tablet_id, true, client_.get()));
+  std::vector<std::string> uuids;
+  for (auto* server : tablet->GetRemoteTabletServers()) {
+    uuids.push_back(server->permanent_uuid());
+  }
+  ASSERT_FALSE(uuids.empty());
+  client_->InvalidateTServerReplicas(uuids);
+  ASSERT_TRUE(tablet->GetRemoteTabletServers().empty());
+  const auto lookups = internal::TEST_GetLookupSerial();
+  const auto start = MonoTime::Now();
+  ASSERT_NO_FATALS(InsertTestRows(client_table2_, 1, 1));
+  ASSERT_LT(MonoTime::Now() - start, 10s * kTimeMultiplier);
+  ASSERT_GT(internal::TEST_GetLookupSerial(), lookups);
+  ASSERT_LE(internal::TEST_GetLookupSerial() - lookups, 3);
+  ASSERT_FALSE(tablet->GetRemoteTabletServers().empty());
 }
 
 // Note: This class has custom initialization for postgres instead of using

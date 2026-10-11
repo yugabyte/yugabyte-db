@@ -18,6 +18,8 @@
 
 #include "yb/master/master_client.pb.h"
 
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/trace.h"
 
@@ -110,6 +112,48 @@ TEST_F(TabletRpcTest, TabletInvokerSelectTabletServerRace) {
 
   stop_requested = true;
   replicas_refresher.join();
+}
+
+TEST_F(TabletRpcTest, ReplicaRemovedBeforeFollowerAdjustment) {
+  master::TabletLocationsPB locations;
+  TabletServerMap servers;
+  for (const auto& uuid : {"leader", "follower"}) {
+    auto& replica = *locations.add_replicas();
+    replica.mutable_ts_info()->set_permanent_uuid(uuid);
+    replica.set_role(uuid == std::string("leader") ? PeerRole::LEADER : PeerRole::FOLLOWER);
+    servers.emplace(uuid, std::make_unique<RemoteTabletServer>(uuid, nullptr, nullptr));
+  }
+  RemoteTabletPtr tablet = new RemoteTablet(
+      kTestTablet, dockv::Partition(), 0, 0, "", RemoteTablet::kUnknownOpIdIndex);
+  tablet->Refresh(servers, locations.replicas());
+  auto* leader = servers.at("leader").get();
+  auto* follower = servers.at("follower").get();
+  scoped_refptr<Trace> trace(new Trace());
+  TabletInvoker invoker(false, false, nullptr, nullptr, nullptr, tablet.get(), nullptr,
+                        nullptr, trace.get());
+  invoker.followers_.emplace(leader, TabletInvoker::FollowerData{
+      .status = STATUS(IllegalState, "Not the leader"), .time = CoarseMonoClock::now()});
+
+  auto* sync_point = SyncPoint::GetInstance();
+  auto cleanup = ScopeExit([&] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  bool invalidated = false;
+  sync_point->SetCallBack("TabletInvoker::BeforeMarkTServerAsFollower", [&](void* arg) {
+    ASSERT_EQ(arg, leader);
+    invalidated = tablet->RemoveTServerReplicas({leader});
+  });
+  sync_point->EnableProcessing();
+  invoker.SelectTabletServer();
+  ASSERT_TRUE(invalidated);
+  ASSERT_EQ(invoker.current_ts_, follower);
+  ASSERT_TRUE(invoker.assign_new_leader_);
+  ASSERT_TRUE(tablet->RemoveTServerReplicas({follower}));
+  ASSERT_FALSE(tablet->MarkTServerAsLeader(follower));
+  invoker.SelectTabletServer();
+  ASSERT_EQ(invoker.current_ts_, nullptr);
+  ASSERT_TRUE(tablet->GetRemoteTabletServers().empty());
 }
 
 } // namespace internal

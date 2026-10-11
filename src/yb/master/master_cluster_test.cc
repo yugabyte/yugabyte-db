@@ -21,8 +21,10 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -32,14 +34,17 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_ysql);
 DECLARE_bool(master_list_raft_peers_check_is_leader);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_bool(send_removed_tservers_on_heartbeat);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(replication_factor);
 DECLARE_int32(transaction_table_num_tablets);
@@ -89,6 +94,122 @@ class RemoveTabletServerTest : public MasterClusterTest {
   virtual MiniClusterOptions CreateMiniClusterOptions() override;
 
 };
+
+class RemovedTServerHintsTest : public MasterClusterTest,
+                              public testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    // Fake tservers cannot host the automatically created transaction table.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_removed_tservers_on_heartbeat) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    MasterClusterTest::SetUp();
+
+    // Finish internal client leader resolution before this short test shuts down the master.
+    auto* master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+    const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
+    ASSERT_OK(Wait(master->client_future(), deadline));
+    ASSERT_OK(Wait(master->cdc_state_client_future(), deadline));
+  }
+
+  MiniClusterOptions CreateMiniClusterOptions() override {
+    auto opts = MasterClusterTest::CreateMiniClusterOptions();
+    opts.num_tablet_servers = 0;
+    return opts;
+  }
+
+  Result<TSDescriptorPtr> Register(const std::string& uuid, uint16_t port) {
+    TSHeartbeatRequestPB req;
+    auto& instance = *req.mutable_common()->mutable_ts_instance();
+    instance.set_permanent_uuid(uuid);
+    instance.set_instance_seqno(1);
+    auto& address = *req.mutable_registration()->mutable_common()->add_private_rpc_addresses();
+    address.set_host("192.0.2.1");
+    address.set_port(port);
+    auto* master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    return master->ts_manager().RegisterFromHeartbeat(
+        req, master->catalog_manager().GetLeaderEpochInternal(), CloudInfoPB(), proxy_cache_.get());
+  }
+
+  void MakeRemovable(const TSDescriptorPtr& desc) {
+    auto lock = desc->LockForWrite();
+    lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
+    lock.mutable_data()->pb.set_xcluster_guarded_lease_state(
+        SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
+    lock.Commit();
+  }
+
+  Status Remove(const std::string& uuid, uint16_t port) {
+    auto* master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    return master->ts_manager().RemoveTabletServer(
+        uuid, {HostPort("192.0.2.1", port)}, {},
+        master->catalog_manager().GetLeaderEpochInternal());
+  }
+};
+
+TEST_P(RemovedTServerHintsTest, SuccessfulRemovalQueuesOnlyLiveRecipients) {
+  auto victim = ASSERT_RESULT(Register("victim", 9100));
+  auto live = ASSERT_RESULT(Register("live", 9101));
+  auto unresponsive = ASSERT_RESULT(Register("unresponsive", 9102));
+  auto replaced = ASSERT_RESULT(Register("replaced", 9103));
+  MakeRemovable(unresponsive);
+  {
+    auto lock = replaced->LockForWrite();
+    lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::REPLACED);
+    lock.Commit();
+  }
+
+  ASSERT_NOK(Remove("victim", 9100));
+  ASSERT_TRUE(live->TakeRemovedTServers().empty());
+  MakeRemovable(victim);
+  ASSERT_TRUE(live->TakeRemovedTServers().empty());
+  ASSERT_NOK(Remove("victim", 9199));
+  ASSERT_TRUE(live->TakeRemovedTServers().empty());
+  {
+    auto lock = victim->LockForWrite();
+    lock.mutable_data()->pb.set_xcluster_guarded_lease_state(
+        SysTabletServerEntryPB::MAYBE_HAS_LEASE);
+    lock.Commit();
+  }
+  ASSERT_NOK(Remove("victim", 9100));
+  ASSERT_TRUE(live->TakeRemovedTServers().empty());
+  MakeRemovable(victim);
+
+  ASSERT_OK(Remove("victim", 9100));
+  for (int attempt = 0; attempt != 3; ++attempt) {
+    ASSERT_EQ(live->TakeRemovedTServers(), std::set<std::string>{"victim"});
+  }
+  ASSERT_TRUE(victim->TakeRemovedTServers().empty());
+  ASSERT_TRUE(unresponsive->TakeRemovedTServers().empty());
+  ASSERT_TRUE(replaced->TakeRemovedTServers().empty());
+  auto late = ASSERT_RESULT(Register("late", 9104));
+  ASSERT_TRUE(late->TakeRemovedTServers().empty());
+  ASSERT_NOK(Remove("victim", 9100));
+  ASSERT_TRUE(live->TakeRemovedTServers().empty());
+  ASSERT_TRUE(late->TakeRemovedTServers().empty());
+}
+
+TEST_P(RemovedTServerHintsTest, PendingRemovalsCoalesceAndDrainWhenDisabled) {
+  auto live = ASSERT_RESULT(Register("live", 9100));
+  for (const auto& uuid : {"victim-1", "victim-1", "victim-2"}) {
+    auto victim = ASSERT_RESULT(Register(uuid, 9101));
+    MakeRemovable(victim);
+    ASSERT_OK(Remove(uuid, 9101));
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_removed_tservers_on_heartbeat) = false;
+  auto disabled_victim = ASSERT_RESULT(Register("disabled-victim", 9101));
+  MakeRemovable(disabled_victim);
+  ASSERT_OK(Remove("disabled-victim", 9101));
+  for (int attempt = 0; attempt != 3; ++attempt) {
+    ASSERT_EQ(live->TakeRemovedTServers(), (std::set<std::string>{"victim-1", "victim-2"}));
+  }
+  ASSERT_TRUE(live->TakeRemovedTServers().empty());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_removed_tservers_on_heartbeat) = true;
+  ASSERT_TRUE(live->TakeRemovedTServers().empty());
+}
+
+INSTANTIATE_TEST_CASE_P(Persistence, RemovedTServerHintsTest, testing::Bool());
 
 class ListMasterRaftPeersTest : public MasterClusterTest {
  public:

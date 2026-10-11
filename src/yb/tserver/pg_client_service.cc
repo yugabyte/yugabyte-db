@@ -2583,11 +2583,12 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
                   Format("Status tablet with id: $0 not found", status_tablet_id)));
             }
 
-            if (!remote_tablet->LeaderTServer()) {
+            auto* leader = remote_tablet->LeaderTServer();
+            if (!leader) {
               return callback(STATUS_FORMAT(
                   TryAgain, Format("Leader not found for tablet $0", status_tablet_id)));
             }
-            const auto& permanent_uuid = remote_tablet->LeaderTServer()->permanent_uuid();
+            const auto& permanent_uuid = leader->permanent_uuid();
             auto remote_ts_or_status = tablet_server_.GetRemoteTabletServers({permanent_uuid});
             if (!remote_ts_or_status.ok()) {
               return callback(remote_ts_or_status.status());

@@ -30,8 +30,10 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 
@@ -46,6 +48,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
+#include "yb/client/tablet_rpc.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
@@ -57,25 +60,43 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/util/sync_point.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 
 using yb::client::YBTableName;
 using yb::client::YBTableType;
 // DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
+DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_metacache_partial_refresh);
+DECLARE_bool(send_removed_tservers_on_heartbeat);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_uint32(xcluster_guarded_lease_duration_ms);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 
@@ -257,6 +278,207 @@ TEST_F(MetacacheRefreshITest, TestMetacacheNoRefreshFromWrite) {
   FlushSessionOrDie(session);
   ASSERT_OK(sync.Wait());
   ASSERT_FALSE(refresh_succeeded);
+}
+
+class RemovedTServerMetacacheITest : public pgwrapper::PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    // Custom placements do not follow the test harness's index-based network groups.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_removed_tservers_on_heartbeat) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) = 5000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
+    PgMiniTestBase::SetUp();
+  }
+
+  size_t NumTabletServers() override { return 4; }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->transaction_table_num_tablets = 1;
+  }
+
+  std::vector<tserver::TabletServerOptions> ExtraTServerOptions() override {
+    std::vector<tserver::TabletServerOptions> options;
+    for (size_t i = 0; i != NumTabletServers(); ++i) {
+      auto ts_options = CHECK_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+      ts_options.SetPlacement("cloud", i < 2 ? "near" : Format("region-$0", i), "zone");
+      options.push_back(std::move(ts_options));
+    }
+    return options;
+  }
+
+  Status EnableFollowerReads(pgwrapper::PGConn* conn) {
+    RETURN_NOT_OK(conn->Execute("SET yb_follower_read_staleness_ms = 2000"));
+    RETURN_NOT_OK(conn->Execute("SET yb_read_from_followers = true"));
+    return conn->Execute("SET default_transaction_read_only = true");
+  }
+};
+
+TEST_F(RemovedTServerMetacacheITest, SharedSqlClientInvalidatesUntouchedWarmedTablets) {
+  auto* master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  master::MasterClusterClient cluster_client(
+      master::MasterClusterProxy(&client_->proxy_cache(), master->bound_rpc_addr()));
+  auto* gateway = cluster_->mini_tablet_server(kPgTsIndex)->server();
+  auto* gateway_client = gateway->client_future().get();
+  ASSERT_NE(gateway_client, nullptr);
+  auto* victim = cluster_->mini_tablet_server(1);
+  const auto victim_uuid = victim->server()->permanent_uuid();
+  auto gateway_desc = ASSERT_RESULT(master->ts_manager().LookupTSByUUID(gateway->permanent_uuid()));
+  auto victim_desc = ASSERT_RESULT(master->ts_manager().LookupTSByUUID(victim_uuid));
+  const auto timeout = 60s * kTimeMultiplier;
+
+  // Keep the gateway alive but put all test replicas on remote servers. The victim shares its
+  // region with the gateway and is leader-blacklisted, making it the preferred follower.
+  ASSERT_OK(cluster_client.BlacklistHost(
+      HostPortPB(gateway_desc->GetRegistration().private_rpc_addresses(0))));
+  auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  *config.mutable_leader_blacklist()->add_hosts() =
+      victim_desc->GetRegistration().private_rpc_addresses(0);
+  ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(config)));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto config = VERIFY_RESULT(cluster_client.GetMasterClusterConfig());
+    return master->catalog_manager_impl().GetNumRelevantReplicas(
+               config.server_blacklist(), false) == 0 &&
+           master->catalog_manager_impl().GetNumRelevantReplicas(
+               config.leader_blacklist(), true) == 0;
+  }, timeout, "Drain gateway replicas and victim leaders"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  std::map<TabletId, std::pair<std::string, int>> test_tablets;
+  constexpr int kNumTables = 6;
+  for (int i = 0; i != kNumTables; ++i) {
+    const auto name = Format("removed_cache_$0", i);
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS", name));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, $1)", name, i));
+    const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(name));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      locations.Clear();
+      RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, 0, &locations));
+      if (locations.size() != 1 || locations.Get(0).replicas_size() != 3) {
+        return false;
+      }
+      for (const auto& replica : locations.Get(0).replicas()) {
+        if (replica.ts_info().permanent_uuid() == victim_uuid) {
+          return replica.role() == PeerRole::FOLLOWER;
+        }
+      }
+      return false;
+    }, timeout, "Victim hosts a follower of the test tablet"));
+    test_tablets.emplace(locations.Get(0).tablet_id(), std::make_pair(name, i));
+  }
+
+  std::mutex mutex;
+  size_t victim_dispatches = 0;
+  size_t matching_batches = 0;
+  std::set<TabletId> warmed_tablets;
+  std::set<TabletId> changed_tablets;
+  auto* sync_point = SyncPoint::GetInstance();
+  auto cleanup = ScopeExit([&] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  sync_point->SetCallBack("TabletInvoker::BeforeSendRpcToTserver", [&](void* arg) {
+    const auto& data = *static_cast<client::internal::TabletInvoker::RpcSendTestData*>(arg);
+    if (data.client != gateway_client || data.ts_uuid != victim_uuid ||
+        !test_tablets.contains(data.tablet_id)) {
+      return;
+    }
+    std::lock_guard lock(mutex);
+    ++victim_dispatches;
+    warmed_tablets.insert(data.tablet_id);
+  });
+  sync_point->SetCallBack("MetaCache::InvalidateTServerReplicas:Done", [&](void* arg) {
+    const auto& data = *static_cast<client::internal::MetaCache::InvalidationTestData*>(arg);
+    if (data.client != gateway_client ||
+        std::find(data.ts_uuids.begin(), data.ts_uuids.end(), victim_uuid) == data.ts_uuids.end()) {
+      return;
+    }
+    std::lock_guard lock(mutex);
+    ASSERT_EQ(data.ts_uuids, std::vector<std::string>{victim_uuid});
+    ++matching_batches;
+    for (const auto& tablet_id : data.changed_tablets) {
+      if (test_tablets.contains(tablet_id)) {
+        changed_tablets.insert(tablet_id);
+      }
+    }
+  });
+  sync_point->EnableProcessing();
+
+  // Ensure the follower read time is later than the inserts.
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_OK(EnableFollowerReads(&conn));
+  for (const auto& [id, table] : test_tablets) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(
+        Format("SELECT v FROM $0 WHERE k = 1", table.first))), table.second);
+  }
+  size_t dispatches_before_removal;
+  {
+    std::lock_guard lock(mutex);
+    ASSERT_EQ(warmed_tablets.size(), kNumTables);
+    ASSERT_GE(victim_dispatches, kNumTables);
+    dispatches_before_removal = victim_dispatches;
+  }
+
+  // Leave warmed test tablets untouched while the replacement catches up and the victim drains.
+  auto replacement_options =
+      ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  replacement_options.SetPlacement("cloud", "region-4", "zone");
+  ASSERT_OK(cluster_->AddTabletServer(replacement_options));
+  ASSERT_OK(cluster_client.BlacklistHost(
+      HostPortPB(victim_desc->GetRegistration().private_rpc_addresses(0))));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto config = VERIFY_RESULT(cluster_client.GetMasterClusterConfig());
+    return master->catalog_manager_impl().GetNumRelevantReplicas(
+        config.server_blacklist(), false) == 0;
+  }, timeout, "Evacuate victim replicas"));
+  victim->Shutdown();
+  const auto lease_timeout = MonoDelta(timeout) +
+      MonoDelta::FromMicroseconds(2 * FLAGS_max_clock_skew_usec);
+  ASSERT_OK(WaitFor([&] {
+    return !victim_desc->IsLive() && !victim_desc->MaybeHasXClusterGuardedLease();
+  }, lease_timeout, "Victim is unresponsive and definitely has no guarded lease"));
+  ASSERT_EQ(victim_desc->LockForRead()->pb.state(), master::SysTabletServerEntryPB::UNRESPONSIVE);
+  ASSERT_TRUE(gateway_desc->IsLive());
+  ASSERT_TRUE(gateway_desc->TakeRemovedTServers().empty());
+  {
+    std::lock_guard lock(mutex);
+    ASSERT_EQ(matching_batches, 0);
+  }
+
+  ASSERT_OK(cluster_client.RemoveTabletServer(std::string(victim_uuid)));
+  ASSERT_OK(WaitFor([&] {
+    std::lock_guard lock(mutex);
+    return matching_batches == 3;
+  }, timeout, "Gateway applied all three removal hints"));
+  std::vector<TabletId> affected_untouched_tablets;
+  {
+    std::lock_guard lock(mutex);
+    for (const auto& tablet_id : changed_tablets) {
+      if (warmed_tablets.contains(tablet_id)) {
+        affected_untouched_tablets.push_back(tablet_id);
+      }
+    }
+    ASSERT_EQ(matching_batches, 3);
+  }
+  ASSERT_FALSE(affected_untouched_tablets.empty())
+      << "Ordinary refresh must not mask a missing invalidation of warmed, untouched tablets";
+
+  for (int i = 0; i != 3; ++i) {
+    auto session = ASSERT_RESULT(Connect());
+    ASSERT_OK(EnableFollowerReads(&session));
+    for (const auto& tablet_id : affected_untouched_tablets) {
+      const auto& table = test_tablets.at(tablet_id);
+      ASSERT_EQ(ASSERT_RESULT(session.FetchRow<int32_t>(
+          Format("SELECT v FROM $0 WHERE k = 1", table.first))), table.second);
+    }
+  }
+  std::lock_guard lock(mutex);
+  ASSERT_EQ(victim_dispatches, dispatches_before_removal);
 }
 
 }  // namespace yb

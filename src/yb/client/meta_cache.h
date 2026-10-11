@@ -37,6 +37,7 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/variant.hpp>
@@ -84,6 +85,7 @@ namespace client {
 
 class ClientTest_TestMasterLookupPermits_Test;
 class ClientTest_TestMetacacheRefreshWhenSentToWrongLeader_Test;
+class MetaCacheInvalidationTest;
 class YBClient;
 class YBTable;
 
@@ -358,6 +360,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // Mark the specified tablet server as a follower in the cache.
   bool MarkTServerAsFollower(const RemoteTabletServer* server);
 
+  bool RemoveTServerReplicas(const std::unordered_set<RemoteTabletServer*>& servers);
+
   // Return stringified representation of the list of replicas for this tablet.
   std::string ReplicasAsString() const;
 
@@ -389,6 +393,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
  private:
   FRIEND_TEST(client::ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
+  friend class client::MetaCacheInvalidationTest;
 
   // Same as ReplicasAsString(), except that the caller must hold mutex_.
   std::string ReplicasAsStringUnlocked() const;
@@ -408,6 +413,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   mutable rw_spinlock mutex_;
   bool stale_;
   bool is_split_ = false;
+  // Preserve nonlocal placement evidence until metadata replaces the replica list.
+  bool has_invalidated_nonlocal_replica_ GUARDED_BY(mutex_) = false;
 
   // The UUID of the current leader replica.
   // Invariant: equal to the UUID of the replica in replicas_ with the role LEADER or "" if there is
@@ -419,8 +426,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // refreshed when we next try a partial update because of stale leadership or raft config.
   // Written only under mutex_; atomic so it is readable without the lock.
   std::atomic<int64_t> raft_config_opid_index_;
-  // Can be updated only when remote tablet is refreshed after a lookup to master or via a
-  // TabletConsensusInfo piggybacked from a response.
+  // Replaced by master/Raft refresh; advisory removal hints can erase entries in between.
   std::vector<std::shared_ptr<RemoteReplica>> replicas_;
   PartitionListVersion last_known_partition_list_version_ = 0;
 
@@ -642,6 +648,14 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // leader-blacklisted tservers.
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  void InvalidateTServerReplicas(const std::vector<std::string>& ts_uuids);
+
+  struct InvalidationTestData {
+    YBClient* client;
+    const std::vector<std::string>& ts_uuids;
+    const std::vector<TabletId>& changed_tablets;
+  };
+
   // Acquire or release a permit to perform a (slow) master lookup.
   //
   // If acquisition fails, caller may still do the lookup, but is first
@@ -693,6 +707,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   FRIEND_TEST(client::ClientTest, TestMasterLookupPermits);
   FRIEND_TEST(client::ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
+  friend class client::MetaCacheInvalidationTest;
 
   // Lookup the given tablet by partition_start_key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.
