@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <ranges>
@@ -1295,6 +1296,60 @@ TEST_F_EX(
   ASSERT_OK(cluster_->SetFlag(new_ts, "TEST_pause_after_set_bootstrapping", "false"));
   ASSERT_OK(WaitForTabletsInState(tablet::RaftGroupStatePB::RUNNING));
   ASSERT_OK(CheckNotUnderReplicated(tablet_ids));
+}
+
+// The master table page and JSON endpoint should show the state each replica last reported, so
+// that a replica which is still bootstrapping can be told apart from running ones.
+TEST_F_EX(
+    MasterPathHandlersItest, TestReplicaBootstrapStateShown,
+    MasterPathHandlersUnderReplicationTwoTsItest) {
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "load_balancer_max_concurrent_tablet_remote_bootstraps", "10"));
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "load_balancer_max_concurrent_tablet_remote_bootstraps_per_table", "10"));
+  ASSERT_OK(ResultToStatus(CreateTestTableAndGetTabletIds()));
+
+  // Hold the replicas of the third tserver in BOOTSTRAPPING once the load balancer places them.
+  ASSERT_OK(AddTabletServer(
+      "z2", kLivePlacementUuid, {"--TEST_pause_after_set_bootstrapping=true"}));
+  const auto new_ts_uuid = cluster_->tablet_server(2)->uuid();
+
+  // Returns the states that the master reports for the replicas on the new tserver.
+  auto new_ts_replica_states = [&]() -> Result<std::vector<std::string>> {
+    faststring result;
+    RETURN_NOT_OK(GetUrl(Format("/api/v1/table?id=$0", table_->id()), &result));
+    JsonDocument doc;
+    auto json_obj = VERIFY_RESULT(doc.Parse(result.ToString()));
+    std::vector<std::string> states;
+    for (const auto& tablet_json : VERIFY_RESULT(json_obj["tablets"].GetArray())) {
+      for (const auto& location_json : VERIFY_RESULT(tablet_json["locations"].GetArray())) {
+        if (VERIFY_RESULT(location_json["uuid"].GetString()) == new_ts_uuid) {
+          states.push_back(VERIFY_RESULT(location_json["replica_state"].GetString()));
+        }
+      }
+    }
+    return states;
+  };
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto states = VERIFY_RESULT(new_ts_replica_states());
+    return std::ranges::any_of(states, [](const auto& state) { return state == "BOOTSTRAPPING"; });
+  }, 30s * kTimeMultiplier, "Wait for a new replica to show as BOOTSTRAPPING"));
+
+  // The HTML table page shows it too, highlighted.
+  faststring html;
+  ASSERT_OK(GetUrl(Format("/table?id=$0", table_->id()), &html));
+  ASSERT_STR_CONTAINS(
+      html.ToString(), "Replica state (may be stale): <b><font color=\"red\">BOOTSTRAPPING");
+
+  // Once bootstrap finishes every replica on the new tserver reports RUNNING.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(2), "TEST_pause_after_set_bootstrapping", "false"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto states = VERIFY_RESULT(new_ts_replica_states());
+    return states.size() == kNumTablets &&
+           std::ranges::all_of(states, [](const auto& state) { return state == "RUNNING"; });
+  }, 30s * kTimeMultiplier, "Wait for the new replicas to show as RUNNING"));
 }
 
 TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointReadReplicas,
