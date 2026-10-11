@@ -326,7 +326,10 @@ class OutboundCall : public RpcCall {
 
   // Mark the call as timed out. This also triggers the callback to notify
   // the caller.
-  void SetTimedOut() ON_REACTOR_THREAD EXCLUDES(mtx_);
+  // When while_connecting is set, the status carries NetworkErrorCode::kConnectFailed in addition
+  // to being TimedOut: the call expired before its connection ever connected.
+  void SetTimedOut(TimedOutWhileConnecting while_connecting = TimedOutWhileConnecting::kFalse)
+      ON_REACTOR_THREAD EXCLUDES(mtx_);
 
   // Fill in the call response.
   void SetResponse(CallResponse&& resp) ON_REACTOR_THREAD;
