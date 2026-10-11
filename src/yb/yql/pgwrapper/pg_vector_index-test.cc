@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <numeric>
 #include <queue>
 
 #include "yb/client/client_error.h"
@@ -2242,6 +2243,64 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
       ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
           "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
       1);
+}
+
+// A vector index only takes intent applies committed after its hybrid time. The clone used to
+// leave that time invalid on the target tablet, so rows written transactionally into the clone
+// never reached its vector index (#34767).
+TEST_P(PgVectorIndexColocationOnlyTest, CloneIndexesNewTransactionalWrites) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr auto kSourceDb = "source_db";
+  constexpr auto kCloneDb = "clone_db";
+  constexpr size_t kNumRows = 8;
+  dimensions_ = 3;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  ASSERT_OK(admin_conn.ExecuteFormat(
+      "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  const auto create_suffix = IsColocated() ? " WITH (COLOCATED = 1)" : " SPLIT INTO 1 TABLETS";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))$0", create_suffix));
+  for (size_t i = 1; i <= kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+  }
+  ASSERT_OK(CreateIndex(conn));
+
+  // Retention must outlive the clone, which takes minutes under sanitizers; otherwise the source
+  // snapshot is GC'd before the clone is applied.
+  ASSERT_OK(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, kSourceDb,
+      client::WaitSnapshot::kTrue, 10s * kTimeMultiplier, 1h));
+
+  ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_OK(clone_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (size_t i = kNumRows + 1; i <= 2 * kNumRows; ++i) {
+    ASSERT_OK(clone_conn.ExecuteFormat(
+        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+  }
+  ASSERT_OK(clone_conn.CommitTransaction());
+
+  // The index covers every row, the copied ones and the ones written into the clone. A seq scan
+  // would return them all without the fix, so make sure the read goes through the index.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
+  auto ids = ASSERT_RESULT(clone_conn.FetchRows<int64_t>(Format(
+      "SELECT id FROM test ORDER BY $0 LIMIT $1", DistanceToQuery(Vector(1)), 4 * kNumRows)));
+  std::ranges::sort(ids);
+  std::vector<int64_t> expected(2 * kNumRows);
+  std::iota(expected.begin(), expected.end(), 1);
+  ASSERT_EQ(ids, expected);
 }
 
 class PgDistributedVectorIndexTest
