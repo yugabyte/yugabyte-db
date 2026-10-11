@@ -281,6 +281,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
+  // NotFound if the entry was GCed.
+  Result<OpId> LookupOpId(int64_t op_index) const;
+
   const scoped_refptr<log::Log>& log() { return log_; }
 
   RetryableRequestsCounts TEST_CountRetryableRequests();

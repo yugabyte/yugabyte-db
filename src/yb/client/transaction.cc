@@ -120,6 +120,10 @@ DEFINE_RUNTIME_bool(disable_heartbeat_send_involved_tablets, false,
                     "transactions. This behavior is needed to support fetching old transactions "
                     "and their involved tablets in order to support yb_lock_status/pg_locks.");
 
+DEFINE_RUNTIME_uint32(max_pending_async_write_checks_per_tablet, 1000,
+    "Maximum number of pending async write checks a read can carry for one tablet, one per leader "
+    "term with pending writes. A transaction that exceeds it is aborted.");
+
 namespace yb {
 namespace client {
 
@@ -1392,44 +1396,30 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  Result<OpId> GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const
+  Result<OpIds> GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const
       EXCLUDES(async_write_query_mutex_) {
+    OpIds result;
     std::lock_guard l(async_write_query_mutex_);
     auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
-    if (!write_query || write_query->op_ids.empty()) {
-      return OpId::Invalid();
+    if (!write_query) {
+      return result;
     }
-    // Pending writes across >2 terms means the tablet leader moved more than once before the
-    // earlier async writes were confirmed complete. Currently we don't support this (the server's
-    // VerifyAsyncWriteReceived only handles same-term and one-term-ago), so fail client-side and
-    // abort the transaction.
-    auto min_op = *write_query->op_ids.begin();
-    auto max_op = *write_query->op_ids.rbegin();
-    if (max_op.term - min_op.term > 1) {
-      auto status = STATUS_EC_FORMAT(
-          IllegalState, TransactionError(TransactionErrorCode::kAborted),
-          "Tablet $0: tablet leader moved more than once before async writes completed "
-          "(min_op: $1, max_op: $2)",
-          tablet_id, min_op, max_op);
-      write_pipelining_abort_ = true;
-      return status;
+    // Get the last op per term, since a later leader may have overwritten an earlier term's writes.
+    const auto& op_ids = write_query->op_ids;
+    const auto max_checks = FLAGS_max_pending_async_write_checks_per_tablet;
+    for (auto it = op_ids.begin(); it != op_ids.end();) {
+      if (result.size() == max_checks) {
+        write_pipelining_abort_ = true;
+        return STATUS_EC_FORMAT(
+            IllegalState, TransactionError(TransactionErrorCode::kAborted),
+            "Tablet $0: async writes are pending in more than $1 leader terms", tablet_id,
+            max_checks);
+      }
+      auto next_term_begin = op_ids.lower_bound(OpId(it->term + 1, 0));
+      result.push_back(*std::prev(next_term_begin));
+      it = next_term_begin;
     }
-
-    // Now we either have pending writes within the same term, or across 2 consecutive terms.
-    //
-    // In either case, we return the max op_id of the earliest pending term - raft's prefix property
-    // covers all earlier writes from that term.
-    // - If the pending writes are in the same term, then this max covers all pending writes.
-    // - If the pending writes are across 2 terms, then the leader will locally have the writes from
-    //   the greater term, so there's no need to check for those.
-    //
-    // If leader moves before we can send this read, then the server will also validate:
-    // - If the pending writes are in the same term, then verifying the new leader has the last
-    //   write is still sufficient (we are only at a 1 term difference which is supported).
-    // - If the pending writes are across 2 terms, then we now have a write that is 2+ terms old, so
-    //   the server will abort the transaction.
-    auto next_term_begin = write_query->op_ids.lower_bound(OpId(min_op.term + 1, 0));
-    return *std::prev(next_term_begin);
+    return result;
   }
 
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
@@ -3126,8 +3116,8 @@ void YBTransaction::RecordAsyncWriteCompletion(
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
 }
 
-Result<OpId> YBTransaction::GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const {
-  return impl_->GetAsyncWriteOpIdForReadCheck(tablet_id);
+Result<OpIds> YBTransaction::GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const {
+  return impl_->GetAsyncWriteOpIdsForReadCheck(tablet_id);
 }
 
 void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {

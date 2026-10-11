@@ -76,7 +76,6 @@ DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int32(leader_lease_duration_ms);
-DECLARE_bool(ysql_enable_write_pipelining);
 
 using namespace std::literals;
 
@@ -812,11 +811,6 @@ class PgLeaderChangeWaitQueuesTest : public PgConcurrentBlockedWaitersTest {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
-    // A waiter's UPDATE is acked before replication completes, so its blocked read carries a
-    // pending_async_write_op_id. These tests keep that read in the wait queue while moving the
-    // tablet's leader more than once, which VerifyAsyncWriteReceived cannot validate, so it
-    // aborts the waiter. Make the waiter writes synchronous instead.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = false;
     PgConcurrentBlockedWaitersTest::SetUp();
   }
 

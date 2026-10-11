@@ -74,7 +74,7 @@ struct AsyncRpcData {
   InFlightOps ops;
   bool need_metadata = false;
   bool use_async_write = false;
-  OpId pending_async_write_op_id = OpId::Invalid();
+  OpIds pending_async_write_op_ids = {};
 };
 
 struct FlushExtraResult {
