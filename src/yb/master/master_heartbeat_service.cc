@@ -128,8 +128,8 @@ DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
     "be leader initially on tablet creation.");
 
 DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
-    "When set, the master will send the list of leader-blacklisted tservers with no leaders "
-    "on the heartbeat response.");
+    "When set, the master will send the list of leader-blacklisted tservers with no leaders, "
+    "and the list of all currently leader-blacklisted tservers, on the heartbeat response.");
 TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
 
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
@@ -576,10 +576,22 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
             cluster_config->oid_cache_invalidations_count());
       }
 
+      const auto leader_blacklist = ToBlacklistSet(
+          GetBlacklist(*cluster_config, /*blacklist_leader=*/ true));
+
+      if (FLAGS_send_leader_blacklisted_tservers_on_heartbeat && !leader_blacklist.empty()) {
+        // The full current set, resolved over every registered tserver rather than only the live
+        // ones: a blacklisted tserver that is already down for maintenance must stay excluded
+        // until it is taken off the blacklist, not until the master declares it dead.
+        for (const auto& desc : server_->ts_manager()->GetAllDescriptors()) {
+          if (desc->IsBlacklisted(leader_blacklist)) {
+            resp->add_leader_blacklisted_tservers(desc->permanent_uuid());
+          }
+        }
+      }
+
       uint32_t leader_drain_version = ts_desc->pending_leader_drain_notification();
       if (leader_drain_version && FLAGS_send_leader_blacklisted_tservers_on_heartbeat) {
-        auto leader_blacklist = ToBlacklistSet(
-            GetBlacklist(*cluster_config, /*blacklist_leader=*/ true));
         auto leaders_drained = !std::any_of(descs.begin(), descs.end(), [&](const auto& desc) {
           return IsBlacklisted(desc->GetRegistration(), leader_blacklist) &&
                  desc->leader_count() != 0;

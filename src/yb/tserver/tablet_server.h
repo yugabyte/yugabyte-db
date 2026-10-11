@@ -465,6 +465,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  // Replace the shared client's view of which tservers are leader blacklisted. Driven by the
+  // master's leader_blacklisted_tservers heartbeat field; a no-op while the client is initializing.
+  void UpdateLeaderBlacklistedTServers(const std::vector<std::string>& ts_uuids);
+
   Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;

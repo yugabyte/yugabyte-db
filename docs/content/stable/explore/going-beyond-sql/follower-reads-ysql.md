@@ -47,6 +47,8 @@ The following YSQL configuration parameters control the behavior of follower rea
 
 In addition, the `ysql_follower_reads_avoid_waiting_for_safe_time` flag governs whether a stale read will wait at the follower, or be redirected to the leader immediately.
 
+If you leader blacklist nodes before taking them down for maintenance, set the YB-TServer flag [--follower_reads_avoid_leader_blacklisted_tservers](../../../reference/configuration/yb-tserver/#follower-reads-avoid-leader-blacklisted-tservers) so that follower reads stop being routed to a node as soon as it is leader blacklisted, instead of failing over only after the node is down.
+
 ## Expected behavior
 
 The following table describes the expected behavior when a read happens from a follower.

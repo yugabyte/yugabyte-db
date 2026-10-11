@@ -34,6 +34,7 @@
 #include <stdint.h>
 
 #include <future>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -1148,6 +1149,13 @@ class YBClient {
   Status ClearMetacache(const std::string& namespace_id);
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
+  // Replace the set of tservers that CONSISTENT_PREFIX reads avoid when
+  // --follower_reads_avoid_leader_blacklisted_tservers is set. Fed from the master's
+  // leader_blacklisted_tservers heartbeat field by the embedding tserver.
+  void UpdateLeaderBlacklistedTServers(const std::vector<std::string>& ts_uuids);
+
+  std::set<TabletServerId> TEST_LeaderBlacklistedTServers() const;
 
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the

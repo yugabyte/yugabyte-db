@@ -2557,6 +2557,25 @@ void MetaCache::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids
   }
 }
 
+void MetaCache::UpdateLeaderBlacklistedTServers(const std::vector<std::string>& ts_uuids) {
+  auto new_set = std::make_shared<const std::set<TabletServerId>>(
+      ts_uuids.begin(), ts_uuids.end());
+  {
+    std::lock_guard lock(leader_blacklist_mutex_);
+    if (*leader_blacklisted_tservers_ == *new_set) {
+      return;
+    }
+    leader_blacklisted_tservers_.swap(new_set);
+  }
+  // Rare (a blacklist change) and operationally useful, so log at INFO.
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "Leader blacklisted tservers are now: " << AsString(ts_uuids);
+}
+
+std::shared_ptr<const std::set<TabletServerId>> MetaCache::leader_blacklisted_tservers() const {
+  SharedLock lock(leader_blacklist_mutex_);
+  return leader_blacklisted_tservers_;
+}
+
 bool MetaCache::AcquireMasterLookupPermit() {
   return master_lookup_sem_.TryAcquire();
 }

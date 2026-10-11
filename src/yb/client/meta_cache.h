@@ -34,6 +34,7 @@
 
 #include <shared_mutex>
 #include <map>
+#include <set>
 #include <string>
 #include <memory>
 #include <unordered_map>
@@ -642,6 +643,14 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // leader-blacklisted tservers.
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  // Replace the set of leader-blacklisted tservers. Silent no-op when the set is unchanged, which
+  // is the common case since the master resends it on every heartbeat.
+  void UpdateLeaderBlacklistedTServers(const std::vector<std::string>& ts_uuids);
+
+  // Snapshot of the leader-blacklisted tservers; never null. Readers keep the returned pointer
+  // rather than a lock, so an update swaps in a new set instead of mutating this one.
+  std::shared_ptr<const std::set<TabletServerId>> leader_blacklisted_tservers() const;
+
   // Acquire or release a permit to perform a (slow) master lookup.
   //
   // If acquisition fails, caller may still do the lookup, but is first
@@ -821,6 +830,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.
   Semaphore master_lookup_sem_;
+
+  // Separate from mutex_ so the per-RPC read in TabletInvoker does not contend with lookups.
+  mutable rw_spinlock leader_blacklist_mutex_;
+  std::shared_ptr<const std::set<TabletServerId>> leader_blacklisted_tservers_
+      GUARDED_BY(leader_blacklist_mutex_) = std::make_shared<const std::set<TabletServerId>>();
 
   const std::string log_prefix_;
 
