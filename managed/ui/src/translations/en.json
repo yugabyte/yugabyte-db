@@ -1801,6 +1801,10 @@
               "systemError": {
                 "label": "System Error",
                 "tooltip": "Replication has encountered a system error for this table. Check the {{sourceUniverseTerm}} and {{targetUniverseTerm}} logs for more details, or contact Yugabyte Support."
+              },
+              "ddlQueuePaused": {
+                "label": "DDL Replication Paused",
+                "tooltip": "The {{targetUniverseTerm}} paused DDL replication after repeatedly failing to apply the same DDL. Check the {{targetUniverseTerm}} tserver logs for the failing DDL and fix it manually, or contact Yugabyte Support."
               }
             }
           }

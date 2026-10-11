@@ -32994,7 +32994,8 @@
               "Uninitialized",
               "Auto flag config mismatch",
               "Source unreachable",
-              "System error"
+              "System error",
+              "DDL replication paused"
             ],
             "type" : "string"
           },
