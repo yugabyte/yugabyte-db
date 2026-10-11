@@ -11,18 +11,25 @@
 // under the License.
 //
 
+#include <set>
+#include <string>
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_net.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -338,6 +345,112 @@ TEST_F(RemoveTabletServerTest, DeletedSplitParentWithStaleReplicaDoesNotBlockRem
 
   ASSERT_TRUE(parent->GetReplicaLocations()->contains(uuid_to_remove));
   ASSERT_OK(cluster_client.RemoveTabletServer(std::string(uuid_to_remove)));
+}
+
+// A tablet's replica map is rebuilt only when a new Raft config is reported, so it can keep naming
+// a tserver that has since been removed from the registry or replaced by another tserver at the
+// same address. Tablet locations must omit such replicas: a client that re-learns one caches it
+// and routes to it, and for a removed tserver there is not even an address to send to.
+TEST_F(RemoveTabletServerTest, OmitsRemovedAndReplacedTServersFromTabletLocations) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "removed_ts_locations");
+  ASSERT_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name()));
+  client::YBSchema schema;
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  ASSERT_OK(schema_builder.Build(&schema));
+  ASSERT_OK(client->NewTableCreator()->table_name(table_name).schema(&schema).num_tablets(1)
+                .hash_schema(dockv::YBHashSchema::kMultiColumnHash).Create());
+
+  auto* mini_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto& catalog_manager = mini_master->catalog_manager_impl();
+  auto yb_table = ASSERT_RESULT(client->OpenTable(table_name));
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(yb_table->id())->GetTablets())[0];
+  ASSERT_OK(WaitFor(
+      [&tablet]() -> Result<bool> { return tablet->GetReplicaLocations()->size() == 3; },
+      30s, "Wait for tablet replicas to be reported"));
+
+  auto replica_uuids = [&]() -> Result<std::set<std::string>> {
+    TabletLocationsPB locs;
+    RETURN_NOT_OK(catalog_manager.GetTabletLocations(tablet, &locs, IncludeHidden::kFalse));
+    std::set<std::string> uuids;
+    for (const auto& replica : locs.replicas()) {
+      SCHECK(
+          !replica.ts_info().private_rpc_addresses().empty(), IllegalState,
+          "Replica $0 was returned without an address", replica.ts_info().permanent_uuid());
+      uuids.insert(replica.ts_info().permanent_uuid());
+    }
+    return uuids;
+  };
+  // Adds a replica for ts_desc to the tablet's in-memory replica map, as a stale map entry would.
+  auto add_stale_replica = [&](const TSDescriptorPtr& ts_desc) {
+    auto replicas = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
+    TabletReplica replica;
+    replica.ts_desc = ts_desc;
+    replica.role = PeerRole::FOLLOWER;
+    replica.member_type = consensus::PeerMemberType::VOTER;
+    replica.state = tablet::RaftGroupStatePB::RUNNING;
+    replicas->emplace(ts_desc->permanent_uuid(), replica);
+    tablet->SetReplicaLocations(std::move(replicas));
+  };
+
+  // A tserver that is drained, shut down and removed from the registry.
+  auto cluster_client = ASSERT_RESULT(CreateClusterClient());
+  const auto uuid_to_remove = tablet->GetReplicaLocations()->begin()->first;
+  auto removed_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(uuid_to_remove));
+  ASSERT_OK(DrainTabletServer(uuid_to_remove, cluster_client, 60s));
+  ASSERT_OK(ShutdownTabletServer(uuid_to_remove));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 1000;
+  ASSERT_OK(WaitForMasterLeaderToMarkTabletServerDead(uuid_to_remove, cluster_client, 30s));
+  ASSERT_OK(WaitForMasterLeaderToMarkTabletServerLeaseless(uuid_to_remove, 30s));
+  ASSERT_OK(cluster_client.RemoveTabletServer(std::string(uuid_to_remove)));
+  ASSERT_TRUE(removed_desc->IsRemoved());
+  ASSERT_FALSE(ASSERT_RESULT(replica_uuids()).contains(uuid_to_remove));
+
+  // Stale map entry naming the removed tserver, while something still holds its descriptor.
+  add_stale_replica(removed_desc);
+  ASSERT_TRUE(tablet->GetReplicaLocations()->contains(uuid_to_remove));
+  ASSERT_FALSE(ASSERT_RESULT(replica_uuids()).contains(uuid_to_remove));
+
+  // ... and once nothing does, so the map's weak pointer has expired.
+  removed_desc.reset();
+  ASSERT_FALSE(ASSERT_RESULT(replica_uuids()).contains(uuid_to_remove));
+
+  // A tserver replaced by a newer process registering at the same address (e.g. a wiped node that
+  // came back with a new uuid). Register two fake tservers for the same host:port; the first one
+  // is marked REPLACED by the second.
+  const std::string kReplacedUuid = "replaced-uuid";
+  const std::string kReplacementUuid = "replacement-uuid";
+  auto cluster_config = ASSERT_RESULT(catalog_manager.GetClusterConfig());
+  MasterHeartbeatProxy heartbeat_proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
+  auto register_fake_tserver = [&](const std::string& uuid, int64_t seqno) -> Status {
+    TSHeartbeatRequestPB req;
+    req.mutable_common()->mutable_ts_instance()->set_permanent_uuid(uuid);
+    req.mutable_common()->mutable_ts_instance()->set_instance_seqno(seqno);
+    auto& registration = *req.mutable_registration()->mutable_common();
+    *registration.add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000);
+    *registration.add_http_addresses() = MakeHostPortPB("localhost", 2000);
+    *registration.mutable_cloud_info() = MakeCloudInfoPB("cloud", "region", "zone");
+    req.set_universe_uuid(cluster_config.universe_uuid());
+    TSHeartbeatResponsePB resp;
+    rpc::RpcController rpc;
+    RETURN_NOT_OK(heartbeat_proxy.TSHeartbeat(req, &resp, &rpc));
+    SCHECK(!resp.has_error(), IllegalState, "Heartbeat failed: $0", resp.error().DebugString());
+    SCHECK(!resp.needs_reregister(), IllegalState, "Registration of $0 was refused", uuid);
+    return Status::OK();
+  };
+  ASSERT_OK(register_fake_tserver(kReplacedUuid, 1));
+  auto replaced_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(kReplacedUuid));
+  add_stale_replica(replaced_desc);
+  ASSERT_TRUE(ASSERT_RESULT(replica_uuids()).contains(kReplacedUuid));
+
+  ASSERT_OK(register_fake_tserver(kReplacementUuid, 2));
+  ASSERT_TRUE(replaced_desc->IsReplaced());
+  ASSERT_TRUE(tablet->GetReplicaLocations()->contains(kReplacedUuid));
+  const auto uuids = ASSERT_RESULT(replica_uuids());
+  ASSERT_FALSE(uuids.contains(kReplacedUuid));
+  // The live replicas are still all there.
+  ASSERT_EQ(uuids.size(), 3);
 }
 
 void MasterClusterTest::SetUp() {
