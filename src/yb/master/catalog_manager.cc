@@ -59,6 +59,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -10524,7 +10525,9 @@ Status CatalogManager::DeleteYsqlDBTables(
   }
 
   TabletInfoPtr sys_tablet_info;
-  std::vector<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
+  // Deque, not vector: base tables are pushed to the front while holding mutex_, which on a vector
+  // is O(n) per insert and quadratic over a large database.
+  std::deque<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
   std::unordered_set<TableId> sys_table_ids;
   {
     // Lock the catalog to iterate over table_ids_map_.
@@ -10564,7 +10567,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (table->IsColocationParentTable()) {
         colocation_parents.emplace_back(table, std::move(l));
       } else if (IsTable(l->pb)) {
-        tables_and_locks.insert(tables_and_locks.begin(), {table, std::move(l)});
+        tables_and_locks.emplace_front(table, std::move(l));
       } else {
         tables_and_locks.emplace_back(table, std::move(l));
       }
