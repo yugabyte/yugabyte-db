@@ -57,10 +57,6 @@
 #include "commands/dbcommands.h"
 #include "catalog/pg_authid.h"
 
-/* YB includes */
-#include "executor/ybModifyTable.h"
-#include "pg_yb_utils.h"
-
 #if (PG_VERSION_NUM < 120000)
 #define table_open(r, l) heap_open(r, l)
 #define table_close(r, l) heap_close(r, l)
@@ -141,7 +137,7 @@ InitializeJobMetadataCache(void)
 void
 ResetJobMetadataCache(void)
 {
-	MemoryContextResetAndDeleteChildren(CronJobContext);
+	MemoryContextReset(CronJobContext);
 
 	CronJobHash = CreateCronJobHash();
 }
@@ -495,6 +491,12 @@ cron_schedule_named(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR, (errmsg("job_name can not be NULL")));
+	/*
+	* v1.4 changed the first argument type from "name" to "text". Cope with
+	* calls from "CREATE EXTENSION pg_cron VERSION '1.3'".
+	*/
+	else if (get_fn_expr_argtype(fcinfo->flinfo, 0) == NAMEOID)
+		jobnameText = cstring_to_text(NameStr(*PG_GETARG_NAME(0)));
 	else
 		jobnameText = PG_GETARG_TEXT_P(0);
 
@@ -660,10 +662,7 @@ cron_unschedule(PG_FUNCTION_ARGS)
 
 	EnsureDeletePermission(cronJobsTable, heapTuple);
 
-	if (IsYugaByteEnabled())
-		CatalogTupleDelete(cronJobsTable, heapTuple);
-	else
-		simple_heap_delete(cronJobsTable, &heapTuple->t_self);
+	simple_heap_delete(cronJobsTable, &heapTuple->t_self);
 
 	systable_endscan(scanDescriptor);
 	table_close(cronJobsTable, NoLock);
@@ -681,8 +680,9 @@ cron_unschedule(PG_FUNCTION_ARGS)
 Datum
 cron_unschedule_named(PG_FUNCTION_ARGS)
 {
-	Datum jobNameDatum = 0;
+	Datum jobNameDatum = PG_GETARG_DATUM(0);
 	char *jobName = NULL;
+	RegProcedure procedure;
 
 	Oid userId = GetUserId();
 	char *userName = GetUserNameFromId(userId, false);
@@ -706,19 +706,19 @@ cron_unschedule_named(PG_FUNCTION_ARGS)
 	 */
 	if (get_fn_expr_argtype(fcinfo->flinfo, 0) == NAMEOID)
 	{
-		jobName = NameStr(*PG_GETARG_NAME(0));
-		jobNameDatum = CStringGetTextDatum(jobName);
+		procedure = F_NAMEEQ;
+		jobName = NameStr(*DatumGetName(jobNameDatum));
 	}
 	else
 	{
-		jobNameDatum = PG_GETARG_DATUM(0);
+		procedure = F_TEXTEQ;
 		jobName = TextDatumGetCString(jobNameDatum);
 	}
 
 	cronJobsTable = table_open(CronJobRelationId(), RowExclusiveLock);
 
 	ScanKeyInit(&scanKey[0], Anum_cron_job_jobname,
-				BTEqualStrategyNumber, F_TEXTEQ, jobNameDatum);
+				BTEqualStrategyNumber, procedure, jobNameDatum);
 	ScanKeyInit(&scanKey[1], Anum_cron_job_username,
 				BTEqualStrategyNumber, F_TEXTEQ, userNameDatum);
 
@@ -734,10 +734,7 @@ cron_unschedule_named(PG_FUNCTION_ARGS)
 
 	EnsureDeletePermission(cronJobsTable, heapTuple);
 
-	if (IsYugaByteEnabled())
-		CatalogTupleDelete(cronJobsTable, heapTuple);
-	else
-		simple_heap_delete(cronJobsTable, &heapTuple->t_self);
+	simple_heap_delete(cronJobsTable, &heapTuple->t_self);
 
 	systable_endscan(scanDescriptor);
 	table_close(cronJobsTable, NoLock);
@@ -760,13 +757,13 @@ EnsureDeletePermission(Relation cronJobsTable, HeapTuple heapTuple)
 
 	/* check if the current user owns the row */
 	Oid userId = GetUserId();
-	char *userName = GetUserNameFromId(userId, false);
 
 	bool isNull = false;
 	Datum ownerNameDatum = heap_getattr(heapTuple, Anum_cron_job_username,
 										tupleDescriptor, &isNull);
 	char *ownerName = TextDatumGetCString(ownerNameDatum);
-	if (pg_strcasecmp(userName, ownerName) != 0)
+	Oid ownerId = get_role_oid(ownerName, true);
+	if (ownerId != userId)
 	{
 		/* otherwise, allow if the user has DELETE permission */
 		AclResult aclResult = pg_class_aclcheck(CronJobRelationId(), GetUserId(),
@@ -830,6 +827,7 @@ void
 InvalidateJobCacheCallback(Datum argument, Oid relationId)
 {
 	if (relationId == CachedCronJobRelationId ||
+		relationId == InvalidOid ||
 		CachedCronJobRelationId == InvalidOid)
 	{
 		CronJobCacheValid = false;
@@ -855,8 +853,7 @@ CronJobRelationId(void)
 }
 
 /*
- * LoadCronJobList loads the current list of jobs from the
- * cron.job table and adds each job to the CronJobHash.
+ * LoadCronJobList loads the current list of jobs from the cron.job table.
  */
 List *
 LoadCronJobList(void)
@@ -903,26 +900,11 @@ LoadCronJobList(void)
 	{
 		MemoryContext oldContext = NULL;
 		CronJob *job = NULL;
-		Oid jobOwnerId = InvalidOid;
 
 		oldContext = MemoryContextSwitchTo(CronJobContext);
 
 		job = TupleToCronJob(tupleDescriptor, heapTuple);
-
-		jobOwnerId = get_role_oid(job->userName, false);
-		if (!EnableSuperuserJobs && superuser_arg(jobOwnerId))
-		{
-			/*
-			 * Someone inserted a superuser into the metadata. Skip over the
-			 * job when cron.enable_superuser_jobs is disabled. The memory
-			 * will be cleaned up when CronJobContext is reset.
-			 */
-			ereport(WARNING, (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-							  errmsg("skipping job " INT64_FORMAT " since superuser jobs "
-									 "are currently disallowed",
-									 job->jobId)));
-		}
-		else
+		if (job != NULL)
 		{
 			jobList = lappend(jobList, job);
 		}
@@ -944,8 +926,8 @@ LoadCronJobList(void)
 
 
 /*
- * TupleToCronJob takes a heap tuple and converts it into a CronJob
- * struct.
+ * TupleToCronJob takes a heap tuple, converts it into a CronJob struct and
+ * adds it to the CronJobHash if it satisfies EnableSuperuserJobs condition.
  */
 static CronJob *
 TupleToCronJob(TupleDesc tupleDescriptor, HeapTuple heapTuple)
@@ -955,6 +937,8 @@ TupleToCronJob(TupleDesc tupleDescriptor, HeapTuple heapTuple)
 	bool isNull = false;
 	bool isPresent = false;
 	entry *parsedSchedule = NULL;
+	char *jobOwner;
+	Oid jobOwnerId;
 
 	Datum jobId = heap_getattr(heapTuple, Anum_cron_job_jobid,
 							   tupleDescriptor, &isNull);
@@ -972,6 +956,21 @@ TupleToCronJob(TupleDesc tupleDescriptor, HeapTuple heapTuple)
 								  tupleDescriptor, &isNull);
 
 	jobKey = DatumGetInt64(jobId);
+	jobOwner = TextDatumGetCString(userName);
+	jobOwnerId = get_role_oid(jobOwner, false);
+	if (!EnableSuperuserJobs && superuser_arg(jobOwnerId))
+	{
+		/*
+		 * Someone inserted a superuser into the metadata. Skip over the
+		 * job when cron.enable_superuser_jobs is disabled. The memory
+		 * will be cleaned up when CronJobContext is reset.
+		 */
+		ereport(WARNING, (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						  errmsg("skipping job " INT64_FORMAT " since superuser jobs "
+								 "are currently disallowed", jobKey)));
+		return NULL;
+	}
+
 	job = hash_search(CronJobHash, &jobKey, HASH_ENTER, &isPresent);
 
 	job->jobId = DatumGetInt64(jobId);
@@ -979,7 +978,7 @@ TupleToCronJob(TupleDesc tupleDescriptor, HeapTuple heapTuple)
 	job->command = TextDatumGetCString(command);
 	job->nodeName = TextDatumGetCString(nodeName);
 	job->nodePort = DatumGetInt32(nodePort);
-	job->userName = TextDatumGetCString(userName);
+	job->userName = jobOwner;
 	job->database = TextDatumGetCString(database);
 
 	if (HeapTupleHeaderGetNatts(heapTuple->t_data) >= Anum_cron_job_active)

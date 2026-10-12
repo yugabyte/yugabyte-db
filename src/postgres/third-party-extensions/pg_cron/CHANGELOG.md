@@ -1,3 +1,54 @@
+### pg_cron v1.6.8 (September 8, 2026) ###
+
+* Add PostgreSQL 19 support by @CyberDem0n in https://github.com/citusdata/pg_cron/pull/430
+* Add native Windows build support by @codercms in https://github.com/citusdata/pg_cron/pull/431
+* Fix native Windows regression tests to use the pg_cron test database
+* Improve MinGW build support by @robe2 and @rjd15372 in https://github.com/citusdata/pg_cron/pull/428, https://github.com/citusdata/pg_cron/pull/437, and https://github.com/citusdata/pg_cron/pull/439
+* Add the cron.dom_dow_and_logic setting by @vdjakovic in https://github.com/citusdata/pg_cron/pull/421
+* Fix a shutdown hang with synchronous replication by @CyberDem0n in https://github.com/citusdata/pg_cron/pull/414
+* Fix a shared-memory queue handle leak in the launcher process by @dubek in https://github.com/citusdata/pg_cron/pull/420
+* Invalidate the job cache when the relation ID is invalid by @za-arthur in https://github.com/citusdata/pg_cron/commit/f6771508067390433b68ab1ca9cf2269018da42d
+* Fix use of an uninitialized variable by @CyberDem0n in https://github.com/citusdata/pg_cron/pull/413
+* Preserve compatibility with the v1.3 cron.schedule named-job signature by @CyberDem0n in https://github.com/citusdata/pg_cron/pull/411
+* Keep role ownership checks case-sensitive by @ihalatci in https://github.com/citusdata/pg_cron/pull/425
+* Fix getrlimit return value handling by @GalenSha in https://github.com/citusdata/pg_cron/pull/436
+
+### pg_cron v1.6.7 (September 4, 2025) ###
+
+* Fix compile errors on newer versions of GCC @marcoslot in https://github.com/citusdata/pg_cron/pull/403
+
+### pg_cron v1.6.6 (September 4, 2025) ###
+
+* Postgres 18 support by @AndrewJackson2020 @esiaero @francoricci
+* Stop logging notices and repeating log messages by @marcoslot in https://github.com/citusdata/pg_cron/pull/378
+* Fixes a possible crash for unavailable cron jobs @SeleznevPavel in https://github.com/citusdata/pg_cron/pull/370
+* Fix build issue FreeBSD 14.3 @francoricci in https://github.com/citusdata/pg_cron/pull/394
+* Fix type mismatch in dsm_attach() argument by using DatumGetUInt32() by @yjhjstz in https://github.com/citusdata/pg_cron/pull/395
+
+### pg_cron v1.6.5 (December 12, 2024) ###
+
+* Fix superuser check before adding job to CronJobHash by @CyberDem0n in https://github.com/citusdata/pg_cron/pull/367
+* Fix leap year scheduling problem by @zhjwpku in https://github.com/citusdata/pg_cron/pull/365
+* Fix possible buffer underflow issue in cron parsing by @marcoslot in https://github.com/citusdata/pg_cron/commit/5c10a8a24527b79c301eaeb04317846f2426dcd5
+* Fix compilation warnings by @reshke in https://github.com/citusdata/pg_cron/pull/363
+
+### pg_cron v1.6.4 (August 9, 2024) ###
+
+* Fix bug with invalidation of CachedCronJobRelationId by @CyberDem0n in https://github.com/citusdata/pg_cron/pull/346
+* Select procedure based on argument type of cron_unschedule_named by @CyberDem0n in https://github.com/citusdata/pg_cron/pull/347
+* Revert "Remove unnecessary lastStartTime reset" d90843de92d5e517a23b1e17da56dc08c496c774 per https://github.com/citusdata/pg_cron/issues/342
+
+### pg_cron v1.6.3 (July 23, 2024) ###
+
+* Fix pointer reuse bug causing off-by-1 day of month by @marcoslot in https://github.com/citusdata/pg_cron/pull/292
+* Update the database when scheduling an existing job by @nuno-faria in https://github.com/citusdata/pg_cron/pull/293
+* Make cron_unschedule_named() accept v1.4 SQL signature. by @nmisch in https://github.com/citusdata/pg_cron/pull/299
+* Allow interrupts in pg_cron launcher loop to avoid deadlock by @Ngalstyan4 in https://github.com/citusdata/pg_cron/pull/319
+* Fixes possible overflow by @sminux in https://github.com/citusdata/pg_cron/pull/326
+* Log start & end time for all failed runs by @kketch in https://github.com/citusdata/pg_cron/pull/324
+* Replace MemoryContextResetAndDeleteChildren macro with MemoryContextReset for PG 17 compatibility by @esiaero in https://github.com/citusdata/pg_cron/pull/332
+* Fix compiler error on Illumos by @japinli in https://github.com/citusdata/pg_cron/pull/317
+
 ### pg_cron v1.6.2 (October 20, 2023) ###
 
 * Fixes off-by-1 issue in day of month

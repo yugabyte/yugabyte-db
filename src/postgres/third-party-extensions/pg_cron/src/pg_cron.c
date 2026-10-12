@@ -11,7 +11,19 @@
  *
  *-------------------------------------------------------------------------
  */
+
+/** move this first so windows gets the winsock early */
+#include "cron.h"
+
+#if defined(_WIN32) && (PG_VERSION_NUM < 160000)
+/*
+* Skip sys/resource.h for PG15 and lower on Windows
+* this is only an issue with PG < 16 for windows cause of the changes in 16 and above for windows
+*/
+#else
 #include <sys/resource.h>
+#endif
+
 
 #include "postgres.h"
 #include "fmgr.h"
@@ -19,6 +31,7 @@
 /* these are always necessary for a bgworker */
 #include "miscadmin.h"
 #include "postmaster/bgworker.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
@@ -30,7 +43,6 @@
 /* these headers are used by this particular worker's code */
 
 #define MAIN_PROGRAM
-#include "cron.h"
 
 #include "pg_cron.h"
 #include "task_states.h"
@@ -41,6 +53,13 @@
 #include <poll.h>
 #elif defined(HAVE_SYS_POLL_H)
 #include <sys/poll.h>
+#endif
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <winsock2.h>
+
+#define poll WSAPoll
 #endif
 
 #include "sys/time.h"
@@ -72,6 +91,11 @@
 #include "mb/pg_wchar.h"
 #include "parser/analyze.h"
 #include "pgstat.h"
+#if PG_VERSION_NUM >= 130000
+#include "postmaster/interrupt.h"
+#else
+#define SignalHandlerForConfigReload PostgresSigHupHandler
+#endif
 #include "postmaster/postmaster.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -93,9 +117,6 @@
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
 
-/* YB includes */
-#include "pg_yb_utils.h"
-#include "catalog/yb_catalog_version.h"
 
 PG_MODULE_MAGIC;
 
@@ -123,8 +144,6 @@ typedef enum
 /* forward declarations */
 void _PG_init(void);
 void _PG_fini(void);
-static void pg_cron_sigterm(SIGNAL_ARGS);
-static void pg_cron_sighup(SIGNAL_ARGS);
 PGDLLEXPORT void PgCronLauncherMain(Datum arg);
 PGDLLEXPORT void CronBackgroundWorker(Datum arg);
 
@@ -146,26 +165,19 @@ static void ManageCronTask(CronTask *task, TimestampTz currentTime);
 static void ExecuteSqlString(const char *sql);
 static void GetTaskFeedback(PGresult *result, CronTask *task);
 static void ProcessBgwTaskFeedback(CronTask *task, bool running);
+static void CronNoticeReceiver(void *arg, const PGresult *result);
 
 static bool jobCanceled(CronTask *task);
 static bool jobStartupTimeout(CronTask *task, TimestampTz currentTime);
 static char* pg_cron_cmdTuples(char *msg);
 static void bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata);
-
-static long YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime);
-static bool YbIsCronLeader();
-static void YbCheckLeadership(List *taskList, TimestampTz currentTime);
-static TimestampTz YbGetLastPersistedMinute(TimestampTz currentTime);
-static void YbPersistLastMinute();
+static void CleanupCronTask(CronTask *task);
 
 /* global settings */
-char *CronTableDatabaseName = "yugabyte";
+char *CronTableDatabaseName = "postgres";
 static bool CronLogStatement = true;
 static bool CronLogRun = true;
-static bool CronReloadConfig = false;
-
-/* flags set by signal handlers */
-static volatile sig_atomic_t got_sigterm = false;
+static bool CronDomDowAndLogic = false;
 
 /* global variables */
 static int CronTaskStartTimeout = 10000; /* maximum connection time */
@@ -174,15 +186,14 @@ static bool RebootJobsScheduled = false;
 static int RunningTaskCount = 0;
 static int MaxRunningTasks = 0;
 static int CronLogMinMessages = WARNING;
-static bool UseBackgroundWorkers = true;
+static bool UseBackgroundWorkers = false;
 
-static int YbJobListRefreshSeconds = 60;
-static TimestampTz YbLastMinuteToPersist = 0;
-static bool YbEnableOnXClusterTarget = false;
+static char  *cron_timezone = NULL;
 
-char  *cron_timezone = NULL;
+#if PG_VERSION_NUM < 190000
+#define PG_SIG_IGN SIG_IGN
 
-static const struct config_enum_entry cron_message_level_options[] = {
+static const struct config_enum_entry server_message_level_options[] = {
 	{"debug5", DEBUG5, false},
 	{"debug4", DEBUG4, false},
 	{"debug3", DEBUG3, false},
@@ -198,14 +209,7 @@ static const struct config_enum_entry cron_message_level_options[] = {
 	{"panic", PANIC, false},
 	{NULL, 0, false}
 };
-
-/*
- * In Yugabyte since postgres is running on several nodes we pick a single
- * node to act as the cron leader. Only this node will run cron jobs.
- * Once distributed scheduling(#22336) is implemented the leader will schedule
- * the job and other nodes will execute jobs that have been scheduled on them.
- */
-bool ybIsLeader = false;
+#endif
 
 static const char *cron_error_severity(int elevel);
 
@@ -215,7 +219,7 @@ static const char *cron_error_severity(int elevel);
 void
 _PG_init(void)
 {
-	BackgroundWorker worker;
+	BackgroundWorker worker = {0,};
 
 	if (IsBinaryUpgrade)
 	{
@@ -237,7 +241,7 @@ _PG_init(void)
 		gettext_noop("Database in which pg_cron metadata is kept."),
 		NULL,
 		&CronTableDatabaseName,
-		"yugabyte",
+		"postgres",
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
@@ -287,7 +291,7 @@ _PG_init(void)
 		gettext_noop("Use background workers instead of client sessions."),
 		NULL,
 		&UseBackgroundWorkers,
-		true,
+		false,
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
@@ -333,7 +337,7 @@ _PG_init(void)
 		NULL,
 		&CronLogMinMessages,
 		WARNING,
-		cron_message_level_options,
+		server_message_level_options,
 		PGC_SIGHUP,
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
@@ -348,26 +352,14 @@ _PG_init(void)
 		GUC_SUPERUSER_ONLY,
 		check_timezone, NULL, NULL);
 
-	DefineCustomIntVariable(
-		"cron.yb_job_list_refresh_interval",
-		gettext_noop("The frequency at which the pb_cron leader reloads the job list and picks up new jobs."),
-		NULL,
-		&YbJobListRefreshSeconds,
-		60,
-		1,
-		INT_MAX,
-		PGC_SUSET,
-		GUC_UNIT_S,
-		NULL, NULL, NULL);
-
 	DefineCustomBoolVariable(
-		"cron.yb_enable_on_xcluster_target",
-		gettext_noop("Run cron jobs on an xCluster automatic mode target universe."),
+		"cron.match_dom_and_dow",
+		gettext_noop("Requires a day to match both the day-of-month and day-of-week fields."),
 		NULL,
-		&YbEnableOnXClusterTarget,
+		&CronDomDowAndLogic,
 		false,
-		PGC_SUSET,
-		GUC_UNIT_S,
+		PGC_SIGHUP,
+		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
 
 	/* set up common data for all our workers */
@@ -389,39 +381,6 @@ _PG_init(void)
 	RegisterBackgroundWorker(&worker);
 }
 
-
-/*
- * Signal handler for SIGTERM
- *		Set a flag to let the main loop to terminate, and set our latch to wake
- *		it up.
- */
-static void
-pg_cron_sigterm(SIGNAL_ARGS)
-{
-	got_sigterm = true;
-
-	if (MyProc != NULL)
-	{
-		SetLatch(&MyProc->procLatch);
-	}
-}
-
-
-/*
- * Signal handler for SIGHUP
- *		Set a flag to tell the main loop to reload the cron jobs.
- */
-static void
-pg_cron_sighup(SIGNAL_ARGS)
-{
-	CronJobCacheValid = false;
-	CronReloadConfig = true;
-
-	if (MyProc != NULL)
-	{
-		SetLatch(&MyProc->procLatch);
-	}
-}
 
 /*
  * pg_cron_cmdTuples -
@@ -534,17 +493,18 @@ cron_error_severity(int elevel)
 	return elevel_char;
 }
 
+#if PG_VERSION_NUM < 150000
 /*
- * bgw_generate_returned_message -
- *      generates the message to be inserted into the job_run_details table
- *      first part is comming from error_severity (elog.c)
+ * error_severity --- get string representing elevel
+ *
+ * copied from elog.c
  */
-static void
-bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata)
+static const char *
+error_severity(int elevel)
 {
 	const char *prefix;
 
-	switch (edata.elevel)
+	switch (elevel)
 	{
 		case DEBUG1:
 		case DEBUG2:
@@ -554,7 +514,7 @@ bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata)
 			prefix = gettext_noop("DEBUG");
 			break;
 		case LOG:
-#if (PG_VERSION_NUM >= 100000)
+#if PG_VERSION_NUM >= 100000
 		case LOG_SERVER_ONLY:
 #endif
 			prefix = gettext_noop("LOG");
@@ -566,6 +526,9 @@ bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata)
 			prefix = gettext_noop("NOTICE");
 			break;
 		case WARNING:
+#if PG_VERSION_NUM >= 140000
+		case WARNING_CLIENT_ONLY:
+#endif
 			prefix = gettext_noop("WARNING");
 			break;
 		case ERROR:
@@ -581,6 +544,20 @@ bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata)
 			prefix = "???";
 			break;
 	}
+
+	return prefix;
+}
+#endif
+
+/*
+ * bgw_generate_returned_message -
+ *      generates the message to be inserted into the job_run_details table
+ *      first part is comming from error_severity (elog.c)
+ */
+static void
+bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata)
+{
+	const char *prefix = error_severity(edata.elevel);
 
 	appendStringInfo(display_msg, "%s: %s", prefix, edata.message);
 	if (edata.detail != NULL)
@@ -602,12 +579,17 @@ void
 PgCronLauncherMain(Datum arg)
 {
 	MemoryContext CronLoopContext = NULL;
+
+	#if defined(_WIN32)
+	uint32 maxIoFiles;
+	#else
 	struct rlimit limit;
+	#endif
 
 	/* Establish signal handlers before unblocking signals. */
-	pqsignal(SIGHUP, pg_cron_sighup);
-	pqsignal(SIGINT, SIG_IGN);
-	pqsignal(SIGTERM, pg_cron_sigterm);
+	pqsignal(SIGHUP, SignalHandlerForConfigReload);
+	pqsignal(SIGINT, PG_SIG_IGN);
+	pqsignal(SIGTERM, die);
 
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
@@ -625,10 +607,8 @@ PgCronLauncherMain(Datum arg)
 	/*
 	 * Mark anything that was in progress before the database restarted as
 	 * failed.
-	 * YB Note: The cron leader will mark pending runs as failed.
 	 */
-	if (!IsYugaByteEnabled())
-		MarkPendingRunsAsFailed();
+	MarkPendingRunsAsFailed();
 
 	/* Determine how many tasks we can run concurrently */
 	if (MaxConnections < MaxRunningTasks)
@@ -641,11 +621,19 @@ PgCronLauncherMain(Datum arg)
 		MaxRunningTasks = max_files_per_process;
 	}
 
-	if (getrlimit(RLIMIT_NOFILE, &limit) != 0 &&
+
+    #if defined(_WIN32)
+    maxIoFiles = (uint32)_getmaxstdio();
+	if (maxIoFiles != 0 && maxIoFiles < (uint32)MaxRunningTasks) {
+		MaxRunningTasks = maxIoFiles;
+	}
+	#else
+	if (getrlimit(RLIMIT_NOFILE, &limit) == 0 &&
 		limit.rlim_cur < (uint32) MaxRunningTasks)
 	{
 		MaxRunningTasks = limit.rlim_cur;
 	}
+	#endif
 
 	if (UseBackgroundWorkers && max_worker_processes - 1 < MaxRunningTasks)
 	{
@@ -674,11 +662,8 @@ PgCronLauncherMain(Datum arg)
 
 	MemoryContextSwitchTo(CronLoopContext);
 
-	TimestampTz ybLastRefreshTime = 0;
-
-	while (!got_sigterm)
+	for (;;)
 	{
-
 		List *taskList = NIL;
 		TimestampTz currentTime = 0;
 
@@ -686,36 +671,20 @@ PgCronLauncherMain(Datum arg)
 
 		AcceptInvalidationMessages();
 
-		if (CronReloadConfig)
+		if (ConfigReloadPending)
 		{
 			/* set the desired log_min_messages */
 			ProcessConfigFile(PGC_SIGHUP);
 			SetConfigOption("log_min_messages", cron_error_severity(CronLogMinMessages),
 												PGC_POSTMASTER, PGC_S_OVERRIDE);
-			CronReloadConfig = false;
+			ConfigReloadPending = false;
+
+			/* Some settings might have changed, force RefreshTaskHash() */
+			CronJobCacheValid = false;
 		}
 
-		currentTime = GetCurrentTimestamp();
-		YbCheckLeadership(taskList, currentTime);
-
-		/*
-		 * Both CronReloadConfig and CronJobCacheValid are triggered by SIGHUP.
-		 * ProcessConfigFile should come first, because RefreshTaskHash depends
-		 * on settings that might have changed.
-		 *
-		 * YB Note:
-		 * Jobs scheduled from a different nodes cannot
-		 * invalidate the cache on the cron leader. So in addition to the
-		 * regular invalidations we RefreshTaskHash every
-		 * YbJobListRefreshSeconds. NOTE: It can take up to
-		 * YbJobListRefreshSeconds for change to the jobs to take effect.
-		 */
-		if (!CronJobCacheValid ||
-			(IsYugaByteEnabled() && ybIsLeader &&
-			 YbSecondsPassed(ybLastRefreshTime, currentTime) >=
-				 YbJobListRefreshSeconds))
+		if (!CronJobCacheValid)
 		{
-			ybLastRefreshTime = currentTime;
 			RefreshTaskHash();
 		}
 
@@ -724,26 +693,13 @@ PgCronLauncherMain(Datum arg)
 
 		StartAllPendingRuns(taskList, currentTime);
 
-		/* YB Note: Check again since we could have lost leadership. */
-		YbCheckLeadership(taskList, currentTime);
-
 		WaitForCronTasks(taskList);
 		ManageCronTasks(taskList, currentTime);
-
-		/*
-		 * YB Note: Persist the new minute after any new job run details runs
-		 * have been persisted. This ensures that on a crash we at the least log
-		 * a failed job run.
-		 */
-		YbPersistLastMinute();
 
 		MemoryContextReset(CronLoopContext);
 	}
 
-	ereport(LOG, (errmsg("pg_cron scheduler shutting down")));
-
-	/* return error code to trigger restart */
-	proc_exit(1);
+	/* Not reachable */
 }
 
 
@@ -756,23 +712,6 @@ static void
 StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 {
 	static TimestampTz lastMinute = 0;
-
-	/*
-	 * YB Note: Only start jobs if we are the leader.
-	 * Reset lastMinute because otherwise if we go from leader to follower and
-	 * back to leader we would start all the runs while we were the follower.
-	 * If we had two or more leaders in the same minute we would not run the
-	 * task multiple times since we do not run tasks for the first minute of
-	 * leadership.
-	 * Interval jobs do not have this guarantee since their timer starts when we
-	 * become the leader. Non Yugabyte pg_cron has the same behavior when pg
-	 * restarts.
-	 */
-	if (IsYugaByteEnabled() && !ybIsLeader)
-	{
-		lastMinute = 0;
-		return;
-	}
 
 	int minutesPassed = 0;
 	ListCell *taskCell = NULL;
@@ -820,16 +759,7 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 
 	if (lastMinute == 0)
 	{
-		if (IsYugaByteEnabled())
-		{
-			/* Get the persisted lastMinite so that we do no miss schedules when
-			 * the cron leader changes. */
-			lastMinute = YbGetLastPersistedMinute(currentTime);
-		}
-		else
-		{
-			lastMinute = TimestampMinuteStart(currentTime);
-		}
+		lastMinute = TimestampMinuteStart(currentTime);
 	}
 
 	minutesPassed = MinutesPassed(lastMinute, currentTime);
@@ -892,9 +822,6 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 	if (clockProgress != CLOCK_JUMP_BACKWARD)
 	{
 		lastMinute = TimestampMinuteStart(currentTime);
-
-		Assert(YbLastMinuteToPersist == 0);
-		YbLastMinuteToPersist = lastMinute;
 	}
 }
 
@@ -1085,17 +1012,18 @@ ShouldRunTask(entry *schedule, TimestampTz currentTime, bool doWild,
 	 * so cur_tm cannot be used after this point.
 	 */
 	struct pg_tm* tomorrow_tm = pg_localtime(&tomorrowTime_t, pg_tzset(cron_timezone));
-	bool lastdom = (schedule->flags & DOM_LAST) != 0 && tomorrow_tm->tm_mday == 1;
-	bool thisdom = lastdom || bit_test(schedule->dom, dayOfMonth) != 0;
+	bool is_lastdom = tomorrow_tm->tm_mday == 1;
+	bool thisdom = bit_test(schedule->dom, dayOfMonth) != 0 || (is_lastdom && (schedule->flags & DOM_LAST) != 0);
 	bool thisdow = bit_test(schedule->dow, dayOfWeek);
-
 	if (bit_test(schedule->minute, minute) &&
-	    bit_test(schedule->hour, hour) &&
-	    bit_test(schedule->month, month) &&
-	    ( (schedule->flags & (DOM_STAR|DOW_STAR)) != 0
-	      ? (thisdom && thisdow) : (thisdom) || thisdow)) {
-		if ((doNonWild && !(schedule->flags & (MIN_STAR|HR_STAR)))
-		    || (doWild && (schedule->flags & (MIN_STAR|HR_STAR))))
+		bit_test(schedule->hour, hour) &&
+		bit_test(schedule->month, month) &&
+		((CronDomDowAndLogic || (schedule->flags & (DOM_STAR | DOW_STAR)) != 0)
+			 ? (thisdom && thisdow)
+			 : (thisdom || thisdow)))
+	{
+		if ((doNonWild && (schedule->flags & (MIN_STAR | HR_STAR)) == 0) ||
+			(doWild && (schedule->flags & (MIN_STAR | HR_STAR)) != 0))
 		{
 			return true;
 		}
@@ -1354,9 +1282,6 @@ PollForTasks(List *taskList)
 static bool
 CanStartTask(CronTask *task)
 {
-	if (IsYugaByteEnabled() && !ybIsLeader)
-		return false;
-
 	return task->state == CRON_TASK_WAITING && task->pendingRunCount > 0 &&
 		   RunningTaskCount < MaxRunningTasks;
 }
@@ -1390,7 +1315,6 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 	CronJob *cronJob = GetCronJob(jobId);
 	PGconn *connection = task->connection;
 	ConnStatusType connectionStatus = CONNECTION_BAD;
-	TimestampTz start_time;
 
 	switch (checkState)
 	{
@@ -1426,19 +1350,6 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 										cronJob->database,
 										cronJob->userName,
 										cronJob->command, GetCronStatus(CRON_STATUS_STARTING));
-
-			/*
-			 * YB Note: We need to persist the job run details for all tasks and
-			 * then the lastMinute before we can start execution. This ensures
-			 * at-most-once guarantees during failures, and that an aborted
-			 * run would be logged.
-			 * This will add an extra second to the job
-			 * run time. For interval jobs such a guarantee is not needed,
-			 * and the extra second will significantly affect the jobs so
-			 * run them immediately.
-			 */
-			if (IsYugaByteEnabled() && !task->secondsInterval)
-				break;
 		}
 
 		case CRON_TASK_START:
@@ -1484,6 +1395,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				connection = PQconnectStartParams(keywordArray, valueArray, false);
 				PQsetnonblocking(connection, 1);
+				PQsetNoticeReceiver(connection, CronNoticeReceiver, (void *) task);
 
 				connectionStatus = PQstatus(connection);
 				if (connectionStatus == CONNECTION_BAD)
@@ -1635,8 +1547,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 			if (!registered)
 			{
-				dsm_detach(task->seg);
-				task->seg = NULL;
+				CleanupCronTask(task);
 				task->state = CRON_TASK_ERROR;
 				task->errorMessage = "could not start background process; more "
 									 "details may be available in the server log";
@@ -1652,18 +1563,17 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 			status = WaitForBackgroundWorkerStartup(&task->handle, &pid);
 			if (status != BGWH_STARTED && status != BGWH_STOPPED)
 			{
-				dsm_detach(task->seg);
-				task->seg = NULL;
+				CleanupCronTask(task);
 				task->state = CRON_TASK_ERROR;
 				task->errorMessage = "could not start background process; more "
 									 "details may be available in the server log";
 				break;
 			}
 
-			start_time = GetCurrentTimestamp();
+			task->lastStartTime = GetCurrentTimestamp();
 
 			if (CronLogRun)
-				UpdateJobRunDetail(task->runId, &pid, GetCronStatus(CRON_STATUS_RUNNING), NULL, &start_time, NULL);
+				UpdateJobRunDetail(task->runId, (int32 *) &pid, GetCronStatus(CRON_STATUS_RUNNING), NULL, &task->lastStartTime, NULL);
 
 			task->state = CRON_TASK_BGW_RUNNING;
 			break;
@@ -1711,7 +1621,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				pid = (pid_t) PQbackendPID(connection);
 				if (CronLogRun)
-					UpdateJobRunDetail(task->runId, &pid, GetCronStatus(CRON_STATUS_SENDING), NULL, NULL, NULL);
+					UpdateJobRunDetail(task->runId, (int32 *) &pid, GetCronStatus(CRON_STATUS_SENDING), NULL, NULL, NULL);
 			}
 			else if (pollingStatus == PGRES_POLLING_FAILED)
 			{
@@ -1736,8 +1646,8 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 		case CRON_TASK_SENDING:
 		{
-			char *command = cronJob->command;
 			int sendResult = 0;
+			char *command = NULL;
 
 			Assert(!UseBackgroundWorkers);
 
@@ -1765,6 +1675,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 				break;
 			}
 
+			command = cronJob->command;
 			sendResult = PQsendQuery(connection, command);
 			if (sendResult == 1)
 			{
@@ -1775,9 +1686,9 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 				task->startDeadline = 0;
 				task->state = CRON_TASK_RUNNING;
 
-				start_time = GetCurrentTimestamp();
+				task->lastStartTime = GetCurrentTimestamp();
 				if (CronLogRun)
-					UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_RUNNING), NULL, &start_time, NULL);
+					UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_RUNNING), NULL, &task->lastStartTime, NULL);
 			}
 			else
 			{
@@ -1850,8 +1761,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 			{
 				TerminateBackgroundWorker(&task->handle);
 				WaitForBackgroundWorkerShutdown(&task->handle);
-				dsm_detach(task->seg);
-				task->seg = NULL;
+				CleanupCronTask(task);
 
 				break;
 			}
@@ -1873,9 +1783,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				task->state = CRON_TASK_DONE;
 
-				dsm_detach(task->seg);
-
-				task->seg = NULL;
+				CleanupCronTask(task);
 				RunningTaskCount--;
 			}
 
@@ -1897,8 +1805,10 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 			if (task->errorMessage != NULL)
 			{
-				if (CronLogRun)
-					UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_FAILED), task->errorMessage, NULL, NULL);
+				if (CronLogRun) {
+					TimestampTz end_time = GetCurrentTimestamp();
+					UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_FAILED), task->errorMessage, &task->lastStartTime, &end_time);
+				}
 
 				ereport(LOG, (errmsg("cron job " INT64_FORMAT " %s",
 									 jobId, task->errorMessage)));
@@ -1906,7 +1816,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				if (task->freeErrorMessage)
 				{
-					pfree(task->errorMessage);
+					free(task->errorMessage);
 				}
 			}
 			else
@@ -1951,6 +1861,25 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 }
 
 static void
+CleanupCronTask(CronTask *task)
+{
+	if (task == NULL)
+		return;
+
+	if (task->sharedMemoryQueue != NULL)
+	{
+		shm_mq_detach(task->sharedMemoryQueue);
+		task->sharedMemoryQueue = NULL;
+	}
+
+	if (task->seg != NULL)
+	{
+		dsm_detach(task->seg);
+		task->seg = NULL;
+	}
+}
+
+static void
 GetTaskFeedback(PGresult *result, CronTask *task)
 {
 
@@ -1982,7 +1911,7 @@ GetTaskFeedback(PGresult *result, CronTask *task)
 		case PGRES_BAD_RESPONSE:
 		case PGRES_FATAL_ERROR:
 		{
-			task->errorMessage = pstrdup(PQresultErrorMessage(result));
+			task->errorMessage = strdup(PQresultErrorMessage(result));
 			task->freeErrorMessage = true;
 			task->pollingStatus = 0;
 			task->state = CRON_TASK_ERROR;
@@ -2111,8 +2040,11 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 							UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_SUCCEEDED), display_msg.data, NULL, &end_time);
 					}
 
-					ereport(LOG, (errmsg("cron job " INT64_FORMAT ": %s",
-									 task->jobId, display_msg.data)));
+					/*
+					 * We do not log the message, since the original process probably
+					 * already did that.
+					 */
+
 					pfree(display_msg.data);
 
 					break;
@@ -2125,7 +2057,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 					char *nonconst_tag;
 					char *cmdTuples;
 
-					nonconst_tag = pstrdup(tag);
+					nonconst_tag = strdup(tag);
 
 					if (CronLogRun)
 						UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_SUCCEEDED), nonconst_tag, NULL, &end_time);
@@ -2136,7 +2068,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 											 task->jobId, nonconst_tag, cmdTuples)));
 					}
 
-					pfree(nonconst_tag);
+					free(nonconst_tag);
 					break;
 				}
 			case 'A':
@@ -2176,14 +2108,14 @@ CronBackgroundWorker(Datum main_arg)
 	/* Set up a memory context and resource owner. */
 	Assert(CurrentResourceOwner == NULL);
 	CurrentResourceOwner = ResourceOwnerCreate(NULL, "pg_cron");
-	YbCurrentMemoryContext = AllocSetContextCreate(TopMemoryContext,
-												   "pg_cron worker",
-												   ALLOCSET_DEFAULT_MINSIZE,
-												   ALLOCSET_DEFAULT_INITSIZE,
-												   ALLOCSET_DEFAULT_MAXSIZE);
+	CurrentMemoryContext = AllocSetContextCreate(TopMemoryContext,
+												 "pg_cron worker",
+												 ALLOCSET_DEFAULT_MINSIZE,
+												 ALLOCSET_DEFAULT_INITSIZE,
+												 ALLOCSET_DEFAULT_MAXSIZE);
 
 	/* Set up a dynamic shared memory segment. */
-	seg = dsm_attach(DatumGetInt32(main_arg));
+	seg = dsm_attach(DatumGetUInt32(main_arg));
 	if (seg == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -2217,12 +2149,6 @@ CronBackgroundWorker(Datum main_arg)
 #endif
 
 	/* Prepare to execute the query. */
-	/* YB Note: Always read the latest entries in the catalog */
-	if (IsYugaByteEnabled())
-	{
-		YbInvalidateCatalogSnapshot();
-		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
-	}
 	SetCurrentStatementStartTimestamp();
 	debug_query_string = command;
 	pgstat_report_activity(STATE_RUNNING, command);
@@ -2399,8 +2325,10 @@ ExecuteSqlString(const char *sql)
 			(void) PortalRun(portal, FETCH_ALL, isTopLevel, receiver, receiver, completionTag);
 		#elif PG_VERSION_NUM < 130000
 			(void) PortalRun(portal, FETCH_ALL, isTopLevel,true, receiver, receiver, completionTag);
-		#else
+		#elif PG_VERSION_NUM < 180000
 			(void) PortalRun(portal, FETCH_ALL, isTopLevel, true, receiver, receiver, &qc);
+		#else
+			(void) PortalRun(portal, FETCH_ALL, isTopLevel, receiver, receiver, &qc);
 		#endif
 
 		/* Clean up the receiver. */
@@ -2433,14 +2361,6 @@ ExecuteSqlString(const char *sql)
 static bool
 jobCanceled(CronTask *task)
 {
-	if (IsYugaByteEnabled() && !ybIsLeader)
-	{
-		task->errorMessage = "pg_cron leader changed";
-		task->state = CRON_TASK_ERROR;
-		task->pollingStatus = 0;
-		return true;
-	}
-
     Assert(task->state == CRON_TASK_CONNECTING || \
             task->state == CRON_TASK_SENDING || \
             task->state == CRON_TASK_BGW_RUNNING || \
@@ -2486,116 +2406,13 @@ jobStartupTimeout(CronTask *task, TimestampTz currentTime)
         return false;
 }
 
+
 /*
- * Returns the number of seconds between startTime and stopTime rounded down to
- * the closest integer.
+ * CronNoticeReceiver processes a libpq notice. We generally ignore
+ * these because they are usually already logged by the original process.
  */
-static long
-YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime)
-{
-	int microsPassed = 0;
-	long secondsPassed = 0;
-
-	TimestampDifference(startTime, stopTime,
-						&secondsPassed, &microsPassed);
-
-	return secondsPassed;
-}
-
-static bool
-YbIsCronLeader()
-{
-	if (!YBCIsCronLeader())
-		return false;
-
-	if (YbEnableOnXClusterTarget)
-		return true;
-
-	int xcluster_role = YBCGetXClusterRole(MyDatabaseId);
-	if (xcluster_role == XCLUSTER_ROLE_UNSPECIFIED ||
-		xcluster_role == XCLUSTER_ROLE_UNAVAILABLE)
-	{
-		/*
-		 * If we do not know the role, then assume we are an xCluster target.
-		 */
-		ereport(DEBUG1, (errmsg("pg_cron switching to non-leader mode since xcluster role is "
-								"unspecified or unavailable")));
-		return false;
-	}
-
-	return xcluster_role != XCLUSTER_ROLE_AUTOMATIC_TARGET;
-}
-
 static void
-YbCheckLeadership(List *taskList, TimestampTz currentTime)
+CronNoticeReceiver(void *arg, const PGresult *result)
 {
-	if (!IsYugaByteEnabled())
-		return;
 
-	if (YbIsCronLeader())
-	{
-		if (!ybIsLeader)
-		{
-			ereport(LOG, (errmsg("pg_cron switching to leader mode")));
-			ybIsLeader = true;
-
-			/*
-			 * The first time we detect that we are a leader, mark any inflight
-			 * job started by the previous leader as failed as that node might
-			 * still be alive. It will mark the job as completed and stop
-			 * scheduling new runs. This inconsistency will go away once
-			 * distributed job scheduling (#22336) is implemented.
-			 */
-			MarkPendingRunsAsFailed();
-
-			/*
-			 * Reset the start time used for interval job. Check comment in
-			 * GetCronTask.
-			 */
-			ListCell *taskCell = NULL;
-			foreach (taskCell, taskList)
-			{
-				CronTask *task = (CronTask *) lfirst(taskCell);
-				task->lastStartTime = currentTime;
-			}
-
-			CronJobCacheValid = false;
-		}
-	}
-	else if (ybIsLeader)
-	{
-		ereport(LOG, (errmsg("pg_cron switching to idle mode")));
-		ybIsLeader = false;
-
-		/*
-		 * Reset the pending run counts so that we do not start tasks that we
-		 * marked as pending while we were the leader.
-		 */
-		ListCell *taskCell = NULL;
-		foreach(taskCell, taskList)
-		{
-			CronTask *task = (CronTask *) lfirst(taskCell);
-			task->pendingRunCount = 0;
-		}
-	}
-}
-
-static TimestampTz
-YbGetLastPersistedMinute(TimestampTz currentTime)
-{
-	int64_t lastMinute = 0;
-	HandleYBStatus(YBCGetCronLastMinute(&lastMinute));
-	if (lastMinute == 0)
-		lastMinute = TimestampMinuteStart(currentTime);
-
-	return lastMinute;
-}
-
-static void
-YbPersistLastMinute()
-{
-	if (ybIsLeader && YbLastMinuteToPersist != 0)
-		HandleYBStatus(YBCSetCronLastMinute(YbLastMinuteToPersist));
-
-	YbLastMinuteToPersist = 0;
 }

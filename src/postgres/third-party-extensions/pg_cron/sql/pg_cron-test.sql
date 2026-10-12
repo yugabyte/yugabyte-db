@@ -1,8 +1,14 @@
 CREATE EXTENSION pg_cron VERSION '1.0';
 SELECT extversion FROM pg_extension WHERE extname='pg_cron';
+-- Test binary compatibility with v1.3 function signature.
+ALTER EXTENSION pg_cron UPDATE TO '1.3';
+SELECT cron.schedule('test', '* * * * *', 'SELECT 1');
+SELECT cron.unschedule('test');
 -- Test binary compatibility with v1.4 function signature.
 ALTER EXTENSION pg_cron UPDATE TO '1.4';
 SELECT cron.unschedule(job_name := 'no_such_job');
+SELECT cron.schedule('testjob', '* * * * *', 'SELECT 1');
+SELECT cron.unschedule('testjob');
 
 -- Test cache invalidation
 DROP EXTENSION pg_cron;
@@ -21,17 +27,26 @@ SELECT cron.unschedule(1);
 SELECT cron.schedule(repeat('a', 1000), '');
 
 -- Invalid input: missing parts
-SELECT cron.schedule('* * * *', 'SELECT 1');
+SELECT cron.schedule('* * * *', 'SELECT 1'); 
 
 -- Invalid input: trailing characters
-SELECT cron.schedule('5 secondc', 'SELECT 1');
-SELECT cron.schedule('50 seconds c', 'SELECT 1');
+SELECT cron.schedule('5 secondc', 'SELECT 1'); 
+SELECT cron.schedule('50 seconds c', 'SELECT 1'); 
+
+-- Invalid input: step out of range
+SELECT cron.schedule('*/0 10 * * *', 'SELECT 1');
+SELECT cron.schedule('-1 * * * *', 'SELECT 1');
+SELECT cron.schedule('*/-1 10 * * *', 'SELECT 1');
+SELECT cron.schedule('*/60 10 * * *', 'SELECT 1');
+SELECT cron.schedule('* * * 13 *', 'SELECT 1');
+SELECT cron.schedule('* * * 0 *', 'SELECT 1');
+SELECT cron.schedule('*/5000000000 10 * * *', 'SELECT 1');
 
 -- Invalid input: seconds out of range
-SELECT cron.schedule('-1 seconds', 'SELECT 1');
-SELECT cron.schedule('0 seconds', 'SELECT 1');
-SELECT cron.schedule('60 seconds', 'SELECT 1');
-SELECT cron.schedule('10000000000 seconds', 'SELECT 1');
+SELECT cron.schedule('-1 seconds', 'SELECT 1'); 
+SELECT cron.schedule('0 seconds', 'SELECT 1'); 
+SELECT cron.schedule('60 seconds', 'SELECT 1'); 
+SELECT cron.schedule('10000000000 seconds', 'SELECT 1'); 
 
 -- Try to update pg_cron on restart
 SELECT cron.schedule('@restar', 'ALTER EXTENSION pg_cron UPDATE');
@@ -123,6 +138,17 @@ SELECT username FROM cron.job where jobid=2;
 SELECT cron.schedule_in_database(job_name:='his vacuum', schedule:='0 11 * * *', command:='VACUUM',database:=current_database(), username:='pgcron_cront');
 SELECT username FROM cron.job where jobid=7;
 
+-- Make sure ownership checks remain case-sensitive for quoted role names
+CREATE USER "CaseOwner";
+CREATE USER caseowner;
+GRANT USAGE ON SCHEMA cron TO "CaseOwner", caseowner;
+
+SELECT cron.schedule_in_database(job_name:='mixed case owner', schedule:='0 11 * * *', command:='VACUUM',database:=current_database(), username:='CaseOwner');
+
+SET SESSION AUTHORIZATION caseowner;
+SELECT cron.unschedule(8);
+RESET SESSION AUTHORIZATION;
+
 -- Override function
 DROP EXTENSION IF EXISTS pg_cron cascade;
 CREATE TABLE test (data text);
@@ -141,10 +167,10 @@ CREATE EXTENSION pg_cron;
 select * from public.test;
 
 -- valid interval jobs
-SELECT cron.schedule('1 second', 'SELECT 1');
-SELECT cron.schedule(' 30 sEcOnDs ', 'SELECT 1');
-SELECT cron.schedule('59 seconds', 'SELECT 1');
-SELECT cron.schedule('17  seconds ', 'SELECT 1');
+SELECT cron.schedule('1 second', 'SELECT 1'); 
+SELECT cron.schedule(' 30 sEcOnDs ', 'SELECT 1'); 
+SELECT cron.schedule('59 seconds', 'SELECT 1'); 
+SELECT cron.schedule('17  seconds ', 'SELECT 1'); 
 SELECT jobid, jobname, schedule, command FROM cron.job ORDER BY jobid;
 
 -- valid last of day job
@@ -157,5 +183,7 @@ SELECT cron.schedule('bad-last-dom-job1', '0 11 $foo * *', 'VACUUM FULL');
 -- cleaning
 DROP EXTENSION pg_cron;
 drop user pgcron_cront;
+drop user "CaseOwner";
+drop user caseowner;
 drop database pgcron_dbno;
 drop database pgcron_dbyes;

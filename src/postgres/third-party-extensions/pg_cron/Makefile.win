@@ -1,0 +1,63 @@
+# src/test/modules/pg_cron/Makefile.win
+
+EXTENSION = pg_cron
+
+DATA_built = $(EXTENSION)--1.0.sql
+
+REGRESS_OPTS = --temp-config=./pg_cron.conf --temp-instance=./tmp_check --dbname=contrib_regression
+REGRESS = pg_cron-test
+
+OBJS = src/entry.obj src/job_metadata.obj src/misc.obj src/pg_cron.obj src/task_states.obj
+OBJS_CLEAN = src\entry.obj src\job_metadata.obj src\misc.obj src\pg_cron.obj src\task_states.obj
+
+# TODO use pg_config
+!ifndef PGROOT
+!error PGROOT is not set
+!endif
+BINDIR = $(PGROOT)\bin
+INCLUDEDIR = $(PGROOT)\include
+INCLUDEDIR_SERVER = $(PGROOT)\include\server
+LIBDIR = $(PGROOT)\lib
+PKGLIBDIR = $(PGROOT)\lib
+SHAREDIR = $(PGROOT)\share
+
+# Use $(PGROOT)\bin\pg_regress for Postgres < 17
+PG_REGRESS = $(LIBDIR)\pgxs\src\test\regress\pg_regress
+
+CFLAGS = /nologo /DWIN32_NO_STATUS /Dstrcasecmp=_stricmp /I"$(INCLUDEDIR_SERVER)\port\win32_msvc" /I"$(INCLUDEDIR_SERVER)\port\win32" /I"$(INCLUDEDIR_SERVER)" /I"$(INCLUDEDIR)" /Iinclude /Isrc
+
+SHLIB = $(EXTENSION).dll
+
+LIBS = "$(LIBDIR)\postgres.lib" "$(LIBDIR)\libpq.lib" "$(LIBDIR)\libintl.lib" ws2_32.lib
+
+all: $(SHLIB) $(DATA_built)
+
+.c.obj:
+	$(CC) $(CFLAGS) /c $< /Fo$@
+
+$(SHLIB): $(OBJS)
+	$(CC) $(CFLAGS) $(OBJS) $(LIBS) /link /DLL /OUT:$(SHLIB)
+
+$(EXTENSION)--1.0.sql: $(EXTENSION).sql
+	copy $(EXTENSION).sql $@
+
+install: all
+	if not exist "$(SHAREDIR)\extension" mkdir "$(SHAREDIR)\extension"
+	copy $(EXTENSION).control "$(SHAREDIR)\extension\"
+	copy $(DATA_built) "$(SHAREDIR)\extension\"
+	for %f in ($(EXTENSION)--*--*.sql) do copy "%f" "$(SHAREDIR)\extension\"
+	copy $(SHLIB) "$(PKGLIBDIR)\"
+
+installcheck:
+	"$(PG_REGRESS)" --bindir="$(BINDIR)" $(REGRESS_OPTS) $(REGRESS)
+
+uninstall:
+	del /f "$(PKGLIBDIR)\$(SHLIB)"
+	del /f "$(SHAREDIR)\extension\$(EXTENSION).control"
+	del /f "$(SHAREDIR)\extension\$(EXTENSION)--*.sql"
+
+clean:
+	del /f $(SHLIB) $(EXTENSION).lib $(EXTENSION).exp
+	del /f $(DATA_built)
+	del /f $(OBJS_CLEAN)
+	del /f /s /q results regression.diffs regression.out tmp_check tmp_check_iso log output_iso

@@ -28,7 +28,43 @@
 
 /* reorder these #include's at your peril */
 
+#ifndef WIN32_COMPAT_H
+#define WIN32_COMPAT_H
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <windows.h>
+
+
+
+/* Fix missing POSIX types */
+#ifndef uid_t
+typedef int uid_t;
+typedef int gid_t;
+#endif
+
+#ifndef uint
+typedef unsigned int uint;
+#endif
+
+/* Fix poll mapping */
+#define poll WSAPoll
+
+/* Stub out rlimit to satisfy the compiler without using port.h */
+struct rlimit {
+    uint rlim_cur;
+    uint rlim_max;
+};
+#define RLIMIT_NOFILE 0
+static inline int getrlimit(int resource, struct rlimit *rlp) { return 0; }
+
+#endif /* _WIN32 */
+#endif /* WIN32_COMPAT_H */
+
+
 #include <sys/types.h>
+
+
 #include <sys/param.h>
 
 #include <stdio.h>
@@ -156,8 +192,13 @@ typedef int time_min;
 
 typedef	struct _entry {
 	struct _entry	*next;
-	uid_t		uid;	
+    #if defined(_WIN32)
+	unsigned int 	uid;
+	unsigned int 	gid;
+	#else
+	uid_t		uid;
 	gid_t		gid;
+	#endif
 	char		**envp;
 	int         secondsInterval;
 	bitstr_t	bit_decl(minute, MINUTE_COUNT);
@@ -234,64 +275,6 @@ entry * parse_cron_entry(char *);
 				 * extern them elsewhere.
 				 */
 
-#ifdef MAIN_PROGRAM
-# if !defined(LINT) && !defined(lint)
-char	*copyright[] = {
-		"@(#) Copyright 1988,1989,1990,1993,1994 by Paul Vixie",
-		"@(#) All rights reserved"
-	};
-# endif
-
-char	*MonthNames[] = {
-		"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-		NULL
-	};
-
-char	*DowNames[] = {
-		"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun",
-		NULL
-	};
-
-char	*ecodes[] = {
-		"no error",
-		"bad minute",
-		"bad hour",
-		"bad day-of-month",
-		"bad month",
-		"bad day-of-week",
-		"bad command",
-		"bad time specifier",
-		"bad username",
-		"command too long",
-		NULL
-	};
-
-
-char	*ProgramName;
-int	LineNumber;
-time_t	StartTime;
-time_min virtualTime;
-time_min clockTime;
-
-# if DEBUGGING
-int	DebugFlags;
-char	*DebugFlagNames[] = {	/* sync with #defines */
-		"ext", "sch", "proc", "pars", "load", "misc", "test", "bit",
-		NULL		/* NULL must be last element */
-	};
-# endif /* DEBUGGING */
-#else /*MAIN_PROGRAM*/
-extern	char	*copyright[],
-		*MonthNames[],
-		*DowNames[],
-		*ProgramName;
+extern	char *MonthNames[];
+extern	char *DowNames[];
 extern	int	LineNumber;
-extern	time_t	StartTime;
-extern  time_min virtualTime;
-extern  time_min clockTime;
-# if DEBUGGING
-extern	int	DebugFlags;
-extern	char	*DebugFlagNames[];
-# endif /* DEBUGGING */
-#endif /*MAIN_PROGRAM*/
