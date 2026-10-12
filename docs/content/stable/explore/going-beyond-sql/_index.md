@@ -15,10 +15,10 @@ While embracing PostgreSQL is a fundamental aspect of YugabyteDB, it extends Pos
 
 ## Read from followers
 
-Use follower reads to spread the read workload across all replicas in the primary cluster. For applications that don't require the latest data or are working with unchanging data, follower reads provide low-latency reads from the primary cluster. However, because data changes are still replicated from the leader, there is a chance of stale reads.
+Use follower reads to spread the read workload across all replicas in the primary cluster. For applications that don't require the latest data or are working with unchanging data, follower reads provide low-latency reads from the primary cluster. However, because data changes are still replicated from the leader, there is a chance of stale reads. [Follower reads](../../../additional-features/follower-reads/) describes when a read is served by a follower and how stale the result is.
 
 {{<lead link="./follower-reads-ysql/">}}
-Learn how [follower reads](./follower-reads-ysql/) work.
+Try the [follower reads](./follower-reads-ysql/) examples.
 {{</lead>}}
 
 ## Geo distribution

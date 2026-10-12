@@ -57,7 +57,7 @@ The fault tolerance determines how resilient the cluster is to domain (that is, 
 
 Normally, only the [tablet leader](#tablet-leader) can process user-facing write and read requests. Follower reads allow you to lower read latencies by serving reads from the tablet followers. This is similar to reading from a cache, which can provide more read IOPS with low latency. The data might be slightly stale, but is timeline-consistent, meaning no out of order data is possible.
 
-Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link dest="../../explore/going-beyond-sql/follower-reads-ysql/">}}
+Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link dest="../../additional-features/follower-reads/">}}
 
 ## Hybrid time
 

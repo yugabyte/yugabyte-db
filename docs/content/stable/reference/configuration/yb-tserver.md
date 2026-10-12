@@ -559,7 +559,7 @@ The higher the number, the more batching is done. 1024 is recommended.
 Default: `false`
 {{% /tags/wrap %}}
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../additional-features/follower-reads/).
 
 ##### yb_follower_read_staleness_ms
 
@@ -579,7 +579,7 @@ Sets the maximum allowable staleness. Although the default is recommended, you c
 Default: `false`
 {{% /tags/wrap %}}
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../additional-features/follower-reads/#read-only-transaction).
 
 ##### default_transaction_isolation
 

@@ -15,6 +15,10 @@ type: docs
 
 YugabyteDB requires reading from the leader to read the latest data. However, for applications that do not require the latest data or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a replica that is closer to the client.
 
+{{<lead link="../../../additional-features/follower-reads/">}}
+For how a read chooses a replica, how stale the result is, and how to turn follower reads on, see [Follower reads](../../../additional-features/follower-reads/).
+{{</lead>}}
+
 ## Use cases
 
 1. Time-critical. Suppose the end-user starts a donation page to raise money for a personal cause and the target amount must be met by the end of the day. In a time-critical scenario, the end-user benefits from accessing the most recent donation made on the page and can keep track of the progress. Such real-time applications require the latest information as soon as it is available. But in the case of an application where fetching slightly stale data is acceptable, follower reads can be helpful.
@@ -30,55 +34,6 @@ In a distributed environment, when one node in a cluster is elected as the leade
 The leader lease mechanism guarantees to serve strongly consistent reads where a client can fetch reads directly from the leader, because the leader under lease will have the latest data.
 
 For an illustration of the performance improvements using leader leases, see [Low Latency Reads in Geo-Distributed SQL with Raft Leader Leases](https://www.yugabyte.com/blog/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/).
-
-## Configuration parameters
-
-The following YSQL configuration parameters control the behavior of follower reads:
-
-- `yb_read_from_followers` controls whether or not reading from followers is enabled. The default value is false.
-
-- `yb_follower_read_staleness_ms` sets the exact staleness to read at (the read executes at hybrid time ~`now - yb_follower_read_staleness_ms`). The default value is 30000 (30 seconds). Unlike YCQL follower reads, which support a [looser consistency model](../follower-reads-ycql/#consistency-level), YSQL follower reads do not return data newer than this staleness interval, even if available at a local replica, in order to ensure consistency.
-
-  Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms).
-
-  Note that even if the tablet leader is on the closest node, you would still read from `Now()-yb_follower_read_staleness_ms`. Therefore, when follower reads are used, the read is always stale, even if you are reading from a tablet leader.
-
-  To monitor whether any reads are being redirected from a node to the leader, use the metric `consistent_prefix_failed_reads`. This shows the number of these requests that are redirected.
-
-In addition, the `ysql_follower_reads_avoid_waiting_for_safe_time` flag governs whether a stale read will wait at the follower, or be redirected to the leader immediately.
-
-## Expected behavior
-
-The following table describes the expected behavior when a read happens from a follower.
-
-| Conditions | Expected behavior |
-| :--------- | :---------------- |
-| `yb_read_from_followers` is true AND transaction is marked read only | Read happens from the closest replica of the tablet, which could be leader or follower. |
-| `yb_read_from_followers` is false OR transaction or statement is not read only | Read happens from the leader. |
-
-## Read-only transaction
-
-You can mark a transaction as read only by applying any of the following:
-
-- SET TRANSACTION READ ONLY
-
-    Applies only to the current transaction block.
-
-- SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY
-
-    Applies the read-only setting to all statements and transaction blocks that follow.
-
-- SET default_transaction_read_only = TRUE
-
-    Applies the read-only setting to all statements and transaction blocks that follow.
-
-Note: The use of `pg_hint_plan` to mark a statement as read only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
-
-## Caveats
-
-- If the follower's safe-time is at least `<current_time> - <staleness>`, the follower may serve the read without any delay.
-
-- If the follower is not yet caught up to `<current_time> - <staleness>`, the read is redirected to a different replica transparently from the end-user. The end-user may see a slight increase in latency depending on the location of the replica which satisfies the read.
 
 ## Examples
 
