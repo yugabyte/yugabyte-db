@@ -7,7 +7,7 @@ src/postgres/third-party-extensions/mage,,https://github.com/yugabyte/age,a9dc04
 src/postgres/third-party-extensions/documentdb,,https://github.com/documentdb/documentdb,6d82f06dd5c0852cf1ceea9af015bcacbf71551a
 src/postgres/third-party-extensions/hypopg,,https://github.com/HypoPG/hypopg,21d5461ad1868434cc47d9aa656d7afc2b24c464
 src/postgres/third-party-extensions/orafce,,https://github.com/orafce/orafce,3a206638f4abcdbdca92957fe0c0051d4b548d8d
-src/postgres/third-party-extensions/pg_cron,,https://github.com/citusdata/pg_cron,TODO
+src/postgres/third-party-extensions/pg_cron,,https://github.com/citusdata/pg_cron,5cedfa472ccc83567aa23ec645925ed8489a7797
 src/postgres/third-party-extensions/pg_duckdb,,https://github.com/duckdb/pg_duckdb,7b0db3737a1ab2dfb182b742322426e3c4b500af
 src/postgres/third-party-extensions/pg_hint_plan,,https://github.com/ossc-db/pg_hint_plan,9dd15b499a4b71cc3715611316d6254c97cdc5d7
 src/postgres/third-party-extensions/pg_parquet,,https://github.com/CrunchyData/pg_parquet,9092f65678b9fcfc59e8918c74ad25259034c089

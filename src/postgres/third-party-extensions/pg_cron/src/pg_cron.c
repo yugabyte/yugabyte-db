@@ -118,8 +118,8 @@
 #include "utils/builtins.h"
 
 /* YB includes */
-#include "pg_yb_utils.h"
 #include "catalog/yb_catalog_version.h"
+#include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
 
@@ -320,7 +320,7 @@ _PG_init(void)
 		gettext_noop("Use background workers instead of client sessions."),
 		NULL,
 		&UseBackgroundWorkers,
-		true,
+		true,		/* YB */
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
@@ -719,7 +719,6 @@ PgCronLauncherMain(Datum arg)
 
 	for (;;)
 	{
-
 		List *taskList = NIL;
 		TimestampTz currentTime = 0;
 
@@ -867,7 +866,7 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 		{
 			lastMinute = TimestampMinuteStart(currentTime);
 		}
-	}
+	}							/* YB */
 
 	minutesPassed = MinutesPassed(lastMinute, currentTime);
 	if (minutesPassed == 0)
@@ -1942,7 +1941,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				if (task->freeErrorMessage)
 				{
-					pfree(task->errorMessage);
+					pfree(task->errorMessage);	/* YB */
 				}
 			}
 			else
@@ -2037,7 +2036,7 @@ GetTaskFeedback(PGresult *result, CronTask *task)
 		case PGRES_BAD_RESPONSE:
 		case PGRES_FATAL_ERROR:
 		{
-			task->errorMessage = pstrdup(PQresultErrorMessage(result));
+			task->errorMessage = pstrdup(PQresultErrorMessage(result));	/* YB */
 			task->freeErrorMessage = true;
 			task->pollingStatus = 0;
 			task->state = CRON_TASK_ERROR;
@@ -2183,7 +2182,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 					char *nonconst_tag;
 					char *cmdTuples;
 
-					nonconst_tag = pstrdup(tag);
+					nonconst_tag = pstrdup(tag);	/* YB */
 
 					if (CronLogRun)
 						UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_SUCCEEDED), nonconst_tag, NULL, &end_time);
@@ -2194,7 +2193,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 											 task->jobId, nonconst_tag, cmdTuples)));
 					}
 
-					pfree(nonconst_tag);
+					pfree(nonconst_tag);	/* YB */
 					break;
 				}
 			case 'A':

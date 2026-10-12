@@ -804,7 +804,7 @@ class PostgresBuilder(YbBuildToolBase):
             # 'third-party-extensions/documentdb',
             'third-party-extensions/hypopg',
             'third-party-extensions/orafce',
-            # 'third-party-extensions/pg_cron',
+            'third-party-extensions/pg_cron',
             'third-party-extensions/pg_hint_plan',
             # 'third-party-extensions/pg_parquet',
             'third-party-extensions/pg_partman',
