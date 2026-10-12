@@ -143,7 +143,7 @@ You can rank multiple regions so that if the first fails, leaders move to the ne
 
 Follower copies stay in the other regions. Ranking chooses the leader among replicas that already exist; it does not add, remove, or move copies. See [Tablet leader](#tablet-leader).
 
-You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. If the cluster has [read replicas](#read-replica-cluster) and a client connects to a replica, reads are served from the replica; writes continue to go to the preferred region's tablet leaders. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. If the cluster has [read replicas](#read-replica-cluster) and a client connects to a replica, the replica serves the read when follower reads are on; writes continue to go to the preferred region's tablet leaders. With follower reads off, the read goes to the tablet leader in the primary cluster. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 

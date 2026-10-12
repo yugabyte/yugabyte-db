@@ -1,8 +1,12 @@
 ---
-title: Explore follower reads - YSQL
+title: Explore follower reads
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Learn how to use follower reads to lower read latencies in local YugabyteDB clusters in YSQL.
+description: Learn how to use follower reads to lower read latencies, including reads served by a read replica.
+aliases:
+  - /stable/explore/going-beyond-sql/follower-reads-ycql/
+  - /stable/explore/tunable-reads/
+  - /stable/explore/follower-reads/
 menu:
   stable:
     identifier: follower-reads-ysql
@@ -11,9 +15,7 @@ menu:
 type: docs
 ---
 
-{{<api-tabs>}}
-
-YugabyteDB requires reading from the leader to read the latest data. However, for applications that do not require the latest data or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a replica that is closer to the client.
+YugabyteDB requires reading from the leader to read the latest data. However, for applications that do not require the latest data or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a replica that is closer to the client. The same applies to a [read replica](../../../deploy/multi-dc/read-replica-clusters/): an asynchronous copy of the data placed near the client in another region that can serve reads when follower reads are on.
 
 {{<lead link="../../../additional-features/follower-reads/">}}
 For how a read chooses a replica, how stale the result is, and how to turn follower reads on, see [Follower reads](../../../additional-features/follower-reads/).
@@ -35,7 +37,11 @@ The leader lease mechanism guarantees to serve strongly consistent reads where a
 
 For an illustration of the performance improvements using leader leases, see [Low Latency Reads in Geo-Distributed SQL with Raft Leader Leases](https://www.yugabyte.com/blog/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/).
 
-## Examples
+## Example
+
+{{< tabpane text=true >}}
+
+  {{% tab header="YSQL" lang="YSQL" %}}
 
 This example uses follower reads because the transaction is marked read-only:
 
@@ -202,3 +208,97 @@ SELECT * FROM t WHERE k = 'k1';
 ```
 
 Note that your results may differ slightly depending on how quickly you run the queries.
+
+  {{% /tab %}}
+
+  {{% tab header="YCQL" lang="YCQL" %}}
+
+You configure follower reads by setting the consistency level to `ONE`, and how stale a follower read may be using [--max_stale_read_bound_time_ms](../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms).
+
+In this tutorial, you update a single key-value over and over and read it from the tablet leader. You then stop that workload and run it again so the reads come from a follower.
+
+### Create a cluster
+
+{{<setup/local numnodes="4" collapse="no" locations="aws.us-east-2.us-east-2a,aws.us-east-2.us-east-2b,aws.us-east-2.us-east-2c,aws.us-east-2.us-east-2d">}}
+
+### Write some data
+
+Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command:
+
+{{% yb-sample-apps-path %}}
+
+By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. You populate exactly one key with a `10KB` value. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the cluster.
+
+Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local cluster, as follows:
+
+```sh
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+                                    --nodes 127.0.0.1:9042 \
+                                    --nouuid \
+                                    --num_unique_keys 1 \
+                                    --num_threads_write 1 \
+                                    --num_threads_read 1 \
+                                    --value_size 10240
+```
+
+In the preceding command, the value of `num_unique_keys` is set to `1`, which means a single key `key:0` was overwritten. You can verify this using ycqlsh as follows:
+
+```sh
+$ ./bin/ycqlsh 127.0.0.1
+```
+
+```output
+Connected to local cluster at 127.0.0.1:9042.
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+Use HELP for help.
+```
+
+Run a query as follows:
+
+```sql
+ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
+```
+
+```output
+ k
+-------
+ key:0
+
+(1 rows)
+```
+
+When performing strongly consistent reads, all reads are served by the tablet leader of the tablet that contains the key `key:0`. Browse to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, where you can see that all the requests are indeed being served by one YB-TServer, as shown in the following illustration:
+
+![Reads from the tablet leader](/images/ce/tunable-reads-leader.png)
+
+### Follower reads from tablet replicas
+
+Stop the workload application, and then run it as follows:
+
+```sh
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+                                    --nodes 127.0.0.1:9042 \
+                                    --nouuid \
+                                    --num_unique_keys 1 \
+                                    --num_threads_write 1 \
+                                    --num_threads_read 1 \
+                                    --value_size 10240 \
+                                    --local_reads
+```
+
+Adding `--local_reads` sets the [consistency](../../../api/ycqlsh/#consistency) level to `ONE` for reads, so a follower can serve them. Updates to the same key `key:0` still go through the tablet leader.
+
+You can see this by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0`, while multiple YB-TServer replicas serve the reads.
+
+![Reads from the tablet follower](/images/ce/tunable-reads-followers.png)
+
+{{% explore-cleanup-local %}}
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+## Read more
+
+- [Read replica deployment](../../../deploy/multi-dc/read-replica-clusters/)
+- [Read replicas](../../multi-region-deployments/read-replicas-ycql/)

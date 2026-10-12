@@ -189,7 +189,7 @@ The following illustration demonstrates the result of executing the preceding co
 
 ![Primary cluster reads](/images/explore/multi-region-deployments/read-replicas5.png)
 
-The following command directs the `CL.ONE` reads to the read replica cluster (as observer reads) in region `r2`. The read reaches the replica because `--local_reads` sets the consistency level to `ONE`. See [Follower reads](../../../additional-features/follower-reads/#ycql).
+The following command directs the `CL.ONE` reads to the read replica cluster (as observer reads) in region `r2`. `--with_local_dc r2` routes the reads there. `--local_reads` sets the consistency level to `ONE` so the replica can serve them. See [Follower reads](../../../additional-features/follower-reads/#ycql).
 
 ```shell
 java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \

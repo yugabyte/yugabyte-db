@@ -29,7 +29,7 @@ Regardless of the preferred region setting, data is replicated across all the re
 
 You can enable [follower reads](../../../../additional-features/follower-reads/) to serve reads from non-preferred regions.
 
-In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
+In cases where the cluster has read replicas and a client connects to a read replica, the replica serves the read when follower reads are on; writes continue to be handled by the preferred region. With follower reads off, the read goes to the tablet leader in the primary cluster.
 
 ## Features
 
