@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <optional>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "yb/master/leader_epoch.h"
@@ -20,6 +22,8 @@
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_context.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 namespace master {
@@ -30,6 +34,45 @@ YB_STRONGLY_TYPED_BOOL(IgnoreVectorIndexesValidation);
 
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
+
+// The inputs to CatalogManager::ShouldSplitValidCandidate that depend on the table and on cluster
+// membership, but not on the tablet.
+struct SplitTableEligibility {
+  // Live, non-blacklisted tservers that the table's placement policy allows replicas on.
+  size_t num_eligible_tservers = 0;
+  size_t replication_factor = 0;
+};
+
+// Memoizes the live tserver list and each table's SplitTableEligibility for one
+// TabletSplitManager::DoSplitting pass. A pass over T tablets of B tables then enumerates the
+// tserver registry once and filters it by placement once per table, instead of doing both once per
+// tablet. There is no invalidation: the cache is discarded with the pass, and DoSplitTablet
+// re-validates a candidate without a cache before the split proceeds. Not thread-safe.
+class SplitEligibilityCache {
+ public:
+  template <class Build>
+  const TSDescriptorVector& LiveTServers(const Build& build) {
+    if (!live_tservers_) {
+      live_tservers_ = build();
+    }
+    return *live_tservers_;
+  }
+
+  template <class Compute>
+  const Result<SplitTableEligibility>& Table(const TableId& table_id, const Compute& compute) {
+    auto it = tables_.find(table_id);
+    if (it == tables_.end()) {
+      it = tables_.emplace(table_id, compute()).first;
+    }
+    return it->second;
+  }
+
+  size_t num_tables() const { return tables_.size(); }
+
+ private:
+  std::optional<TSDescriptorVector> live_tservers_;
+  std::unordered_map<TableId, Result<SplitTableEligibility>> tables_;
+};
 
 using SplitsToScheduleMap = std::unordered_map<TabletId, std::optional<uint64_t>>;
 

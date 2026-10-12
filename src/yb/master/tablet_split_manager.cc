@@ -949,6 +949,7 @@ void TabletSplitManager::DoSplitting(
   }
 
   TabletReplicaMapCache replica_cache;
+  SplitEligibilityCache eligibility_cache;
   OutstandingSplitState state(tablet_info_map, &replica_cache);
   for (const auto& table : valid_tables) {
     VLOG(3) << "Processing ongoing split tasks for table " << table->id();
@@ -1030,8 +1031,8 @@ void TabletSplitManager::DoSplitting(
           parent = FindPtrOrNull(tablet_info_map, parent_id);
         }
         RETURN_NOT_OK(ValidateSplitCandidateTablet(*tablet, parent));
-        const auto phase = VERIFY_RESULT(
-            catalog_manager_.ShouldSplitValidCandidate(*tablet, drive_info_opt.get()));
+        const auto phase = VERIFY_RESULT(catalog_manager_.ShouldSplitValidCandidate(
+            *tablet, drive_info_opt.get(), &eligibility_cache));
 
         const auto replicas = replica_cache.GetOrAdd(*tablet);
         const auto tservers_with_outstanding_compaction =

@@ -3119,8 +3119,39 @@ PitrCount CatalogManager::pitr_count() const {
   return sys_catalog_->pitr_count();
 }
 
+Result<SplitTableEligibility> CatalogManager::ComputeSplitTableEligibility(
+    const scoped_refptr<const TableInfo>& table, const TSDescriptorVector& ts_descs) const {
+  auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
+      table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info()));
+  SplitTableEligibility eligibility{
+      .num_eligible_tservers = ts_descs.size(),
+      .replication_factor = CatalogManagerUtil::GetReplicationFactor(table_replication_info)};
+  // If there is custom placement information present then only count the tservers which the table
+  // has access to according to the placement policy.
+  if (table_replication_info.has_live_replicas()) {
+    auto valid_tservers =
+        FindTServersForPlacementInfo(table_replication_info.live_replicas(), ts_descs);
+    if (valid_tservers.ok()) {
+      eligibility.num_eligible_tservers = valid_tservers->size();
+    }
+  }
+  return eligibility;
+}
+
+Result<SplitTableEligibility> CatalogManager::GetSplitTableEligibility(
+    const scoped_refptr<const TableInfo>& table, SplitEligibilityCache* cache) const {
+  if (!cache) {
+    return ComputeSplitTableEligibility(table, GetAllLiveNotBlacklistedTServers());
+  }
+  return cache->Table(table->id(), [&]() {
+    return ComputeSplitTableEligibility(
+        table, cache->LiveTServers([this]() { return GetAllLiveNotBlacklistedTServers(); }));
+  });
+}
+
 Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
-    const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
+    const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info,
+    SplitEligibilityCache* cache) const {
   if (drive_info.may_have_orphaned_post_split_data) {
     return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
         tablet_info.id());
@@ -3135,44 +3166,24 @@ Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($1) < low phase size threshold ($2).",
         tablet_info.id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
   }
-  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
-
-  size_t num_servers = 0;
-  auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
-      tablet_info.table(), GetTablespaceManager(),
-      ClusterConfig()->LockForRead()->pb.replication_info()));
+  const auto table = tablet_info.table();
+  const auto eligibility = VERIFY_RESULT(GetSplitTableEligibility(table, cache));
 
   // The tablet must have exactly rf running voters and no replica being remote bootstrapped, so
   // that the split does not copy a bootstrapping peer into the children's Raft configs. Since this
   // function runs both when a candidate is picked and again in DoSplitTablet right before the
   // children are registered, a replica add that starts in between is caught as well.
   RETURN_NOT_OK(CheckLiveReplicasForSplit(
-      tablet_info.id(), *tablet_info.GetReplicaLocations(),
-      CatalogManagerUtil::GetReplicationFactor(table_replication_info)));
+      tablet_info.id(), *tablet_info.GetReplicaLocations(), eligibility.replication_factor));
 
-  // If there is custom placement information present then
-  // only count the tservers which the table has access to
-  // according to the placement policy
-  if (table_replication_info.has_live_replicas()) {
-    auto pb = table_replication_info.live_replicas();
-    auto valid_tservers_res =
-        FindTServersForPlacementInfo(table_replication_info.live_replicas(), ts_descs);
-    if (!valid_tservers_res.ok()) {
-      num_servers = ts_descs.size();
-    } else {
-      num_servers = valid_tservers_res.get().size();
-    }
-  } else {
-    num_servers = ts_descs.size();
-  }
-
+  const auto num_servers = eligibility.num_eligible_tservers;
   if (num_servers == 0) {
     return STATUS_FORMAT(IllegalState,
                          "No live, non-blacklisted tservers for tablet $0. "
                          "Cannot calculate average number of tablets per tserver.",
                          tablet_info.id());
   }
-  int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
+  int64 num_tablets_per_server = table->NumPartitions() / num_servers;
 
   if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
     if (size <= FLAGS_tablet_split_low_phase_size_threshold_bytes) {
