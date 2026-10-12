@@ -198,9 +198,9 @@ order by
  (pk <= 500) |                    |                                     |       500 |         1 | Bitmap Index Scan | r_pkey     |  10 |   1
  (b <= 500)  |                    |                                     |       500 |         2 | Index Only Scan   | i_r_b      |   7 |   1
  (pk <= 500) |                    |                                     |       500 |         3 | Index Scan        | r_pkey     |   1 |   1
+ (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan | i_r_b      |  10 |   2
  (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan | i_r_b      |  16 |   1
  (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan | i_r_b      |  19 |   1
- (b <= 500)  |                    |                                     |       500 |         6 | Bitmap Index Scan | i_r_b      |  10 |   2
  (pk <= 500) |                    |                                     |       500 |         7 | Bitmap Index Scan | r_pkey     |  13 |   1
  (b <= 500)  |                    |                                     |       500 |         8 | Index Scan        | i_r_b      |   4 |   1
 (24 rows)

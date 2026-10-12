@@ -56,7 +56,7 @@ for file in pgrx-examples/**/Cargo.toml; do
 done
 
 # shellcheck disable=SC2086,SC2068
-cargo run --manifest-path=./tools/version-updater/Cargo.toml \
+cargo run -p pgrx-version-updater \
   update-files \
   --update-version "$VERSION" \
   ${INCLUDE_FOR_DEP_UPDATES[@]/#/-i } \

@@ -20,8 +20,6 @@ import static org.yb.AssertionWrappers.fail;
 
 import java.io.IOException;
 import java.net.Socket;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
 import java.security.PrivateKey;
@@ -211,11 +209,6 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
   @Parameterized.Parameters
   public static List<ConnectionEndpoint> connectionEndpoints() {
     return Arrays.asList(ConnectionEndpoint.POSTGRES, ConnectionEndpoint.YSQL_CONN_MGR);
-  }
-
-  private static String certsDir() {
-    FileSystem fs = FileSystems.getDefault();
-    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 
   @Override

@@ -79,6 +79,14 @@ export-schema:
 ```
 
 | Disable automatic [performance optimizations](../../../known-issues/postgresql/#performance-optimizations) in the exported schema. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --disable-schema-snapshot-capture |
+
+```yaml{.nocopy}
+export-schema:
+  disable-schema-snapshot-capture:
+```
+
+| Turn off recording of source schema snapshots, which [schema detect-drift](../detect-drift/) reads. Recording is best effort: a failed capture is logged and never fails the export. PostgreSQL only. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-type |
 
 ```yaml{.nocopy}

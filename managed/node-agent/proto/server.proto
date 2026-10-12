@@ -69,6 +69,7 @@ message SubmitTaskRequest {
         YnpPreflightCheckInput ynpPreflightCheckInput = 15;
         RotateSshKeyInput rotateSshKeyInput = 16;
         ConfigureCloudFederationInput configureCloudFederationInput = 17;
+        HealthCheckInput healthCheckInput = 18;
     }
 }
 
@@ -99,6 +100,7 @@ message DescribeTaskResponse {
         YnpPreflightCheckOutput ynpPreflightCheckOutput = 15;
         RotateSshKeyOutput rotateSshKeyOutput = 16;
         ConfigureCloudFederationOutput configureCloudFederationOutput = 17;
+        HealthCheckOutput healthCheckOutput = 18;
     }
 }
 

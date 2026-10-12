@@ -90,6 +90,8 @@ using yb::server::ReloadCertificatesRequestPB;
 using yb::server::ReloadCertificatesResponsePB;
 using yb::server::ServerStatusPB;
 using yb::tablet::TabletStatusPB;
+using yb::tserver::AlterTabletTierRequestPB;
+using yb::tserver::AlterTabletTierResponsePB;
 using yb::tserver::ClearAllMetaCachesOnServerRequestPB;
 using yb::tserver::ClearAllMetaCachesOnServerResponsePB;
 using yb::tserver::ClearUniverseUuidRequestPB;
@@ -104,6 +106,10 @@ using yb::tserver::FlushTabletsRequestPB;
 using yb::tserver::FlushTabletsResponsePB;
 using yb::tserver::GetSplitKeyRequestPB;
 using yb::tserver::GetSplitKeyResponsePB;
+using yb::tserver::GetTabletTierInfoRequestPB;
+using yb::tserver::GetTabletTierInfoResponsePB;
+using yb::tserver::TierMigrationStatusPB;
+using yb::tserver::TierPathInfoPB;
 using yb::tserver::IsTabletServerReadyRequestPB;
 using yb::tserver::IsTabletServerReadyResponsePB;
 using yb::tserver::ListMasterServersRequestPB;
@@ -134,6 +140,8 @@ const char* const kFlushAllTabletsOp = "flush_all_tablets";
 const char* const kFlushVectorIndexOp = "flush_vector_index";
 const char* const kCompactTabletOp = "compact_tablet";
 const char* const kCompactAllTabletsOp = "compact_all_tablets";
+const char* const kAlterTabletTierOp = "alter_tablet_tier";
+const char* const kGetTabletTierInfoOp = "get_tablet_tier_info";
 const char* const kCompactVectorIndexOp = "compact_vector_index";
 const char* const kReloadCertificatesOp = "reload_certificates";
 const char* const kRemoteBootstrapOp = "remote_bootstrap";
@@ -174,6 +182,12 @@ DEFINE_NON_RUNTIME_bool(exclude_vector_indexes, false,
 DEFINE_NON_RUNTIME_uint32(read_time_wait_ms, kDumpTabletDataMaxReadTimeWaitMsDefault,
     "dump_tablet_data: how long the server may wait for safe time to reach read_ht before failing. "
     "0 fails immediately. Ignored when no read_ht is given.");
+
+DEFINE_NON_RUNTIME_bool(show_details, false,
+    "get_tablet_tier_info: If true, show the full picture -- every tier_paths entry (including "
+    "disks with no live SSTs) with its on-disk path, the home/WAL directories, and diagnostic "
+    "counters even when they are zero. By default the output is trimmed to what the tablet's "
+    "placement and any in-flight migration actually look like.");
 
 PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 
@@ -282,6 +296,14 @@ class TsAdminClient {
   // If vector indexes are empty, do the operation for all vector indexes for the given tablet.
   Status FlushOrCompactVectorIndex(
       bool is_compaction, const TabletId& tablet_id, const TableIds& vector_index_ids);
+
+  // Records target_tier as the tablet replica's placement intent and starts moving its SSTs
+  // there. Returns as soon as the moves are scheduled; poll GetTabletTierInfo for progress. See
+  // AlterTabletTierRequestPB.
+  Status AlterTabletTier(const TabletId& tablet_id, const std::string& target_tier);
+
+  // Reports which tier(s)/directories the given tablet's live SSTs currently occupy.
+  Status GetTabletTierInfo(const TabletId& tablet_id);
 
   // Verify the given tablet against its indexes
   // Assume the tablet belongs to a main table
@@ -756,6 +778,189 @@ Status TsAdminClient::GetSplitKey(const TabletId& tablet_id, int split_factor) {
   return Status::OK();
 }
 
+Status TsAdminClient::AlterTabletTier(
+    const TabletId& tablet_id, const std::string& target_tier) {
+  ServerStatusPB status_pb;
+  RETURN_NOT_OK(GetStatus(&status_pb));
+
+  AlterTabletTierRequestPB req;
+  AlterTabletTierResponsePB resp;
+  RpcController rpc;
+
+  req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
+  req.set_tablet_id(tablet_id);
+  req.set_target_tier(target_tier);
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK_PREPEND(ts_admin_proxy_->AlterTabletTier(req, &resp, &rpc),
+                        "AlterTabletTier() failed");
+
+  if (resp.has_error()) {
+    return STATUS(IOError, "Failed to alter tablet tier: ",
+                           resp.error().ShortDebugString());
+  }
+
+  const auto& migration = resp.migration();
+  std::cout << "Tablet <" << tablet_id << "> target tier set to <" << target_tier
+            << ">: migration " << TierMigrationStatusPB::State_Name(migration.state())
+            << (migration.pass_in_flight() ? ", pass in flight" : "") << ", "
+            << migration.files_moved() << "/" << migration.files_total()
+            << " SST file(s) of the current pass moved. Use get_tablet_tier_info to poll progress."
+            << std::endl;
+  return Status::OK();
+}
+
+Status TsAdminClient::GetTabletTierInfo(const TabletId& tablet_id) {
+  ServerStatusPB status_pb;
+  RETURN_NOT_OK(GetStatus(&status_pb));
+
+  GetTabletTierInfoRequestPB req;
+  GetTabletTierInfoResponsePB resp;
+  RpcController rpc;
+
+  req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
+  req.set_tablet_id(tablet_id);
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK_PREPEND(ts_admin_proxy_->GetTabletTierInfo(req, &resp, &rpc),
+                        "GetTabletTierInfo() failed");
+
+  if (resp.has_error()) {
+    return STATUS(IOError, "Failed to get tablet tier info: ",
+                           resp.error().ShortDebugString());
+  }
+
+  // -show_details shows every disk this replica knows about; by default we only show disks
+  // that currently hold at least one live SST, since most of the table is normally empty and
+  // just adds noise. If none of them do (e.g. a freshly-created, never-flushed tablet), fall
+  // back to showing all of them rather than printing an empty table.
+  std::vector<const TierPathInfoPB*> rows_to_show;
+  for (const auto& tp : resp.tier_paths()) {
+    if (FLAGS_show_details || tp.sst_count() > 0) {
+      rows_to_show.push_back(&tp);
+    }
+  }
+  if (rows_to_show.empty()) {
+    for (const auto& tp : resp.tier_paths()) {
+      rows_to_show.push_back(&tp);
+    }
+  }
+
+  const TierPathInfoPB* home = nullptr;
+  for (const auto& tp : resp.tier_paths()) {
+    if (tp.is_home()) {
+      home = &tp;
+      break;
+    }
+  }
+
+  std::stringstream out;
+  JsonWriter jw(&out, JsonWriter::PRETTY);
+  jw.StartObject();
+
+  jw.String("tablet_id");
+  jw.String(tablet_id);
+
+  jw.String("current_tier");
+  if (resp.has_current_tier()) {
+    jw.String(resp.current_tier());
+  } else {
+    jw.Null();
+  }
+
+  jw.String("target_tier");
+  if (resp.has_target_tier()) {
+    jw.String(resp.target_tier());
+  } else {
+    jw.Null();
+  }
+
+  // Disk-level plumbing: which path_id the target tier resolved to, where the superblock/MANIFEST
+  // live (never moves), and the tier-agnostic WAL directory. Interesting when debugging placement,
+  // just noise the rest of the time.
+  if (FLAGS_show_details) {
+    if (resp.has_target_tier()) {
+      jw.String("target_tier_path_id");
+      jw.Uint(resp.target_tier_path_id());
+    }
+    if (home != nullptr) {
+      jw.String("home_tier");
+      jw.String(home->tier());
+      jw.String("home_path_id");
+      jw.Uint(home->path_id());
+      jw.String("home_dir");
+      jw.String(home->path());
+    }
+    jw.String("wal_dir");
+    jw.String(resp.wal_dir());
+  }
+
+  // Should always be 0, so only worth surfacing when it isn't (or when asked for everything).
+  if (FLAGS_show_details || resp.unmatched_sst_count() > 0) {
+    jw.String("unmatched_sst_count");
+    jw.Uint(resp.unmatched_sst_count());
+  }
+
+  if (resp.has_migration()) {
+    const auto& migration = resp.migration();
+    jw.String("migration");
+    jw.StartObject();
+    jw.String("state");
+    jw.String(TierMigrationStatusPB::State_Name(migration.state()));
+    jw.String("pass_in_flight");
+    jw.Bool(migration.pass_in_flight());
+    jw.String("files_moved");
+    jw.Uint(migration.files_moved());
+    jw.String("files_total");
+    jw.Uint(migration.files_total());
+    // All three are 0 for a migration that moved everything it set out to, which is the normal
+    // case -- don't make the reader scan past three zeroes to find that out.
+    if (FLAGS_show_details || migration.files_failed() > 0) {
+      jw.String("files_failed");
+      jw.Uint(migration.files_failed());
+    }
+    if (FLAGS_show_details || migration.files_deferred() > 0) {
+      jw.String("files_deferred");
+      jw.Uint(migration.files_deferred());
+    }
+    if (FLAGS_show_details || migration.obsoleted() > 0) {
+      jw.String("obsoleted");
+      jw.Uint(migration.obsoleted());
+    }
+    if (FLAGS_show_details || migration.consecutive_failed_passes() > 0) {
+      jw.String("consecutive_failed_passes");
+      jw.Uint(migration.consecutive_failed_passes());
+    }
+    if (migration.has_last_error()) {
+      jw.String("last_error");
+      jw.String(migration.last_error());
+    }
+    jw.EndObject();
+  }
+
+  jw.String("tier_paths");
+  jw.StartArray();
+  for (const auto* tp : rows_to_show) {
+    jw.StartObject();
+    jw.String("path_id");
+    jw.Uint(tp->path_id());
+    jw.String("tier");
+    jw.String(tp->tier());
+    jw.String("sst_count");
+    jw.Uint(tp->sst_count());
+    jw.String("total_bytes");
+    jw.Uint64(tp->total_bytes());
+    if (FLAGS_show_details) {
+      jw.String("path");
+      jw.String(tp->path());
+    }
+    jw.EndObject();
+  }
+  jw.EndArray();
+
+  jw.EndObject();
+  std::cout << out.str() << std::endl;
+  return Status::OK();
+}
+
 Status TsAdminClient::ReloadCertificates() {
   CHECK(initted_);
 
@@ -984,6 +1189,8 @@ void SetUsage(const char* argv0) {
       << "  " << kFlushVectorIndexOp << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kCompactTabletOp << " <tablet_id> [-exclude-vector-indexes]\n"
       << "  " << kCompactAllTabletsOp << " [-exclude-vector-indexes]\n"
+      << "  " << kAlterTabletTierOp << " <tablet_id> <target_tier>\n"
+      << "  " << kGetTabletTierInfoOp << " <tablet_id> [-show_details]\n"
       << "  " << kCompactVectorIndexOp
       << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kVerifyTabletOp
@@ -1207,6 +1414,21 @@ static int TsCliMain(int argc, char** argv) {
     }
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.GetSplitKey(tablet_id, split_factor), "Unable to get split key for tablet");
+  } else if (op == kAlterTabletTierOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
+
+    std::string tablet_id = argv[2];
+    std::string target_tier = argv[3];
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.AlterTabletTier(tablet_id, target_tier),
+        "Unable to alter tablet tier");
+  } else if (op == kGetTabletTierInfoOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+
+    std::string tablet_id = argv[2];
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.GetTabletTierInfo(tablet_id),
+        "Unable to get tablet tier info");
   } else if (op == kCompactAllTabletsOp || op == kFlushAllTabletsOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 

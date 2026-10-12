@@ -9,9 +9,9 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 //! Helper functions for working with Postgres `ItemPointerData` (`tid`) type
 
-use crate::datum::{FromDatum, IntoDatum};
 use crate::PgMemoryContexts;
-use crate::{pg_sys, AllocatedByRust, PgBox};
+use crate::datum::{FromDatum, IntoDatum};
+use crate::{AllocatedByRust, PgBox, pg_sys};
 
 /// ## Safety
 ///
@@ -111,11 +111,7 @@ pub fn u64_to_item_pointer_parts(value: u64) -> (pg_sys::BlockNumber, pg_sys::Of
 #[allow(clippy::not_unsafe_ptr_arg_deref)] // this is okay b/c we guard against ctid being null
 #[inline]
 pub unsafe fn item_pointer_is_valid(ctid: *const pg_sys::ItemPointerData) -> bool {
-    if ctid.is_null() {
-        false
-    } else {
-        (*ctid).ip_posid != pg_sys::InvalidOffsetNumber
-    }
+    if ctid.is_null() { false } else { (*ctid).ip_posid != pg_sys::InvalidOffsetNumber }
 }
 
 #[inline]

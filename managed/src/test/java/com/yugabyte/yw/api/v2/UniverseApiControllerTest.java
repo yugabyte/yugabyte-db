@@ -45,6 +45,8 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -241,12 +243,13 @@ public class UniverseApiControllerTest extends UniverseTestBase {
                       ? regions.stream().map(r -> r.getUuid()).toList()
                       : new ArrayList<>();
               // Volumes
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
-                  ApiUtils.getDummyDeviceInfo(2, 150);
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.masterInstanceType =
-                  "c5.4xlarge";
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo =
-                  ApiUtils.getDummyDeviceInfo(1, 50);
+              ProviderInitializer pi =
+                  TestUtils.existingProviderInitializer(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent)
+                      .setDeviceInfo(ApiUtils.getDummyDeviceInfo(2, 150))
+                      .setMasterInstanceType("c5.4xlarge")
+                      .setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 50));
+
               PerProcessDetails tserverDetails = new PerProcessDetails();
               tserverDetails.setInstanceType("c5.2xlarge");
               tserverDetails.setDeviceInfo(ApiUtils.getDummyDeviceInfo(2, 200));
@@ -258,11 +261,9 @@ public class UniverseApiControllerTest extends UniverseTestBase {
                   .userIntent
                   .setUserIntentOverrides(userIntentOverrides);
               // instanceTags
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
-                  Map.of("tag1", "value1", "tag2", "value2");
+              pi.setInstanceTags(Map.of("tag1", "value1", "tag2", "value2"));
               // instanceType
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType =
-                  ApiUtils.UTIL_INST_TYPE;
+              pi.setInstanceType(ApiUtils.UTIL_INST_TYPE);
               // GFlags
               universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
                   SpecificGFlags.construct(
@@ -380,7 +381,8 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     azTserverNode.azUuid = azUUID;
     azTserverNode.dedicatedTo = ServerType.TSERVER;
     assertEquals("c5.2xlarge", userIntent.getInstanceTypeForNode(azTserverNode));
-    assertEquals(Integer.valueOf(300), userIntent.getDeviceInfoForNode(azTserverNode).volumeSize);
+    assertEquals(
+        Integer.valueOf(300), userIntent.evaluateDeviceInfoForNode(azTserverNode).volumeSize);
 
     validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
   }

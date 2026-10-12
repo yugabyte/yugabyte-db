@@ -21,7 +21,6 @@ import {
 } from '../EditUniverseUtils';
 import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
 
-
 import { EditGflagsModal } from '@app/redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { transformToEditFlagsForm } from '@app/redesign/features/universe/universe-actions/edit-gflags/GflagHelper';
 import { EditConnectionPoolModal } from '@app/redesign/features/universe/universe-actions/edit-connection-pool/EditConnectionPoolModal';
@@ -114,6 +113,11 @@ export const DatabaseTab = () => {
     )?.value === 'true'
   );
 
+  const isNonRestartGFlagUpgradeOptionEnabled =
+    runtimeConfigs?.configEntries?.find(
+      (config) => config.key === RuntimeConfigKey.ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION
+    )?.value === 'true';
+
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
@@ -181,7 +185,13 @@ export const DatabaseTab = () => {
               </YBButton>
             }
           >
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL,
+                universeUUID
+              )}
+              isControl
+            >
               <K8OperatorEditBlockedTooltip>
                 <MenuItem
                   data-test-id="edit-ysql-settings"
@@ -198,7 +208,13 @@ export const DatabaseTab = () => {
                 </MenuItem>
               </K8OperatorEditBlockedTooltip>
             </RbacValidator>
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL,
+                universeUUID
+              )}
+              isControl
+            >
               <K8OperatorEditBlockedTooltip>
                 <MenuItem
                   data-test-id="edit-ycql-settings"
@@ -269,7 +285,13 @@ export const DatabaseTab = () => {
               </YBButton>
             }
           >
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL,
+                universeUUID
+              )}
+              isControl
+            >
               <K8OperatorEditBlockedTooltip>
                 <MenuItem
                   data-test-id="edit-pooling-settings"
@@ -286,7 +308,13 @@ export const DatabaseTab = () => {
                 </MenuItem>
               </K8OperatorEditBlockedTooltip>
             </RbacValidator>
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL, universeUUID)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL,
+                universeUUID
+              )}
+              isControl
+            >
               <K8OperatorEditBlockedTooltip>
                 <MenuItem
                   data-test-id="edit-postgres-compatibility-settings"
@@ -330,16 +358,24 @@ export const DatabaseTab = () => {
         <StyledCardHeader sx={{ padding: !hasAnyGflags ? '24px' : '26px 24px' }}>
           {t('advancedConfigFlags')}
           {hasAnyGflags && (
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
-              <K8OperatorEditBlockedTooltip><YBButton
-                dataTestId="edit-gflags-button"
-                variant="ghost"
-                startIcon={<EditIcon />}
-                disabled={isLegacyUniverseLoading || !legacyUniverse || isEditActionDisabled}
-                onClick={() => setGflagsModalOpen(true)}
-              >
-                {t('edit', { keyPrefix: 'common' })}
-              </YBButton></K8OperatorEditBlockedTooltip>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                universeUUID
+              )}
+              isControl
+            >
+              <K8OperatorEditBlockedTooltip>
+                <YBButton
+                  dataTestId="edit-gflags-button"
+                  variant="ghost"
+                  startIcon={<EditIcon />}
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || isEditActionDisabled}
+                  onClick={() => setGflagsModalOpen(true)}
+                >
+                  {t('edit', { keyPrefix: 'common' })}
+                </YBButton>
+              </K8OperatorEditBlockedTooltip>
             </RbacValidator>
           )}
         </StyledCardHeader>
@@ -388,17 +424,25 @@ export const DatabaseTab = () => {
               }}
             >
               {t('noGflagsAdded')} <br />
-              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
-                <K8OperatorEditBlockedTooltip><YBButton
-                  variant="secondary"
-                  dataTestId="add-gflags-button"
-                  startIcon={<AddCircleIcon />}
-                  sx={{ mt: 2 }}
-                  disabled={isLegacyUniverseLoading || !legacyUniverse || isEditActionDisabled}
-                  onClick={() => setGflagsModalOpen(true)}
-                >
-                  {t('addFlag')}
-                </YBButton></K8OperatorEditBlockedTooltip>
+              <RbacValidator
+                accessRequiredOn={withUniverseResource(
+                  ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                  universeUUID
+                )}
+                isControl
+              >
+                <K8OperatorEditBlockedTooltip>
+                  <YBButton
+                    variant="secondary"
+                    dataTestId="add-gflags-button"
+                    startIcon={<AddCircleIcon />}
+                    sx={{ mt: 2 }}
+                    disabled={isLegacyUniverseLoading || !legacyUniverse || isEditActionDisabled}
+                    onClick={() => setGflagsModalOpen(true)}
+                  >
+                    {t('addFlag')}
+                  </YBButton>
+                </K8OperatorEditBlockedTooltip>
               </RbacValidator>
             </Box>
           ) : displayedGflags.length <= 0 ? (
@@ -470,7 +514,7 @@ export const DatabaseTab = () => {
             }}
             universeData={legacyUniverse}
             isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
-            isNonRestartGFlagUpgradeOptionEnabled={false}
+            isNonRestartGFlagUpgradeOptionEnabled={isNonRestartGFlagUpgradeOptionEnabled}
           />
         </>
       )}

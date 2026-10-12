@@ -128,8 +128,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
     flags.put("yb_enable_read_committed_isolation", "true");
     flags.put("wait_queue_poll_interval_ms", "5");
-    flags.put("enable_object_locking_for_table_locks", "true");
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
     // Exaggerate the clock skew to make read restarts more likely.
     flags.put("max_clock_skew_usec", "2000000");
     // Scan tablets sequentially (see the NUM_TABLETS comment). With parallel reads a tablet that
@@ -769,6 +767,30 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     new ConcurrentProcRetryTester(getConnectionBuilder(),
         "CALL test_rr_count_proc_execute()",
         IsolationLevel.READ_COMMITTED, true /* expectRetried */,
+        "PREPARE test_rr_count_q AS SELECT count(*) FROM test_rr").runTest();
+  }
+
+  /**
+   * EXPLAIN is resolved to the command tag of the statement it wraps, so EXPLAIN of a retriable
+   * statement is retried transparently. REPEATABLE READ is used because it has no read-committed
+   * carve-out for non-DML tags, so only the tag resolution can make the retry happen.
+   */
+  @Test
+  public void explainAnalyzeReadRestartRetried() throws Exception {
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT count(*) FROM test_rr",
+        IsolationLevel.REPEATABLE_READ).runTest();
+  }
+
+  /**
+   * EXPLAIN EXECUTE carries two wrappers, both of which have to be peeled off to reach the
+   * prepared statement's own tag.
+   */
+  @Test
+  public void explainAnalyzeExecutePreparedReadRestartRetried() throws Exception {
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE test_rr_count_q",
+        IsolationLevel.REPEATABLE_READ, true /* expectRetried */,
         "PREPARE test_rr_count_q AS SELECT count(*) FROM test_rr").runTest();
   }
 
@@ -1545,8 +1567,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   /**
-   * Runs a CALL/DO statement in a loop at the given isolation level while test_rr is populated
-   * concurrently, so the body repeatedly hits read restarts.
+   * Runs a statement in a loop at the given isolation level while test_rr is populated
+   * concurrently, so it repeatedly hits read restarts.
    *
    * When expectRetried is true, the query layer should retry the body transparently and no
    * read restart should surface. When it is false, the proc-retriability gate is expected to block
@@ -1605,7 +1627,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           for (String setupSql : sessionSetupSqls) {
             stmt.execute(setupSql);
           }
-          while (!isExecutionDone.getAsBoolean()) {
+          // Keep going after the inserts finish until every statement has succeeded once: a
+          // non-retriable statement may surface a read restart on each run during a short insert
+          // phase.
+          while (!isExecutionDone.getAsBoolean() ||
+                 Arrays.stream(succeeded).anyMatch(s -> s == 0)) {
             for (int i = 0; i < n; ++i) {
               String execSql = execSqls.get(i);
               try {

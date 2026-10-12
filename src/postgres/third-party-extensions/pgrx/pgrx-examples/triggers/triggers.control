@@ -1,5 +1,5 @@
 comment = 'triggers:  Created by pgrx'
 default_version = '@CARGO_VERSION@'
-module_pathname = '$libdir/triggers'
+module_pathname = 'triggers'
 relocatable = false
 superuser = false

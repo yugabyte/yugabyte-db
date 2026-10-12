@@ -1660,7 +1660,7 @@ public class NodeManager extends DevopsBase {
     Provider provider = nodeTaskParam.getProvider();
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (!NodeAgentClient.isCloudTypeSupported(provider.getCloudCode())) {
-      log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
+      log.trace("Skipping node agent command args for {} provider", provider.getCloudCode());
       return;
     }
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
@@ -1847,6 +1847,9 @@ public class NodeManager extends DevopsBase {
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
                 commandArgs.add("--instance_template");
                 commandArgs.add(instanceTemplate);
+                if (confGetter.getGlobalConf(GlobalConfKeys.readGcpInstanceTemplate)) {
+                  commandArgs.add("--read_instance_template");
+                }
               }
             } else if (Common.CloudType.oci == provider.getCloudCode()) {
               OCIRegionCloudInfo o = CloudInfoInterface.get(taskParam.getRegion());
@@ -1976,8 +1979,8 @@ public class NodeManager extends DevopsBase {
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
           Common.CloudType cloudType = provider.getCloudCode();
 
-          if (cloudType.equals(Common.CloudType.aws)) {
-            // aws uses instance_type to determine device names for mounting
+          if (cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.oci)) {
+            // aws / oci use instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
 
@@ -2244,20 +2247,18 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
-          if (taskParam.checkVolumesAttached) {
-            UniverseDefinitionTaskParams.Cluster cluster =
-                universe.getCluster(taskParam.placementUuid);
+          if (taskParam.shouldCheckVolumeAttached()) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
+            UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+            DeviceInfo deviceInfo = null;
             if (node != null
                 && cluster != null
-                && cluster.userIntent.getDeviceInfoForNode(node) != null
-                && provider.getCloudCode() != Common.CloudType.onprem) {
+                && provider.getCloudCode() != Common.CloudType.onprem
+                && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
               commandArgs.add("--num_volumes");
-              commandArgs.add(
-                  String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
+              commandArgs.add(String.valueOf(deviceInfo.numVolumes));
             }
-          }
-          if ("stop".equalsIgnoreCase(taskParam.command)) {
+          } else if ("stop".equalsIgnoreCase(taskParam.command)) {
             if (taskParam.deconfigure) {
               commandArgs.add("--deconfigure");
             }
@@ -2710,6 +2711,7 @@ public class NodeManager extends DevopsBase {
   }
 
   // OCI Flex shapes require shapeConfig.ocpus on launch and UpdateInstance.
+  // DenseIO/HPC Flex included: those cores and memory come from the YAML min SKU.
   private void addOciFlexShapeConfigArgs(
       List<String> commandArgs, Provider provider, String instanceTypeCode) {
     if (provider.getCloudCode() != Common.CloudType.oci

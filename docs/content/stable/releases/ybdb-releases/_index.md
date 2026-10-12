@@ -46,7 +46,7 @@ The following stable and preview releases are no longer supported:
 | [v2.25](end-of-life/v2.25/) {{<tags/release/preview>}} | January 17, 2025  | n/a | n/a |
 | [v2.23](end-of-life/v2.23/) {{<tags/release/preview>}} | September 13, 2024  | n/a | n/a |
 | [v2.21](end-of-life/v2.21/) {{<tags/release/preview>}} | March 26, 2024 | n/a | n/a |
-| [v2.20](end-of-life/v2.20/) {{<tags/release/lts>}} ([Docs](/v2.20/))| {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
+| [v2.20](end-of-life/v2.20/) {{<tags/release/lts>}} ([Docs](https://docs-archive.yugabyte.com/v2.20/))| November 13, 2023 | November 13, 2025 | May 13, 2026 |
 | [v2.19](end-of-life/v2.19/) {{<tags/release/preview>}} | June 20, 2023 | n/a | n/a |
 | [v2.18](end-of-life/v2.18/) {{<tags/release/sts>}} ([Docs](https://docs-archive.yugabyte.com/v2.18/)) | May 16, 2023 | August 16, 2024 | February 16, 2025 |
 | [v2.17](end-of-life/v2.17/) {{<tags/release/preview>}} | December 8, 2022 | n/a | n/a |

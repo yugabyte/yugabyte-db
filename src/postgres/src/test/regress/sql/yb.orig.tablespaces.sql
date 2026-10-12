@@ -457,6 +457,37 @@ DROP TABLE bar;
 DROP TABLESPACE valid_tablespace;
 DROP TABLESPACE LP;
 
+-- Test storage_tier
+-- Invalid type for storage_tier.
+CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+
+-- Empty storage_tier is not possible.
+CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":"", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+
+-- Unknown storage tier: only "ssd" and "hdd" are valid, matching the fixed set of tier labels a
+-- tserver's --fs_data_dirs can advertise.
+CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":"nvme-archive", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+
+-- Positive case: both valid storage tiers are accepted and persisted in spcoptions.
+CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":"hdd", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+CREATE TABLESPACE storage_tier_ts2 WITH (replica_placement='{"num_replicas":1, "storage_tier":"ssd", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_ts';
+SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_ts2';
+CREATE TABLE storage_tier_tab (i int) TABLESPACE storage_tier_ts;
+CREATE TABLE storage_tier_tab2 (i int) TABLESPACE storage_tier_ts2;
+DROP TABLE storage_tier_tab;
+DROP TABLE storage_tier_tab2;
+DROP TABLESPACE storage_tier_ts;
+DROP TABLESPACE storage_tier_ts2;
+
+-- storage_tier is also supported on a read_replica_placement, independently of the live
+-- placement's tier.
+CREATE TABLESPACE storage_tier_rr_ts WITH (replica_placement='{"num_replicas":1, "storage_tier":"ssd", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}', read_replica_placement='{"num_replicas":1, "storage_tier":"hdd", "placement_blocks":[{"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_rr_ts';
+CREATE TABLE storage_tier_rr_tab (i int) TABLESPACE storage_tier_rr_ts;
+DROP TABLE storage_tier_rr_tab;
+DROP TABLESPACE storage_tier_rr_ts;
+
 -- Test ALTER TABLE/INDEX/MATERILIZED VIEW ALL IN TABLESPACE ... SET TABLESPACE ...
 
 CREATE TABLESPACE tsp1 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1 }]}');

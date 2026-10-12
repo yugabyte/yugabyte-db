@@ -26,9 +26,8 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/decimal.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
@@ -41,7 +40,6 @@
 using std::map;
 using std::string;
 using std::numeric_limits;
-using strings::Substitute;
 
 namespace yb::dockv {
 
@@ -168,7 +166,7 @@ void EncodeAndDecode(const KeyEntryValue& primitive_value) {
   auto slice = key_bytes.AsSlice();
   ASSERT_OK_PREPEND(
       decoded.DecodeFromKey(&slice),
-      Substitute(
+      Format(
           "Could not decode key bytes obtained by encoding primitive value $0: $1",
           primitive_value.ToString(), key_bytes.ToString()));
   ASSERT_TRUE(slice.empty())
@@ -190,13 +188,13 @@ void CompareSlices(
   rocksdb::Slice slice1 = key_bytes1.AsSlice();
   rocksdb::Slice slice2 = key_bytes2.AsSlice();
   if (val1 > val2) {
-    ASSERT_LT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+    ASSERT_LT(0, slice1.compare(slice2)) << Format("Failed for values $0, $1",
               str1, str2);
   } else if (val1 < val2) {
-    ASSERT_GT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+    ASSERT_GT(0, slice1.compare(slice2)) << Format("Failed for values $0, $1",
               str1, str2);
   } else {
-    ASSERT_EQ(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+    ASSERT_EQ(0, slice1.compare(slice2)) << Format("Failed for values $0, $1",
               str1, str2);
   }
 }

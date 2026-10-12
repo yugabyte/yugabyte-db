@@ -657,10 +657,11 @@ Status Version::GetTableProperties(std::shared_ptr<const TableProperties>* tp,
   return s;
 }
 
-Status Version::GetPropertiesOfAllTables(TablePropertiesCollection* props) {
+Status Version::GetPropertiesOfAllTables(
+    TablePropertiesCollection* props, TablePropertiesErrorHandling error_handling) {
   Status s;
   for (int level = 0; level < storage_info_.num_levels_; level++) {
-    s = GetPropertiesOfAllTables(props, level);
+    s = GetPropertiesOfAllTables(props, level, error_handling);
     if (!s.ok()) {
       return s;
     }
@@ -669,8 +670,9 @@ Status Version::GetPropertiesOfAllTables(TablePropertiesCollection* props) {
   return Status::OK();
 }
 
-Status Version::GetPropertiesOfAllTables(TablePropertiesCollection* props,
-                                         int level) {
+Status Version::GetPropertiesOfAllTables(
+    TablePropertiesCollection* props, int level,
+    TablePropertiesErrorHandling error_handling) {
   for (const auto& file_meta : storage_info_.files_[level]) {
     auto fname =
         TableFileName(vset_->db_options_->db_paths, file_meta->fd.GetNumber(),
@@ -681,7 +683,7 @@ Status Version::GetPropertiesOfAllTables(TablePropertiesCollection* props,
     Status s = GetTableProperties(&table_properties, file_meta, &fname);
     if (s.ok()) {
       props->insert({fname, table_properties});
-    } else {
+    } else if (error_handling == TablePropertiesErrorHandling::kFail) {
       return s;
     }
   }
@@ -2392,6 +2394,7 @@ Result<std::string> Version::FindTargetKey(
   // it self-corrects when an earlier cut landed off target.
   const uint64_t max_deviation = static_cast<uint64_t>(
       (target_size - low_cross) * FLAGS_find_target_key_max_deviation_ratio);
+  uint64_t candidates_examined = 0;
 
   // Walk the files once, draining each of its useful candidates before moving on, and stop when the
   // list runs out. A later file's candidate can in principle make an earlier one useful again, but
@@ -2411,6 +2414,11 @@ Result<std::string> Version::FindTargetKey(
       }
 
       const uint64_t candidate_cross = VERIFY_RESULT(Cross(*candidate));
+      ++candidates_examined;
+      VLOG_WITH_FUNC(3) << "candidate: " << Slice(*candidate).ToDebugHexString()
+                        << " cross: " << candidate_cross << " window: [" << low_cross << ", "
+                        << high_cross << "] target: " << target_size;
+
       // Only a Cross strictly inside the window subdivides it. Anything else means this file is
       // spent: the window would not move, so the next call returns the same key. Breaking here
       // carries termination for the inner loop, not just accuracy -- keep it in any refactor.
@@ -2425,7 +2433,6 @@ Result<std::string> Version::FindTargetKey(
         high_buf = std::move(*candidate);
         high_cross = candidate_cross;
       }
-      // TODO: VLOG the search progress
     }
   }
 
@@ -2477,6 +2484,16 @@ Result<std::string> Version::FindTargetKey(
   if (!resolved) {
     return STATUS(Incomplete, "Failed to locate a data key near the target Cross key");
   }
+
+  RLOG(InfoLogLevel::INFO_LEVEL, info_log_,
+      "[%s] FindTargetKey: SST files: %zu candidates: %" PRIu64 " target: %s chosen: %s "
+      "off by: %s of %s allowed key: %s",
+      cfd_->GetName().c_str(), table_readers.size(), candidates_examined,
+      BytesToHumanString(target_size).c_str(),
+      BytesToHumanString(prefer_low ? low_cross : high_cross).c_str(),
+      BytesToHumanString(chosen_dist).c_str(), BytesToHumanString(max_deviation).c_str(),
+      Slice{*resolved}.ToDebugHexString().c_str());
+
   return std::move(*resolved);
 }
 
@@ -3283,15 +3300,15 @@ Status VersionSet::Import(const std::string& source_dir,
     return status;
   }
   std::vector<FileMetaData> files;
-  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
   for (;;) {
     status = manifest_reader.Next();
     if (!status.ok()) {
       break;
     }
     auto& current = *manifest_reader;
-    if (!current.GetDeletedFiles().empty()) {
-      return STATUS(Corruption, "Deleted files should be empty");
+    // Deletes before adds, as in VersionBuilder, so a file moved between levels is kept.
+    for (const auto& [level, number] : current.GetDeletedFiles()) {
+      std::erase_if(files, [number](const auto& file) { return file.fd.GetNumber() == number; });
     }
     for (const auto& file : current.GetNewFiles()) {
       auto filemeta = file.second;
@@ -3305,7 +3322,6 @@ Status VersionSet::Import(const std::string& source_dir,
                              seqno);
       }
       files.push_back(filemeta);
-      segments.emplace_back(filemeta.smallest.seqno, filemeta.largest.seqno);
     }
   }
   if (!status.IsEndOfFile()) {
@@ -3316,6 +3332,10 @@ Status VersionSet::Import(const std::string& source_dir,
     return STATUS_FORMAT(NotFound, "Imported DB is empty: $0", source_dir);
   }
 
+  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
+  for (const auto& file : files) {
+    segments.emplace_back(file.smallest.seqno, file.largest.seqno);
+  }
   std::vector<LiveFileMetaData> live_files;
   GetLiveFilesMetaData(&live_files);
   for (const auto& file : live_files) {

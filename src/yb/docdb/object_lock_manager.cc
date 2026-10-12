@@ -337,6 +337,24 @@ class WaitForLockersContext {
     pending_txns_.insert(txn_id);
   }
 
+  Status RegisterWaiter(
+      LocalWaitingTxnRegistry* waiting_txn_registry, const TransactionId& waiting_txn_id,
+      const TabletId& waiting_txn_status_tablet,
+      std::shared_ptr<ConflictDataManager> blockers) EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
+    if (responded_) {
+      return Status::OK();
+    }
+    auto waiter_registration = waiting_txn_registry->Create();
+    // pg_session_req_version is irrelevant since a session level transactions only
+    // deadlock cycle isn't expected at this point.
+    RETURN_NOT_OK(waiter_registration->Register(
+        waiting_txn_id, -1 /* request id */, std::move(blockers), waiting_txn_status_tablet,
+        std::nullopt /* pg_session_req_version */));
+    waiter_registration_ = std::move(waiter_registration);
+    return Status::OK();
+  }
+
   void OnTxnReleased(const TransactionId& txn_id) EXCLUDES(mutex_) {
     VLOG_WITH_FUNC(1) << "removing " << txn_id << " from wait-for-lockers tracker";
     UniqueLock lock(mutex_);
@@ -363,6 +381,7 @@ class WaitForLockersContext {
       return;
     }
     responded_ = true;
+    waiter_registration_.reset();
     lock.unlock();
     VLOG_WITH_FUNC(1) << "responding with status: " << status;
     final_callback_(status);
@@ -370,6 +389,7 @@ class WaitForLockersContext {
 
   std::mutex mutex_;
   std::unordered_set<TransactionId> pending_txns_ GUARDED_BY(mutex_);
+  std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_ GUARDED_BY(mutex_);
   StdStatusCallback final_callback_;
   CoarseTimePoint deadline_;
   bool responded_ GUARDED_BY(mutex_) = false;
@@ -399,7 +419,8 @@ class ObjectLockManagerImpl {
       const DetermineKeysToLockResult<ObjectLockManager>& keys_to_check,
       StdStatusCallback callback,
       CoarseTimePoint deadline,
-      const TransactionId& background_txn_id);
+      const TransactionId& background_txn_id,
+      const TabletId& background_txn_status_tablet);
 
   void Poll() EXCLUDES(global_mutex_);
 
@@ -839,6 +860,7 @@ Status ObjectLockManagerImpl::PrepareAcquire(
   if (is_retry) {
     it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
   }
+  DoSignal(it->locked);
   while (it != key_to_lock.lock_batch.begin()) {
     --it;
     if (UnlockSingleEntry(*it)) {
@@ -1020,7 +1042,8 @@ void ObjectLockManagerImpl::WaitForConflictingLockers(
     const DetermineKeysToLockResult<ObjectLockManager>& keys_to_check,
     StdStatusCallback callback,
     CoarseTimePoint deadline,
-    const TransactionId& background_txn_id) {
+    const TransactionId& background_txn_id,
+    const TabletId& background_txn_status_tablet) {
   // Build key -> conflicting lock state mask.
   std::unordered_map<ObjectLockPrefix, LockState> key_conflict_masks;
   for (const auto& entry : keys_to_check.lock_batch) {
@@ -1029,6 +1052,11 @@ void ObjectLockManagerImpl::WaitForConflictingLockers(
 
   std::shared_ptr<WaitForLockersContext> tracker(
       new WaitForLockersContext(std::move(callback), deadline));
+  std::shared_ptr<ConflictDataManager> blockers;
+  if (!background_txn_id.IsNil() && !background_txn_status_tablet.empty() &&
+      waiting_txn_registry_ && !FLAGS_TEST_olm_skip_sending_wait_for_probes) {
+    blockers = std::make_shared<ConflictDataManager>(0);
+  }
   {
     std::lock_guard lock(global_mutex_);
     ConsumePendingSharedLockRequestsUnlocked();
@@ -1053,6 +1081,11 @@ void ObjectLockManagerImpl::WaitForConflictingLockers(
       if (is_conflicting_with_txn && !txn_entry->released_all_locks) {
         VLOG(1) << "Adding pending txn " << txn_id << " to wait-for-lockers tracker";
         tracker->AddPendingTxn(txn_id);
+        if (blockers) {
+          blockers->AddTransaction(
+              txn_id, std::make_shared<TransactionConflictInfo>(), txn_entry->status_tablet);
+          txn_entry->was_a_blocker = TxnBlockedTableLockRequests::kTrue;
+        }
         txn_entry->release_all_callbacks.push_back(
             [weak_tracker = std::weak_ptr<WaitForLockersContext>(tracker), txn_id]() {
           auto tracker = weak_tracker.lock();
@@ -1068,6 +1101,13 @@ void ObjectLockManagerImpl::WaitForConflictingLockers(
     }
   }
 
+  if (blockers && blockers->NumActiveTransactions()) {
+    WARN_NOT_OK(
+        tracker->RegisterWaiter(
+            waiting_txn_registry_, background_txn_id, background_txn_status_tablet,
+            std::move(blockers)),
+        Format("Failed to register blockers of WaitForLockers waiter $0", background_txn_id));
+  }
   tracker->RespondIfAllDone();
 }
 
@@ -1216,9 +1256,6 @@ void ObjectLockManagerImpl::Shutdown() {
   std::vector<std::shared_ptr<WaitForLockersContext>> lock_waiters_trackers;
   {
     std::lock_guard l(global_mutex_);
-    if (shared_manager_) {
-      shared_manager_->Stop();
-    }
     for (auto& [_, entry] : locks_) {
       std::lock_guard obj_lock(entry->mutex);
       auto& index = entry->wait_queue.get<StartUsTag>();
@@ -1251,6 +1288,9 @@ void ObjectLockManagerImpl::Shutdown() {
         << "ref_count of some lock structures is non-zero on shutdown, implies either some "
         << "connections are outstanding or indicates a state corruption of the lock manager.\n"
         << AsString(locks_);
+  }
+  if (shared_manager_) {
+    shared_manager_->Stop();
   }
 }
 
@@ -1644,8 +1684,11 @@ void ObjectLockManager::WaitForConflictingLockers(
     const DetermineKeysToLockResult<ObjectLockManager>& keys_to_check,
     StdStatusCallback callback,
     CoarseTimePoint deadline,
-    const TransactionId& background_txn_id) {
-  impl_->WaitForConflictingLockers(keys_to_check, std::move(callback), deadline, background_txn_id);
+    const TransactionId& background_txn_id,
+    const TabletId& background_txn_status_tablet) {
+  impl_->WaitForConflictingLockers(
+      keys_to_check, std::move(callback), deadline, background_txn_id,
+      background_txn_status_tablet);
 }
 
 void ObjectLockManager::Poll() {

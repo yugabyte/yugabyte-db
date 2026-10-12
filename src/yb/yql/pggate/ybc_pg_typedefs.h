@@ -610,6 +610,13 @@ typedef enum {
   YB_YQL_PREFETCHER_RENEW_CACHE_HARD
 } YbcPgSysTablePrefetcherCacheMode;
 
+// Mirrors YsqlCatalogPrefetchKindPB in pgsql_protocol.proto.
+typedef enum {
+  YB_YQL_PREFETCH_KIND_NONE = 0,
+  YB_YQL_PREFETCH_KIND_CONNECTION_START = 1,
+  YB_YQL_PREFETCH_KIND_CACHE_REFRESH = 2,
+} YbcPgSysTablePrefetchKind;
+
 typedef struct {
   uint64_t read;
   uint64_t local_limit;
@@ -719,6 +726,9 @@ typedef struct {
   uint64_t commit_time;
   // The hybrid time of the commit. Used to set the correct read time for catalog changes.
   uint64_t commit_time_ht;
+  // The hybrid time of the record's intent write. Used as in_txn_limit when reading catalog
+  // tables after an interleaved DDL in the same transaction.
+  uint64_t record_time_ht;
   YbcPgRowMessageAction action;
   // Valid for DMLs and kPgInvalidOid for other (BEGIN/COMMIT) records.
   YbcPgOid table_oid;
@@ -727,6 +737,9 @@ typedef struct {
   uint32_t xid;
   // Replication origin id associated with the transaction.
   uint32_t xrepl_origin_id;
+  // DocDB transaction id associated with the record.
+  bool has_docdb_txn_id;
+  char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
 } YbcPgRowMessage;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -1079,6 +1092,8 @@ typedef struct {
   int effective_pggate_isolation_level;
   bool read_from_followers_enabled;
   int32_t follower_read_staleness_ms;
+  // Unix microseconds; see yb_origination_time in pg_yb_utils.c.
+  uint64_t origination_time;
 } YbcPgInitTransactionData;
 
 typedef struct {
@@ -1097,7 +1112,7 @@ typedef struct {
 //   on transaction state (nesting level, savepoints, whether the optimization was already
 //   disabled), so it can turn off partway through a transaction.
 //
-// - read_at_in_txn_limit: this operation must read at the statement's in_txn_limit rather than at
+// - read_at_in_txn_limit: this operation must read at in_txn_limit rather than at
 //   the transaction read time. It depends only on the relation, so it holds for the whole
 //   transaction and stays set after skip_intents turns off. That is the point of keeping it
 //   separate: rows an earlier skip intents write put in the regular db sit above the transaction

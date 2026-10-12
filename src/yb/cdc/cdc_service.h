@@ -347,8 +347,13 @@ class CDCServiceImpl : public CDCServiceIf {
   // Retrieves the cdc_min_replicated_index for a given tablet.
   // Returns the min index that is still required for xCluster replication.
   // Returns max if the tablet is not replicated by xCluster.
+  // Returns 0 if the map is stale.
   int64_t GetXClusterMinRequiredIndex(const TabletId& tablet_id)
-        EXCLUDES(xcluster_replication_maps_mutex_);
+      EXCLUDES(xcluster_replication_maps_mutex_);
+
+  // Returns nullopt if the map is stale.
+  std::optional<int64_t> TryGetXClusterMinRequiredIndex(const TabletId& tablet_id)
+      EXCLUDES(xcluster_replication_maps_mutex_);
 
   auto GetXClusterMinRequiredIndexFunc() {
     return std::bind_front(&CDCServiceImpl::GetXClusterMinRequiredIndex, this);

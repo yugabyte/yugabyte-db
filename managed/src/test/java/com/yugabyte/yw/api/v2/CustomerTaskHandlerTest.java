@@ -317,6 +317,100 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
   }
 
   @Test
+  public void retryTask_failedEditUniverse_returnsRetryYBATask() {
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.clusters = universe.getUniverseDetails().clusters;
+    JsonNode paramsJson = Json.toJson(params);
+
+    UUID taskUUID = UUID.randomUUID();
+    TaskInfo failed = new TaskInfo(TaskType.EditUniverse, null);
+    failed.setUuid(taskUUID);
+    failed.setTaskParams(paramsJson);
+    failed.setOwner("");
+    failed.setYbaVersion(Util.getYbaVersion());
+    failed.setTaskState(TaskInfo.State.Failure);
+    failed.save();
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        universe.getName());
+    // Ownership: failed edit must own placement modification for retryability.
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().placementModificationTaskUuid = taskUUID;
+          u.getUniverseDetails().updateInProgress = false;
+        });
+
+    UUID retryTaskUUID = UUID.randomUUID();
+    TaskInfo retryInfo = new TaskInfo(TaskType.EditUniverse, null);
+    retryInfo.setUuid(retryTaskUUID);
+    retryInfo.setTaskParams(Json.newObject());
+    retryInfo.setOwner("");
+    retryInfo.setYbaVersion(Util.getYbaVersion());
+    retryInfo.setTaskState(TaskInfo.State.Created);
+    retryInfo.save();
+
+    when(mockCommissioner.getTaskParams(taskUUID)).thenReturn(paramsJson);
+    when(mockCommissioner.submit(eq(TaskType.EditUniverse), any())).thenReturn(retryTaskUUID);
+    // FakeDBApplication mocks Commissioner; retryability runs through this mock.
+    when(mockCommissioner.isTaskRetryable(any(), any())).thenReturn(true);
+
+    YBATask result = handler.retryTask(customer.getUuid(), taskUUID);
+
+    assertEquals(retryTaskUUID, result.getTaskUuid());
+    assertEquals(universe.getUniverseUUID(), result.getResourceUuid());
+  }
+
+  @Test
+  public void retryTask_customerNotFound_throwsNotFound() {
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.retryTask(UUID.randomUUID(), UUID.randomUUID()));
+    assertEquals(NOT_FOUND, ex.getHttpStatus());
+  }
+
+  @Test
+  public void retryTask_taskNotFound_throwsNotFound() {
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.retryTask(customer.getUuid(), UUID.randomUUID()));
+    assertEquals(NOT_FOUND, ex.getHttpStatus());
+  }
+
+  @Test
+  public void retryTask_notRetryable_throwsForbidden() {
+    UUID taskUUID = UUID.randomUUID();
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditUniverse, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskParams(
+        Json.newObject().put("universeUUID", universe.getUniverseUUID().toString()));
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    // Success is not an ERROR_STATE, so isTaskRetryable returns false.
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    taskInfo.save();
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        universe.getName());
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class, () -> handler.retryTask(customer.getUuid(), taskUUID));
+    assertEquals(FORBIDDEN, ex.getHttpStatus());
+  }
+
+  @Test
   public void rollbackTask_failedSoftwareUpgrade_returnsRollbackYBATask() {
     // Put the universe in the state a failed, rollback-capable software upgrade leaves it in.
     universe =

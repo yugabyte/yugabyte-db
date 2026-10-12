@@ -6,9 +6,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Getter;
@@ -34,7 +34,7 @@ public class KubernetesToggleImmutableYbcParams extends UpgradeTaskParams {
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Check if universe type is kubernetes.
-    if (userIntent.providerType != CloudType.kubernetes) {
+    if (!Util.isKubernetesBased(userIntent)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "The universe type must be kubernetes to use ToggleImmutableYbc API.");
     }

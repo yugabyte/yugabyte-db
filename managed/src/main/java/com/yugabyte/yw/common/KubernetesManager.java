@@ -223,7 +223,10 @@ public abstract class KubernetesManager {
         ImmutableList.of("kubectl", "diff", "--server-side=false", "-f", inputYamlFilePath);
     ShellResponse response = execCommand(config, diffCommandList);
     if (response != null && !response.isSuccess()) {
-      LOG.error("kubectl diff failed with response {}", response.toString());
+      LOG.error(
+          "kubectl diff failed with response {}",
+          RedactingService.redactShellProcessOutput(
+              response.toString(), RedactionTarget.HELM_VALUES));
     }
   }
 

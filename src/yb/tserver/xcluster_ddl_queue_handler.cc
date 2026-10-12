@@ -22,6 +22,7 @@
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
+#include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
@@ -49,6 +50,22 @@ DEFINE_RUNTIME_bool(xcluster_ddl_queue_enable_transactional_ddl, true,
     "When enabled, multiple DDLs from the same source transaction are applied "
     "atomically within a transaction block on the target.");
 
+DEFINE_RUNTIME_uint64(xcluster_ddl_queue_analyze_mutation_count, 1000000000000,
+    "Mutation count reported to the auto analyze service for a table that was analyzed on the "
+    "source. It has to exceed the target's analyze threshold, which grows with the size of "
+    "the table (threshold = ysql_auto_analyze_threshold + ysql_auto_analyze_scale_factor * "
+    "reltuples), so that the table is picked for an ANALYZE on the target. The default of 1e12 "
+    "covers tables of up to ten trillion rows with the default scale factor of 0.1. Note that "
+    "this does not bypass the auto analyze cooldown for the table.");
+
+DEFINE_RUNTIME_uint32(xcluster_ddl_queue_terminate_backend_new_conn_timeout_ms, 5000,
+    "Timeout for opening the Postgres connection used to terminate the backend running a "
+    "replicated DDL.");
+
+DEFINE_RUNTIME_uint32(xcluster_ddl_queue_terminate_backend_min_query_running_time_ms, 1000,
+    "Only terminate the Postgres backend of a paused xCluster ddl_queue poller if its current "
+    "query has been running for at least this long.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -70,8 +87,17 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_before_incremental_safe_t
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_ddl, false,
     "Whether the ddl_queue handler should fail the ddl command that it executes.");
 
+DEFINE_test_flag(string, xcluster_ddl_queue_handler_fail_ddl_matching, "",
+    "If non-empty, the ddl_queue handler fails only the ddl commands whose query contains this "
+    "substring.");
+
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_int32(ysql_node_level_mutation_reporting_timeout_ms);
 
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
@@ -104,6 +130,8 @@ const char* kDDLJsonVersion = "version";
 const char* kDDLJsonSchema = "schema";
 const char* kDDLJsonUser = "user";
 const char* kDDLJsonNewRelMap = "new_rel_map";
+const char* kDDLJsonAnalyzeRels = "analyze_rels";
+const char* kAnalyzeCommandTag = "ANALYZE";
 const char* kDDLJsonRelName = "rel_name";
 const char* kDDLJsonRelPgSchemaName = "rel_namespace";
 const char* kDDLJsonRelFileOid = "relfile_oid";
@@ -118,6 +146,7 @@ const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 const char* kDDLPrepStmtCommitTimesUpsert = "commit_times_insert";
 const char* kDDLPrepStmtCommitTimesSelect = "commit_times_select";
+const char* kDDLPrepStmtTargetRelfileNode = "target_relfilenode";
 const int kDDLReplicatedTableSpecialKey = 1;
 const char* kSafeTimeBatchCommitTimes = "commit_times";
 const char* kSafeTimeBatchApplySafeTime = "apply_safe_time";
@@ -143,6 +172,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "ALTER SEQUENCE",
     "TRUNCATE TABLE",
     "REFRESH MATERIALIZED VIEW",
+    "ANALYZE",
     // Pass thru DDLs
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
@@ -315,6 +345,15 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
       query_info.relation_map.push_back(std::move(rel_info));
     }
   }
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonAnalyzeRels, IsArray)) {
+    for (const auto& rel : doc[kDDLJsonAnalyzeRels].GetArray()) {
+      VALIDATE_MEMBER(rel, kDDLJsonRelName, String);
+      VALIDATE_MEMBER(rel, kDDLJsonRelPgSchemaName, String);
+      query_info.analyze_relations.push_back(
+          {.relation_name = rel[kDDLJsonRelName].GetString(),
+           .relation_pgschema_name = rel[kDDLJsonRelPgSchemaName].GetString()});
+    }
+  }
   if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonVariableMap, IsObject)) {
     auto variables = doc[kDDLJsonVariableMap].GetObject();
     for (const auto& variable : variables) {
@@ -325,6 +364,13 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
   }
 
   return query_info;
+}
+
+// The safe time is only bumped past a commit time after its DDLs have run. History at or below the
+// safe time may be compacted away, so reading ddl_queue there would fail with kSnapshotTooOld.
+bool IsCommitTimeAlreadyProcessed(
+    const HybridTime& commit_time, const HybridTime& published_safe_time) {
+  return !published_safe_time.is_special() && commit_time <= published_safe_time;
 }
 
 }  // namespace
@@ -345,6 +391,58 @@ XClusterDDLQueueHandler::XClusterDDLQueueHandler(
 
 XClusterDDLQueueHandler::~XClusterDDLQueueHandler() {}
 
+bool XClusterDDLQueueHandler::HasDdlInFlight() const {
+  return ddl_in_flight_.load(std::memory_order_acquire);
+}
+
+void XClusterDDLQueueHandler::KillPgConnection() {
+  if (!ddl_in_flight_.load(std::memory_order_acquire)) {
+    VLOG_WITH_PREFIX(1) << "KillPgConnection: no DDL in flight, nothing to terminate";
+    return;
+  }
+
+  // Open a separate short-lived connection to issue the terminate.
+  const auto deadline =
+      CoarseMonoClock::Now() +
+      MonoDelta::FromMilliseconds(FLAGS_xcluster_ddl_queue_terminate_backend_new_conn_timeout_ms);
+  auto conn = connect_to_pg_func_(namespace_name_, deadline);
+  if (!conn.ok()) {
+    // Will retry on the consumer's next pass.
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Failed to connect to PostgreSQL to terminate the backend: " << conn.status();
+    return;
+  }
+
+  // Read the flag and the pid together, after the connection is open.
+  if (!ddl_in_flight_.load(std::memory_order_acquire)) {
+    return;
+  }
+  auto pid = pg_backend_pid_.load(std::memory_order_acquire);
+  if (pid == 0) {
+    VLOG_WITH_PREFIX(1) << "KillPgConnection: no backend pid recorded, nothing to terminate";
+    return;
+  }
+
+  auto terminated = pgwrapper::TryTerminateBackendWithRunningQuery(
+      *conn, static_cast<int>(pid),
+      FLAGS_xcluster_ddl_queue_terminate_backend_min_query_running_time_ms);
+  if (!terminated.ok()) {
+    // Will retry on the consumer's next pass.
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Failed to terminate PostgreSQL backend " << pid << ": " << terminated.status();
+    return;
+  }
+  if (!*terminated) {
+    VLOG_WITH_PREFIX(1) << "PostgreSQL backend " << pid
+                        << " is not running a long query or has already exited";
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Terminated PostgreSQL backend " << pid
+                        << " to abort a replicated DDL, since replication has been paused";
+  pg_backend_pid_.compare_exchange_strong(pid, 0);
+}
+
 void XClusterDDLQueueHandler::Shutdown() {
   if (pg_conn_ && FLAGS_ysql_yb_enable_advisory_locks &&
       FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
@@ -361,7 +459,9 @@ bool XClusterDDLQueueHandler::ShouldUseTransactionalDDL(
     const std::vector<XClusterDDLQueryInfo>& queries) const {
   return queries.size() > 1 &&
          FLAGS_xcluster_ddl_queue_enable_transactional_ddl &&
-         FLAGS_ysql_yb_ddl_transaction_block_enabled;
+         FLAGS_ysql_yb_ddl_transaction_block_enabled &&
+         // ysql_yb_ddl_transaction_block_enabled depends on object locking
+         FLAGS_enable_object_locking_for_table_locks && FLAGS_ysql_enable_object_locking_infra;
 }
 
 Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& commit_time) {
@@ -400,6 +500,7 @@ Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& co
       LOG_WITH_PREFIX(WARNING)
           << "Failed to ABORT transactional DDL batch, dropping connection: " << abort_status;
       pg_conn_.reset();
+      pg_backend_pid_.store(0, std::memory_order_release);
     }
   });
 
@@ -419,7 +520,8 @@ Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& co
     });
     RETURN_NOT_OK(ProcessNewRelations(query_info, new_relations, commit_time));
 
-    auto s = ProcessDDLQuery(query_info);
+    auto s = query_info.command_tag == kAnalyzeCommandTag ? ProcessAnalyzeQuery(query_info)
+                                                          : ProcessDDLQuery(query_info);
     if (!s.ok()) {
       RETURN_NOT_OK(ProcessFailedDDLQuery(s, query_info));
     }
@@ -456,6 +558,12 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     return Status::OK();
   }
 
+  // Marks this handler as processing the DDL batch, so that a pause can terminate the backend if
+  // the batch cannot complete.
+  ddl_in_flight_.store(true, std::memory_order_release);
+  auto ddl_in_flight_clearer =
+      ScopeExit([this] { ddl_in_flight_.store(false, std::memory_order_release); });
+
   SCHECK(
       !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start, InternalError,
       "Failing due to xcluster_ddl_queue_handler_fail_at_start");
@@ -472,6 +580,8 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
       safe_time_ht, apply_safe_time, TryAgain,
       "Waiting for other pollers to catch up to safe time");
 
+  const auto published_safe_time = VERIFY_RESULT(GetPublishedXClusterSafeTime());
+
   HybridTime last_commit_time_processed = safe_time_batch_->last_commit_time_processed;
   // For each commit time in order, we read the ddl_queue table and process the entries at that
   // time. This ensures that we process all of the DDLs in commit order. We use the ddl_end_time to
@@ -481,6 +591,14 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
       // Ignore commit times that are greater than the apply safe time. These remaining commit times
       // will be moved to the next batch.
       break;
+    }
+
+    if (IsCommitTimeAlreadyProcessed(commit_time, published_safe_time)) {
+      VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Skipping commit time " << commit_time
+                          << " which is at or below the published safe time "
+                          << published_safe_time;
+      last_commit_time_processed = commit_time;
+      continue;
     }
 
     // TODO(#20928): Make these calls async.
@@ -506,7 +624,9 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     // time is caught up.
     VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Bumping safe time to " << commit_time;
     update_safe_time_func_(commit_time);
-    TEST_SYNC_POINT("XClusterDDLQueueHandler::DdlQueueSafeTimeBumped");
+    auto bumped_commit_time = commit_time;
+    TEST_SYNC_POINT_CALLBACK(
+        "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped", &bumped_commit_time);
   }
 
   SCHECK(
@@ -572,7 +692,10 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
     setup_query << Format("SET $0 = $1;", name, pgwrapper::PqEscapeLiteral(value));
   }
 
-  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
+  const auto& fail_ddl_matching = FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching;
+  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl ||
+      (!fail_ddl_matching.empty() &&
+       query_info.query.find(fail_ddl_matching) != std::string::npos)) {
     setup_query << "SET yb_test_fail_next_ddl TO 1;";
   }
 
@@ -609,27 +732,119 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
     original_failed_status_ = s;
   }
 
+  if (IsDdlReplicationPausedDueToStuckDdl()) {
+    return PausedStatus();
+  }
   return s;
 }
 
+bool XClusterDDLQueueHandler::IsDdlReplicationPausedDueToStuckDdl() const {
+  return num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl;
+}
+
+Status XClusterDDLQueueHandler::PausedStatus() const {
+  return original_failed_status_.CloneAndPrepend(Format(
+      "DDL replication is paused due to repeated failures ($0 retries). Manual fix is "
+      "required, followed by a leader stepdown of the target's ddl_queue tablet leader. ",
+      num_fails_for_this_ddl_));
+}
+
 Status XClusterDDLQueueHandler::CheckForFailedQuery() {
-  if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
-    return original_failed_status_.CloneAndPrepend(Format(
-        "DDL replication is paused due to repeated failures ($0 retries). Manual fix is "
-        "required, followed by a leader stepdown of the target's ddl_queue tablet leader. ",
-        num_fails_for_this_ddl_));
+  if (IsDdlReplicationPausedDueToStuckDdl()) {
+    return PausedStatus();
   }
   return Status::OK();
 }
 
 Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(
     const XClusterDDLQueryInfo& query_info) {
+  return InsertIntoReplicatedDDLs(query_info, /* is_manual_execution */ true);
+}
+
+Result<std::optional<uint32_t>> XClusterDDLQueueHandler::GetTargetRelfileNodeOid(
+    const XClusterDDLQueryInfo::AnalyzeRelationInfo& relation) {
+  // The relation is identified by name because the target assigns its own relfilenode, which a
+  // table rewrite on either side can change independently. A relation with no storage has no
+  // DocDB table for the auto analyze service to track, so it is treated as missing.
+  auto rows = VERIFY_RESULT(pg_conn_->FetchRows<pgwrapper::PGOid>(Format(
+      "EXECUTE $0($1, $2)", kDDLPrepStmtTargetRelfileNode,
+      pgwrapper::PqEscapeLiteral(relation.relation_pgschema_name),
+      pgwrapper::PqEscapeLiteral(relation.relation_name))));
+  if (rows.empty()) {
+    return std::nullopt;
+  }
+  return rows.front();
+}
+
+Status XClusterDDLQueueHandler::ProcessAnalyzeQuery(const XClusterDDLQueryInfo& query_info) {
+  // Reset the role in case an earlier query in this batch left one set; the queries below run
+  // against the catalog and the extension's tables.
+  RETURN_NOT_OK(RunAndLogQuery("SET ROLE NONE"));
+
+  if (!FLAGS_ysql_enable_auto_analyze_infra) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 300)
+        << "ysql_enable_auto_analyze_infra is disabled, so the statistics of relations analyzed "
+        << "on the xCluster source will remain stale on this universe. Dropped hint: "
+        << query_info.query;
+    return InsertIntoReplicatedDDLs(query_info, /* is_manual_execution */ false);
+  }
+
+  if (!FLAGS_ysql_enable_auto_analyze) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 300)
+        << "ysql_enable_auto_analyze is disabled, so the statistics of relations analyzed on the "
+        << "xCluster source will remain stale on this universe until it is enabled. "
+        << "Mutation counts will be accumulated (note that the count can be lost if the "
+        << "service leader moves). Hint: " << query_info.query;
+  }
+
+  const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(target_namespace_id_));
+
+  stateful_service::IncreaseMutationCountersRequestPB req;
+  for (const auto& relation : query_info.analyze_relations) {
+    auto relfilenode_oid = VERIFY_RESULT(GetTargetRelfileNodeOid(relation));
+    if (!relfilenode_oid) {
+      // The relation has been dropped since the source analyzed it. Nothing to refresh.
+      LOG_WITH_PREFIX(INFO) << "Skipping auto analyze hint for missing relation "
+                            << relation.ToString();
+      continue;
+    }
+    auto* table_mutation_count = req.add_table_mutation_counts();
+    table_mutation_count->set_table_id(PgObjectId(db_oid, *relfilenode_oid).GetYbTableId());
+    table_mutation_count->set_mutation_count(FLAGS_xcluster_ddl_queue_analyze_mutation_count);
+  }
+
+  // The mutation counter bump is best effort, a missed bump leaves the target with stale
+  // statistics until the source analyzes again, which is far less severe than failing the entry
+  // and eventually pausing DDL replication.
+  if (req.table_mutation_counts_size() > 0) {
+    if (!auto_analyze_client_) {
+      auto_analyze_client_ = std::make_unique<client::PgAutoAnalyzeServiceClient>(*local_client_);
+    }
+    VLOG_WITH_PREFIX(2) << "Reporting mutation counts for auto analyze: " << req.ShortDebugString();
+    auto status = ResultToStatus(auto_analyze_client_->IncreaseMutationCounters(
+        req, MonoDelta::FromMilliseconds(FLAGS_ysql_node_level_mutation_reporting_timeout_ms)));
+    if (!status.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to report mutation counts to the auto analyze service, the statistics of "
+          << "the analyzed relations will remain stale on this universe until the source "
+          << "analyzes them again: " << status << ". Request: " << req.ShortDebugString();
+    }
+  }
+
+  // ANALYZE is not a DDL, so nothing fired the event trigger that would have recorded this entry.
+  return InsertIntoReplicatedDDLs(query_info, /* is_manual_execution */ false);
+}
+
+Status XClusterDDLQueueHandler::InsertIntoReplicatedDDLs(
+    const XClusterDDLQueryInfo& query_info, bool is_manual_execution) {
   rapidjson::Document doc;
   doc.SetObject();
   doc.AddMember(
       rapidjson::StringRef(kDDLJsonQuery),
       rapidjson::Value(query_info.query.c_str(), doc.GetAllocator()), doc.GetAllocator());
-  doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
+  if (is_manual_execution) {
+    doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
+  }
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
       "EXECUTE $0($1, $2, $3)", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
@@ -679,6 +894,10 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
       kDDLPrepStmtCommitTimesUpsert, kReplicatedDDLsFullTableName, kDDLReplicatedTableSpecialKey,
       xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn);
+  query << "PREPARE " << kDDLPrepStmtTargetRelfileNode << "(text, text) AS "
+        << "SELECT c.relfilenode FROM pg_catalog.pg_class c "
+        << "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+        << "WHERE n.nspname = $1 AND c.relname = $2 AND c.relfilenode != 0;";
 
   return pg_conn->Execute(query.str());
 }
@@ -686,12 +905,14 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 Status XClusterDDLQueueHandler::InitPGConnection() {
   if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
   if (pg_conn_ && pg_conn_->ConnStatus() != CONNECTION_OK) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
         << "Dropping unhealthy PostgreSQL connection (status " << pg_conn_->ConnStatus()
         << "), will reconnect";
     pg_conn_.reset();
+    pg_backend_pid_.store(0, std::memory_order_release);
   }
   if (pg_conn_) {
     return Status::OK();
@@ -713,13 +934,26 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 
   RETURN_NOT_OK(RunDdlQueueHandlerPrepareQueries(pg_conn.get()));
 
+  // Record the backend pid now, while the connection is idle. It cannot be fetched later from
+  // another thread wanting to terminate a stuck DDL, since the connection will be busy by then.
+  const auto backend_pid = static_cast<uint32_t>(pg_conn->BackendPID());
+
   pg_conn_ = std::move(pg_conn);
+  pg_backend_pid_.store(backend_pid, std::memory_order_release);
   return Status::OK();
 }
 
 Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
   return local_client_->GetXClusterSafeTimeForNamespace(
       target_namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
+}
+
+Result<HybridTime> XClusterDDLQueueHandler::GetPublishedXClusterSafeTime() {
+  auto safe_time = xcluster_context_.GetSafeTime(target_namespace_id_);
+  if (!safe_time.ok() && safe_time.status().IsTryAgain()) {
+    return HybridTime::kInvalid;
+  }
+  return VERIFY_RESULT(std::move(safe_time)).value_or(HybridTime::kInvalid);
 }
 
 // Fetch all DDL entries from ddl_queue at the specified commit_time that have not yet been
@@ -987,6 +1221,7 @@ Status XClusterDDLQueueHandler::UpdateSafeTimeForPause() {
   RETURN_NOT_OK(ReloadSafeTimeBatchFromTableIfRequired());
 
   auto max_commit_time = safe_time_batch_->last_commit_time_processed;
+  const auto published_safe_time = VERIFY_RESULT(GetPublishedXClusterSafeTime());
 
   for (const auto& commit_time : safe_time_batch_->commit_times) {
     if (safe_time_batch_->apply_safe_time.is_valid() &&
@@ -995,10 +1230,12 @@ Status XClusterDDLQueueHandler::UpdateSafeTimeForPause() {
       break;
     }
 
-    auto queries = VERIFY_RESULT(GetQueriesToProcess(commit_time));
-    if (!queries.empty()) {
-      // Unprocessed DDL found.
-      break;
+    if (!IsCommitTimeAlreadyProcessed(commit_time, published_safe_time)) {
+      auto queries = VERIFY_RESULT(GetQueriesToProcess(commit_time));
+      if (!queries.empty()) {
+        // Unprocessed DDL found.
+        break;
+      }
     }
     if (!max_commit_time.is_valid() || commit_time > max_commit_time) {
       max_commit_time = commit_time;

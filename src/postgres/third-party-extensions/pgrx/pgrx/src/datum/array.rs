@@ -8,19 +8,20 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 #![allow(clippy::question_mark)]
-use super::{unbox, UnboxDatum};
-use crate::array::RawArray;
+use super::{UnboxDatum, unbox};
+use crate::array::{RawArray, Scalar};
 use crate::nullable::{
     BitSliceNulls, IntoNullableIterator, MaybeStrictNulls, NullLayout, Nullable, NullableContainer,
 };
 use crate::toast::Toast;
+use crate::{FromDatum, IntoDatum, PgMemoryContexts, pg_sys};
 use crate::{layout::*, nullable};
-use crate::{pg_sys, FromDatum, IntoDatum, PgMemoryContexts};
 use core::fmt::{Debug, Formatter};
 use core::ops::DerefMut;
 use core::ptr::NonNull;
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable, array_argument_sql,
+    array_return_sql,
 };
 use serde::{Serialize, Serializer};
 use std::iter::FusedIterator;
@@ -412,101 +413,33 @@ pub enum ArraySliceError {
     ContainsNulls,
 }
 
-#[cfg(target_pointer_width = "64")]
-impl Array<'_, f64> {
-    /// Returns a slice of `f64`s which comprise this [`Array`].
+impl<T> Array<'_, T>
+where
+    T: Scalar,
+{
+    /// Returns the slice of `T` within this [`Array`].
     ///
     /// # Errors
     ///
     /// Returns a [`ArraySliceError::ContainsNulls`] error if this [`Array`] contains one or more
     /// SQL "NULL" values.  In this case, you'd likely want to fallback to using [`Array::iter()`].
     #[inline]
-    pub fn as_slice(&self) -> Result<&[f64], ArraySliceError> {
-        as_slice(self)
-    }
-}
+    pub fn as_slice(&self) -> Result<&[T], ArraySliceError> {
+        if self.contains_nulls() {
+            return Err(ArraySliceError::ContainsNulls);
+        }
 
-impl Array<'_, f32> {
-    /// Returns a slice of `f32`s which comprise this [`Array`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`ArraySliceError::ContainsNulls`] error if this [`Array`] contains one or more
-    /// SQL "NULL" values.  In this case, you'd likely want to fallback to using [`Array::iter()`].
-    #[inline]
-    pub fn as_slice(&self) -> Result<&[f32], ArraySliceError> {
-        as_slice(self)
+        // SAFETY: Sound if the bound of `T: Scalar` holds and the type fulfills those requirements
+        let slice =
+            unsafe { std::slice::from_raw_parts(self.raw.data_ptr() as *const _, self.len()) };
+        Ok(slice)
     }
-}
-
-#[cfg(target_pointer_width = "64")]
-impl Array<'_, i64> {
-    /// Returns a slice of `i64`s which comprise this [`Array`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`ArraySliceError::ContainsNulls`] error if this [`Array`] contains one or more
-    /// SQL "NULL" values.  In this case, you'd likely want to fallback to using [`Array::iter()`].
-    #[inline]
-    pub fn as_slice(&self) -> Result<&[i64], ArraySliceError> {
-        as_slice(self)
-    }
-}
-
-impl Array<'_, i32> {
-    /// Returns a slice of `i32`s which comprise this [`Array`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`ArraySliceError::ContainsNulls`] error if this [`Array`] contains one or more
-    /// SQL "NULL" values.  In this case, you'd likely want to fallback to using [`Array::iter()`].
-    #[inline]
-    pub fn as_slice(&self) -> Result<&[i32], ArraySliceError> {
-        as_slice(self)
-    }
-}
-
-impl Array<'_, i16> {
-    /// Returns a slice of `i16`s which comprise this [`Array`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`ArraySliceError::ContainsNulls`] error if this [`Array`] contains one or more
-    /// SQL "NULL" values.  In this case, you'd likely want to fallback to using [`Array::iter()`].
-    #[inline]
-    pub fn as_slice(&self) -> Result<&[i16], ArraySliceError> {
-        as_slice(self)
-    }
-}
-
-impl Array<'_, i8> {
-    /// Returns a slice of `i8`s which comprise this [`Array`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`ArraySliceError::ContainsNulls`] error if this [`Array`] contains one or more
-    /// SQL "NULL" values.  In this case, you'd likely want to fallback to using [`Array::iter()`].
-    #[inline]
-    pub fn as_slice(&self) -> Result<&[i8], ArraySliceError> {
-        as_slice(self)
-    }
-}
-
-#[inline(always)]
-fn as_slice<'a, T: Sized>(array: &'a Array<'_, T>) -> Result<&'a [T], ArraySliceError> {
-    if array.contains_nulls() {
-        return Err(ArraySliceError::ContainsNulls);
-    }
-
-    let slice =
-        unsafe { std::slice::from_raw_parts(array.raw.data_ptr() as *const _, array.len()) };
-    Ok(slice)
 }
 
 mod casper {
     use super::UnboxDatum;
     use crate::layout::Align;
-    use crate::{pg_sys, varlena, Array};
+    use crate::{Array, pg_sys, varlena};
 
     // it's a pop-culture reference (https://en.wikipedia.org/wiki/Cha_Cha_Slide) not some fancy crypto thing you nerd
     /// Describes how to instantiate a value `T` from an [`Array`] and its backing byte array pointer.
@@ -569,7 +502,9 @@ mod casper {
                 8 => pg_sys::Datum::from(byval_read::<u64>(ptr)),
                 _ => unreachable!("`N` must be 1, 2, 4, or 8 (got {N})"),
             };
-            Some(T::unbox(core::mem::transmute(datum)))
+            Some(T::unbox(core::mem::transmute::<pgrx_pg_sys::Datum, crate::datum::Datum<'_>>(
+                datum,
+            )))
         }
 
         #[inline(always)]
@@ -591,7 +526,9 @@ mod casper {
             ptr: *const u8,
         ) -> Option<T::As<'arr>> {
             let datum = pg_sys::Datum::from(ptr);
-            Some(T::unbox(core::mem::transmute(datum)))
+            Some(T::unbox(core::mem::transmute::<pgrx_pg_sys::Datum, crate::datum::Datum<'_>>(
+                datum,
+            )))
         }
 
         #[inline]
@@ -615,7 +552,9 @@ mod casper {
             ptr: *const u8,
         ) -> Option<T::As<'arr>> {
             let datum = pg_sys::Datum::from(ptr);
-            Some(T::unbox(core::mem::transmute(datum)))
+            Some(T::unbox(core::mem::transmute::<pgrx_pg_sys::Datum, crate::datum::Datum<'_>>(
+                datum,
+            )))
         }
 
         #[inline]
@@ -640,7 +579,9 @@ mod casper {
             ptr: *const u8,
         ) -> Option<T::As<'arr>> {
             let datum = pg_sys::Datum::from(ptr);
-            Some(T::unbox(core::mem::transmute(datum)))
+            Some(T::unbox(core::mem::transmute::<pgrx_pg_sys::Datum, crate::datum::Datum<'_>>(
+                datum,
+            )))
         }
 
         #[inline]
@@ -1076,7 +1017,7 @@ where
     T: IntoDatum + Copy + 'a,
 {
     fn into_datum(self) -> Option<pg_sys::Datum> {
-        array_datum_from_iter(self.into_iter().copied())
+        array_datum_from_iter(self.iter().copied())
     }
 
     fn type_oid() -> pg_sys::Oid {
@@ -1093,56 +1034,18 @@ unsafe impl<T> SqlTranslatable for Array<'_, T>
 where
     T: SqlTranslatable,
 {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        match T::argument_sql()? {
-            SqlMapping::As(sql) => Ok(SqlMapping::As(format!("{sql}[]"))),
-            SqlMapping::Skip => Err(ArgumentError::SkipInArray),
-            SqlMapping::Composite { .. } => Ok(SqlMapping::Composite { array_brackets: true }),
-        }
-    }
-
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        match T::return_sql()? {
-            Returns::One(SqlMapping::As(sql)) => {
-                Ok(Returns::One(SqlMapping::As(format!("{sql}[]"))))
-            }
-            Returns::One(SqlMapping::Composite { array_brackets: _ }) => {
-                Ok(Returns::One(SqlMapping::Composite { array_brackets: true }))
-            }
-            Returns::One(SqlMapping::Skip) => Err(ReturnsError::SkipInArray),
-            Returns::SetOf(_) => Err(ReturnsError::SetOfInArray),
-            Returns::Table(_) => Err(ReturnsError::TableInArray),
-        }
-    }
+    const TYPE_IDENT: &'static str = T::TYPE_IDENT;
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin = T::TYPE_ORIGIN;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = array_argument_sql(T::ARGUMENT_SQL);
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> = array_return_sql(T::RETURN_SQL);
 }
 
 unsafe impl<T> SqlTranslatable for VariadicArray<'_, T>
 where
     T: SqlTranslatable,
 {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        match T::argument_sql()? {
-            SqlMapping::As(sql) => Ok(SqlMapping::As(format!("{sql}[]"))),
-            SqlMapping::Skip => Err(ArgumentError::SkipInArray),
-            SqlMapping::Composite { .. } => Ok(SqlMapping::Composite { array_brackets: true }),
-        }
-    }
-
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        match T::return_sql()? {
-            Returns::One(SqlMapping::As(sql)) => {
-                Ok(Returns::One(SqlMapping::As(format!("{sql}[]"))))
-            }
-            Returns::One(SqlMapping::Composite { array_brackets: _ }) => {
-                Ok(Returns::One(SqlMapping::Composite { array_brackets: true }))
-            }
-            Returns::One(SqlMapping::Skip) => Err(ReturnsError::SkipInArray),
-            Returns::SetOf(_) => Err(ReturnsError::SetOfInArray),
-            Returns::Table(_) => Err(ReturnsError::TableInArray),
-        }
-    }
-
-    fn variadic() -> bool {
-        true
-    }
+    const TYPE_IDENT: &'static str = T::TYPE_IDENT;
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin = T::TYPE_ORIGIN;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = array_argument_sql(T::ARGUMENT_SQL);
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> = array_return_sql(T::RETURN_SQL);
 }

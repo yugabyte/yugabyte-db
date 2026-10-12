@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -51,8 +52,14 @@ import com.yugabyte.yw.models.NodeAgent.DeployContext;
 import com.yugabyte.yw.models.NodeAgent.DeployType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.nodeagent.PingResponse;
 import com.yugabyte.yw.nodeagent.ServerInfo;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot.GaugeDataPointSnapshot;
+import io.prometheus.metrics.model.snapshots.Labels;
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -208,6 +215,29 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     nodeAgent.update();
   }
 
+  // MainModule clears defaultRegistry after static gauge registration, so scrape-based helpers
+  // miss these series. Collect from the Gauge instance instead.
+  private Double getNodeAgentGaugeValue(String gaugeFieldName, NodeAgent nodeAgent)
+      throws Exception {
+    Field field = NodeAgentPoller.class.getDeclaredField(gaugeFieldName);
+    field.setAccessible(true);
+    Gauge gauge = (Gauge) field.get(null);
+    Labels expected =
+        Labels.of(
+            KnownAlertLabels.CUSTOMER_UUID.labelName(),
+            nodeAgent.getCustomerUuid().toString(),
+            KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+            nodeAgent.getUuid().toString(),
+            KnownAlertLabels.NODE_ADDRESS.labelName(),
+            String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()));
+    for (GaugeDataPointSnapshot dataPoint : ((GaugeSnapshot) gauge.collect()).getDataPoints()) {
+      if (dataPoint.getLabels().equals(expected)) {
+        return dataPoint.getValue();
+      }
+    }
+    return null;
+  }
+
   private DeployType captureDeployType(NodeAgent nodeAgent) throws Exception {
     mockUpgradeClientResponses();
     ExecutorService upgrader = Executors.newSingleThreadExecutor();
@@ -293,6 +323,39 @@ public class NodeAgentPollerTest extends FakeDBApplication {
         "Cannot find node agent",
         PlatformServiceException.class,
         () -> NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgentUuid));
+  }
+
+  @Test
+  public void testMetricsRemovedWhenNodeAgentDeleted() throws Exception {
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.deadNodeAgentRetention)))
+        .thenReturn(Duration.ofDays(7));
+
+    Util.setYbaVersion("2.13.0.0");
+    NodeAgent nodeAgent = register(newPayload("2.13.0.0"));
+    UUID nodeAgentUuid = nodeAgent.getUuid();
+    long expiresAt = Instant.now().plus(Duration.ofDays(100)).getEpochSecond();
+    nodeAgent.getConfig().setServerCertExpirySecs(expiresAt);
+    nodeAgent.update();
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgentUuid);
+
+    // Publishes version-mismatch and server-cert gauges without starting an upgrade.
+    assertFalse(nodeAgentPoller.upgradeNodeAgent(nodeAgentUuid));
+    assertEquals(0.0, getNodeAgentGaugeValue("NODE_AGENT_VERSION_MISMATCH_GAUGE", nodeAgent), 0.0);
+    assertEquals(
+        (double) expiresAt,
+        getNodeAgentGaugeValue("NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE", nodeAgent),
+        0.0);
+
+    // Inserts a poller task for this agent so delete cleanup can find it.
+    assertFalse(nodeAgentPoller.upgradeNodeAgent(nodeAgentUuid, false, n -> null));
+
+    NodeAgent.delete(nodeAgentUuid);
+    nodeAgentPoller.pollerService();
+
+    assertNull(getNodeAgentGaugeValue("NODE_AGENT_VERSION_MISMATCH_GAUGE", nodeAgent));
+    assertNull(getNodeAgentGaugeValue("NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE", nodeAgent));
+    assertNull(getNodeAgentGaugeValue("NODE_AGENT_CONNECTION_GAUGE", nodeAgent));
+    verify(mockSwamperHelper).removeNodeAgentTargetJson(eq(nodeAgentUuid));
   }
 
   @Test

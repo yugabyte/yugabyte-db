@@ -3,6 +3,8 @@ package ybactlstate
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +32,7 @@ const asRootState = 13
 const nodeExporterConfig = 14
 const perfAdvisorConfig = 15
 const fipsConfig = 16
+const fipsState = 17
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -429,6 +432,23 @@ func migrateNodeExporterConfig(state *State) error {
 	return nil
 }
 
+// migrateFipsState records the FIPS mode an existing install is running in. It is read from the
+// installed platform unit, which only carries the approved-only flag in FIPS mode, rather than from
+// yba-ctl.yml, which may already hold the change the state is meant to refuse.
+func migrateFipsState(state *State) error {
+	unit, err := os.ReadFile(filepath.Join(common.SystemdDir, "yb-platform.service"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			state.Config.FipsEnabled = viper.GetBool("fips.enabled")
+			return nil
+		}
+		return fmt.Errorf("reading the platform service to determine FIPS mode: %w", err)
+	}
+	state.Config.FipsEnabled = strings.Contains(string(unit),
+		"-Dorg.bouncycastle.fips.approved_only=true")
+	return nil
+}
+
 var migrations = map[int]migration{
 	defaultMigratorValue: {run: defaultMigrate},
 	promConfigMV:         {run: migratePrometheus},
@@ -446,6 +466,7 @@ var migrations = map[int]migration{
 	nodeExporterConfig:   {run: migrateNodeExporterConfig},
 	perfAdvisorConfig:    {run: migratePerfAdvisorConfig},
 	fipsConfig:           {run: migrateFipsConfig},
+	fipsState:            {run: migrateFipsState, stateField: []string{"config", "fips_enabled"}},
 }
 
 func getSchemaVersion() int {

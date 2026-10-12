@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -33,6 +34,7 @@ public class YBAUpgradePrecheck {
   private static final String DATABASE_CONNECT_URL_PARAM = "db.default.url";
   private static final String DATABASE_USERNAME_PARAM = "db.default.username";
   private static final String DATABASE_PASSWORD_PARAM = "db.default.password";
+  private static final String GLOBAL_SCOPE_UUID = ScopedRuntimeConfig.GLOBAL_SCOPE_UUID.toString();
   private static final Set<String> ELIGIBLE_PROVIDERS =
       ImmutableSet.of("onprem", "aws", "gcp", "azu");
 
@@ -41,14 +43,18 @@ public class YBAUpgradePrecheck {
   private final ObjectMapper mapper =
       new ObjectMapper()
           .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
-          .setSerializationInclusion(Include.ALWAYS);
+          .setDefaultPropertyInclusion(Include.ALWAYS);
 
   // This is the output to be serialized and dumped to a file.
   static class PrecheckOutput {
     @JsonProperty public boolean passed = true;
-    @JsonProperty boolean nodeAgentClientDisabled = false;
-    @JsonProperty Map<String, NodeInstanceConfig> nodeInstanceConfigs = new HashMap<>();
-    @JsonProperty Map<String, UniverseConfig> universeConfigs = new HashMap<>();
+
+    @JsonProperty
+    Map<String, NodeAgentClientRuntimeConfig> nodeAgentClientDisabledRuntimeConfigs =
+        new HashMap<>();
+
+    @JsonProperty Map<String, NodeInstanceConfig> nodeInstancesWithoutNodeAgents = new HashMap<>();
+    @JsonProperty Map<String, UniverseConfig> ineligibleUniverses = new HashMap<>();
   }
 
   static class NodeInstanceConfig {
@@ -62,26 +68,62 @@ public class YBAUpgradePrecheck {
     @JsonProperty boolean systemdEnabled;
   }
 
+  static class NodeAgentClientRuntimeConfig {
+    @JsonProperty String scopeType;
+    @JsonProperty String value;
+  }
+
   @Inject
   public YBAUpgradePrecheck(Config config) {
     this.config = config;
   }
 
-  private Map<String, String> getNodeAgentClientRuntimeConfigs(Connection conn)
-      throws SQLException {
-    Map<String, String> runtimeValues = new HashMap<>();
+  private Map<String, NodeAgentClientRuntimeConfig> getNodeAgentClientRuntimeConfigs(
+      Connection conn) throws SQLException {
+    Map<String, NodeAgentClientRuntimeConfig> runtimeConfigs = new HashMap<>();
+    Map<String, String> scopeValues = new HashMap<>();
     try (ResultSet resultSet =
         conn.createStatement()
             .executeQuery(
                 "SELECT scope_uuid, value AS value FROM runtime_config_entry WHERE"
                     + " path = 'yb.node_agent.client.enabled'")) {
       while (resultSet.next()) {
-        runtimeValues.put(
-            resultSet.getString("scope_uuid"),
-            new String(resultSet.getBytes("value"), StandardCharsets.UTF_8));
+        String scopeUuid = resultSet.getString("scope_uuid");
+        scopeValues.put(scopeUuid, new String(resultSet.getBytes("value"), StandardCharsets.UTF_8));
       }
     }
-    return runtimeValues;
+    for (Map.Entry<String, String> entry : scopeValues.entrySet()) {
+      String scopeUuid = entry.getKey();
+      runtimeConfigs.computeIfAbsent(scopeUuid, k -> new NodeAgentClientRuntimeConfig()).value =
+          entry.getValue();
+      if (GLOBAL_SCOPE_UUID.equalsIgnoreCase(scopeUuid)) {
+        runtimeConfigs.get(scopeUuid).scopeType = "GLOBAL";
+      } else {
+        try (ResultSet scopeResultSet =
+            conn.createStatement()
+                .executeQuery(
+                    "SELECT customer_uuid, universe_uuid, provider_uuid FROM"
+                        + " scoped_runtime_config WHERE uuid = '"
+                        + scopeUuid
+                        + "'")) {
+          if (scopeResultSet.next()) {
+            String customerUuid = scopeResultSet.getString("customer_uuid");
+            String universeUuid = scopeResultSet.getString("universe_uuid");
+            String providerUuid = scopeResultSet.getString("provider_uuid");
+            if (StringUtils.isNotBlank(customerUuid)) {
+              runtimeConfigs.get(scopeUuid).scopeType = "CUSTOMER";
+            } else if (StringUtils.isNotBlank(universeUuid)) {
+              runtimeConfigs.get(scopeUuid).scopeType = "UNIVERSE";
+            } else if (StringUtils.isNotBlank(providerUuid)) {
+              runtimeConfigs.get(scopeUuid).scopeType = "PROVIDER";
+            } else {
+              runtimeConfigs.get(scopeUuid).scopeType = "UNKNOWN";
+            }
+          }
+        }
+      }
+    }
+    return runtimeConfigs;
   }
 
   private Map<String, UniverseConfig> getUniverseConfigs(Connection conn) throws SQLException {
@@ -207,7 +249,7 @@ public class YBAUpgradePrecheck {
     } catch (Exception e) {
       throw new RuntimeException("Failed to load database driver", e);
     }
-    Map<String, String> nodeAgentClientRuntimeConfigs = null;
+    Map<String, NodeAgentClientRuntimeConfig> nodeAgentClientRuntimeConfigs = null;
     Map<String, UniverseConfig> univConfigs = null;
     Map<String, NodeInstanceConfig> nodeInstanceConfigs = null;
     Map<String, String> nodeAgentStates = null;
@@ -222,9 +264,10 @@ public class YBAUpgradePrecheck {
     // For the precheck output.
     PrecheckOutput precheckOutput = new PrecheckOutput();
     // Check for any disabled runtime config override.
-    for (Map.Entry<String, String> entry : nodeAgentClientRuntimeConfigs.entrySet()) {
-      if ("false".equalsIgnoreCase(StringUtils.trim(entry.getValue()))) {
-        precheckOutput.nodeAgentClientDisabled = true;
+    for (Map.Entry<String, NodeAgentClientRuntimeConfig> entry :
+        nodeAgentClientRuntimeConfigs.entrySet()) {
+      if ("false".equalsIgnoreCase(StringUtils.trim(entry.getValue().value))) {
+        precheckOutput.nodeAgentClientDisabledRuntimeConfigs.put(entry.getKey(), entry.getValue());
         precheckOutput.passed = false;
       }
     }
@@ -232,7 +275,7 @@ public class YBAUpgradePrecheck {
     for (Map.Entry<String, NodeInstanceConfig> entry : nodeInstanceConfigs.entrySet()) {
       String state = nodeAgentStates.get(entry.getValue().ip);
       if (state == null || !state.equalsIgnoreCase("READY")) {
-        precheckOutput.nodeInstanceConfigs.put(entry.getKey(), entry.getValue());
+        precheckOutput.nodeInstancesWithoutNodeAgents.put(entry.getKey(), entry.getValue());
         precheckOutput.passed = false;
       }
     }
@@ -240,7 +283,8 @@ public class YBAUpgradePrecheck {
     for (Map.Entry<String, UniverseConfig> entry : univConfigs.entrySet()) {
       UniverseConfig univConfig = entry.getValue();
       if (!univConfig.systemdEnabled) {
-        precheckOutput.universeConfigs.computeIfAbsent(entry.getKey(), k -> new UniverseConfig())
+        precheckOutput.ineligibleUniverses.computeIfAbsent(
+                    entry.getKey(), k -> new UniverseConfig())
                 .systemdEnabled =
             univConfig.systemdEnabled;
         precheckOutput.passed = false;
@@ -249,7 +293,7 @@ public class YBAUpgradePrecheck {
         String state = nodeAgentStates.get(nodeIp);
         if (state == null || !state.equalsIgnoreCase("READY")) {
           precheckOutput
-              .universeConfigs
+              .ineligibleUniverses
               .computeIfAbsent(
                   entry.getKey(),
                   k -> {

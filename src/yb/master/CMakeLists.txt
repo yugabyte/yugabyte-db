@@ -160,6 +160,7 @@ set(MASTER_SRCS
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
   xcluster/xcluster_universe_replication_alter_helper.cc
+  xcluster/xcluster_wal_anchor_deletion_task.cc
   xcluster_consumer_registry_service.cc
   xcluster_rpc_tasks.cc
   xrepl_catalog_manager.cc
@@ -259,6 +260,7 @@ set(YB_TEST_LINK_LIBS master
   yb_client
   yb_tools_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(async_rpc_tasks-test)
 ADD_YB_TEST(async_task_result_collector-test)
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)

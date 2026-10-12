@@ -132,6 +132,10 @@ Although optional, configuring ClockBound improves clock accuracy by several ord
 
 ClockBound is supported on AWS and GCP. Azure is not supported.
 
+{{< note title="YugabyteDB Anywhere" >}}
+In YugabyteDB Anywhere, ClockBound is automatically configured during node provisioning. When deploying to AWS or GCP, the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`. ClockBound is not supported for Azure or Kubernetes in YugabyteDB Anywhere.
+{{< /note >}}
+
 Configure ClockBound using the `configure_clockbound.sh` script in the bin directory of your YugabyteDB home directory as follows:
 
 ```sh

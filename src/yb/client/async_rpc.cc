@@ -135,12 +135,6 @@ bool LocalTabletServerOnly(const InFlightOps& ops) {
           !FLAGS_forward_redis_requests);
 }
 
-void FillRequestIds(const RetryableRequestId request_id, InFlightOps* ops) {
-  for (auto& op : *ops) {
-    op.yb_op->set_request_id(request_id);
-  }
-}
-
 void DoCheckResponseCount(
     const char* op, const char* name, size_t found, size_t expected, Status* status) {
   if (found == expected) {
@@ -382,7 +376,15 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   }
 }
 
-// Points the request's read time at the statement's in_txn_limit. Used for reading relations that
+template <class Req>
+void SetReadTimeTo(HybridTime ht, Req* req) {
+  auto* read_time = req->mutable_read_time();
+  read_time->set_read_ht(ht.ToUint64());
+  read_time->set_local_limit_ht(ht.ToUint64());
+  read_time->set_global_limit_ht(ht.ToUint64());
+}
+
+// Points the request's read time at in_txn_limit. Used for reading relations that
 // were created in the current transaction. This is done since there might be 2 kinds of rows for
 // such relations:
 //
@@ -419,10 +421,7 @@ bool SetReadTimeToInTxnLimit(const ConsistentReadPoint* read_point, Req* req) {
   if (!in_txn_limit || in_txn_limit == HybridTime::kMax) {
     return false;
   }
-  auto* read_time = req->mutable_read_time();
-  read_time->set_read_ht(in_txn_limit.ToUint64());
-  read_time->set_local_limit_ht(in_txn_limit.ToUint64());
-  read_time->set_global_limit_ht(in_txn_limit.ToUint64());
+  SetReadTimeTo(in_txn_limit, req);
   return true;
 }
 
@@ -505,8 +504,20 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     // and does not need one: it reads at the latest time, which is already above those rows.
     if (data.read_at_in_txn_limit && has_read_time && !serializable) {
       if (!SetReadTimeToInTxnLimit(read_point, &req_)) {
-        VLOG(2) << "No usable in_txn_limit, leaving read time as "
-                << read_point->GetReadTime().ToString();
+        // Some sessions never pick a statement in_txn_limit -- PgClientSession::UpdateReadTime
+        // skips SetInTxnLimit for autonomous DDL ones (see the TODO there) -- but the relation
+        // still needs a read time above the rows an earlier skip_intents write left in the
+        // regular db. The transaction's own read time is not one: it is picked at its first
+        // transactional operation, which for a DDL is the catalog writes it starts with, before
+        // any user data row is written.
+        //
+        // The current time is above every write this transaction has already completed, since
+        // their responses advanced this clock, and no other transaction can write to a relation
+        // created by an uncommitted one. Clearing the read time would read above those rows too,
+        // but the tserver would then pick one and report it back through used_read_time, which
+        // YBTransaction::Impl::Flushed DFATALs on before applying it over the read point of the
+        // whole transaction.
+        SetReadTimeTo(read_point->Now(), &req_);
       }
     }
   } else if (data.skip_intents) {
@@ -656,6 +667,9 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::LWWriteRequestPB* req) {
   if (op->XreplOriginId()) {
     req->set_xrepl_origin_id(op->XreplOriginId());
   }
+  if (op->origination_info().IsSet()) {
+    op->origination_info().ToPB(req->mutable_origination_info());
+  }
 }
 
 void HandleExtraFields(YBRedisReadOp* op, tserver::LWReadRequestPB* req) {}
@@ -751,25 +765,23 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
     req_.set_leader_term(batcher_->GetLeaderTerm());
   }
 
-  const auto& client_id = batcher_->client_id();
-  if (!client_id.IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
-    auto temp = client_id.ToUInt64Pair();
-    req_.set_client_id1(temp.first);
-    req_.set_client_id2(temp.second);
-    const auto& first_yb_op = ops_.begin()->yb_op;
-    // That means we are trying to resend all ops from this RPC and need to reuse retryable
-    // request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
-    if (first_yb_op->request_id()) {
-      const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
-      req_.set_request_id(*first_yb_op->request_id());
-      req_.set_min_running_request_id(request_detail.min_running_request_id);
-    } else {
-      const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      req_.set_request_id(request_pair.first);
-      req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second);
+  if (FLAGS_detect_duplicates_for_retryable_requests) {
+    // The ops carry the request when we are trying to resend all ops from this RPC, and then it
+    // is reused (see https://github.com/yugabyte/yugabyte-db/issues/14005).
+    auto request = ops_.begin()->yb_op->retryable_request();
+    if (!request) {
+      request = batcher_->NextRequestIdAndMinRunningRequestId();
+      batcher_->RegisterRequest(request);
+      for (auto& op : ops_) {
+        op.yb_op->set_retryable_request(request);
+      }
     }
-    FillRequestIds(req_.request_id(), &ops_);
+    req_.set_request_id(request.id);
+    req_.set_min_running_request_id(request.min_running);
+    // The client id of the request, since a sharded allocator has one per shard.
+    auto client_id = request.client_id->ToUInt64Pair();
+    req_.set_client_id1(client_id.first);
+    req_.set_client_id2(client_id.second);
   }
 
   if (batcher_->in_flight_ops().metadata.object_locking_txn_meta) {

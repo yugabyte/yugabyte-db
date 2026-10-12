@@ -498,6 +498,17 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	healthCheckInput := req.GetHealthCheckInput()
+	if healthCheckInput != nil {
+		healthCheckHandler := task.NewHealthCheckerHandler(healthCheckInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, healthCheckHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running health check - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, toGrpcErrorIfNeeded(codes.Unimplemented, errors.New("Unknown task"))
 }
 

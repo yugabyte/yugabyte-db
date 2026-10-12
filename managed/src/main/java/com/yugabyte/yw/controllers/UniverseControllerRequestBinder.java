@@ -51,6 +51,31 @@ import play.mvc.Http;
 @Slf4j
 public class UniverseControllerRequestBinder {
 
+  /**
+   * On a FIPS YBA every universe is created with FIPS enabled. A request that omits fipsEnabled
+   * gets it enforced; one that explicitly turns it off is rejected rather than silently overridden.
+   */
+  static void rejectFipsDisabledOnFipsYba(Http.Request request) {
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    rejectFipsDisabledOnFipsYba(
+        request.body().asJson(),
+        runtimeConfGetter.getStaticConf().getBoolean(CommonUtils.FIPS_ENABLED));
+  }
+
+  static void rejectFipsDisabledOnFipsYba(JsonNode body, boolean ybaFipsEnabled) {
+    JsonNode fipsEnabled = body == null ? null : body.get("fipsEnabled");
+    if (ybaFipsEnabled
+        && fipsEnabled != null
+        && !fipsEnabled.isNull()
+        && !fipsEnabled.asBoolean()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "YugabyteDB Anywhere is running in FIPS mode, so universes must be created with FIPS"
+              + " enabled. Remove fipsEnabled from the request or set it to true.");
+    }
+  }
+
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
       Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
@@ -80,11 +105,12 @@ public class UniverseControllerRequestBinder {
         for (Cluster cluster : taskParams.clusters) {
           UserIntent ui = cluster.userIntent;
           if (Util.isKubernetesBasedUniverse(taskParams)) {
-            if (ui.instanceType != null) {
+            UUID providerUUID = Util.getSingleProviderUUID(ui);
+            if (ui.getBaseInstanceType(providerUUID) != null) {
               if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-                UUID providerUUID = Util.getSingleProviderUUID(ui);
                 InstanceType instanceType =
-                    InstanceType.getOrBadRequest(providerUUID, ui.instanceType);
+                    InstanceType.getOrBadRequest(
+                        providerUUID, ui.getBaseInstanceType(providerUUID));
                 // set K8s resource spec from instance type data.
                 ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
                 ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
@@ -156,7 +182,7 @@ public class UniverseControllerRequestBinder {
       UniverseDefinitionTaskParams.Cluster universeCluster =
           universeClustersByUuid.get(paramCluster.uuid);
       if (universeCluster == null || universeCluster.userIntent == null) {
-        // New cluster — no stored counterpart to merge from. Reject any REDACTED gflags so the
+        // New cluster - no stored counterpart to merge from. Reject any REDACTED gflags so the
         // sentinel is never written into universe metadata (the real value is unrecoverable).
         UserIntent newIntent = paramCluster.userIntent;
         if (mapContainsRedactedPlaceholder(newIntent.masterGFlags)
@@ -295,6 +321,7 @@ public class UniverseControllerRequestBinder {
           checkAndAddMapField(
               instanceTagsNode,
               tags -> {
+                // old flow - using userIntent.
                 cluster.userIntent.instanceTags = tags;
                 userIntent.put("instanceTags", Json.toJson(tags));
               });
@@ -445,6 +472,7 @@ public class UniverseControllerRequestBinder {
           (new ObjectMapper()).treeToValue(clusterJson, UniverseDefinitionTaskParams.Cluster.class);
       cluster.userIntent.masterGFlags = masterGFlagsMap;
       cluster.userIntent.tserverGFlags = tserverGFlagsMap;
+      // old flow - using UserIntent.
       cluster.userIntent.instanceTags = instanceTags;
       clusters.add(cluster);
     }

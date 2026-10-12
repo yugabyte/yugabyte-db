@@ -188,9 +188,9 @@ static List *set_windowagg_runcondition_references(PlannerInfo *root,
 												   Plan *plan);
 
 /* YB declarations */
-static void yb_fix_merge_scan_saops(PlannerInfo *root,
-									YbMergeScanInfo *yb_merge_scan_info,
-									int rtoffset, double num_exec);
+static void yb_fix_merge_scan_stream_conds(PlannerInfo *root,
+										   YbMergeScanInfo *yb_merge_scan_info,
+										   int rtoffset, double num_exec);
 
 /*****************************************************************************
  *
@@ -658,8 +658,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				splan->indexorderbyorig =
 					fix_scan_list(root, splan->indexorderbyorig,
 								  rtoffset, NUM_EXEC_QUAL(plan));
-				yb_fix_merge_scan_saops(root, splan->yb_merge_scan_info,
-										rtoffset, NUM_EXEC_QUAL(plan));
+				yb_fix_merge_scan_stream_conds(root, splan->yb_merge_scan_info,
+											   rtoffset, NUM_EXEC_QUAL(plan));
 			}
 			break;
 		case T_IndexOnlyScan:
@@ -1466,8 +1466,8 @@ set_indexonlyscan_references(PlannerInfo *root,
 	/* indextlist must NOT be transformed to reference index columns */
 	plan->indextlist = fix_scan_list(root, plan->indextlist,
 									 rtoffset, NUM_EXEC_TLIST((Plan *) plan));
-	yb_fix_merge_scan_saops(root, plan->yb_merge_scan_info,
-							rtoffset, NUM_EXEC_QUAL((Plan *) plan));
+	yb_fix_merge_scan_stream_conds(root, plan->yb_merge_scan_info,
+								   rtoffset, NUM_EXEC_QUAL((Plan *) plan));
 
 	pfree(index_itlist);
 
@@ -2348,6 +2348,30 @@ fix_scan_expr_walker(Node *node, fix_scan_expr_context *context)
 								  (void *) context);
 }
 
+/*
+ * yb_contains_varno
+ *		Does the expression reference a Var with the given varno?
+ *
+ * Used on join quals after fix_join_expr, so the varno is INNER_VAR or
+ * OUTER_VAR.
+ */
+static bool
+yb_contains_varno_walker(Node *node, Index *varno)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Var))
+		return ((Var *) node)->varno == *varno;
+	return expression_tree_walker(node, yb_contains_varno_walker,
+								  (void *) varno);
+}
+
+static bool
+yb_contains_varno(Node *node, Index varno)
+{
+	return yb_contains_varno_walker(node, &varno);
+}
+
 static int
 YbBNL_hinfo_cmp_inner_att(const void *arg_1,
 						  const void *arg_2)
@@ -2446,8 +2470,8 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 					{
 						Expr	   *leftArg = linitial(opexpr->args);
 						Expr	   *rightArg = lsecond(opexpr->args);
-						Var		   *innerArg = NULL;
-						Expr	   *outerArg = NULL;
+						bool		leftIsInner;
+						bool		rightIsInner;
 
 						if (IsA(leftArg, RelabelType))
 							leftArg = ((RelabelType *) leftArg)->arg;
@@ -2455,26 +2479,36 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 						if (IsA(rightArg, RelabelType))
 							rightArg = ((RelabelType *) rightArg)->arg;
 
-						if (IsA((Expr *) leftArg, Var) &&
-							((Var *) leftArg)->varno == INNER_VAR)
-						{
-							innerArg = (Var *) leftArg;
-							outerArg = rightArg;
-						}
-						else if (IsA((Expr *) rightArg, Var) &&
-								 ((Var *) rightArg)->varno == INNER_VAR)
-						{
-							outerArg = leftArg;
-							innerArg = (Var *) rightArg;
-						}
+						/*
+						 * The inner side is the argument that references the
+						 * inner plan; a batched clause references it on one
+						 * side only.  A plain Var is hashed as a column of the
+						 * inner tuple; any other expression (the key of an
+						 * expression index, for instance) is evaluated on
+						 * each inner tuple.
+						 */
+						leftIsInner = yb_contains_varno((Node *) leftArg,
+														INNER_VAR);
+						rightIsInner = yb_contains_varno((Node *) rightArg,
+														 INNER_VAR);
 
-						if (innerArg)
+						if (leftIsInner != rightIsInner)
 						{
-							Assert(innerArg->varno == INNER_VAR);
+							Expr	   *innerArg = leftIsInner ? leftArg : rightArg;
 
-							current_hinfo->innerHashAttNo =
-								((Var *) innerArg)->varattno;
-							current_hinfo->outerParamExpr = outerArg;
+							if (IsA(innerArg, Var))
+							{
+								current_hinfo->innerHashAttNo =
+									((Var *) innerArg)->varattno;
+								current_hinfo->innerHashExpr = NULL;
+							}
+							else
+							{
+								current_hinfo->innerHashAttNo = 0;
+								current_hinfo->innerHashExpr = innerArg;
+							}
+							current_hinfo->outerParamExpr =
+								leftIsInner ? rightArg : leftArg;
 							current_hinfo->orig_expr = clause;
 							valid_hash_info = true;
 						}
@@ -3760,10 +3794,12 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 }
 
 /*
- * yb_fix_merge_scan_saops
- *		Do set_plan_refs processing on the merge scan SAOPs of an index scan.
+ * yb_fix_merge_scan_stream_conds
+ *		Do set_plan_refs processing on the merge scan stream key conditions of
+ *		an index scan.
  *
  * These are the scalar array ops the planner pinned as merge scan stream keys
+ * and the equality index conditions of the single-value stream key columns
  * (see yb_merge_scan.c).  Their left-hand side holds Vars of the scanned
  * relation, so they need the same range table offsetting as every other
  * expression on the node. Otherwise EXPLAIN VERBOSE, which deparses them
@@ -3771,20 +3807,26 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
  * against an unrelated entry of the flat range table.
  */
 static void
-yb_fix_merge_scan_saops(PlannerInfo *root, YbMergeScanInfo *yb_merge_scan_info,
-						int rtoffset, double num_exec)
+yb_fix_merge_scan_stream_conds(PlannerInfo *root,
+							   YbMergeScanInfo *yb_merge_scan_info,
+							   int rtoffset, double num_exec)
 {
 	ListCell   *lc;
 
 	if (yb_merge_scan_info == NULL)
 		return;
 
-	foreach(lc, yb_merge_scan_info->saop_cols)
+	foreach(lc, yb_merge_scan_info->stream_cols)
 	{
-		YbMergeScanSaopColInfo *saop_col =
-			lfirst_node(YbMergeScanSaopColInfo, lc);
+		YbMergeScanStreamColInfo *stream_col =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
 
-		saop_col->saop = (ScalarArrayOpExpr *)
-			fix_scan_expr(root, (Node *) saop_col->saop, rtoffset, num_exec);
+		/*
+		 * A hash column with neither a SAOP nor an equality index condition is
+		 * NULL here.
+		 */
+		stream_col->clause = (Expr *)
+			fix_scan_expr(root, (Node *) stream_col->clause, rtoffset,
+						  num_exec);
 	}
 }

@@ -25,7 +25,12 @@ func VerifyFipsMode() {
 	msg := "FIPS 140-3 mode is not active: the binary was either built without GOFIPS140 or " +
 		"started with GODEBUG=fips140=off"
 	if os.Getenv(AllowNonFipsEnv) == "1" {
-		fmt.Fprintf(os.Stderr, "WARNING: %s. Continuing because %s=1 is set.\n", msg, AllowNonFipsEnv)
+		fmt.Fprintf(
+			os.Stderr,
+			"WARNING: %s. Continuing because %s=1 is set.\n",
+			msg,
+			AllowNonFipsEnv,
+		)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "ERROR: %s. Set %s=1 to run anyway.\n", msg, AllowNonFipsEnv)

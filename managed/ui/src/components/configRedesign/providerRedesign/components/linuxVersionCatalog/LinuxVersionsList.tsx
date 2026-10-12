@@ -27,7 +27,8 @@ import { AddLinuxVersionModal } from './AddLinuxVersionModal';
 import {
   ImageBundleDefaultTag,
   ImageBundleYBActiveTag,
-  IsImgBundleInUseEditEnabled
+  IsImgBundleInUseEditEnabled,
+  isSameImageBundle
 } from './LinuxVersionUtils';
 
 import { LinuxVersionDeleteModal } from './DeleteLinuxVersionModal';
@@ -68,44 +69,43 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
   const isImgBundleInUseEditEnabled = IsImgBundleInUseEditEnabled();
 
   const setImageAsDefault = (img: ImageBundle) => {
-    const bundles = imageBundles.map((i: ImageBundle) => {
-      if (i.details.arch === img.details.arch) {
-        if (i.name === img.name) {
-          return {
-            ...i,
-            useAsDefault: true
-          };
-        }
+    const bundles = imageBundles.map((imageBundle: ImageBundle) => {
+      if (imageBundle.details.arch === img.details.arch) {
         return {
-          ...i,
-          useAsDefault: false
+          ...imageBundle,
+          useAsDefault: isSameImageBundle(imageBundle, img)
         };
       }
-      return i;
+      return imageBundle;
     });
 
     replace(bundles);
   };
 
   const editImageBundle = (img: ImageBundle) => {
-    const index = findIndex(
-      imageBundles,
-      (bundles: ImageBundle) =>
-        bundles.name === img.name && bundles.details.arch === img.details.arch
-    );
-    update(index, {
-      ...img
-    });
+    // The bundle that was opened is matched instead of the submitted values, since the name can
+    // be changed in the modal.
+    const index = editImageBundleDetails
+      ? findIndex(imageBundles, (imageBundle: ImageBundle) =>
+          isSameImageBundle(imageBundle, editImageBundleDetails)
+        )
+      : -1;
+    if (index >= 0) {
+      update(index, {
+        ...editImageBundleDetails,
+        ...img
+      });
+    }
     setEditImageBundleDetails(undefined);
   };
 
   const deleteImageBundle = (img: ImageBundle) => {
-    const index = findIndex(
-      imageBundles,
-      (bundles: ImageBundle) =>
-        bundles.name === img.name && bundles.details.arch === img.details.arch
+    const index = findIndex(imageBundles, (imageBundle: ImageBundle) =>
+      isSameImageBundle(imageBundle, img)
     );
-    remove(index);
+    if (index >= 0) {
+      remove(index);
+    }
     setDeleteImageBundleDetails(undefined);
   };
 
@@ -185,6 +185,7 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
           }
           visible={editImageBundleDetails !== undefined}
           editDetails={editImageBundleDetails}
+          existingImageBundles={imageBundles}
         />
       )}
       {deleteImageBundleDetails && (

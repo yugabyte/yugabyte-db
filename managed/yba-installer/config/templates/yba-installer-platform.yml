@@ -254,11 +254,14 @@ services:
       Environment="DB_USERNAME={{ yamlPath "postgres.useExisting.username" }}"
       {{end}}
 
+      # install_dir below: BouncyCastle dlopen()s the native libraries it unpacks, so they cannot
+      # go to a noexec /tmp. Both modes - the keystore is BCFKS either way.
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
         {{- if eq (yamlPath "fips.enabled") "true" }}
         -Dorg.bouncycastle.fips.approved_only=true \
         {{- end }}
+        -Dorg.bouncycastle.native.loader.install_dir={{ .DataDir }}/bcnative \
         -Dhttp.port=disabled \
         -Dhttps.port={{ yamlPath "platform.port" }}{{- if eq (yamlPath "platform.proxy.enable") "true"}} \
         -Dhttp.nonProxyHosts={{ yamlPath "platform.proxy.java_non_proxy" }} \

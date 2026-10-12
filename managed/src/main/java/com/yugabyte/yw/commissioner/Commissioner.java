@@ -24,7 +24,6 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
@@ -60,7 +59,6 @@ import java.util.function.Predicate;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
-import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 
 @Singleton
@@ -105,20 +103,16 @@ public class Commissioner {
 
   private final RuntimeConfGetter runtimeConfGetter;
 
-  private final GFlagsValidation gFlagsValidation;
-
   // Provider breaks Guice cycle: some computers -> handlers -> Commissioner.
   private final Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers;
 
   @Inject
   public Commissioner(
-      ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
       TaskExecutor taskExecutor,
       TaskQueue taskQueue,
       ProviderEditRestrictionManager providerEditRestrictionManager,
       RuntimeConfGetter runtimeConfGetter,
-      GFlagsValidation gFlagsValidation,
       Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
@@ -126,7 +120,6 @@ public class Commissioner {
     this.taskQueue = taskQueue;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
     this.runtimeConfGetter = runtimeConfGetter;
-    this.gFlagsValidation = gFlagsValidation;
     this.taskRollbackComputers = taskRollbackComputers;
     this.executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     log.info("Started Commissioner TaskPool");
@@ -538,6 +531,15 @@ public class Commissioner {
   }
 
   /**
+   * Whether rollback of this task type replays a {@code state_transition_details} checkpoint (edit
+   * universe / add node). Such rollbacks are ineligible when no checkpoint was captured.
+   */
+  private boolean rollbackRequiresStateTransitionDetails(TaskType taskType) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskType);
+    return computer != null && computer.requiresStateTransitionDetails();
+  }
+
+  /**
    * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
    * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
    * safety gate.
@@ -571,7 +573,11 @@ public class Commissioner {
       Universe universe = universeOpt.get();
       StateTransitionDetails details = universe.getStateTransitionDetails();
       if (details == null) {
-        return true;
+        // Checkpoint-based rollbacks (edit universe / add node) need a captured delta; a task with
+        // none - e.g. aborted at precheck, before the freeze/checkpoint - is not rollbackable, so
+        // submit stays consistent with listing (which requires placement ownership the task never
+        // took). Non-checkpoint rollbacks (software upgrade) do not use state_transition_details.
+        return !rollbackRequiresStateTransitionDetails(taskInfo.getTaskType());
       }
       // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
       if (!Objects.equals(

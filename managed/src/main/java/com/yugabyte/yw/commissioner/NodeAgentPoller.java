@@ -485,6 +485,16 @@ public class NodeAgentPoller {
         .set(value);
   }
 
+  // Labels: customer_uuid, node_agent_uuid, node_address.
+  private static void removeMetrics(UUID nodeAgentUuid) {
+    String uuid = nodeAgentUuid.toString();
+    Function<List<String>, Boolean> matches =
+        labels -> labels.size() > 1 && uuid.equals(labels.get(1));
+    NODE_AGENT_VERSION_MISMATCH_GAUGE.removeIf(matches);
+    NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE.removeIf(matches);
+    NODE_AGENT_CONNECTION_GAUGE.removeIf(matches);
+  }
+
   @VisibleForTesting
   void setUpgradeExecutor(ExecutorService upgradeExecutor) {
     this.upgradeExecutor = upgradeExecutor;
@@ -605,6 +615,7 @@ public class NodeAgentPoller {
         if (!nodeUuids.contains(entry.getKey())) {
           entry.getValue().cancelUpgrade();
           swamperHelper.removeNodeAgentTargetJson(entry.getKey());
+          removeMetrics(entry.getKey());
           iter.remove();
         }
       }

@@ -1,0 +1,33 @@
+error[E0277]: `Vec<Option<&str>>` cannot be passed into a Postgres function as a Datum
+ --> tests/todo/random-vec-strs-arent-okay.rs:8:5
+  |
+  5 | #[pg_extern]
+    | ------------ in this attribute macro expansion
+...
+  8 |     args: default!(Vec<Option<&'a str>>, "ARRAY[]::text[]"),
+    |     ^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<&str>>`
+    |
+help: the following other types implement trait `ArgAbi<'fcx>`
+   --> $WORKSPACE/pgrx/src/callconv.rs
+    |
+    | / unsafe impl<'fcx, T> ArgAbi<'fcx> for Vec<T>
+    | | where
+    | |     for<'arr> T: UnboxDatum<As<'arr> = T> + FromDatum + 'arr,
+    | |_____________________________________________________________^ `Vec<T>`
+...
+    | / unsafe impl<'fcx, T> ArgAbi<'fcx> for Vec<Option<T>>
+    | | where
+    | |     for<'arr> T: UnboxDatum<As<'arr> = T> + FromDatum + 'arr,
+    | |_____________________________________________________________^ `Vec<Option<T>>`
+...
+    |           $(unsafe impl<$lt> ArgAbi<$lt> for $unboxable {
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Vec<u8>`
+...
+    |   argue_from_datum! { 'fcx; i8, i16, i32, i64, f32, f64, bool, char, String, Vec<u8> }
+    |   ------------------------------------------------------------------------------------ in this macro invocation
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+   --> $WORKSPACE/pgrx/src/callconv.rs
+    |
+    |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+    |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+    = note: this error originates in the attribute macro `pg_extern` which comes from the expansion of the macro `argue_from_datum` (in Nightly builds, run with -Z macro-backtrace for more info)

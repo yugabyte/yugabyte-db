@@ -92,8 +92,7 @@ export const EnableContinuousBackupPrompt = ({
         </RbacValidator>
         <Typography variant="body2" className={classes.learnMoreLink}>
           <DocumentationIcon className={classes.inlineIcon} />
-          {/* TODO: Docs link. */}
-          <a href={'https://docs.yugabyte.com'} target="_blank" rel="noopener noreferrer">
+          <a href={'https://docs.yugabyte.com/stable/yugabyte-platform/administer-yugabyte-platform/back-up-restore-yba/'} target="_blank" rel="noopener noreferrer">
             {t('learnMore')}
           </a>
         </Typography>

@@ -3,14 +3,16 @@ import clsx from 'clsx';
 import { withRouter } from 'react-router';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
-import  { formatBytes } from '@app/utils/Formatters';
+import { formatBytes } from '@app/utils/Formatters';
 
 import { YBMenuItem } from '../../UniverseDetail/compounds/YBMenuItem';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 
 import { ybFormatDate, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
 import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { getSupportBundlePermissions } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { SUPPORT_BUNDLE_PAGE_SIZE } from '../../../../redesign/features/universe/universe-actions/support-bundle';
+import YBPagination from '../../../tables/YBPagination/YBPagination';
 import './ThirdStep.scss';
 
 const statusElementsIcons = {
@@ -28,6 +30,11 @@ const statusElementsIcons = {
     <span className="status creating">
       Creating <i className="fa fa-spinner fa-spin" />
     </span>
+  ),
+  Aborted: (
+    <span className="status aborted">
+      Aborted <i className="fa fa-ban" />
+    </span>
   )
 };
 
@@ -41,7 +48,8 @@ const getActions = (
   handleDownloadBundle,
   creatingBundle,
   setDeleteBundleObj,
-  universeUUID
+  universeUUID,
+  supportBundlePermissions
 ) => {
   const isReady = row.status === 'Success';
 
@@ -64,7 +72,7 @@ const getActions = (
           <RbacValidator
             isControl
             accessRequiredOn={{
-              ...ApiPermissionMap.DOWNLOAD_SUPPORT_BUNDLE,
+              ...supportBundlePermissions.download,
               onResource: { UNIVERSE: universeUUID }
             }}
             popOverOverrides={{ zIndex: 100000 }}
@@ -92,7 +100,7 @@ const getActions = (
         <RbacValidator
           isControl
           accessRequiredOn={{
-            ...ApiPermissionMap.DELETE_SUPPORT_BUNDLE,
+            ...supportBundlePermissions.delete,
             onResource: { UNIVERSE: universeUUID }
           }}
           overrideStyle={{ display: 'block' }}
@@ -141,8 +149,13 @@ export const ThirdStep = withRouter(
     handleDownloadBundle,
     supportBundles,
     router,
-    universeUUID
+    universeUUID,
+    useV2Api = false,
+    totalCount = 0,
+    activePage = 1,
+    onPageChange
   }) => {
+    const supportBundlePermissions = getSupportBundlePermissions(useV2Api);
     const [creatingBundle, setCreatingBundle] = useState(
       supportBundles &&
         Array.isArray(supportBundles) &&
@@ -193,7 +206,7 @@ export const ThirdStep = withRouter(
             <RbacValidator
               isControl
               accessRequiredOn={{
-                ...ApiPermissionMap.CREATE_SUPPORT_BUNDLE,
+                ...supportBundlePermissions.create,
                 onResource: { UNIVERSE: universeUUID }
               }}
               popOverOverrides={{ zIndex: 100000 }}
@@ -218,7 +231,6 @@ export const ThirdStep = withRouter(
                   dataFormat={(creationDate) =>
                     ybFormatDate(creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
                   }
-                  isKey={true}
                   className={'node-name-field'}
                   columnClassName={'node-name-field'}
                 >
@@ -260,6 +272,7 @@ export const ThirdStep = withRouter(
 
                 <TableHeaderColumn
                   dataField="bundleUUID"
+                  isKey
                   dataFormat={(bundleUUID, row) => {
                     return getActions(
                       bundleUUID,
@@ -271,13 +284,23 @@ export const ThirdStep = withRouter(
                       handleDownloadBundle,
                       row.status === 'Running',
                       setDeleteBundleObj,
-                      universeUUID
+                      universeUUID,
+                      supportBundlePermissions
                     );
                   }}
                 />
               </BootstrapTable>
             )}
           </div>
+          {useV2Api && totalCount > SUPPORT_BUNDLE_PAGE_SIZE && (
+            <div className="support-bundle-list-pagination">
+              <YBPagination
+                numPages={Math.ceil(totalCount / SUPPORT_BUNDLE_PAGE_SIZE)}
+                activePage={activePage}
+                onChange={onPageChange}
+              />
+            </div>
+          )}
         </div>
       </>
     );

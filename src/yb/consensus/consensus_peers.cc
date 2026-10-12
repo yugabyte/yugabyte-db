@@ -46,7 +46,6 @@
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 #include "yb/consensus/multi_raft_batcher.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
@@ -55,6 +54,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -129,7 +129,6 @@ using std::shared_ptr;
 using std::string;
 using rpc::Messenger;
 using rpc::PeriodicTimer;
-using strings::Substitute;
 
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, PeerProxyPtr proxy,
@@ -257,6 +256,8 @@ void Peer::DumpToHtml(std::ostream& out) const {
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
+  // TODO(#16670): give consensus its own root trace.
+  auto detach_token = dist_trace::DetachTraceContext();
   auto retain_self = shared_from_this();
   DCHECK(performing_update_mutex_.is_locked()) << "Cannot send request";
 
@@ -276,11 +277,12 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
   bool last_exchange_successful = false;
+  bool batch_reaches_majority_replicated = false;
   PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
   LWReplicateMsgsHolder msgs_holder;
   Status s = queue_->RequestForPeer(
       peer_pb_.permanent_uuid(), update_request_, &msgs_holder, &needs_remote_bootstrap,
-      &member_type, &last_exchange_successful);
+      &member_type, &last_exchange_successful, &batch_reaches_majority_replicated);
   int64_t commit_index_after = update_request_->has_committed_op_id() ?
       update_request_->committed_op_id().index() : kMinimumOpIdIndex;
 
@@ -321,9 +323,11 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     return;
   }
 
-  // If the peer doesn't need remote bootstrap, but it is a PRE_VOTER or PRE_OBSERVER in the config,
-  // we need to promote it.
+  // Promote PRE_VOTER / PRE_OBSERVER only once the packed UpdateConsensus batch would catch the
+  // peer up through the current majority_replicated_op_id. Promoting earlier can grow quorum
+  // while the peer still needs WAL that may be GC'd.
   if (last_exchange_successful &&
+      batch_reaches_majority_replicated &&
       (member_type == PeerMemberType::PRE_VOTER || member_type == PeerMemberType::PRE_OBSERVER)) {
     if (PREDICT_FALSE(FLAGS_TEST_skip_change_role)) {
       LOG_WITH_PREFIX(INFO)
@@ -462,9 +466,9 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
       response->error().code() == tserver::TabletServerErrorPB::WRONG_SERVER_UUID) {
     queue_->NotifyObserversOfFailedFollower(
         peer_pb_.permanent_uuid(),
-        Substitute("Leader communication with peer $0 received error $1, will try to "
-                   "evict peer", peer_pb_.permanent_uuid(),
-                   response->error().ShortDebugString()));
+        Format("Leader communication with peer $0 received error $1, will try to "
+               "evict peer", peer_pb_.permanent_uuid(),
+               response->error().ShortDebugString()));
     ProcessResponseError(StatusFromPB(response->error().status()));
     return false;
   }

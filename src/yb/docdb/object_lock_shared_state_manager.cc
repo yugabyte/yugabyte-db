@@ -249,6 +249,7 @@ void ObjectLockSharedStateManager::Stop() {
       state->Shutdown();
     }
     stopped_ = true;
+    write_locks_.clear();
     VLOG(1) << "Stopped ObjectLockSharedStateManager";
   }
 }

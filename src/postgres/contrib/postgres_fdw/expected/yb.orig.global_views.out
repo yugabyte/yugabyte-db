@@ -610,6 +610,334 @@ FROM "gv$node_metrics";
 (1 row)
 
 --
+-- Aggregate pushdown by server_uuid
+-- Each EXPLAIN is followed by a deterministic result check. server_uuid is
+-- not selected (its value is random per run); the checks group by server_uuid
+-- and order by the aggregates, whose per-tserver values are fixed by the data.
+-- GROUP BY server_uuid: count(*) pushed to each tserver.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan
+         Output: "gv$node_metrics_1".server_uuid, (count(*))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_1")
+         Remote SQL: SELECT server_uuid, count(*) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_2".server_uuid, (count(*))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_2")
+         Remote SQL: SELECT server_uuid, count(*) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_3".server_uuid, (count(*))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_3")
+         Remote SQL: SELECT server_uuid, count(*) FROM public.local_node_metrics GROUP BY 1
+(13 rows)
+
+SELECT COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY cnt;
+ cnt 
+-----
+   3
+   4
+   4
+(3 rows)
+
+-- One group per tserver; counts sum to 11 rows.
+SELECT COUNT(*) AS num_server_groups, SUM(cnt) AS total_rows
+FROM (SELECT server_uuid, COUNT(*) AS cnt
+      FROM "gv$node_metrics" GROUP BY server_uuid) s;
+ num_server_groups | total_rows 
+-------------------+------------
+                 3 |         11
+(1 row)
+
+-- Without GROUP BY on server_uuid count(*) is not pushed down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT COUNT(*) FROM "gv$node_metrics";
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Finalize Aggregate
+   Output: count(*)
+   ->  Append
+         ->  Partial Aggregate
+               Output: PARTIAL count(*)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Remote SQL: SELECT NULL FROM public.local_node_metrics
+         ->  Partial Aggregate
+               Output: PARTIAL count(*)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Remote SQL: SELECT NULL FROM public.local_node_metrics
+         ->  Partial Aggregate
+               Output: PARTIAL count(*)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Remote SQL: SELECT NULL FROM public.local_node_metrics
+(15 rows)
+
+SELECT COUNT(*) FROM "gv$node_metrics";
+ count 
+-------
+    11
+(1 row)
+
+-- GROUP BY a non-partition-key column: only a partial aggregate is pushed
+-- below the Append. Each node_id lives on a single tserver, but the planner
+-- cannot know that, so it must not pick a full per-tserver aggregate.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, COUNT(*) FROM "gv$node_metrics"
+GROUP BY node_id;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Finalize HashAggregate
+   Output: "gv$node_metrics_1".node_id, count(*)
+   Group Key: "gv$node_metrics_1".node_id
+   ->  Append
+         ->  Partial HashAggregate
+               Output: "gv$node_metrics_1".node_id, PARTIAL count(*)
+               Group Key: "gv$node_metrics_1".node_id
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".node_id
+                     Remote SQL: SELECT node_id FROM public.local_node_metrics
+         ->  Partial HashAggregate
+               Output: "gv$node_metrics_2".node_id, PARTIAL count(*)
+               Group Key: "gv$node_metrics_2".node_id
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".node_id
+                     Remote SQL: SELECT node_id FROM public.local_node_metrics
+         ->  Partial HashAggregate
+               Output: "gv$node_metrics_3".node_id, PARTIAL count(*)
+               Group Key: "gv$node_metrics_3".node_id
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".node_id
+                     Remote SQL: SELECT node_id FROM public.local_node_metrics
+(22 rows)
+
+SELECT node_id, COUNT(*) FROM "gv$node_metrics"
+GROUP BY node_id
+ORDER BY node_id;
+ node_id | count 
+---------+-------
+       1 |     4
+       2 |     4
+       3 |     3
+(3 rows)
+
+-- Superset of the partition key: still fully pushed down.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, metric_name, COUNT(*) AS cnt, SUM(event_count) AS events
+FROM "gv$node_metrics"
+GROUP BY server_uuid, metric_name;
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan
+         Output: "gv$node_metrics_1".server_uuid, "gv$node_metrics_1".metric_name, (count(*)), (sum("gv$node_metrics_1".event_count))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_1")
+         Remote SQL: SELECT server_uuid, metric_name, count(*), sum(event_count) FROM public.local_node_metrics GROUP BY 1, 2
+   ->  Foreign Scan
+         Output: "gv$node_metrics_2".server_uuid, "gv$node_metrics_2".metric_name, (count(*)), (sum("gv$node_metrics_2".event_count))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_2")
+         Remote SQL: SELECT server_uuid, metric_name, count(*), sum(event_count) FROM public.local_node_metrics GROUP BY 1, 2
+   ->  Foreign Scan
+         Output: "gv$node_metrics_3".server_uuid, "gv$node_metrics_3".metric_name, (count(*)), (sum("gv$node_metrics_3".event_count))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_3")
+         Remote SQL: SELECT server_uuid, metric_name, count(*), sum(event_count) FROM public.local_node_metrics GROUP BY 1, 2
+(13 rows)
+
+SELECT metric_name, COUNT(*) AS cnt, SUM(event_count) AS events
+FROM "gv$node_metrics"
+GROUP BY server_uuid, metric_name
+ORDER BY metric_name, cnt, events;
+ metric_name  | cnt | events 
+--------------+-----+--------
+              |   1 |     77
+ cpu_usage    |   1 |     90
+ cpu_usage    |   1 |    100
+ cpu_usage    |   1 |    150
+ disk_io      |   1 |     50
+ disk_io      |   1 |     60
+ disk_io      |   1 |     75
+ memory_usage |   1 |    180
+ memory_usage |   1 |    200
+ memory_usage |   1 |    250
+              |   1 |     83
+(11 rows)
+
+-- Numeric: sum/avg/min/max/count(col).
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, SUM(event_count), AVG(metric_value),
+       MIN(total_bytes), MAX(ratio), COUNT(node_id)
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+                                                                                                                    QUERY PLAN                                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan
+         Output: "gv$node_metrics_1".server_uuid, (sum("gv$node_metrics_1".event_count)), (avg("gv$node_metrics_1".metric_value)), (min("gv$node_metrics_1".total_bytes)), (max("gv$node_metrics_1".ratio)), (count("gv$node_metrics_1".node_id))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_1")
+         Remote SQL: SELECT server_uuid, sum(event_count), avg(metric_value), min(total_bytes), max(ratio), count(node_id) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_2".server_uuid, (sum("gv$node_metrics_2".event_count)), (avg("gv$node_metrics_2".metric_value)), (min("gv$node_metrics_2".total_bytes)), (max("gv$node_metrics_2".ratio)), (count("gv$node_metrics_2".node_id))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_2")
+         Remote SQL: SELECT server_uuid, sum(event_count), avg(metric_value), min(total_bytes), max(ratio), count(node_id) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_3".server_uuid, (sum("gv$node_metrics_3".event_count)), (avg("gv$node_metrics_3".metric_value)), (min("gv$node_metrics_3".total_bytes)), (max("gv$node_metrics_3".ratio)), (count("gv$node_metrics_3".node_id))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_3")
+         Remote SQL: SELECT server_uuid, sum(event_count), avg(metric_value), min(total_bytes), max(ratio), count(node_id) FROM public.local_node_metrics GROUP BY 1
+(13 rows)
+
+SELECT SUM(event_count), AVG(metric_value),
+       MIN(total_bytes), MAX(ratio), COUNT(node_id)
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY 1, 2, 3, 4, 5;
+ sum |        avg        |    min     |  max   | count 
+-----+-------------------+------------+--------+-------
+ 400 | 65.83333333333333 | 4100000000 | 0.9157 |     3
+ 427 | 59.52500000037253 |        100 |  0.726 |     4
+ 488 | 51.90000000037253 |        100 |  0.895 |     4
+(3 rows)
+
+-- Statistical: stddev/variance.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, STDDEV(metric_value), VARIANCE(event_count)
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan
+         Output: "gv$node_metrics_1".server_uuid, (stddev("gv$node_metrics_1".metric_value)), (variance("gv$node_metrics_1".event_count))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_1")
+         Remote SQL: SELECT server_uuid, stddev(metric_value), variance(event_count) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_2".server_uuid, (stddev("gv$node_metrics_2".metric_value)), (variance("gv$node_metrics_2".event_count))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_2")
+         Remote SQL: SELECT server_uuid, stddev(metric_value), variance(event_count) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_3".server_uuid, (stddev("gv$node_metrics_3".metric_value)), (variance("gv$node_metrics_3".event_count))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_3")
+         Remote SQL: SELECT server_uuid, stddev(metric_value), variance(event_count) FROM public.local_node_metrics GROUP BY 1
+(13 rows)
+
+SELECT STDDEV(metric_value), VARIANCE(event_count)
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY 1, 2;
+       stddev       |        variance        
+--------------------+------------------------
+ 26.539279065817393 | 10433.3333333333333333
+ 37.515863310718856 |  2626.0000000000000000
+  50.17837349503901 |  4282.2500000000000000
+(3 rows)
+
+-- Boolean: bool_and/bool_or.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, BOOL_AND(is_healthy), BOOL_OR(is_healthy)
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan
+         Output: "gv$node_metrics_1".server_uuid, (bool_and("gv$node_metrics_1".is_healthy)), (bool_or("gv$node_metrics_1".is_healthy))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_1")
+         Remote SQL: SELECT server_uuid, bool_and(is_healthy), bool_or(is_healthy) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_2".server_uuid, (bool_and("gv$node_metrics_2".is_healthy)), (bool_or("gv$node_metrics_2".is_healthy))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_2")
+         Remote SQL: SELECT server_uuid, bool_and(is_healthy), bool_or(is_healthy) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_3".server_uuid, (bool_and("gv$node_metrics_3".is_healthy)), (bool_or("gv$node_metrics_3".is_healthy))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_3")
+         Remote SQL: SELECT server_uuid, bool_and(is_healthy), bool_or(is_healthy) FROM public.local_node_metrics GROUP BY 1
+(13 rows)
+
+SELECT BOOL_AND(is_healthy), BOOL_OR(is_healthy)
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY 1, 2;
+ bool_and | bool_or 
+----------+---------
+ f        | t
+ f        | t
+ f        | t
+(3 rows)
+
+-- Temporal and text min/max.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, MIN(created_at), MAX(updated_at),
+       MIN(metric_name), MAX(tag)
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+                                                                                                  QUERY PLAN                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan
+         Output: "gv$node_metrics_1".server_uuid, (min("gv$node_metrics_1".created_at)), (max("gv$node_metrics_1".updated_at)), (min(("gv$node_metrics_1".metric_name)::text)), (max("gv$node_metrics_1".tag))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_1")
+         Remote SQL: SELECT server_uuid, min(created_at), max(updated_at), min(metric_name), max(tag) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_2".server_uuid, (min("gv$node_metrics_2".created_at)), (max("gv$node_metrics_2".updated_at)), (min(("gv$node_metrics_2".metric_name)::text)), (max("gv$node_metrics_2".tag))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_2")
+         Remote SQL: SELECT server_uuid, min(created_at), max(updated_at), min(metric_name), max(tag) FROM public.local_node_metrics GROUP BY 1
+   ->  Foreign Scan
+         Output: "gv$node_metrics_3".server_uuid, (min("gv$node_metrics_3".created_at)), (max("gv$node_metrics_3".updated_at)), (min(("gv$node_metrics_3".metric_name)::text)), (max("gv$node_metrics_3".tag))
+         Relations: Aggregate on (public."gv$node_metrics" "gv$node_metrics_3")
+         Remote SQL: SELECT server_uuid, min(created_at), max(updated_at), min(metric_name), max(tag) FROM public.local_node_metrics GROUP BY 1
+(13 rows)
+
+SELECT MIN(created_at), MAX(updated_at),
+       MIN(metric_name), MAX(tag)
+FROM "gv$node_metrics"
+GROUP BY server_uuid
+ORDER BY 1, 2, 3, 4;
+           min            |             max              |    min    |  max  
+--------------------------+------------------------------+-----------+-------
+ Wed Jan 15 10:30:00 2025 | Wed Jan 15 08:30:00 2025 PST |           | MEM01
+ Thu Feb 20 14:00:00 2025 | Thu Feb 20 15:00:00 2025 PST | cpu_usage | MEM02
+ Mon Mar 10 09:00:00 2025 | Mon Mar 10 08:00:00 2025 PDT | cpu_usage | MEM03
+(3 rows)
+
+-- enable_partitionwise_aggregate = off: the GROUP BY server_uuid aggregate is
+-- no longer pushed down. Rows are pulled back from each tserver and aggregated
+-- locally (plain HashAggregate over the Append); the result stays correct.
+SET enable_partitionwise_aggregate = off;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT server_uuid, COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY server_uuid;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ HashAggregate
+   Output: "gv$node_metrics".server_uuid, count(*)
+   Group Key: "gv$node_metrics".server_uuid
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".server_uuid
+               Remote SQL: SELECT server_uuid FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".server_uuid
+               Remote SQL: SELECT server_uuid FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".server_uuid
+               Remote SQL: SELECT server_uuid FROM public.local_node_metrics
+(13 rows)
+
+SELECT COUNT(*) AS num_server_groups, SUM(cnt) AS total_rows
+FROM (SELECT server_uuid, COUNT(*) AS cnt
+      FROM "gv$node_metrics" GROUP BY server_uuid) s;
+ num_server_groups | total_rows 
+-------------------+------------
+                 3 |         11
+(1 row)
+
+RESET enable_partitionwise_aggregate;
+--
 -- HAVING clause
 --
 EXPLAIN (VERBOSE, COSTS OFF)

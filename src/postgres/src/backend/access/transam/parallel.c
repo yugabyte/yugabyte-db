@@ -99,11 +99,14 @@ typedef struct FixedParallelState
 	PGPROC	   *parallel_leader_pgproc;
 	pid_t		parallel_leader_pid;
 	BackendId	parallel_leader_backend_id;
-	bool		parallel_master_is_yb_session;
-	YbcPgSessionState parallel_master_yb_session_state;
 	TimestampTz xact_ts;
 	TimestampTz stmt_ts;
 	SerializableXactHandle serializable_xact_handle;
+
+	/* YB fields */
+	bool		parallel_master_is_yb_session;
+	YbcPgSessionState parallel_master_yb_session_state;
+	uint64_t	yb_origination_time;
 
 	/* Mutex protects remaining fields. */
 	slock_t		mutex;
@@ -371,6 +374,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	fps->parallel_master_is_yb_session = IsYugaByteEnabled();
 	if (fps->parallel_master_is_yb_session)
 		YBCDumpCurrentPgSessionState(&fps->parallel_master_yb_session_state);
+	fps->yb_origination_time = yb_origination_time;
 	fps->xact_ts = GetCurrentTransactionStartTimestamp();
 	fps->stmt_ts = GetCurrentStatementStartTimestamp();
 	fps->serializable_xact_handle = ShareSerializableXact();
@@ -1484,6 +1488,15 @@ ParallelWorkerMain(Datum main_arg)
 												  fps->authenticated_user_id,
 												  BGWORKER_BYPASS_ALLOWCONN);
 	}
+
+	/*
+	 * YB: The worker does part of the leader's transaction, so it carries
+	 * the leader's origination time, taken before the leader's catalog
+	 * version check.  Copy it after connection init, which sets
+	 * yb_origination_time to the current time, and before any transaction
+	 * starts.
+	 */
+	yb_origination_time = fps->yb_origination_time;
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what

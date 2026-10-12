@@ -1,10 +1,13 @@
 package com.yugabyte.yw.api.v2.mappers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 import api.v2.mappers.UniverseEditGFlagsMapper;
+import api.v2.models.RollMaxBatchSize;
 import api.v2.models.UniverseEditGFlags;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import java.math.BigDecimal;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -53,5 +56,19 @@ public class UniverseEditGflagsMapperTest {
     GFlagsUpgradeParams params = new GFlagsUpgradeParams();
     UniverseEditGFlagsMapper.INSTANCE.copyToV1GFlagsUpgradeParams(req, params);
     assertEquals(GFlagsUpgradeParams.UpgradeOption.NON_RESTART_UPGRADE, params.upgradeOption);
+  }
+
+  @Test
+  public void testRollMaxBatchSizeMap() {
+    UniverseEditGFlags req = new UniverseEditGFlags();
+    RollMaxBatchSize batchSize = new RollMaxBatchSize();
+    batchSize.setPrimaryBatchSize(new BigDecimal(2));
+    batchSize.setReadReplicaBatchSize(new BigDecimal(2));
+    req.setRollMaxBatchSize(batchSize);
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    UniverseEditGFlagsMapper.INSTANCE.copyToV1GFlagsUpgradeParams(req, params);
+    assertNotNull(params.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getReadReplicaBatchSize());
   }
 }

@@ -41,6 +41,7 @@
 #include "utils/xml.h"
 
 /* YB includes */
+#include "executor/nodeYbBatchedNestloop.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/planner.h"
 #include "pg_yb_utils.h"
@@ -442,16 +443,8 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("rocksdb_row_cache_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_NO_TABLE_CACHE_ITERATORS] =
 	BUILD_METRIC_LABEL("rocksdb_no_table_cache_iterators"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_add"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_write"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_add"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MISS] =
@@ -598,16 +591,8 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_row_cache_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_NO_TABLE_CACHE_ITERATORS] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_no_table_cache_iterators"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_add"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_write"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_add"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS] =
@@ -3315,6 +3300,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										 bnl->sortOperators, bnl->collations,
 										 bnl->nullsFirst, ancestors, es);
 
+				/*
+				 * Without the hash strategy every inner row is compared with
+				 * every outer row of the batch; report that, since it is the
+				 * costly case.
+				 */
+				if (!YbBnlUseHash(bnl))
+					ExplainPropertyText("Batch Matching", "Tuplestore", es);
+
 				if (is_yb_planning_stats_required &&
 					bnl->first_batch_size > 0)
 					ExplainPropertyInteger("First Batch Size", NULL,
@@ -5176,6 +5169,15 @@ show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 								  planinfo->estimated_num_index_result_pages,
 								  planinfo->estimated_docdb_result_width,
 								  es);
+
+	/*
+	 * Like total_cost, the estimates above assume all tuples are fetched;
+	 * the first fetch limit is the row bound the LIMIT places on the scan's
+	 * first read request, and startup_cost covers only that trimmed fetch.
+	 */
+	if (planinfo->first_fetch_limit > 0)
+		ExplainPropertyFloat("First Fetch Limit", NULL,
+							 planinfo->first_fetch_limit, 0, es);
 }
 
 static void
@@ -6759,8 +6761,8 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 				   YbMergeScanInfo *merge_scan_info,
 				   ExplainState *es, List *ancestors)
 {
-	List	   *saop_keys = NIL;
-	List	   *saops = NIL;
+	List	   *stream_keys = NIL;
+	List	   *stream_conds = NIL;
 	int			num_streams = 1;
 	List	   *sort_keys = NIL;
 	ListCell   *lc;
@@ -6781,9 +6783,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 									   ancestors);
 	useprefix = (list_length(es->rtable) > 1 || es->verbose);
 
-	foreach(lc, merge_scan_info->saop_cols)
+	foreach(lc, merge_scan_info->stream_cols)
 	{
-		YbMergeScanSaopColInfo *item = lfirst(lc);
+		YbMergeScanStreamColInfo *item = lfirst(lc);
 		TargetEntry *target = get_tle_by_resno(indextlist,
 											   item->indexcol + 1);
 		char	   *exprstr;
@@ -6796,8 +6798,15 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 									 false /* yb_pretty */ ,
 									 es->ybMaskConstants);
 
-		saop_keys = lappend(saop_keys, exprstr);
-		saops = lappend(saops, item->saop);
+		stream_keys = lappend(stream_keys, exprstr);
+		/*
+		 * clause is the SAOP of a SAOP column, the equality index condition of
+		 * an equality column, or NULL for a hash column with neither a SAOP
+		 * nor an equality index condition, which ybValidateMergeScanBinds
+		 * reports.
+		 */
+		if (item->clause)
+			stream_conds = lappend(stream_conds, item->clause);
 		num_streams *= item->num_elems;
 	}
 
@@ -6834,9 +6843,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 
 	if (sort_keys)
 		ExplainPropertyList("Merge Sort Key", sort_keys, es);
-	Assert(saop_keys);
-	ExplainPropertyList("Merge Stream Key", saop_keys, es);
+	Assert(stream_keys);
+	ExplainPropertyList("Merge Stream Key", stream_keys, es);
 	ExplainPropertyInteger("Merge Streams", NULL, num_streams, es);
 	if (es->verbose)
-		show_scan_qual(saops, "Merge Cond", planstate, ancestors, es);
+		show_scan_qual(stream_conds, "Merge Cond", planstate, ancestors, es);
 }

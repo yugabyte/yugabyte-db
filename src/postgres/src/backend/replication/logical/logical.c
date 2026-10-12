@@ -337,6 +337,7 @@ StartupDecodingContext(List *output_plugin_options,
 			hash_create("yb_needs_relcache_invalidation table",
 						32,		/* start small and extend */
 						&ctl, HASH_ELEM | HASH_BLOBS);
+		ctx->yb_inval_catalog_on_decode_commit = false;
 	}
 
 	MemoryContextSwitchTo(old_context);

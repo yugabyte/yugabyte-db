@@ -41,6 +41,7 @@ X_YBA_API_VISIBILITY_PREVIEW = "preview"
 X_YBA_API_SINCE = "x-yba-api-since"
 X_YBA_API_AUDIT = "x-yba-api-audit"
 X_YBA_API_AUTHZ = "x-yba-api-authz"
+X_YBA_API_BLOCK_OPERATOR_RESOURCE = "x-yba-api-block-operator-resource"
 X_YBA_API_MULTIPART = "x-yba-api-multipart"
 X_YBA_API_STREAM_RESPONSE = "x-yba-api-stream-response"
 X_YBA_API_PREFIX = "x-yba-api-"
@@ -51,6 +52,7 @@ X_YBA_API_EXTENSIONS = frozenset([
     X_YBA_API_SINCE,
     X_YBA_API_AUDIT,
     X_YBA_API_AUTHZ,
+    X_YBA_API_BLOCK_OPERATOR_RESOURCE,
     X_YBA_API_MULTIPART,
     X_YBA_API_STREAM_RESPONSE,
 ])

@@ -341,7 +341,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
-  virtual Status ShouldSplitValidCandidate(
+  virtual Result<SplitPhase> ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;
   virtual Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;

@@ -49,6 +49,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestUtils;
@@ -1378,7 +1379,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     di.storageType = StorageType.GP2;
     di.volumeSize = 100;
     di.numVolumes = 2;
-    primaryCluster.userIntent.deviceInfo = di;
+    ProviderInitializer providerInitializer =
+        TestUtils.existingProviderInitializer(primaryCluster.userIntent).setDeviceInfo(di);
 
     List<PlacementAZ> azList =
         primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
@@ -1396,7 +1398,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     String accessKeyCode = "someKeyCode";
     AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
-    primaryCluster.userIntent.accessKeyCode = accessKeyCode;
+    providerInitializer.setAccessCode(accessKeyCode);
 
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
 
@@ -1436,8 +1438,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
 
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.instanceType = "type.small";
+    TestUtils.existingProviderInitializer(userIntent)
+        .setProviderType(Common.CloudType.onprem)
+        .setInstanceType("type.small");
     taskParams.upsertPrimaryCluster(userIntent, null, null);
     taskParams.nodeDetailsSet = new HashSet<>();
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
@@ -1537,8 +1540,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 3);
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.instanceType = "type.small";
+    TestUtils.existingProviderInitializer(userIntent)
+        .setProviderType(Common.CloudType.onprem)
+        .setInstanceType("type.small");
     taskParams.nodeDetailsSet = new HashSet<>();
 
     taskParams.upsertPrimaryCluster(userIntent, null, null);

@@ -122,6 +122,11 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
+      // Before VM creation, so that a cloud permission error fails the edit first. This creates the
+      // load balancers of new regions and reconciles the existing ones.
+      for (Cluster cluster : clusters) {
+        createEnsureManagedLoadBalancerTasks(cluster);
+      }
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
       if (!nodesToProvision.isEmpty()) {
@@ -163,6 +168,11 @@ public class EditUniverse extends EditUniverseTaskBase {
           && !Objects.equals(
               universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {
         createUpdateUniverseCommunicationPortsTask(taskParams().communicationPorts);
+        // The load balancers were reconciled above with the old ports.
+        for (Cluster cluster : clusters) {
+          createEnsureManagedLoadBalancerTasks(cluster);
+        }
+        createManageLoadBalancerTasks(createLoadBalancerMap(taskParams(), null, null, null));
       }
       if (primaryRFChanged.get()) {
         createMasterLeaderStepdownTask();

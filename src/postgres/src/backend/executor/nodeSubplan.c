@@ -165,7 +165,8 @@ ExecHashSubPlan(SubPlanState *node,
 							   slot,
 							   node->cur_eq_comp,
 							   node->lhs_hash_funcs,
-							   node->hashtable->keyColIdx) != NULL)
+							   node->hashtable->keyColIdx,
+							   NULL /* yb_keyColExprs */ ) != NULL)
 		{
 			ExecClearTuple(slot);
 			return BoolGetDatum(true);

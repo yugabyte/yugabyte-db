@@ -13,6 +13,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -649,27 +651,28 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
       boolean setMasterInstanceType,
       Common.CloudType cloudType) {
     UserIntent userIntent = new UserIntent();
-    userIntent.providerType = cloudType;
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    ProviderInitializer pi =
+        TestUtils.getProviderInitializerForTests(userIntent, UUID.randomUUID())
+            .setProviderType(cloudType)
+            .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
     userIntent.dedicatedNodes = dedicatedNodes;
     if (setMasterDeviceInfo) {
-      userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 50);
+      pi.setMasterDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 50));
     }
     if (setMasterInstanceType) {
-      userIntent.masterInstanceType = "m5.large";
+      pi.setMasterInstanceType("m5.large");
     }
     if (cloudType.equals(Common.CloudType.kubernetes)) {
-      userIntent.deviceInfo.storageType = null;
-      if (userIntent.masterDeviceInfo != null) {
-        userIntent.masterDeviceInfo.storageType = null;
+      pi.updateDeviceInfo(di -> di.storageType = null);
+      if (setMasterDeviceInfo) {
+        pi.updateMasterDeviceInfo(mdi -> mdi.storageType = null);
       }
     } else if (cloudType.equals(Common.CloudType.gcp)) {
-      userIntent.deviceInfo.storageType = StorageType.Persistent;
-      if (userIntent.masterDeviceInfo != null) {
-        userIntent.masterDeviceInfo.storageType = StorageType.Persistent;
+      pi.updateDeviceInfo(di -> di.storageType = StorageType.Persistent);
+      if (setMasterDeviceInfo) {
+        pi.updateMasterDeviceInfo(mdi -> mdi.storageType = StorageType.Persistent);
       }
     }
-
     Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
     cluster.uuid = UUID.randomUUID();
     cluster.placementInfo = new PlacementInfo();

@@ -16,6 +16,7 @@
 #include <boost/algorithm/string.hpp>
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
@@ -1183,7 +1184,19 @@ TEST_F_EX(
   ASSERT_NOK(ValidateFlagLegacyOnTServer(0, "vmodule", "foo="));
 }
 
-TEST_F(PgWrapperFlagsTest, ValidateCoDependentFlags) {
+// The DDL mode flags depend on each other both ways, so no single-flag write can move them out of
+// their starting state: SetFlag's force only bypasses the non-runtime-safe check, not the
+// cross-flag validators. Start the cluster in the legacy mode instead, so the test sees the same
+// all-false starting point in every build type.
+class PgWrapperCoDependentFlagsTest : public PgWrapperFlagsTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgWrapperFlagsTest::UpdateMiniClusterOptions(options);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+  }
+};
+
+TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
   auto ts = cluster_->tablet_server(0);
   auto expect_ok = [&](const std::vector<std::pair<string, string>>& flags) {
     auto resp = ASSERT_RESULT(ValidateFlagsOnTServer(0, flags));
@@ -1197,22 +1210,19 @@ TEST_F(PgWrapperFlagsTest, ValidateCoDependentFlags) {
   };
 
   // FLAG_REQUIRES_FLAG_VALIDATOR / FLAG_REQUIRED_BY_FLAG_VALIDATOR.
-  // Release defaults may already have these flags true, so pin them false with force.
-  // ysql_enable_concurrent_ddl requires enable_object_locking_for_table_locks, so it has to go
-  // first, and being a preview flag it has to be allow-listed before it can leave its default.
-  ASSERT_OK(cluster_->SetFlag(ts, "allowed_preview_flags_csv", "ysql_enable_concurrent_ddl"));
-  ASSERT_OK(cluster_->SetFlag(ts, "ysql_enable_concurrent_ddl", "false"));
-  ASSERT_OK(cluster_->SetFlag(ts, "enable_object_locking_for_table_locks", "false"));
-  ASSERT_OK(cluster_->SetFlag(ts, "ysql_yb_ddl_transaction_block_enabled", "false"));
   ASSERT_NO_FATALS(expect_err(
       {{"enable_object_locking_for_table_locks", "true"}},
       "enable_object_locking_for_table_locks"));
+  // Object locking requires both transactional DDL and concurrent DDL, so all three have to move
+  // together, in any order.
   ASSERT_NO_FATALS(expect_ok({
       {"enable_object_locking_for_table_locks", "true"},
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"ysql_enable_concurrent_ddl", "true"},
   }));
   ASSERT_NO_FATALS(expect_ok({
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"ysql_enable_concurrent_ddl", "true"},
       {"enable_object_locking_for_table_locks", "true"},
   }));
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
@@ -1222,11 +1232,13 @@ TEST_F(PgWrapperFlagsTest, ValidateCoDependentFlags) {
   ASSERT_OK(cluster_->SetFlag(ts, "refresh_waiter_timeout_ms", "0"));
   ASSERT_NO_FATALS(expect_err(
       {{"enable_object_locking_for_table_locks", "true"},
-       {"ysql_yb_ddl_transaction_block_enabled", "true"}},
+       {"ysql_yb_ddl_transaction_block_enabled", "true"},
+       {"ysql_enable_concurrent_ddl", "true"}},
       "enable_object_locking_for_table_locks"));
   ASSERT_NO_FATALS(expect_ok({
       {"enable_object_locking_for_table_locks", "true"},
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"ysql_enable_concurrent_ddl", "true"},
       {"refresh_waiter_timeout_ms", "30000"},
   }));
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("refresh_waiter_timeout_ms")), "0");
@@ -1247,13 +1259,13 @@ TEST_F(PgWrapperFlagsTest, ValidateCoDependentFlags) {
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("pg_cron_leader_lease_sec")), "60");
 
   // FLAG_GE_FLAG_VALIDATOR
-  ASSERT_NO_FATALS(expect_err({{"otel_batch_max_queue_size", "256"}},
-                              "otel_batch_max_queue_size"));
+  ASSERT_NO_FATALS(expect_err({{"otel_ysql_batch_max_queue_size", "256"}},
+                              "otel_ysql_batch_max_queue_size"));
   ASSERT_NO_FATALS(expect_ok({
-      {"otel_batch_max_queue_size", "256"},
+      {"otel_ysql_batch_max_queue_size", "256"},
       {"otel_batch_max_export_batch_size", "128"},
   }));
-  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("otel_batch_max_queue_size")), "2048");
+  ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("otel_ysql_batch_max_queue_size")), "2048");
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("otel_batch_max_export_batch_size")), "512");
 
   // FLAG_DELAYED_COND_VALIDATOR (raft lease vs heartbeat)

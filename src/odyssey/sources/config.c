@@ -60,7 +60,7 @@ void od_config_init(od_config_t *config)
 
 	/* YB */
 	config->yb_use_auth_backend = true;
-	config->yb_optimized_extended_query_protocol = true;
+	config->yb_cert_auth = true;
 	config->yb_enable_multi_route_pool = true;
 	// Same default as the value of ysql_max_connections.
 	config->yb_ysql_max_connections = 300;
@@ -69,7 +69,6 @@ void od_config_init(od_config_t *config)
 	config->TEST_yb_auth_delay_ms = 0;
 	config->yb_max_prepared_statements = 0;
 	config->yb_tcmalloc_gc_interval = 300;
-	config->yb_enable_parse_queue_tracking = true;
 	config->yb_wait_for_rfq_on_sync = true;
 	config->yb_backend_drain_timeout_ms = 100;
 
@@ -96,8 +95,6 @@ void od_config_reload(od_config_t *current_config, od_config_t *new_config)
 		new_config->yb_max_prepared_statements;
 	current_config->yb_tcmalloc_gc_interval =
 		new_config->yb_tcmalloc_gc_interval;
-	current_config->yb_enable_parse_queue_tracking =
-		new_config->yb_enable_parse_queue_tracking;
 	current_config->yb_backend_drain_timeout_ms =
 		new_config->yb_backend_drain_timeout_ms;
 }
@@ -380,8 +377,8 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL, "yb_use_auth_backend     %s",
 	       od_config_yes_no(config->yb_use_auth_backend));
 
-	od_log(logger, "config", NULL, NULL, "yb_optimized_extended_query_protocol %s",
-			od_config_yes_no(config->yb_optimized_extended_query_protocol));
+	od_log(logger, "config", NULL, NULL, "yb_cert_auth            %s",
+	       od_config_yes_no(config->yb_cert_auth));
 
 	od_log(logger, "config", NULL, NULL, "yb_enable_multi_route_pool     %s",
 	       od_config_yes_no(config->yb_enable_multi_route_pool));
@@ -417,10 +414,6 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL,
 	       "yb_max_prepared_statements     %d",
 	       config->yb_max_prepared_statements);
-
-	od_log(logger, "config", NULL, NULL,
-	       "yb_enable_parse_queue_tracking %s",
-	       od_config_yes_no(config->yb_enable_parse_queue_tracking));
 
 	od_log(logger, "config", NULL, NULL,
 	       "yb_wait_for_rfq_on_sync        %s",
