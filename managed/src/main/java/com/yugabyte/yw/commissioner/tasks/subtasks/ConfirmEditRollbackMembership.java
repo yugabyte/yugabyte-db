@@ -38,13 +38,26 @@ public class ConfirmEditRollbackMembership extends ServerSubTaskBase {
   public static class Params extends ServerSubTaskParams {
     public UniverseDefinitionTaskParams beforeUniverseDetails;
 
-    /** Private IPs of ADD nodes destroyed during rollback (captured before delete from YBA). */
+    /** Private and secondary IPs of destroyed ADD nodes (captured before delete from YBA). */
     public Set<String> destroyedNodeIps = new HashSet<>();
   }
 
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
+  }
+
+  /**
+   * The master may report a dual-NIC server by its secondary IP: secondary-IP mode binds it first,
+   * and legacy dual-net tservers broadcast it.
+   */
+  public static Set<String> getNodeIps(NodeDetails node) {
+    if (node == null || node.cloudInfo == null) {
+      return Set.of();
+    }
+    return Stream.of(node.cloudInfo.private_ip, node.cloudInfo.secondary_private_ip)
+        .filter(ip -> StringUtils.isNotBlank(ip) && !"null".equals(ip))
+        .collect(Collectors.toSet());
   }
 
   @Override
@@ -57,11 +70,8 @@ public class ConfirmEditRollbackMembership extends ServerSubTaskBase {
     }
     Set<String> allowedIps = new HashSet<>();
     for (NodeDetails node : before.nodeDetailsSet) {
-      if (node.state != NodeDetails.NodeState.Live) {
-        continue;
-      }
-      if (node.cloudInfo != null && StringUtils.isNotBlank(node.cloudInfo.private_ip)) {
-        allowedIps.add(node.cloudInfo.private_ip);
+      if (node.state == NodeDetails.NodeState.Live) {
+        allowedIps.addAll(getNodeIps(node));
       }
     }
     // Master may still briefly report ADD IPs after destroy; allow those captured at enqueue time.
