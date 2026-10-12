@@ -7,6 +7,7 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -1093,6 +1094,192 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  @Parameters({"false", "true"})
+  public void testRollbackRejectedWhenPrecheckFails(boolean previousUpgradeRollbackAllowed) {
+    if (previousUpgradeRollbackAllowed) {
+      // Left by an earlier upgrade that did not need finalize; rolling back the failed task would
+      // downgrade that upgrade.
+      PrevYBSoftwareConfig prev = new PrevYBSoftwareConfig();
+      prev.setSoftwareVersion("2.20.0.0-b1");
+      defaultUniverse =
+          Universe.saveDetails(
+              defaultUniverse.getUniverseUUID(),
+              u -> {
+                UniverseDefinitionTaskParams details = u.getUniverseDetails();
+                details.isSoftwareRollbackAllowed = true;
+                details.prevYBSoftwareConfig = prev;
+                u.setUniverseDetails(details);
+              });
+    }
+    // Above the mocked available memory, so CheckMemory fails before FreezeUniverse.
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.dbMemAvailableLimit.getKey(), "4000000");
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.CheckMemory
+                        && t.getTaskState() == TaskInfo.State.Failure));
+    assertTaskNeverOwnedUniverse(taskInfo);
+    assertRollbackRejected(createCustomerTask(taskInfo));
+  }
+
+  @Test
+  public void testRollbackRejectedWhenAbortedBeforeFreeze() {
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    TaskInfo taskInfo;
+    try {
+      setAbortPosition(0);
+      taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    } finally {
+      clearAbortOrPausePositions();
+    }
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    assertTaskNeverOwnedUniverse(taskInfo);
+    assertRollbackRejected(createCustomerTask(taskInfo));
+  }
+
+  @Test
+  public void testRollbackRejectedWhenAbortedBeforeUpgradeStarts() throws InterruptedException {
+    TaskInfo taskInfo = abortUpgradeAroundUpgradingState(false);
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(taskInfo.getUuid(), details.updatingTaskUUID);
+    assertEquals(taskInfo.getUuid(), details.placementModificationTaskUuid);
+    assertEquals(SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+    assertFalse(details.isSoftwareRollbackAllowed);
+    CustomerTask customerTask = createCustomerTask(taskInfo);
+    assertTrue(customerTaskManager.isTaskRetryable(customerTask, taskInfo));
+    assertRollbackRejected(customerTask);
+  }
+
+  @Test
+  public void testRollbackAllowedWhenAbortedAfterUpgradeStarts() throws InterruptedException {
+    TaskInfo taskInfo = abortUpgradeAroundUpgradingState(true);
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(SoftwareUpgradeState.UpgradeFailed, details.softwareUpgradeState);
+    assertTrue(details.isSoftwareRollbackAllowed);
+    CustomerTask customerTask = createCustomerTask(taskInfo);
+    assertTrue(listingCanRollback(customerTask));
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+  }
+
+  /**
+   * Runs an upgrade past FreezeUniverse and aborts it just before the Upgrading state update, or
+   * just after it when {@code afterStateUpdate}.
+   */
+  private TaskInfo abortUpgradeAroundUpgradingState(boolean afterStateUpdate)
+      throws InterruptedException {
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    try {
+      setPausePosition(0);
+      UUID taskUuid = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
+      waitForTaskPaused(taskUuid);
+      // The upgrade subtasks are created only after the freeze runs.
+      setPausePosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      setAbortPosition(
+          firstSubTaskPosition(taskUuid, TaskType.UpdateUniverseState)
+              + (afterStateUpdate ? 1 : 0));
+      commissioner.resumeTask(taskUuid);
+      return waitForTask(taskUuid);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+  }
+
+  private static int firstSubTaskPosition(UUID taskUuid, TaskType taskType) {
+    return TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+        .filter(t -> t.getTaskType() == taskType)
+        .mapToInt(TaskInfo::getPosition)
+        .min()
+        .orElseThrow();
+  }
+
+  private void assertTaskNeverOwnedUniverse(TaskInfo taskInfo) {
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertNotEquals(taskInfo.getUuid(), details.updatingTaskUUID);
+    assertNotEquals(taskInfo.getUuid(), details.placementModificationTaskUuid);
+    assertEquals(SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+  }
+
+  private CustomerTask createCustomerTask(TaskInfo taskInfo) {
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.SoftwareUpgrade,
+        defaultUniverse.getName());
+    // Re-fetch so the TaskInfo join is loaded.
+    return CustomerTask.getOrBadRequest(defaultCustomer.getUuid(), taskInfo.getUuid());
+  }
+
+  /** Listing, the submit gate, and the rollback API must all refuse. */
+  private void assertRollbackRejected(CustomerTask customerTask) {
+    TaskInfo taskInfo = customerTask.getTaskInfo();
+    assertFalse(listingCanRollback(customerTask));
+    assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                customerTaskManager.rollbackCustomerTask(
+                    defaultCustomer.getUuid(), taskInfo.getUuid()));
+    assertThat(ex.getMessage(), containsString("cannot be rolled back"));
+  }
+
+  /**
+   * Listing {@code canRollback}, with the ownership map built from the universe in memory because
+   * H2 cannot run the JSONB query the task list uses.
+   */
+  private boolean listingCanRollback(CustomerTask customerTask) {
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(customerTask.getTargetUUID()).getUniverseDetails();
+    Set<String> owners = new HashSet<>();
+    if (details.updatingTaskUUID != null) {
+      owners.add(details.updatingTaskUUID.toString());
+    }
+    if (details.placementModificationTaskUuid != null) {
+      owners.add(details.placementModificationTaskUuid.toString());
+    }
+    return commissioner
+        .buildTaskStatus(
+            customerTask,
+            customerTask.getTaskInfo().getSubTasks(),
+            ImmutableMap.of(customerTask.getTargetUUID(), owners),
+            ImmutableMap.of(customerTask.getTargetUUID(), customerTask))
+        .map(status -> status.get("canRollback").asBoolean())
+        .orElseThrow();
   }
 
   @Test

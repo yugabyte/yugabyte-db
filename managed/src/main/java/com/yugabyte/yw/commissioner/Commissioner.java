@@ -431,15 +431,17 @@ public class Commissioner {
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
-    // Listing hint: @CanRollback + error state + optional moreCondition (ownership), same pattern
-    // as retryable. Submit uses canTaskRollbackDetailed (universe checkpoint when present).
+    // Listing hint: @CanRollback + error state + optional moreCondition (ownership, then the
+    // computer's universe check), same pattern as retryable. Submit uses canTaskRollbackDetailed
+    // (universe checkpoint when present).
     boolean canRollback =
         canTaskRollback(
             taskInfo,
             tf -> {
               Set<String> taskUuidsToAllowRollback =
                   updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
-              return taskUuidsToAllowRollback.contains(tf.getUuid().toString());
+              return taskUuidsToAllowRollback.contains(tf.getUuid().toString())
+                  && isRollbackAllowedOnUniverse(tf, task.getTargetUUID());
             });
     responseJson.put("canRollback", canRollback);
     if (isTaskPaused(taskInfo.getUuid())) {
@@ -500,7 +502,7 @@ public class Commissioner {
    *
    * <p>Checks {@code @CanRollback} + error state + feature flag ({@link
    * TaskRollbackComputer#isEnabled()}), then {@code moreCondition}. Listing passes
-   * placement/updating ownership without loading the universe. Submit uses {@link
+   * placement/updating ownership, then {@link TaskRollbackComputer#canRollback}. Submit uses {@link
    * #canTaskRollbackDetailed(TaskInfo)}.
    */
   public boolean canTaskRollback(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
@@ -540,6 +542,15 @@ public class Commissioner {
   }
 
   /**
+   * Whether the matching {@link TaskRollbackComputer} accepts the universe state the failed task
+   * left behind. No bound computer -> true.
+   */
+  private boolean isRollbackAllowedOnUniverse(TaskInfo taskInfo, UUID universeUUID) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskInfo.getTaskType());
+    return computer == null || computer.canRollback(taskInfo, universeUUID);
+  }
+
+  /**
    * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
    * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
    * safety gate.
@@ -555,9 +566,10 @@ public class Commissioner {
   }
 
   /**
-   * Universe-aware rollback gate. If there is no {@code state_transition_details}, returns true
-   * (software-upgrade style). When details are present, requires placement ownership and a safe
-   * delta (including refusing dedicatedNodes flips).
+   * Universe-aware rollback gate. Requires {@link TaskRollbackComputer#canRollback}. If there is no
+   * {@code state_transition_details}, the rollback must not need that checkpoint. When details are
+   * present, requires placement ownership and a safe delta (including refusing dedicatedNodes
+   * flips).
    */
   private boolean canRollbackTaskOnUniverse(TaskInfo taskInfo) {
     try {
@@ -568,6 +580,9 @@ public class Commissioner {
       UUID universeUUID = UUID.fromString(params.get("universeUUID").asText());
       Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
       if (!universeOpt.isPresent()) {
+        return false;
+      }
+      if (!isRollbackAllowedOnUniverse(taskInfo, universeUUID)) {
         return false;
       }
       Universe universe = universeOpt.get();

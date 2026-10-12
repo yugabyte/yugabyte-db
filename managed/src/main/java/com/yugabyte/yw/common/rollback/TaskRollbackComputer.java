@@ -2,7 +2,9 @@
 
 package com.yugabyte.yw.common.rollback;
 
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.UUID;
 
 /**
  * Computes how to roll back a failed task of a specific source {@link
@@ -38,6 +40,16 @@ public interface TaskRollbackComputer {
    */
   default boolean requiresStateTransitionDetails() {
     return false;
+  }
+
+  /**
+   * Whether the failed task left universe {@code universeUUID} in a state this rollback can undo.
+   * Listing {@code canRollback} and submit eligibility both apply it, so neither offers a rollback
+   * that {@link #compute} would reject. Listing does not otherwise load the universe, so read it
+   * only when the check needs it. Default true.
+   */
+  default boolean canRollback(TaskInfo failedTask, UUID universeUUID) {
+    return true;
   }
 
   /**
