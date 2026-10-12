@@ -6,25 +6,32 @@ DATA_built = $(EXTENSION)--1.0.sql
 DATA = $(wildcard $(EXTENSION)--*--*.sql)
 
 REGRESS_OPTS =--temp-config=./pg_cron.conf --temp-instance=./tmp_check
-REGRESS = pg_cron-test 
+REGRESS = pg_cron-test
 
 # compilation configuration
 MODULE_big = $(EXTENSION)
 OBJS = $(patsubst %.c,%.o,$(wildcard src/*.c))
 ifeq ($(CC),gcc)
-    PG_CPPFLAGS = -std=gnu11 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-uninitialized -Wno-implicit-fallthrough -Iinclude -I$(libpq_srcdir)
+    PG_CPPFLAGS = -std=gnu11 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-uninitialized -Wno-implicit-fallthrough -Wno-unused-function -Iinclude -I$(libpq_srcdir)
 else
-    PG_CPPFLAGS = -std=gnu11 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -Iinclude -I$(libpq_srcdir)
+    PG_CPPFLAGS = -std=gnu11 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -Wno-unused-function -Iinclude -I$(libpq_srcdir)
 endif
 ifeq ($(shell uname -s),SunOS)
     PG_CPPFLAGS += -Wno-sign-compare -D__EXTENSIONS__
 endif
-SHLIB_LINK = $(libpq)
+SHLIB_LINK = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate -lyb_pggate_util $(filter -lintl,$(LIBS))
 EXTRA_CLEAN += $(addprefix src/,*.gcno *.gcda) # clean up after profiling runs
 
-PG_CONFIG ?= pg_config
+ifdef USE_PGXS
+PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+else
+subdir = contrib/pg_cron
+top_builddir = ../..
+include $(top_builddir)/src/Makefile.global
+include $(top_srcdir)/contrib/contrib-global.mk
+endif
 
 $(EXTENSION)--1.0.sql: $(EXTENSION).sql
 	cat $^ > $@
