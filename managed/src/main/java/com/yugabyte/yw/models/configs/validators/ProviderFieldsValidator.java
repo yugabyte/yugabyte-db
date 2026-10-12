@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationRoutes;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import java.util.HashSet;
 import java.util.List;
@@ -52,9 +53,23 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     throwMultipleBeanValidatorError(errorsMap, VALIDATION_ERROR_SOURCE, requestJson);
   }
 
-  /** Storage clouds federation can currently reach. */
+  /**
+   * Storage clouds an AWS, GCP or on-prem provider may name as a federation target. An OCI provider
+   * is narrower, see {@link #allowedTargetClouds}.
+   */
   private static final Set<CloudType> SUPPORTED_TARGET_CLOUDS =
       ImmutableSet.of(CloudType.aws, CloudType.gcp);
+
+  /**
+   * Storage clouds this provider may name as a federation target. An OCI provider's nodes all run
+   * on OCI, so it is limited to the clouds that have a route from OCI; refusing the rest here tells
+   * the admin up front, instead of leaving a node with no credentials for that bucket.
+   */
+  private static Set<CloudType> allowedTargetClouds(Provider provider) {
+    return provider.getCloudCode() == CloudType.oci
+        ? CrossCloudFederationRoutes.supportedTargets(CloudType.oci)
+        : SUPPORTED_TARGET_CLOUDS;
+  }
 
   /**
    * Validates every configured cross-cloud federation target on its own: a provider may carry
@@ -80,14 +95,15 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
               + " entry per storage cloud this provider's nodes must reach.",
           null);
     }
+    Set<CloudType> allowedTargets = allowedTargetClouds(provider);
     Set<CloudType> seen = new HashSet<>();
     for (CrossCloudFederationTarget target : targets) {
-      if (target.targetCloud == null || !SUPPORTED_TARGET_CLOUDS.contains(target.targetCloud)) {
+      if (target.targetCloud == null || !allowedTargets.contains(target.targetCloud)) {
         throwBeanProviderValidatorError(
             "FEDERATED_IAM_TARGET_CLOUD",
             String.format(
-                "Unsupported federated IAM target cloud %s. Supported: %s.",
-                target.targetCloud, SUPPORTED_TARGET_CLOUDS),
+                "Unsupported federated IAM target cloud %s for a provider on %s. Supported: %s.",
+                target.targetCloud, provider.getCloudCode(), allowedTargets),
             null);
       }
       // One entry per cloud: two would make "the settings for reaching S3" ambiguous, and the
@@ -117,6 +133,34 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
                 + " arn:aws:iam::<12-digit-account>:role/<role-name>.",
             null);
       }
+    }
+    validateOciIdentityDomainUrl(provider);
+  }
+
+  /**
+   * A node running on OCI proves its identity through an OCI identity domain, so an OCI provider
+   * cannot federate without one. An on-prem provider may or may not have OCI nodes, so there the
+   * URL is optional - ManageCloudFederation fails a node it finds on OCI without one - but a value
+   * that is given must still be well formed.
+   */
+  private void validateOciIdentityDomainUrl(Provider provider) {
+    String url = CloudInfoInterface.getOciIdentityDomainUrl(provider);
+    if (url == null) {
+      if (provider.getCloudCode() == CloudType.oci) {
+        throwBeanProviderValidatorError(
+            "OCI_IDENTITY_DOMAIN_URL",
+            "Federated IAM is enabled but no OCI identity domain URL is set. Nodes on OCI exchange"
+                + " their identity at that domain to reach other clouds.",
+            null);
+      }
+      return;
+    }
+    if (!CrossCloudFederationTarget.isValidOciIdentityDomainUrl(url)) {
+      throwBeanProviderValidatorError(
+          "OCI_IDENTITY_DOMAIN_URL",
+          "The OCI identity domain URL must be an https URL with only a host, for example"
+              + " https://idcs-<id>.identity.oraclecloud.com, with no path or trailing slash.",
+          null);
     }
   }
 

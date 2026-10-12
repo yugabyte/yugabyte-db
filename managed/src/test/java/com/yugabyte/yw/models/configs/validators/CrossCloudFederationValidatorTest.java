@@ -11,10 +11,13 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import java.util.Arrays;
 import java.util.Collections;
 import org.junit.Before;
@@ -154,5 +157,174 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
     info.setCrossCloudFederationTargets(
         Collections.singletonList(target(CloudType.aws, "not a valid audience!!", null)));
     app.injector().instanceOf(GCPProviderValidator.class).validate(provider);
+  }
+
+  private static final String DOMAIN_URL = "https://idcs-abc123.identity.oraclecloud.com";
+
+  private Provider ociProvider(OCICloudInfo info) {
+    Provider provider = ModelFactory.ociProvider(customer);
+    ProviderDetails details = provider.getDetails();
+    if (details.getCloudInfo() == null) {
+      details.setCloudInfo(new ProviderDetails.CloudInfo());
+    }
+    details.getCloudInfo().setOci(info);
+    return provider;
+  }
+
+  private OCICloudInfo ociInfo(String domainUrl, CrossCloudFederationTarget... targets) {
+    OCICloudInfo info = new OCICloudInfo();
+    info.enableFederatedIam = true;
+    info.ociIdentityDomainUrl = domainUrl;
+    info.crossCloudFederationTargets = java.util.Arrays.asList(targets);
+    return info;
+  }
+
+  private Provider onPremProvider(String domainUrl, CrossCloudFederationTarget... targets) {
+    return setOnPremFederation(ModelFactory.onpremProvider(customer), domainUrl, targets);
+  }
+
+  /** Providers are unique per cloud and name, so a test that varies the URL reuses one provider. */
+  private Provider setOnPremFederation(
+      Provider provider, String domainUrl, CrossCloudFederationTarget... targets) {
+    ProviderDetails details = provider.getDetails();
+    if (details.getCloudInfo() == null) {
+      details.setCloudInfo(new ProviderDetails.CloudInfo());
+    }
+    OnPremCloudInfo info = new OnPremCloudInfo();
+    info.enableFederatedIam = true;
+    info.ociIdentityDomainUrl = domainUrl;
+    info.crossCloudFederationTargets = java.util.Arrays.asList(targets);
+    details.getCloudInfo().setOnprem(info);
+    return provider;
+  }
+
+  private String ociValidationMessage(Provider provider) {
+    OCIProviderValidator validator = app.injector().instanceOf(OCIProviderValidator.class);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> validator.validateCrossCloudFederationTargets(provider));
+    return e.getMessage();
+  }
+
+  private void validateOci(Provider provider) {
+    // The shared federation check only: the provider validator's live credential check calls OCI.
+    app.injector()
+        .instanceOf(OCIProviderValidator.class)
+        .validateCrossCloudFederationTargets(provider);
+  }
+
+  /** The route OCI nodes have: they can reach GCS through GCP Workload Identity Federation. */
+  @Test
+  public void testOciProviderAcceptsGcpTargetWithIdentityDomain() {
+    validateOci(ociProvider(ociInfo(DOMAIN_URL, target(CloudType.gcp, AUDIENCE, null))));
+  }
+
+  /** The OCI console shows the domain URL with the port, so a pasted value carries it. */
+  @Test
+  public void testOciProviderAcceptsIdentityDomainWithPort() {
+    validateOci(ociProvider(ociInfo(DOMAIN_URL + ":443", target(CloudType.gcp, AUDIENCE, null))));
+  }
+
+  /** OCI nodes have no route to S3, so naming it would leave them with no credentials for it. */
+  @Test
+  public void testOciProviderRejectsAwsTarget() {
+    String message =
+        ociValidationMessage(
+            ociProvider(ociInfo(DOMAIN_URL, target(CloudType.aws, AUDIENCE, ROLE_ARN))));
+    assertTrue(message, message.contains("aws"));
+    assertTrue(message, message.contains("Supported: [gcp]"));
+  }
+
+  @Test
+  public void testOciProviderRequiresIdentityDomainWhenFederationIsOn() {
+    String message =
+        ociValidationMessage(ociProvider(ociInfo(null, target(CloudType.gcp, AUDIENCE, null))));
+    assertTrue(message, message.contains("identity domain URL"));
+  }
+
+  @Test
+  public void testOciProviderRejectsMalformedIdentityDomain() {
+    // Providers are unique per cloud and name, so one provider is reused across the cases.
+    Provider provider = ociProvider(ociInfo(DOMAIN_URL, target(CloudType.gcp, AUDIENCE, null)));
+    for (String bad :
+        new String[] {
+          "http://idcs-abc123.identity.oraclecloud.com",
+          DOMAIN_URL + "/",
+          DOMAIN_URL + "/oauth2/v1/token",
+          "idcs-abc123.identity.oraclecloud.com",
+        }) {
+      provider
+          .getDetails()
+          .getCloudInfo()
+          .setOci(ociInfo(bad, target(CloudType.gcp, AUDIENCE, null)));
+      String message = ociValidationMessage(provider);
+      assertTrue(bad + ": " + message, message.contains("identity domain URL"));
+    }
+  }
+
+  @Test
+  public void testOciProviderRejectsEnabledWithNoTarget() {
+    String message = ociValidationMessage(ociProvider(ociInfo(DOMAIN_URL)));
+    assertTrue(message, message.contains("no target is configured"));
+  }
+
+  /** With the feature off nothing is inspected, as for every provider that exists today. */
+  @Test
+  public void testOciProviderWithFederationOffIsNotValidated() {
+    OCICloudInfo info = ociInfo("not a url", target(CloudType.aws, "bad audience!!", null));
+    info.enableFederatedIam = false;
+    validateOci(ociProvider(info));
+  }
+
+  /** An OCI provider with no federation configured at all - every one that exists today. */
+  @Test
+  public void testExistingOciProviderIsUnaffected() {
+    validateOci(ociProvider(new OCICloudInfo()));
+  }
+
+  /** Nothing can be reached on OCI by federation yet, whichever provider names it. */
+  @Test
+  public void testOciIsNotAValidTargetCloud() {
+    Provider provider = awsProvider();
+    AWSCloudInfo info = CloudInfoInterface.get(provider);
+    info.crossCloudFederationTargets =
+        Collections.singletonList(target(CloudType.oci, AUDIENCE, null));
+    String message =
+        validateAndGetMessage(provider, app.injector().instanceOf(AWSProviderValidator.class));
+    assertTrue(message, message.contains("oci"));
+  }
+
+  /** An on-prem provider may or may not have OCI nodes, so the identity domain is optional. */
+  @Test
+  public void testOnPremIdentityDomainIsOptional() {
+    OnPremValidator validator = app.injector().instanceOf(OnPremValidator.class);
+    Provider provider = onPremProvider(null, target(CloudType.gcp, AUDIENCE, null));
+    validator.validateCrossCloudFederationTargets(provider);
+    setOnPremFederation(provider, DOMAIN_URL, target(CloudType.gcp, AUDIENCE, null));
+    validator.validateCrossCloudFederationTargets(provider);
+  }
+
+  @Test
+  public void testOnPremRejectsMalformedIdentityDomainWhenGiven() {
+    OnPremValidator validator = app.injector().instanceOf(OnPremValidator.class);
+    Provider provider = onPremProvider(DOMAIN_URL + "/path", target(CloudType.gcp, AUDIENCE, null));
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> validator.validateCrossCloudFederationTargets(provider));
+    assertTrue(e.getMessage(), e.getMessage().contains("identity domain URL"));
+  }
+
+  /** On-prem keeps both clouds: its nodes may be on any of them. */
+  @Test
+  public void testOnPremStillAcceptsBothGcpAndAwsTargets() {
+    app.injector()
+        .instanceOf(OnPremValidator.class)
+        .validateCrossCloudFederationTargets(
+            onPremProvider(
+                DOMAIN_URL,
+                target(CloudType.gcp, AUDIENCE, null),
+                target(CloudType.aws, AUDIENCE, ROLE_ARN)));
   }
 }

@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import java.util.Arrays;
 import java.util.List;
@@ -178,5 +179,78 @@ public class CloudInfoInterfaceFederationTest extends FakeDBApplication {
     assertTrue(!target(CloudType.aws, S3_AUDIENCE, null).isUsable());
     assertTrue(!target(CloudType.gcp, null, null).isUsable());
     assertTrue(!target(null, GCS_AUDIENCE, null).isUsable());
+  }
+
+  private static final String DOMAIN_URL = "https://idcs-abc123.identity.oraclecloud.com";
+
+  private OCICloudInfo ociInfo(Provider provider) {
+    OCICloudInfo info = new OCICloudInfo();
+    cloudInfo(provider).setOci(info);
+    return info;
+  }
+
+  /** OCI carries its targets as the list alone: federation on OCI never had flat fields. */
+  @Test
+  public void testOciProviderResolvesItsTargets() {
+    Provider provider = ModelFactory.ociProvider(customer);
+    OCICloudInfo info = ociInfo(provider);
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = Arrays.asList(target(CloudType.gcp, GCS_AUDIENCE, null));
+
+    assertEquals(Set.of(CloudType.gcp), targetClouds(provider));
+    assertEquals(
+        GCS_AUDIENCE,
+        CloudInfoInterface.getCrossCloudFederationTarget(provider, CloudType.gcp).audience);
+  }
+
+  @Test
+  public void testOciProviderWithFederationOffResolvesNothing() {
+    Provider provider = ModelFactory.ociProvider(customer);
+    OCICloudInfo info = ociInfo(provider);
+    info.enableFederatedIam = false;
+    info.crossCloudFederationTargets = Arrays.asList(target(CloudType.gcp, GCS_AUDIENCE, null));
+
+    assertTrue(CloudInfoInterface.getCrossCloudFederationTargets(provider).isEmpty());
+  }
+
+  /** An OCI provider that existed before federation reaches no storage cloud by federation. */
+  @Test
+  public void testExistingOciProviderResolvesNothing() {
+    Provider provider = ModelFactory.ociProvider(customer);
+    ociInfo(provider).enableFederatedIam = true;
+
+    assertTrue(CloudInfoInterface.getCrossCloudFederationTargets(provider).isEmpty());
+  }
+
+  @Test
+  public void testIdentityDomainUrlIsReadFromOciAndOnPremProviders() {
+    Provider oci = ModelFactory.ociProvider(customer);
+    ociInfo(oci).ociIdentityDomainUrl = DOMAIN_URL;
+    assertEquals(DOMAIN_URL, CloudInfoInterface.getOciIdentityDomainUrl(oci));
+
+    Provider onprem = ModelFactory.onpremProvider(customer);
+    OnPremCloudInfo onpremInfo = onPremInfo(onprem);
+    onpremInfo.ociIdentityDomainUrl = DOMAIN_URL;
+    assertEquals(DOMAIN_URL, CloudInfoInterface.getOciIdentityDomainUrl(onprem));
+  }
+
+  @Test
+  public void testIdentityDomainUrlIsTrimmedAndBlankIsNull() {
+    Provider provider = ModelFactory.ociProvider(customer);
+    OCICloudInfo info = ociInfo(provider);
+
+    info.ociIdentityDomainUrl = "  " + DOMAIN_URL + " ";
+    assertEquals(DOMAIN_URL, CloudInfoInterface.getOciIdentityDomainUrl(provider));
+    info.ociIdentityDomainUrl = "   ";
+    assertNull(CloudInfoInterface.getOciIdentityDomainUrl(provider));
+    info.ociIdentityDomainUrl = null;
+    assertNull(CloudInfoInterface.getOciIdentityDomainUrl(provider));
+  }
+
+  /** AWS and GCP nodes have no use for an identity domain, so they never report one. */
+  @Test
+  public void testIdentityDomainUrlIsNullForOtherProviders() {
+    assertNull(CloudInfoInterface.getOciIdentityDomainUrl(ModelFactory.awsProvider(customer)));
+    assertNull(CloudInfoInterface.getOciIdentityDomainUrl(ModelFactory.gcpProvider(customer)));
   }
 }

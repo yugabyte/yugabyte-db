@@ -83,6 +83,26 @@ public class CrossCloudFederationTarget {
 
   private static final Pattern AUDIENCE_PATTERN = Pattern.compile("^[A-Za-z0-9._:/-]{1,512}$");
 
+  /**
+   * An OCI identity domain URL: https and a bare host, optionally with the {@code :443} the OCI
+   * console shows. node-agent sends a request signed with the node's own OCI credentials to this
+   * URL, so a path, query or userinfo is refused rather than interpreted. The host is not limited
+   * to Oracle's domains: OCI spans several realms, and the value is set by a provider admin.
+   *
+   * <p>Kept in step with ocitoken.go (node-agent) and CrossCloudFederatedIamFields.tsx (UI); change
+   * all three together or one layer will accept what another rejects.
+   */
+  private static final Pattern OCI_IDENTITY_DOMAIN_URL_PATTERN =
+      Pattern.compile(
+          "^https://[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+              + "(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+(:443)?$");
+
+  public static boolean isValidOciIdentityDomainUrl(String url) {
+    return StringUtils.isNotBlank(url)
+        && url.length() <= 300
+        && OCI_IDENTITY_DOMAIN_URL_PATTERN.matcher(url).matches();
+  }
+
   public static boolean isValidRoleArn(String roleArn) {
     return StringUtils.isNotBlank(roleArn) && ROLE_ARN_PATTERN.matcher(roleArn).matches();
   }

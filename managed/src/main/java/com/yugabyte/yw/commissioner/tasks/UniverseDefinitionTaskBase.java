@@ -130,6 +130,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationRoutes;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
@@ -1550,9 +1551,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   /**
    * Fans out per-node {@link ManageCloudFederation} tasks to configure ({@code enabled=true}) or
    * tear down ({@code enabled=false}) cross-cloud federated IAM on the given nodes: a node running
-   * on AWS writes to GCS, a node running on GCP writes to S3. Each subtask picks its own direction
-   * from the cloud its node actually runs on, so one on-prem universe can mix both. The caller
-   * decides when to invoke this: the provider flag at create, the universe's {@code
+   * on AWS or OCI writes to GCS, a node running on GCP writes to S3. Each subtask picks its own
+   * route from the cloud its node actually runs on, so one on-prem universe can mix them. The
+   * caller decides when to invoke this: the provider flag at create, the universe's {@code
    * federationConfigured} flag at edit/add-node, or the v2 enable/disable API.
    */
   protected void createConfigureCloudFederationTasks(
@@ -1563,9 +1564,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       return;
     }
     Common.CloudType providerCloud = userIntent.providerType;
-    if ((providerCloud != Common.CloudType.aws
-            && providerCloud != Common.CloudType.onprem
-            && providerCloud != Common.CloudType.gcp)
+    // An on-prem provider's nodes may run on any cloud, so it is always eligible; every other
+    // provider type is eligible only when it can be the source of a federation route.
+    if ((providerCloud != Common.CloudType.onprem
+            && !CrossCloudFederationRoutes.isSource(providerCloud))
         || !NodeAgentClient.isCloudTypeSupported(providerCloud)) {
       return;
     }

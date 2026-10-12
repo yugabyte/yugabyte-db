@@ -74,8 +74,11 @@ const (
 )
 
 // ConfigureCloudFederation sets up (or tears down) cross-cloud federated IAM on
-// a DB node. It deploys only static config; short-lived credentials are minted
-// in-process by YBC's client libraries, so there is no refresher daemon.
+// a DB node. For an AWS or GCP source it deploys only static config: short-lived
+// credentials are minted in-process by YBC's client libraries, so nothing runs on the
+// node. An OCI source is the exception, because OCI offers no endpoint those
+// libraries can call; a systemd timer keeps an identity token file fresh instead (see
+// configure_cloud_federation_oci.go).
 type ConfigureCloudFederation struct {
 	param    *pb.ConfigureCloudFederationInput
 	username string
@@ -185,6 +188,9 @@ func (h *ConfigureCloudFederation) restartYbc(ctx context.Context) error {
 // Templates are deterministic, so identical inputs render identical files; comparing the hash to
 // the applied stamp is equivalent to comparing rendered content, without re-rendering here.
 func (h *ConfigureCloudFederation) desiredStateHash(ybHome string) (string, error) {
+	if err := validateFederationRoute(h.param.GetSourceCloud(), h.param.GetTargetCloud()); err != nil {
+		return "", err
+	}
 	var canonical string
 	switch h.param.GetTargetCloud() {
 	case pb.ConfigureCloudFederationInput_GCP:
@@ -192,7 +198,17 @@ func (h *ConfigureCloudFederation) desiredStateHash(ybHome string) (string, erro
 		if err := validateGcsInputs(cfg); err != nil {
 			return "", err
 		}
-		canonical = fmt.Sprintf("v1|gcs|%s|%s", ybHome, cfg.GetAudience())
+		if h.isOciSource() {
+			oci := h.param.GetOciSource()
+			if err := validateOciSourceInputs(oci); err != nil {
+				return "", err
+			}
+			canonical = fmt.Sprintf(
+				"v2|gcs-oci|%s|%s|%s", ybHome, cfg.GetAudience(), oci.GetIdentityDomainUrl())
+		} else {
+			// Unchanged from before OCI support, so existing nodes are not re-applied.
+			canonical = fmt.Sprintf("v1|gcs|%s|%s", ybHome, cfg.GetAudience())
+		}
 	case pb.ConfigureCloudFederationInput_AWS:
 		cfg := h.param.GetS3()
 		if err := validateS3Inputs(cfg); err != nil {
@@ -230,6 +246,14 @@ func (h *ConfigureCloudFederation) inSync(ybHome, desiredHash string) bool {
 	}
 	switch h.param.GetTargetCloud() {
 	case pb.ConfigureCloudFederationInput_GCP:
+		if h.isOciSource() {
+			// The credential reads the token file and the timer keeps it fresh; losing either
+			// leaves YBC with a credential that works now and fails within the hour. A token that
+			// has stopped being refreshed is drift too, so re-applying repairs a dead timer.
+			return federationPathExists(filepath.Join(fedDir, gcpFedCredsFileName)) &&
+				ociTokenFresh(filepath.Join(fedDir, ociTokenFileName)) &&
+				h.ociRefresherComplete()
+		}
 		return federationPathExists(filepath.Join(fedDir, gcpFedCredsFileName))
 	case pb.ConfigureCloudFederationInput_AWS:
 		// The credential_process script and the managed ~/.aws/config block are the artifacts YBC
@@ -251,6 +275,10 @@ func (h *ConfigureCloudFederation) federationArtifactsPresent(ybHome string) boo
 	// The S3-on-GCP managed block lives in ~/.aws/config, outside the federation dir, so a leftover
 	// block still counts as an artifact that needs tearing down.
 	if awsManagedBlockPresent(filepath.Join(ybHome, ".aws", "config")) {
+		return true
+	}
+	// The OCI token refresher's units live in the systemd unit directory, outside the federation dir.
+	if h.ociRefresherPresent() {
 		return true
 	}
 	if dropInDir, _, err := h.dropInDir(); err == nil {
@@ -305,6 +333,14 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 		return err
 	}
 
+	// A node whose source cloud changed (an on-prem machine replaced by one on another cloud) must
+	// not keep refreshing a token it no longer uses.
+	if !h.isOciSource() {
+		if err := h.removeOciRefresher(ctx); err != nil {
+			return err
+		}
+	}
+
 	var envCtx map[string]any
 	switch h.param.GetTargetCloud() {
 	case pb.ConfigureCloudFederationInput_GCP:
@@ -312,16 +348,24 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 		if err := validateGcsInputs(cfg); err != nil {
 			return err
 		}
-		credsFile := filepath.Join(fedDir, gcpFedCredsFileName)
-		if _, err := module.CopyFile(
-			ctx,
-			map[string]any{"audience": cfg.GetAudience()},
-			filepath.Join(module.ServerTemplateSubpath, gcpFedCredsTemplate),
-			credsFile,
-			fs.FileMode(0600),
-			h.username,
-		); err != nil {
-			return err
+		var credsFile string
+		if h.isOciSource() {
+			var err error
+			if credsFile, err = h.setupOciSource(ctx, fedDir, cfg.GetAudience()); err != nil {
+				return err
+			}
+		} else {
+			credsFile = filepath.Join(fedDir, gcpFedCredsFileName)
+			if _, err := module.CopyFile(
+				ctx,
+				map[string]any{"audience": cfg.GetAudience()},
+				filepath.Join(module.ServerTemplateSubpath, gcpFedCredsTemplate),
+				credsFile,
+				fs.FileMode(0600),
+				h.username,
+			); err != nil {
+				return err
+			}
 		}
 		envCtx = map[string]any{"flow": "gcs", "gcp_creds_path": credsFile}
 
@@ -430,6 +474,10 @@ func (h *ConfigureCloudFederation) teardown(ctx context.Context, ybHome string) 
 	if err := h.removeDropIn(ctx); err != nil {
 		return err
 	}
+	// Before the federation dir goes: the refresher writes into it.
+	if err := h.removeOciRefresher(ctx); err != nil {
+		return err
+	}
 	// The systemd drop-in must live under yb-controller.service.d and is removed above; every other
 	// federation artifact is contained in the federation directory, so a single recursive delete
 	// clears it. The one exception is the S3-on-GCP managed block in the shared ~/.aws/config, so
@@ -482,7 +530,7 @@ func (h *ConfigureCloudFederation) dropInDir() (string, bool, error) {
 	return filepath.Join(systemSystemdUnitDir, ybcServiceDropInDirName), false, nil
 }
 
-// Audience allowlist for GCS-on-AWS: interpolated into the external_account JSON
+// Audience allowlist for GCS federation: interpolated into the external_account JSON
 // template, so the charset excludes quotes/backslashes/whitespace (JSON-safe).
 var gcpAudienceRegex = regexp.MustCompile(`^[A-Za-z0-9._:/-]{1,512}$`)
 
@@ -493,7 +541,7 @@ func validateGcsInputs(cfg *pb.GcsConfig) error {
 		return errors.New("gcs config is required when the target cloud is GCP")
 	}
 	if !gcpAudienceRegex.MatchString(cfg.GetAudience()) {
-		return errors.New("invalid or empty audience for GCS-on-AWS federation")
+		return errors.New("invalid or empty audience for GCS federation")
 	}
 	return nil
 }
