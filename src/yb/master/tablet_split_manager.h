@@ -43,11 +43,13 @@ struct SplitTableEligibility {
   size_t replication_factor = 0;
 };
 
-// Memoizes the live tserver list and each table's SplitTableEligibility for one
-// TabletSplitManager::DoSplitting pass. A pass over T tablets of B tables then enumerates the
-// tserver registry once and filters it by placement once per table, instead of doing both once per
-// tablet. There is no invalidation: the cache is discarded with the pass, and DoSplitTablet
-// re-validates a candidate without a cache before the split proceeds. Not thread-safe.
+// An approximate scheduling view for one TabletSplitManager::DoSplitting pass. Membership and
+// blacklist filtering are captured on first use; descriptors remain mutable, and each table's
+// policy and count are read on its first evaluation. This is not an atomic topology snapshot.
+// Stale counts can reject newly eligible tablets, change priority, or spend scheduling slots on
+// candidates that fail fresh validation. They are reconsidered in a subsequent pass. New automatic
+// splits must revalidate without this cache in DoSplitTablet; retries with registered children
+// retain their existing validation rules. Not thread-safe.
 class SplitEligibilityCache {
  public:
   template <class Build>
@@ -66,8 +68,6 @@ class SplitEligibilityCache {
     }
     return it->second;
   }
-
-  size_t num_tables() const { return tables_.size(); }
 
  private:
   std::optional<TSDescriptorVector> live_tservers_;

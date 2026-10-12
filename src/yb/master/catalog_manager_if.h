@@ -341,8 +341,8 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
-  // With a cache, the live tserver list and the table's placement inputs are reused across calls
-  // in the same split-manager pass. Without one, every call reads them fresh.
+  // A cache provides an approximate, pass-local scheduling view (see SplitEligibilityCache).
+  // Without one, every call reads the placement inputs fresh.
   virtual Result<SplitPhase> ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info,
       SplitEligibilityCache* cache = nullptr) const = 0;

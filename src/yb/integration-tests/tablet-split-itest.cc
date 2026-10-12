@@ -12,6 +12,7 @@
 //
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <limits>
 #include <thread>
@@ -100,6 +101,7 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -2338,7 +2340,85 @@ TEST_F(AutomaticTabletSplitITest, PhasePromotionAccountsForSplitRetry) {
     /* expected_split_tablets */ 0,
     /* num_replicas_online */ 0,
     /* table */ client::kTableName,
-    /* core_dump_on_failure */ false));
+      /* core_dump_on_failure */ false));
+}
+
+TEST_F(AutomaticTabletSplitITest, StalePlacementCandidateRevalidatedBeforeRegistration) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 1_GB;
+
+  SetNumTablets(2);
+  CreateTable();
+  ASSERT_OK(WaitAllReplicasReady(cluster_.get(), table_->id(), 30s * kTimeMultiplier));
+  ASSERT_OK(WriteRowsAndFlush(2000));
+  auto* catalog = ASSERT_RESULT(catalog_manager());
+  auto table_info = catalog->GetTableInfo(table_->id());
+  const auto tablets = ASSERT_RESULT(table_info->GetTablets());
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (const auto& tablet : tablets) {
+      auto drive = tablet->GetLeaderReplicaDriveInfo();
+      if (!drive.ok()) {
+        return false;
+      }
+      auto phase = catalog->ShouldSplitValidCandidate(*tablet, *drive);
+      if (!phase.ok() || *phase != master::SplitPhase::kLow || drive->sst_files_size >= 1_GB) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Wait for low-phase candidates"));
+
+  auto* sync = SyncPoint::GetInstance();
+  std::atomic<bool> changed{false};
+  auto cleanup = ScopeExit([sync] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  sync->SetCallBack("CatalogManager::ComputeSplitTableEligibility:Done", [&](void*) {
+    if (!changed.exchange(true)) {
+      // The cached 2/3 count selects low-phase candidates even though 2/2 now requires high phase.
+      ASSERT_OK(cluster_->AddTServerToBlacklist(2));
+    }
+  });
+  sync->EnableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(WaitFor([&] {
+    for (const auto& task : table_info->GetTasks()) {
+      if (task->type() == server::MonitoredTaskType::kGetTabletSplitKey) {
+        return true;
+      }
+    }
+    return false;
+  }, 30s * kTimeMultiplier, "Wait for the stale candidate to consume the only split slot"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
+  ASSERT_OK(master.tablet_split_manager().WaitUntilIdle());
+  ASSERT_TRUE(changed.load());
+  ASSERT_EQ(table_info->GetTasks().size(), 1);
+  sync->DisableProcessing();
+  sync->ClearAllCallBacks();
+
+  StringWaiterLogSink rejected("is no longer a valid split candidate");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
+  ASSERT_OK(rejected.WaitFor(30s * kTimeMultiplier));
+  ASSERT_OK(WaitFor([&] { return table_info->GetTasks().empty(); },
+                    30s * kTimeMultiplier, "Wait for rejected split task cleanup"));
+  for (const auto& tablet : tablets) {
+    ASSERT_EQ(tablet->LockForRead()->pb.split_tablet_ids_size(), 0);
+  }
+  ASSERT_EQ(table_info->NumPartitions(), 2);
+
+  ASSERT_OK(cluster_->ClearBlacklist());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(WaitForTabletSplitCompletion(3));
+  ASSERT_OK(CheckRowsCount(2000));
 }
 
 TEST_F(AutomaticTabletSplitITest, TabletSplitCandidatesMetric) {
