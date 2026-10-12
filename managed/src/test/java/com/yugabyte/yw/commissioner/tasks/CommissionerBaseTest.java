@@ -52,6 +52,7 @@ import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
@@ -115,6 +116,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -212,6 +214,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
   protected GFlagsAuditHandler mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
   protected RestoreManagerYb restoreManagerYb = mock(RestoreManagerYb.class);
+  protected FileHelperService mockFileHelperService = mock(FileHelperService.class);
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -340,6 +343,30 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
+    lenient()
+        .when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            inv ->
+                Files.createTempFile(
+                    inv.getArgument(0, String.class), inv.getArgument(1, String.class)));
+    lenient().when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn("/home/yugabyte");
+    lenient()
+        .doAnswer(
+            inv -> {
+              Universe universe = (Universe) inv.getArgument(0);
+              NodeTaskParams nodeTaskParam = (NodeTaskParams) inv.getArgument(1);
+              Cluster cluster = null;
+              if (nodeTaskParam.placementUuid != null) {
+                cluster =
+                    universe.getUniverseDetails().getClusterByUuid(nodeTaskParam.placementUuid);
+              }
+              if (cluster == null) {
+                cluster = universe.getUniverseDetails().getPrimaryCluster();
+              }
+              return cluster.userIntent;
+            })
+        .when(mockNodeManager)
+        .getUserIntentFromParams(any(Universe.class), any(NodeTaskParams.class));
     lenient()
         .doAnswer(
             inv -> {
@@ -485,6 +512,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
+        .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .overrides(
             bind(OperatorStatusUpdaterFactory.class).toInstance(mockOperatorStatusUpdaterFactory))

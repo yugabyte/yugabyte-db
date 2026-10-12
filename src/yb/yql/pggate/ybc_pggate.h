@@ -102,6 +102,10 @@ void YBCRefreshClusterReplicationInfo();
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 
+// Catalog prefetch load on the master leader as of the last heartbeat. Values match
+// YsqlCatalogPrefetchLoadPB: 0 unknown, 1 low, 2 busy, 3 super busy.
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad();
+
 // Set per-db catalog_version to the local tserver's per-db catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedDBCatalogVersion(
@@ -151,6 +155,7 @@ YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 
 int64_t YBCGetTCMallocSamplingPeriod();
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+void YBCTCMallocReleaseFreeMemory(int64_t bytes);
 YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
                              int64_t* num_samples,
                              bool peak_heap);
@@ -925,12 +930,13 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-void YBCStartSysTablePrefetchingNoCache();
+void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,
-    YbcPgSysTablePrefetcherCacheMode cache_mode);
+    YbcPgSysTablePrefetcherCacheMode cache_mode,
+    YbcPgSysTablePrefetchKind kind);
 
 void YBCStopSysTablePrefetching();
 

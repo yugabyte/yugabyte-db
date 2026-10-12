@@ -597,6 +597,13 @@ typedef enum {
   YB_YQL_PREFETCHER_RENEW_CACHE_HARD
 } YbcPgSysTablePrefetcherCacheMode;
 
+// Mirrors YsqlCatalogPrefetchKindPB in pgsql_protocol.proto.
+typedef enum {
+  YB_YQL_PREFETCH_KIND_NONE = 0,
+  YB_YQL_PREFETCH_KIND_CONNECTION_START = 1,
+  YB_YQL_PREFETCH_KIND_CACHE_REFRESH = 2,
+} YbcPgSysTablePrefetchKind;
+
 typedef struct {
   uint64_t read;
   uint64_t local_limit;

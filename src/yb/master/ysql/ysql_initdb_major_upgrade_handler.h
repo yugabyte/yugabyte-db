@@ -59,6 +59,9 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // to a clean state.
   Status RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch);
 
+  // Removes the pg_upgrade socket directory a killed yb-master could not clean up itself.
+  Status CleanupStalePgUpgradeSocketDir();
+
   // Are we in a ysql major upgrade?
   // The upgrade is considered to have started when the yb-master leader has upgraded to a new major
   // catalog version.

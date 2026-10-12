@@ -100,6 +100,8 @@ class PgWrapper : public ProcessWrapper {
 
   static std::string GetPostgresExecutablePath();
 
+  static Status CleanupLockFileAndKillHungPg(const std::string& lock_file);
+
   struct PgUpgradeParams {
     std::string ysql_user_name;
     std::string data_dir;
@@ -155,7 +157,6 @@ class PgWrapper : public ProcessWrapper {
   static std::string GetInitDbExecutablePath();
 
   Status CleanupPreviousPostgres();
-  Status CleanupLockFileAndKillHungPg(const std::string& lock_file);
 
   // Set common environment for a child process (initdb or postgres itself).
   void SetCommonEnv(Subprocess* proc, bool yb_enabled);

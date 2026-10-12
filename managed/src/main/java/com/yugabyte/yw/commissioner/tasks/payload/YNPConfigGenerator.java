@@ -32,14 +32,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -66,6 +69,20 @@ public class YNPConfigGenerator {
     private Universe universe;
     private boolean isYbPrebuiltImage;
     private UserIntent userIntent;
+    // True if DB software is already present on the node.
+    private boolean isSoftwarePresent;
+    // True if DB data is already present on the node.
+    private boolean isDataPresent;
+
+    // Returns true if the node is a blank node (new node - no software and no data present).
+    private boolean isBlankNode() {
+      return !isSoftwarePresent && !isDataPresent;
+    }
+
+    // Mount path -> disk UUID mapping captured from /etc/fstab (e.g. before OS/root-volume
+    // upgrade). When set, mount_ephemeral_drives remounts by these UUIDs instead of rediscovering
+    // devices.
+    private Map<String, String> pathToUUIDMapping;
   }
 
   @Inject
@@ -141,8 +158,14 @@ public class YNPConfigGenerator {
     InstanceType instanceType =
         InstanceType.get(provider.getUuid(), nodeInstance.getInstanceTypeCode());
     ynpNode.put("node_ip", nodeInstance.getDetails().ip);
-    extraNode.put(
-        "mount_paths", instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).mountPath);
+    String mountPaths =
+        instanceType.getInstanceTypeDetails().volumeDetailsList.stream()
+            .map(vd -> vd.mountPath)
+            .filter(Objects::nonNull)
+            .filter(s -> !s.isBlank())
+            .map(String::trim)
+            .collect(Collectors.joining(" "));
+    extraNode.put("mount_paths", mountPaths);
     extraNode.put(
         "volume_size", instanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeSizeGB);
   }
@@ -165,18 +188,12 @@ public class YNPConfigGenerator {
       ynpNode.put("node_ip", node.cloudInfo.private_ip);
     }
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
-    if (deviceInfo.mountPoints != null) {
-      extraNode.put("mount_paths", deviceInfo.mountPoints);
-    } else {
-      StringBuilder volumePaths = new StringBuilder();
-      for (int i = 0; i < deviceInfo.numVolumes; i++) {
-        if (i > 0) {
-          volumePaths.append(" ");
-        }
-        volumePaths.append("/mnt/d").append(i);
-      }
-      extraNode.put("mount_paths", volumePaths.toString());
-    }
+    extraNode.put(
+        "mount_paths",
+        Util.getMountPoints(deviceInfo).stream()
+            .map(String::trim)
+            .filter(s -> !s.isBlank())
+            .collect(Collectors.joining(" ")));
     if (node.cloudInfo.cloud.equals(Common.CloudType.azu.toString())
         && node.cloudInfo.lun_indexes.length > 0) {
       StringBuilder sb = new StringBuilder();
@@ -298,7 +315,19 @@ public class YNPConfigGenerator {
       // Set up node universe specific fields.
       populateFromUniverse(params, rootNode);
     }
+    if (MapUtils.isNotEmpty(params.getPathToUUIDMapping())) {
+      // Encoded as "path=uuid path2=uuid2".
+      // Consumed by mount_ephemeral_drives when remounting preserved disks.
+      ((ObjectNode) rootNode.get("extra"))
+          .put("path_to_uuid_mapping", encodePathToUuidMapping(params.getPathToUUIDMapping()));
+    }
     return rootNode;
+  }
+
+  static String encodePathToUuidMapping(Map<String, String> pathToUUIDMapping) {
+    return pathToUUIDMapping.entrySet().stream()
+        .map(e -> e.getKey() + "=" + e.getValue())
+        .collect(Collectors.joining(" "));
   }
 
   /**

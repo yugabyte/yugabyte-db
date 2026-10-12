@@ -1645,7 +1645,7 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
       return STATUS_FORMAT(NotFound, "Failed to get table info for table $0", table_id);
     }
     replication_info_and_num_tablets.push_back({
-        VERIFY_RESULT(GetTableReplicationInfo(table_ptr)),
+        GetTableReplicationInfoWithDefault(table_ptr),
         table_with_tablets.tablets_entries.size()});
   }
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.
@@ -2502,6 +2502,54 @@ Status CatalogManager::ImportTableEntry(
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;
+    }
+
+    // The CREATE TABLE that recreates the indexed table on restore assigns column ids sequentially.
+    // If a column was dropped from the indexed table before the snapshot was taken, the snapshotted
+    // and restored tables can have different column ids. Phase 3 fixes the indexed table's column
+    // ids when it imports that table. Here in phase 4, while importing the vector index, we fix the
+    // column id in vector_idx_options, if necessary, in both the index's and the indexed table's
+    // metadata.
+    //
+    // We do not update vector_idx_options.id here: the master currently ignores it, and the tserver
+    // receives the snapshotted id in the snapshot's tablet metadata. There is no mechanism for a
+    // tserver to overwrite vector_idx_options.id once it is set.
+    //
+    // Do not bump either schema version. The tablets do not need this rewrite: their copy comes
+    // from the superblock merge.
+    if (meta.has_index_info() && meta.index_info().has_vector_idx_options()) {
+      const auto source_column_id = meta.index_info().vector_idx_options().column_id();
+      TableId indexed_table_id;
+      {
+        auto l = table->LockForWrite();
+        if (l->pb.has_index_info() && l->pb.index_info().has_vector_idx_options()) {
+          indexed_table_id = l->pb.index_info().indexed_table_id();
+          auto* options = l.mutable_data()->pb.mutable_index_info()->mutable_vector_idx_options();
+          if (options->column_id() != source_column_id) {
+            LOG_WITH_FUNC(INFO) << "Restoring vector index column id for " << table->ToString()
+                                << " from " << options->column_id() << " to " << source_column_id;
+            options->set_column_id(source_column_id);
+            RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+            l.Commit();
+          }
+        }
+      }
+      if (!indexed_table_id.empty()) {
+        auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
+        auto l = indexed_table->LockForWrite();
+        bool updated = false;
+        for (auto& index_info : *l.mutable_data()->pb.mutable_indexes()) {
+          if (index_info.table_id() == table->id() && index_info.has_vector_idx_options() &&
+              index_info.vector_idx_options().column_id() != source_column_id) {
+            index_info.mutable_vector_idx_options()->set_column_id(source_column_id);
+            updated = true;
+          }
+        }
+        if (updated) {
+          RETURN_NOT_OK(sys_catalog_->Upsert(epoch, indexed_table));
+          l.Commit();
+        }
+      }
     }
 
     // Set missing values for tables that were created with a default value. ysql_dump will not

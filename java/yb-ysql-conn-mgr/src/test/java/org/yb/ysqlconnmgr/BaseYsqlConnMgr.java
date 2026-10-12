@@ -63,10 +63,29 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
-  private static boolean ysql_conn_mgr_enable_prep_stmt_close = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
+
+  protected static final Map<String, String> NO_WARMUP_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+        put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+      }});
+
+  protected static final Map<String, String> ROUND_ROBIN_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "round_robin");
+        put("ysql_conn_mgr_enable_multi_route_pool", "true");
+        put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+      }});
+
+  protected static final Map<String, String> SINGLE_BACKEND_FLAGS =
+      Collections.unmodifiableMap(new HashMap<String, String>() {{
+        put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+        put("ysql_conn_mgr_max_conns_per_db", "1");
+        put("ysql_conn_mgr_enable_multi_route_pool", "false");
+      }});
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -85,8 +104,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
     builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
       Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
-    builder.addCommonTServerFlag("ysql_conn_mgr_enable_prep_stmt_close",
-      Boolean.toString(ysql_conn_mgr_enable_prep_stmt_close));
   }
 
   @Override
@@ -105,6 +122,10 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected ConnectionBuilder getConnectionBuilder() {
     return new ConnectionBuilder(miniCluster).withUser(DEFAULT_PG_USER);
+  }
+
+  protected WireConn.Builder rawConnBuilder() {
+    return WireConn.builder(miniCluster);
   }
 
   protected void disableWarmupRandomMode(MiniYBClusterBuilder builder) {
@@ -177,9 +198,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void modifyExtendedQueryProtocolAndRestartCluster(
       boolean optimized_extended_query_protocol) throws Exception {
     ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
-    // ysql_conn_mgr_deallocate_prepared_statements can only be enabled if
-    // optimized_extended_query_protocol is enabled.
-    ysql_conn_mgr_enable_prep_stmt_close = optimized_extended_query_protocol;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
@@ -722,15 +740,25 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         + "  then echo \"$pid\"; exit 0; fi; "
         + "done; "
         + "exit 1";
-    Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
-    try (BufferedReader reader =
-             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-      String line = reader.readLine();
-      if (line == null || line.trim().isEmpty()) {
+    // After a cluster restart the odyssey process can be up (visible to pgrep)
+    // before it has finished binding its listening socket, so a single ss pass
+    // may miss it. Poll until the socket becomes visible rather than failing on
+    // the first miss.
+    final long deadlineMs = System.currentTimeMillis() + 30000;
+    for (;;) {
+      Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
+      try (BufferedReader reader =
+               new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+        String line = reader.readLine();
+        if (line != null && !line.trim().isEmpty()) {
+          return Integer.parseInt(line.trim());
+        }
+      }
+      if (System.currentTimeMillis() >= deadlineMs) {
         throw new RuntimeException(
             "Could not find Odyssey process listening on host " + host);
       }
-      return Integer.parseInt(line.trim());
+      Thread.sleep(200);
     }
   }
 }

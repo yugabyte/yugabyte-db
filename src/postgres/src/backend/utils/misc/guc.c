@@ -121,7 +121,7 @@
 #include "catalog/index.h"
 #include "commands/copy.h"
 #include "common/ip.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
@@ -186,8 +186,8 @@ bool		yb_conn_mgr_sighup_had_backend_guc_change = false;
  * Written by Odyssey on every client attach via the 'G' packet; read back
  * by pg_stat_activity through the PgBackendStatus shared memory entry.
  */
-char	   *yb_conn_mgr_client_addr;
-int			yb_conn_mgr_client_port;
+char	   *yb_ycm_internal_client_addr;
+int			yb_ycm_internal_client_port;
 char	   *yb_conn_mgr_client_hostname;
 
 static int	GUC_check_errcode_value;
@@ -880,7 +880,9 @@ static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
+static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
+static bool yb_conn_mgr_selective_deallocate;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -3245,7 +3247,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		/* YB: Not for general use */
-		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, UNGROUPED,
+		{YB_YCM_IS_CLIENT_YSQLCONNMGR, PGC_BACKEND, UNGROUPED,
 			gettext_noop("Identifies that connection is created by "
 						 "Ysql Connection Manager."),
 			NULL
@@ -3408,7 +3410,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		/* YB: Not for general use */
-		{"yb_use_tserver_key_auth", PGC_BACKEND, UNGROUPED,
+		{YB_YCM_USE_TSERVER_KEY_AUTH, PGC_BACKEND, UNGROUPED,
 			gettext_noop("If set, the client connection will be authenticated via "
 						 "'yb-tserver-key' auth"),
 			NULL,
@@ -4032,7 +4034,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_conn_mgr_selective_deallocate", PGC_SIGHUP, CUSTOM_OPTIONS,
-			gettext_noop("Enables connection-manager-aware DEALLOCATE behavior."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -6031,6 +6033,31 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_ddl_wait_for_master_prefetch_drain_ms", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum time a DDL waits for the master to work through the catalog "
+						 "prefetches caused by the previous catalog version bump, before "
+						 "bumping the version again."),
+			gettext_noop("Each bump sends every tserver to the master leader for a fresh catalog "
+						 "prefetch, and a bump before the previous wave drains adds to it rather "
+						 "than replacing it. Spacing bumps out trades latency in this session for "
+						 "load on the leader. The wait runs up to twice this long while the "
+						 "leader is turning away prefetches that are already under way, since "
+						 "adding to that discards work it has started. This is a deadline, not "
+						 "an expected wait: a leader that is keeping up reports no load and "
+						 "nothing waits at all. A leader that stays loaded is the other end: "
+						 "every transaction pays the full deadline, so a long migration runs at "
+						 "one catalog version bump per deadline. The wait counts against "
+						 "statement_timeout. On a leader that is already loaded, the DDL itself "
+						 "would often reach that timeout anyway. 0 disables the wait. The DDL "
+						 "proceeds when the time is up whether or not the leader has drained."),
+			GUC_UNIT_MS
+		},
+		&yb_ddl_wait_for_master_prefetch_drain_ms,
+		30000, 0, 86400000,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_max_num_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Max number of invalidation messages supported for incremental "
 						 "catalog cache refresh."),
@@ -6053,6 +6080,21 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_log_heap_snapshot_on_exit_threshold,
 		-1,
+		-1,
+		INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_startup_free_memory_release_threshold", PGC_SIGHUP, RESOURCES_MEM,
+			gettext_noop("When a backend finishes connection startup, return "
+						 "the free memory held by TCMalloc to the operating "
+						 "system if it is at least this amount."),
+			gettext_noop("0 (the default) always releases. -1 disables the release."),
+			GUC_UNIT_KB
+		},
+		&yb_startup_free_memory_release_threshold,
+		0,
 		-1,
 		INT_MAX,
 		NULL, NULL, NULL
@@ -6146,13 +6188,13 @@ static struct config_int ConfigureNamesInt[] =
 	 * client attach.
 	 */
 	{
-		{"yb_conn_mgr_client_port", PGC_USERSET, UNGROUPED,
+		{YB_YCM_CLIENT_PORT, PGC_USERSET, UNGROUPED,
 			gettext_noop("TCP port of the logical client connected through "
 						 "YSQL Connection Manager."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
-		&yb_conn_mgr_client_port,
+		&yb_ycm_internal_client_port,
 		-1, -1, 65535,
 		check_yb_conn_mgr_client_port, assign_yb_conn_mgr_client_port, NULL
 	},
@@ -7334,13 +7376,13 @@ static struct config_string ConfigureNamesString[] =
 	 * client attach.
 	 */
 	{
-		{"yb_conn_mgr_client_addr", PGC_USERSET, UNGROUPED,
+		{YB_YCM_CLIENT_ADDR, PGC_USERSET, UNGROUPED,
 			gettext_noop("IP address of the logical client connected through "
 						 "YSQL Connection Manager."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
-		&yb_conn_mgr_client_addr,
+		&yb_ycm_internal_client_addr,
 		"",
 		check_yb_conn_mgr_client_addr, assign_yb_conn_mgr_client_addr, NULL
 	},
@@ -7474,6 +7516,22 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		yb_check_neg_catcache_ids,
 		yb_set_neg_catcache_ids, NULL
+	},
+
+	{
+		{"yb_test_catalog_preload_cache_list", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Catalog caches to fill when preloading the catalog."),
+			gettext_noop("A comma separated list of catalogs, catalog caches, or "
+						 "indexes of catalog caches. If set, "
+						 "ysql_catalog_preload_additional_tables and "
+						 "ysql_catalog_preload_additional_table_list are "
+						 "ignored for prefetch and prefill."),
+			GUC_LIST_INPUT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_catalog_preload_cache_list_string,
+		"",
+		yb_check_test_catalog_preload_cache_list,
+		yb_assign_test_catalog_preload_cache_list, NULL
 	},
 
 	{
@@ -8087,6 +8145,8 @@ static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
 	"yb_max_saop_merge_streams", "yb_max_merge_scan_streams",
+	"yb_is_client_ysqlconnmgr", YB_YCM_IS_CLIENT_YSQLCONNMGR,
+	"yb_use_tserver_key_auth", YB_YCM_USE_TSERVER_KEY_AUTH,
 	NULL
 };
 
@@ -16690,12 +16750,12 @@ check_yb_conn_mgr_client_addr(char **newval, void **extra, GucSource source)
 	/*
 	 * Parallel workers are background processes and don't have any client_addr.
 	 * Postgres keeps it NULL so does connection manager too.
-	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_addr,
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_addr,
 	 * therefore explicitly check for parallel workers.
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
 	{
-		GUC_check_errmsg("yb_conn_mgr_client_addr can only be set by "
+		GUC_check_errmsg("yb_ycm_internal_client_addr can only be set by "
 						 "YSQL Connection Manager");
 		return false;
 	}
@@ -16765,7 +16825,7 @@ check_yb_conn_mgr_client_hostname(char **newval, void **extra, GucSource source)
 	/*
 	 * Parallel workers are background processes and don't have any client_port.
 	 * Postgres keeps it NULL so does connection manager too.
-	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_port,
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_port,
 	 * therefore explicitly check for parallel workers.
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
@@ -16805,7 +16865,7 @@ check_yb_conn_mgr_client_port(int *newval, void **extra, GucSource source)
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
 	{
-		GUC_check_errmsg("yb_conn_mgr_client_port can only be set by "
+		GUC_check_errmsg("yb_ycm_internal_client_port can only be set by "
 						 "YSQL Connection Manager");
 		return false;
 	}

@@ -2223,6 +2223,36 @@ TEST_F(PgCatalogVersionTest, CreateOrReplaceView) {
   ASSERT_EQ(result, expected_result2);
 }
 
+// A security_invoker view built by the relcache preload must check its base
+// tables as the invoking user, not the view owner.
+TEST_F(PgCatalogVersionTest, SecurityInvokerViewAfterRelCachePreload) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Execute("CREATE ROLE reader LOGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE secret_t (id int PRIMARY KEY, s text)"));
+  ASSERT_OK(conn.Execute("INSERT INTO secret_t VALUES (1, 'secret')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE VIEW v_inv WITH (security_invoker = true) AS SELECT * FROM secret_t"));
+  ASSERT_OK(conn.Execute("GRANT SELECT ON v_inv TO reader"));
+
+  const auto check_denied = [](PGConn& reader_conn) {
+    ASSERT_NOK_STR_CONTAINS(
+        reader_conn.Fetch("SELECT * FROM v_inv"), "permission denied for table secret_t");
+  };
+
+  auto reader_conn = ASSERT_RESULT(ConnectToDBAsUser(kYugabyteDatabase, "reader"));
+  ASSERT_NO_FATALS(check_denied(reader_conn));
+
+  // A breaking catalog version bump makes the reader's backend do a full
+  // catalog cache refresh, which rebuilds v_inv through the preload path.
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn));
+  WaitForCatalogVersionToPropagate();
+  ASSERT_NO_FATALS(check_denied(reader_conn));
+
+  RestartClusterWithDBCatalogVersionMode({"--ysql_catalog_preload_additional_tables=true"});
+  reader_conn = ASSERT_RESULT(ConnectToDBAsUser(kYugabyteDatabase, "reader"));
+  ASSERT_NO_FATALS(check_denied(reader_conn));
+}
+
 // This test does sanity check that invalidation messages are portable
 // across nodes and they are stable.
 TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {

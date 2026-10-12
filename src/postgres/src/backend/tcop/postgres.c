@@ -88,6 +88,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
 #include "commands/variable.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/spi.h"
 #include "libpq/auth.h"
 #include "libpq/hba.h"
@@ -457,8 +458,7 @@ SocketBackend(StringInfo inBuf)
 			ignore_till_sync = false;
 			break;
 
-		case 'n':				/* YB: no-op but return ParseComplete */
-		case 'p':				/* YB: parse without ParseComplete */
+		case 'p':				/* YB: YbParse */
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -527,6 +527,16 @@ SocketBackend(StringInfo inBuf)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d", qtype)));
+			break;
+
+			/* YB: YbThrowError packet */
+		case 'x':
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			doing_extended_query_message = true;
 			break;
 
 		default:
@@ -1544,6 +1554,8 @@ exec_simple_query(const char *query_string)
 		/*
 		 * Start the portal.  No parameters here.
 		 */
+		/* YB: the execute span covers PortalStart (ExecutorStart) as well as PortalRun. */
+		YB_DIST_TRACE_START_SPAN("execute");
 		PortalStart(portal, NULL, 0, InvalidSnapshot);
 
 		/*
@@ -1598,6 +1610,7 @@ exec_simple_query(const char *query_string)
 						 receiver,
 						 receiver,
 						 &qc);
+		YB_DIST_TRACE_END_SPAN();
 
 		/*
 		 * YB: The receiver is allocated in the MessageContext and needs to
@@ -1717,6 +1730,16 @@ exec_simple_query(const char *query_string)
 	debug_query_string = NULL;
 }
 
+static void
+yb_send_yb_parse_complete(const char *yb_echo, int yb_echo_len)
+{
+	StringInfoData buf;
+
+	pq_beginmessage(&buf, '6');
+	pq_sendbytes(&buf, yb_echo, yb_echo_len);
+	pq_endmessage(&buf);
+}
+
 /*
  * exec_parse_message
  *
@@ -1728,7 +1751,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 				   Oid *paramTypes, /* parameter types */
 				   int numParams,	/* number of parameters */
 				   CommandDest yb_output_dest, /* where to send output */
-				   char yb_firstchar) /* 'p' or 'n' or 'P' */
+				   const char *yb_echo,
+				   int yb_echo_len)
 {
 	MemoryContext unnamed_stmt_context = NULL;
 	MemoryContext oldcontext;
@@ -1950,21 +1974,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (yb_output_dest == DestRemote)
 	{
 		if (YbIsClientYsqlConnMgr())
-		{
-			if (yb_firstchar == 'n')
-				pq_puttextmessage('6', stmt_name);
-			else if (yb_firstchar == 'p')
-				pq_putemptymessage('7');
-			else if (yb_firstchar == 'P')
-				pq_putemptymessage('1');
-			else
-			{
-				ereport(ERROR,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("unexpected message type %c for Parse sent by Connection Manager",
-							yb_firstchar)));
-			}
-		}
+			yb_send_yb_parse_complete(yb_echo, yb_echo_len);
 		else
 			pq_putemptymessage('1');
 	}
@@ -2663,6 +2673,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
 
+	YB_DIST_TRACE_START_SPAN("execute");
 	completed = PortalRun(portal,
 						  max_rows,
 						  true, /* always top level */
@@ -2670,6 +2681,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 						  receiver,
 						  receiver,
 						  &qc);
+	YB_DIST_TRACE_END_SPAN();
 
 	receiver->rDestroy(receiver);
 
@@ -6525,6 +6537,8 @@ PostgresMain(const char *dbname, const char *username)
 		proc_exit(0);
 	}
 
+	YbReleaseFreeMemoryAfterStartup();
+
 	/*
 	 * Also set up handler to log session end; we have to wait till now to be
 	 * sure Log_disconnections has its final value.
@@ -7020,6 +7034,13 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					const char *query_string;
 
+					/*
+					 * YB: Send YbQueryAck packet to ConnMgr so it can keep
+					 * track of unnamed prepared statement deallocation
+					 */
+					if (YbIsClientYsqlConnMgr() && whereToSendOutput == DestRemote)
+						pq_putemptymessage('8');
+
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
@@ -7092,9 +7113,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'n':			/* YB: Force Parse, return YBForceParseComplete */
-				yb_switch_fallthrough();
-			case 'p':			/* YB: parse without ParseComplete */
+			case 'p':			/* YB: YbParse */
 				if (!YbIsClientYsqlConnMgr())
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -7108,33 +7127,55 @@ PostgresMain(const char *dbname, const char *username)
 					int			numParams;
 					Oid		   *paramTypes = NULL;
 
+					/* YB: Extra info passed in YbParse packet */
+					int			yb_parse_type = -1;
+					const char *yb_echo = NULL;
+					int			yb_echo_len = 0;
+
 					forbidden_in_wal_sender(firstchar);
 
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
-					/* YB: The stmt_name is read here for all of 'n'/'p'/'P'. */
+					/* YB: Get info from YbParse packet */
+					if (firstchar == 'p')
+					{
+						yb_parse_type = pq_getmsgbyte(&input_message);
+						yb_echo = input_message.data;
+						yb_echo_len = input_message.len;
+					}
+					else if (YbIsClientYsqlConnMgr())
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								 errmsg("invalid frontend message type %d",
+										firstchar)));
+
+					/* YB: The stmt_name is read here for both 'p' and 'P'. */
 					stmt_name = pq_getmsgstring(&input_message);
 
-					if (firstchar == 'n')
+					/*
+					 * YB: Force and Redeploy parse types don't throw an error
+					 * if prepared statement already exists. Also, ForceParse
+					 * will also drop the prepared statement if invalid
+					 */
+					if (stmt_name[0] != '\0' &&
+						(yb_parse_type == YB_PARSE_FORCE ||
+						 yb_parse_type == YB_PARSE_REDEPLOY))
 					{
-						/*
-						 * YB: If the prepared statement already exists on the backend,
-						 * parsing is a no-op: return YBForceParseComplete and skip re-parsing.
-						 * Otherwise fall through to (re-)create it and return
-						 * YBForceParseComplete.
-						 */
+						if (yb_parse_type == YB_PARSE_FORCE)
+						{
+							yb_start_xact_command_internal(false /* yb_skip_read_committed_internal_savepoint */ );
+							YbDropProtoPrepStmtIfInvalid(FetchPreparedStatement(stmt_name, false));
+						}
+
 						if (FetchPreparedStatement(stmt_name, false) != NULL)
 						{
 							if (whereToSendOutput == DestRemote)
-							{
-								pq_puttextmessage('6', stmt_name);
-								pq_flush();
-							}
+								yb_send_yb_parse_complete(yb_echo, yb_echo_len);
 							break;
 						}
 						elog(DEBUG1, "prepared statement \"%s\" does not exist, creating it",
-							stmt_name);
+							 stmt_name);
 					}
 
 					query_string = pq_getmsgstring(&input_message);
@@ -7145,6 +7186,12 @@ PostgresMain(const char *dbname, const char *username)
 						for (int i = 0; i < numParams; i++)
 							paramTypes[i] = pq_getmsgint(&input_message, 4);
 					}
+					/*
+					 * YB: Discard orig_name sent by ConnMgr in YbParse packet.
+					 * This is echo'd back to ConnMgr through yb_echo
+					 */
+					if (firstchar == 'p')
+						(void) pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
 					MemoryContext oldcontext = CurrentMemoryContext;
@@ -7154,14 +7201,32 @@ PostgresMain(const char *dbname, const char *username)
 						exec_parse_message(query_string, stmt_name,
 										   paramTypes, numParams,
 										   whereToSendOutput,
-										   firstchar); /* YB: from
-																 * yb_switch_fallthrough() */
+										   yb_echo, yb_echo_len);
 					}
 					PG_CATCH();
 					{
 						/* Get error data */
 						ErrorData  *edata;
 						MemoryContext errorcontext = MemoryContextSwitchTo(oldcontext);
+
+						/*
+						 * YB: Tell ConnMgr before anything below can throw
+						 * again: yb_is_dml_command() re-parses query_string,
+						 * so a syntax error would be raised a second time and
+						 * skip the rest of this block.
+						 */
+						if (YbIsClientYsqlConnMgr() &&
+							whereToSendOutput == DestRemote &&
+							yb_echo != NULL && stmt_name[0] == '\0')
+						{
+							StringInfoData yb_buf;
+
+							pq_beginmessage(&yb_buf, '6');
+							pq_sendbyte(&yb_buf, YB_UNNAMED_PARSE_FAILED);
+							pq_sendbytes(&yb_buf, yb_echo + 1, yb_echo_len - 1);
+							pq_endmessage(&yb_buf);
+							pq_flush();
+						}
 
 						edata = CopyErrorData();
 
@@ -7176,17 +7241,6 @@ PostgresMain(const char *dbname, const char *username)
 													  yb_is_dml_command(query_string),
 													  &need_retry);
 						MemoryContextSwitchTo(errorcontext);
-						/*
-						 * YB: Report parse error with the prepared statement name to connection
-						 * manager. This is done so that connection manager can evict the entry
-						 * from the server hashmap as parse has failed. Conn mgr does not record
-						 * any entry for unnamed prepared statement in it's server hashmap.
-						 */
-						if (YbIsClientYsqlConnMgr() && stmt_name[0] != '\0')
-						{
-							pq_puttextmessage('4', stmt_name);
-							pq_flush();
-						}
 						ThrowErrorData(edata);
 
 					}
@@ -7310,7 +7364,8 @@ PostgresMain(const char *dbname, const char *username)
 												   NULL /* param_types */ ,
 												   0 /* num_params */ ,
 												   DestNone,
-												   'P');
+												   NULL /* yb_echo */ ,
+												   0 /* yb_echo_len */ );
 
 								/* 2. Redo the Bind step */
 								Portal		portal;
@@ -7430,17 +7485,7 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						case 'S':
 							if (close_target[0] != '\0')
-							{
-								if (YbIsClientYsqlConnMgr())
-								{
-									/*
-									 * YB: Start a transaction, if not already done, to allow catalog
-									 * cache lookup in YbIsCachedQueryValid()
-									 */
-									yb_start_xact_command_internal(false /* yb_skip_read_committed_internal_savepoint */ );
-								}
-								DropPreparedStatement(close_target, false, YbIsClientYsqlConnMgr());
-							}
+								DropPreparedStatement(close_target, false);
 							else
 							{
 								/* special-case the unnamed statement */
@@ -7472,19 +7517,10 @@ PostgresMain(const char *dbname, const char *username)
 											 errmsg("ForceClose of unnamed prep statement is not supported")));
 
 								/*
-								 * Since this is force close, we disable
-								 * selective deallocation
-								 */
-								bool		yb_conn_mgr_selective_deallocate_saved;
-
-								yb_conn_mgr_selective_deallocate_saved = yb_conn_mgr_selective_deallocate;
-								yb_conn_mgr_selective_deallocate = false;
-								/*
 								 * YB: Force Close does not access catalog cache and hence starting
 								 * a transaction is not required here.
 								 */
-								DropPreparedStatement(close_target, false, false);
-								yb_conn_mgr_selective_deallocate = yb_conn_mgr_selective_deallocate_saved;
+								YbForceDropPreparedStatement(FetchPreparedStatement(close_target, false));
 
 								yb_skip_close_complete = true;
 								break;
@@ -7896,6 +7932,42 @@ PostgresMain(const char *dbname, const char *username)
 									firstchar)));
 				}
 				break;
+
+			case 'x':			/* YB: YbThrowError from ConnMgr */
+				{
+					/*
+					 * This packet is used by ConnMgr to send error to client in
+					 * the correct place in stream
+					 */
+					const char *yb_sqlstate;
+					const char *yb_message;
+
+					if (!YbIsClientYsqlConnMgr())
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("invalid frontend message type %d",
+											   firstchar)));
+
+					yb_sqlstate = pq_getmsgstring(&input_message);
+					yb_message = pq_getmsgstring(&input_message);
+					pq_getmsgend(&input_message);
+
+					if (strlen(yb_sqlstate) != 5)
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+										errmsg("invalid sqlstate \"%s\" in "
+											   "YbThrowError message",
+											   yb_sqlstate)));
+
+					ereport(ERROR,
+							(errcode(MAKE_SQLSTATE(yb_sqlstate[0], yb_sqlstate[1],
+												   yb_sqlstate[2], yb_sqlstate[3],
+												   yb_sqlstate[4])),
+							 errmsg("ConnMgr originated error: %s", yb_message)));
+					break;
+
+				}
+
 
 			default:
 				ereport(FATAL,

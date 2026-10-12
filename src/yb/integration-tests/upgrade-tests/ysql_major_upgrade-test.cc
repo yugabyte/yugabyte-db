@@ -2394,4 +2394,30 @@ TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterFailedUpgrade) {
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 }
 
+// Verify that when the yb-master is killed during pg_upgrade, the yb-master that comes back on that
+// node cleans up the temporary socket directory the killed one left behind.
+TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterMasterKilledDuringUpgrade) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  auto* leader = cluster_->GetLeaderMaster();
+  const auto upgrade_port = narrow_cast<uint16_t>(
+      std::stoi(ASSERT_RESULT(cluster_->GetFlag(leader, "ysql_upgrade_postgres_port"))));
+  auto socket_dir = PgDeriveSocketDir(HostPort(leader->bound_rpc_addr().host(), upgrade_port));
+
+  // Kill the leader right before the pg_upgrade binary runs, with the new version postgres up.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_kill_master_before_ysql_pg_upgrade", "true"));
+  ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
+  ASSERT_TRUE(Env::Default()->DirExists(socket_dir))
+      << "Killed master did not leave its socket directory behind: " << socket_dir;
+
+  // Only the restarted master can remove the directory.
+  ASSERT_OK(leader->Restart());
+  ASSERT_FALSE(Env::Default()->DirExists(socket_dir))
+      << "Stale socket directory was not cleaned up: " << socket_dir;
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_kill_master_before_ysql_pg_upgrade", "false"));
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+}
+
 }  // namespace yb

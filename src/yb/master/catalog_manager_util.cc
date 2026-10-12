@@ -82,7 +82,7 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
   return Status::OK();
 }
 
-ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
+Result<ReplicationInfoPB> CatalogManagerUtil::GetTableReplicationInfo(
     const scoped_refptr<const TableInfo>& table,
     const std::shared_ptr<const YsqlTablespaceManager>
         tablespace_manager,
@@ -101,13 +101,11 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
 
   // For non-system tables, return table-level replication info if available.
   if (!table->is_system() && tablespace_manager) {
-    auto result = tablespace_manager->GetTableReplicationInfo(table);
-    if (!result.ok()) {
-      LOG(WARNING) << result.status();
-    } else if (*result) {
+    auto repl_info_opt = VERIFY_RESULT(tablespace_manager->GetTableReplicationInfo(table));
+    if (repl_info_opt) {
       VLOG(3) << "Returning table replication info obtained from pg_tablespace: "
-              << (*result)->ShortDebugString() << " for table " << table->id();
-      return **result;
+              << repl_info_opt->ShortDebugString() << " for table " << table->id();
+      return *repl_info_opt;
     }
   }
 
@@ -142,7 +140,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
     }
 
     const auto replication_info =
-        GetTableReplicationInfo(table, tablespace_manager, cluster_replication_info);
+        VERIFY_RESULT(GetTableReplicationInfo(table, tablespace_manager, cluster_replication_info));
 
     std::unordered_set<std::string> accepting_leader_load;
 
@@ -529,6 +527,13 @@ void CatalogManagerUtil::FillTableInfoPB(
   pb->mutable_schema()->CopyFrom(schema);
   pb->set_schema_version(schema_version);
   pb->mutable_partition_schema()->CopyFrom(partition_schema);
+}
+
+size_t CatalogManagerUtil::GetReplicationFactor(const ReplicationInfoPB& replication_info) {
+  if (replication_info.has_live_replicas()) {
+    return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
+  }
+  return FLAGS_replication_factor;
 }
 
 Result<bool> CMPerTableLoadState::CompareReplicaLoads(

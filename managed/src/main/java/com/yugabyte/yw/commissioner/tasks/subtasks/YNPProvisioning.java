@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +42,12 @@ public class YNPProvisioning extends NodeTaskBase {
     public UUID customerUuid;
     public String nodeAgentInstallDir;
     public boolean isYbPrebuiltImage;
+    // True when the node has YB software present on it.
+    public boolean isSoftwarePresent;
+    // True when the node has DB data present on it.
+    public boolean isDataPresent;
+
+    public Map<String, String> pathToUUIDMapping;
   }
 
   @Override
@@ -68,6 +75,9 @@ public class YNPProvisioning extends NodeTaskBase {
             .universe(universe)
             .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
+            .isSoftwarePresent(taskParams().isSoftwarePresent)
+            .isDataPresent(taskParams().isDataPresent)
+            .pathToUUIDMapping(taskParams().pathToUUIDMapping)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
   }

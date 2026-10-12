@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -1685,8 +1686,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public Cluster getClusterByNodeName(String nodeName) {
-    NodeDetails node =
-        nodeDetailsSet.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
+    NodeDetails node = Util.findByName(nodeDetailsSet, nodeName);
     if (node == null) {
       return null;
     }

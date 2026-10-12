@@ -186,6 +186,8 @@ class PgApiImpl {
   ReplicationInfoSnapshot& replication_info_snapshot() { return replication_info_snapshot_; }
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
+
+  [[nodiscard]] uint32_t GetSharedYsqlCatalogPrefetchLoad() const;
   Result<uint32_t> GetNumberOfDatabases();
   Result<bool> CatalogVersionTableInPerdbMode();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(

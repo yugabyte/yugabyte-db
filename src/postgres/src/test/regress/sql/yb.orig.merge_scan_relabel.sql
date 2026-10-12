@@ -93,3 +93,44 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 :explain2run2
 
 DROP INDEX idx;
+
+--
+-- Index 4: a relabeled expression column held at one value, before the stream
+-- column i2.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+
+\set query 'SELECT i4, n, v, i2 FROM tv_tbl WHERE v = ''1'' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5'
+:explain2run2
+
+\set query 'SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN (''1'', ''1'') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5'
+:explain2run2
+
+\set query 'SELECT i4, n, v, i2 FROM tv_tbl WHERE v = ''1''::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5'
+:explain2run2
+
+\set query 'SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN (''1''::varchar, ''1''::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5'
+:explain2run2
+
+DROP INDEX idx;
+
+--
+-- Index 5: the same as a hash column, which stays a stream key either way and
+-- shows its equality index condition under Merge Cond.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) HASH, i2 ASC, i4 ASC);
+
+\set query 'SELECT i4, n, v, i2 FROM tv_tbl WHERE v = ''1'' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5'
+:explain2run2
+
+\set query 'SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN (''1'', ''1'') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5'
+:explain2run2
+
+\set query 'SELECT i4, n, v, i2 FROM tv_tbl WHERE v = ''1''::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5'
+:explain2run2
+
+\set query 'SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN (''1''::varchar, ''1''::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5'
+:explain2run2
+
+DROP INDEX idx;
