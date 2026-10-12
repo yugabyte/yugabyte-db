@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.CertificateParams.CustomCertInfo;
 import com.yugabyte.yw.forms.NodeAgentForm;
@@ -87,6 +88,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
+  @Mock private PlatformReplicationManager mockReplicationManager;
 
   private CertificateHelper certificateHelper;
 
@@ -135,7 +137,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
             mockPlatformScheduler,
             nodeAgentManager,
             mockNodeAgentClient,
-            mockSwamperHelper);
+            mockSwamperHelper,
+            () -> mockReplicationManager);
     nodeAgentPoller.init();
     nodeAgentHandler.enableConnectionValidation(false);
   }

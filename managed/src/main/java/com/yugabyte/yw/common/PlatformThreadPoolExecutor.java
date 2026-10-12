@@ -56,7 +56,7 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
         maximumPoolSize,
         keepAliveTime,
         unit,
-        new WrappedBlockingQueue<>(queue),
+        maybeWrapBlockingQueue(maximumPoolSize, queue),
         threadFactory);
     super.setRejectedExecutionHandler(
         (runnable, executor) -> {
@@ -88,7 +88,16 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
           new AbortPolicy().rejectedExecution(runnable, executor);
         });
 
-    ((WrappedBlockingQueue<Runnable>) super.getQueue()).setExecutor(this);
+    if (super.getQueue() instanceof WrappedBlockingQueue) {
+      ((WrappedBlockingQueue<Runnable>) super.getQueue()).setExecutor(this);
+    }
+  }
+
+  private static BlockingQueue<Runnable> maybeWrapBlockingQueue(
+      int maxPoolSize, BlockingQueue<Runnable> queue) {
+    // For a single thread executor, the queue does not need to be wrapped because
+    // there is no need to grow the pool size.
+    return maxPoolSize == 1 ? queue : new WrappedBlockingQueue<>(queue);
   }
 
   private static class WrappedBlockingQueue<E> extends ForwardingBlockingQueue<E> {
