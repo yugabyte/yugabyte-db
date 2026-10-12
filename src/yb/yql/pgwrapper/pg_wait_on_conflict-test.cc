@@ -1341,7 +1341,8 @@ void PgWaitQueuesTest::TestParallelUpdatesDetectDeadlock() const {
 // A status tablet leader move discards the deadlock detector's in-memory wait-for edges, and the
 // tservers only re-report them on the next full update (send_wait_for_report_interval_ms, 60s by
 // default). Load balancing right after cluster startup moves those leaders while the first
-// iteration is already waiting, delaying detection past the deadline asserted below.
+// iteration is already waiting, delaying detection past the deadline asserted by both
+// TestParallelUpdatesDetectDeadlock fixtures below.
 class PgWaitQueuesNoLoadBalancingTest : public PgWaitQueuesTest {
  protected:
   void InitFlags() override {
@@ -1355,7 +1356,16 @@ TEST_F_EX(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadloc
   TestParallelUpdatesDetectDeadlock();
 }
 
-TEST_F(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock)) {
+class PgWaitQueuesMaxBatchSize1NoLoadBalancingTest : public PgWaitQueuesMaxBatchSize1Test {
+ protected:
+  void InitFlags() override {
+    PgWaitQueuesMaxBatchSize1Test::InitFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  }
+};
+
+TEST_F_EX(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock),
+          PgWaitQueuesMaxBatchSize1NoLoadBalancingTest) {
   TestParallelUpdatesDetectDeadlock();
 }
 
