@@ -815,18 +815,18 @@ public class KubernetesUtil {
   }
 
   private static boolean isMCSEnabled(UniverseDefinitionTaskParams universeDetails) {
-    UUID providerUUID = Util.getSingleProviderUUID(universeDetails.getPrimaryCluster());
-    Provider provider = Provider.getOrBadRequest(providerUUID);
-    if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
-      List<Region> regions = Region.getByProvider(provider.getUuid());
-      for (Region region : regions) {
-        List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
-        for (AvailabilityZone zone : zones) {
-          if (zone.getDetails().getCloudInfo().getKubernetes() != null
-              && StringUtils.isNotBlank(
-                  zone.getDetails().getCloudInfo().getKubernetes().getKubePodAddressTemplate())) {
-            return true;
-          }
+    if (!Util.isKubernetesBased(universeDetails.getPrimaryCluster())) {
+      return false;
+    }
+    Provider provider = Util.getSingleProvider(universeDetails.getPrimaryCluster());
+    List<Region> regions = Region.getByProvider(provider.getUuid());
+    for (Region region : regions) {
+      List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
+      for (AvailabilityZone zone : zones) {
+        if (zone.getDetails().getCloudInfo().getKubernetes() != null
+            && StringUtils.isNotBlank(
+                zone.getDetails().getCloudInfo().getKubernetes().getKubePodAddressTemplate())) {
+          return true;
         }
       }
     }
