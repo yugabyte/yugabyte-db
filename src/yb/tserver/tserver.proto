@@ -279,9 +279,14 @@ message ReadRequestPB {
   // If this read requires to perform write operations like locking rows, then use async write.
   optional bool use_async_write = 20;
 
-  // OpId of a pending async write on this tablet that the server should verify is present in
-  // its local log before serving the read (see TabletPeer::VerifyAsyncWriteReceived).
-  optional OpIdPB pending_async_write_op_id = 21;
+  // Earliest entry of pending_async_write_op_ids, for servers that predate that field. Also the
+  // only fence sent by clients that predate it.
+  // GHI: #33724 (DEPRECATE_EOL 2.31)
+  optional OpIdPB DEPRECATED_pending_async_write_op_id = 21;
+
+  // Last pending async write of each term, which the server verifies is in its log before serving
+  // the read (see TabletPeer::VerifyAsyncWriteReceived).
+  repeated OpIdPB pending_async_write_op_ids = 22;
 }
 
 message ReadResponsePB {
