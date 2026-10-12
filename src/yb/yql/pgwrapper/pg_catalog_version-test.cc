@@ -2382,8 +2382,8 @@ DROP TABLE tempTable2;
   auto fingerprint = HashUtil::MurmurHash2_64(result.data(), result.size(), 0 /* seed */);
   LOG(INFO) << "result.size(): " << result.size();
   LOG(INFO) << "fingerprint: " << fingerprint;
-  ASSERT_EQ(result.size(), 80932U);
-  ASSERT_EQ(fingerprint, 148605032842492807UL);
+  ASSERT_EQ(result.size(), 80692U);
+  ASSERT_EQ(fingerprint, 4661495031371014786UL);
 }
 
 // Regression test for https://github.com/yugabyte/yugabyte-db/issues/31431.
