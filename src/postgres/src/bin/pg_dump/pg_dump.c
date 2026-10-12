@@ -22762,8 +22762,12 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 {
 	ExtensionInfo *extinfo;
 	PQExpBuffer update_query = createPQExpBuffer();
+	PQExpBuffer conditions = createPQExpBuffer();
 	char	  **extconfigarray = NULL;
+	char	  **extconditionarray = NULL;
 	int			nconfigitems;
+	int			nconditionitems;
+	int			nfound;
 	Oid			tbloid;
 	TableInfo  *tblinfo;
 
@@ -22781,21 +22785,44 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 		if (!parsePGArray(extinfo->extconfig, &extconfigarray, &nconfigitems))
 			pg_fatal("error parsing OIDs of configuration relations "
 					 "of extension with OID %u\n", extinfo->dobj.catId.oid);
+		if (!parsePGArray(extinfo->extcondition, &extconditionarray,
+						  &nconditionitems))
+			pg_fatal("error parsing conditions of configuration relations "
+					 "of extension with OID %u\n", extinfo->dobj.catId.oid);
+		if (nconfigitems != nconditionitems)
+			pg_fatal("mismatched number of configuration relations and "
+					 "conditions of extension with OID %u\n",
+					 extinfo->dobj.catId.oid);
 
+		/*
+		 * extconfig keeps the OID of a configuration relation that an
+		 * extension script dropped without ALTER EXTENSION ... DROP (e.g.
+		 * pg_hint_plan--1.6.3--1.7.0.sql recreates hint_plan.hints). Skip such
+		 * OIDs, as processExtensionTables() does, and keep extcondition
+		 * parallel to extconfig.
+		 */
+		nfound = 0;
+		resetPQExpBuffer(conditions);
 		for (int j = 0; j < nconfigitems; ++j)
 		{
 			tbloid = atooid(extconfigarray[j]);
 			tblinfo = findTableByOid(tbloid);
 			if (!tblinfo)
-				pg_fatal("configuration relation with OID %u of extension with OID %u not found\n",
-						 tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
-			if (j)
+				continue;
+			if (nfound++)
+			{
 				appendPQExpBuffer(update_query, ",");
+				appendPQExpBuffer(conditions, ",");
+			}
 			appendStringLiteralAH(update_query, fmtQualifiedDumpable(tblinfo), fout);
 			appendPQExpBuffer(update_query, "::regclass::oid");
+			appendStringLiteralAH(conditions, extconditionarray[j], fout);
 		}
-		appendPQExpBuffer(update_query,
-						  "]::oid[] WHERE extname = ");
+		appendPQExpBuffer(update_query, "]::oid[]");
+		if (nfound < nconfigitems)
+			appendPQExpBuffer(update_query, ", extcondition = ARRAY[%s]::text[]",
+							  conditions->data);
+		appendPQExpBuffer(update_query, " WHERE extname = ");
 		appendStringLiteralAH(update_query, fmtId(extinfo->dobj.name), fout);
 		appendPQExpBuffer(update_query, ";\n");
 
@@ -22820,7 +22847,10 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 		resetPQExpBuffer(update_query);
 		if (extconfigarray)
 			free(extconfigarray);
+		if (extconditionarray)
+			free(extconditionarray);
 	}
 
 	destroyPQExpBuffer(update_query);
+	destroyPQExpBuffer(conditions);
 }
