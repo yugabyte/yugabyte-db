@@ -666,7 +666,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				tuple_to_stringinfo(ctx->out, tupdesc,
 									change->data.tp.newtuple,
 									false,
-									NULL /* YB_TODO_PG19MERGE: yb_is_omitted */);
+									NULL /* yb_is_omitted */ );
 			break;
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			appendStringInfoString(ctx->out, " UPDATE:");
@@ -676,7 +676,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				tuple_to_stringinfo(ctx->out, tupdesc,
 									change->data.tp.oldtuple,
 									true,
-									NULL /* YB_TODO_PG19MERGE: yb_is_omitted */);
+									NULL /* yb_is_omitted */ );
 				appendStringInfoString(ctx->out, " new-tuple:");
 			}
 
@@ -686,7 +686,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				tuple_to_stringinfo(ctx->out, tupdesc,
 									change->data.tp.newtuple,
 									false,
-									NULL /* YB_TODO_PG19MERGE: yb_is_omitted */);
+									change->data.tp.yb_new_is_omitted);
 			break;
 		case REORDER_BUFFER_CHANGE_DELETE:
 			appendStringInfoString(ctx->out, " DELETE:");
@@ -699,7 +699,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				tuple_to_stringinfo(ctx->out, tupdesc,
 									change->data.tp.oldtuple,
 									true,
-									NULL /* YB_TODO_PG19MERGE: yb_is_omitted */);
+									NULL /* yb_is_omitted */ );
 			break;
 		default:
 			Assert(false);

@@ -69,11 +69,6 @@ typedef enum ReorderBufferChangeType
 struct ReorderBufferTXN;
 
 /*
- * YB_TODO_PG19MERGE: PG removed the struct ReorderBufferTupleBuf that had yb
- * fields yb_is_omitted and yb_is_omitted_size
- */
-
-/*
  * a single 'change', can be an insert (with one tuple), an update (old, new),
  * or a delete (old).
  *
@@ -117,6 +112,18 @@ typedef struct ReorderBufferChange
 			uint64		yb_read_time;
 			uint64		yb_in_txn_limit;
 			char		yb_txn_id[37];	/* UUID string (36) + NUL */
+
+			/*
+			 * Columns of newtuple omitted under REPLICA IDENTITY CHANGE,
+			 * indexed by attno - 1 of the decode-time tupdesc. NULL otherwise.
+			 * Allocated in rb->tup_context and owned by the change. There is
+			 * no old-tuple counterpart: an old tuple is formed only under
+			 * REPLICA IDENTITY FULL, which never omits columns.
+			 * yb_new_is_omitted_natts is its length; it fits in the padding
+			 * after yb_txn_id.
+			 */
+			int16		yb_new_is_omitted_natts;
+			bool	   *yb_new_is_omitted;
 		}			tp;
 
 		/*

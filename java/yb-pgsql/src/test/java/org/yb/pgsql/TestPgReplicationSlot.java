@@ -2648,7 +2648,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
-  // The reorder buffer spills transactions that exceed the configured memory limit.
+  // The reorder buffer spills transactions that exceed the configured memory limit. The UPDATEs
+  // omit a column under REPLICA IDENTITY CHANGE, so this also checks that the omitted-column
+  // information survives the spill to disk and the restore.
   @Test
   public void testReplicationWithSpilledTransaction() throws Exception {
     // Set the reorder buffer memory limit low enough that this transaction spills.
@@ -2680,11 +2682,16 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
       try (Statement stmt = connection.createStatement()) {
         stmt.execute("BEGIN");
-        for (int i = 0; i < numInserts; i++) {
+        for (int i = 0; i < numInserts / 2; i++) {
           stmt.execute(String.format(
               "INSERT INTO t1 VALUES(%s, '%s', true)", i, String.format("text_%d", i)));
         }
         stmt.execute("UPDATE t1 SET b = 'UPDATED_text_1' WHERE a = 1");
+        for (int i = numInserts / 2; i < numInserts; i++) {
+          stmt.execute(String.format(
+              "INSERT INTO t1 VALUES(%s, '%s', true)", i, String.format("text_%d", i)));
+        }
+        stmt.execute("UPDATE t1 SET c = false WHERE a = 2");
         stmt.execute("COMMIT");
       }
 
@@ -2697,13 +2704,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                                        .start();
 
       List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-      // 1 Relation, 1 begin, 5000 insert, 1 update, 1 commit.
-      result.addAll(receiveMessage(stream, 5004));
+      // 1 Relation, 1 begin, 5000 insert, 2 update, 1 commit.
+      result.addAll(receiveMessage(stream, 5005));
 
       List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
         {
-          // Note: 0x138C = 5004 in decimal which is the lsn of the commit record as expected.
-          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138C"), 2));
+          // Note: 0x138D = 5005 in decimal which is the lsn of the commit record as expected.
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138D"), 2));
           add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
               Arrays.asList(
                   PgOutputRelationMessageColumn.CreateForComparison("a", 23),
@@ -2711,7 +2718,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   PgOutputRelationMessageColumn.CreateForComparison("c", 16))));
         }
       };
-      for (int i = 0; i < numInserts; i++) {
+      for (int i = 0; i < numInserts / 2; i++) {
         expectedResult.add(
             PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
                 Arrays.asList(
@@ -2726,8 +2733,23 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue("1"),
                   new PgOutputMessageTupleColumnValue("UPDATED_text_1"),
                   new PgOutputMessageTupleColumnToasted()))));
+      for (int i = numInserts / 2; i < numInserts; i++) {
+        expectedResult.add(
+            PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+                Arrays.asList(
+                    new PgOutputMessageTupleColumnValue(String.format("%d", i)),
+                    new PgOutputMessageTupleColumnValue(String.format("text_%d", i)),
+                    new PgOutputMessageTupleColumnValue("t")))));
+      }
+      expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
+          null,
+          new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("2"),
+                  new PgOutputMessageTupleColumnToasted(),
+                  new PgOutputMessageTupleColumnValue("f")))));
       expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/138C"), LogSequenceNumber.valueOf("0/138D")));
+          LogSequenceNumber.valueOf("0/138D"), LogSequenceNumber.valueOf("0/138E")));
 
       assertEquals(expectedResult, result);
       try (Statement stmt = connection.createStatement();
@@ -2801,120 +2823,160 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
   }
 
+  private static long getSpillTxns(Connection conn, String slotName) throws Exception {
+    try (Statement stmt = conn.createStatement();
+         ResultSet rs = stmt.executeQuery(
+             "SELECT spill_txns FROM pg_stat_replication_slots "
+                 + "WHERE slot_name = '" + slotName + "'")) {
+      assertTrue(rs.next());
+      return rs.getLong("spill_txns");
+    }
+  }
+
   private void testReplicationWithSpilledTransactionAndRestart(boolean differentNode)
       throws Exception {
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("DROP TABLE IF EXISTS t1");
-      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
-      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    // Set the reorder buffer memory limit low enough that Txn2 spills.
+    final String defaultMemoryLimitKb = "4096";
+    final String memoryLimitKb = "512";
+    Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+    for (HostAndPort tServer : tServers) {
+      setServerFlag(tServer, "ysql_yb_reorderbuffer_max_memory_kb", memoryLimitKb);
     }
-    String slotName = "test_with_spilled_txn_restart_different_node";
-    // This must be more than max_changes_in_memory defined in reorderbuffer.c
-    int numInserts = 5000;
 
-    Connection conn =
-        getConnectionBuilder().withTServer(0).replicationConnect();
-    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-
-    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("INSERT INTO t1 VALUES(999999, '999999')");
-
-      stmt.execute("BEGIN");
-      for (int i = 0; i < numInserts; i++) {
-        stmt.execute(
-            String.format("INSERT INTO t1 VALUES(%s, '%s')", i, String.format("text_%d", i)));
+    try {
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("DROP TABLE IF EXISTS t1");
+        stmt.execute("CREATE TABLE t1 (a int primary key, b text, c bool)");
+        // The UPDATE below omits column c, which must survive the spill and the restore after
+        // the restart.
+        stmt.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE");
+        stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
       }
-      stmt.execute("UPDATE t1 SET b = 'UPDATED_text_1' WHERE a = 1");
-      stmt.execute("COMMIT");
-    }
+      String slotName = "test_with_spilled_txn_restart_different_node";
+      // Keep enough rows to exceed the 512 KB reorder buffer memory limit.
+      int numInserts = 5000;
 
-    PGReplicationStream stream = replConnection.replicationStream()
-                                     .logical()
-                                     .withSlotName(slotName)
-                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
-                                     .withSlotOption("proto_version", 1)
-                                     .withSlotOption("publication_names", "pub")
-                                     .start();
+      Connection conn =
+          getConnectionBuilder().withTServer(0).replicationConnect();
+      PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // Txn1: 1 RELATION, 1 BEGIN, 1 INSERT, 1 COMMIT
-    result.addAll(receiveMessage(stream, 4));
+      createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("INSERT INTO t1 VALUES(999999, '999999', true)");
 
-    // Txn2 (partially): 1 BEGIN, 2800 INSERT
-    receiveMessage(stream, 2801);
-
-    // Ack Txn1.
-    // Note that getLastReceiveLSN() will return the LSN of the last record we read using
-    // receiveMessage above which will be 2806.
-    stream.setFlushedLSN(stream.getLastReceiveLSN());
-    stream.forceUpdateStatus();
-    waitForRestartLSN(connection, slotName, 4L);
-    stream.close();
-    conn.close();
-
-    if (differentNode) {
-      // Connect with the other tserver.
-      conn = getConnectionBuilder().withTServer(1).replicationConnect();
-    } else {
-      conn = getConnectionBuilder().withTServer(0).replicationConnect();
-    }
-    replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-
-    stream = replConnection.replicationStream()
-                 .logical()
-                 .withSlotName(slotName)
-                 // Streaming should begin after Txn1.
-                 .withStartPosition(LogSequenceNumber.valueOf(0L))
-                 .withSlotOption("proto_version", 1)
-                 .withSlotOption("publication_names", "pub")
-                 .start();
-
-    // Txn2: 1 BEGIN, 1 RELATION, 5000 INSERT, 1 UPDATE, 1 COMMIT
-    // The whole txn2 will be streamed again since we never received it fully.
-    result.addAll(receiveMessage(stream, 5004));
-
-    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
-      {
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
-            Arrays.asList(
-                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
-                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-            Arrays.asList(
-                new PgOutputMessageTupleColumnValue("999999"),
-                new PgOutputMessageTupleColumnValue("999999")))));
-        add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
-
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138F"), 3));
-        // Relation message gets sent again due to the restart.
-        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
-            Arrays.asList(
-                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
-                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        stmt.execute("BEGIN");
+        for (int i = 0; i < numInserts; i++) {
+          stmt.execute(String.format(
+              "INSERT INTO t1 VALUES(%s, '%s', true)", i, String.format("text_%d", i)));
+        }
+        stmt.execute("UPDATE t1 SET b = 'UPDATED_text_1' WHERE a = 1");
+        stmt.execute("COMMIT");
       }
-    };
-    for (int i = 0; i < numInserts; i++) {
-      expectedResult.add(
-          PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+
+      PGReplicationStream stream = replConnection.replicationStream()
+                                       .logical()
+                                       .withSlotName(slotName)
+                                       .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                       .withSlotOption("proto_version", 1)
+                                       .withSlotOption("publication_names", "pub")
+                                       .start();
+
+      List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+      // Txn1: 1 RELATION, 1 BEGIN, 1 INSERT, 1 COMMIT
+      result.addAll(receiveMessage(stream, 4));
+
+      // Txn2 (partially): 1 BEGIN, 2800 INSERT
+      receiveMessage(stream, 2801);
+
+      // Txn2's commit has been decoded, so it has already spilled. Replication slot stats are
+      // local to each node; the first session ran on tserver 0, as does `connection`.
+      assertEquals(1, getSpillTxns(connection, slotName));
+
+      // Ack Txn1.
+      // Note that getLastReceiveLSN() will return the LSN of the last record we read using
+      // receiveMessage above which will be 2806.
+      stream.setFlushedLSN(stream.getLastReceiveLSN());
+      stream.forceUpdateStatus();
+      waitForRestartLSN(connection, slotName, 4L);
+      stream.close();
+      conn.close();
+
+      int secondSessionTServer = differentNode ? 1 : 0;
+      conn = getConnectionBuilder().withTServer(secondSessionTServer).replicationConnect();
+      replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+      stream = replConnection.replicationStream()
+                   .logical()
+                   .withSlotName(slotName)
+                   // Streaming should begin after Txn1.
+                   .withStartPosition(LogSequenceNumber.valueOf(0L))
+                   .withSlotOption("proto_version", 1)
+                   .withSlotOption("publication_names", "pub")
+                   .start();
+
+      // Txn2: 1 BEGIN, 1 RELATION, 5000 INSERT, 1 UPDATE, 1 COMMIT
+      // The whole txn2 will be streamed again since we never received it fully.
+      result.addAll(receiveMessage(stream, 5004));
+
+      // Txn2 spills again in the second session. On the same node the stats entry of the first
+      // session is reused, so the counts accumulate; a different node starts from zero.
+      try (Connection secondSessionConn =
+               getConnectionBuilder().withTServer(secondSessionTServer).connect()) {
+        assertEquals(differentNode ? 1 : 2, getSpillTxns(secondSessionConn, slotName));
+      }
+
+      List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+        {
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+          add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
               Arrays.asList(
-                  new PgOutputMessageTupleColumnValue(String.format("%d", i)),
-                  new PgOutputMessageTupleColumnValue(String.format("text_%d", i))))));
-    }
-    expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
-        null,
-        new PgOutputMessageTuple((short) 2,
-            Arrays.asList(
-                new PgOutputMessageTupleColumnValue("1"),
-                new PgOutputMessageTupleColumnValue("UPDATED_text_1")))));
-    expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/138F"), LogSequenceNumber.valueOf("0/1390")));
+                  PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                  PgOutputRelationMessageColumn.CreateForComparison("b", 25),
+                  PgOutputRelationMessageColumn.CreateForComparison("c", 16))));
+          add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("999999"),
+                  new PgOutputMessageTupleColumnValue("999999"),
+                  new PgOutputMessageTupleColumnValue("t")))));
+          add(PgOutputCommitMessage.CreateForComparison(
+              LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
 
-    assertEquals(expectedResult, result);
-    stream.close();
-    conn.close();
+          add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138F"), 3));
+          // Relation message gets sent again due to the restart.
+          add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
+              Arrays.asList(
+                  PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                  PgOutputRelationMessageColumn.CreateForComparison("b", 25),
+                  PgOutputRelationMessageColumn.CreateForComparison("c", 16))));
+        }
+      };
+      for (int i = 0; i < numInserts; i++) {
+        expectedResult.add(
+            PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+                Arrays.asList(
+                    new PgOutputMessageTupleColumnValue(String.format("%d", i)),
+                    new PgOutputMessageTupleColumnValue(String.format("text_%d", i)),
+                    new PgOutputMessageTupleColumnValue("t")))));
+      }
+      expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
+          null,
+          new PgOutputMessageTuple((short) 3,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("1"),
+                  new PgOutputMessageTupleColumnValue("UPDATED_text_1"),
+                  new PgOutputMessageTupleColumnToasted()))));
+      expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/138F"), LogSequenceNumber.valueOf("0/1390")));
+
+      assertEquals(expectedResult, result);
+      stream.close();
+      conn.close();
+    } finally {
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "ysql_yb_reorderbuffer_max_memory_kb",
+            defaultMemoryLimitKb);
+      }
+    }
   }
 
   @Test
@@ -4472,10 +4534,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       long total_bytes = r1.getLong("total_bytes");
 
       assertEquals(1, spill_txns);
-      assertEquals(2, spill_count); // ceil(spill_bytes / (ysql_yb_reorderbuffer_max_memory_kb KB))
-      assertEquals(8160000, spill_bytes); // 204*40000
+      assertEquals(3, spill_count); // ceil(spill_bytes / (ysql_yb_reorderbuffer_max_memory_kb KB))
+      assertEquals(8480000, spill_bytes); // 212*40000
       assertEquals(1, total_txns);
-      assertEquals(8160000, total_bytes);
+      assertEquals(8480000, total_bytes);
 
       stmt.execute("INSERT INTO xyz values (40001)");
       Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
@@ -4488,10 +4550,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       total_txns = r1.getLong("total_txns");
       total_bytes = r1.getLong("total_bytes");
       assertEquals(1, spill_txns);
-      assertEquals(2, spill_count);
-      assertEquals(8160000, spill_bytes);
+      assertEquals(3, spill_count);
+      assertEquals(8480000, spill_bytes);
       assertEquals(2, total_txns);
-      assertEquals(8160204, total_bytes); // 204*40000 + 204
+      assertEquals(8480212, total_bytes); // 212*40000 + 212
 
       // Reset the stat values
       stmt.executeQuery(String.format("SELECT pg_stat_reset_replication_slot(NULL)"));
@@ -4575,10 +4637,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       long total_bytes = r1.getLong("total_bytes");
 
       assertEquals(2, spill_txns);
-      assertEquals(4, spill_count);
-      assertEquals(16320000, spill_bytes); // 2 * 204*40000
+      assertEquals(6, spill_count);
+      assertEquals(16960000, spill_bytes); // 2 * 212*40000
       assertEquals(2, total_txns);
-      assertEquals(16320000, total_bytes);
+      assertEquals(16960000, total_bytes);
 
       ResultSet r2 = stmt.executeQuery(
         String.format("SELECT * FROM pg_stat_replication_slots WHERE slot_name='%s'", slotName2)
@@ -4591,10 +4653,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       total_bytes = r2.getLong("total_bytes");
 
       assertEquals(1, spill_txns);
-      assertEquals(2, spill_count);
-      assertEquals(8160000, spill_bytes); // 204*40000
+      assertEquals(3, spill_count);
+      assertEquals(8480000, spill_bytes); // 212*40000
       assertEquals(1, total_txns);
-      assertEquals(8160000, total_bytes);
+      assertEquals(8480000, total_bytes);
     }
     for (PGReplicationStream stream : streams) {
       stream.close();

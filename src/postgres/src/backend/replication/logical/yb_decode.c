@@ -56,14 +56,6 @@ static void YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 									  TupleDesc tupdesc);
 
 /*
- * YB_TODO_PG19MERGE: The is-omitted column optimization (yb_is_omitted) is not
- * yet wired through the reorder buffer on PG19; PG commit 08e6344fd64 removed
- * struct ReorderBufferTupleBuf (which carried YB's yb_is_omitted arrays) and
- * ReorderBufferChange now stores a plain HeapTuple. The decoders below build
- * the HeapTuple but do not forward yb_is_omitted; it stays disabled here and in
- * reorderbuffer.c/pgoutput.c. Only affects yboutput's omitted-vs-NULL handling.
- */
-/*
  * Take every record received from the YB VirtualWAL and perform the actions
  * required to decode it using the output plugin already setup in the logical
  * decoding context.
@@ -267,7 +259,6 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	HeapTuple	before_op_tuple;
 	HeapTuple	after_op_tuple_buf;
 	HeapTuple	before_op_tuple_buf;
-	bool	   *before_op_is_omitted = NULL;
 	bool	   *after_op_is_omitted = NULL;
 	bool		should_handle_omitted_case;
 
@@ -283,7 +274,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	YBLogTupleDescIfRequested(yb_record, tupdesc);
 
 	/*
-	 * Allocate is_omitted arrays before so that we can directly write to it
+	 * Allocate the is_omitted array before so that we can directly write to it
 	 * instead of creating a temporary array and doing a memcpy.
 	 * We assume that columns are omitted by default.
 	 *
@@ -296,10 +287,8 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		YB_REPLICA_IDENTITY_CHANGE;
 	if (should_handle_omitted_case)
 	{
-		before_op_is_omitted = YBAllocateIsOmittedArray(ctx->reorder, nattrs);
 		after_op_is_omitted = YBAllocateIsOmittedArray(ctx->reorder, nattrs);
 		memset(after_op_is_omitted, 1, sizeof(bool) * nattrs);
-		memset(before_op_is_omitted, 1, sizeof(bool) * nattrs);
 	}
 
 	Datum		after_op_datums[nattrs];
@@ -333,10 +322,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 																col->column_name);
 
 		if (should_handle_omitted_case)
-		{
 			after_op_is_omitted[attr_idx] = col->after_op_is_omitted;
-			before_op_is_omitted[attr_idx] = col->before_op_is_omitted;
-		}
 
 		if (!should_handle_omitted_case || !col->after_op_is_omitted)
 		{
@@ -376,11 +362,10 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		pfree(before_op_tuple);
 	}
 	else
-	{
 		before_op_tuple_buf = NULL;
-		if (should_handle_omitted_case && before_op_is_omitted)
-			pfree(before_op_is_omitted);
-	}
+
+	/* See yb_new_is_omitted in reorderbuffer.h. */
+	Assert(!(before_op_tuple_buf && should_handle_omitted_case));
 
 	if (log_min_messages[MyBackendType] <= DEBUG2)
 	{
@@ -398,7 +383,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 			old_tuple_string =
 				YbHeapTupleToStringWithIsOmitted(before_op_tuple_buf,
 												 tupdesc,
-												 before_op_is_omitted);
+												 NULL /* is_omitted */ );
 			elog(DEBUG2,
 				 "yb_decode: before_op heap tuple: %s, after_op heap tuple: %s",
 				 old_tuple_string, new_tuple_string);
@@ -416,6 +401,9 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.oldtuple = before_op_tuple_buf;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
 	YbStoreDmlHistoricalReadContext(change, yb_record);
+	change->data.tp.yb_new_is_omitted = after_op_is_omitted;
+	change->data.tp.yb_new_is_omitted_natts =
+		should_handle_omitted_case ? nattrs : 0;
 
 	change->data.tp.clear_toast_afterwards = true;
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
