@@ -65,10 +65,10 @@ Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hyb
 
 ## Isolation levels
 
-[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../../explore/transactions/isolation-levels/">}}
+[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../transactions/isolation-levels/">}}
 
 {{<tip>}}
-YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/stable/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
+YugabyteDB offers 3 isolation levels - [Serializable](../transactions/isolation-levels/), [Snapshot](../transactions/isolation-levels/) and [Read committed](../transactions/read-committed/) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/stable/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
 {{</tip>}}
 
 ## Leader balancing

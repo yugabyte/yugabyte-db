@@ -20,7 +20,9 @@ Writes still go to the leader. A follower read is stale even when the closest re
 
 For where this pattern fits a multi-region application, see [Follower reads for global applications](../../develop/build-global-apps/follower-reads/). For a walkthrough, see [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/) in Explore.
 
-## Enable follower reads
+## YSQL
+
+### Enable follower reads
 
 A read uses a follower only when both of the following are true:
 
@@ -34,7 +36,7 @@ A read uses a follower only when both of the following are true:
 
 Set `yb_read_from_followers` for the session, or for one transaction with `SET LOCAL`. With `SET LOCAL`, set it before any statement runs in the transaction block.
 
-## Read-only transaction
+### Read-only transaction
 
 Mark the transaction read only in one of these ways:
 
@@ -44,7 +46,7 @@ Mark the transaction read only in one of these ways:
 
 Avoid using `pg_hint_plan` to mark a statement read only. It can work in some cases, but it relies on side effects and has known issues. See [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135).
 
-## Staleness
+### Staleness
 
 [yb_follower_read_staleness_ms](../../reference/configuration/yb-tserver/#yb-follower-read-staleness-ms) sets how far in the past the read runs. The default is 30000 (30 seconds). The read executes at hybrid time of about `now` minus this value. YSQL returns no data newer than this interval, even when a local replica has it, so the result stays consistent. YCQL uses a [looser consistency model](#ycql).
 
@@ -54,10 +56,11 @@ Because the read time is always in the past, the result is stale even when the c
 
 The `consistent_prefix_failed_reads` metric counts reads that a node redirected to the leader.
 
-## When a follower can serve the read
+### When a follower can serve the read
 
-- When the follower's safe time is at least `current_time - staleness`, the follower can serve the read without waiting.
-- When the follower is behind that time, the read is redirected to another replica. Latency then depends on where that replica is.
+When the follower's safe time is at least `current_time - staleness`, the follower can serve the read without waiting.
+
+When the follower is behind that time, the read is redirected to another replica. Latency then depends on where that replica is.
 
 [--ysql_follower_reads_avoid_waiting_for_safe_time](../../reference/configuration/yb-tserver/#ysql-follower-reads-avoid-waiting-for-safe-time) (default `true`) rejects a follower read whose read time is not yet safe on that follower. The read goes to the leader instead of waiting for safe time to catch up.
 
