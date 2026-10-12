@@ -1804,6 +1804,16 @@ ReorderBufferTruncateTXN(ReorderBuffer *rb, ReorderBufferTXN *txn, bool txn_prep
 static bool
 ReorderBufferCheckAndTruncateAbortedTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 {
+	/*
+	 * YB: txn->xid is a synthetic id assigned by the VirtualWAL, not a PG xid,
+	 * so a CLOG lookup returns the status of an unrelated local xid (or fails
+	 * past the end of local CLOG) and can truncate a committed transaction.
+	 * The VirtualWAL only ships committed transactions, so none of them can be
+	 * aborted.
+	 */
+	if (IsYugaByteEnabled())
+		return false;
+
 	/* Quick return for regression tests */
 	if (unlikely(debug_logical_replication_streaming == DEBUG_LOGICAL_REP_STREAMING_IMMEDIATE))
 		return false;
