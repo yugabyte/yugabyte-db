@@ -514,6 +514,8 @@ main(int argc, char **argv)
 	bool		no_schema = false;
 	bool		no_statistics = false;
 
+	bool		yb_with_statistics = false;
+
 	static DumpOptions dopt;
 	static int	no_serializable_deferrable = 0;
 
@@ -609,6 +611,7 @@ main(int argc, char **argv)
 		{"read-time", required_argument, NULL, 26},
 		{"rename-database", required_argument, NULL, 27},
 		{"rename-owner", required_argument, NULL, 28},
+		{"with-statistics", no_argument, NULL, 29},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -895,6 +898,14 @@ main(int argc, char **argv)
 				dopt.yb_rename_owner = pg_strdup(optarg);
 				break;
 
+			case 29:
+				/*
+				 * YB_TODO_PG19MERGE: remove once yb-controller switches to
+				 * --statistics.
+				 */
+				yb_with_statistics = true;
+				break;
+
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -1010,7 +1021,8 @@ main(int argc, char **argv)
 	dopt.dumpSchema = ((dopt.dumpSchema && !data_only && !statistics_only) ||
 					   schema_only) && !no_schema;
 	dopt.dumpStatistics = ((dopt.dumpStatistics && !schema_only && !data_only) ||
-						   (statistics_only || with_statistics)) && !no_statistics;
+						   (statistics_only || with_statistics ||
+							yb_with_statistics)) && !no_statistics;
 
 
 	/*
@@ -1525,6 +1537,7 @@ help(const char *progname)
 			 "                               exists. The ROLE usage statements are skipped if\n"
 			 "                               the ROLE does not exist.\n"
 			 "                               Requires --include-yb-metadata.\n"));
+	printf(_("  --with-statistics            dump the statistics, even with -s/--schema-only\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comment commands\n"));
 	printf(_("  --no-data                    do not dump data\n"));
