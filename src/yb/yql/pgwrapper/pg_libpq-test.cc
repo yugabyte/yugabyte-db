@@ -85,6 +85,7 @@ METRIC_DECLARE_entity(server);
 METRIC_DECLARE_counter(rpc_inbound_calls_created);
 METRIC_DECLARE_counter(rpc_inbound_calls_failed);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_ListSlotEntries);
 
 namespace yb::pgwrapper {
 
@@ -6466,20 +6467,25 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
 }
 
-// pg_stat_replication on a universe that never used CDC (so the cdc_state table does not exist)
-// used to wait for the table to be created, taking yb_client_admin_operation_timeout_sec and
-// holding a tserver RPC worker for that long (#34797).
+// pg_stat_replication must not wait for the cdc_state table when it doesn't exist (#34797).
 TEST_F(PgLibPqTest, PgStatReplicationWithoutCdcStateTable) {
+  auto list_slot_entries_calls = [this] {
+    return pg_ts->GetMetric<int64>(
+        &METRIC_ENTITY_server, "yb.tabletserver",
+        &METRIC_handler_latency_yb_tserver_PgClientService_ListSlotEntries, "total_count");
+  };
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET statement_timeout = '10s'"));
+  const auto initial_calls = ASSERT_RESULT(list_slot_entries_calls());
 
-  // No walsenders: the slot entries are not fetched at all.
+  // No walsenders, so no ListSlotEntries RPC.
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 0);
+  ASSERT_EQ(ASSERT_RESULT(list_slot_entries_calls()), initial_calls);
 
-  // An idle replication connection registers a walsender without creating a slot, so the slot
-  // entries are fetched and ListSlotEntries has to answer without the cdc_state table.
+  // A replication connection without a slot makes ListSlotEntries run without cdc_state.
   auto repl_conn = ASSERT_RESULT(ConnectToDBWithReplication("yugabyte"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_stat_replication")), 1);
+  ASSERT_EQ(ASSERT_RESULT(list_slot_entries_calls()), initial_calls + 1);
 }
 
 // Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of

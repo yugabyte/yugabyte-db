@@ -3959,11 +3959,7 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 				int64_t		lag_metric = -1;
 				int			slotno;
 
-				/*
-				 * Fetch the slot entries only once there is an active walsender
-				 * to report, so that querying pg_stat_replication on a node
-				 * without walsenders does not issue a ListSlotEntries RPC.
-				 */
+				/* Only fetch slot entries if there is an active walsender. */
 				if (!yb_slot_entries_fetched)
 				{
 					YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);

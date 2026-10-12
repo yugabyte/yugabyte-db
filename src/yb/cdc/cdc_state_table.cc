@@ -544,6 +544,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::OpenTable() {
   auto& c = VERIFY_RESULT_REF(client());
   auto cdc_table = std::make_shared<client::TableHandle>();
   RETURN_NOT_OK(cdc_table->Open(kCdcStateYBTableName, &c));
+  table_opened_.store(true, std::memory_order_release);
   return cdc_table;
 }
 
@@ -565,7 +566,6 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
   if (!cdc_table_) {
     RETURN_NOT_OK(WaitForCreateTableToFinishWithCache());
     cdc_table_ = VERIFY_RESULT(OpenTable());
-    table_opened_.store(true, std::memory_order_release);
   }
   return cdc_table_;
 }
@@ -706,8 +706,6 @@ Result<CDCStateTableRange> CDCStateTable::GetTableRangeAsync(
 }
 
 Result<bool> CDCStateTable::TableExists() {
-  // Don't take mutex_ here: GetTable() holds it exclusively while waiting for the table to be
-  // created, which can last until the admin operation timeout.
   if (table_opened_.load(std::memory_order_acquire)) {
     return true;
   }
