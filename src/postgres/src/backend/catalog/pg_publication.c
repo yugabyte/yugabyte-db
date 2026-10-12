@@ -1066,8 +1066,13 @@ GetAllPublicationRelations(Oid pubid, char relkind, bool pubviaroot)
 
 	Assert(!(relkind == RELKIND_SEQUENCE && pubviaroot));
 
-	/* EXCEPT filtering applies only to relations, not sequences */
-	if (relkind == RELKIND_RELATION)
+	/*
+	 * EXCEPT filtering applies only to relations, not sequences. YB passes
+	 * InvalidOid when there is no publication at all (a plugin that streams
+	 * every table, e.g. test_decoding), in which case there is no EXCEPT list
+	 * to look up.
+	 */
+	if (relkind == RELKIND_RELATION && OidIsValid(pubid))
 		exceptlist = GetExcludedPublicationTables(pubid, pubviaroot ?
 												  PUBLICATION_PART_ROOT :
 												  PUBLICATION_PART_LEAF);

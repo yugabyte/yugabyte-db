@@ -1045,11 +1045,12 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 	/*
 	 * YB: auth passthrough runs this a second time on a control backend, which
-	 * the first pass typed YB_YSQL_CONN_MGR_CTRL below.
+	 * the first pass already typed below (YB_YSQL_CONN_MGR_CTRL, or
+	 * B_WAL_SENDER for a replication connection).
 	 */
 	Assert(MyBackendType == B_BACKEND ||
 		   MyBackendType == B_DEAD_END_BACKEND ||
-		   MyBackendType == YB_YSQL_CONN_MGR_CTRL);
+		   YbIsAuthPassthroughInProgress(port));
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
 	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)

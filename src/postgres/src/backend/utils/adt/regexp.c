@@ -99,7 +99,12 @@ typedef struct regexp_matches_ctx
 #endif
 
 /* A parent memory context for regular expressions. */
-static MemoryContext RegexpCacheMemoryContext;
+/*
+ * YB: The compiled-regex array is already thread-local, but a shared parent
+ * is linked into from RE_compile_and_cache on concurrent tserver threads
+ * (MemoryContextSetParent updates the parent's child list).
+ */
+static YB_THREAD_LOCAL MemoryContext RegexpCacheMemoryContext = NULL;
 
 /* this structure describes one cached regular expression */
 typedef struct cached_re_str
@@ -139,6 +144,17 @@ YbFreeReCache(YbcPgThreadLocalRegexpCache *cache)
 
 	for (cached_re_str *re_end = re + num_res; re != re_end; ++re)
 		YbFreeRe(re);
+
+	num_res = 0;
+	/*
+	 * YB: RegexpCacheMemoryContext is per-thread and, on a tserver, not a
+	 * child of TopMemoryContext, so it has to be deleted here.
+	 */
+	if (RegexpCacheMemoryContext != NULL)
+	{
+		MemoryContextDelete(RegexpCacheMemoryContext);
+		RegexpCacheMemoryContext = NULL;
+	}
 }
 
 static YbReCacheInfo
@@ -236,8 +252,12 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 
 	/* Set up the cache memory on first go through. */
 	if (unlikely(RegexpCacheMemoryContext == NULL))
+		/*
+		 * YB: In a tserver this context is per-thread; parenting it under
+		 * TopMemoryContext would race on that context's child list.
+		 */
 		RegexpCacheMemoryContext =
-			AllocSetContextCreate(TopMemoryContext,
+			AllocSetContextCreate(IsMultiThreadedMode() ? NULL : TopMemoryContext, /* YB */
 								  "RegexpCacheMemoryContext",
 								  ALLOCSET_SMALL_SIZES);
 

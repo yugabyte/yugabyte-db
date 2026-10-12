@@ -124,6 +124,7 @@ static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 static void EmitConnectionWarnings(void);
+static void YbEmitAuthPassthroughConnectionWarnings(void);
 
 /* YB functions */
 static void YbPresetDatabaseCollation(HeapTuple tuple);
@@ -1950,6 +1951,8 @@ YbAuthPassthroughSetupGUCAndReport(void)
 	/* Process pg_db_role_setting options */
 	process_settings(dboid, GetSessionUserId());
 
+	YbEmitAuthPassthroughConnectionWarnings();
+
 	BeginReportingGUCOptions();
 }
 
@@ -2196,7 +2199,12 @@ StoreConnectionWarning(char *msg, char *detail)
 	Assert(msg);
 	Assert(detail);
 
-	if (ConnectionWarningsEmitted)
+	/*
+	 * YB: a Connection Manager control backend authenticates a new client
+	 * after its own startup emitted its warnings.
+	 * YbEmitAuthPassthroughConnectionWarnings() sends those.
+	 */
+	if (ConnectionWarningsEmitted && !YbIsAuthPassthroughInProgress(MyProcPort))
 		elog(ERROR, "StoreConnectionWarning() called after EmitConnectionWarnings()");
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
@@ -2234,4 +2242,41 @@ EmitConnectionWarnings(void)
 
 	list_free_deep(ConnectionWarningMessages);
 	list_free_deep(ConnectionWarningDetails);
+	ConnectionWarningMessages = NIL;
+	ConnectionWarningDetails = NIL;
+}
+
+/*
+ * YB: drop warnings queued by an earlier auth passthrough request on this
+ * control backend, e.g. one whose authentication failed.
+ */
+void
+YbResetAuthPassthroughConnectionWarnings(void)
+{
+	list_free_deep(ConnectionWarningMessages);
+	list_free_deep(ConnectionWarningDetails);
+	ConnectionWarningMessages = NIL;
+	ConnectionWarningDetails = NIL;
+}
+
+/*
+ * YB: the auth passthrough counterpart of EmitConnectionWarnings(), sent to
+ * the client that was just authenticated. Unlike EmitConnectionWarnings(),
+ * this runs once per authenticated client.
+ */
+static void
+YbEmitAuthPassthroughConnectionWarnings(void)
+{
+	ListCell   *lc_msg;
+	ListCell   *lc_detail;
+
+	forboth(lc_msg, ConnectionWarningMessages,
+			lc_detail, ConnectionWarningDetails)
+	{
+		ereport(WARNING,
+				(errmsg("%s", (char *) lfirst(lc_msg)),
+				 errdetail("%s", (char *) lfirst(lc_detail))));
+	}
+
+	YbResetAuthPassthroughConnectionWarnings();
 }
