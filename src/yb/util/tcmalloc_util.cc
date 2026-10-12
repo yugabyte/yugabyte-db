@@ -310,8 +310,12 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
 #if YB_GOOGLE_TCMALLOC && defined(__linux__)
 namespace {
 
-// Linux 6.19.0 through 7.0.13 do not rewrite rseq cpu_id_start on every return to user space, which
-// TCMalloc per-CPU caches rely on, so they can crash or corrupt memory there.
+// Linux 6.19.0 through 7.0.13 can crash or corrupt memory with TCMalloc per-CPU caches. Commit
+// 39a167560a61 ("rseq: Optimize event setting", 6.19) stopped updating rseq cpu_id_start after
+// every context switch, before signal delivery and on membarrier(RSEQ), which TCMalloc relies on
+// (google/tcmalloc#292). 7.0.10 restores this ("rseq: Revert to historical performance killing
+// behaviour"), and 7.0.14 fixes arm64, where rseq critical sections were also not aborted
+// ("arm64/entry: Fix arm64-specific rseq brokenness").
 bool KernelBreaksTCMallocRseq(const std::string& kernel_version) {
   int major = 0, minor = 0, patch = 0;
   if (sscanf(kernel_version.c_str(), "%d.%d.%d", &major, &minor, &patch) < 2) {
@@ -338,14 +342,18 @@ std::string UpstreamKernelVersion(const char* kernel_release) {
 
 Status CheckTCMallocPerCpuCaches() {
 #if YB_GOOGLE_TCMALLOC && defined(__linux__)
+  struct utsname uts;
+  std::string kernel_version;
+  bool kernel_breaks_rseq = false;
+  if (uname(&uts) == 0) {
+    kernel_version = UpstreamKernelVersion(uts.release);
+    kernel_breaks_rseq = KernelBreaksTCMallocRseq(kernel_version);
+  } else {
+    LOG(WARNING) << "Failed to get the kernel release: " << ErrnoToString(errno);
+  }
+
   if (::tcmalloc::MallocExtension::PerCpuCachesActive()) {
-    struct utsname uts;
-    if (uname(&uts) != 0) {
-      LOG(WARNING) << "Failed to get the kernel release: " << ErrnoToString(errno);
-      return Status::OK();
-    }
-    const auto kernel_version = UpstreamKernelVersion(uts.release);
-    if (KernelBreaksTCMallocRseq(kernel_version)) {
+    if (kernel_breaks_rseq) {
       const auto message = Format(
           "TCMalloc per-CPU caches are active on Linux $0 (upstream version $1). They can crash "
           "or corrupt memory on Linux 6.19.0 through 7.0.13. Upgrade the kernel to 7.0.14 or "
@@ -359,6 +367,15 @@ Status CheckTCMallocPerCpuCaches() {
     return Status::OK();
   }
 
+  if (kernel_breaks_rseq) {
+    LOG(WARNING) << Format(
+        "TCMalloc per-CPU caches are inactive. Keep them off on Linux $0 (upstream version $1) "
+        "until the kernel is upgraded to 7.0.14 or later: they can crash or corrupt memory on "
+        "Linux 6.19.0 through 7.0.13.",
+        uts.release, kernel_version);
+    return Status::OK();
+  }
+
   // __rseq_size is only exported by glibc 2.35+ (and backports such as RHEL 9's glibc 2.34).
   const auto* glibc_rseq_size =
       static_cast<const unsigned int*>(dlsym(RTLD_DEFAULT, "__rseq_size"));
@@ -367,8 +384,8 @@ Status CheckTCMallocPerCpuCaches() {
                  << "GLIBC_TUNABLES=glibc.pthread.rseq=0 in the environment to enable them.";
 #ifdef __NR_rseq
   } else if (syscall(__NR_rseq, nullptr, 0, 0, 0) == -1 && errno == ENOSYS) {
-    LOG(WARNING) << "TCMalloc per-CPU caches are inactive because the kernel does not support "
-                 << "rseq. They require Linux 4.18 or later.";
+    LOG(WARNING) << "TCMalloc per-CPU caches are inactive because rseq is unavailable (kernel "
+                 << "older than 4.18, built without CONFIG_RSEQ, or blocked by seccomp).";
 #endif
   } else {
     LOG(WARNING) << "TCMalloc per-CPU caches are inactive";
