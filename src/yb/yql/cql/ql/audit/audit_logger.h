@@ -35,6 +35,7 @@ namespace audit {
 YB_STRONGLY_TYPED_BOOL(IsPrepare)
 YB_STRONGLY_TYPED_BOOL(ErrorIsFormatted)
 
+struct AuditFilterSet;
 class Type;
 struct LogEntry;
 
@@ -84,11 +85,6 @@ class AuditLogger {
                            ErrorIsFormatted error_is_formatted);
 
  private:
-  using GflagName = std::string;
-  using GflagStringValue = std::string;
-  using GflagListValue = std::unordered_set<std::string>;
-  using GflagsCache = std::unordered_map<GflagName, std::pair<GflagStringValue, GflagListValue>>;
-
   const QLEnv& ql_env_;
 
   // Currently audited connection, if any.
@@ -99,19 +95,13 @@ class AuditLogger {
 
   boost::uuids::random_generator batch_id_gen_;
 
-  // Cache of parsed gflags, to avoid re-parsing unchanged values.
-  GflagsCache gflags_cache_;
-
-  // Checks whether a given predicate holds on the comma-separated list gflag.
-  // This uses gflag library helper to access a gflag by name, to avoid concurrently accessing
-  // string gflags that may change at runtime.
-  template<class Pred>
-  bool SatisfiesGFlag(const LogEntry& e,
-                      const std::string& gflag_name,
-                      const Pred& predicate);
+  // This logger's copy of the process-wide parsed filter snapshot and the snapshot version it was
+  // taken at. Not shared: an AuditLogger serves one request at a time, so these need no
+  // synchronization. ShouldBeLogged refreshes them when the global version moves.
+  std::shared_ptr<const AuditFilterSet> filters_;
+  uint64_t filters_version_ = 0;
 
   // Determine whether this entry should be logged given current audit configuration.
-  // Note that we reevaluate gflags to allow changing them dynamically.
   bool ShouldBeLogged(const LogEntry& e);
 
   Result<LogEntry> CreateLogEntry(const Type& type,

@@ -13,6 +13,12 @@ export enum QUERY_KEY {
   pageRegisteredUniverses = 'pageRegisteredUniverses'
 }
 
+/** Collection mode picked in the Enable Performance Monitoring dialog. */
+export enum PaRegistrationMode {
+  BASIC = 'BASIC',
+  ADVANCED = 'ADVANCED'
+}
+
 export const AXIOS_INSTANCE = axios.create({ baseURL: ROOT_URL, withCredentials: true });
 
 class ApiService {

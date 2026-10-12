@@ -14,12 +14,20 @@
 #pragma once
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_tserver.h"
 
 #include "yb/tserver/tablet_service.h"
 
+#include "yb/util/metrics_fwd.h"
+
 namespace yb {
 namespace master {
+
+// How close catalog prefetch admission is to refusing work, for the heartbeat to pass on to
+// tservers. Read from wherever admission state lives rather than plumbed through the services,
+// because a process has one master tablet service and the heartbeat service cannot reach it.
+YsqlCatalogPrefetchLoadPB GetYsqlCatalogPrefetchLoad();
 
 // A subset of the TabletService supported by the Master to query specific tables.
 class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
@@ -79,7 +87,20 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
     YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
     tserver::ReadResponseMsg* resp) override;
 
+  // Bounds how many catalog prefetches the leader serves at a time. A fleet-wide event such as a
+  // DDL sends every tserver here at once; without a bound they all queue on the leader's RPC
+  // threads, every one of them gets slower, and the callers time out having accomplished nothing.
+  // Rejecting the excess keeps the leader working at its capacity and moves the waiting to the
+  // callers, which retry under their own backoff policy.
+  Result<std::shared_ptr<void>> AdmitRead(const tserver::ReadRequestMsg& req) override;
+
+  // Resolves master_max_concurrent_ysql_catalog_prefetches from the core count when it is left at
+  // its automatic default.
+  static void AutoInitCatalogPrefetchLimit();
+
   Master *const master_;
+  scoped_refptr<AtomicGauge<int64_t>> ysql_catalog_prefetches_in_progress_;
+  scoped_refptr<Counter> ysql_catalog_prefetch_rejections_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);
 };
 

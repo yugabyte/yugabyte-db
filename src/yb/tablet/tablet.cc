@@ -5043,7 +5043,17 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSplitChildTablet(
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
+  // SplitOperation rejects new WRITE_OPs once the split is pending, but ApplyIntents of
+  // already-replicated commits is not fenced and can still vector-Insert on this parent.
+  // The first flush puts finished applies in the RocksDB snapshot. WaitForFlush then drains
+  // vector tasks those applies already allocated; leftover vectors sit in a new mutable chunk.
   RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSplitChildTabletCreation));
+  // Seal that leftover chunk so CreateCheckpoint can hard-link it. Applies that have not
+  // finished yet are still in intents; children will apply them. Vector-only: RocksDB was
+  // already flushed.
+  RETURN_NOT_OK(Flush(
+      FlushMode::kSync, FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
+      rocksdb::FlushReason::kSplitChildTabletCreation));
 
   auto metadata = VERIFY_RESULT(metadata_->CreateSplitChildMetadata(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));

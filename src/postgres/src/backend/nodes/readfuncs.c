@@ -2328,6 +2328,11 @@ _readYbBatchedNestLoop(void)
 		local_node->hashClauseInfos[i].innerHashAttNo = atoi(token);
 	}
 
+	/* Ignore :innerHashExprs */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+		local_node->hashClauseInfos[i].innerHashExpr = nodeRead(NULL, 0);
+
 	/* Ignore :outerParamExprs */
 	pg_strtok(&length);
 	for (int i = 0; i < local_node->num_hashClauseInfos; i++)

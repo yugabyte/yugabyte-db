@@ -64,6 +64,7 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
 
@@ -220,6 +221,10 @@ Status Master::Init() {
   RETURN_NOT_OK(DbServerBase::Init());
 
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
+
+  WARN_NOT_OK(
+      ysql_manager_impl().CleanupStalePgUpgradeSocketDir(),
+      "Failed to clean up stale pg_upgrade socket directory");
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 

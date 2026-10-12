@@ -1421,6 +1421,10 @@ void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   RelcacheInitConnectionDone(dbname, status);
 }
 
+void TabletServer::SetYsqlCatalogPrefetchLoad(uint32_t load) {
+  shared_object()->SetYsqlCatalogPrefetchLoad(load);
+}
+
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
     std::lock_guard l(lock_);

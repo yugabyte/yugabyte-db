@@ -461,6 +461,14 @@ func (m *InstallNodeAgent) RenderTemplates(
 		return nil, err
 	}
 	if err == nil {
+		if provider.Code != "onprem" {
+			return nil, fmt.Errorf("Provider is not an on-prem provider")
+		}
+		if !provider.Details.SkipProvisioning {
+			return nil, fmt.Errorf(
+				"Provider is configured for sudo provisioning, which is not supported",
+			)
+		}
 		providerYbHomeDir := provider.Details.CloudInfo.Onprem.YbHomeDir
 		if providerYbHomeDir != "" && providerYbHomeDir != values["yb_home_dir"].(string) {
 			return nil, fmt.Errorf(

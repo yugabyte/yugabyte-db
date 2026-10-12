@@ -1353,6 +1353,34 @@ YbShouldPreloadCatcacheLists(void)
 }
 
 /*
+ * Of the caches being preloaded, the one that gets catcache lists built from
+ * the scanned rows, if any: PROCNAMEARGSNSP by function name,
+ * YBCONSTRAINTRELIDTYPIDNAME by conrelid, RULERELNAME by relation and
+ * AMOPOPID by operator.  The lists go into that cache, so they are built only
+ * when it is filled.
+ */
+static CatCache *
+YbGetPreloadListCache(CatCache *cache, CatCache *idx_cache)
+{
+	CatCache   *caches[] = {cache, idx_cache};
+
+	for (int i = 0; i < lengthof(caches); ++i)
+	{
+		if (!caches[i])
+			continue;
+		switch (caches[i]->id)
+		{
+			case PROCNAMEARGSNSP:
+			case YBCONSTRAINTRELIDTYPIDNAME:
+			case RULERELNAME:
+			case AMOPOPID:
+				return caches[i];
+		}
+	}
+	return NULL;
+}
+
+/*
  * In YugaByte mode preload the given cache with data from master.
  * If no index cache is associated with the given cache (most of the time), its id should be -1.
  */
@@ -1374,6 +1402,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	MemoryContext oldcxt = MemoryContextSwitchTo(preload_cxt);
 	CatCache   *cache = SysCache[cache_id];
 	CatCache   *idx_cache = idx_cache_id != -1 ? SysCache[idx_cache_id] : NULL;
+	CatCache   *list_cache = YbGetPreloadListCache(cache, idx_cache);
 	List	   *dest_list = NIL;
 	List	   *list_of_lists = NIL;
 	HeapTuple	ntp;
@@ -1417,14 +1446,15 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		 * so YbShouldPreloadCatcacheLists() returns true and list-keyed
 		 * catcache lookups go through the populated list caches.
 		 */
-		if (cache_id != RULERELNAME && !YbShouldPreloadCatcacheLists())
+		if (!list_cache ||
+			(list_cache->id != RULERELNAME && !YbShouldPreloadCatcacheLists()))
 			continue;
 
 		bool		is_add_to_list_required = true;
 
-		switch (cache_id)
+		switch (list_cache->id)
 		{
-			case PROCOID:
+			case PROCNAMEARGSNSP:
 				{
 					/*
 					 * Special handling for the common case of looking up
@@ -1434,7 +1464,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					 * pg_proc table each time.
 					 */
 					bool		is_null = false;
-					ScanKeyData key = idx_cache->cc_skey[0];
+					ScanKeyData key = list_cache->cc_skey[0];
 					Datum		ndt = heap_getattr(ntp, key.sk_attno, tupdesc, &is_null);
 
 					if (is_null)
@@ -1501,7 +1531,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					}
 					break;
 				}
-			case CONSTROID:
+			case YBCONSTRAINTRELIDTYPIDNAME:
 				{
 					/*
 					 * Add a cache list for YBCONSTRAINTRELIDTYPIDNAME for lookup by conrelid only.
@@ -1523,6 +1553,8 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 					break;
 				}
 			default:
+				/* YbGetPreloadListCache returns only the caches above. */
+				Assert(false);
 				is_add_to_list_required = false;
 				break;
 		}
@@ -1557,26 +1589,10 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	if (list_of_lists)
 	{
 		/* Load up the lists computed above into the catalog cache. */
-		CatCache   *dest_cache = cache;
-
-		switch (cache_id)
-		{
-			case PROCOID:
-			case CONSTROID:
-				Assert(idx_cache);
-				dest_cache = idx_cache;
-				break;
-			case RULERELNAME:
-			case AMOPOPID:
-				break;
-			default:
-				Assert(false);
-				break;
-		}
 		ListCell   *lc;
 
 		foreach(lc, list_of_lists)
-			SetCatCacheList(dest_cache, 1, lfirst(lc));
+			SetCatCacheList(list_cache, 1, lfirst(lc));
 		list_free_deep(list_of_lists);
 	}
 
@@ -2397,6 +2413,12 @@ const char *
 YbGetCatalogCacheIndexName(int cache_id)
 {
 	return yb_cache_index_name_table[cache_id];
+}
+
+const char *
+YbGetCatalogCacheName(int cache_id)
+{
+	return SysCacheName[cache_id];
 }
 
 const char *

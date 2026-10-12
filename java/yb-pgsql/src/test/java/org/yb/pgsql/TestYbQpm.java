@@ -12,6 +12,11 @@
 //
 package org.yb.pgsql;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -1256,6 +1261,57 @@ public class TestYbQpm extends BasePgSQLTest {
         boolean hasHashJoin = nodeTypes.stream()
             .anyMatch(n -> "Hash Join".equals(n.asText()));
         assertTrue(hasHashJoin);
+    }
+  }
+
+  /**
+   * Reading a truncated QPM dump file fails, deletes the file, loads none of its entries, and
+   * leaves no file open, so later commits in the backend do not warn about unclosed files.
+   */
+  @Test
+  public void testYbQpmReadTruncatedDumpFile() throws Exception {
+    final String skip = " /* __YB_STAT_PLANS_SKIP */";
+    try (Statement stmt = connection.createStatement()) {
+      Path dumpFile;
+      try (ResultSet rs = stmt.executeQuery("SHOW data_directory")) {
+        assertTrue(rs.next());
+        dumpFile = Paths.get(rs.getString(1), "pg_stat", "qpm.stat");
+      }
+
+      stmt.execute("CREATE TABLE qpm_truncated (a INT)");
+      stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)" + skip);
+      stmt.execute("INSERT INTO qpm_truncated VALUES (1)");
+      stmt.execute("SELECT a FROM qpm_truncated WHERE a = 1");
+      stmt.execute("SELECT count(*) FROM qpm_truncated");
+      try (ResultSet rs = stmt.executeQuery("SELECT yb_pg_stat_plans_write_file()" + skip)) {
+        assertTrue(rs.next());
+        assertEquals(0, rs.getInt(1));
+      }
+
+      // The dump is a 12-byte header, whose last field is the entry count, followed by
+      // fixed-size entries. Cut it in the middle of the second entry.
+      byte[] dump = Files.readAllBytes(dumpFile);
+      int numEntries = ByteBuffer.wrap(dump, 8, 4).order(ByteOrder.nativeOrder()).getInt();
+      assertGreaterThanOrEqualTo(numEntries, 2);
+      int entrySize = (dump.length - 12) / numEntries;
+      Files.write(dumpFile, Arrays.copyOf(dump, 12 + entrySize + entrySize / 2));
+
+      stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)" + skip);
+      try (ResultSet rs = stmt.executeQuery("SELECT yb_pg_stat_plans_read_file()" + skip)) {
+        assertTrue(rs.next());
+        assertEquals(-1, rs.getInt(1));
+      }
+      assertNull(stmt.getWarnings());
+      assertFalse(Files.exists(dumpFile));
+      assertEquals(0L, getSingleRow(stmt, countStar).getLong(0).longValue());
+      try (ResultSet rs = stmt.executeQuery("SELECT yb_pg_stat_plans_read_file()" + skip)) {
+        assertTrue(rs.next());
+        assertEquals(-1, rs.getInt(1));
+      }
+
+      stmt.execute("SELECT a FROM qpm_truncated WHERE a = 1");
+      assertNull(stmt.getWarnings());
+      assertEquals(1L, getSingleRow(stmt, countStar).getLong(0).longValue());
     }
   }
 

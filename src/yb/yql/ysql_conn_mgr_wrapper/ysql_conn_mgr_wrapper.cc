@@ -14,6 +14,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
@@ -25,6 +27,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+DECLARE_bool(openssl_require_fips);
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
@@ -148,13 +151,10 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_prep_stmt_close, true,
-    "When enabled, the YSQL Connection Manager forwards Close messages to the backend, which "
-    "drops the prepared statement only if its cached plan is invalid or the connection is sticky; "
-    "valid plans on non-sticky connections are retained for reuse across logical connections. "
-    "When disabled, Close messages are handled as a no-op by the connection manager itself "
-    "and never reach the backend, which can cause errors. "
-    "Requires ysql_conn_mgr_optimized_extended_query_protocol to be enabled.");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_prep_stmt_close, "07_2026");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_parse_queue_tracking, "09_2026");
+
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_dealloc_reconciliation, "07_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_deallocate_if_invalid_prep_stmt, "04_2026");
 
@@ -193,24 +193,11 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
     "logs after every ysql_conn_mgr_dump_heap_snapshot_interval number of seconds.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
-    "Enables tracking of in-flight Parse operations in the YSQL Connection Manager. "
-    "This is used so that prepared-statement state tracked on the Connection Manager can be "
-    "reconciled with the backend when errors disrupt the expected packet sequence. When "
-    "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
-    "the backend, which may surface as errors such as 'prepared statement does not exist'.");
-
 DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
     "When enabled, the YSQL Connection Manager stops reading further client packets after "
     "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
     "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
     " can be correctness issues with pipelining.");
-
-DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, enable_dealloc_reconciliation, true,
-    "When enabled, the YSQL Connection Manager tracks prepared statements that have been "
-    "deallocated on the backend in a per-server hashmap and defers evicting them from "
-    "server hashmap till Sync boundary. If set to false, there can be correctness issues "
-    "on sending deallocate and parse for same name of prep stmt within Sync boundary.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
@@ -274,12 +261,6 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 } // namespace
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
-
-DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
-
-DEFINE_validator(ysql_conn_mgr_enable_dealloc_reconciliation,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_wait_for_rfq_on_sync));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -382,6 +363,13 @@ Status YsqlConnMgrWrapper::Start() {
   }
 
   proc_->SetEnv(YSQL_CONN_MGR_WARMUP_DB, FLAGS_ysql_conn_mgr_warmup_db);
+
+  rpc::SetOpenSSLEnv(&*proc_);
+
+  // Conn mgr cannot tell from OPENSSL_CONF alone that FIPS was required, since that variable can
+  // also be inherited from this process's environment, so pass the intent separately. It refuses
+  // to start if the provider did not come up.
+  proc_->SetEnv(YSQL_CONN_MGR_REQUIRE_FIPS, FLAGS_openssl_require_fips ? "true" : "false");
 
 #ifdef THREAD_SANITIZER
   // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.

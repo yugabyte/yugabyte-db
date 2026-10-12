@@ -715,7 +715,6 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	AssertArg(PortalIsValid(portal));
 
 	TRACE_POSTGRESQL_QUERY_EXECUTE_START();
-	YB_DIST_TRACE_START_SPAN("execute");
 
 	/* Initialize empty completion data */
 	if (qc)
@@ -868,7 +867,6 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	if (log_executor_stats && portal->strategy != PORTAL_MULTI_QUERY)
 		ShowUsage("EXECUTOR STATISTICS");
 
-	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_EXECUTE_DONE();
 
 	return result;

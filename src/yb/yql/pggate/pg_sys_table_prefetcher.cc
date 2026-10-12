@@ -211,6 +211,22 @@ void AddTargetColumn(LWPgsqlReadRequestPB* req, const PgColumn& column) {
   }
 }
 
+// Clears the fields that vary between requests that would otherwise produce the same response,
+// so that they do not split the response cache key.
+//
+// catalog_prefetch_kind is deliberately not among them. It does not change the rows that come
+// back, but it does change how the master admits the request, so the two kinds must not share an
+// entry: whichever arrived first would become the one request sent to the master and the other
+// would wait on its answer, and a refresh landing behind a startup-priority request would be held
+// to the lower admission watermark, which is the delay the separate kinds exist to avoid.
+//
+// Nothing collides today in any case. A starting connection runs YbPrefetchRequiredDataImpl,
+// which registers pg_auth_members and pg_db_role_settings on top of what YbPreloadRelCacheImpl
+// asks for, and the auth-phase prefetch registers a smaller set of its own. The relcache-init
+// backend runs YbPrefetchRequiredDataImpl under the refresh kind, but it preloads minimally, so
+// ApplySystemItemsFilter puts a filter on its requests that a starting connection's do not carry.
+// Therefore keeping the kind as part of the key is just being defensive and does not cost response
+// sharing.
 auto TemporaryClearInsignificantFields(LWPgsqlReadRequestPB& req) {
   const auto stmt_id = req.has_stmt_id() ? std::optional(req.stmt_id()) : std::nullopt;
   req.clear_stmt_id();
@@ -399,6 +415,10 @@ class Loader {
     // checks each read's size limit against the whole RPC response. The same limit on every
     // read therefore caps the combined response of the round.
     req.set_size_limit(options_.fetch_size_limit);
+    // Set here rather than in SetupPaging, which also runs for the nested index request: the
+    // master decides admission from the operations in pgsql_batch, so a copy on the index request
+    // would be read by nobody.
+    req.set_catalog_prefetch_kind(static_cast<YsqlCatalogPrefetchKindPB>(options_.kind));
     PgTable target(table);
     auto ordered_columns = OrderColumns(target.columns(), item.fetch_ybctid);
     info.targets.reserve(ordered_columns.size());
@@ -492,7 +512,7 @@ std::string PrefetcherOptions::CachingInfo::ToString() const {
 }
 
 std::string PrefetcherOptions::ToString() const {
-  return YB_STRUCT_TO_STRING(caching_info, fetch_row_limit, fetch_size_limit);
+  return YB_STRUCT_TO_STRING(caching_info, fetch_row_limit, kind, fetch_size_limit);
 }
 
 class PgSysTablePrefetcher::Impl {

@@ -116,6 +116,7 @@
 #include "utils/catcache.h"
 #include "utils/partcache.h"
 #include "utils/relcache.h"
+#include "utils/varlena.h"
 #include "utils/yb_inheritscache.h"
 #include "utils/yb_tuplecache.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
@@ -501,6 +502,9 @@ static OpClassCacheEnt *LookupOpclassInfo(Oid operatorClassOid,
 static void RelationCacheInitFileRemoveInDir(const char *tblspcpath);
 static void YbRelationCacheInitFileRemoveInDir(const char *initfiledir);
 static void unlink_initfile(const char *initfilename, int elevel);
+
+/* YB declarations */
+static bool YbIndexAttHasOptionsProc(Relation indexrel, AttrNumber attnum);
 
 
 /*
@@ -971,6 +975,7 @@ YBRelationBuildRuleLock(Relation relation)
 		Datum		rule_datum;
 		char	   *rule_str;
 		RewriteRule *rule;
+		Oid			check_as_user;
 
 		rule = (RewriteRule *) MemoryContextAlloc(rulescxt,
 												  sizeof(RewriteRule));
@@ -1010,10 +1015,23 @@ YBRelationBuildRuleLock(Relation relation)
 		pfree(rule_str);
 
 		/*
-		 * We want the rule's table references to be checked as though by the
-		 * table owner, not the user referencing the rule.  Therefore, scan
-		 * through the rule's actions and set the checkAsUser field on all
-		 * rtable entries.  We have to look at the qual as well, in case it
+		 * If this is a SELECT rule defining a view, and the view has
+		 * "security_invoker" set, we must perform all permissions checks on
+		 * relations referred to by the rule as the invoking user.
+		 *
+		 * In all other cases (including non-SELECT rules on security invoker
+		 * views), perform the permissions checks as the relation owner.
+		 */
+		if (rule->event == CMD_SELECT &&
+			relation->rd_rel->relkind == RELKIND_VIEW &&
+			RelationHasSecurityInvoker(relation))
+			check_as_user = InvalidOid;
+		else
+			check_as_user = relation->rd_rel->relowner;
+
+		/*
+		 * Scan through the rule's actions and set the checkAsUser field on
+		 * all rtable entries. We have to look at the qual as well, in case it
 		 * contains sublinks.
 		 *
 		 * The reason for doing this when the rule is loaded, rather than when
@@ -1022,8 +1040,8 @@ YBRelationBuildRuleLock(Relation relation)
 		 * the rule tree during load is relatively cheap (compared to
 		 * constructing it in the first place), so we do it here.
 		 */
-		setRuleCheckAsUser((Node *) rule->actions, relation->rd_rel->relowner);
-		setRuleCheckAsUser(rule->qual, relation->rd_rel->relowner);
+		setRuleCheckAsUser((Node *) rule->actions, check_as_user);
+		setRuleCheckAsUser(rule->qual, check_as_user);
 
 		if (numlocks >= maxlocks)
 		{
@@ -1460,6 +1478,18 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		/* get information from the pg_class_tuple */
 		Form_pg_class relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 		Oid			relid = relp->oid;
+
+		/*
+		 * Indexes on temp tables use PostgreSQL's access methods, whose
+		 * opclasses can have options.  Loading those looks up ATTNUM and the
+		 * options function's PROCOID, which yb_test_catalog_preload_cache_list
+		 * may leave unfilled, so such indexes are built on demand instead.
+		 */
+		if (YbCatalogPreloadCacheListIsSet() &&
+			relp->relpersistence == RELPERSISTENCE_TEMP &&
+			(relp->relkind == RELKIND_INDEX ||
+			 relp->relkind == RELKIND_PARTITIONED_INDEX))
+			continue;
 
 		++num_tuples;
 
@@ -2345,7 +2375,7 @@ typedef struct YbCatalogNameToPfTableId
 static int
 YbBinSearchCatNamesComp(const void *a, const void *b)
 {
-	return strcmp(((YbCatNamePfId *) a)->name, ((YbCatNamePfId *) b)->name);
+	return pg_strcasecmp(((YbCatNamePfId *) a)->name, ((YbCatNamePfId *) b)->name);
 }
 
 /*
@@ -2436,6 +2466,14 @@ typedef struct YbTablePrefetcherState
 {
 	YbPFetchTableState tables[YB_PFETCH_TABLES_COUNT];
 	YbPFetchTableState tables_end;
+	/*
+	 * Tables the relcache build registered for its own use, such as for
+	 * partitioned tables.  All their caches are filled whatever
+	 * yb_test_catalog_preload_cache_list says.
+	 */
+	bool		prefill_needed[YB_PFETCH_TABLES_COUNT];
+	/* The catalog caches filled so far. */
+	bool		cache_filled[SysCacheSize];
 } YbTablePrefetcherState;
 
 static const YbPFetchTableInfo *
@@ -2537,6 +2575,318 @@ YbRegisterTables(YbTablePrefetcherState *prefetcher,
 	}
 }
 
+/*
+ * Register tables the relcache build needs for its own use.  See the
+ * prefill_needed field of YbTablePrefetcherState.
+ */
+static void
+YbRegisterTablesForPrefill(YbTablePrefetcherState *prefetcher,
+						   const YbPFetchTable *table,
+						   size_t count)
+{
+	for (const YbPFetchTable *end = table + count; table != end; ++table)
+	{
+		YbPFetchTableState *ts = prefetcher->tables + *table;
+
+		YbRegisterTable(prefetcher, *table);
+		prefetcher->prefill_needed[*table] = true;
+		/*
+		 * If yb_test_catalog_preload_cache_list selected only some of its
+		 * caches, the next YbFillCaches fills the rest.
+		 */
+		if (*ts == YB_PFETCH_STATE_CACHE_FILLED)
+			*ts = YB_PFETCH_STATE_LOADED;
+	}
+}
+
+/*
+ * Catalog caches the preload looks up while the prefetcher is active, in the
+ * relcache build and right after it.  They are always filled, because each
+ * lookup in an unfilled cache scans all prefetched rows of its table.  The
+ * pg_inherits cache, which is not a catalog cache, is always filled for the
+ * same reason.
+ *
+ * Besides the caches the build looks up for every relation, these are
+ * TYPEOID and COLLOID for the partition keys and bounds of partitioned
+ * tables, and AUTHOID and NAMESPACENAME for the lookup of the user's
+ * namespace at the end of the preload.
+ */
+static const int yb_required_preload_caches[] = {
+	AMOID,
+	AMPROCNUM,
+	AUTHOID,
+	CLAOID,
+	COLLOID,
+	DATABASEOID,
+	INDEXRELID,
+	NAMESPACENAME,
+	PARTRELID,
+	RELOID,
+	RULERELNAME,
+	TYPEOID
+};
+
+/*
+ * Parsed yb_test_catalog_preload_cache_list: the catalog caches it names.
+ * NULL when the list is empty.
+ */
+typedef struct YbCatalogPreloadCacheList
+{
+	bool		selected[SysCacheSize];
+} YbCatalogPreloadCacheList;
+
+static const YbCatalogPreloadCacheList *yb_catalog_preload_cache_list = NULL;
+
+static const YbCatNamePfId *
+YbFindPrefetchTableByName(const char *name)
+{
+	YbCatNamePfId entry = {name, YB_PFETCH_TABLE_LAST};
+
+	return bsearch(&entry, YbCatalogNamesPfIds, YB_PFETCH_TABLE_LAST,
+				   sizeof(YbCatNamePfId), YbBinSearchCatNamesComp);
+}
+
+/*
+ * Get the catalog caches filled from a prefetched table, returning how many
+ * there are.
+ */
+static int
+YbGetPrefetchTableCacheIds(YbPFetchTable table, int cache_ids[2])
+{
+	const YbTableCacheInfo *cache = &YbGetPrefetchableTableInfo(table)->cache;
+
+	switch (cache->type)
+	{
+		case YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX:
+			cache_ids[0] = cache->cat_cache.id;
+			return 1;
+		case YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX:
+			cache_ids[0] = cache->cat_cache.id;
+			cache_ids[1] = cache->cat_cache.index_id;
+			return 2;
+		case YB_TABLE_CACHE_TYPE_NO_CACHE:
+		case YB_TABLE_CACHE_TYPE_CUSTOM_CACHE:
+			break;
+	}
+	return 0;
+}
+
+static YbPFetchTable
+YbGetCatalogCachePrefetchTable(int cache_id)
+{
+	for (YbPFetchTable table = YB_PFETCH_TABLE_FIRST;
+		 table < YB_PFETCH_TABLE_LAST;
+		 ++table)
+	{
+		int			cache_ids[2];
+		int			num_cache_ids = YbGetPrefetchTableCacheIds(table, cache_ids);
+
+		for (int i = 0; i < num_cache_ids; ++i)
+		{
+			if (cache_ids[i] == cache_id)
+				return table;
+		}
+	}
+	return YB_PFETCH_TABLE_LAST;
+}
+
+static bool
+YbIsRequiredPreloadCache(int cache_id)
+{
+	for (int i = 0; i < lengthof(yb_required_preload_caches); ++i)
+	{
+		if (yb_required_preload_caches[i] == cache_id)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Select the catalog caches named by an item of
+ * yb_test_catalog_preload_cache_list: a catalog table name (all its caches),
+ * a catalog cache name (ATTNAME), or the name of the index of a catalog cache
+ * (pg_attribute_relid_attnam_index), as the CatalogCacheMisses metric labels
+ * it.  Names are matched case-insensitively.
+ *
+ * An item that selects no catalog cache is ignored with a warning rather than
+ * rejected: the value comes from the configuration file, where an invalid
+ * value keeps postgres from starting.
+ */
+static void
+YbSelectCatalogPreloadItem(const char *name, YbCatalogPreloadCacheList *list)
+{
+	/*
+	 * The check hook runs in the postmaster and in every backend on each
+	 * reload, so warn only once, from the postmaster.
+	 */
+	const int	elevel = IsUnderPostmaster ? DEBUG2 : WARNING;
+	const YbCatNamePfId *table = YbFindPrefetchTableByName(name);
+
+	if (table)
+	{
+		const YbTableCacheInfo *cache =
+			&YbGetPrefetchableTableInfo(table->pfetchTable)->cache;
+		int			cache_ids[2];
+		int			num_cache_ids;
+
+		if (cache->type == YB_TABLE_CACHE_TYPE_NO_CACHE)
+		{
+			ereport(elevel,
+					(errmsg("ignoring \"%s\" in yb_test_catalog_preload_cache_list",
+							name),
+					 errdetail("Catalog \"%s\" has no catalog cache.", name)));
+			return;
+		}
+		if (cache->type == YB_TABLE_CACHE_TYPE_CUSTOM_CACHE)
+		{
+			ereport(elevel,
+					(errmsg("ignoring \"%s\" in yb_test_catalog_preload_cache_list",
+							name),
+					 errdetail("The cache of catalog \"%s\" is always filled.",
+							   name)));
+			return;
+		}
+		num_cache_ids = YbGetPrefetchTableCacheIds(table->pfetchTable, cache_ids);
+		for (int i = 0; i < num_cache_ids; ++i)
+			list->selected[cache_ids[i]] = true;
+		return;
+	}
+
+	for (int cache_id = 0; cache_id < SysCacheSize; ++cache_id)
+	{
+		if (pg_strcasecmp(name, YbGetCatalogCacheName(cache_id)) != 0 &&
+			pg_strcasecmp(name, YbGetCatalogCacheIndexName(cache_id)) != 0)
+			continue;
+
+		if (YbGetCatalogCachePrefetchTable(cache_id) == YB_PFETCH_TABLE_LAST)
+		{
+			ereport(elevel,
+					(errmsg("ignoring \"%s\" in yb_test_catalog_preload_cache_list",
+							name),
+					 errdetail("Catalog cache %s is on catalog \"%s\", which cannot be preloaded.",
+							   YbGetCatalogCacheName(cache_id),
+							   YbGetCatalogCacheTableNameFromCacheId(cache_id))));
+			return;
+		}
+
+		list->selected[cache_id] = true;
+		return;
+	}
+
+	ereport(elevel,
+			(errmsg("ignoring \"%s\" in yb_test_catalog_preload_cache_list", name),
+			 errdetail("\"%s\" is neither a preloadable catalog nor a catalog cache.",
+					   name)));
+}
+
+/*
+ * Parse yb_test_catalog_preload_cache_list into list, setting *is_empty if it
+ * names nothing, as a value of only whitespace does.
+ */
+static bool
+YbParseCatalogPreloadCacheList(const char *value, YbCatalogPreloadCacheList *list,
+							   bool *is_empty)
+{
+	char	   *rawstring = pstrdup(value);
+	List	   *items;
+	ListCell   *lc;
+	bool		result = true;
+
+	memset(list, 0, sizeof(*list));
+	if (!SplitGUCList(rawstring, ',', &items))
+	{
+		GUC_check_errdetail("List syntax is invalid.");
+		result = false;
+	}
+	*is_empty = items == NIL;
+	if (result)
+	{
+		foreach(lc, items)
+			YbSelectCatalogPreloadItem(lfirst(lc), list);
+	}
+	list_free(items);
+	pfree(rawstring);
+	return result;
+}
+
+bool
+yb_check_test_catalog_preload_cache_list(char **newval, void **extra,
+										 GucSource source)
+{
+	YbCatalogPreloadCacheList list;
+	YbCatalogPreloadCacheList *result;
+	bool		is_empty;
+
+	if (!YbParseCatalogPreloadCacheList(*newval, &list, &is_empty))
+		return false;
+	if (is_empty)
+		return true;
+
+	result = malloc(sizeof(YbCatalogPreloadCacheList));
+	if (!result)
+		return false;
+	*result = list;
+	*extra = result;
+	return true;
+}
+
+void
+yb_assign_test_catalog_preload_cache_list(const char *newval, void *extra)
+{
+	yb_catalog_preload_cache_list = extra;
+}
+
+/*
+ * Whether yb_test_catalog_preload_cache_list is set.  It then replaces the
+ * ysql_catalog_preload_additional_tables and
+ * ysql_catalog_preload_additional_table_list gflags.
+ */
+bool
+YbCatalogPreloadCacheListIsSet(void)
+{
+	return yb_catalog_preload_cache_list != NULL;
+}
+
+/*
+ * Whether to fill a catalog cache when its table is prefetched.  If
+ * yb_test_catalog_preload_cache_list is not set, every catalog cache is
+ * filled.  If it is set, only the caches it names are filled, besides the
+ * required caches and those of tables the relcache build needs.
+ */
+static bool
+YbCatalogCachePreloadSelected(int cache_id, bool prefill_needed)
+{
+	const YbCatalogPreloadCacheList *list = yb_catalog_preload_cache_list;
+
+	return (!list || list->selected[cache_id] || prefill_needed ||
+			YbIsRequiredPreloadCache(cache_id));
+}
+
+static void
+YbRegisterCatalogPreloadCacheListTables(YbTablePrefetcherState *prefetcher)
+{
+	const YbCatalogPreloadCacheList *list = yb_catalog_preload_cache_list;
+
+	if (!list)
+		return;
+	for (YbPFetchTable table = YB_PFETCH_TABLE_FIRST;
+		 table < YB_PFETCH_TABLE_LAST;
+		 ++table)
+	{
+		int			cache_ids[2];
+		int			num_cache_ids = YbGetPrefetchTableCacheIds(table, cache_ids);
+
+		for (int i = 0; i < num_cache_ids; ++i)
+		{
+			if (list->selected[cache_ids[i]])
+			{
+				YbRegisterTable(prefetcher, table);
+				break;
+			}
+		}
+	}
+}
+
 static YbcStatus
 YbPrefetch(YbTablePrefetcherState *prefetcher)
 {
@@ -2577,12 +2927,28 @@ YbFillCache(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 			Assert(false);
 			break;
 		case YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX:
-			YbPreloadCatalogCache(info->cache.cat_cache.id, -1);
-			break;
 		case YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX:
-			YbPreloadCatalogCache(info->cache.cat_cache.id,
-								  info->cache.cat_cache.index_id);
-			break;
+			{
+				const bool	prefill_needed = prefetcher->prefill_needed[table];
+				int			cache_ids[2];
+				int			num_cache_ids = YbGetPrefetchTableCacheIds(table, cache_ids);
+				int			selected[2];
+				int			num_selected = 0;
+
+				for (int i = 0; i < num_cache_ids; ++i)
+				{
+					if (!prefetcher->cache_filled[cache_ids[i]] &&
+						YbCatalogCachePreloadSelected(cache_ids[i], prefill_needed))
+					{
+						selected[num_selected++] = cache_ids[i];
+						prefetcher->cache_filled[cache_ids[i]] = true;
+					}
+				}
+				if (num_selected > 0)
+					YbPreloadCatalogCache(selected[0],
+										  num_selected > 1 ? selected[1] : -1);
+				break;
+			}
 		case YB_TABLE_CACHE_TYPE_CUSTOM_CACHE:
 			info->cache.custom_loader();
 			break;
@@ -2660,6 +3026,7 @@ typedef struct YbPrefetcherStarterWithCache
 	YbPrefetcherStarterFunctor functor;
 	const YbcPgLastKnownCatalogVersionInfo *version;
 	YbcPgSysTablePrefetcherCacheMode mode;
+	YbcPgSysTablePrefetchKind kind;
 } YbPrefetcherStarterWithCache;
 
 static bool
@@ -2667,13 +3034,14 @@ YbPrefetcherStarterWithCacheCall(YbPrefetcherStarterFunctor *functor)
 {
 	const YbPrefetcherStarterWithCache *this = (const YbPrefetcherStarterWithCache *) functor;
 
-	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode);
+	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode, this->kind);
 	return true;
 }
 
 static YbPrefetcherStarterWithCache
 MakeStarterWithCache(YbcPgSysTablePrefetcherCacheMode mode,
-					 const YbcPgLastKnownCatalogVersionInfo *version)
+					 const YbcPgLastKnownCatalogVersionInfo *version,
+					 YbcPgSysTablePrefetchKind kind)
 {
 	return (YbPrefetcherStarterWithCache)
 	{
@@ -2683,13 +3051,23 @@ MakeStarterWithCache(YbcPgSysTablePrefetcherCacheMode mode,
 		},
 			.version = version,
 			.mode = mode,
+			.kind = kind,
 	};
 }
+
+typedef struct YbPrefetcherStarterNoCache
+{
+	/* YbPrefetcherStarterFunctor have to be the first field due to cast */
+	YbPrefetcherStarterFunctor functor;
+	YbcPgSysTablePrefetchKind kind;
+} YbPrefetcherStarterNoCache;
 
 static bool
 YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
 {
-	YBCStartSysTablePrefetchingNoCache();
+	const YbPrefetcherStarterNoCache *this = (const YbPrefetcherStarterNoCache *) functor;
+
+	YBCStartSysTablePrefetchingNoCache(this->kind);
 	return false;
 }
 
@@ -2709,7 +3087,8 @@ YbAuthBackendUsesTserverResponseCache(uint64_t shared_catalog_version)
 
 static void
 YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
-					bool keep_prefetcher)
+					bool keep_prefetcher,
+					YbcPgSysTablePrefetchKind kind)
 {
 	YbcPgLastKnownCatalogVersionInfo catalog_version = {};
 	uint64_t	shared_catalog_version;
@@ -2728,20 +3107,25 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	YbcPgSysTablePrefetcherCacheMode trust_mode =
 		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
 		: YB_YQL_PREFETCHER_TRUST_CACHE;
-	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(trust_mode, &catalog_version);
-	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-																   &catalog_version);
-	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
-																   &catalog_version);
-	YbPrefetcherStarterFunctor no_cache = {
-		.call = &YbPrefetcherStarterNoCacheCall,
+	YbPrefetcherStarterWithCache trust_cache =
+		MakeStarterWithCache(trust_mode, &catalog_version, kind);
+	YbPrefetcherStarterWithCache renew_soft =
+		MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT, &catalog_version, kind);
+	YbPrefetcherStarterWithCache renew_hard =
+		MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD, &catalog_version, kind);
+	YbPrefetcherStarterNoCache no_cache = {
+		.functor =
+		{
+			.call = &YbPrefetcherStarterNoCacheCall
+		},
+			.kind = kind,
 	};
 
 	YbPrefetcherStarterFunctor *prefetcher_starters[] = {
 		&trust_cache.functor,
 		&renew_soft.functor,
 		&renew_hard.functor,
-		&no_cache
+		&no_cache.functor
 	};
 
 	static const size_t kStartersCount = lengthof(prefetcher_starters);
@@ -3000,7 +3384,7 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 			YB_PFETCH_TABLE_PG_PROC,
 		};
 
-		YbRegisterTables(prefetcher, tables, lengthof(tables));
+		YbRegisterTablesForPrefill(prefetcher, tables, lengthof(tables));
 	}
 
 	YbcStatus	status = YbPrefetch(prefetcher);
@@ -3010,9 +3394,14 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 
 	YBUpdateRelationsAttributes(state);
 
-	YBUpdateRelationsPartitioning(state);
-
+	/*
+	 * Fill pg_proc before building partition keys: an expression key looks
+	 * up PROCOID while it is simplified.  Filling scans the catalogs through
+	 * their relcache entries, whose tuple descriptors are built just above.
+	 */
 	YbFillCaches(prefetcher);
+
+	YBUpdateRelationsPartitioning(state);
 
 	YBUpdateRelationsIndicies(state);
 
@@ -3119,11 +3508,7 @@ YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 	for (char *cattoken = strtok(preload_catstr, ","); cattoken != NULL;
 		 cattoken = strtok(NULL, ","))
 	{
-		YbCatNamePfId entry = {cattoken, YB_PFETCH_TABLE_LAST};
-		const YbCatNamePfId *found = bsearch(&entry, YbCatalogNamesPfIds,
-											 YB_PFETCH_TABLE_LAST,
-											 sizeof(YbCatNamePfId),
-											 YbBinSearchCatNamesComp);
+		const YbCatNamePfId *found = YbFindPrefetchTableByName(cattoken);
 
 		if (found)
 		{
@@ -3225,7 +3610,10 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	YbTryRegisterCatalogVersionTableForPrefetching();
 	YbRegisterTables(prefetcher, core_tables, lengthof(core_tables));
 
-	YbRegisterAdditionalCatalogs(prefetcher);
+	if (YbCatalogPreloadCacheListIsSet())
+		YbRegisterCatalogPreloadCacheListTables(prefetcher);
+	else
+		YbRegisterAdditionalCatalogs(prefetcher);
 
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 	{
@@ -3235,7 +3623,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 			YB_PFETCH_TABLE_PG_CAST
 		};
 
-		YbRegisterTables(prefetcher, tables, lengthof(tables));
+		YbRegisterTablesForPrefill(prefetcher, tables, lengthof(tables));
 	}
 
 	YbcStatus	status = YbPrefetch(prefetcher);
@@ -3265,6 +3653,8 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_CLASS);
 	YbFillCache(prefetcher, YB_PFETCH_TABLE_PG_ATTRIBUTE);
 	YbFillCaches(prefetcher);
+
+	long		misses_before PG_USED_FOR_ASSERTS_ONLY = YbNumCatalogCacheMisses;
 
 	status = YbUpdateRelationCache(ctx);
 	if (status)
@@ -3305,6 +3695,16 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	if (!YbUseMinimalCatalogCachesPreload())
 		get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
 
+	/*
+	 * The required caches must cover every catalog cache lookup above, so
+	 * that none of them scans the prefetched rows of a table.  Without
+	 * negative cache entries, the lookup of a user namespace that does not
+	 * exist misses even in a filled cache.
+	 */
+	Assert(!YbCatalogPreloadCacheListIsSet() ||
+		   !yb_enable_negative_catcache_entries ||
+		   YbNumCatalogCacheMisses == misses_before);
+
 	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 	elog(log_level, "Preloading relcache complete");
 	return NULL;
@@ -3313,7 +3713,13 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 void
 YBPreloadRelCache()
 {
-	YbRunWithPrefetcher(&YbPreloadRelCacheImpl, false /* keep_prefetcher */ );
+	/*
+	 * Reached from a full catalog cache refresh on a connection that is already serving a
+	 * session. The master admits these ahead of prefetches from connections that are still
+	 * starting up: this backend cannot run anything until it has the data.
+	 */
+	YbRunWithPrefetcher(&YbPreloadRelCacheImpl, false /* keep_prefetcher */ ,
+						YB_YQL_PREFETCH_KIND_CACHE_REFRESH);
 }
 
 static YbcStatus
@@ -3376,10 +3782,28 @@ YbPrefetchRequiredDataWithRelCache(YbRunWithPrefetcherContext *ctx)
 void
 YbPrefetchRequiredData(bool preload_rel_cache)
 {
+	YbcPgSysTablePrefetchKind kind;
+
+	/*
+	 * The relcache-init builder backend produces the init file that every new
+	 * connection on this node waits for, so its prefetch is not one that can
+	 * afford to queue behind connections that are merely starting up. It is also
+	 * not the expensive one: that backend preloads minimally, taking system
+	 * catalog rows rather than user objects, and a deployment that preloads
+	 * additional catalog tables skips the init-file optimization entirely (see
+	 * catalog_preload_required in RelationCacheInitializePhase3) and does that
+	 * large preload on the connection itself, as a CONNECTION_START prefetch.
+	 */
+	if (MyBackendType == YB_RELCACHE_INIT_BACKEND)
+		kind = YB_YQL_PREFETCH_KIND_CACHE_REFRESH;
+	else
+		kind = YB_YQL_PREFETCH_KIND_CONNECTION_START;
+
 	YbRunWithPrefetcher((preload_rel_cache ?
 						 &YbPrefetchRequiredDataWithRelCache :
 						 &YbPrefetchRequiredDataWithoutRelCache),
-						true /* keep_prefetcher */ );
+						true /* keep_prefetcher */ ,
+						kind);
 }
 
 /*
@@ -8815,11 +9239,7 @@ RelationGetIndexRawAttOptions(Relation indexrel)
 
 	for (attnum = 1; attnum <= natts; attnum++)
 	{
-		if (indexrel->rd_indam->amoptsprocnum == 0)
-			continue;
-
-		if (!OidIsValid(index_getprocid(indexrel, attnum,
-										indexrel->rd_indam->amoptsprocnum)))
+		if (!YbIndexAttHasOptionsProc(indexrel, attnum))
 			continue;
 
 		if (!options)
@@ -8870,6 +9290,15 @@ RelationGetIndexAttOptions(Relation relation, bool copy)
 
 	for (i = 0; i < natts; i++)
 	{
+		/*
+		 * YB: Skip the pg_attribute lookup for a column that cannot have
+		 * options.  A full catalog cache refresh does this for every index
+		 * column, and without the pg_attribute catcaches preloaded each
+		 * lookup scans the whole prefetched pg_attribute.
+		 */
+		if (IsYugaByteEnabled() && !YbIndexAttHasOptionsProc(relation, i + 1))
+			continue;
+
 		if (criticalRelcachesBuilt && relid != AttributeRelidNumIndexId)
 		{
 			Datum		attoptions = get_attoptions(relid, i + 1);
@@ -10048,4 +10477,18 @@ unlink_initfile(const char *initfilename, int elevel)
 					 errmsg("could not remove cache file \"%s\": %m",
 							initfilename)));
 	}
+}
+
+/*
+ * Whether the opclass of an index column has an options procedure.  Index
+ * creation rejects options for a column whose opclass has none, so there are
+ * no options to look up for it.  This is false for INCLUDE columns, whose
+ * support procedures are all zero.
+ */
+static bool
+YbIndexAttHasOptionsProc(Relation indexrel, AttrNumber attnum)
+{
+	return (indexrel->rd_indam->amoptsprocnum != 0 &&
+			OidIsValid(index_getprocid(indexrel, attnum,
+									   indexrel->rd_indam->amoptsprocnum)));
 }
