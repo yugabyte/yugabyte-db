@@ -45,6 +45,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import org.slf4j.Logger;
@@ -2309,6 +2310,13 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  // The query ID that pg_hint_plan matches against hint_plan.hints.query_id.
+  private static long getQueryId(Statement stmt, String query) throws Exception {
+    ResultSet rs = stmt.executeQuery("EXPLAIN (VERBOSE, FORMAT JSON) " + query);
+    rs.next();
+    return new JSONArray(rs.getString(1)).getJSONObject(0).getLong("Query Identifier");
+  }
+
   @Test
   public void testPgHintPlan() throws Exception {
     String backupDir = null;
@@ -2322,9 +2330,9 @@ public class TestYbBackup extends BasePgSQLTest {
 
       // Test pg_hint_plan before backup.
       stmt.execute("SET pg_hint_plan.enable_hint_table = on");
-      stmt.execute("INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)" +
-                   " VALUES ('EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = ?'," +
-                   " '', 'SeqScan(tbl1)')");
+      stmt.execute("INSERT INTO hint_plan.hints(query_id, application_name, hints)" +
+                   " VALUES (" + getQueryId(stmt, "SELECT * FROM tbl1 WHERE tbl1.k = 1") +
+                   ", '', 'SeqScan(tbl1)')");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Seq Scan on tbl1"),
                   new Row("  Storage Filter: (k = 1)"));
@@ -2346,9 +2354,9 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
       // Test pg_hint_plan after restore.
-      stmt.execute("INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)" +
-                   " VALUES ('EXPLAIN (COSTS false) SELECT * FROM tbl2 WHERE tbl2.k = ?'," +
-                   " '', 'SeqScan(tbl2)')");
+      stmt.execute("INSERT INTO hint_plan.hints(query_id, application_name, hints)" +
+                   " VALUES (" + getQueryId(stmt, "SELECT * FROM tbl2 WHERE tbl2.k = 3") +
+                   ", '', 'SeqScan(tbl2)')");
       stmt.execute("SET pg_hint_plan.enable_hint_table = on");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Seq Scan on tbl1"),
@@ -2364,13 +2372,13 @@ public class TestYbBackup extends BasePgSQLTest {
                   new Row("Index Scan using tbl2_pkey on tbl2"),
                   new Row("  Index Cond: (k = 3)"));
 
-      // Test unique index: hints_norm_and_app.
+      // Test unique index: hints_id_and_app.
       runInvalidQuery(stmt, "INSERT INTO hint_plan.hints" +
-                      "(norm_query_string, application_name, hints)" +
-                      " VALUES ('EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = ?'," +
-                      " '', 'SeqScan(tbl1)')",
+                      "(query_id, application_name, hints)" +
+                      " VALUES (" + getQueryId(stmt, "SELECT * FROM tbl1 WHERE tbl1.k = 1") +
+                      ", '', 'SeqScan(tbl1)')",
                       "duplicate key value violates unique constraint " +
-                      "\"hints_norm_and_app\"");
+                      "\"hints_id_and_app\"");
 
       // Test pg_extension catalog info regarding configuration relations is correct.
       stmt.execute("SELECT ARRAY['hint_plan.hints'::regclass::oid, " +
@@ -2386,7 +2394,7 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = 'hints')",
                   new Row(false));
       assertQuery(stmt, "SELECT EXISTS(SELECT 1 FROM pg_class " +
-                  "WHERE relname = 'hints_norm_and_app')", new Row(false));
+                  "WHERE relname = 'hints_id_and_app')", new Row(false));
 
     }
 
