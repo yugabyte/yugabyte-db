@@ -12,6 +12,7 @@ import (
 type fakeSystem struct {
 	pgrep    map[string][]int
 	cmdlines map[int][]string
+	ppids    map[int]int
 	ssOutput string
 	files    map[string][]byte
 	selfPid  int
@@ -26,6 +27,13 @@ func (f *fakeSystem) ReadCmdline(pid int) ([]string, error) {
 		return args, nil
 	}
 	return nil, context.Canceled
+}
+
+func (f *fakeSystem) ReadPpid(pid int) (int, error) {
+	if ppid, ok := f.ppids[pid]; ok {
+		return ppid, nil
+	}
+	return 0, context.Canceled
 }
 
 func (f *fakeSystem) SsListeners(ctx context.Context) (string, error) {
@@ -302,6 +310,38 @@ func TestDetectPidlessDefaultPortRequiresVerifiedProcess(t *testing.T) {
 	tserver := statusForRole(res, pb.YugabyteProcessRole_YB_ROLE_TSERVER)
 	if tserver == nil || !equalPorts(tserver.GetListenPorts(), []uint32{9000}) {
 		t.Errorf("tserver listen ports = %v, want [9000]", tserver.GetListenPorts())
+	}
+}
+
+func TestDetectAttributesForkedChildToVerifiedParent(t *testing.T) {
+	sys := &fakeSystem{
+		selfPid: 999,
+		pgrep:   map[string][]int{"postgres/bin/postgres": {1004}},
+		cmdlines: map[int][]string{
+			1004: {"/home/yugabyte/tserver/postgres/bin/postgres", "-D", "/home/yugabyte/pgdata"},
+			1006: {"postgres: YSQL webserver   "},
+			2002: {"/usr/lib/postgresql/16/bin/postgres", "-D", "/var/lib/postgresql/data"},
+			2003: {"postgres: background writer   "},
+		},
+		ppids: map[int]int{1006: 1004, 2003: 2002},
+		ssOutput: `LISTEN 0 128 127.0.0.1:5433 0.0.0.0:* users:(("postgres",pid=1004,fd=1))
+LISTEN 0 128 0.0.0.0:13000 0.0.0.0:* users:(("postgres",pid=1006,fd=5))
+LISTEN 0 128 127.0.0.1:15432 0.0.0.0:* users:(("postgres",pid=2003,fd=5))
+`,
+	}
+	res, err := NewDetectorWithSystem(sys).Detect(context.Background())
+	if err != nil {
+		t.Fatalf("Detect() error = %v", err)
+	}
+	postgres := statusForRole(res, pb.YugabyteProcessRole_YB_ROLE_POSTGRES)
+	if postgres == nil || !equalPorts(postgres.GetListenPorts(), []uint32{5433, 13000}) {
+		t.Fatalf("postgres listen ports = %v, want [5433 13000]", postgres.GetListenPorts())
+	}
+	// A child of an unverified (system) postgres must stay unattributed.
+	for _, listener := range res.GetOtherListeners() {
+		if listener.GetPid() == 2003 {
+			t.Errorf("child of unverified parent must not be attributed, got %+v", listener)
+		}
 	}
 }
 

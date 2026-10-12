@@ -26,6 +26,27 @@ garbage line
 	}
 }
 
+func TestParsePpid(t *testing.T) {
+	tests := []struct {
+		stat string
+		ppid int
+		ok   bool
+	}{
+		{"1006 (postgres) S 1004 1004 1004 0 -1", 1004, true},
+		{"1007 (weird ) name)) R 42 1 1 0", 42, true},
+		{"1008 (truncated", 0, false},
+		{"1009 (postgres) S", 0, false},
+		{"1010 (postgres) S notanumber", 0, false},
+	}
+	for _, tt := range tests {
+		ppid, ok := parsePpid(tt.stat)
+		if ppid != tt.ppid || ok != tt.ok {
+			t.Errorf("parsePpid(%q) = (%d, %t), want (%d, %t)",
+				tt.stat, ppid, ok, tt.ppid, tt.ok)
+		}
+	}
+}
+
 func TestPortFromAddress(t *testing.T) {
 	tests := []struct {
 		addr string

@@ -4,6 +4,7 @@ package ybdb
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -69,6 +70,8 @@ type System interface {
 	Pgrep(ctx context.Context, pattern string) ([]int, error)
 	// ReadCmdline returns the NUL separated arguments of a process.
 	ReadCmdline(pid int) ([]string, error)
+	// ReadPpid returns the parent pid of a process.
+	ReadPpid(pid int) (int, error)
 	// SsListeners returns the raw output of the listening socket sweep.
 	SsListeners(ctx context.Context) (string, error)
 	// StatFile reports whether the path exists and is readable.
@@ -120,6 +123,19 @@ func (s *osSystem) ReadCmdline(pid int) ([]string, error) {
 	}
 	trimmed := strings.TrimSuffix(string(data), "\x00")
 	return strings.Split(trimmed, "\x00"), nil
+}
+
+func (s *osSystem) ReadPpid(pid int) (int, error) {
+	path := "/proc/" + strconv.Itoa(pid) + "/stat"
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	ppid, ok := parsePpid(string(data))
+	if !ok {
+		return 0, fmt.Errorf("unable to parse parent pid from %s", path)
+	}
+	return ppid, nil
 }
 
 func (s *osSystem) SsListeners(ctx context.Context) (string, error) {

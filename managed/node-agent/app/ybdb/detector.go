@@ -193,7 +193,8 @@ func appendListener(
 }
 
 // classifyListener determines the role of a listening socket using the pid to
-// role map, then the process command line and finally the process name.
+// role map, then the process command line, then the role of a verified parent
+// process and finally the process name.
 func (d *Detector) classifyListener(
 	listener ssListener,
 	pidRole map[int]pb.YugabyteProcessRole,
@@ -204,10 +205,23 @@ func (d *Detector) classifyListener(
 	if role, ok := pidRole[listener.pid]; ok {
 		return role
 	}
-	if args, err := d.sys.ReadCmdline(listener.pid); err == nil {
+	args, cmdlineErr := d.sys.ReadCmdline(listener.pid)
+	if cmdlineErr == nil {
+		if role := classifyRole(args); role != pb.YugabyteProcessRole_YB_ROLE_UNKNOWN {
+			return role
+		}
+	}
+	// Forked helpers such as the YSQL webserver (a postgres background worker)
+	// rewrite their cmdline, so they are attributed through a verified parent.
+	if ppid, err := d.sys.ReadPpid(listener.pid); err == nil {
+		if role, ok := pidRole[ppid]; ok {
+			return role
+		}
+	}
+	if cmdlineErr == nil {
 		// Trust the executable path over the kernel comm, including a
 		// definitive UNKNOWN (e.g. system postgres vs yb-postmaster).
-		return classifyRole(args)
+		return pb.YugabyteProcessRole_YB_ROLE_UNKNOWN
 	}
 	return classifyProcessName(listener.processName)
 }

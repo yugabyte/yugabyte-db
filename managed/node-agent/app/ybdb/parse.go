@@ -23,6 +23,25 @@ var (
 	ssProcessNameRegex = regexp.MustCompile(`\("([^"]+)"`)
 )
 
+// parsePpid extracts the parent pid from the contents of /proc/<pid>/stat. The
+// comm field may contain spaces and parentheses, so parsing starts after the
+// last closing parenthesis: "<pid> (<comm>) <state> <ppid> ...".
+func parsePpid(stat string) (int, bool) {
+	end := strings.LastIndexByte(stat, ')')
+	if end < 0 {
+		return 0, false
+	}
+	fields := strings.Fields(stat[end+1:])
+	if len(fields) < 2 {
+		return 0, false
+	}
+	ppid, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, false
+	}
+	return ppid, true
+}
+
 // parseSsListeners parses the output of "ss -H -O -lntp". Lines that cannot be
 // parsed are skipped. The process column is optional as it is only present when
 // the caller has sufficient privilege.
