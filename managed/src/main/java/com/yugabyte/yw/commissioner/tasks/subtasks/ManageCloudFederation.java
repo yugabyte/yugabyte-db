@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationRoutes;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collections;
@@ -104,7 +105,7 @@ public class ManageCloudFederation extends NodeTaskBase {
           "Skipping cloud federation on {}: it runs on {} and its provider configures only {}",
           taskParams().nodeName,
           sourceCloud,
-          configuredTargetClouds());
+          configuredTargetClouds(taskParams().targets));
       return;
     }
 
@@ -132,46 +133,77 @@ public class ManageCloudFederation extends NodeTaskBase {
    */
   @Nullable
   private CrossCloudFederationTarget resolveTarget(@Nullable CloudType sourceCloud) {
+    return selectTarget(taskParams().nodeName, sourceCloud, taskParams().targets);
+  }
+
+  /**
+   * The decision behind {@link #resolveTarget}, free of task state so every outcome can be tested:
+   * the one target a node on {@code sourceCloud} needs, or null when it needs none.
+   */
+  @Nullable
+  static CrossCloudFederationTarget selectTarget(
+      String nodeName,
+      @Nullable CloudType sourceCloud,
+      @Nullable List<CrossCloudFederationTarget> targets) {
     if (sourceCloud == null) {
       throw new IllegalStateException(
           String.format(
               "Cannot configure federated IAM on %s: the cloud it runs on could not be determined,"
                   + " so any direction chosen for it would be a guess. Check that the node can"
                   + " reach its instance metadata service.",
-              taskParams().nodeName));
+              nodeName));
     }
     // Real hardware cannot present a cloud identity, so there is no federation to set up.
-    if (sourceCloud != CloudType.aws && sourceCloud != CloudType.gcp) {
+    if (!CrossCloudFederationRoutes.isSource(sourceCloud)) {
       return null;
     }
     // A node needs federation only for the clouds it is not running on; same-cloud access is
     // native and must not be replaced with federated credentials.
     List<CrossCloudFederationTarget> foreign =
-        taskParams().targets == null
+        targets == null
             ? Collections.emptyList()
-            : taskParams().targets.stream()
+            : targets.stream()
                 .filter(t -> t != null && t.isUsable() && t.targetCloud != sourceCloud)
                 .collect(Collectors.toList());
-    if (foreign.isEmpty()) {
+    // Of those, only the clouds this node has a route to. A target with no route cannot be served
+    // from here - the node would end up with no credentials for it - so it is left out and said so
+    // loudly, rather than being picked and failing the whole node.
+    List<CrossCloudFederationTarget> reachable =
+        foreign.stream()
+            .filter(t -> CrossCloudFederationRoutes.isSupported(sourceCloud, t.targetCloud))
+            .collect(Collectors.toList());
+    if (reachable.size() < foreign.size()) {
+      log.warn(
+          "Node {} runs on {}, which has no federation route to {}; a backup from this node to a"
+              + " bucket there will not work",
+          nodeName,
+          sourceCloud,
+          foreign.stream()
+              .filter(t -> !reachable.contains(t))
+              .map(t -> String.valueOf(t.targetCloud))
+              .collect(Collectors.toList()));
+    }
+    if (reachable.isEmpty()) {
       return null;
     }
-    if (foreign.size() > 1) {
+    if (reachable.size() > 1) {
       // The node holds one set of federation artifacts, so it can serve one foreign cloud. Reached
-      // only once a third cloud is supported; fail loudly rather than silently pick one.
+      // only once some node has more than one supported route (for example a GCP node reaching
+      // both S3 and OCI); fail loudly rather than silently pick one.
       throw new IllegalStateException(
           String.format(
               "Node %s runs on %s and its provider configures federated IAM for %s. Configuring a"
                   + " node for more than one storage cloud is not supported yet.",
-              taskParams().nodeName, sourceCloud, configuredTargetClouds()));
+              nodeName, sourceCloud, configuredTargetClouds(targets)));
     }
-    return foreign.get(0);
+    return reachable.get(0);
   }
 
-  private String configuredTargetClouds() {
-    if (taskParams().targets == null || taskParams().targets.isEmpty()) {
+  private static String configuredTargetClouds(@Nullable List<CrossCloudFederationTarget> targets) {
+    if (targets == null || targets.isEmpty()) {
       return "no cloud";
     }
-    return taskParams().targets.stream()
+    return targets.stream()
         .map(t -> String.valueOf(t.targetCloud))
         .collect(Collectors.joining(", "));
   }

@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 public interface CloudInfoInterface {
@@ -107,6 +108,23 @@ public interface CloudInfoInterface {
         .filter(t -> targetCloud == t.targetCloud)
         .findFirst()
         .orElse(null);
+  }
+
+  /**
+   * The OCI identity domain URL configured for the provider's nodes, or null when none is set or
+   * the provider type has no such setting. It is source-side configuration - how a node running on
+   * OCI proves its identity - so it lives next to, not inside, the storage-cloud targets.
+   */
+  @Nullable
+  public static String getOciIdentityDomainUrl(Provider provider) {
+    CloudInfoInterface info = get(provider);
+    if (info instanceof OCICloudInfo) {
+      return StringUtils.trimToNull(((OCICloudInfo) info).ociIdentityDomainUrl);
+    }
+    if (info instanceof OnPremCloudInfo) {
+      return StringUtils.trimToNull(((OnPremCloudInfo) info).ociIdentityDomainUrl);
+    }
+    return null;
   }
 
   public static <T extends CloudInfoInterface> T get(Region region) {

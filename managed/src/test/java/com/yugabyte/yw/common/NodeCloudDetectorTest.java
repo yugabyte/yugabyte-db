@@ -53,6 +53,7 @@ public class NodeCloudDetectorTest {
     String gcpInstanceId;
     String imdsV2Token;
     String awsInstanceId;
+    String ociInstanceId;
     boolean resolveGcpDnsName = true;
     // Set for an instance whose IMDS is configured to require a v2 token.
     boolean requireImdsV2;
@@ -79,6 +80,11 @@ public class NodeCloudDetectorTest {
       }
       if (url.contains("/latest/api/token")) {
         return respond(imdsV2Token);
+      }
+      if (url.contains("/opc/")) {
+        // OCI IMDS v2 refuses a request without this exact header.
+        boolean sentAuth = command.contains("Authorization: Bearer Oracle");
+        return sentAuth ? respond(ociInstanceId) : ShellResponse.create(CURL_HTTP_ERROR, "");
       }
       boolean sentToken = command.stream().anyMatch(a -> a.startsWith("X-aws-ec2-metadata-token:"));
       if (requireImdsV2 && !sentToken) {
@@ -132,6 +138,40 @@ public class NodeCloudDetectorTest {
     // No token endpoint, so IMDSv2 is unavailable and the v1 fallback answers.
     node.awsInstanceId = "i-0abc123";
     assertEquals(CloudType.aws, detect(node));
+  }
+
+  @Test
+  public void testDetectOci() {
+    FakeNode node = new FakeNode();
+    node.ociInstanceId = "ocid1.instance.oc1.phx.anyhqljr";
+    assertEquals(CloudType.oci, detect(node));
+    // OCI is the last probe: GCP and AWS were each given their chance first.
+    List<String> last = node.commands.get(node.commands.size() - 1);
+    assertTrue(last.stream().anyMatch(a -> a.endsWith("/opc/v2/instance/id")));
+    assertTrue(node.commands.size() > 1);
+  }
+
+  @Test
+  public void testOciIsNotProbedOnceAwsOrGcpAnswers() {
+    FakeNode aws = new FakeNode();
+    aws.awsInstanceId = "i-0abc123";
+    aws.ociInstanceId = "ocid1.instance.oc1.phx.anyhqljr";
+    assertEquals(CloudType.aws, detect(aws));
+    assertTrue(aws.commands.stream().flatMap(List::stream).noneMatch(a -> a.contains("/opc/")));
+
+    FakeNode gcp = new FakeNode();
+    gcp.gcpInstanceId = "4philo2932481";
+    gcp.ociInstanceId = "ocid1.instance.oc1.phx.anyhqljr";
+    assertEquals(CloudType.gcp, detect(gcp));
+    assertTrue(gcp.commands.stream().flatMap(List::stream).noneMatch(a -> a.contains("/opc/")));
+  }
+
+  @Test
+  public void testOciProbeFailureLeavesBareMetalAsOnprem() {
+    // Every probe, OCI's included, ran and none answered: still a final "not a cloud VM".
+    FakeNode node = new FakeNode();
+    assertEquals(CloudType.onprem, detect(node));
+    assertTrue(node.commands.stream().flatMap(List::stream).anyMatch(a -> a.contains("/opc/")));
   }
 
   @Test
@@ -193,6 +233,39 @@ public class NodeCloudDetectorTest {
       assertTrue(command.get(at + 1).contains("169.254.169.254"));
       assertTrue(command.get(at + 1).contains("metadata.google.internal"));
     }
+  }
+
+  /**
+   * OCI's IMDS v2 needs {@code Authorization: Bearer Oracle}, so this one argument carries a space.
+   * That is safe because the wrapper single-quotes an argument containing a space, which only goes
+   * wrong when the argument holds a quote of its own. Pin both halves: the exception is exactly
+   * that header, and it holds no quote or glob character.
+   */
+  @Test
+  public void testOciProbeHeaderIsTheOnlySpaceAndIsQuoteFree() {
+    FakeNode node = new FakeNode();
+    detect(node);
+    List<String> withSpace =
+        node.commands.stream()
+            .flatMap(List::stream)
+            .filter(a -> a.contains(" "))
+            .distinct()
+            .collect(java.util.stream.Collectors.toList());
+    assertEquals(List.of("Authorization: Bearer Oracle"), withSpace);
+    for (String arg : withSpace) {
+      assertTrue(!arg.contains("'") && !arg.contains("\"") && !arg.contains("*"));
+    }
+  }
+
+  @Test
+  public void testOciProbeBypassesTheProxy() {
+    // A node that answers nothing runs every probe, the OCI one included.
+    FakeNode node = new FakeNode();
+    detect(node);
+    for (List<String> command : node.commands) {
+      assertTrue("probe must bypass the proxy: " + command, command.contains("--noproxy"));
+    }
+    assertTrue(node.commands.stream().flatMap(List::stream).anyMatch(a -> a.contains("/opc/")));
   }
 
   @Test

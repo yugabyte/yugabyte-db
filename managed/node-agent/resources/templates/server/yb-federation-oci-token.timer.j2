@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh the OCI identity token used for cross-cloud federation
+
+[Timer]
+# The token lasts about an hour. Refreshing every 20 minutes tolerates two consecutive failures
+# before YBC is left holding an expired one.
+OnBootSec=1min
+OnUnitActiveSec=20min
+Unit=yb-federation-oci-token.service
+
+[Install]
+WantedBy=timers.target
