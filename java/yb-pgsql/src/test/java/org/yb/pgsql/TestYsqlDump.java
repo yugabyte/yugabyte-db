@@ -101,6 +101,13 @@ public class TestYsqlDump extends BasePgSQLTest {
    * -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
    */
 
+  /**
+   * Fixed key for the psql restrict/unrestrict meta-commands that ysql_dump now emits
+   * around plain-text dumps. Without it a random key is generated per run and the dump
+   * can never match the expected file.
+   */
+  public static final String RESTRICT_KEY = "test";
+
   // YB_TODO_PG19MERGE: widened to accept the "19devel" major; tighten back to
   // "<int>.<int>" once pg19 ships a numeric version.
   private static Pattern VERSION_NUMBER_PATTERN = Pattern.compile(
@@ -109,24 +116,12 @@ public class TestYsqlDump extends BasePgSQLTest {
   private static String  VERSION_NUMBER_REPLACEMENT_STR =
       " version X.X-YB-X.X.X.X-bX";
 
-  // YB: ysql_dump brackets plain-text dumps with psql restrict / unrestrict
-  // meta-commands (CVE-2025-8714) that carry a per-dump random key. Normalize that
-  // key to a fixed placeholder so the golden files need not encode the random value,
-  // while still validating that the wrapping lines are emitted in the right places.
-  private static Pattern RESTRICT_KEY_PATTERN = Pattern.compile(
-      "^(\\\\(?:un)?restrict) \\S+$");
-
-  private static String  RESTRICT_KEY_REPLACEMENT_STR = "$1 <key>";
-
   private static String postprocessOutputLine(String s) {
     if (s == null)
       return null;
 
     // First handle version number replacement
     String processed = VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR);
-
-    // Normalize the per-dump restrict / unrestrict key (see RESTRICT_KEY_PATTERN).
-    processed = RESTRICT_KEY_PATTERN.matcher(processed).replaceAll(RESTRICT_KEY_REPLACEMENT_STR);
 
     /*
       Handle SCRAM password wildcards - replace specific SCRAM hashes with '*' to match expected
@@ -643,6 +638,37 @@ public class TestYsqlDump extends BasePgSQLTest {
         ownerStderr.contains("--rename-owner requires option -C/--create"));
   }
 
+  /**
+   * The guards emitted under --include-yb-metadata are psql meta-commands, and
+   * several are built into a TOC entry rather than written to the script. A
+   * non-plain archive would store those as text that pg_restore replays inside
+   * the restricted-mode region it brackets the script with, where psql rejects
+   * them -- so ysql_dump must refuse the combination.
+   */
+  @Test
+  public void ysqlDumpYbMetadataRequiresPlainFormat() throws Exception {
+    for (String format : Arrays.asList("c", "d", "t")) {
+      String metaStderr = runYsqlDumpExpectingFailure(Arrays.asList(
+          "--include-yb-metadata",
+          "-F", format,
+          "-d", DEFAULT_PG_DATABASE));
+      assertTrue("Expected --include-yb-metadata to require --format=plain for -F" + format
+                 + ". Got: " + metaStderr,
+          metaStderr.contains("--include-yb-metadata can only be used with --format=plain"));
+
+      // --dump-role-checks requires --include-yb-metadata, so the same check
+      // catches it; the message names --include-yb-metadata either way.
+      String rolesStderr = runYsqlDumpExpectingFailure(Arrays.asList(
+          "--include-yb-metadata",
+          "--dump-role-checks",
+          "-F", format,
+          "-d", DEFAULT_PG_DATABASE));
+      assertTrue("Expected --dump-role-checks to require --format=plain for -F" + format
+                 + ". Got: " + rolesStderr,
+          rolesStderr.contains("--include-yb-metadata can only be used with --format=plain"));
+    }
+  }
+
   /** Run ysql_dump expecting failure; return merged stdout+stderr. */
   private String runYsqlDumpExpectingFailure(List<String> extraArgs) throws Exception {
     int tserverIndex = 0;
@@ -775,7 +801,8 @@ public class TestYsqlDump extends BasePgSQLTest {
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
-      "-f", actual.toString()
+      "-f", actual.toString(),
+      "--restrict-key=" + RESTRICT_KEY
     ));
     if (includeYbMetadata == IncludeYbMetadata.ON) {
       args.add("--include-yb-metadata");
