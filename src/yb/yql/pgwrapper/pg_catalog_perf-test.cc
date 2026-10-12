@@ -334,13 +334,15 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
   // ANALYZE did not touch without any RPC to a master, and the analyzed tables with one list read
   // of pg_statistic each rather than one read per column. The ANALYZE invalidates pg_statistic
   // rows of the analyzed tables only, but it also drops all of the backend's pg_statistic catcache
-  // lists. A partitioned table only has stainherit = true rows, which the GROUP BY estimate reads.
+  // lists. A partitioned table only has stainherit = true rows, which the GROUP BY estimate reads,
+  // and so does an inheritance parent whose rows are all in its child.
   void TestPlanRPCCountAfterAnalyzeOfOtherTable() {
     constexpr auto kNumColumns = 20;
     constexpr auto kAnalyzed = "analyzed";
     constexpr auto kNotReanalyzed = "not_reanalyzed";
     constexpr auto kNeverAnalyzed = "never_analyzed";
     constexpr auto kPartitioned = "partitioned";
+    constexpr auto kInheritanceParent = "inheritance_parent";
 
     auto aux_conn = ASSERT_RESULT(Connect());
     std::string columns = "k INT PRIMARY KEY";
@@ -357,12 +359,18 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
     ASSERT_OK(aux_conn.ExecuteFormat(
         "CREATE TABLE $0_1 PARTITION OF $0 FOR VALUES FROM (MINVALUE) TO (MAXVALUE)",
         kPartitioned));
-    for (const auto* table : {kAnalyzed, kNotReanalyzed, kNeverAnalyzed, kPartitioned}) {
+    ASSERT_OK(aux_conn.ExecuteFormat("CREATE TABLE $0 ($1)", kInheritanceParent, columns));
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "CREATE TABLE $0_child () INHERITS ($0)", kInheritanceParent));
+    for (const auto& table : {
+        std::string(kAnalyzed), std::string(kNotReanalyzed), std::string(kNeverAnalyzed),
+        std::string(kPartitioned), Format("$0_child", kInheritanceParent)}) {
       ASSERT_OK(aux_conn.ExecuteFormat(
           "INSERT INTO $0 (k, c1) SELECT i, i FROM generate_series(1, 100) i", table));
     }
     ASSERT_OK(aux_conn.ExecuteFormat(
-        "ANALYZE $0, $1, $2", kAnalyzed, kNotReanalyzed, kPartitioned));
+        "ANALYZE $0, $1, $2, $3, $3_child",
+        kAnalyzed, kNotReanalyzed, kPartitioned, kInheritanceParent));
 
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("SET yb_enable_cbo = on"));
@@ -373,12 +381,14 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
             "EXPLAIN SELECT $0 FROM $1 GROUP BY $0", group_by_columns, table));
       })).master_read_rpc;
     };
-    for (const auto* table : {kAnalyzed, kNotReanalyzed, kNeverAnalyzed, kPartitioned}) {
+    for (const auto* table :
+         {kAnalyzed, kNotReanalyzed, kNeverAnalyzed, kPartitioned, kInheritanceParent}) {
       ASSERT_RESULT(plan_rpc_count(table));
       ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(table)), 0) << table;
     }
 
-    ASSERT_OK(aux_conn.ExecuteFormat("ANALYZE $0, $1", kAnalyzed, kPartitioned));
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "ANALYZE $0, $1, $2", kAnalyzed, kPartitioned, kInheritanceParent));
     const auto target_version = ASSERT_RESULT(aux_conn.FetchRow<int64_t>(
         "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = "
         "(SELECT oid FROM pg_database WHERE datname = current_database())"));
@@ -397,6 +407,9 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
     // One list read for the partitioned table and one for its partition.
     ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kPartitioned)), 2);
     ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kPartitioned)), 0);
+    // ANALYZE of an inheritance parent does not touch its child.
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kInheritanceParent)), 1);
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kInheritanceParent)), 0);
   }
 };
 

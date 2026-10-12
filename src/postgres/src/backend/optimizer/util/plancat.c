@@ -1320,8 +1320,10 @@ yb_prefetch_column_stats(Relation relation)
 	TupleDesc	tupdesc = RelationGetDescr(relation);
 	Datum	   *keys;
 	int			nkeys = 0;
-	bool		inh;
+	bool		inh_values[2];
+	int			ninh_values = 0;
 	int			i;
+	int			j;
 
 	switch (relation->rd_rel->relkind)
 	{
@@ -1337,19 +1339,29 @@ yb_prefetch_column_stats(Relation relation)
 
 	/*
 	 * Use the keys the planner looks up: get_attavgwidth() reads
-	 * stainherit = false rows, but a partitioned table only has
-	 * stainherit = true rows, which examine_variable() reads for it.
+	 * stainherit = false rows, and examine_variable() reads
+	 * stainherit = true rows for a parent with children.  A partitioned
+	 * table only has stainherit = true rows, and so does an empty
+	 * inheritance parent.  The list lookup caches the rows of every column
+	 * with both stainherit values.
 	 */
-	inh = relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
-	keys = palloc(tupdesc->natts * 3 * sizeof(Datum));
-	for (i = 1; i <= tupdesc->natts; i++)
+	if (relation->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+		inh_values[ninh_values++] = false;
+	if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
+		relation->rd_rel->relhassubclass)
+		inh_values[ninh_values++] = true;
+	keys = palloc(tupdesc->natts * ninh_values * 3 * sizeof(Datum));
+	for (j = 0; j < ninh_values; j++)
 	{
-		if (TupleDescAttr(tupdesc, i - 1)->attisdropped)
-			continue;
-		keys[nkeys * 3] = ObjectIdGetDatum(relid);
-		keys[nkeys * 3 + 1] = Int16GetDatum(i);
-		keys[nkeys * 3 + 2] = BoolGetDatum(inh);
-		nkeys++;
+		for (i = 1; i <= tupdesc->natts; i++)
+		{
+			if (TupleDescAttr(tupdesc, i - 1)->attisdropped)
+				continue;
+			keys[nkeys * 3] = ObjectIdGetDatum(relid);
+			keys[nkeys * 3 + 1] = Int16GetDatum(i);
+			keys[nkeys * 3 + 2] = BoolGetDatum(inh_values[j]);
+			nkeys++;
+		}
 	}
 	YbSysCachePrefetchList(STATRELATTINH, ObjectIdGetDatum(relid), nkeys, keys);
 	pfree(keys);
