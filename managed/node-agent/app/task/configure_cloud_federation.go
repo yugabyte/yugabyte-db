@@ -74,9 +74,9 @@ const (
 )
 
 // ConfigureCloudFederation sets up (or tears down) cross-cloud federated IAM on
-// a DB node. For an AWS or GCP source it deploys only static config: short-lived
-// credentials are minted in-process by YBC's client libraries, so nothing runs on the
-// node. An OCI source is the exception, because OCI offers no endpoint those
+// a DB node. For an AWS or GCP source it deploys only static config; short-lived
+// credentials are minted in-process by YBC's client libraries, so there is no refresher
+// daemon. An OCI source is the exception, because OCI offers no endpoint those
 // libraries can call; a systemd timer keeps an identity token file fresh instead (see
 // configure_cloud_federation_oci.go).
 type ConfigureCloudFederation struct {

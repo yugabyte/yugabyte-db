@@ -3,7 +3,6 @@
 package federation
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"node-agent/app/federation/ocitoken"
@@ -13,8 +12,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-const exchangeTimeout = 60 * time.Second
 
 var (
 	// Hidden: these exist for the systemd unit that node-agent installs, not for operators.
@@ -74,13 +71,7 @@ func ociTokenHandler(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(ctx, exchangeTimeout)
-	defer cancel()
-	token, err := ocitoken.Exchange(ctx, ocitoken.NewClient(), signer, endpoint)
+	token, err := ocitoken.Exchange(cmd.Context(), ocitoken.NewClient(), signer, endpoint)
 	if err != nil {
 		return err
 	}

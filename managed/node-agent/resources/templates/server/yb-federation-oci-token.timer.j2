@@ -4,8 +4,8 @@ Description=Refresh the OCI identity token used for cross-cloud federation
 [Timer]
 # Setup refuses an identity domain whose tokens live under 30 minutes, so at setup every run leaves
 # a token that outlives the next one. Later runs write whatever the domain issues: if its token
-# lifetime is lowered below 20 minutes, the credential has gaps until a reconcile finds the stale
-# token and fails setup with the reason. Surviving a missed run takes a longer-lived token: an
+# lifetime is lowered below 20 minutes, the credential has gaps until the next universe operation
+# re-applies federation and fails setup with the reason. Surviving a missed run takes a longer-lived token: an
 # hour-long one survives one, a 30-minute one none.
 OnBootSec=1min
 OnUnitActiveSec=20min

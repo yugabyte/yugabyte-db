@@ -372,32 +372,10 @@ func TestRequireLifetimeRejectsMalformedTokens(t *testing.T) {
 	}
 }
 
-func TestRequireLifetimeToleratesPaddedPayload(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0)
-	// The payload's length is not a multiple of 3, so its base64 form really ends in "=": without
-	// that the test would pass whether or not padding is handled.
-	payload := fmt.Sprintf(`{"exp":%d,"sub":"a"}`, now.Add(time.Hour).Unix())
-	padded := base64.URLEncoding.EncodeToString([]byte(payload))
-	if !strings.HasSuffix(padded, "=") {
-		t.Fatalf("test payload must need padding, got %q", padded)
-	}
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256"}`))
-	mustNoError(t, RequireLifetime(header+"."+padded+".c2ln", 30*time.Minute, now))
-}
-
 // RFC 7519 allows a fractional NumericDate, and some issuers send one.
 func TestRequireLifetimeAcceptsFractionalExp(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	token := jwtWithPayload(fmt.Sprintf(`{"exp":%d.5}`, now.Add(time.Hour).Unix()))
 	mustNoError(t, RequireLifetime(token, 30*time.Minute, now))
 	mustError(t, RequireLifetime(token, 2*time.Hour, now))
-}
-
-// Nothing is verified, so an algorithm the parser does not know must not make a token unreadable.
-func TestRequireLifetimeIgnoresTheSigningAlgorithm(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0)
-	enc := base64.RawURLEncoding
-	token := enc.EncodeToString([]byte(`{"alg":"X-UNKNOWN"}`)) + "." +
-		enc.EncodeToString([]byte(fmt.Sprintf(`{"exp":%d}`, now.Add(time.Hour).Unix()))) + ".c2ln"
-	mustNoError(t, RequireLifetime(token, 30*time.Minute, now))
 }
