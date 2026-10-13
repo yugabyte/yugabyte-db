@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -220,6 +221,27 @@ public class CloudInfoInterfaceFederationTest extends FakeDBApplication {
     ociInfo(provider).enableFederatedIam = true;
 
     assertTrue(CloudInfoInterface.getCrossCloudFederationTargets(provider).isEmpty());
+  }
+
+  /**
+   * The OCI gate decides it for an OCI provider alone; a universe is never marked federated while
+   * its nodes are skipped.
+   */
+  @Test
+  public void testOnlyOciProvidersAreHeldBackByTheGate() {
+    Provider oci = ModelFactory.ociProvider(customer);
+    OCICloudInfo info = ociInfo(oci);
+    info.enableFederatedIam = true;
+    assertFalse(CloudInfoInterface.canFederateNodes(oci, true)); // no target
+    info.crossCloudFederationTargets = List.of(target(CloudType.gcp, GCS_AUDIENCE, null));
+    assertTrue(CloudInfoInterface.canFederateNodes(oci, true));
+    assertFalse(CloudInfoInterface.canFederateNodes(oci, false));
+
+    Provider onprem = ModelFactory.onpremProvider(customer);
+    OnPremCloudInfo onpremInfo = onPremInfo(onprem);
+    onpremInfo.enableFederatedIam = true;
+    onpremInfo.crossCloudFederationTargets = List.of(target(CloudType.gcp, GCS_AUDIENCE, null));
+    assertTrue(CloudInfoInterface.canFederateNodes(onprem, false));
   }
 
   @Test

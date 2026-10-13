@@ -1629,6 +1629,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * flag is never left in a partial "true" state.
    */
   protected void createPersistFederationConfiguredTask(boolean enabling) {
+    boolean ociSourceEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource);
     createUpdateUniverseFieldsTask(
             u ->
                 u.getUniverseDetails()
@@ -1639,8 +1640,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                           if (enabling) {
                             Provider p =
                                 Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-                            configured =
-                                !CloudInfoInterface.getCrossCloudFederationTargets(p).isEmpty();
+                            configured = CloudInfoInterface.canFederateNodes(p, ociSourceEnabled);
                           }
                           c.userIntent.setFederationConfigured(configured);
                         }))

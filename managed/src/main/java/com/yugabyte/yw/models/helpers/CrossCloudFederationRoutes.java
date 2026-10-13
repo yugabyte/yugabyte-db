@@ -14,10 +14,11 @@ import java.util.Set;
  *
  * <p>Not every pair of clouds is supported. Every route needs its own identity exchange, so a node
  * pointed at a bucket it has no route to has no credentials for it, and a backup from it would fail
- * later with an unrelated error. Where the provider fixes the node's cloud, that is refused when
- * the provider is saved: an OCI provider cannot name an S3 target. A node is also skipped with a
- * warning when stored data names a target it has no route to, which a saved provider never does.
- * GCP is one end of every route.
+ * later with an unrelated error. Where the provider fixes the node's cloud, provider validation
+ * refuses such a target at save (an OCI provider cannot name an S3 target) and the node's setup
+ * fails on one that got past it, since validation can be skipped. A node whose cloud was detected
+ * rather than fixed by its provider is skipped with a warning instead. GCP is one end of every
+ * route.
  */
 public final class CrossCloudFederationRoutes {
 

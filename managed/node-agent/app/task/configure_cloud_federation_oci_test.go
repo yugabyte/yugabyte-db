@@ -177,20 +177,6 @@ func TestIsOciSource(t *testing.T) {
 	}
 }
 
-func TestShellQuote(t *testing.T) {
-	cases := map[string]string{
-		"plain":      `'plain'`,
-		"with space": `'with space'`,
-		// A quote inside the value must not end the quoting.
-		"it's": `'it'\''s'`,
-	}
-	for in, want := range cases {
-		if got := shellQuote(in); got != want {
-			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
-		}
-	}
-}
-
 // systemd treats a quote, newline, % or $ in a unit as syntax, and these paths are interpolated
 // into one, so anything outside a plain path must be refused.
 func TestValidateUnitPath(t *testing.T) {

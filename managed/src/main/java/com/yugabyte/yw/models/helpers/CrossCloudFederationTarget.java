@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.regex.Pattern;
 import lombok.Data;
@@ -38,6 +39,14 @@ public class CrossCloudFederationTarget {
   public static final String MULTICLOUD_UNSUPPORTED_ERROR =
       "Cross-cloud federated IAM is not supported on a cluster that spans multiple providers."
           + " Disable federated IAM on the provider, or use a single provider for this cluster.";
+
+  /** Why an OCI provider's nodes cannot be federated while the OCI source gate is off. */
+  public static String ociSourceDisabledError() {
+    return String.format(
+        "Federated IAM from OCI is not enabled on this YBA. Set the runtime config %s to true once"
+            + " node-agent has been upgraded on every OCI node.",
+        GlobalConfKeys.enableOciFederationSource.getKey());
+  }
 
   @ApiModelProperty(
       value =

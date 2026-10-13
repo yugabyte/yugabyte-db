@@ -885,12 +885,19 @@ public class UniverseCRUDHandler {
       // providerType/rootCA), so CreateUniverse and later edit/add-node/replace key off this one
       // flag.
       Set<UUID> providerUUIDs = c.userIntent.getAllProviderUUIDs();
+      boolean ociSourceEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource);
       boolean federationConfigured = false;
       for (UUID providerUUID : providerUUIDs) {
         Provider federationProvider = Provider.getOrBadRequest(providerUUID);
-        if (!CloudInfoInterface.getCrossCloudFederationTargets(federationProvider).isEmpty()) {
+        if (CloudInfoInterface.canFederateNodes(federationProvider, ociSourceEnabled)) {
           federationConfigured = true;
           break;
+        }
+        if (!CloudInfoInterface.getCrossCloudFederationTargets(federationProvider).isEmpty()) {
+          // The gate skips its nodes, so the universe stays unmarked rather than claim federation.
+          LOG.warn(
+              "Not enabling federated IAM on the new universe: {}",
+              CrossCloudFederationTarget.ociSourceDisabledError());
         }
       }
       if (federationConfigured && providerUUIDs.size() > 1) {

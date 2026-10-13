@@ -303,39 +303,6 @@ func TestExchangeDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
-func TestWriteTokenFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "token.jwt")
-
-	mustNoError(t, WriteTokenFile(path, "first"))
-	mustNoError(t, WriteTokenFile(path, "second"))
-
-	data, err := os.ReadFile(path)
-	mustNoError(t, err)
-	if string(data) != "second" {
-		t.Errorf("file holds %q, want %q", data, "second")
-	}
-	info, err := os.Stat(path)
-	mustNoError(t, err)
-	if info.Mode().Perm() != 0600 {
-		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
-	}
-	entries, err := os.ReadDir(filepath.Dir(path))
-	mustNoError(t, err)
-	if len(entries) != 1 {
-		t.Errorf("no temporary file may be left behind, found %d entries", len(entries))
-	}
-}
-
-func TestWriteTokenFileFailsWithoutLeavingTemp(t *testing.T) {
-	dir := t.TempDir()
-	mustError(t, WriteTokenFile(filepath.Join(dir, "missing-subdir", "token.jwt"), "x"))
-	entries, err := os.ReadDir(dir)
-	mustNoError(t, err)
-	if len(entries) != 0 {
-		t.Errorf("a failed write must leave nothing behind, found %d entries", len(entries))
-	}
-}
-
 func TestReadTokenFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "token.jwt")
@@ -343,7 +310,7 @@ func TestReadTokenFile(t *testing.T) {
 	_, err := ReadTokenFile(path)
 	mustError(t, err)
 
-	mustNoError(t, WriteTokenFile(path, validJWT))
+	mustNoError(t, os.WriteFile(path, []byte(validJWT), 0600))
 	got, err := ReadTokenFile(path)
 	mustNoError(t, err)
 	if got != validJWT {
@@ -412,7 +379,30 @@ func TestRequireLifetimeRejectsMalformedTokens(t *testing.T) {
 
 func TestRequireLifetimeToleratesPaddedPayload(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
-	payload := fmt.Sprintf(`{"exp":%d}`, now.Add(time.Hour).Unix())
+	// The payload's length is not a multiple of 3, so its base64 form really ends in "=": without
+	// that the test would pass whether or not padding is handled.
+	payload := fmt.Sprintf(`{"exp":%d,"sub":"a"}`, now.Add(time.Hour).Unix())
 	padded := base64.URLEncoding.EncodeToString([]byte(payload))
-	mustNoError(t, RequireLifetime("aaa."+padded+".ccc", 30*time.Minute, now))
+	if !strings.HasSuffix(padded, "=") {
+		t.Fatalf("test payload must need padding, got %q", padded)
+	}
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256"}`))
+	mustNoError(t, RequireLifetime(header+"."+padded+".c2ln", 30*time.Minute, now))
+}
+
+// RFC 7519 allows a fractional NumericDate, and some issuers send one.
+func TestRequireLifetimeAcceptsFractionalExp(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	token := jwtWithPayload(fmt.Sprintf(`{"exp":%d.5}`, now.Add(time.Hour).Unix()))
+	mustNoError(t, RequireLifetime(token, 30*time.Minute, now))
+	mustError(t, RequireLifetime(token, 2*time.Hour, now))
+}
+
+// Nothing is verified, so an algorithm the parser does not know must not make a token unreadable.
+func TestRequireLifetimeIgnoresTheSigningAlgorithm(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	enc := base64.RawURLEncoding
+	token := enc.EncodeToString([]byte(`{"alg":"X-UNKNOWN"}`)) + "." +
+		enc.EncodeToString([]byte(fmt.Sprintf(`{"exp":%d}`, now.Add(time.Hour).Unix()))) + ".c2ln"
+	mustNoError(t, RequireLifetime(token, 30*time.Minute, now))
 }

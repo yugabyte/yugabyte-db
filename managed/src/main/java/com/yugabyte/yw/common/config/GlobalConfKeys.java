@@ -2163,10 +2163,11 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " Off by default while the feature is in preview. Enable it only after node-agent"
               + " has been upgraded on every OCI node: an older node-agent ignores the OCI source"
               + " and configures the node with credentials that cannot work, yet reports success."
-              + " While off, an OCI provider cannot enable federated IAM, and operations that"
+              + " While off, an OCI provider with federated IAM enabled fails provider validation"
+              + " and a universe on an OCI provider is not marked as federated. Operations that"
               + " configure federation on the nodes of an OCI provider that already has it, such as"
-              + " adding a node, skip those nodes with a warning and leave them without it."
-              + " Turning federated IAM off still tears it down.",
+              + " adding a node, skip those nodes with a warning and leave them without it. Turning"
+              + " federated IAM off still tears it down.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableS3BackupProxy =

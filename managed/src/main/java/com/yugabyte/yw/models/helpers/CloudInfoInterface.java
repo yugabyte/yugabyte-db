@@ -111,6 +111,18 @@ public interface CloudInfoInterface {
   }
 
   /**
+   * Whether nodes of this provider will be configured for federated IAM: it has a usable target
+   * and, for OCI, the source is enabled. ManageCloudFederation skips an OCI provider's nodes while
+   * it is not, so a universe must not be marked federated on the targets alone.
+   */
+  public static boolean canFederateNodes(Provider provider, boolean ociSourceEnabled) {
+    if (provider.getCloudCode() == CloudType.oci && !ociSourceEnabled) {
+      return false;
+    }
+    return !getCrossCloudFederationTargets(provider).isEmpty();
+  }
+
+  /**
    * The OCI identity domain URL configured for an OCI provider's nodes, or null when none is set or
    * the provider is not an OCI one. It is source-side configuration - how a node running on OCI
    * proves its identity - so it lives next to, not inside, the storage-cloud targets.

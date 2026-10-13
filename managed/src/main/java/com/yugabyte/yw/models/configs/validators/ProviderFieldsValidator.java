@@ -93,12 +93,7 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     if (provider.getCloudCode() == CloudType.oci
         && !runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource)) {
       throwBeanProviderValidatorError(
-          "FEDERATED_IAM",
-          String.format(
-              "Federated IAM from OCI is not enabled on this YBA. Set the runtime config %s to"
-                  + " true once node-agent has been upgraded on every OCI node.",
-              GlobalConfKeys.enableOciFederationSource.getKey()),
-          null);
+          "FEDERATED_IAM", CrossCloudFederationTarget.ociSourceDisabledError(), null);
     }
     List<CrossCloudFederationTarget> targets = info.getEffectiveFederationTargets();
     if (targets.isEmpty()) {

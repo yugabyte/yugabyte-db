@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"node-agent/app/federation/ocitoken"
+	"node-agent/util"
 	"path/filepath"
 	"time"
 
@@ -88,8 +89,10 @@ func ociTokenHandler(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	if err := ocitoken.WriteTokenFile(output, token); err != nil {
-		return err
+	// Replaced atomically, so YBC reloading its credential never reads a half-written token. The
+	// empty user leaves the file owned by whoever runs this unit.
+	if err := util.WriteFileIfChanged(output, token, 0600, ""); err != nil {
+		return fmt.Errorf("could not write the token file: %w", err)
 	}
 	// Never print the token: this output is captured by systemd and by the federation task.
 	fmt.Fprintln(cmd.OutOrStdout(), "OCI identity token refreshed")
