@@ -185,7 +185,7 @@ public class AZUCloudImplTest extends FakeDBApplication {
         List.of(
             AvailabilityZone.createOrThrow(region, "westus2-1", "westus2-1", "subnet-1"),
             AvailabilityZone.createOrThrow(region, "westus2-2", "westus2-2", "subnet-2"));
-    doReturn(mockApiClient).when(azuCloudImpl).getApiClient(any());
+    doReturn(mockApiClient).when(azuCloudImpl).getApiClient(any(), any());
   }
 
   private static LoadBalancerInner lb(String location, Map<String, String> tags) {

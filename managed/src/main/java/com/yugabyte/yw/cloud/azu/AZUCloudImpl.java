@@ -527,8 +527,7 @@ public class AZUCloudImpl implements CloudAPI {
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
       List<Integer> ports,
       NLBHealthCheckConfiguration healthCheckConfig) {
-    AzureCloudInfo azureCloudInfo = CloudInfoInterface.get(provider);
-    AZUResourceGroupApiClient apiClient = new AZUResourceGroupApiClient(azureCloudInfo);
+    AZUResourceGroupApiClient apiClient = getApiClient(provider, regionCode);
     manageNodeGroup(
         provider, regionCode, lbName, azToNodeIDs, "TCP", ports, healthCheckConfig, apiClient);
   }
@@ -590,9 +589,19 @@ public class AZUCloudImpl implements CloudAPI {
     apiClient.updateLoadBalancer(lbName, loadBalancer);
   }
 
+  // The resource group devops creates the region's VMs and disks in: the region override, else the
+  // provider's. YBA looks up VMs, disks and load balancers there.
   @VisibleForTesting
-  protected AZUResourceGroupApiClient getApiClient(Provider provider) {
-    return new AZUResourceGroupApiClient(CloudInfoInterface.get(provider));
+  protected AZUResourceGroupApiClient getApiClient(Provider provider, String regionCode) {
+    AzureCloudInfo cloudInfo = CloudInfoInterface.get(provider);
+    Region region = Region.getByCode(provider, regionCode);
+    if (region != null) {
+      AzureRegionCloudInfo regionInfo = CloudInfoInterface.get(region);
+      if (StringUtils.isNotBlank(regionInfo.getAzuRGOverride())) {
+        cloudInfo = cloudInfo.toBuilder().azuRG(regionInfo.getAzuRGOverride()).build();
+      }
+    }
+    return new AZUResourceGroupApiClient(cloudInfo);
   }
 
   // Managed load balancer methods
@@ -604,7 +613,7 @@ public class AZUCloudImpl implements CloudAPI {
 
   /**
    * Creates the internal Standard load balancer with one frontend in the subnet of the first zone,
-   * or reuses the one with the same name. It goes in the provider resource group, where
+   * or reuses the one with the same name. It goes in the resource group of the region's VMs, where
    * manageNodeGroup looks for it and adds the backend pool, rules and probes. The ports are not
    * needed here.
    *
@@ -618,7 +627,7 @@ public class AZUCloudImpl implements CloudAPI {
       List<AvailabilityZone> zones,
       List<Integer> ports,
       Map<String, String> tags) {
-    AZUResourceGroupApiClient apiClient = getApiClient(provider);
+    AZUResourceGroupApiClient apiClient = getApiClient(provider, regionCode);
     LoadBalancerInner lb = apiClient.getLoadBalancerIfExists(name);
     if (lb == null) {
       FrontendIpConfigurationInner frontend =
@@ -650,7 +659,7 @@ public class AZUCloudImpl implements CloudAPI {
    */
   @Override
   public void deleteManagedLoadBalancer(Provider provider, String regionCode, String name) {
-    AZUResourceGroupApiClient apiClient = getApiClient(provider);
+    AZUResourceGroupApiClient apiClient = getApiClient(provider, regionCode);
     LoadBalancerInner lb = apiClient.getLoadBalancerIfExists(name);
     if (lb == null) {
       log.info("Load balancer {} does not exist", name);
@@ -753,11 +762,13 @@ public class AZUCloudImpl implements CloudAPI {
   @Override
   public Optional<CloudAPI.NodeDiskSpec> describeNodeDataDiskSpec(
       Provider provider, NodeDetails node) {
-    if (node == null || StringUtils.isBlank(node.nodeName)) {
-      throw new PlatformServiceException(BAD_REQUEST, "Azure node is missing a name");
+    if (node == null
+        || node.cloudInfo == null
+        || StringUtils.isBlank(node.cloudInfo.region)
+        || StringUtils.isBlank(node.nodeName)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Azure node is missing region or name");
     }
-    AzureCloudInfo azureCloudInfo = CloudInfoInterface.get(provider);
-    AZUResourceGroupApiClient apiClient = new AZUResourceGroupApiClient(azureCloudInfo);
+    AZUResourceGroupApiClient apiClient = getApiClient(provider, node.cloudInfo.region);
     VirtualMachineInner vm = apiClient.getVirtulMachineDetailsByName(node.nodeName);
     if (vm.storageProfile() == null || vm.storageProfile().dataDisks() == null) {
       throw new PlatformServiceException(
