@@ -18,6 +18,7 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
 2. Blacklist the failed YB-TServer by using the following command:
 
    ```sh
+   export MASTERS=yb-node1:7100,yb-node2:7100,yb-node3:7100
    ~/master/bin/yb-admin --master_addresses $MASTERS change_blacklist ADD $OLD_IP:9100
    ```
 
@@ -35,9 +36,21 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
 
 4. When the data move is complete (100%), kill the failed YB-TServer by stopping the yb-tserver process or terminating the VM. Then wait for the YB-TServer to be marked as `DEAD` by the YB-Master leader. The YB-Master leader will mark the server as `DEAD` after not responding for one minute (based on the `tserver_unresponsive_timeout_ms`, with default being `60000`).
 
-   To verify that the failed YB-TServer is dead, open your web browser to `$MASTER_LEADER_IP:7000/tablet-servers` and check the output.
+   To verify that the failed YB-TServer is dead, open your web browser to `$MASTER_LEADER_IP:7000/tablet-servers`
+   or get the tablet server list using this command:
+   
+   ```sh
+   ~/master/bin/yb-admin --master_addresses $MASTERS list_all_tablet_servers
+   ```
 
-5. Because the replacement YB-TServer is running and is loaded with data, remove the address for the failed YB-TServer from the blacklist, as follows:
+6. Because the replacement YB-TServer is running and is loaded with data, you can now remove the failed server from the server list by this command:
+
+   ```sh
+   ~/master/bin/yb-admin --master_addresses $MASTERS remove_tablet_server <tserver-uuid>
+   ```
+
+7. If later you want to re-install a YB-Tserver with the address of the failed YB-Tserver and re-join that server to your cluster,
+   you need to remove that address from the blacklist, as follows:
 
    ```sh
    ~/master/bin/yb-admin --master_addresses $MASTERS change_blacklist REMOVE $OLD_IP:9100
