@@ -23,13 +23,21 @@ The following sections provide guidance on how to adjust your schema, handle uns
 
 **GitHub**: [Issue #5956](https://github.com/yugabyte/yugabyte-db/issues/5956)
 
-**Description**: If you have table inheritance in the source database, it will error out in the target as it is not currently supported in YugabyteDB:
+**Description**: If you have table inheritance in the source database, it will error out in the target on YugabyteDB versions that do not support `INHERITS`:
 
 ```output
 ERROR: INHERITS not supported yet
 ```
 
 **Workaround**: Currently, there is no workaround.
+
+**Fixed In**: {{<release "2025.1">}} {{<tags/feature/tp>}}, {{<release "2025.2">}} {{<tags/feature/tp>}}, and {{<release "2026.1">}} {{<tags/feature/ga>}}.
+
+{{< note title="Data migration" >}}
+
+YugabyteDB supports [table inheritance](../../../api/ysql/the-sql-language/ddl-inherit/) in the versions above. yb-voyager cannot migrate data for tables that use `INHERITS` on the source. The assessment report shows this caveat for those tables, and [export data](../../reference/data-migration/export-data/) exits with an error when any table in the migration uses inheritance.
+
+{{< /note >}}
 
 **Example**
 
@@ -545,7 +553,7 @@ CREATE FUNCTION public.latin1_to_utf8(src_encoding integer, dest_encoding intege
 
 **GitHub**: [Issue 11323](https://github.com/yugabyte/yugabyte-db/issues/11323), [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: The migration skips databases that have the following data types on any column: `GEOMETRY`, `GEOGRAPHY`, `BOX2D`, `BOX3D`, `TOPOGEOMETRY`, `RASTER`, `PG_LSN`, or `TXID_SNAPSHOT`.
+**Description**: The migration skips databases that have the following data types on any column: `GEOMETRY`, `GEOGRAPHY`, `BOX2D`, `BOX3D`, `TOPOGEOMETRY`, `RASTER`, `PG_LSN`, `TXID_SNAPSHOT`, `XID`, or `XID8`.
 
 **Workaround**: None.
 
@@ -1394,7 +1402,7 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, or `TIMETZ`.
+**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, `TIMETZ`, `CID`, or `REFCURSOR`.
 
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
