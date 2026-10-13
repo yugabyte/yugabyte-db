@@ -39,6 +39,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #define PG_GETARG_TEXT_PP_IF_EXISTS(_n) \
 	(PG_NARGS() > (_n) ? PG_GETARG_TEXT_PP(_n) : NULL)
@@ -99,7 +100,14 @@ typedef struct regexp_matches_ctx
 #endif
 
 /* A parent memory context for regular expressions. */
-static MemoryContext RegexpCacheMemoryContext;
+/*
+ * YB: per-thread. Concurrent RE_compile_and_cache calls on a tserver update
+ * the parent's child list in MemoryContextSetParent, so this context cannot
+ * be shared and, on a tserver, is not a child of TopMemoryContext. __thread
+ * has no destructor; YbFreeRegexpCache runs from a pggate thread-local when
+ * the thread exits.
+ */
+static YB_THREAD_LOCAL MemoryContext RegexpCacheMemoryContext = NULL;
 
 /* this structure describes one cached regular expression */
 typedef struct cached_re_str
@@ -112,62 +120,25 @@ typedef struct cached_re_str
 	regex_t		cre_re;			/* the compiled regular expression */
 } cached_re_str;
 
-static YB_THREAD_LOCAL int num_res = 0; /* # of cached re's */
+/* YB: per-thread. One thread in a backend, one copy per tserver thread. */
+static YB_THREAD_LOCAL int	num_res = 0;		/* # of cached re's */
+/* YB: one copy per thread, same as num_res. */
+static YB_THREAD_LOCAL cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
 
 /*
- * YB: A single static cache works in Postgres, but is not safe in a
- * multi-threaded environment when we pushdown regex filters to the tserver.
- * The following infrastructure is necessary to create a thread local cache
- * for regex compilation.
+ * YB: on a tserver RegexpCacheMemoryContext has no parent, so thread exit is
+ * what frees it. Cached regex contexts are its children and go with it.
  */
-typedef struct YbReCacheInfo
-{
-	cached_re_str *array;
-} YbReCacheInfo;
-
 static void
-YbFreeRe(cached_re_str *re)
+YbFreeRegexpCache(void)
 {
-	MemoryContextDelete(re->cre_context);
-}
-
-static void
-YbFreeReCache(YbcPgThreadLocalRegexpCache *cache)
-{
-	Assert(cache && cache->array);
-	cached_re_str *re = cache->array;
-
-	for (cached_re_str *re_end = re + num_res; re != re_end; ++re)
-		YbFreeRe(re);
-}
-
-static YbReCacheInfo
-YbGetReCacheInfo()
-{
-	if (IsMultiThreadedMode())
+	if (RegexpCacheMemoryContext != NULL)
 	{
-		YbcPgThreadLocalRegexpCache *cache = YBCPgGetThreadLocalRegexpCache();
-
-		if (!cache)
-		{
-			cache = YBCPgInitThreadLocalRegexpCache((sizeof(cached_re_str) *
-													 MAX_CACHED_RES),
-													&YbFreeReCache);
-			Assert(cache && cache->array);
-		}
-
-		return (YbReCacheInfo)
-		{
-			.array = (cached_re_str *) cache->array,
-		};
+		/* YB: child contexts of the re_array entries are deleted with it. */
+		MemoryContextDelete(RegexpCacheMemoryContext);
+		RegexpCacheMemoryContext = NULL;
 	}
-
-	static cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
-
-	return (YbReCacheInfo)
-	{
-		.array = re_array,
-	};
+	num_res = 0;
 }
 
 /* Local functions */
@@ -206,7 +177,6 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	cached_re_str re_temp;
 	char		errMsg[100];
 	MemoryContext oldcontext;
-	cached_re_str *re_array = YbGetReCacheInfo().array;
 
 	/*
 	 * Look for a match among previously compiled REs.  Since the data
@@ -236,10 +206,23 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 
 	/* Set up the cache memory on first go through. */
 	if (unlikely(RegexpCacheMemoryContext == NULL))
-		RegexpCacheMemoryContext =
-			AllocSetContextCreate(TopMemoryContext,
-								  "RegexpCacheMemoryContext",
-								  ALLOCSET_SMALL_SIZES);
+	{
+		if (IsMultiThreadedMode())
+		{
+			/* YB: __thread has no destructor; call cleanup before the context exists. */
+			YBCPgRegisterThreadLocalRegexpCacheCleanup(YbFreeRegexpCache);
+			/* YB: NULL parent. TopMemoryContext's child list is shared. */
+			RegexpCacheMemoryContext =
+				AllocSetContextCreate(NULL,
+									  "RegexpCacheMemoryContext",
+									  ALLOCSET_SMALL_SIZES);
+		}
+		else
+			RegexpCacheMemoryContext =
+				AllocSetContextCreate(TopMemoryContext,
+									  "RegexpCacheMemoryContext",
+									  ALLOCSET_SMALL_SIZES);
+	}
 
 	/*
 	 * Couldn't find it, so try to compile the new RE.  To avoid leaking

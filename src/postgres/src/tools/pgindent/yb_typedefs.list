@@ -190,7 +190,6 @@ YbQueryDiagnosticsPgss
 YbQueryDiagnosticsStatusType
 YbQueryState
 YbRange
-YbReCacheInfo
 YbRegisterOuterMatchFn_t
 YbRelationAttrsProcessingState
 YbResetBatchFn_t
@@ -344,7 +343,6 @@ YbcPgSysTablePrefetcherCacheMode
 YbcPgTableDesc
 YbcPgTableLocalityInfo
 YbcPgTabletsDescriptor
-YbcPgThreadLocalRegexpCache
 YbcPgThreadLocalRegexpCacheCleanup
 YbcPgTransactionSetting
 YbcPgTxnSnapshot
@@ -416,4 +414,3 @@ yb_bind_for_write_function
 yb_hdr_iter
 yb_keylen_t
 yb_relopt_oid
-yb_replace_varnos_context

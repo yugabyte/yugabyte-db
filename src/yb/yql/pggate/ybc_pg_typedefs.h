@@ -974,12 +974,12 @@ typedef struct {
   const char* tgt_owner;
 } YbcCloneInfo;
 
-// A thread-safe way to cache compiled regexes.
-typedef struct {
-  void* array;
-} YbcPgThreadLocalRegexpCache;
-
-typedef void (*YbcPgThreadLocalRegexpCacheCleanup)(YbcPgThreadLocalRegexpCache*);
+/*
+ * Compiled regexes live in a __thread array in regexp.c. __thread has no
+ * destructor, so the tserver thread-local that owns this callback deletes the
+ * cache memory context when the thread exits.
+ */
+typedef void (*YbcPgThreadLocalRegexpCacheCleanup)(void);
 
 
 typedef struct {

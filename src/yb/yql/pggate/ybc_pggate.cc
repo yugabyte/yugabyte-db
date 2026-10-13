@@ -2478,13 +2478,9 @@ void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
   PgSetThreadLocalYbExpressionVersion(yb_expr_version);
 }
 
-YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
-  return PgGetThreadLocalRegexpCache();
-}
-
-YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
-    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup) {
-  return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
+void YBCPgRegisterThreadLocalRegexpCacheCleanup(
+    YbcPgThreadLocalRegexpCacheCleanup cleanup) {
+  PgRegisterThreadLocalRegexpCacheCleanup(cleanup);
 }
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {

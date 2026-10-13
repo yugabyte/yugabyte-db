@@ -78,11 +78,10 @@ int PgGetThreadLocalYbExpressionVersion();
 void PgSetThreadLocalYbExpressionVersion(int yb_expr_version);
 
 /*
- * CachedRegexpHolder (from regex/regex.c)
- * These are used to cache the compiled regexes
+ * Regexp cache cleanup (from utils/adt/regexp.c).
+ * The cache itself is a __thread array. This only runs its destructor.
  */
-YbcPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache();
-YbcPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
-    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
+void PgRegisterThreadLocalRegexpCacheCleanup(
+    YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
 } // namespace yb::pggate

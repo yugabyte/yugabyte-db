@@ -16,27 +16,21 @@
 
 #include <stddef.h>
 #include <optional>
-#include <vector>
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/util/logging.h"
 
 class CachedRegexpHolder {
  public:
-  CachedRegexpHolder(size_t buffer_size,
-                     YbcPgThreadLocalRegexpCacheCleanup cleanup)
-      : buffer_(buffer_size, 0), cleanup_(cleanup), cache_{.array = buffer_.data()} {}
+  explicit CachedRegexpHolder(YbcPgThreadLocalRegexpCacheCleanup cleanup)
+      : cleanup_(cleanup) {}
 
   ~CachedRegexpHolder() {
-    cleanup_(&cache_);
+    cleanup_();
   }
 
-  YbcPgThreadLocalRegexpCache& cache() { return cache_; }
-
  private:
-  std::vector<char> buffer_;
   const YbcPgThreadLocalRegexpCacheCleanup cleanup_;
-  YbcPgThreadLocalRegexpCache cache_ = {};
 };
 
 namespace yb::pggate {
@@ -116,15 +110,10 @@ void PgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
   yb_expression_version = yb_expr_version;
 }
 
-YbcPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache() {
-  return re_cache ? &re_cache->cache() : nullptr;
-}
-
-YbcPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
-    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup) {
+void PgRegisterThreadLocalRegexpCacheCleanup(
+    YbcPgThreadLocalRegexpCacheCleanup cleanup) {
   DCHECK(!re_cache);
-  re_cache.emplace(buffer_size, cleanup);
-  return &re_cache->cache();
+  re_cache.emplace(cleanup);
 }
 
 }  // namespace yb::pggate
