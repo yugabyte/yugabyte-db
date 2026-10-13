@@ -122,5 +122,169 @@ TEST(LWProtoTest, BigMessage) {
   ASSERT_EQ(pb.string1(), lwpb2.string1());
 }
 
+
+// Every trace-tagged field type the generator handles, in both the lightweight and the plain
+// protobuf form: scalars, enum, bool, hex bytes, bytes_as_string, repeated scalars, nested and
+// repeated nested messages, a pointer field, and recursion through a self-referential message.
+// Fields not tagged (i32, pairs) must not appear; unset tagged fields must not appear. Attributes
+// come out sorted by key; a repeated field is one `*` key listing its distinct values.
+TEST(LWProtoTest, TracingAttributes) {
+  using Attrs = std::vector<std::pair<std::string, std::string>>;
+  const Attrs expected = {
+      {"req.bytes", "0102FF"},
+      {"req.bytes_str", "raw text"},
+      {"req.en", "TWO"},
+      {"req.flag", "true"},
+      {"req.message.cycle.str", "deep"},
+      {"req.message.rbytes.*", "x1, x2"},
+      {"req.message.str", "sub"},
+      {"req.ptr_message.str", "ptr"},
+      {"req.repeated_messages.*.str", "r0, r1"},
+      {"req.rstr.*", "a, b"},
+      {"req.ru32.*", "1, 2"},
+      {"req.str", "hello"},
+      {"req.u32", "7"},
+  };
+
+  rpc_test::LightweightRequestPB pb;
+  pb.set_i32(-1);
+  pb.set_u32(7);
+  pb.set_str("hello");
+  pb.set_bytes("\x01\x02\xff");
+  pb.set_en(rpc_test::TWO);
+  pb.add_ru32(1);
+  pb.add_ru32(2);
+  pb.add_rstr("a");
+  pb.add_rstr("b");
+  pb.mutable_message()->set_str("sub");
+  pb.mutable_message()->add_rbytes("x1");
+  pb.mutable_message()->add_rbytes("x2");
+  pb.mutable_message()->mutable_cycle()->set_str("deep");
+  pb.add_repeated_messages()->set_str("r0");
+  pb.add_repeated_messages()->set_str("r1");
+  pb.add_pairs()->set_s1("untagged");
+  pb.mutable_ptr_message()->set_str("ptr");
+  pb.set_flag(true);
+  pb.set_bytes_str("raw text");
+  ASSERT_EQ(TracingAttributes(pb), expected);
+
+  ThreadSafeArena arena;
+  rpc_test::LWLightweightRequestPB lw(&arena);
+  lw.set_i32(-1);
+  lw.set_u32(7);
+  lw.dup_str("hello");
+  lw.dup_bytes(Slice("\x01\x02\xff", 3));
+  lw.set_en(rpc_test::TWO);
+  lw.add_ru32(1);
+  lw.add_ru32(2);
+  lw.add_dup_rstr("a");
+  lw.add_dup_rstr("b");
+  lw.mutable_message()->dup_str("sub");
+  lw.mutable_message()->add_dup_rbytes("x1");
+  lw.mutable_message()->add_dup_rbytes("x2");
+  lw.mutable_message()->mutable_cycle()->dup_str("deep");
+  lw.add_repeated_messages()->dup_str("r0");
+  lw.add_repeated_messages()->dup_str("r1");
+  lw.add_pairs()->dup_s1("untagged");
+  lw.mutable_ptr_message()->dup_str("ptr");
+  lw.set_flag(true);
+  lw.dup_bytes_str("raw text");
+  ASSERT_EQ(lw.TracingAttributes(), expected);
+
+  ASSERT_TRUE(TracingAttributes(rpc_test::LightweightRequestPB()).empty());
+  ASSERT_TRUE(rpc_test::LWLightweightRequestPB(&arena).TracingAttributes().empty());
+}
+
+// Through the generated code: duplicate repeated values collapse, distinct ones are listed sorted,
+// a repeated field nested in a repeated message merges across all outer elements, and singular
+// fields are emitted as they are.
+TEST(LWProtoTest, TracingAttributesMergeRepeated) {
+  using Attrs = std::vector<std::pair<std::string, std::string>>;
+  const Attrs expected = {
+      {"req.flag", "true"},
+      {"req.message.rbytes.*", "x"},
+      {"req.repeated_messages.*.rbytes.*", "w, y, z"},
+      {"req.repeated_messages.*.str", "other, same"},
+      {"req.rstr.*", "a, b"},
+      {"req.ru32.*", "5"},
+      {"req.u32", "7"},
+  };
+
+  const std::vector<std::string> rstr = {"b", "a", "a"};
+  const std::vector<std::pair<std::string, std::vector<std::string>>> subs = {
+      {"same", {"y", "z"}}, {"other", {"y"}}, {"same", {"w"}}};
+
+  rpc_test::LightweightRequestPB pb;
+  pb.set_u32(7);
+  for (int i = 0; i != 3; ++i) {
+    pb.add_ru32(5);
+  }
+  for (const auto& v : rstr) {
+    pb.add_rstr(v);
+  }
+  pb.mutable_message()->add_rbytes("x");
+  pb.mutable_message()->add_rbytes("x");
+  for (const auto& [str, rbytes] : subs) {
+    auto* sub = pb.add_repeated_messages();
+    sub->set_str(str);
+    for (const auto& v : rbytes) {
+      sub->add_rbytes(v);
+    }
+  }
+  pb.set_flag(true);
+  ASSERT_EQ(TracingAttributes(pb), expected);
+
+  ThreadSafeArena arena;
+  rpc_test::LWLightweightRequestPB lw(&arena);
+  lw.set_u32(7);
+  for (int i = 0; i != 3; ++i) {
+    lw.add_ru32(5);
+  }
+  for (const auto& v : rstr) {
+    lw.add_dup_rstr(v);
+  }
+  lw.mutable_message()->add_dup_rbytes("x");
+  lw.mutable_message()->add_dup_rbytes("x");
+  for (const auto& [str, rbytes] : subs) {
+    auto* sub = lw.add_repeated_messages();
+    sub->dup_str(str);
+    for (const auto& v : rbytes) {
+      sub->add_dup_rbytes(v);
+    }
+  }
+  lw.set_flag(true);
+  ASSERT_EQ(lw.TracingAttributes(), expected);
+}
+
+// Keys come out sorted, repeated adds of one key collapse into its sorted distinct values (as
+// strings, so "10" sorts before "9"), and the collector is reusable after Finish.
+TEST(LWProtoTest, TracingAttributeCollector) {
+  using Attrs = std::vector<std::pair<std::string, std::string>>;
+  TracingAttributeCollector collector;
+  collector.Add("req.tail", "end");
+  collector.Add("req.ops.*.write.table_id", "B");
+  collector.Add("req.ops.*.write.flag", "true");
+  collector.Add("req.ops.*.write.table_id", "A");
+  collector.Add("req.ops.*.write.flag", "false");
+  collector.Add("req.ops.*.write.table_id", "B");
+  collector.Add("req.ops.*.write.flag", "false");
+  collector.Add("req.ops.*.write.table_id", "A");
+  collector.Add("req.ids.*", "10");
+  collector.Add("req.ids.*", "9");
+  collector.Add("req.ids.*", "10");
+  collector.Add("req.id", "7");
+  const Attrs expected = {
+      {"req.id", "7"},
+      {"req.ids.*", "10, 9"},
+      {"req.ops.*.write.flag", "false, true"},
+      {"req.ops.*.write.table_id", "A, B"},
+      {"req.tail", "end"},
+  };
+  ASSERT_EQ(collector.Finish(), expected);
+
+  collector.Add("req.id", "8");
+  ASSERT_EQ(collector.Finish(), (Attrs{{"req.id", "8"}}));
+}
+
 } // namespace rpc
 } // namespace yb
