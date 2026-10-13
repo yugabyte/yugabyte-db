@@ -180,8 +180,8 @@ class DocVectorIndex {
   //
   // The stamp only moves the flushed OpId forward: the flushed frontier is the maximum over the
   // index chunks. That covers a truncate and a restore within the same Raft group, whose chunks
-  // carry lower OpIds. A restore from another Raft group first clears the OpIds of the restored
-  // chunks, see ClearRestoredVectorIndexesOpIds.
+  // carry lower OpIds. A restore from another Raft group first sets the OpIds of the restored
+  // chunks to the restore op id, see SetRestoredVectorIndexesOpId.
   //
   // Each stamp adds a frontier only chunk that stays in the manifest until a full compaction, so
   // it is reserved for storage replacement and not used to advance an idle index.

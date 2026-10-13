@@ -700,17 +700,18 @@ Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_
   return Status::OK();
 }
 
-Status ClearRestoredVectorIndexesOpIds(Env& env, const std::string& db_dir) {
+Status SetRestoredVectorIndexesOpId(Env& env, const std::string& db_dir, const OpId& op_id) {
   auto children = VERIFY_RESULT(env.GetChildren(db_dir, ExcludeDots::kTrue));
   for (const auto& child : children) {
-    if (!child.starts_with(kVectorIndexDirPrefix)) {
+    auto dir = JoinPathSegments(db_dir, child);
+    if (!child.starts_with(kVectorIndexDirPrefix) || !env.DirExists(dir)) {
       continue;
     }
     RETURN_NOT_OK(vector_index::VectorLSMMetadataModifyFrontiers(
-        &env, JoinPathSegments(db_dir, child), [](google::protobuf::Any& pb) -> Status {
+        &env, dir, [&op_id](google::protobuf::Any& pb) -> Status {
       ConsensusFrontier frontier;
       RETURN_NOT_OK(frontier.FromPB(pb));
-      frontier.set_op_id(OpId());
+      frontier.set_op_id(op_id);
       frontier.ToPB(&pb);
       return Status::OK();
     }));
