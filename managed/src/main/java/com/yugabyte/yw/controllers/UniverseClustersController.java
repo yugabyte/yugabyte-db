@@ -14,6 +14,7 @@ import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFo
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -46,6 +47,7 @@ import play.mvc.Result;
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseClustersController extends AuthenticatedController {
 
+  @Inject private RuntimeConfGetter runtimeConfGetter;
   @Inject private UniverseCRUDHandler universeCRUDHandler;
 
   @ApiOperation(
@@ -76,7 +78,7 @@ public class UniverseClustersController extends AuthenticatedController {
 
     UniverseControllerRequestBinder.rejectFipsDisabledOnFipsYba(request);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, runtimeConfGetter);
 
     // explicitly setting useSystemd as true while creating new universe cluster if this property
     // is not already set by caller.
@@ -133,7 +135,8 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, universe);
+        bindFormDataToTaskParams(
+            request, UniverseConfigureTaskParams.class, universe, runtimeConfGetter);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.PRIMARY;
@@ -173,7 +176,8 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, universe);
+        bindFormDataToTaskParams(
+            request, UniverseConfigureTaskParams.class, universe, runtimeConfGetter);
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskParams.currentClusterType = ClusterType.ASYNC;
     universeCRUDHandler.configure(customer, taskParams);
@@ -255,7 +259,8 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, universe);
+        bindFormDataToTaskParams(
+            request, UniverseConfigureTaskParams.class, universe, runtimeConfGetter);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.ASYNC;

@@ -6314,6 +6314,24 @@ yb_is_local_table(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(distance == REGION_LOCAL || distance == ZONE_LOCAL);
 }
 
+const char *
+YBGetCurrentCloud()
+{
+	return YBCGetGFlags()->placement_cloud;
+}
+
+const char *
+YBGetCurrentRegion()
+{
+	return YBCGetGFlags()->placement_region;
+}
+
+const char *
+YBGetCurrentZone()
+{
+	return YBCGetGFlags()->placement_zone;
+}
+
 Datum
 yb_server_region(PG_FUNCTION_ARGS)
 {

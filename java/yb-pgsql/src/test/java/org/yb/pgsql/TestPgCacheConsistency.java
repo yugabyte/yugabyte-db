@@ -18,7 +18,6 @@ import static org.yb.AssertionWrappers.*;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.util.PSQLException;
 import org.hamcrest.CoreMatchers;
-import org.junit.Assume;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -888,10 +887,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   // Check that when a query fails due to a stale catalog cache, the original error information
   // (including the hint) is preserved.
   @Test
+  @BypassConnMgr(reason = "Disabling heartbeats causes Connection Manager DDL sleeps to hang")
   public void testCatalogVersionLogging() throws Exception {
-    Assume.assumeFalse("Disabling heartbeats causes Connection Manager DDL sleeps to hang",
-        isTestRunningWithConnectionManager());
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(1).connect();
          Statement statement1 = connection1.createStatement();

@@ -78,7 +78,8 @@ public class UniverseResp {
         allowedTasks.get(universe.getUniverseUUID()),
         rollMaxBatchSize,
         ybaSoftwareVersion,
-        localInstanceAddress);
+        localInstanceAddress,
+        confGetter);
   }
 
   public static List<UniverseResp> create(
@@ -112,7 +113,8 @@ public class UniverseResp {
                     allowedTasks.get(universe.getUniverseUUID()),
                     suggests.get(universe.getUniverseUUID()),
                     ybaSoftwareVersion,
-                    localInstanceAddress))
+                    localInstanceAddress,
+                    confGetter))
         .collect(Collectors.toList());
   }
 
@@ -250,7 +252,8 @@ public class UniverseResp {
         null,
         null,
         currentYbaSoftwareVersion(),
-        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null),
+        null);
   }
 
   public UniverseResp(Universe entity, UUID taskUUID) {
@@ -261,7 +264,8 @@ public class UniverseResp {
         null,
         null,
         currentYbaSoftwareVersion(),
-        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null),
+        null);
   }
 
   public UniverseResp(
@@ -269,7 +273,8 @@ public class UniverseResp {
       UUID taskUUID,
       UniverseResourceDetails resources,
       AllowedTasks allowedTasks,
-      RollMaxBatchSize rollMaxBatchSize) {
+      RollMaxBatchSize rollMaxBatchSize,
+      RuntimeConfGetter confGetter) {
     this(
         entity,
         taskUUID,
@@ -277,7 +282,8 @@ public class UniverseResp {
         allowedTasks,
         rollMaxBatchSize,
         currentYbaSoftwareVersion(),
-        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null),
+        confGetter);
   }
 
   public UniverseResp(
@@ -287,7 +293,8 @@ public class UniverseResp {
       AllowedTasks allowedTasks,
       RollMaxBatchSize rollMaxBatchSize,
       String platformVersion,
-      String localInstanceAddress) {
+      String localInstanceAddress,
+      RuntimeConfGetter confGetter) {
     this(
         entity,
         taskUUID,
@@ -297,7 +304,8 @@ public class UniverseResp {
         allowedTasks,
         rollMaxBatchSize,
         platformVersion,
-        localInstanceAddress);
+        localInstanceAddress,
+        confGetter);
   }
 
   public UniverseResp(
@@ -309,12 +317,14 @@ public class UniverseResp {
       AllowedTasks allowedTasks,
       RollMaxBatchSize rollMaxBatchSize,
       String platformVersion,
-      String localInstanceAddress) {
+      String localInstanceAddress,
+      RuntimeConfGetter confGetter) {
     universeUUID = entity.getUniverseUUID();
     name = entity.getName();
     creationDate = entity.getCreationDate().toString();
     version = entity.getVersion();
     dnsName = getDnsName(customer, provider);
+    Util.convertSingleProviderSpecsToOldSchema(confGetter, entity.getUniverseDetails());
     universeDetails =
         new UniverseDefinitionTaskParamsResp(
             entity.getUniverseDetails(), entity, localInstanceAddress);

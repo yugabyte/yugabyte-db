@@ -42,6 +42,7 @@
 #include "yb/tserver/tserver_service.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -330,6 +331,47 @@ bool AsyncRpc::IsLocalCall() const {
 }
 
 namespace {
+
+// One "name(id)" entry per distinct table in the batch, mirroring pggate's Perform attribute.
+void PublishPendingRpcTableNames(const InFlightOps& ops) {
+  if (!dist_trace::HasActiveContext()) {
+    return;
+  }
+  std::string joined_names;
+  std::unordered_set<std::string_view> seen;
+  auto append = [&](std::string_view name, std::string_view id) {
+    if (!seen.insert(id).second) {
+      return;
+    }
+    if (!joined_names.empty()) {
+      joined_names += ", ";
+    }
+    joined_names += name;
+    joined_names += '(';
+    joined_names += id;
+    joined_names += ')';
+  };
+  for (const auto& op : ops) {
+    const auto& table = op.yb_op->table();
+    append(table->name().table_name(), table->id());
+    if (op.yb_op->type() != YBOperation::PGSQL_READ) {
+      continue;
+    }
+    const auto& read_op = down_cast<const YBPgsqlReadOp&>(*op.yb_op);
+    if (!read_op.request().has_index_request()) {
+      continue;
+    }
+    // The index may be missing from the tserver table cache; keep the id so the span is still
+    // attributable.
+    const auto& index_table = read_op.index_table();
+    append(
+        index_table ? std::string_view(index_table->name().table_name()) : "?",
+        read_op.request().index_request().table_id());
+  }
+  if (!joined_names.empty()) {
+    dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
+  }
+}
 
 template<class T>
 void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
@@ -802,6 +844,7 @@ WriteRpc::~WriteRpc() {
 
 void WriteRpc::CallRemoteMethod() {
   resp_.Clear();
+  PublishPendingRpcTableNames(ops_);
   ts_proxy()->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
@@ -913,8 +956,13 @@ ReadRpc::ReadRpc(
   req_.set_consistency_level(yb_consistency_level);
   req_.dup_proxy_uuid(data.batcher->proxy_uuid());
   req_.set_use_async_write(data.use_async_write);
-  if (data.pending_async_write_op_id.valid()) {
-    data.pending_async_write_op_id.ToPB(req_.mutable_pending_async_write_op_id());
+  if (!data.pending_async_write_op_ids.empty()) {
+    // Old servers only read this field, and reject the gaps the later fences would cover.
+    data.pending_async_write_op_ids.front().ToPB(
+        req_.mutable_deprecated_pending_async_write_op_id());
+    for (const auto& op_id : data.pending_async_write_op_ids) {
+      op_id.ToPB(req_.add_pending_async_write_op_ids());
+    }
   }
 
   switch (table()->table_type()) {
@@ -955,6 +1003,7 @@ ReadRpc::~ReadRpc() {
 void ReadRpc::CallRemoteMethod() {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   resp_.Clear();
+  PublishPendingRpcTableNames(ops_);
   ts_proxy()->ReadAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 

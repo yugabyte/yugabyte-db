@@ -37,6 +37,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
@@ -1595,6 +1596,31 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates the task that decides node_exporter's scheme for the whole universe and changes every
+   * node if it differs (see {@link ConfigureNodeExporterTls}). Only for tasks that already touch
+   * every node, so the change restarts no exporter the user did not expect to be touched. Null when
+   * the universe runs no node_exporter that node-agent manages.
+   */
+  public SubTaskGroup createUpdateNodeExporterTlsTask(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    if (!details.extraDependencies.installNodeExporter
+        || details.clusters.stream()
+            .noneMatch(c -> NodeAgentClient.isCloudTypeSupported(c.userIntent.providerType))) {
+      return null;
+    }
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureNodeExporterTls");
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    ConfigureNodeExporterTls task = createTask(ConfigureNodeExporterTls.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Persists {@code userIntent.federationConfigured} per cluster. When {@code enabling}, a cluster
    * is marked true iff its provider has federated IAM enabled with an audience (a non-eligible
    * cluster like a GCP read replica stays false); when disabling, all clusters are set false.
@@ -1808,7 +1834,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
-          cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
+          cluster.clusterType,
+          cluster.userIntent.numNodes,
+          cluster.userIntent.replicationFactor,
+          opType == UniverseOpType.EDIT && univCluster != null
+              ? univCluster.userIntent.replicationFactor
+              : null);
 
       if (Util.isKubernetesBased(cluster)) {
         if (opType == UniverseOpType.EDIT
