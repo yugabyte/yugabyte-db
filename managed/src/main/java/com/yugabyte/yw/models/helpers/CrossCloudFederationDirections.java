@@ -12,17 +12,17 @@ import java.util.Set;
 /**
  * The (node cloud -> storage cloud) pairs cross-cloud federated IAM can serve.
  *
- * <p>Not every pair of clouds is supported. Every route needs its own identity exchange, so a node
- * pointed at a bucket it has no route to has no credentials for it, and a backup from it would fail
- * later with an unrelated error. Where the provider fixes the node's cloud, provider validation
- * refuses such a target at save (an OCI provider cannot name an S3 target) and the node's setup
- * fails on one that got past it, since validation can be skipped. A node whose cloud was detected
- * rather than fixed by its provider is skipped with a warning instead. GCP is one end of every
- * route.
+ * <p>Not every pair of clouds is supported. Every direction needs its own identity exchange, so a
+ * node pointed at a bucket it cannot federate to has no credentials for it, and a backup from it
+ * would fail later with an unrelated error. Where the provider fixes the node's cloud, provider
+ * validation refuses such a target at save (an OCI provider cannot name an S3 target) and the
+ * node's setup fails on one that got past it, since validation can be skipped. A node whose cloud
+ * was detected rather than fixed by its provider is skipped with a warning instead. GCP is one end
+ * of every direction.
  */
-public final class CrossCloudFederationRoutes {
+public final class CrossCloudFederationDirections {
 
-  private static final Map<CloudType, Set<CloudType>> ROUTES =
+  private static final Map<CloudType, Set<CloudType>> DIRECTIONS =
       ImmutableMap.of(
           // GCS-on-AWS: the node presents its AWS identity to GCP Workload Identity Federation.
           CloudType.aws, ImmutableSet.of(CloudType.gcp),
@@ -32,20 +32,20 @@ public final class CrossCloudFederationRoutes {
           // JWT that GCP Workload Identity Federation trusts.
           CloudType.oci, ImmutableSet.of(CloudType.gcp));
 
-  private CrossCloudFederationRoutes() {}
+  private CrossCloudFederationDirections() {}
 
-  /** Whether a node on {@code source} has a federation route to a bucket on {@code target}. */
+  /** Whether a node on {@code source} can federate to a bucket on {@code target}. */
   public static boolean isSupported(CloudType source, CloudType target) {
     return supportedTargets(source).contains(target);
   }
 
-  /** Whether {@code cloud} can be the source of any federation route. */
+  /** Whether {@code cloud} can be the source of any federation direction. */
   public static boolean isSource(CloudType cloud) {
-    return ROUTES.containsKey(cloud);
+    return DIRECTIONS.containsKey(cloud);
   }
 
   /** The storage clouds a node on {@code source} can reach by federation; empty when none. */
   public static Set<CloudType> supportedTargets(CloudType source) {
-    return ROUTES.getOrDefault(source, Collections.emptySet());
+    return DIRECTIONS.getOrDefault(source, Collections.emptySet());
   }
 }

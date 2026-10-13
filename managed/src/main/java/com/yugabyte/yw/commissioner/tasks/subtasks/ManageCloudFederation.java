@@ -13,7 +13,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CrossCloudFederationRoutes;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationDirections;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collections;
@@ -93,7 +93,8 @@ public class ManageCloudFederation extends NodeTaskBase {
 
     // For aws/gcp/oci the provider already names the cloud every node runs on. For on-prem it does
     // not, so the node's own metadata service decides; it reports only aws, gcp or onprem, so OCI
-    // here always means an OCI provider, whose identity domain URL applyFederationRoute requires.
+    // here always means an OCI provider, whose identity domain URL applyFederationDirection
+    // requires.
     CloudType sourceCloud =
         providerCloud == CloudType.onprem
             ? detectAndPersistPhysicalCloud(universe, node)
@@ -112,7 +113,7 @@ public class ManageCloudFederation extends NodeTaskBase {
         resolveTarget(sourceCloud, providerCloud != CloudType.onprem);
     if (target == null) {
       // Nothing for this node to do: every cloud its provider configures is one it reaches
-      // natively or has no federation route to (selectTarget warns about those), or the node is
+      // natively or cannot federate to (selectTarget warns about those), or the node is
       // not a cloud VM at all. Skipping keeps a provider that carries a single target usable by a
       // universe whose nodes span clouds.
       log.info(
@@ -156,9 +157,9 @@ public class ManageCloudFederation extends NodeTaskBase {
    *
    * <p>Fails when the node's cloud could not be determined - configuring a guess would write
    * credentials that cannot work, and would hide a node that should have been federated - and when
-   * the provider names the node's cloud yet configures a target that cloud has no route to. A node
-   * whose cloud IS known but has no foreign target simply has nothing to do: it reaches every cloud
-   * its provider configures natively, or it is not a cloud VM at all. That is a legitimate
+   * the provider names the node's cloud yet configures a target that cloud cannot federate to. A
+   * node whose cloud IS known but has no foreign target simply has nothing to do: it reaches every
+   * cloud its provider configures natively, or it is not a cloud VM at all. That is a legitimate
    * configuration, not an error, and skipping it is what lets one provider carry a single target
    * while its universe spans several clouds.
    */
@@ -192,7 +193,7 @@ public class ManageCloudFederation extends NodeTaskBase {
               nodeName));
     }
     // Real hardware cannot present a cloud identity, so there is no federation to set up.
-    if (!CrossCloudFederationRoutes.isSource(sourceCloud)) {
+    if (!CrossCloudFederationDirections.isSource(sourceCloud)) {
       return null;
     }
     // A node needs federation only for the clouds it is not running on; same-cloud access is
@@ -203,10 +204,10 @@ public class ManageCloudFederation extends NodeTaskBase {
             : targets.stream()
                 .filter(t -> t != null && t.isUsable() && t.targetCloud != sourceCloud)
                 .collect(Collectors.toList());
-    // Of those, only the clouds this node has a route to.
+    // Of those, only the clouds this node can federate to.
     List<CrossCloudFederationTarget> reachable =
         foreign.stream()
-            .filter(t -> CrossCloudFederationRoutes.isSupported(sourceCloud, t.targetCloud))
+            .filter(t -> CrossCloudFederationDirections.isSupported(sourceCloud, t.targetCloud))
             .collect(Collectors.toList());
     if (reachable.size() < foreign.size()) {
       List<String> unreachable =
@@ -220,13 +221,13 @@ public class ManageCloudFederation extends NodeTaskBase {
       if (sourceFixedByProvider) {
         throw new IllegalStateException(
             String.format(
-                "Node %s runs on %s, which has no federation route to %s, yet its provider"
+                "Node %s runs on %s and cannot federate to %s, yet its provider"
                     + " configures a federated target there. Remove that target from the provider.",
                 nodeName, sourceCloud, unreachable));
       }
       // The node's cloud was detected and the provider serves nodes of other clouds too: leave it.
       log.warn(
-          "Node {} runs on {}, which has no federation route to {}; a backup from this node to a"
+          "Node {} runs on {} and cannot federate to {}; a backup from this node to a"
               + " bucket there will not work",
           nodeName,
           sourceCloud,
@@ -238,7 +239,7 @@ public class ManageCloudFederation extends NodeTaskBase {
     if (reachable.size() > 1) {
       // The node holds one set of federation artifacts, so it can serve one foreign target. More
       // than one is reached when two entries name the same cloud (the validators forbid it, but a
-      // provider saved before they did may still have it) or, once a source has several routes,
+      // provider saved before they did may still have it) or, once a source has several directions,
       // when the provider names several clouds. Fail loudly rather than silently pick one.
       throw new IllegalStateException(
           String.format(

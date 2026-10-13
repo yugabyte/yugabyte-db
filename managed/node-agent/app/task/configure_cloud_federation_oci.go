@@ -33,10 +33,13 @@ const (
 
 const (
 	// The timer refreshes every 20 minutes (see yb-federation-oci-token.timer.j2). A token must outlive
-	// that gap with room to spare, so setup refuses one valid for less than this.
+	// that gap with room to spare, so setup refuses one valid for less than this. Only setup checks
+	// it: a scheduled refresh writes whatever the identity domain issues, since a short token still
+	// beats a stale one.
 	ociTokenMinLifetime = 30 * time.Minute
-	// A token with less than this left means the refresher is not keeping up; a healthy one, right
-	// before its next run, still has 10 minutes.
+	// A token with less than this left means the refresher is not keeping up, or the identity domain
+	// now issues shorter tokens than at setup; a healthy one, right before its next run, still has
+	// 10 minutes.
 	ociTokenMinRemaining = 5 * time.Minute
 )
 
@@ -48,10 +51,10 @@ func ociTokenFresh(tokenFile string) bool {
 	return err == nil && ocitoken.RequireLifetime(token, ociTokenMinRemaining, time.Now()) == nil
 }
 
-// validateFederationRoute rejects a (source, target) pair no flow serves. A node pointed at an
+// validateFederationDirection rejects a (source, target) pair no flow serves. A node pointed at an
 // unsupported bucket would be configured with credentials that cannot work. An unset source is
 // accepted: it is what a YBA that predates the field sends, and the target alone then decides.
-func validateFederationRoute(source, target pb.ConfigureCloudFederationInput_CloudProvider) error {
+func validateFederationDirection(source, target pb.ConfigureCloudFederationInput_CloudProvider) error {
 	if source == pb.ConfigureCloudFederationInput_CLOUD_PROVIDER_UNSPECIFIED {
 		return nil
 	}
@@ -64,7 +67,7 @@ func validateFederationRoute(source, target pb.ConfigureCloudFederationInput_Clo
 			target == pb.ConfigureCloudFederationInput_GCP:
 		return nil
 	}
-	return fmt.Errorf("no federation route from %s to %s", source, target)
+	return fmt.Errorf("federation from %s to %s is not supported", source, target)
 }
 
 // validateOciSourceInputs rejects a missing or malformed identity domain before it is written

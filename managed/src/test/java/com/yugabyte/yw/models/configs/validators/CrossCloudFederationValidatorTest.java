@@ -218,7 +218,7 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
         .validateCrossCloudFederationTargets(provider);
   }
 
-  /** The route OCI nodes have: they can reach GCS through GCP Workload Identity Federation. */
+  /** The direction OCI nodes have: they can reach GCS through GCP Workload Identity Federation. */
   @Test
   public void testOciProviderAcceptsGcpTargetWithIdentityDomain() {
     validateOci(ociProvider(ociInfo(DOMAIN_URL, target(CloudType.gcp, AUDIENCE, null))));
@@ -230,7 +230,7 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
     validateOci(ociProvider(ociInfo(DOMAIN_URL + ":443", target(CloudType.gcp, AUDIENCE, null))));
   }
 
-  /** OCI nodes have no route to S3, so naming it would leave them with no credentials for it. */
+  /** OCI nodes cannot federate to S3, so naming it would leave them with no credentials for it. */
   @Test
   public void testOciProviderRejectsAwsTarget() {
     String message =
