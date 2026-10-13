@@ -57,7 +57,7 @@ When run at the same time, flags take precedence over configuration flag setting
 | --prepare-for-fall-back |
 
 ```yaml{.nocopy}
-cutover-to-target:
+initiate-cutover-to-target:
   prepare-for-fall-back:
 ```
 
@@ -65,7 +65,7 @@ cutover-to-target:
 | --use-yb-grpc-connector |
 
 ```yaml{.nocopy}
-cutover-to-target:
+initiate-cutover-to-target:
   use-yb-grpc-connector:
 ```
 

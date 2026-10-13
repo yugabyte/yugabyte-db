@@ -19,7 +19,7 @@ The following sections provide guidance on how to adjust your schema, handle uns
 
 ### Tables
 
-#### Table inheritance is not supported
+#### Data migration for table inheritance is not supported
 
 **GitHub**: [Issue #5956](https://github.com/yugabyte/yugabyte-db/issues/5956)
 
@@ -1406,7 +1406,7 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
-- Always skipped (both connectors): `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSQUERY`, `CIRCLE`, `VECTOR`, `XML`, or `TIMETZ`.
+- Always skipped (both connectors): `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSQUERY`, `CIRCLE`, `VECTOR`, `XML`, `TIMETZ`, `CID`, or `REFCURSOR`.
 - Skipped by [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): `HSTORE`, `TSVECTOR`, `CITEXT`, `LTREE`, or `ARRAY OF ENUMS`. (These are supported by the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) (default).)
 
 Refer to [cutover to target](../../reference/cutover-archive/cutover/#yugabytedb-grpc-vs-yugabytedb-connector) for how or when to configure these connectors.
