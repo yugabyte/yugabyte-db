@@ -1247,7 +1247,9 @@ YbDistTraceSetQueryIdToRootSpan(List *querytree_list)
  * is enabled and no root span is currently active. The traceparent is taken
  * from the yb_dist_tracecontext GUC, else from comment_span_ctx, else extracted
  * from a SQL comment in the query string (and returned so Parse can keep it).
- * With no traceparent, the span is sampled if sample is set.
+ * A traceparent with the sampled flag clear (-00) means the caller is not
+ * tracing: nothing is started. With no traceparent, the span is sampled if
+ * sample is set.
  *
  * Called from the first extended protocol message handler in a cycle
  * (Parse, Bind, or Execute).
@@ -1262,7 +1264,6 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
 	YbcOtelSpanContext span_ctx = NULL;
 	YbcOtelSpanContext guc_span_ctx = yb_guc_remote_span_ctx;
-	YbcOtelSpanContext sampled_comment_ctx;
 
 	/*
 	 * YB: query_string may be NULL for protocol messages that don't carry a
@@ -1296,26 +1297,25 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 							YbGetTraceparentResultErrmsg(tp_result))));
 	}
 
-	/* YB: An unsampled traceparent (flags 00) is treated as absent. */
-	if (guc_span_ctx && !YBCIsSpanContextSampled(guc_span_ctx))
-		guc_span_ctx = NULL;
-	sampled_comment_ctx =
-		comment_span_ctx && YBCIsSpanContextSampled(comment_span_ctx)
-		? comment_span_ctx : NULL;
-
 	/* YB: GUC traceparent is higher priority over SQL comment traceparent. */
 	if (guc_span_ctx)
 	{
-		if (sampled_comment_ctx)
+		if (comment_span_ctx)
 			ereport(WARNING,
 					(errmsg("yb_dist_tracecontext GUC takes priority; "
 							"skipping SQL comment traceparent")));
 		span_ctx = guc_span_ctx;
 	}
 	else
-		span_ctx = sampled_comment_ctx;
+		span_ctx = comment_span_ctx;
 
-	if (!span_ctx)
+	if (span_ctx)
+	{
+		/* The caller is not tracing this request (flags 00): honour it. */
+		if (!YBCIsSpanContextSampled(span_ctx))
+			return comment_span_ctx;
+	}
+	else
 	{
 		/* No traceparent: sampling mints a fresh trace. */
 		if (!sample || yb_dist_trace_sample_rate <= 0)

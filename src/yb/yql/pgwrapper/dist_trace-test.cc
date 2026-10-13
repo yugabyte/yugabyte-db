@@ -2085,17 +2085,20 @@ TEST_F(DistTraceTest, TestOneSampleDrawPerCycle) {
     ASSERT_OK(ext_conn.FetchPrepared("stmt"));
   }
 
-  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 2ms);
+  ASSERT_OK(collector_.WaitForTracesWithQueryText("SELECT 18", 1));
+  size_t traces_with_execute = 0;
   for (const auto& trace_id : collector_.TraceIds()) {
     if (collector_.CountSpansInTrace(trace_id, "ext.execute") > 0) {
+      ++traces_with_execute;
       ASSERT_EQ(collector_.CountSpansInTrace(trace_id, "ext.bind"), 1) << trace_id;
     }
   }
+  ASSERT_GE(traces_with_execute, 1);
 }
 
-// A traceparent whose sampled flag is clear (-00) is treated as absent: with sampling off
-// it starts no trace, through the GUC or a comment, and an unsampled GUC neither takes
-// priority over a sampled comment traceparent nor warns about it.
+// A traceparent whose sampled flag is clear (-00) means the caller is not tracing: no trace
+// through the GUC or a comment. The GUC keeps its priority, so a -00 GUC also silences a
+// sampled comment traceparent.
 TEST_F(DistTraceTest, TestUnsampledTraceparentNotTraced) {
   auto tp = GenerateTraceparentWithFlags("00");
   ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
@@ -2103,17 +2106,14 @@ TEST_F(DistTraceTest, TestUnsampledTraceparentNotTraced) {
   ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
   auto query = Format("/*traceparent='$0'*/ SELECT 15", tp.full);
   ASSERT_OK(conn_->Fetch(query));
-  ASSERT_OK(collector_.VerifyNoTracesEmitted());
 
   ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
   const auto& warnings = CaptureWarnings();
   auto sampled_tp = GenerateTraceparent();
   ASSERT_OK(conn_->Fetch(Format("/*traceparent='$0'*/ SELECT 24", sampled_tp.full)));
-  ASSERT_OK(collector_.VerifyTraceContainsOpName(sampled_tp.trace_id, "query"));
-  auto root = collector_.FindRootSpan(sampled_tp.trace_id);
-  ASSERT_TRUE(root.has_value());
-  ASSERT_EQ(root->parent_span_id, sampled_tp.span_id);
-  ASSERT_TRUE(warnings.empty()) << warnings.front();
+  ASSERT_OK(collector_.VerifyNoTracesEmitted());
+  ASSERT_EQ(warnings.size(), 1);
+  ASSERT_STR_CONTAINS(warnings.back(), "yb_dist_tracecontext GUC takes priority");
 }
 
 // The rate is a runtime tserver flag; a change reaches sessions that are already open.
@@ -2227,23 +2227,20 @@ TEST_F(DistTraceSamplingTest, TestCommentTraceparentParentsExecutions) {
   ASSERT_EQ(num_executions, kNumExecutions);
 }
 
-// With sampling on, a -00 traceparent falls through to the draw: the query is traced as a
-// fresh trace, not under the unsampled parent.
-TEST_F(DistTraceSamplingTest, TestUnsampledTraceparentFallsBackToSampling) {
+// With sampling on, a -00 traceparent still means no trace: the caller's decision is honoured
+// and the query is not drawn. A query without a traceparent on the same session is sampled.
+TEST_F(DistTraceSamplingTest, TestUnsampledTraceparentNotSampled) {
   auto tp = GenerateTraceparentWithFlags("00");
   ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
   ASSERT_OK(conn_->Fetch("SELECT 16"));
   ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
   auto query = Format("/*traceparent='$0'*/ SELECT 17", tp.full);
   ASSERT_OK(conn_->Fetch(query));
+  ASSERT_OK(conn_->Fetch("SELECT 25"));
 
-  for (const auto& text : {std::string("SELECT 16"), query}) {
-    auto trace = ASSERT_RESULT(collector_.WaitForTraceWithQueryText(text));
-    ASSERT_NE(trace.trace_id, tp.trace_id);
-    auto root = collector_.FindRootSpan(trace.trace_id);
-    ASSERT_TRUE(root.has_value());
-    ASSERT_TRUE(root->parent_span_id.empty());
-  }
+  ASSERT_OK(collector_.WaitForTraceWithQueryText("SELECT 25"));
+  ASSERT_OK(collector_.VerifyQueryNotTraced("SELECT 16"));
+  ASSERT_OK(collector_.VerifyQueryNotTraced(query));
   ASSERT_EQ(collector_.CountSpansInTrace(tp.trace_id, "query"), 0);
 }
 
@@ -2736,6 +2733,54 @@ TEST_F(DistTraceTest, TestBackfillBackendJoinsQueryTrace) {
 
   ASSERT_EQ(backend_span.trace_id, tp.trace_id);
   ASSERT_EQ(backend_span.op_name, "query");
+}
+
+// The tracer provider uses a parent-based sampler: a span under an unsampled (-00) remote
+// parent is not recorded, while a span under a sampled parent or with no parent is.
+TEST_F(DistTraceRpcTest, TestSpanUnderUnsampledParentIsDropped) {
+  google::FlagSaver flag_saver;
+  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-sampler-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::ShutdownDistTrace();
+  });
+
+  using opentelemetry::trace::SpanContext;
+  using opentelemetry::trace::SpanId;
+  using opentelemetry::trace::TraceFlags;
+  using opentelemetry::trace::TraceId;
+  auto start_under = [](const SpanContext& parent) {
+    opentelemetry::trace::StartSpanOptions options;
+    options.parent = parent;
+    return dist_trace::GetDistTracer()->StartSpan("child", options);
+  };
+  std::array<uint8_t, TraceId::kSize> trace_id_bytes;
+  trace_id_bytes.fill(0x11);
+  std::array<uint8_t, SpanId::kSize> span_id_bytes;
+  span_id_bytes.fill(0x11);
+  auto make_parent = [&](uint8_t flags) {
+    return SpanContext(
+        TraceId(opentelemetry::nostd::span<const uint8_t, TraceId::kSize>(
+            trace_id_bytes.data(), trace_id_bytes.size())),
+        SpanId(opentelemetry::nostd::span<const uint8_t, SpanId::kSize>(
+            span_id_bytes.data(), span_id_bytes.size())),
+        TraceFlags(flags), /* is_remote */ true);
+  };
+  const auto sampled_parent = make_parent(TraceFlags::kIsSampled);
+  const auto unsampled_parent = make_parent(0);
+
+  auto dropped = start_under(unsampled_parent);
+  ASSERT_FALSE(dropped->IsRecording());
+  ASSERT_FALSE(dropped->GetContext().IsSampled());
+  ASSERT_EQ(dropped->GetContext().trace_id(), sampled_parent.trace_id());
+
+  auto recorded = start_under(sampled_parent);
+  ASSERT_TRUE(recorded->IsRecording());
+  ASSERT_TRUE(recorded->GetContext().IsSampled());
+
+  auto root = dist_trace::GetDistTracer()->StartSpan("root");
+  ASSERT_TRUE(root->IsRecording());
+  ASSERT_TRUE(root->GetContext().IsSampled());
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
