@@ -305,10 +305,6 @@ func TestOciRefresherUnitTemplates(t *testing.T) {
 	contains("timer", timer, "Unit="+ociTokenServiceName)
 	contains("timer", timer, "OnUnitActiveSec=20min")
 	contains("timer", timer, "WantedBy=timers.target")
-	// Setup accepts tokens that live 30 minutes or more; a refresh interval near that leaves no slack.
-	if strings.Contains(timer, "OnUnitActiveSec=60min") {
-		t.Error("the refresh interval must leave slack inside the token lifetime")
-	}
 }
 
 // jwtExpiringAt builds a token-shaped string that expires at the given time.

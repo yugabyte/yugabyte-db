@@ -26,8 +26,8 @@ import org.junit.Before;
 import org.junit.Test;
 
 /**
- * Federated-IAM target validation on the AWS and GCP providers. On-prem is covered by {@link
- * OnPremValidatorTest}; all three share one implementation, so the point here is that the same
+ * Federated-IAM target validation on the AWS, GCP and OCI providers. On-prem is covered by {@link
+ * OnPremValidatorTest}; all four share one implementation, so the point here is that the same
  * payload is judged identically whichever provider carries it.
  */
 public class CrossCloudFederationValidatorTest extends FakeDBApplication {
@@ -244,7 +244,7 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
   public void testOciProviderRequiresIdentityDomainWhenFederationIsOn() {
     String message =
         ociValidationMessage(ociProvider(ociInfo(null, target(CloudType.gcp, AUDIENCE, null))));
-    assertTrue(message, message.contains("identity domain URL"));
+    assertTrue(message, message.contains("no OCI identity domain URL is set"));
   }
 
   @Test
@@ -263,7 +263,7 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
           .getCloudInfo()
           .setOci(ociInfo(bad, target(CloudType.gcp, AUDIENCE, null)));
       String message = ociValidationMessage(provider);
-      assertTrue(bad + ": " + message, message.contains("identity domain URL"));
+      assertTrue(bad + ": " + message, message.contains("must be an https URL"));
     }
   }
 

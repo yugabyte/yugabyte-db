@@ -16,13 +16,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"node-agent/util"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/common/auth"
 )
@@ -202,11 +202,8 @@ func errorDetail(r tokenResponse) string {
 // The expiry is read without verifying the signature: the token came from the endpoint we called
 // (or from the file the refresher wrote), and the value only decides whether to proceed.
 func RequireLifetime(token string, min time.Duration, now time.Time) error {
-	claims := jwt.MapClaims{}
-	_, _, err := jwt.NewParser(jwt.WithPaddingAllowed()).ParseUnverified(token, claims)
-	// The library fills in the claims before it looks up the signing algorithm. An algorithm it
-	// does not know is of no concern here, because nothing is verified.
-	if err != nil && !errors.Is(err, jwt.ErrTokenUnverifiable) {
+	claims, err := util.ExtractClaims(context.Background(), nil, token)
+	if err != nil {
 		return errors.New("could not read the token's lifetime: not a JWT")
 	}
 	exp, err := claims.GetExpirationTime()

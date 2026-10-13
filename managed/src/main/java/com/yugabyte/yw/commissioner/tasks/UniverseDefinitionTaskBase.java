@@ -1622,14 +1622,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /**
    * Persists {@code userIntent.federationConfigured} per cluster. When {@code enabling}, a cluster
-   * is marked true iff its provider has federated IAM enabled with an audience (a non-eligible
-   * cluster like a GCP read replica stays false); when disabling, all clusters are set false.
-   * Enqueue this after the {@link #createConfigureCloudFederationTasks} subtask group so it runs
-   * only when every node subtask succeeded (a failed node subtask aborts the task first), so the
-   * flag is never left in a partial "true" state.
+   * is marked true iff its nodes can be configured now: its provider has federated IAM enabled with
+   * a target and, for OCI, the OCI source is enabled (a non-eligible cluster like a GCP read
+   * replica stays false); when disabling, all clusters are set false. Enqueue this after the {@link
+   * #createConfigureCloudFederationTasks} subtask group so it runs only when every node subtask
+   * succeeded (a failed node subtask aborts the task first), so the flag is never left in a partial
+   * "true" state.
    */
   protected void createPersistFederationConfiguredTask(boolean enabling) {
-    boolean ociSourceEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource);
     createUpdateUniverseFieldsTask(
             u ->
                 u.getUniverseDetails()
@@ -1640,7 +1640,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                           if (enabling) {
                             Provider p =
                                 Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-                            configured = CloudInfoInterface.canFederateNodes(p, ociSourceEnabled);
+                            // Read when this runs, as ManageCloudFederation reads it on each node.
+                            configured =
+                                CloudInfoInterface.canFederateNodes(
+                                    p,
+                                    confGetter.getGlobalConf(
+                                        GlobalConfKeys.enableOciFederationSource));
                           }
                           c.userIntent.setFederationConfigured(configured);
                         }))
