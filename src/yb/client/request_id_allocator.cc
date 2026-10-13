@@ -20,7 +20,8 @@
 
 #include "yb/client/atomic_request_id_allocator.h"
 
-#include "yb/util/cgroups.h"
+#include "yb/gutil/sysinfo.h"
+
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
@@ -55,7 +56,7 @@ size_t NumRequestIdShards() {
   if (FLAGS_client_request_id_shards) {
     return FLAGS_client_request_id_shards;
   }
-  return std::clamp<size_t>(NumEffectiveCPUs() / 8, 1, 64);
+  return std::clamp<size_t>(base::NumCPUs() / 8, 1, 64);
 }
 
 // The allocator that the others replace: a set of the running ids under a spinlock.
