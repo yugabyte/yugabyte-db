@@ -393,7 +393,7 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
 }
 
 std::string ConsensusMetadata::LogPrefix() const {
-  return tablet_id_.empty() ? Format("P $0: ", peer_uuid_)
+  return tablet_id_.empty() ? Format("T <uninitialized> P $0: ", peer_uuid_)
                             : MakeTabletLogPrefix(tablet_id_, peer_uuid_);
 }
 
