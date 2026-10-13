@@ -12,10 +12,13 @@ import java.util.Set;
 /**
  * The (node cloud -> storage cloud) pairs cross-cloud federated IAM can serve.
  *
- * <p>Not every pair of clouds is supported, and a pair that is not must be refused rather than
- * skipped: every route needs its own identity exchange, so a node pointed at an unsupported bucket
- * has no credentials at all and the backup would fail later with an unrelated error. GCP is one end
- * of every route.
+ * <p>Not every pair of clouds is supported. Every route needs its own identity exchange, so a node
+ * pointed at a bucket it has no route to has no credentials for it, and a backup from it would fail
+ * later with an unrelated error. Where the provider fixes the node's cloud, that is refused when
+ * the provider is saved: an OCI provider cannot name an S3 target. An on-prem provider's nodes can
+ * be on any cloud, so there a node with no route to a configured target is skipped with a warning
+ * when federation is configured, which leaves it as it was before the pair could be named. GCP is
+ * one end of every route.
  */
 public final class CrossCloudFederationRoutes {
 

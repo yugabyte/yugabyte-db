@@ -2145,6 +2145,19 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " or storage config that already has it set keeps working regardless.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableOciFederationSource =
+      new ConfKeyInfo<>(
+          "yb.cross_cloud_federation.enable_oci_source",
+          ScopeType.GLOBAL,
+          "Enable Cross-Cloud Federated IAM from OCI nodes",
+          "Lets YBA configure federated IAM on DB nodes running on OCI so they can reach GCS. Off"
+              + " by default while the feature is in preview. Enable it only after node-agent has"
+              + " been upgraded on every OCI node: an older node-agent ignores the OCI source and"
+              + " configures the node with credentials that cannot work, yet reports success. While"
+              + " off, an OCI provider cannot enable federated IAM, and an on-prem node that turns"
+              + " out to run on OCI is left without federation, as it was before OCI support.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_s3_backup_proxy",

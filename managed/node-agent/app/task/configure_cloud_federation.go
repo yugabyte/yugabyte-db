@@ -405,66 +405,73 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 // unit. It handles both user-level (~/.config/systemd/user) and system-level
 // (/etc/systemd/system, via sudo) systemd.
 func (h *ConfigureCloudFederation) writeDropIn(ctx context.Context, envFile string) error {
-	dropInCtx := map[string]any{"env_file": envFile}
 	dropInDir, isUser, err := h.dropInDir()
 	if err != nil {
 		return err
 	}
-	dropInDest := filepath.Join(dropInDir, federationDropInFileName)
+	return h.installSystemdFile(
+		ctx,
+		map[string]any{"env_file": envFile},
+		federationDropInTemplate,
+		dropInDir,
+		federationDropInFileName,
+		isUser,
+		"federation-dropin",
+	)
+}
+
+// installSystemdFile renders a server template to dir/name, which is a systemd unit or drop-in in
+// the active systemd mode. A user-level directory is writable by the node user. A system-level one
+// is not, so the file is rendered into the YBA-provided writable temp dir (some nodes have a
+// non-writable /tmp) and sudo-installed; the temp copy is removed at the end. what names the file in
+// the step log.
+func (h *ConfigureCloudFederation) installSystemdFile(
+	ctx context.Context,
+	values map[string]any,
+	template, dir, name string,
+	isUser bool,
+	what string,
+) error {
+	templatePath := filepath.Join(module.ServerTemplateSubpath, template)
+	dest := filepath.Join(dir, name)
 
 	if isUser {
 		if err := module.RunShellSteps(ctx, h.username, []struct {
 			Desc string
 			Cmd  string
 		}{
-			{"create-federation-dropin-dir", fmt.Sprintf("mkdir -p %s", dropInDir)},
+			{"create-" + what + "-dir", fmt.Sprintf("mkdir -p %s", shellQuote(dir))},
 		}, h.logOut); err != nil {
 			return err
 		}
-		_, err := module.CopyFile(
-			ctx,
-			dropInCtx,
-			filepath.Join(module.ServerTemplateSubpath, federationDropInTemplate),
-			dropInDest,
-			fs.FileMode(0644),
-			h.username,
-		)
+		_, err := module.CopyFile(ctx, values, templatePath, dest, fs.FileMode(0644), h.username)
 		return err
 	}
 
-	// System-level systemd: render to a YBA-provided writable temp dir (some nodes have a
-	// non-writable /tmp), then sudo-install it under /etc/systemd/system where the user cannot write
-	// directly. The temp copy is removed at the end of this step.
 	remoteTmp := h.param.GetRemoteTmp()
 	if remoteTmp == "" {
 		remoteTmp = "/tmp"
 	}
-	tmpDropIn := filepath.Join(remoteTmp, federationDropInFileName)
+	tmp := filepath.Join(remoteTmp, name)
 	if _, err := module.CopyFile(
-		ctx,
-		dropInCtx,
-		filepath.Join(module.ServerTemplateSubpath, federationDropInTemplate),
-		tmpDropIn,
-		fs.FileMode(0644),
-		h.username,
-	); err != nil {
+		ctx, values, templatePath, tmp, fs.FileMode(0644), h.username); err != nil {
 		return err
 	}
 	return module.RunShellSteps(ctx, h.username, []struct {
 		Desc string
 		Cmd  string
 	}{
-		{"create-federation-dropin-dir", fmt.Sprintf("sudo mkdir -p %s", dropInDir)},
+		{"create-" + what + "-dir", fmt.Sprintf("sudo mkdir -p %s", shellQuote(dir))},
 		{
-			"install-federation-dropin",
+			"install-" + what,
 			fmt.Sprintf(
 				"sudo cp %s %s && sudo chmod 0644 %s",
-				tmpDropIn,
-				dropInDest,
-				dropInDest,
+				shellQuote(tmp),
+				shellQuote(dest),
+				shellQuote(dest),
 			),
 		},
-		{"cleanup-tmp-federation-dropin", fmt.Sprintf("rm -f %s", tmpDropIn)},
+		{"cleanup-tmp-" + what, fmt.Sprintf("rm -f %s", shellQuote(tmp))},
 	}, h.logOut)
 }
 
@@ -509,9 +516,9 @@ func (h *ConfigureCloudFederation) removeDropIn(ctx context.Context) error {
 	}, h.logOut)
 }
 
-// dropInDir returns the yb-controller.service.d directory for the active systemd
-// mode and whether it is user-level.
-func (h *ConfigureCloudFederation) dropInDir() (string, bool, error) {
+// systemdUnitDir returns the directory holding unit files for the active systemd mode, which is the
+// mode of the YBC unit the federation artifacts are installed beside, and whether it is user-level.
+func (h *ConfigureCloudFederation) systemdUnitDir() (string, bool, error) {
 	isUser, _, err := module.IsUserSystemd(h.username, YbControllerService)
 	if err != nil {
 		return "", false, err
@@ -521,13 +528,19 @@ func (h *ConfigureCloudFederation) dropInDir() (string, bool, error) {
 		if err != nil {
 			return "", false, err
 		}
-		return filepath.Join(
-			info.User.HomeDir,
-			module.UserSystemdUnitPath,
-			ybcServiceDropInDirName,
-		), true, nil
+		return filepath.Join(info.User.HomeDir, module.UserSystemdUnitPath), true, nil
 	}
-	return filepath.Join(systemSystemdUnitDir, ybcServiceDropInDirName), false, nil
+	return systemSystemdUnitDir, false, nil
+}
+
+// dropInDir returns the yb-controller.service.d directory for the active systemd
+// mode and whether it is user-level.
+func (h *ConfigureCloudFederation) dropInDir() (string, bool, error) {
+	unitDir, isUser, err := h.systemdUnitDir()
+	if err != nil {
+		return "", false, err
+	}
+	return filepath.Join(unitDir, ybcServiceDropInDirName), isUser, nil
 }
 
 // Audience allowlist for GCS federation: interpolated into the external_account JSON

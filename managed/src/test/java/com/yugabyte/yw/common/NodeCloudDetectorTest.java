@@ -40,6 +40,14 @@ public class NodeCloudDetectorTest {
     return nodeCloudDetector.detect(mockUniverse, new NodeDetails(), Duration.ofSeconds(30));
   }
 
+  /** As {@link #detect} but with OCI left out, for a caller that cannot act on it yet. */
+  private CloudType detectWithoutOci(FakeNode fakeNode) {
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenAnswer(invocation -> fakeNode.run(invocation.getArgument(2)));
+    return nodeCloudDetector.detect(
+        mockUniverse, new NodeDetails(), Duration.ofSeconds(30), false /* probeOci */);
+  }
+
   // curl's exit code when -f sees an HTTP error, i.e. the endpoint refused the request.
   private static final int CURL_HTTP_ERROR = 22;
   // curl's exit code when the host could not be resolved.
@@ -172,6 +180,33 @@ public class NodeCloudDetectorTest {
     FakeNode node = new FakeNode();
     assertEquals(CloudType.onprem, detect(node));
     assertTrue(node.commands.stream().flatMap(List::stream).anyMatch(a -> a.contains("/opc/")));
+  }
+
+  /**
+   * Until OCI is enabled as a federation source, a node on OCI must read as it did before OCI was
+   * recognised - bare metal - and cost nothing extra: its metadata service is never asked.
+   */
+  @Test
+  public void testOciIsLeftOutWhenNotProbed() {
+    FakeNode node = new FakeNode();
+    node.ociInstanceId = "ocid1.instance.oc1.phx.anyhqljr";
+    assertEquals(CloudType.onprem, detectWithoutOci(node));
+    assertTrue(node.commands.stream().flatMap(List::stream).noneMatch(a -> a.contains("/opc/")));
+  }
+
+  @Test
+  public void testLeavingOciOutDoesNotChangeAwsOrGcpOrUnknown() {
+    FakeNode gcp = new FakeNode();
+    gcp.gcpInstanceId = "4philo2932481";
+    assertEquals(CloudType.gcp, detectWithoutOci(gcp));
+
+    FakeNode aws = new FakeNode();
+    aws.awsInstanceId = "i-0abc123";
+    assertEquals(CloudType.aws, detectWithoutOci(aws));
+
+    FakeNode unreachable = new FakeNode();
+    unreachable.failure = new RuntimeException("node unreachable");
+    assertNull(detectWithoutOci(unreachable));
   }
 
   @Test

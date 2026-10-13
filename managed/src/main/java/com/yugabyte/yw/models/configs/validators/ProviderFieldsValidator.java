@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -87,6 +88,18 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     if (info == null || !info.isFederatedIamEnabled()) {
       return;
     }
+    // OCI nodes are only federated once the operator has confirmed node-agent is new enough to
+    // understand them; saving the setting before then would leave it silently doing nothing.
+    if (provider.getCloudCode() == CloudType.oci
+        && !runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource)) {
+      throwBeanProviderValidatorError(
+          "FEDERATED_IAM",
+          String.format(
+              "Federated IAM from OCI is not enabled on this YBA. Set the runtime config %s to"
+                  + " true once node-agent has been upgraded on every OCI node.",
+              GlobalConfKeys.enableOciFederationSource.getKey()),
+          null);
+    }
     List<CrossCloudFederationTarget> targets = info.getEffectiveFederationTargets();
     if (targets.isEmpty()) {
       throwBeanProviderValidatorError(
@@ -140,8 +153,8 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
   /**
    * A node running on OCI proves its identity through an OCI identity domain, so an OCI provider
    * cannot federate without one. An on-prem provider may or may not have OCI nodes, so there the
-   * URL is optional - ManageCloudFederation fails a node it finds on OCI without one - but a value
-   * that is given must still be well formed.
+   * URL is optional - ManageCloudFederation leaves a node it finds on OCI without one unfederated -
+   * but a value that is given must still be well formed.
    */
   private void validateOciIdentityDomainUrl(Provider provider) {
     String url = CloudInfoInterface.getOciIdentityDomainUrl(provider);

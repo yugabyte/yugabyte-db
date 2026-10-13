@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/common/auth"
@@ -183,17 +184,24 @@ func errorDetail(r tokenResponse) string {
 		return c
 	}, detail)
 	if len(detail) > maxDetailBytes {
-		detail = detail[:maxDetailBytes]
+		// Cut on a rune boundary so a multi-byte character is dropped whole, never split in two.
+		cut := maxDetailBytes
+		for cut > 0 && !utf8.RuneStart(detail[cut]) {
+			cut--
+		}
+		detail = detail[:cut]
 	}
 	return ": " + detail
 }
 
 // RequireLifetime returns an error when token will expire within min of now. The refresher runs on
 // a fixed schedule, so a token that does not outlive the gap between runs would leave YBC holding an
-// expired credential for part of every cycle.
+// expired credential for part of every cycle. Setup applies it to the first token; after that it
+// is the token file's own expiry, checked the same way, that says whether the refresher is keeping
+// up.
 //
-// The expiry is read without verifying the signature: the token has just been issued by the
-// endpoint we called, and the value only decides whether to proceed.
+// The expiry is read without verifying the signature: the token came from the endpoint we called
+// (or from the file the refresher wrote), and the value only decides whether to proceed.
 func RequireLifetime(token string, min time.Duration, now time.Time) error {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -253,4 +261,22 @@ func WriteTokenFile(path, token string) error {
 		return fmt.Errorf("could not install the token file: %w", err)
 	}
 	return nil
+}
+
+// ReadTokenFile returns the token WriteTokenFile stored at path. The read is bounded by the size of
+// a token Exchange would accept, so a file that is not one cannot be pulled into memory.
+func ReadTokenFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxTokenBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxTokenBytes {
+		return "", errors.New("the token file is larger than any token the identity domain issues")
+	}
+	return strings.TrimSpace(string(data)), nil
 }

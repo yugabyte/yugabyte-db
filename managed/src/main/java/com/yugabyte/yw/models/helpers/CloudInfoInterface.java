@@ -127,6 +127,26 @@ public interface CloudInfoInterface {
     return null;
   }
 
+  /**
+   * Whether this provider's {@code gcp} target is for nodes on OCI. A target audience names one
+   * workload identity provider, and that provider has one type: nodes on OCI present an identity
+   * token, which needs an OIDC provider, while nodes on AWS present an AWS-signed request, which
+   * needs an AWS one. One audience therefore cannot serve both, so the provider has to say which it
+   * is for.
+   *
+   * <p>An OCI provider's nodes all run on OCI. An on-prem provider says so by having an OCI
+   * identity domain URL, once OCI nodes are supported at all ({@code ociSourceEnabled}); until then
+   * the URL is ignored, so a provider that already has it keeps meaning what it meant before.
+   */
+  public static boolean isGcpTargetForOciNodes(Provider provider, boolean ociSourceEnabled) {
+    if (provider.getCloudCode() == CloudType.oci) {
+      return true;
+    }
+    return provider.getCloudCode() == CloudType.onprem
+        && ociSourceEnabled
+        && getOciIdentityDomainUrl(provider) != null;
+  }
+
   public static <T extends CloudInfoInterface> T get(Region region) {
     return get(region, false);
   }

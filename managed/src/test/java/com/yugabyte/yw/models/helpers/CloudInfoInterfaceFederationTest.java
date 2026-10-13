@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -252,5 +253,40 @@ public class CloudInfoInterfaceFederationTest extends FakeDBApplication {
   public void testIdentityDomainUrlIsNullForOtherProviders() {
     assertNull(CloudInfoInterface.getOciIdentityDomainUrl(ModelFactory.awsProvider(customer)));
     assertNull(CloudInfoInterface.getOciIdentityDomainUrl(ModelFactory.gcpProvider(customer)));
+  }
+
+  /** Every node of an OCI provider is on OCI, so its gcp target is for OCI nodes, gate or no. */
+  @Test
+  public void testOciProvidersGcpTargetIsForOciNodes() {
+    Provider oci = ModelFactory.ociProvider(customer);
+    assertTrue(CloudInfoInterface.isGcpTargetForOciNodes(oci, true));
+    assertTrue(CloudInfoInterface.isGcpTargetForOciNodes(oci, false));
+  }
+
+  /**
+   * An on-prem provider says its nodes are on OCI by having an identity domain URL, and only once
+   * OCI is enabled as a source. Before that the URL is ignored, so a provider that already has it
+   * keeps its gcp target for the AWS nodes it was set up for.
+   */
+  @Test
+  public void testOnPremGcpTargetIsForOciNodesOnlyWithTheUrlAndTheGate() {
+    Provider onprem = ModelFactory.onpremProvider(customer);
+    OnPremCloudInfo info = onPremInfo(onprem);
+
+    assertFalse(CloudInfoInterface.isGcpTargetForOciNodes(onprem, true));
+    info.ociIdentityDomainUrl = DOMAIN_URL;
+    assertTrue(CloudInfoInterface.isGcpTargetForOciNodes(onprem, true));
+    assertFalse(CloudInfoInterface.isGcpTargetForOciNodes(onprem, false));
+    info.ociIdentityDomainUrl = "  ";
+    assertFalse(CloudInfoInterface.isGcpTargetForOciNodes(onprem, true));
+  }
+
+  /** AWS and GCP providers have no OCI nodes, so their targets are never for them. */
+  @Test
+  public void testAwsAndGcpProvidersGcpTargetIsNeverForOciNodes() {
+    assertFalse(
+        CloudInfoInterface.isGcpTargetForOciNodes(ModelFactory.awsProvider(customer), true));
+    assertFalse(
+        CloudInfoInterface.isGcpTargetForOciNodes(ModelFactory.gcpProvider(customer), true));
   }
 }

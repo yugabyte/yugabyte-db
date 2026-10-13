@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -212,6 +213,22 @@ func TestExchangeErrorDetailIsSanitisedAndBounded(t *testing.T) {
 	}
 }
 
+func TestErrorDetailNeverSplitsAMultiByteCharacter(t *testing.T) {
+	// "€" is three bytes; shifting the filler by 0..2 puts the cut on a character boundary and then
+	// inside a character at each of its two interior byte positions.
+	for pad := 0; pad < 3; pad++ {
+		desc := strings.Repeat("A", maxDetailBytes-3-pad) + strings.Repeat("€", 10)
+		got := errorDetail(tokenResponse{ErrorDescription: desc})
+
+		if !utf8.ValidString(got) {
+			t.Errorf("pad=%d: detail is not valid UTF-8: %q", pad, got)
+		}
+		if len(strings.TrimPrefix(got, ": ")) > maxDetailBytes {
+			t.Errorf("pad=%d: detail exceeds %d bytes: %d", pad, maxDetailBytes, len(got))
+		}
+	}
+}
+
 func TestExchangeNonJSONErrorBodyIsNotRelayed(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
@@ -317,6 +334,33 @@ func TestWriteTokenFileFailsWithoutLeavingTemp(t *testing.T) {
 	if len(entries) != 0 {
 		t.Errorf("a failed write must leave nothing behind, found %d entries", len(entries))
 	}
+}
+
+func TestReadTokenFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token.jwt")
+
+	_, err := ReadTokenFile(path)
+	mustError(t, err)
+
+	mustNoError(t, WriteTokenFile(path, validJWT))
+	got, err := ReadTokenFile(path)
+	mustNoError(t, err)
+	if got != validJWT {
+		t.Errorf("read %q, want %q", got, validJWT)
+	}
+
+	// Surrounding whitespace (a hand-edited file) is not part of the token.
+	mustNoError(t, os.WriteFile(path, []byte("\n"+validJWT+"\n"), 0600))
+	got, err = ReadTokenFile(path)
+	mustNoError(t, err)
+	if got != validJWT {
+		t.Errorf("read %q, want %q", got, validJWT)
+	}
+
+	mustNoError(t, os.WriteFile(path, []byte(strings.Repeat("a", maxTokenBytes+1)), 0600))
+	_, err = ReadTokenFile(path)
+	mustError(t, err)
 }
 
 // jwtWithPayload builds a token-shaped string whose payload is the given JSON.

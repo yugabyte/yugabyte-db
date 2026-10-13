@@ -5,6 +5,7 @@ package task
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -319,45 +320,63 @@ func TestOciRefresherUnitTemplates(t *testing.T) {
 	contains("timer", timer, "Unit="+ociTokenServiceName)
 	contains("timer", timer, "OnUnitActiveSec=20min")
 	contains("timer", timer, "WantedBy=timers.target")
-	// The token lasts about an hour; a refresh interval near that would leave no slack.
+	// Setup accepts tokens that live 30 minutes or more; a refresh interval near that leaves no slack.
 	if strings.Contains(timer, "OnUnitActiveSec=60min") {
 		t.Error("the refresh interval must leave slack inside the token lifetime")
 	}
 }
 
-// A token file that stopped being refreshed must not look like a configured node: the timer has
-// died or an outage outlasted the token, and only a re-apply repairs it.
+// jwtExpiringAt builds a token-shaped string that expires at the given time.
+func jwtExpiringAt(exp time.Time) string {
+	enc := base64.RawURLEncoding.EncodeToString
+	return enc([]byte(`{"alg":"RS256"}`)) + "." +
+		enc([]byte(fmt.Sprintf(`{"exp":%d}`, exp.Unix()))) + "." + enc([]byte("sig"))
+}
+
+// A token the refresher stopped renewing must not look like a configured node: the timer has died
+// or an outage outlasted the token, and only a re-apply repairs it. What decides is the token's own
+// expiry, not how recently the file was written.
 func TestOciTokenFresh(t *testing.T) {
-	dir := t.TempDir()
-	token := filepath.Join(dir, ociTokenFileName)
+	token := filepath.Join(t.TempDir(), ociTokenFileName)
+	write := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(token, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	if ociTokenFresh(token) {
 		t.Error("a missing token file must not count as fresh")
 	}
-	if err := os.WriteFile(token, []byte("x"), 0600); err != nil {
+	write("not a token")
+	if ociTokenFresh(token) {
+		t.Error("a file that is not a token must not count as fresh")
+	}
+	write(jwtExpiringAt(time.Now().Add(ociTokenMinRemaining + time.Minute)))
+	if !ociTokenFresh(token) {
+		t.Error("a token just above the remaining-lifetime floor must count as fresh")
+	}
+	write(jwtExpiringAt(time.Now().Add(ociTokenMinRemaining - time.Minute)))
+	if ociTokenFresh(token) {
+		t.Error("a token just below the floor must not count as fresh")
+	}
+	// Written a moment ago, but already expired: a recent mtime must not vouch for it.
+	write(jwtExpiringAt(time.Now().Add(-time.Hour)))
+	if ociTokenFresh(token) {
+		t.Error("an expired token must not count as fresh, however recently it was written")
+	}
+	// Written two hours ago, but good for a day: an old mtime must not condemn it.
+	write(jwtExpiringAt(time.Now().Add(24 * time.Hour)))
+	old := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(token, old, old); err != nil {
 		t.Fatal(err)
 	}
 	if !ociTokenFresh(token) {
-		t.Error("a token written just now must count as fresh")
-	}
-	setAge := func(age time.Duration) {
-		t.Helper()
-		when := time.Now().Add(-age)
-		if err := os.Chtimes(token, when, when); err != nil {
-			t.Fatal(err)
-		}
-	}
-	setAge(ociTokenMaxAge - time.Minute)
-	if !ociTokenFresh(token) {
-		t.Error("a token just inside the limit must count as fresh")
-	}
-	setAge(ociTokenMaxAge + time.Minute)
-	if ociTokenFresh(token) {
-		t.Error("a token past the limit must not count as fresh")
+		t.Error("a long-lived token must count as fresh whatever the file's age")
 	}
 }
 
-// The timer, the setup guard and the staleness limit describe one schedule and only make sense
+// The timer, the setup guard and the freshness floor describe one schedule and only make sense
 // together. The refresh interval lives in the timer template; this pins the rest against it.
 func TestOciTokenTimingIsConsistent(t *testing.T) {
 	const refreshInterval = 20 * time.Minute // OnUnitActiveSec in yb-federation-oci-token.timer.j2
@@ -369,8 +388,35 @@ func TestOciTokenTimingIsConsistent(t *testing.T) {
 		t.Errorf("a token must outlive the %s between refreshes, but the minimum is %s",
 			refreshInterval, ociTokenMinLifetime)
 	}
-	if ociTokenMaxAge < 2*refreshInterval {
-		t.Errorf("one late refresh must not look like drift: max age %s < two intervals",
-			ociTokenMaxAge)
+	// A healthy refresher, right before its next run, holds the shortest-lived token setup accepts
+	// minus one interval. That must still count as fresh, or a node would be re-applied on every
+	// reconcile.
+	if ociTokenMinLifetime-refreshInterval <= ociTokenMinRemaining {
+		t.Errorf("a healthy refresher would look stale: %s - %s <= %s",
+			ociTokenMinLifetime, refreshInterval, ociTokenMinRemaining)
+	}
+}
+
+// Releasing or recommissioning a node runs DestroyServer, which removes the federation directory
+// the refresher writes into. The refresher must go with it, or it keeps exchanging the node's
+// identity every 20 minutes on a node that is back in the pool.
+func TestDestroyServerDisablesTheOciRefresher(t *testing.T) {
+	index := map[string]int{}
+	for i, s := range registeredServices {
+		index[s.unitName] = i
+		if (s.unitName == ociTokenTimerName || s.unitName == ociTokenServiceName) &&
+			(s.home != "" || s.needsProvisioning) {
+			t.Errorf("%s must be disabled on every destroy and has no server home: %+v",
+				s.unitName, s)
+		}
+	}
+	timer, hasTimer := index[ociTokenTimerName]
+	service, hasService := index[ociTokenServiceName]
+	if !hasTimer || !hasService {
+		t.Fatalf("both refresher units must be in registeredServices: timer=%t service=%t",
+			hasTimer, hasService)
+	}
+	if timer > service {
+		t.Error("the timer must be disabled before the service it triggers")
 	}
 }
