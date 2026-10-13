@@ -1711,6 +1711,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 			machine_msg_free(msg);
 			continue;
 		} else if (type == YB_BE_YB_QUERY_ACK) {
+			yb_od_parse_queue_entry_t entry;
+			if (yb_od_parse_queue_peek(&server->parse_queue,
+						   &entry) == 0 &&
+			    entry.kind == YB_PARSE_QUEUE_QUERY)
+				yb_backend_handle_query_ack(server, context);
 			machine_msg_free(msg);
 			continue;
 		} else if (type == KIWI_BE_PARSE_COMPLETE) {
