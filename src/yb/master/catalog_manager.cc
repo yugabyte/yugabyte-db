@@ -3135,40 +3135,17 @@ Result<SplitTableEligibility> CatalogManager::ComputeSplitTableEligibility(
       eligibility.num_eligible_tservers = valid_tservers->size();
     }
   }
-  TEST_SYNC_POINT("CatalogManager::ComputeSplitTableEligibility:Done");
   return eligibility;
-}
-
-Result<SplitTableEligibility> CatalogManager::GetSplitTableEligibility(
-    const scoped_refptr<const TableInfo>& table, SplitEligibilityCache* cache) const {
-  if (!cache) {
-    return ComputeSplitTableEligibility(table, GetAllLiveNotBlacklistedTServers());
-  }
-  return cache->Table(table->id(), [&]() {
-    return ComputeSplitTableEligibility(
-        table, cache->LiveTServers([this]() { return GetAllLiveNotBlacklistedTServers(); }));
-  });
 }
 
 Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info,
-    SplitEligibilityCache* cache) const {
-  if (drive_info.may_have_orphaned_post_split_data) {
-    return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
-        tablet_info.id());
-  }
-  if (drive_info.has_active_vector_index_backfill) {
-    return STATUS_FORMAT(
-        IllegalState, "Tablet $0 has a vector index backfill in progress.", tablet_info.id());
-  }
+    const SplitTableEligibility* table_eligibility) const {
+  RETURN_NOT_OK(CheckSplitCandidateDriveInfo(tablet_info.id(), drive_info));
   ssize_t size = drive_info.sst_files_size;
-  DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
-  if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
-    return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($1) < low phase size threshold ($2).",
-        tablet_info.id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
-  }
   const auto table = tablet_info.table();
-  const auto eligibility = VERIFY_RESULT(GetSplitTableEligibility(table, cache));
+  const auto eligibility = table_eligibility ? *table_eligibility : VERIFY_RESULT(
+      ComputeSplitTableEligibility(table, GetAllLiveNotBlacklistedTServers()));
 
   // The tablet must have exactly rf running voters and no replica being remote bootstrapped, so
   // that the split does not copy a bootstrapping peer into the children's Raft configs. Since this

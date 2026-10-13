@@ -12,7 +12,6 @@
 //
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <limits>
 #include <thread>
@@ -2340,7 +2339,7 @@ TEST_F(AutomaticTabletSplitITest, PhasePromotionAccountsForSplitRetry) {
     /* expected_split_tablets */ 0,
     /* num_replicas_online */ 0,
     /* table */ client::kTableName,
-      /* core_dump_on_failure */ false));
+    /* core_dump_on_failure */ false));
 }
 
 TEST_F(AutomaticTabletSplitITest, StalePlacementCandidateRevalidatedBeforeRegistration) {
@@ -2373,20 +2372,9 @@ TEST_F(AutomaticTabletSplitITest, StalePlacementCandidateRevalidatedBeforeRegist
     return true;
   }, 30s * kTimeMultiplier, "Wait for low-phase candidates"));
 
-  auto* sync = SyncPoint::GetInstance();
-  std::atomic<bool> changed{false};
-  auto cleanup = ScopeExit([sync] {
+  auto cleanup = ScopeExit([] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
-    sync->DisableProcessing();
-    sync->ClearAllCallBacks();
   });
-  sync->SetCallBack("CatalogManager::ComputeSplitTableEligibility:Done", [&](void*) {
-    if (!changed.exchange(true)) {
-      // The cached 2/3 count selects low-phase candidates even though 2/2 now requires high phase.
-      ASSERT_OK(cluster_->AddTServerToBlacklist(2));
-    }
-  });
-  sync->EnableProcessing();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
   ASSERT_OK(WaitFor([&] {
@@ -2396,14 +2384,15 @@ TEST_F(AutomaticTabletSplitITest, StalePlacementCandidateRevalidatedBeforeRegist
       }
     }
     return false;
-  }, 30s * kTimeMultiplier, "Wait for the stale candidate to consume the only split slot"));
+  }, 30s * kTimeMultiplier, "Wait for a candidate to consume the only split slot"));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
   ASSERT_OK(master.tablet_split_manager().WaitUntilIdle());
-  ASSERT_TRUE(changed.load());
   ASSERT_EQ(table_info->GetTasks().size(), 1);
-  sync->DisableProcessing();
-  sync->ClearAllCallBacks();
+
+  // Change placement after selection, while GetSplitKey is still paused. Child registration must
+  // re-read the count: 2/3 qualified for low phase, but 2/2 now requires the high-phase threshold.
+  ASSERT_OK(cluster_->AddTServerToBlacklist(2));
 
   StringWaiterLogSink rejected("is no longer a valid split candidate");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;

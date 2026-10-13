@@ -23,8 +23,6 @@
 
 #include "yb/rpc/rpc_context.h"
 
-#include "yb/util/result.h"
-
 namespace yb {
 namespace master {
 
@@ -35,43 +33,16 @@ YB_STRONGLY_TYPED_BOOL(IgnoreVectorIndexesValidation);
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
 
+// These tablet-local checks must precede lazy placement resolution.
+Status CheckSplitCandidateDriveInfo(
+    const TabletId& tablet_id, const TabletReplicaDriveInfo& drive_info);
+
 // The inputs to CatalogManager::ShouldSplitValidCandidate that depend on the table and on cluster
 // membership, but not on the tablet.
 struct SplitTableEligibility {
   // Live, non-blacklisted tservers that the table's placement policy allows replicas on.
   size_t num_eligible_tservers = 0;
   size_t replication_factor = 0;
-};
-
-// An approximate scheduling view for one TabletSplitManager::DoSplitting pass. Membership and
-// blacklist filtering are captured on first use; descriptors remain mutable, and each table's
-// policy and count are read on its first evaluation. This is not an atomic topology snapshot.
-// Stale counts can reject newly eligible tablets, change priority, or spend scheduling slots on
-// candidates that fail fresh validation. They are reconsidered in a subsequent pass. New automatic
-// splits must revalidate without this cache in DoSplitTablet; retries with registered children
-// retain their existing validation rules. Not thread-safe.
-class SplitEligibilityCache {
- public:
-  template <class Build>
-  const TSDescriptorVector& LiveTServers(const Build& build) {
-    if (!live_tservers_) {
-      live_tservers_ = build();
-    }
-    return *live_tservers_;
-  }
-
-  template <class Compute>
-  const Result<SplitTableEligibility>& Table(const TableId& table_id, const Compute& compute) {
-    auto it = tables_.find(table_id);
-    if (it == tables_.end()) {
-      it = tables_.emplace(table_id, compute()).first;
-    }
-    return it->second;
-  }
-
- private:
-  std::optional<TSDescriptorVector> live_tservers_;
-  std::unordered_map<TableId, Result<SplitTableEligibility>> tables_;
 };
 
 using SplitsToScheduleMap = std::unordered_map<TabletId, std::optional<uint64_t>>;

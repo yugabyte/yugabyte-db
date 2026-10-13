@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <algorithm>
-
 #include <gtest/gtest.h>
 
 #include "yb/common/common_net.h"
@@ -38,7 +36,6 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/sync_point.h"
@@ -46,8 +43,6 @@
 
 DECLARE_bool(TEST_pause_catalog_manager_bg_loop_start);
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(max_create_tablets_per_ts);
-DECLARE_uint64(outstanding_tablet_split_limit);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_int32(replication_factor);
 DECLARE_bool(split_respects_tablet_replica_limits);
@@ -211,15 +206,23 @@ class SplitEligibilityTest : public MasterTestBase {
     return UpdateMasterClusterConfig(&config);
   }
 
-  Result<SplitPhase> Evaluate(const TabletInfoPtr& tablet, SplitEligibilityCache* cache) {
+  Result<SplitTableEligibility> GetEligibility(const TableInfoPtr& table) {
+    auto& catalog = mini_master_->catalog_manager();
+    return catalog.ComputeSplitTableEligibility(table, catalog.GetAllLiveNotBlacklistedTServers());
+  }
+
+  Result<SplitPhase> Evaluate(
+      const TabletInfoPtr& tablet, const SplitTableEligibility* eligibility) {
     const auto drive_info = VERIFY_RESULT(tablet->GetLeaderReplicaDriveInfo());
-    return mini_master_->catalog_manager().ShouldSplitValidCandidate(*tablet, drive_info, cache);
+    return mini_master_->catalog_manager().ShouldSplitValidCandidate(
+        *tablet, drive_info, eligibility);
   }
 
   // Compare paths while topology and table state are unchanged.
-  void CheckPhase(const TableInfoPtr& table, SplitEligibilityCache* cache, SplitPhase expected) {
+  void CheckPhase(
+      const TableInfoPtr& table, const SplitTableEligibility* eligibility, SplitPhase expected) {
     for (const auto& tablet : ASSERT_RESULT(table->GetTablets())) {
-      ASSERT_EQ(ASSERT_RESULT(Evaluate(tablet, cache)), expected) << tablet->id();
+      ASSERT_EQ(ASSERT_RESULT(Evaluate(tablet, eligibility)), expected) << tablet->id();
       ASSERT_EQ(ASSERT_RESULT(Evaluate(tablet, nullptr)), expected) << tablet->id();
     }
   }
@@ -297,14 +300,14 @@ TEST_F(SplitEligibilityTest, BlacklistAppliesOnNextPass) {
   const auto table = ASSERT_RESULT(CreateTestTable("t", /* num_tablets = */ 2, ts_descs));
   const auto tablets = ASSERT_RESULT(table->GetTablets());
 
-  SplitEligibilityCache first_pass;
+  const auto first_pass = ASSERT_RESULT(GetEligibility(table));
   ASSERT_EQ(ASSERT_RESULT(Evaluate(tablets[0], &first_pass)), SplitPhase::kLow);
 
   // Two tablets over the two remaining tservers is one per node. The pass that already resolved
   // the table keeps its view; a new pass and the uncached path see the blacklist.
   ASSERT_OK(Blacklist({ts_descs[2]}));
   ASSERT_EQ(ASSERT_RESULT(Evaluate(tablets[1], &first_pass)), SplitPhase::kLow);
-  SplitEligibilityCache second_pass;
+  const auto second_pass = ASSERT_RESULT(GetEligibility(table));
   ASSERT_EQ(ASSERT_RESULT(Evaluate(tablets[1], &second_pass)), SplitPhase::kHigh);
   ASSERT_EQ(ASSERT_RESULT(Evaluate(tablets[1], nullptr)), SplitPhase::kHigh);
 }
@@ -317,188 +320,24 @@ TEST_F(SplitEligibilityTest, PlacementLimitsEligibleTServers) {
       "pinned", /* num_tablets = */ 2, {ts_descs[0]}, PinnedToZone("z1", /* num_replicas = */ 1)));
   const auto open_table = ASSERT_RESULT(CreateTestTable("open", /* num_tablets = */ 2, ts_descs));
 
-  SplitEligibilityCache cache;
-  ASSERT_NO_FATALS(CheckPhase(pinned_table, &cache, SplitPhase::kHigh));
-  ASSERT_NO_FATALS(CheckPhase(open_table, &cache, SplitPhase::kLow));
+  const auto pinned_eligibility = ASSERT_RESULT(GetEligibility(pinned_table));
+  const auto open_eligibility = ASSERT_RESULT(GetEligibility(open_table));
+  ASSERT_NO_FATALS(CheckPhase(pinned_table, &pinned_eligibility, SplitPhase::kHigh));
+  ASSERT_NO_FATALS(CheckPhase(open_table, &open_eligibility, SplitPhase::kLow));
 
   // Blacklisting the only z1 tserver leaves the pinned table with no eligible tserver, while the
   // open table still has two.
   ASSERT_OK(Blacklist({ts_descs[0]}));
-  SplitEligibilityCache next_pass;
+  const auto next_pass = ASSERT_RESULT(GetEligibility(pinned_table));
   for (const auto& tablet : ASSERT_RESULT(pinned_table->GetTablets())) {
-    for (auto* cache_or_null : {&next_pass, static_cast<SplitEligibilityCache*>(nullptr)}) {
-      const auto result = Evaluate(tablet, cache_or_null);
+    for (auto* eligibility : {&next_pass, static_cast<const SplitTableEligibility*>(nullptr)}) {
+      const auto result = Evaluate(tablet, eligibility);
       ASSERT_NOK(result) << tablet->id();
       ASSERT_STR_CONTAINS(result.status().ToString(), "No live, non-blacklisted tservers");
     }
   }
-  ASSERT_NO_FATALS(CheckPhase(open_table, &next_pass, SplitPhase::kHigh));
-}
-
-TEST_F(SplitEligibilityTest, StaleRejectionRecoversOnNextPass) {
-  const auto ts_descs = ASSERT_RESULT(RegisterTServers({"z1", "z2", "z3"}));
-  const auto table = ASSERT_RESULT(CreateTestTable("t", 2, ts_descs));
-  const auto tablets = ASSERT_RESULT(table->GetTablets());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 4_MB;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 1;
-  ASSERT_OK(Blacklist({ts_descs[2]}));
-
-  // Restore capacity after the first count was computed. The whole pass still rejects the table,
-  // although fresh evaluation would accept it; there is no selected candidate to revalidate.
-  CountScans();
-  SyncPoint::GetInstance()->SetCallBack(
-      "CatalogManager::ComputeSplitTableEligibility:Done", [this](void*) {
-        ASSERT_OK(Blacklist({}));
-      });
-  RunPass({table}, ASSERT_RESULT(TabletMap({table})));
-  SyncPoint::GetInstance()->DisableProcessing();
-  SyncPoint::GetInstance()->ClearAllCallBacks();
-  ASSERT_EQ(enumerations_, 1);
-  ASSERT_TRUE(table->GetTasks().empty());
-  ASSERT_EQ(ASSERT_RESULT(Evaluate(tablets[1], nullptr)), SplitPhase::kLow);
-
-  ASSERT_OK(Blacklist({ts_descs[2]}));
-
-  SplitEligibilityCache first_pass;
-  ASSERT_NOK(Evaluate(tablets[0], &first_pass));
-  ASSERT_OK(Blacklist({}));
-  ASSERT_NOK(Evaluate(tablets[1], &first_pass));
-  ASSERT_EQ(ASSERT_RESULT(Evaluate(tablets[1], nullptr)), SplitPhase::kLow);
-  SplitEligibilityCache next_pass;
-  ASSERT_EQ(ASSERT_RESULT(Evaluate(tablets[1], &next_pass)), SplitPhase::kLow);
-}
-
-TEST_F(SplitEligibilityTest, ReplicationFactorChangesAndBootstrapWithWarmCache) {
-  const auto ts_descs = ASSERT_RESULT(RegisterTServers({"z1", "z2", "z3"}));
-  const auto table = ASSERT_RESULT(CreateTestTable("t", 2, ts_descs));
-  const auto tablet = ASSERT_RESULT(table->GetTablets()).front();
-  SplitEligibilityCache first_pass;
-  ASSERT_EQ(ASSERT_RESULT(Evaluate(tablet, &first_pass)), SplitPhase::kLow);
-
-  {
-    auto lock = table->LockForWrite();
-    *lock.mutable_data()->pb.mutable_replication_info() = PinnedToZone("", 1);
-    lock.Commit();
-  }
-  ASSERT_EQ(ASSERT_RESULT(Evaluate(tablet, &first_pass)), SplitPhase::kLow);
-  auto fresh = Evaluate(tablet, nullptr);
-  ASSERT_NOK(fresh);
-  ASSERT_STR_CONTAINS(fresh.status().ToString(), "over replicated");
-
-  auto replicas = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
-  std::erase_if(*replicas, [](const auto& entry) {
-    return entry.second.role != PeerRole::LEADER;
-  });
-  tablet->SetReplicaLocations(replicas);
-  auto stale = Evaluate(tablet, &first_pass);
-  ASSERT_NOK(stale);
-  ASSERT_STR_CONTAINS(stale.status().ToString(), "under replicated");
-  SplitEligibilityCache next_pass;
-  ASSERT_EQ(ASSERT_RESULT(Evaluate(tablet, &next_pass)), SplitPhase::kLow);
-
-  // Replica state is still checked on every tablet evaluation, even after warming the RF cache.
-  replicas = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
-  TabletReplica bootstrapping;
-  bootstrapping.ts_desc = ts_descs[1];
-  bootstrapping.state = tablet::RaftGroupStatePB::BOOTSTRAPPING;
-  bootstrapping.member_type = consensus::PeerMemberType::UNKNOWN_MEMBER_TYPE;
-  InsertOrDie(replicas.get(), ts_descs[1]->permanent_uuid(), bootstrapping);
-  tablet->SetReplicaLocations(replicas);
-  for (auto* cache : {&next_pass, static_cast<SplitEligibilityCache*>(nullptr)}) {
-    const auto result = Evaluate(tablet, cache);
-    ASSERT_NOK(result);
-    ASSERT_STR_CONTAINS(result.status().ToString(), "is not running or is being bootstrapped");
-  }
-}
-
-TEST_F(SplitEligibilityTest, PlacementIsResolvedOnFirstUseOfEachTable) {
-  const auto ts_descs = ASSERT_RESULT(RegisterTServers({"z1", "z2", "z3"}));
-  const auto t1 = ASSERT_RESULT(CreateTestTable("t1", 2, {ts_descs[0]}, PinnedToZone("z1", 1)));
-  const auto t2 = ASSERT_RESULT(CreateTestTable("t2", 2, {ts_descs[0]}, PinnedToZone("z1", 1)));
-  const auto tablet1 = ASSERT_RESULT(t1->GetTablets()).front();
-  const auto tablet2 = ASSERT_RESULT(t2->GetTablets()).front();
-  SplitEligibilityCache first_pass;
-  ASSERT_EQ(ASSERT_RESULT(Evaluate(tablet1, &first_pass)), SplitPhase::kHigh);
-
-  // The cached vector retains this descriptor, not an immutable copy of its registration.
-  {
-    auto lock = ts_descs[0]->LockForWrite();
-    lock.mutable_data()->pb.mutable_registration()->mutable_cloud_info()->set_placement_zone("z2");
-    lock.Commit();
-  }
-  ASSERT_EQ(ASSERT_RESULT(Evaluate(tablet1, &first_pass)), SplitPhase::kHigh);
-  auto result = Evaluate(tablet2, &first_pass);
-  ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.status().ToString(), "No live, non-blacklisted tservers");
-  SplitEligibilityCache next_pass;
-  ASSERT_NOK(Evaluate(tablet1, &next_pass));
-  ASSERT_NOK(Evaluate(tablet1, nullptr));
-}
-
-// Opt-in full-pass benchmark. Table creation and tablet-map construction are outside the timing.
-TEST_F(SplitEligibilityTest, DISABLED_BenchmarkPass) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 10000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 4_MB;
-  auto ts_descs = ASSERT_RESULT(RegisterTServers({"z1", "z2", "z3"}));
-  const auto replicas = ts_descs;
-  struct Workload {
-    int tablets;
-    int tables;
-    int servers;
-    bool cheap_rejection;
-  };
-  const Workload workloads[] = {
-      {256, 1, 3, false}, {1024, 1, 3, false}, {1024, 1, 24, false},
-      {1024, 16, 24, false}, {1024, 1024, 24, false}, {1024, 16, 24, true}};
-  size_t scenario = 0;
-  for (const auto& workload : workloads) {
-    while (std::ssize(ts_descs) < workload.servers) {
-      ts_descs.push_back(ASSERT_RESULT(RegisterTServer("z1")));
-    }
-    std::vector<TableInfoPtr> tables;
-    for (int i = 0; i < workload.tables; ++i) {
-      tables.push_back(ASSERT_RESULT(CreateTestTable(
-          Format("bench_$0_$1", scenario, i), workload.tablets / workload.tables,
-          replicas, PinnedToZone("", 3))));
-    }
-    const auto tablets = ASSERT_RESULT(TabletMap(tables));
-    if (workload.cheap_rejection) {
-      for (const auto& [id, tablet] : tablets) {
-        SetTabletSize(tablet, 0);
-      }
-    }
-    enumerations_ = 0;
-    placement_scans_ = 0;
-    CountScans();
-    RunPass(tables, tablets);
-    SyncPoint::GetInstance()->DisableProcessing();
-    SyncPoint::GetInstance()->ClearAllCallBacks();
-    if (workload.cheap_rejection) {
-      ASSERT_EQ(enumerations_, 0);
-      ASSERT_EQ(placement_scans_, 0);
-    } else {
-      ASSERT_GT(enumerations_, 0);
-      ASSERT_GE(placement_scans_, workload.tables);
-    }
-    std::vector<int64_t> micros;
-    for (int iteration = 0; iteration < 21; ++iteration) {
-      auto start = MonoTime::Now();
-      RunPass(tables, tablets);
-      micros.push_back(MonoTime::Now().GetDeltaSince(start).ToMicroseconds());
-    }
-    std::sort(micros.begin(), micros.end());
-    LOG(INFO) << Format(
-        "Split pass benchmark: T=$0 B=$1 N=$2 cheap=$3 median_us=$4 p95_us=$5 "
-        "enumerations=$6 placement_scans=$7",
-        workload.tablets, workload.tables, workload.servers, workload.cheap_rejection,
-        micros[10], micros[19], enumerations_, placement_scans_);
-    for (const auto& table : tables) {
-      ASSERT_TRUE(table->GetTasks().empty());
-    }
-    ++scenario;
-  }
+  const auto next_open = ASSERT_RESULT(GetEligibility(open_table));
+  ASSERT_NO_FATALS(CheckPhase(open_table, &next_open, SplitPhase::kHigh));
 }
 
 }  // namespace yb::master

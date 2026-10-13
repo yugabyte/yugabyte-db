@@ -1372,9 +1372,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) override;
 
+  Result<SplitTableEligibility> ComputeSplitTableEligibility(
+      const scoped_refptr<const TableInfo>& table,
+      const TSDescriptorVector& ts_descs) const override;
+
+  using CatalogManagerIf::ShouldSplitValidCandidate;
   Result<SplitPhase> ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info,
-      SplitEligibilityCache* cache = nullptr) const override;
+      const SplitTableEligibility* table_eligibility) const override;
 
   Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) override;
   Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
@@ -2926,13 +2931,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const override;
-
-  Result<SplitTableEligibility> ComputeSplitTableEligibility(
-      const scoped_refptr<const TableInfo>& table, const TSDescriptorVector& ts_descs) const;
-
-  // Resolves through the cache when one is given, computing on a miss.
-  Result<SplitTableEligibility> GetSplitTableEligibility(
-      const scoped_refptr<const TableInfo>& table, SplitEligibilityCache* cache) const;
 
   Status InitializeTableLoadState(
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);

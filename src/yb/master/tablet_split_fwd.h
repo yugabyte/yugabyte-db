@@ -19,7 +19,6 @@
 namespace yb {
 namespace master {
 
-class SplitEligibilityCache;
 class TabletSplitManager;
 
 struct SplitTableEligibility;

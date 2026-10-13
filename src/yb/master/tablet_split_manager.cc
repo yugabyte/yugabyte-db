@@ -59,6 +59,7 @@ DEFINE_RUNTIME_int32(process_split_tablet_candidates_interval_msec, 0,
 DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 
 DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 0,
     "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
@@ -639,6 +640,26 @@ Status CheckLiveReplicasForSplit(
   return Status::OK();
 }
 
+Status CheckSplitCandidateDriveInfo(
+    const TabletId& tablet_id, const TabletReplicaDriveInfo& drive_info) {
+  if (drive_info.may_have_orphaned_post_split_data) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet $0 may have uncompacted post-split data.", tablet_id);
+  }
+  if (drive_info.has_active_vector_index_backfill) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet $0 has a vector index backfill in progress.", tablet_id);
+  }
+  ssize_t size = drive_info.sst_files_size;
+  DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
+  if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet $0 SST size ($1) < low phase size threshold ($2).",
+        tablet_id, size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
+  }
+  return Status::OK();
+}
+
 void TabletSplitManager::ScheduleSplits(
     const SplitsToScheduleMap& splits_to_schedule, const LeaderEpoch& epoch) {
   VLOG_WITH_FUNC(2) << "Start";
@@ -949,7 +970,6 @@ void TabletSplitManager::DoSplitting(
   }
 
   TabletReplicaMapCache replica_cache;
-  SplitEligibilityCache eligibility_cache;
   OutstandingSplitState state(tablet_info_map, &replica_cache);
   for (const auto& table : valid_tables) {
     VLOG(3) << "Processing ongoing split tasks for table " << table->id();
@@ -973,10 +993,14 @@ void TabletSplitManager::DoSplitting(
     }
   }
 
+  // Membership is captured on first use; descriptors and later table policies may still change.
+  // Stale decisions are reconsidered next pass, and new splits revalidate fresh in DoSplitTablet.
+  std::optional<TSDescriptorVector> live_tservers;
   for (const auto& table : valid_tables) {
     VLOG(3) << Format("Processing table $0 for split", table->id());
     auto tablets_result = table->GetTablets();
     if (!tablets_result) continue;
+    std::optional<Result<SplitTableEligibility>> table_eligibility;
     for (const auto& tablet : *tablets_result) {
       VLOG(4) << Format("Processing tablet $0 for split", tablet->id());
       if (state.HasSplitWithTask(tablet->id())) {
@@ -1031,8 +1055,18 @@ void TabletSplitManager::DoSplitting(
           parent = FindPtrOrNull(tablet_info_map, parent_id);
         }
         RETURN_NOT_OK(ValidateSplitCandidateTablet(*tablet, parent));
+        RETURN_NOT_OK(CheckSplitCandidateDriveInfo(tablet->id(), *drive_info_opt));
+        if (!table_eligibility) {
+          if (!live_tservers) {
+            live_tservers = catalog_manager_.GetAllLiveNotBlacklistedTServers();
+          }
+          table_eligibility = catalog_manager_.ComputeSplitTableEligibility(table, *live_tservers);
+        }
+        // Copy a cached error instead of moving it out on the first rejected tablet.
+        RETURN_NOT_OK(ResultToStatus(*table_eligibility));
+        const auto& eligibility = **table_eligibility;
         const auto phase = VERIFY_RESULT(catalog_manager_.ShouldSplitValidCandidate(
-            *tablet, drive_info_opt.get(), &eligibility_cache));
+            *tablet, *drive_info_opt, &eligibility));
 
         const auto replicas = replica_cache.GetOrAdd(*tablet);
         const auto tservers_with_outstanding_compaction =
