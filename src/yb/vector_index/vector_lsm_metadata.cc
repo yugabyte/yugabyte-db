@@ -212,6 +212,31 @@ Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB
   return file.Sync();
 }
 
+Status VectorLSMMetadataModifyFrontiers(
+    Env* env, const std::string& dir,
+    const std::function<Status(google::protobuf::Any&)>& modify_user_frontier) {
+  auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env, dir));
+  if (load_result.chunks.empty()) {
+    return Status::OK();
+  }
+
+  VectorLSMUpdatePB update;
+  update.set_reset(true);
+  for (auto& chunk : load_result.chunks) {
+    for (auto* boundary : {chunk.mutable_smallest(), chunk.mutable_largest()}) {
+      if (boundary->has_user_frontier()) {
+        RETURN_NOT_OK(modify_user_frontier(*boundary->mutable_user_frontier()));
+      }
+    }
+    *update.add_add_chunks() = std::move(chunk);
+  }
+
+  auto file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env, dir, load_result.next_free_file_no));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*file, update));
+  RETURN_NOT_OK(file->Close());
+  return env->SyncDir(dir);
+}
+
 std::string VectorLSMMetadataLoadResult::ToString() const {
   return YB_STRUCT_TO_STRING(next_free_file_no, chunks);
 }

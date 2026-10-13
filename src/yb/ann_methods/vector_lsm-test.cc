@@ -842,6 +842,84 @@ TEST_F(VectorLSMUsearchTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
   ASSERT_EQ(flushed_vertex_id(lsm), expected);
 }
 
+// The rewrite keeps every chunk, including one with no file, with the modified frontiers, and
+// leaves the previous manifest file in place until the next load, which drops it.
+TEST(VectorLSMMetadataTest, ModifyFrontiers) {
+  auto* env = Env::Default();
+  std::string test_dir;
+  ASSERT_OK(env->GetTestDirectory(&test_dir));
+  const auto dir = JoinPathSegments(
+      test_dir, "vector_lsm_metadata_test_" + Uuid::Generate().ToString());
+  ASSERT_OK(env->CreateDirs(dir));
+
+  auto make_frontier = [](char value) {
+    vector_index::VectorLSMTestFrontierPB pb;
+    pb.set_vertex_id(std::string(VectorId::StaticSize(), value));
+    google::protobuf::Any any;
+    any.PackFrom(pb);
+    return any;
+  };
+  auto frontier_value = [](const google::protobuf::Any& any) -> Result<char> {
+    vector_index::VectorLSMTestFrontierPB pb;
+    SCHECK(any.UnpackTo(&pb), Corruption, "Not a test frontier");
+    return pb.vertex_id()[0];
+  };
+  auto meta_files = [env, &dir]() -> Result<std::vector<std::string>> {
+    return VERIFY_RESULT(vector_index::ListVectorLSMFiles(env, dir)).manifest_and_chunk_files;
+  };
+
+  // Two chunks with files, then a frontier only chunk, which has no serial no.
+  vector_index::VectorLSMUpdatePB update;
+  for (uint64_t serial_no : {1, 2, 0}) {
+    auto& chunk = *update.add_add_chunks();
+    chunk.set_serial_no(serial_no);
+    chunk.set_order_no(serial_no ? serial_no : 3);
+    *chunk.mutable_smallest()->mutable_user_frontier() = make_frontier('a');
+    *chunk.mutable_largest()->mutable_user_frontier() = make_frontier('z');
+  }
+  {
+    auto file = ASSERT_RESULT(vector_index::VectorLSMMetadataOpenFile(env, dir, 0));
+    ASSERT_OK(vector_index::VectorLSMMetadataAppendUpdate(*file, update));
+    ASSERT_OK(file->Close());
+  }
+
+  std::string seen;
+  ASSERT_OK(vector_index::VectorLSMMetadataModifyFrontiers(
+      env, dir,
+      [&seen, &make_frontier, &frontier_value](google::protobuf::Any& any) -> Status {
+    seen += VERIFY_RESULT(frontier_value(any));
+    any = make_frontier('m');
+    return Status::OK();
+  }));
+  std::sort(seen.begin(), seen.end());
+  ASSERT_EQ(seen, "aaazzz");
+  ASSERT_EQ(ASSERT_RESULT(meta_files()), (std::vector<std::string>{"0.meta", "1.meta"}));
+
+  auto load_result = ASSERT_RESULT(vector_index::VectorLSMMetadataLoad(env, dir));
+  ASSERT_EQ(load_result.next_free_file_no, 2);
+  auto& chunks = load_result.chunks;
+  std::sort(chunks.begin(), chunks.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.order_no() < rhs.order_no();
+  });
+  ASSERT_EQ(chunks.size(), 3);
+  const std::vector<uint64_t> expected_serial_nos = {1, 2, 0};
+  for (size_t i = 0; i != chunks.size(); ++i) {
+    ASSERT_EQ(chunks[i].serial_no(), expected_serial_nos[i]);
+    ASSERT_EQ(ASSERT_RESULT(frontier_value(chunks[i].smallest().user_frontier())), 'm');
+    ASSERT_EQ(ASSERT_RESULT(frontier_value(chunks[i].largest().user_frontier())), 'm');
+  }
+  ASSERT_EQ(ASSERT_RESULT(meta_files()), std::vector<std::string>{"1.meta"});
+
+  // A manifest with no chunks is left as is.
+  const auto empty_dir = JoinPathSegments(dir, "empty");
+  ASSERT_OK(env->CreateDirs(empty_dir));
+  ASSERT_OK(vector_index::VectorLSMMetadataModifyFrontiers(
+      env, empty_dir, [](google::protobuf::Any&) -> Status {
+    return STATUS(IllegalState, "Unexpected call");
+  }));
+  ASSERT_TRUE(ASSERT_RESULT(env->GetChildren(empty_dir, ExcludeDots::kTrue)).empty());
+}
+
 void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
     vector_index::DistanceKind distance_kind) {
   constexpr size_t kDimensions = 8;

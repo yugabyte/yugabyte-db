@@ -351,4 +351,9 @@ std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
 Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);
 
+// Clears the OpIds in the chunk frontiers of the vector indexes restored into db_dir, before
+// MoveChildren moves them out of it. Like RocksDBPatcher::ModifyFlushedFrontier does for the SST
+// files, so a restored index does not keep the OpIds of the Raft group its snapshot was taken in.
+Status ClearRestoredVectorIndexesOpIds(Env& env, const std::string& db_dir);
+
 }  // namespace yb::docdb

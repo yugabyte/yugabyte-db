@@ -736,6 +736,10 @@ Status TabletSnapshots::RestoreCheckpoint(
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
 
+    // The restored chunks can carry OpIds of another Raft group, e.g. the source of a clone or of
+    // an imported backup, which the stamp below cannot move back. Left above this group's OpIds,
+    // they would make bootstrap skip this group's writes to the index.
+    RETURN_NOT_OK(docdb::ClearRestoredVectorIndexesOpIds(this->env(), db_dir));
     RETURN_NOT_OK(MoveChildren(this->env(), db_dir, docdb::IncludeIntents::kFalse));
 
     auto tablet_metadata_file = TabletMetadataFile(db_dir);
@@ -814,7 +818,8 @@ Status TabletSnapshots::RestoreCheckpoint(
   // The restore replaced the vector index storages together with the regular DB, but the patcher
   // above moved only the regular DB's flushed frontier to the restore op id. Stamp the same op id
   // on the vector indexes, otherwise they keep their snapshot time OpId and bootstrap replays the
-  // rolled back writes back into them.
+  // rolled back writes back into them. The restored chunks have no OpIds left, so the stamp sets
+  // the flushed OpId to exactly the restore op id.
   RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(frontier));
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
