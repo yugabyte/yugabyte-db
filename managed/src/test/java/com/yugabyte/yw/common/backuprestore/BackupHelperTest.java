@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspace
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -52,6 +53,8 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -59,11 +62,16 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -1438,5 +1446,89 @@ public class BackupHelperTest extends FakeDBApplication {
 
     assertEquals(target.audience, s3Data.crossCloudFederationAudience);
     assertEquals(target.roleArn, s3Data.crossCloudFederationRoleArn);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // What YBA itself is given to reach the bucket. It builds an AWS-based credential from the
+  // provider's gcp audience, so an audience that names an OIDC workload identity provider - the
+  // kind nodes on OCI need - is of no use to it and must not be handed over.
+  // ---------------------------------------------------------------------------------------------
+
+  private static final String GCS_AUDIENCE = "//iam.googleapis.com/projects/1/test-audience";
+  private static final String OCI_DOMAIN_URL = "https://idcs-abc123.identity.oraclecloud.com";
+
+  private static ProviderDetails.CloudInfo cloudInfo(Provider provider) {
+    if (provider.getDetails().getCloudInfo() == null) {
+      provider.getDetails().setCloudInfo(new ProviderDetails.CloudInfo());
+    }
+    return provider.getDetails().getCloudInfo();
+  }
+
+  /** What YBA is offered for a gcp bucket when the universe is on this saved provider. */
+  private CrossCloudFederationTarget gcpTargetOfferedToYba(
+      Provider provider, boolean ociSourceEnabled) {
+    provider.save();
+    Universe.saveDetails(
+        testUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.provider = provider.getUuid().toString();
+          details.getPrimaryCluster().userIntent.setFederationConfigured(true);
+          u.setUniverseDetails(details);
+        });
+    when(mockRuntimeConfGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource))
+        .thenReturn(ociSourceEnabled);
+    return spyBackupHelper.resolveCrossCloudFederationTarget(
+        Universe.getOrBadRequest(testUniverse.getUniverseUUID()), CloudType.gcp);
+  }
+
+  private static List<CrossCloudFederationTarget> gcsTargets() {
+    return Collections.singletonList(
+        CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+  }
+
+  @Test
+  public void testYbaIsGivenNoGcpAudienceFromAnOciProvider() {
+    Provider oci = ModelFactory.ociProvider(testCustomer);
+    OCICloudInfo info = new OCICloudInfo();
+    info.enableFederatedIam = true;
+    info.ociIdentityDomainUrl = OCI_DOMAIN_URL;
+    info.crossCloudFederationTargets = gcsTargets();
+    cloudInfo(oci).setOci(info);
+
+    // Every node of an OCI provider is on OCI, so this holds whatever the gate says.
+    assertNull(gcpTargetOfferedToYba(oci, true));
+    assertNull(gcpTargetOfferedToYba(oci, false));
+  }
+
+  @Test
+  public void testYbaIsStillGivenTheGcpAudienceOfAnAwsProvider() {
+    Provider aws = ModelFactory.awsProvider(testCustomer);
+    AWSCloudInfo info = CloudInfoInterface.get(aws);
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = gcsTargets();
+
+    CrossCloudFederationTarget offered = gcpTargetOfferedToYba(aws, true);
+    assertEquals(GCS_AUDIENCE, offered.audience);
+  }
+
+  /**
+   * An on-prem provider says its gcp target is for OCI nodes by having an identity domain URL, once
+   * OCI is a source. Until then the URL changes nothing, so a provider that has it keeps handing
+   * YBA the audience it always did.
+   */
+  @Test
+  public void testOnPremGcpAudienceIsWithheldFromYbaOnlyWhenItIsForOciNodes() {
+    Provider onprem = ModelFactory.onpremProvider(testCustomer);
+    OnPremCloudInfo info = new OnPremCloudInfo();
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = gcsTargets();
+    cloudInfo(onprem).setOnprem(info);
+
+    assertEquals(GCS_AUDIENCE, gcpTargetOfferedToYba(onprem, true).audience);
+
+    info.ociIdentityDomainUrl = OCI_DOMAIN_URL;
+    assertNull(gcpTargetOfferedToYba(onprem, true));
+    assertEquals(GCS_AUDIENCE, gcpTargetOfferedToYba(onprem, false).audience);
   }
 }

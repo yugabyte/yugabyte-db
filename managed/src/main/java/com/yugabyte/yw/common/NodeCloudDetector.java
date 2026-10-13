@@ -92,6 +92,17 @@ public class NodeCloudDetector {
    * pays for the extra probe.
    */
   public CloudType detect(Universe universe, NodeDetails node, Duration probeTimeout) {
+    return detect(universe, node, probeTimeout, true /* probeOci */);
+  }
+
+  /**
+   * As {@link #detect(Universe, NodeDetails, Duration)}, but {@code probeOci} false leaves OCI out
+   * entirely: the node is never probed for it, and one that is on OCI reads as {@link
+   * CloudType#onprem}, as it did before OCI was recognised. For callers that cannot act on OCI yet
+   * and so must not change what they see, or pay for another probe.
+   */
+  public CloudType detect(
+      Universe universe, NodeDetails node, Duration probeTimeout, boolean probeOci) {
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(true)
@@ -151,12 +162,14 @@ public class NodeCloudDetector {
       return CloudType.aws;
     }
 
-    ShellResponse ociResponse =
-        runProbe(universe, node, context, curl("-H", OCI_AUTH_HEADER, OCI_INSTANCE_ID_URL));
-    if (ociResponse == null) {
-      allProbesRan = false;
-    } else if (ociResponse.isSuccess()) {
-      return CloudType.oci;
+    if (probeOci) {
+      ShellResponse ociResponse =
+          runProbe(universe, node, context, curl("-H", OCI_AUTH_HEADER, OCI_INSTANCE_ID_URL));
+      if (ociResponse == null) {
+        allProbesRan = false;
+      } else if (ociResponse.isSuccess()) {
+        return CloudType.oci;
+      }
     }
 
     if (!allProbesRan) {

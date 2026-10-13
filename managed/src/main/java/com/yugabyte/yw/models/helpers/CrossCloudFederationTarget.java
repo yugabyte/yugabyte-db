@@ -89,8 +89,8 @@ public class CrossCloudFederationTarget {
    * URL, so a path, query or userinfo is refused rather than interpreted. The host is not limited
    * to Oracle's domains: OCI spans several realms, and the value is set by a provider admin.
    *
-   * <p>Kept in step with ocitoken.go (node-agent) and CrossCloudFederatedIamFields.tsx (UI); change
-   * all three together or one layer will accept what another rejects.
+   * <p>Kept in step with ocitoken.go (node-agent); change both together or one will accept what the
+   * other rejects.
    */
   private static final Pattern OCI_IDENTITY_DOMAIN_URL_PATTERN =
       Pattern.compile(

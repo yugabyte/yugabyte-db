@@ -11,7 +11,6 @@ import (
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/util"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -36,17 +35,19 @@ const (
 	// The timer refreshes every 20 minutes (see yb-federation-oci-token.timer.j2). A token must outlive
 	// that gap with room to spare, so setup refuses one valid for less than this.
 	ociTokenMinLifetime = 30 * time.Minute
-	// A token file older than this means the timer has stopped running: two refreshes in a row have
-	// failed to land, and the token is close to expiring.
-	ociTokenMaxAge = 45 * time.Minute
+	// A token with less than this left means the refresher is not keeping up. A healthy one, right
+	// before its next run, still has the minimum lifetime less one refresh interval (10 minutes), so
+	// this sits below that.
+	ociTokenMinRemaining = 5 * time.Minute
 )
 
-// ociTokenFresh reports whether the token file was refreshed recently enough to be trusted. Without
+// ociTokenFresh reports whether the token file holds a token with time left. It reads the token's
+// own expiry rather than the file's age, which says nothing about how long the token lives. Without
 // it a stopped timer, or an outage that outlasted the token, would look like a configured node and
 // never be repaired. A pure read, safe from inSync.
 func ociTokenFresh(tokenFile string) bool {
-	info, err := os.Stat(tokenFile)
-	return err == nil && time.Since(info.ModTime()) < ociTokenMaxAge
+	token, err := ocitoken.ReadTokenFile(tokenFile)
+	return err == nil && ocitoken.RequireLifetime(token, ociTokenMinRemaining, time.Now()) == nil
 }
 
 // validateFederationRoute rejects a (source, target) pair no flow serves. A node pointed at an
@@ -99,30 +100,6 @@ func (h *ConfigureCloudFederation) isOciSource() bool {
 	return h.param.GetSourceCloud() == pb.ConfigureCloudFederationInput_OCI
 }
 
-// ociUnitDir returns where the refresher's units live for the active systemd mode, matching the
-// mode of the YBC unit the federation drop-in is installed beside.
-func (h *ConfigureCloudFederation) ociUnitDir() (string, bool, error) {
-	isUser, _, err := module.IsUserSystemd(h.username, YbControllerService)
-	if err != nil {
-		return "", false, err
-	}
-	if isUser {
-		info, err := util.UserInfo(h.username)
-		if err != nil {
-			return "", false, err
-		}
-		return filepath.Join(info.User.HomeDir, module.UserSystemdUnitPath), true, nil
-	}
-	return systemSystemdUnitDir, false, nil
-}
-
-func systemctlCmd(isUser bool) string {
-	if isUser {
-		return "systemctl --user"
-	}
-	return "sudo systemctl"
-}
-
 // shellQuote single-quotes s for the shell. Every value passed through it has already been
 // validated, so this is a second layer rather than the only one.
 func shellQuote(s string) string {
@@ -133,7 +110,7 @@ func shellQuote(s string) string {
 // decides whether teardown has something to remove. A pure read, safe from inSync and
 // federationArtifactsPresent.
 func (h *ConfigureCloudFederation) ociRefresherPresent() bool {
-	unitDir, _, err := h.ociUnitDir()
+	unitDir, _, err := h.systemdUnitDir()
 	if err != nil {
 		return false
 	}
@@ -144,7 +121,7 @@ func (h *ConfigureCloudFederation) ociRefresherPresent() bool {
 // ociRefresherComplete reports whether both units are installed. A node holding only one has a
 // refresher that cannot run, so that is drift, not a configured node.
 func (h *ConfigureCloudFederation) ociRefresherComplete() bool {
-	unitDir, _, err := h.ociUnitDir()
+	unitDir, _, err := h.systemdUnitDir()
 	if err != nil {
 		return false
 	}
@@ -216,7 +193,7 @@ func (h *ConfigureCloudFederation) installOciRefresher(
 	ctx context.Context,
 	identityDomainURL, tokenFile string,
 ) error {
-	unitDir, isUser, err := h.ociUnitDir()
+	unitDir, isUser, err := h.systemdUnitDir()
 	if err != nil {
 		return err
 	}
@@ -227,82 +204,19 @@ func (h *ConfigureCloudFederation) installOciRefresher(
 		"identity_domain_url":      identityDomainURL,
 		"token_file":               tokenFile,
 	}
-	units := []struct{ template, name string }{
+	for _, u := range []struct{ template, name string }{
 		{ociTokenServiceTemplate, ociTokenServiceName},
 		{ociTokenTimerTemplate, ociTokenTimerName},
-	}
-
-	if isUser {
-		if err := module.RunShellSteps(ctx, h.username, []struct {
-			Desc string
-			Cmd  string
-		}{
-			{"create-oci-token-unit-dir", fmt.Sprintf("mkdir -p %s", shellQuote(unitDir))},
-		}, h.logOut); err != nil {
+	} {
+		if err := h.installSystemdFile(
+			ctx, values, u.template, unitDir, u.name, isUser, u.name); err != nil {
 			return err
 		}
-		for _, u := range units {
-			if _, err := module.CopyFile(
-				ctx,
-				values,
-				filepath.Join(module.ServerTemplateSubpath, u.template),
-				filepath.Join(unitDir, u.name),
-				fs.FileMode(0644),
-				h.username,
-			); err != nil {
-				return err
-			}
-		}
-	} else {
-		// System-level: render into the YBA-provided writable temp dir, then sudo-install under
-		// /etc/systemd/system where the user cannot write directly.
-		remoteTmp := h.param.GetRemoteTmp()
-		if remoteTmp == "" {
-			remoteTmp = "/tmp"
-		}
-		for _, u := range units {
-			tmp := filepath.Join(remoteTmp, u.name)
-			if _, err := module.CopyFile(
-				ctx,
-				values,
-				filepath.Join(module.ServerTemplateSubpath, u.template),
-				tmp,
-				fs.FileMode(0644),
-				h.username,
-			); err != nil {
-				return err
-			}
-			dest := filepath.Join(unitDir, u.name)
-			if err := module.RunShellSteps(ctx, h.username, []struct {
-				Desc string
-				Cmd  string
-			}{
-				{
-					"install-" + u.name,
-					fmt.Sprintf(
-						"sudo cp %s %s && sudo chmod 0644 %s",
-						shellQuote(tmp),
-						shellQuote(dest),
-						shellQuote(dest),
-					),
-				},
-				{"cleanup-tmp-" + u.name, fmt.Sprintf("rm -f %s", shellQuote(tmp))},
-			}, h.logOut); err != nil {
-				return err
-			}
-		}
 	}
-
-	ctl := systemctlCmd(isUser)
-	return module.RunShellSteps(ctx, h.username, []struct {
-		Desc string
-		Cmd  string
-	}{
-		{"oci-token-daemon-reload", fmt.Sprintf("%s daemon-reload", ctl)},
-		{"oci-token-enable-timer", fmt.Sprintf("%s enable %s", ctl, ociTokenTimerName)},
-		// restart, not start: re-arms the timer so a changed unit takes effect on an already-active one.
-		{"oci-token-restart-timer", fmt.Sprintf("%s restart %s", ctl, ociTokenTimerName)},
-	}, h.logOut)
+	// The module's systemd helpers tell user from system mode by where the unit file is, so they
+	// are called only now that the units are in place. restart, not start: re-arms the timer so a
+	// changed unit takes effect on an already-active one.
+	return module.ControlSystemdService(ctx, h.username, ociTokenTimerName, "restart", h.logOut)
 }
 
 // removeOciRefresher stops and removes the refresher. A safe no-op when it is not installed, so
@@ -311,25 +225,39 @@ func (h *ConfigureCloudFederation) removeOciRefresher(ctx context.Context) error
 	if !h.ociRefresherPresent() {
 		return nil
 	}
-	unitDir, isUser, err := h.ociUnitDir()
+	unitDir, isUser, err := h.systemdUnitDir()
 	if err != nil {
 		return err
 	}
-	ctl := systemctlCmd(isUser)
-	rm := "rm -f"
-	if !isUser {
-		rm = "sudo rm -f"
+	var systemPaths []string
+	// The timer first, so it cannot start the service again while that is being removed.
+	for _, name := range []string{ociTokenTimerName, ociTokenServiceName} {
+		path := filepath.Join(unitDir, name)
+		if !federationPathExists(path) {
+			continue
+		}
+		// DisableSystemdService deletes the unit file as the node user, which only a user-level unit
+		// permits; a system-level one is deleted with sudo below.
+		toRemove := ""
+		if isUser {
+			toRemove = path
+		} else {
+			systemPaths = append(systemPaths, shellQuote(path))
+		}
+		if err := module.DisableSystemdService(
+			ctx, h.username, name, toRemove, h.logOut); err != nil {
+			return err
+		}
 	}
-	timer := shellQuote(filepath.Join(unitDir, ociTokenTimerName))
-	service := shellQuote(filepath.Join(unitDir, ociTokenServiceName))
-	return module.RunShellSteps(ctx, h.username, []struct {
+	if len(systemPaths) == 0 {
+		return nil
+	}
+	_, err = module.RunShellStepsWithRetry(ctx, module.SystemdBackOff, h.username, []struct {
 		Desc string
 		Cmd  string
 	}{
-		// Best-effort: a timer that was never started or is already gone must not fail teardown.
-		{"oci-token-stop-timer", fmt.Sprintf("%s stop %s || true", ctl, ociTokenTimerName)},
-		{"oci-token-disable-timer", fmt.Sprintf("%s disable %s || true", ctl, ociTokenTimerName)},
-		{"oci-token-remove-units", fmt.Sprintf("%s %s %s", rm, timer, service)},
-		{"oci-token-daemon-reload", fmt.Sprintf("%s daemon-reload", ctl)},
+		{"oci-token-remove-units", "sudo rm -f " + strings.Join(systemPaths, " ")},
+		{"oci-token-daemon-reload", "sudo systemctl daemon-reload"},
 	}, h.logOut)
+	return err
 }

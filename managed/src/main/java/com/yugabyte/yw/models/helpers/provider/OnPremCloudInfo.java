@@ -108,7 +108,10 @@ public class OnPremCloudInfo implements CloudInfoInterface {
           "WARNING: This is a preview API that could change. Base URL of the OCI identity domain"
               + " used by nodes running on OCI, for example"
               + " https://idcs-<id>.identity.oraclecloud.com. Needed only when some of this"
-              + " provider's nodes run on OCI and federated IAM is enabled.")
+              + " provider's nodes run on OCI and federated IAM is enabled. Setting it declares"
+              + " that the audience of this provider's gcp target is for those nodes, so nodes"
+              + " running on AWS cannot use that target: keep AWS and OCI nodes under separate"
+              + " providers.")
   @EditableInUseProvider(name = "OCI identity domain URL", allowed = true)
   public String ociIdentityDomainUrl;
 

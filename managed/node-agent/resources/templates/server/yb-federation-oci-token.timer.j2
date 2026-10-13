@@ -2,8 +2,9 @@
 Description=Refresh the OCI identity token used for cross-cloud federation
 
 [Timer]
-# The token lasts about an hour. Refreshing every 20 minutes tolerates two consecutive failures
-# before YBC is left holding an expired one.
+# Setup refuses an identity domain whose tokens live under 30 minutes, so every run leaves a token
+# that outlives the next one. Surviving a missed run takes a longer-lived token: an hour-long one
+# survives one, a 30-minute one none.
 OnBootSec=1min
 OnUnitActiveSec=20min
 Unit=yb-federation-oci-token.service

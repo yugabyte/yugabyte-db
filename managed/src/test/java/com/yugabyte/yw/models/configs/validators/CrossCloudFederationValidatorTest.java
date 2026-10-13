@@ -9,9 +9,11 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
@@ -39,6 +41,14 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    // OCI is a federation source only once the operator turns it on; most cases here are about what
+    // an OCI provider may then carry, so they run with it on and the gate has its own tests.
+    setOciSourceEnabled(true);
+  }
+
+  private static void setOciSourceEnabled(boolean enabled) {
+    RuntimeConfigEntry.upsertGlobal(
+        GlobalConfKeys.enableOciFederationSource.getKey(), String.valueOf(enabled));
   }
 
   private static CrossCloudFederationTarget target(
@@ -267,6 +277,40 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
   public void testOciProviderRejectsEnabledWithNoTarget() {
     String message = ociValidationMessage(ociProvider(ociInfo(DOMAIN_URL)));
     assertTrue(message, message.contains("no target is configured"));
+  }
+
+  /**
+   * A node-agent that predates OCI sources would ignore the setting and report success, so the
+   * operator has to confirm node-agent first; until then saving it would silently do nothing.
+   */
+  @Test
+  public void testOciProviderIsRejectedWhileOciSourceIsNotEnabled() {
+    setOciSourceEnabled(false);
+    String message =
+        ociValidationMessage(
+            ociProvider(ociInfo(DOMAIN_URL, target(CloudType.gcp, AUDIENCE, null))));
+    assertTrue(message, message.contains(GlobalConfKeys.enableOciFederationSource.getKey()));
+  }
+
+  /** The gate is about nodes on OCI: nothing else a provider can carry is affected by it. */
+  @Test
+  public void testOciGateDoesNotAffectOtherProviders() {
+    setOciSourceEnabled(false);
+    // An on-prem provider may already hold the URL; it is ignored until the gate opens.
+    app.injector()
+        .instanceOf(OnPremValidator.class)
+        .validateCrossCloudFederationTargets(
+            onPremProvider(DOMAIN_URL, target(CloudType.gcp, AUDIENCE, null)));
+    validateOci(ociProvider(new OCICloudInfo()));
+    app.injector().instanceOf(AWSProviderValidator.class).validate(awsProviderWithGcpTarget());
+  }
+
+  private Provider awsProviderWithGcpTarget() {
+    Provider provider = awsProvider();
+    AWSCloudInfo info = CloudInfoInterface.get(provider);
+    info.crossCloudFederationTargets =
+        Collections.singletonList(target(CloudType.gcp, AUDIENCE, null));
+    return provider;
   }
 
   /** With the feature off nothing is inspected, as for every provider that exists today. */
