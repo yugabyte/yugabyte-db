@@ -43,13 +43,13 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
    ~/master/bin/yb-admin --master_addresses $MASTERS list_all_tablet_servers
    ```
 
-6. Because the replacement YB-TServer is running and is loaded with data, you can now remove the failed server from the server list by this command:
+5. Because the replacement YB-TServer is running and is loaded with data, you can now remove the failed server from the server list by this command:
 
    ```sh
    ~/master/bin/yb-admin --master_addresses $MASTERS remove_tablet_server <tserver-uuid>
    ```
 
-7. If later you want to re-install a YB-Tserver with the address of the failed YB-Tserver and re-join that server to your cluster,
+6. If later you want to re-install a YB-Tserver with the address of the failed YB-Tserver and re-join that server to your cluster,
    you need to remove that address from the blacklist, as follows:
 
    ```sh
