@@ -1100,20 +1100,21 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	if (strlen(port->user_name) >= NAMEDATALEN)
 		port->user_name[NAMEDATALEN - 1] = '\0';
 
-	/*
-	 * YB: auth passthrough runs this a second time on a control backend, which
-	 * the first pass typed YB_YSQL_CONN_MGR_CTRL below.
-	 */
-	Assert(MyBackendType == B_BACKEND ||
-		   MyBackendType == B_DEAD_END_BACKEND ||
-		   MyBackendType == YB_YSQL_CONN_MGR_CTRL);
-	if (am_walsender)
-		MyBackendType = B_WAL_SENDER;
-	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
-		MyBackendType =
-			YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;
-	else if (YbIsAuthPassthroughControlBackend())
-		MyBackendType = YB_YSQL_CONN_MGR_CTRL;
+	/* YB: conn mgr control backends authenticate many clients; don't retype */
+	if (MyBackendType != YB_YSQL_CONN_MGR_CTRL &&
+		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER)
+	{
+		Assert(MyBackendType == B_BACKEND || MyBackendType == B_DEAD_END_BACKEND);
+		if (am_walsender)
+			MyBackendType = B_WAL_SENDER;
+		else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
+			MyBackendType =
+				YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;
+		else if (YbIsAuthPassthroughControlBackend())
+			MyBackendType = YB_YSQL_CONN_MGR_CTRL;
+	}
+	else
+		Assert(YbIsAuthPassthroughInProgress(port));
 
 	/*
 	 * Normal walsender backends, e.g. for streaming replication, are not
