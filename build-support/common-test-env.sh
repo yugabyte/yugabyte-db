@@ -838,6 +838,7 @@ determine_test_timeout() {
             ( $rel_test_binary == "tests-integration-tests/pg_partman-test" )) ||
           ( $build_root_basename =~ ^tsan &&
             ( $rel_test_binary == "tests-pgwrapper/geo_transactions-test" ||
+              $rel_test_binary == "tests-pgwrapper/pg_catalog_version-test" ||
               $rel_test_binary == "tests-pgwrapper/pg_ddl_atomicity-test" ||
               $rel_test_binary == "tests-pgwrapper/pg_mini-test" ||
               $rel_test_binary == "tests-pgwrapper/pg_wait_on_conflict-test" ||
