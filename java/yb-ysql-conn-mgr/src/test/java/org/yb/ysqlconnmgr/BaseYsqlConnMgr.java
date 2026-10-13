@@ -37,6 +37,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -66,7 +67,8 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS =
       30000 * BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private boolean warmup_random_mode = true;
-  private static boolean ysql_conn_mgr_superuser_sticky = false;
+  private static final boolean SUPERUSER_STICKY_DEFAULT = false;
+  private static boolean ysql_conn_mgr_superuser_sticky = SUPERUSER_STICKY_DEFAULT;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -158,6 +160,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void restartClusterWithAdditionalFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
     createMiniCluster(-1, -1, builder -> {
@@ -209,10 +212,21 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected void disableWarmupModeAndRestartCluster() throws Exception {
     warmup_random_mode = false;
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
     createMiniCluster();
     waitForDatabaseToStart();
+  }
+
+  /*
+   * The restart helpers customize the cluster that the base class otherwise reuses across test
+   * methods, partly through this static. Reset it so the next method's recreated cluster gets
+   * the default; otherwise its results depend on which method ran before it.
+   */
+  @After
+  public void resetClusterCustomizations() {
+    ysql_conn_mgr_superuser_sticky = SUPERUSER_STICKY_DEFAULT;
   }
 
   protected JsonObject getConnectionStats() throws IOException {
@@ -699,6 +713,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void restartClusterWithFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
 

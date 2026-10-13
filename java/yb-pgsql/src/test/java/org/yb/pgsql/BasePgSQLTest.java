@@ -245,11 +245,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     ROUND_ROBIN
   }
 
-  protected static ConnectionManagerWarmupMode warmupMode = ConnectionManagerWarmupMode.RANDOM;
+  private static final ConnectionManagerWarmupMode WARMUP_MODE_DEFAULT =
+      ConnectionManagerWarmupMode.RANDOM;
+  protected static ConnectionManagerWarmupMode warmupMode = WARMUP_MODE_DEFAULT;
 
   protected static final int CONN_MGR_WARMUP_BACKEND_COUNT = 3;
 
-  protected static boolean ysql_conn_mgr_superuser_sticky = false;
+  private static final boolean SUPERUSER_STICKY_DEFAULT = false;
+  protected static boolean ysql_conn_mgr_superuser_sticky = SUPERUSER_STICKY_DEFAULT;
 
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
@@ -612,6 +615,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   public void cleanUpAfter() throws Exception {
     LOG.info("Cleaning up after {}", getCurrentTestMethodName());
     markClusterNeedsRecreation();
+  }
+
+  /*
+   * The cluster recreated for the next test method is built from these statics, which the
+   * *AndRestartCluster helpers change. Kept apart from cleanUpAfter, which subclasses override.
+   */
+  @After
+  public void resetClusterCustomizations() {
+    warmupMode = WARMUP_MODE_DEFAULT;
+    ysql_conn_mgr_superuser_sticky = SUPERUSER_STICKY_DEFAULT;
   }
 
   public String formatPGId(String str) {
