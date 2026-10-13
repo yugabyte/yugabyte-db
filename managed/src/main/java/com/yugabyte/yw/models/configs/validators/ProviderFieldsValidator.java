@@ -152,21 +152,19 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
 
   /**
    * A node running on OCI proves its identity through an OCI identity domain, so an OCI provider
-   * cannot federate without one. An on-prem provider may or may not have OCI nodes, so there the
-   * URL is optional - ManageCloudFederation leaves a node it finds on OCI without one unfederated -
-   * but a value that is given must still be well formed.
+   * cannot federate without one, and the value must be well formed.
    */
   private void validateOciIdentityDomainUrl(Provider provider) {
+    if (provider.getCloudCode() != CloudType.oci) {
+      return;
+    }
     String url = CloudInfoInterface.getOciIdentityDomainUrl(provider);
     if (url == null) {
-      if (provider.getCloudCode() == CloudType.oci) {
-        throwBeanProviderValidatorError(
-            "OCI_IDENTITY_DOMAIN_URL",
-            "Federated IAM is enabled but no OCI identity domain URL is set. Nodes on OCI exchange"
-                + " their identity at that domain to reach other clouds.",
-            null);
-      }
-      return;
+      throwBeanProviderValidatorError(
+          "OCI_IDENTITY_DOMAIN_URL",
+          "Federated IAM is enabled but no OCI identity domain URL is set. Nodes on OCI exchange"
+              + " their identity at that domain to reach other clouds.",
+          null);
     }
     if (!CrossCloudFederationTarget.isValidOciIdentityDomainUrl(url)) {
       throwBeanProviderValidatorError(

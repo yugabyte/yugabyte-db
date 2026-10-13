@@ -15,10 +15,9 @@ import java.util.Set;
  * <p>Not every pair of clouds is supported. Every route needs its own identity exchange, so a node
  * pointed at a bucket it has no route to has no credentials for it, and a backup from it would fail
  * later with an unrelated error. Where the provider fixes the node's cloud, that is refused when
- * the provider is saved: an OCI provider cannot name an S3 target. An on-prem provider's nodes can
- * be on any cloud, so there a node with no route to a configured target is skipped with a warning
- * when federation is configured, which leaves it as it was before the pair could be named. GCP is
- * one end of every route.
+ * the provider is saved: an OCI provider cannot name an S3 target. A node is also skipped with a
+ * warning when stored data names a target it has no route to, which a saved provider never does.
+ * GCP is one end of every route.
  */
 public final class CrossCloudFederationRoutes {
 

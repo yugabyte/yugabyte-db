@@ -102,19 +102,6 @@ public class OnPremCloudInfo implements CloudInfoInterface {
         CrossCloudFederationTarget.of(CloudType.gcp, federatedIamAudience, null));
   }
 
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.3.0")
-  @ApiModelProperty(
-      value =
-          "WARNING: This is a preview API that could change. Base URL of the OCI identity domain"
-              + " used by nodes running on OCI, for example"
-              + " https://idcs-<id>.identity.oraclecloud.com. Needed only when some of this"
-              + " provider's nodes run on OCI and federated IAM is enabled. Setting it declares"
-              + " that the audience of this provider's gcp target is for those nodes, so nodes"
-              + " running on AWS cannot use that target: keep AWS and OCI nodes under separate"
-              + " providers.")
-  @EditableInUseProvider(name = "OCI identity domain URL", allowed = true)
-  public String ociIdentityDomainUrl;
-
   // Set by YNP when it creates the provider. YNP owns the configuration of such providers, so YBA
   // rejects user driven edits to them. It is internal in the sense that a user cannot flip it -
   // provider edit always carries over the value already persisted for the provider.
