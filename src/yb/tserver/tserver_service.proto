@@ -276,7 +276,7 @@ message GetLogLocationResponsePB {
 message ChecksumRequestPB {
   reserved 1, 2, 3, 4, 5;
 
-  optional bytes tablet_id = 6;
+  optional bytes tablet_id = 6 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional YBConsistencyLevel consistency_level = 7;
 }
 
@@ -312,7 +312,7 @@ message ListTabletsForTabletServerResponsePB {
 }
 
 message ImportDataRequestPB {
-  optional string tablet_id = 1;
+  optional string tablet_id = 1 [(yb.rpc.trace) = {enabled: true}];
   optional string source_dir = 2;
 }
 
@@ -322,7 +322,7 @@ message ImportDataResponsePB {
 }
 
 message UpdateTransactionRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional tablet.TransactionStatePB state = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
@@ -341,7 +341,7 @@ message UpdateTransactionResponsePB {
 }
 
 message GetTransactionStatusRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   repeated bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
   // Reserved for xcluster deprecated field external_hybrid_time.
@@ -385,7 +385,7 @@ message GetTransactionStatusResponsePB {
 }
 
 message GetOldTransactionsRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional uint32 min_txn_age_ms = 2;
   optional uint32 max_num_txns = 3;
   optional fixed64 propagated_hybrid_time = 4;
@@ -465,7 +465,7 @@ message UpdateTransactionWaitingForStatusResponsePB {
 message ProbeTransactionDeadlockRequestPB {
   optional fixed64 propagated_hybrid_time = 1;
 
-  optional bytes tablet_id = 2;
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   optional bytes probe_origin_txn_id = 3;
 
@@ -512,7 +512,7 @@ message ProbeTransactionDeadlockResponsePB {
 }
 
 message GetTransactionStatusAtParticipantRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
   optional int64 required_num_replicated_batches = 4;
@@ -528,7 +528,7 @@ message GetTransactionStatusAtParticipantResponsePB {
 }
 
 message AbortTransactionRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
 
@@ -552,7 +552,7 @@ message AbortTransactionResponsePB {
 }
 
 message GetSplitKeyRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional fixed64 propagated_hybrid_time = 2;
   optional bool is_manual_split = 3;
   optional int32 split_factor = 4;
@@ -610,7 +610,7 @@ message CancelTransactionRequestPB {
 
   // When the field is not populated, the cancel request is broadcast to all the status tablets
   // hosted by the TabletServer.
-  optional bytes status_tablet_id = 2;
+  optional bytes status_tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message CancelTransactionResponsePB {
@@ -622,7 +622,7 @@ message StartRemoteSnapshotTransferRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
 
-  required bytes tablet_id = 2;
+  required bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   required bytes snapshot_id = 3;
 
@@ -690,7 +690,7 @@ message VerifyVectorIndexesResponsePB {
 }
 
 message DumpTabletDataRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional string dest_path = 2;
   optional uint64 read_ht = 3;
 
