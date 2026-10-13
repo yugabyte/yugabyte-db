@@ -1835,6 +1835,44 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     ASSERT_OK(conn2.Execute("CREATE TABLE test4(k INT PRIMARY KEY REFERENCES test3(k))"));
     thread_holder.JoinAll();
 
+    // Case: A long (auto) ANALYZE is not interrupted by DISCARD ALL
+    auto pooler_conn = ASSERT_RESULT(PGConnBuilder({
+                                                       .host = ts2->bind_host(),
+                                                       .port = ts2->ysql_port(),
+                                                   })
+                                         .Connect());
+    thread_holder.AddThreadFunctor([&conn1]() -> void {
+      ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+      ASSERT_OK(conn1.Execute("ANALYZE test1, test2"));
+      ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+    });
+    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+    for (int i = 0; i < 20; ++i) {
+      ASSERT_OK(pooler_conn.Execute("DISCARD ALL"));
+    }
+    thread_holder.JoinAll();
+
+    // Case: (auto) ANALYZE is not interrupted by a long DISCARD ALL. DISCARD ALL resets session
+    // GUCs before it commits, so the delay must come from a role default.
+    ASSERT_OK(conn2.Execute("CREATE ROLE pooler LOGIN"));
+    ASSERT_OK(conn2.Execute("ALTER ROLE pooler SET yb_test_delay_next_ddl=" + wait_time_str));
+    auto delayed_pooler_conn = ASSERT_RESULT(PGConnBuilder({
+                                                               .host = ts3->bind_host(),
+                                                               .port = ts3->ysql_port(),
+                                                               .user = "pooler",
+                                                           })
+                                                 .Connect());
+    thread_holder.AddThreadFunctor([&delayed_pooler_conn]() -> void {
+      ASSERT_OK(delayed_pooler_conn.Execute("DISCARD ALL"));
+    });
+    ASSERT_OK(LogWaiter(ts3, wait_string).WaitFor(30s));
+    ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+    // Join before asserting: the thread is still using delayed_pooler_conn.
+    auto analyze_status = conn2.Execute("ANALYZE test1, test2");
+    thread_holder.JoinAll();
+    ASSERT_OK(analyze_status);
+    ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+
     // Case: A long regular DDL cannot be interrupted by (auto) ANALYZE
     thread_holder.AddThreadFunctor(
         [&conn1]() -> void { ASSERT_OK(conn1.Execute("ALTER TABLE test3 ADD COLUMN v1 INT")); });
@@ -2005,18 +2043,62 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
 class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
+    // The base class sets ysql_yb_ddl_transaction_block_enabled=false, and the last value wins.
+    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
     options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
   }
 };
 
 TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeTxnDDLMode) {
   testConcurrentDDLAnalyze();
+}
+
+class PgConcurrentDDLAnalyzeTestTxnDDLSavepoint : public PgConcurrentDDLAnalyzeTestTxnDDL {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgConcurrentDDLAnalyzeTestTxnDDL::UpdateMiniClusterOptions(options);
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_yb_enable_ddl_savepoint_support");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=true");
+  }
+};
+
+// A DISCARD ALL that fails in a transaction block must still take the catalog version lock,
+// because the later DDLs of that transaction do not take it.
+TEST_F(PgConcurrentDDLAnalyzeTestTxnDDLSavepoint, FailedDiscardAllInTxnBlock) {
+  auto* ts1 = cluster_->tserver_daemons()[0];
+  auto* ts2 = cluster_->tserver_daemons()[1];
+  auto conn1 = ASSERT_RESULT(PGConnBuilder({
+                                               .host = ts1->bind_host(),
+                                               .port = ts1->ysql_port(),
+                                           })
+                                 .Connect());
+  auto conn2 = ASSERT_RESULT(PGConnBuilder({
+                                               .host = ts2->bind_host(),
+                                               .port = ts2->ysql_port(),
+                                           })
+                                 .Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test1 (SELECT * FROM generate_series(1,10))"));
+  ASSERT_OK(conn1.Execute(
+      "SET yb_test_delay_next_ddl=" + wait_time_str + "; SET yb_max_query_layer_retries=0"));
+  ASSERT_OK(conn2.Execute("SET yb_max_query_layer_retries=0"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn1]() -> void {
+    ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+    ASSERT_NOK(conn1.Execute("ANALYZE test1"));
+  });
+  ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.Execute("SAVEPOINT s"));
+  ASSERT_NOK(conn2.Execute("DISCARD ALL"));
+  ASSERT_OK(conn2.Execute("ROLLBACK TO SAVEPOINT s"));
+  ASSERT_OK(conn2.Execute("CREATE TABLE test2(k INT)"));
+  // Commit only after the ANALYZE has finished, so that it cannot be aborted at commit time.
+  thread_holder.JoinAll();
+  ASSERT_OK(conn2.Execute("COMMIT"));
 }
 
 TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeMultiTable) {
