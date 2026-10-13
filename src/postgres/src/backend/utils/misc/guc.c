@@ -2319,8 +2319,8 @@ ResetAllOptions(void)
 		if (YbIsClientYsqlConnMgr())
 			gconf->status |= YB_GUC_VALUE_RESET;
 
-		/* YB_TODO_PG19MERGE: re-port yb_should_report_guc gating. */
-		if ((gconf->flags & GUC_REPORT) && !(gconf->status & GUC_NEEDS_REPORT))
+		/* YB: also queue the GUCs conn mgr tracks, not just GUC_REPORT */
+		if (yb_should_report_guc(gconf) && !(gconf->status & GUC_NEEDS_REPORT))
 		{
 			gconf->status |= GUC_NEEDS_REPORT;
 			slist_push_head(&guc_report_list, &gconf->report_link);
@@ -2591,8 +2591,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			bool		restorePrior = false;
 			bool		restoreMasked = false;
 			bool		changed;
-			/* YB_TODO_PG19MERGE: set-but-unused until the GUC_REPORT block below (yb_should_report_guc + yb_needs_report) is re-ported. */
-			pg_attribute_unused() bool yb_needs_report;
+			bool		yb_needs_report;
 
 			/*
 			 * In this next bit, if we don't set either restorePrior or
@@ -2862,8 +2861,11 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			/* YB_TODO_PG19MERGE: re-port yb_should_report_guc + yb_needs_report. */
-			if (changed && (gconf->flags & GUC_REPORT) &&
+			/*
+			 * YB: also report a rolled-back session value (yb_needs_report) and
+			 * the GUCs conn mgr tracks, not just GUC_REPORT.
+			 */
+			if (changed && (yb_needs_report || yb_should_report_guc(gconf)) &&
 				!(gconf->status & GUC_NEEDS_REPORT))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
@@ -2914,7 +2916,29 @@ BeginReportingGUCOptions(void)
 		struct config_generic *conf = hentry->gucvar;
 
 		if (yb_should_report_guc(conf))
+		{
 			ReportGUCOption(conf);
+
+			/*
+			 * YB: values set before reporting began (e.g. startup options) are
+			 * already queued on guc_report_list. Upstream reports them again in
+			 * ReportChangedGUCOptions and relies on last_reported to suppress the
+			 * duplicate, which ReportGUCOption bypasses for connection manager. In
+			 * auth passthrough the second report would even carry the value the
+			 * post-auth rollback restored, not the client's. So dequeue them here,
+			 * as master did by clearing GUC_NEEDS_REPORT in ReportGUCOption, and
+			 * consume the reset flags as ReportChangedGUCOptions does.
+			 */
+			if (YbIsClientYsqlConnMgr())
+			{
+				if (conf->status & GUC_NEEDS_REPORT)
+				{
+					slist_delete(&guc_report_list, &conf->report_link);
+					conf->status &= ~GUC_NEEDS_REPORT;
+				}
+				conf->status &= ~(YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET);
+			}
+		}
 	}
 }
 
@@ -2961,6 +2985,14 @@ ReportChangedGUCOptions(void)
 		ReportGUCOption(conf);
 		conf->status &= ~GUC_NEEDS_REPORT;
 		slist_delete_current(&iter);
+
+		/*
+		 * YB: The reset flags describe a single transition (a RESET/rollback
+		 * that conn mgr must mirror in its cached variable lists), not durable
+		 * state, so they have to be consumed by the report that carried them.
+		 */
+		if (YbIsClientYsqlConnMgr())
+			conf->status &= ~(YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET);
 	}
 }
 
@@ -3059,16 +3091,6 @@ ReportGUCOption(struct config_generic *record)
 	}
 
 	pfree(val);
-/* YB_TODO_PG19MERGE: PG removed record->status &= ~GUC_NEEDS_REPORT */
-#if 0
-	record->status &= ~GUC_NEEDS_REPORT;
-	/* YB: Reset flags that were set for Connection Manager */
-	if (YbIsClientYsqlConnMgr())
-	{
-		record->status &= ~YB_GUC_VALUE_RESET;
-		record->status &= ~YB_GUC_DEFAULT_RESET;
-	}
-#endif
 }
 
 /*

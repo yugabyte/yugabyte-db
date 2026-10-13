@@ -683,6 +683,15 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   }
 
   @Test
+  public void testStartupParameterReportedOnce() throws Exception {
+    // A GUC_REPORT variable set in the StartupMessage is reported exactly once during startup.
+    final String appName = "startup_report_check";
+    try (WireConn conn = rawConnBuilder().startupParam("application_name", appName).connect()) {
+      assertEquals(Arrays.asList(appName), conn.startupParameterValues("application_name"));
+    }
+  }
+
+  @Test
   public void testStartupParameterPrecedence() throws Exception {
     // Test the precedence between guc setting specified through "options" key and one specified
     // directly in the startup packet. pgJDBC driver only allows us to use the former method.

@@ -393,9 +393,11 @@ public final class PgWireProtocol {
   /**
    * Reads backend messages until (and including) the first ReadyForQuery after
    * the authentication/startup phase. Handles AuthenticationOk,
-   * ParameterStatus, and BackendKeyData transparently.
+   * ParameterStatus, and BackendKeyData transparently, and returns the
+   * ParameterStatus messages received, in order.
    */
-  public static void readUntilReady(DataInputStream in) throws IOException {
+  public static List<PgMessage> readUntilReady(DataInputStream in) throws IOException {
+    List<PgMessage> parameterStatus = new ArrayList<>();
     for (;;) {
       PgMessage msg = readMessage(in);
       switch (msg.type) {
@@ -407,10 +409,12 @@ public final class PgWireProtocol {
           }
           break;
         case BE_PARAMETER_STATUS:
+          parameterStatus.add(msg);
+          break;
         case BE_BACKEND_KEY_DATA:
           break;
         case BE_READY_FOR_QUERY:
-          return;
+          return parameterStatus;
         case BE_ERROR_RESPONSE:
           throw new IOException("ErrorResponse during startup: " +
               new String(msg.body, StandardCharsets.UTF_8));

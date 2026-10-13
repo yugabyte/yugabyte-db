@@ -20,7 +20,10 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -40,6 +43,7 @@ public class WireConn implements AutoCloseable {
   private final DataOutputStream out;
   private final DataInputStream in;
   private boolean tailUnread;
+  private List<PgMessage> startupParameterStatus = new ArrayList<>();
 
   private WireConn(Socket socket) throws IOException {
     this.socket = socket;
@@ -67,6 +71,18 @@ public class WireConn implements AutoCloseable {
 
   public PgMessage readMessage() throws IOException {
     return PgWireProtocol.readMessage(in);
+  }
+
+  // Values the server reported for `name` in ParameterStatus during startup, in order.
+  public List<String> startupParameterValues(String name) {
+    List<String> values = new ArrayList<>();
+    for (PgMessage msg : startupParameterStatus) {
+      String body = new String(msg.body, StandardCharsets.UTF_8);
+      int sep = body.indexOf('\0');
+      if (body.substring(0, sep).equals(name))
+        values.add(body.substring(sep + 1, body.length() - 1));
+    }
+    return values;
   }
 
   public int available() throws IOException {
@@ -127,7 +143,7 @@ public class WireConn implements AutoCloseable {
     public WireConn connect() throws Exception {
       WireConn conn = openAndSendStartup();
       try {
-        PgWireProtocol.readUntilReady(conn.in);
+        conn.startupParameterStatus = PgWireProtocol.readUntilReady(conn.in);
       } catch (Exception e) {
         conn.closeAbruptly();
         throw e;
