@@ -23,8 +23,8 @@
 #include <cstdlib>
 #include <sstream>
 
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 DEFINE_RUNTIME_bool(cql_use_metadata_cache_for_schema_version_check, true,
@@ -173,9 +173,10 @@ void StmtLatencyHistogram::WriteAsJsonArray(JsonWriter* jw) const {
 
   const auto write_bucket = [jw](const Bucket& bucket) {
     jw->StartObject();
-    jw->String(StringPrintf(
-        "[%.1f,%.1f)", bucket.value_iterated_to * kYbHdrLatencyResMs,
-        (bucket.highest_equivalent_value + 1) * kYbHdrLatencyResMs));
+    jw->String(Format(
+        "[$0,$1)",
+        FixedPoint(bucket.value_iterated_to * kYbHdrLatencyResMs, 1),
+        FixedPoint((bucket.highest_equivalent_value + 1) * kYbHdrLatencyResMs, 1)));
     jw->Int64(bucket.count);
     jw->EndObject();
   };
@@ -198,7 +199,7 @@ void StmtLatencyHistogram::WriteAsJsonArray(JsonWriter* jw) const {
 
   if (slow_executions_ > 0) {
     jw->StartObject();
-    jw->String(StringPrintf("[%.1f,)", config.max_value * kYbHdrLatencyResMs));
+    jw->String(Format("[$0,)", FixedPoint(config.max_value * kYbHdrLatencyResMs, 1)));
     jw->Int64(slow_executions_);
     jw->EndObject();
   }
