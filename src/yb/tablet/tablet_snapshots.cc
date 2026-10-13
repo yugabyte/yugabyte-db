@@ -736,6 +736,7 @@ Status TabletSnapshots::RestoreCheckpoint(
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
 
+    RETURN_NOT_OK(docdb::ClearVectorIndexCheckpointOpIds(this->env(), db_dir));
     RETURN_NOT_OK(MoveChildren(this->env(), db_dir, docdb::IncludeIntents::kFalse));
 
     auto tablet_metadata_file = TabletMetadataFile(db_dir);

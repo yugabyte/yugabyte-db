@@ -351,4 +351,11 @@ std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
 Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);
 
+// Clears the OpIds in the chunk frontiers of the vector index checkpoints in db_dir, as
+// RocksDBPatcher::ModifyFlushedFrontier does for the regular DB files, so that the OpId a restore
+// stamps once the indexes are open becomes their flushed OpId. The checkpointed OpIds come from the
+// snapshotted tablet's log, which a clone does not share, and a vector index takes the largest
+// OpId across its chunks, so they could outrank the stamp.
+Status ClearVectorIndexCheckpointOpIds(Env& env, const std::string& db_dir);
+
 }  // namespace yb::docdb

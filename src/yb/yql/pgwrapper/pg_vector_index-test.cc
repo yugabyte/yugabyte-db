@@ -2167,6 +2167,35 @@ class PgVectorIndexColocationOnlyTest
     return result;
   }
 
+  // Moves the leadership of the tablet holding table_id until its term reaches min_term, never to
+  // the tserver keep_off_uuid.
+  Status RaiseTabletTerm(
+      const TableId& table_id, int64_t min_term, const std::string& keep_off_uuid) {
+    return WaitFor([&]() -> Result<bool> {
+      auto leaders = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+      if (leaders.size() != 1) {
+        return false;
+      }
+      const auto& leader = leaders.front();
+      const auto term = leader->LeaderTerm();
+      if (term >= min_term && leader->permanent_uuid() != keep_off_uuid) {
+        return true;
+      }
+      if (term < 0) {
+        return false;
+      }
+      for (const auto& peer : ListTableTabletPeers(cluster_.get(), table_id)) {
+        if (peer->tablet_id() == leader->tablet_id() &&
+            peer->permanent_uuid() != leader->permanent_uuid() &&
+            peer->permanent_uuid() != keep_off_uuid) {
+          RETURN_NOT_OK(StepDown(leader, peer->permanent_uuid(), ForceStepDown::kTrue));
+          break;
+        }
+      }
+      return false;
+    }, 60s * kTimeMultiplier, Format("Term of the tablet of $0 reaching $1", table_id, min_term));
+  }
+
   static std::vector<int64_t> Ids(size_t first, size_t last) {
     std::vector<int64_t> result(last - first + 1);
     std::iota(result.begin(), result.end(), first);
@@ -2818,17 +2847,21 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
   // One write per row puts the source tablet's log well ahead of the clone's.
   constexpr size_t kNumRows = 64;
   auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
-
   // Keep a replica down while the index is created, so that its backfill only starts after
   // CREATE INDEX returns. Not the PG tserver, which the connections go through.
   auto* lagging_ts = cluster_->mini_tablet_server(kPgTsIndex == 0 ? 1 : 0);
   const auto lagging_uuid = lagging_ts->server()->permanent_uuid();
+
+  // Also put the source tablet's term past any the clone's new tablets reach, so that the OpIds
+  // that the source stamps on its index chunks sort above the clone's own whatever the elections.
+  // The leader stays off the replica about to go down, which CREATE INDEX would wait on.
+  const auto source_table_id = ASSERT_RESULT(FindTableId(kSourceDb, "test"));
+  ASSERT_OK(RaiseTabletTerm(source_table_id, 5, lagging_uuid));
   lagging_ts->Shutdown();
   ASSERT_OK(CreateIndex(conn));
 
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
   ASSERT_OK(lagging_ts->RestartStoppedServer(tserver::WaitTabletsBootstrapped::kTrue));
-  const auto source_table_id = ASSERT_RESULT(FindTableId(kSourceDb, "test"));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     for (const auto& index : ListTableVectorIndexes(source_table_id, lagging_uuid)) {
       if (index->metrics().backfill_inserted_entries->value() > 0) {
@@ -2845,8 +2878,15 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
   const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     auto indexes = ListTableVectorIndexes(clone_table_id);
-    return indexes.size() == cluster_->num_tablet_servers() &&
-           std::ranges::all_of(indexes, [](const auto& index) { return index->BackfillDone(); });
+    if (indexes.size() != cluster_->num_tablet_servers()) {
+      return false;
+    }
+    for (const auto& index : indexes) {
+      if (!VERIFY_RESULT(index->BackfillDone())) {
+        return false;
+      }
+    }
+    return true;
   }, 60s * kTimeMultiplier, "Clone backfills done"));
   {
     // The clone resumed the unfinished backfill rather than starting over: it inserted some rows,
