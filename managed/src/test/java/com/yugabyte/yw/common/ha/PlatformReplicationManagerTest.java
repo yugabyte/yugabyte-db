@@ -46,6 +46,7 @@ import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import jakarta.persistence.PersistenceException;
 import java.io.File;
 import java.net.URL;
@@ -150,7 +151,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       boolean isCreate,
       String backupDir,
       boolean isYbaInstaller,
-      boolean enableSingleTransaction) {
+      boolean enableSingleTransaction,
+      boolean fips) {
     List<String> expectedCommandArgs = new ArrayList<>();
     expectedCommandArgs.add("bin/yb_platform_backup.sh");
     if (isCreate) {
@@ -205,21 +207,25 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     expectedCommandArgs.add("9090");
     expectedCommandArgs.add("--verbose");
     expectedCommandArgs.add("--skip_restart");
+    if (fips) {
+      expectedCommandArgs.add("--fips");
+    }
 
     return expectedCommandArgs;
   }
 
   @SuppressWarnings("unused")
   private Object[] parametersToTestCreatePlatformBackupParams() {
+    File input = new File("/tmp/foo.bar");
     return new Object[][] {
-      {"1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), true, false},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true, false},
-      {
-        "1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), false, false
-      },
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false, false},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true, true},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false, true}
+      {"1.2.3.4", "postgres", "password", "localhost", 5432, input, true, false, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, true, false, false},
+      {"1.2.3.4", "postgres", "password", "localhost", 5432, input, false, false, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, false, false, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, true, true, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, false, true, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, true, true, true},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, false, true, true}
     };
   }
 
@@ -233,7 +239,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       int dbPort,
       File inputPath,
       boolean isCreate,
-      boolean isYbaInstaller) {
+      boolean isYbaInstaller,
+      boolean fips) {
     Map<String, String> expectedEnvVars = new HashMap<>();
     if (!dbPassword.isEmpty()) {
       expectedEnvVars.put(PlatformReplicationManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
@@ -244,6 +251,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
     when(mockConfig.getString("yb.pa.url")).thenReturn("http://localhost:9000");
+    when(mockConfig.getBoolean(CommonUtils.FIPS_ENABLED)).thenReturn(fips);
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.disablePlatformHARestoreTransaction)))
         .thenReturn(false);
     doCallRealMethod()
@@ -270,7 +278,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             isCreate,
             "/tmp/foo.bar",
             isYbaInstaller,
-            !isCreate);
+            !isCreate,
+            fips);
 
     if (isCreate) {
       backupManager.createBackup();

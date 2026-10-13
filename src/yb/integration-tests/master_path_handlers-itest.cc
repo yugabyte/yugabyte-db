@@ -15,6 +15,7 @@
 #include <memory>
 #include <ranges>
 #include <regex>
+#include <set>
 #include <string>
 #include <unordered_set>
 
@@ -26,6 +27,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -249,12 +251,15 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
 class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> {
  public:
+  virtual int32_t tablet_overhead_size_percentage() const { return 20; }
+
   void InitCluster() override {
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) = 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) =
+        tablet_overhead_size_percentage();
     opts.num_tablet_servers = num_tablet_servers();
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
@@ -307,6 +312,41 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
   }
 
  protected:
+  // /api/v1/xcluster must list each outbound stream as a JSON object (#33773).
+  Status VerifyXClusterJsonOutboundStreams() {
+    auto table = CreateTestTable();
+    std::set<std::string> expected_stream_ids;
+    for (int i = 0; i < 2; ++i) {
+      auto stream_id = VERIFY_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+          table->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
+      expected_stream_ids.insert(stream_id.ToString());
+    }
+
+    faststring result;
+    RETURN_NOT_OK(GetUrl("/api/v1/xcluster", &result));
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(result.ToString()));
+    auto outbound_streams = VERIFY_RESULT(root["outbound_streams"].GetArray());
+    std::set<std::string> actual_stream_ids;
+    for (const auto& stream : outbound_streams) {
+      SCHECK(
+          stream.IsObject(), IllegalState, "$0 is not an object: $1", stream.Path(),
+          VERIFY_RESULT(stream.ToString()));
+      SCHECK(
+          stream["metadata"].IsObject(), IllegalState, "$0.metadata is not an object",
+          stream.Path());
+      actual_stream_ids.insert(VERIFY_RESULT(stream["stream_id"].GetString()));
+    }
+    SCHECK_EQ(
+        actual_stream_ids.size(), outbound_streams.size(), IllegalState,
+        "Duplicate stream ids in outbound_streams");
+    SCHECK_FORMAT(
+        actual_stream_ids == expected_stream_ids, IllegalState,
+        "outbound_streams has stream ids $0, expected $1", actual_stream_ids,
+        expected_stream_ids);
+    return Status::OK();
+  }
+
   std::unique_ptr<client::YBClient> client_;
 };
 
@@ -331,6 +371,7 @@ TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
   ASSERT_OK(GetUrl("/tablet-replication", &result));
   ASSERT_OK(GetUrl("/load-distribution", &result));
   ASSERT_OK(GetUrl("/api/v1/meta-cache", &result));
+  ASSERT_OK(VerifyXClusterJsonOutboundStreams());
 }
 
 TEST_F(MasterPathHandlersItest, TestDeadTServers) {
@@ -2109,6 +2150,23 @@ TEST_F(MasterPathHandlersItest, HeapProfile) {
 #if YB_GOOGLE_TCMALLOC
   ASSERT_RESULT(GetHtmlTableRows("/pprof/heap", "heap_profile"));
 #endif
+}
+
+class MasterPathHandlersNoTabletOverheadItest : public MasterPathHandlersItest {
+ public:
+  int32_t tablet_overhead_size_percentage() const override { return 0; }
+  int num_tablet_servers() const override { return 1; }
+  int num_masters() const override { return 1; }
+};
+
+// Without tablet overhead memory the universe has no computable tablet peer limit.
+TEST_F_EX(
+    MasterPathHandlersItest, TabletPeerLimitUndefinedWithoutOverhead,
+    MasterPathHandlersNoTabletOverheadItest) {
+  auto cols = ASSERT_RESULT(GetHtmlTableColumn(
+      "/tablet-servers", "universe_summary", "Tablet Peer Limit (Unenforced)"));
+  ASSERT_EQ(cols.size(), 1);
+  ASSERT_EQ(cols[0], "limit undefined");
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {

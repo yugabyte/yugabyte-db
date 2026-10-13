@@ -39,7 +39,6 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
 
 #include "yb/tablet/tablet.h"
@@ -53,6 +52,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
@@ -66,20 +66,24 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(log_min_segments_to_retain);
 
 DEFINE_test_flag(int32, rbs_sleep_after_taking_metadata_ms, 0,
-                 "Sleep after tablet metadata was taken during remote boostrap session init.");
+    "Sleep after tablet metadata was taken during remote boostrap session init.");
 
 DEFINE_test_flag(bool, rbs_pause_after_wal_trim, false,
-                 "Pause between computing the WAL segments to ship and moving the session's log "
-                 "anchor to the front of that plan, to exercise the window in which a concurrent "
-                 "GC pass could otherwise reclaim a segment the plan keeps.");
+    "Pause between computing the WAL segments to ship and moving the session's log "
+    "anchor to the front of that plan, to exercise the window in which a concurrent "
+    "GC pass could otherwise reclaim a segment the plan keeps.");
 
 DEFINE_RUNTIME_int32(rbs_init_max_number_of_retries, 5,
-                     "Max number of retries during remote bootstrap session initialisation, "
-                     "when metadata before and after checkpoint does not match. "
-                     "0 - to disable retry logic.");
+    "Max number of retries during remote bootstrap session initialisation, "
+    "when metadata before and after checkpoint does not match. "
+    "0 - to disable retry logic.");
+DEFINE_RUNTIME_bool(rbs_skip_stream_incremental_wal, true,
+    "When true, remote bootstrap serves WAL only up to the session's snapshot "
+    "boundary and leaves post-snapshot catch-up to UpdateConsensus.");
+TAG_FLAG(rbs_skip_stream_incremental_wal, advanced);
 
 DEFINE_test_flag(bool, rbs_fail_checkpoint, false,
-                 "Fail all attempts to checkpoint data when retries still exist.");
+    "Fail all attempts to checkpoint data when retries still exist.");
 
 
 namespace yb {
@@ -90,7 +94,6 @@ using std::vector;
 using std::string;
 
 using consensus::MinimumOpId;
-using strings::Substitute;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
 
@@ -252,7 +255,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   // attempt had to ship strictly more data than the last. Registering at rbs_min_op_idx (the
   // earliest op index any consumer still needs) breaks that cycle: GC can continue reclaiming
   // everything strictly below this floor while the session is alive.
-  string anchor_owner_token = Substitute("RemoteBootstrap-$0", session_id_);
+  string anchor_owner_token = Format("RemoteBootstrap-$0", session_id_);
   tablet_peer_->log_anchor_registry()->Register(
       rbs_min_op_idx, anchor_owner_token, &log_anchor_);
 
@@ -426,6 +429,11 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   while (!log_segments_.empty() && num_to_skip) {
     RETURN_NOT_OK(log_segments_.pop_front());
     num_to_skip--;
+  }
+
+  if (!log_segments_.empty()) {
+    const auto& snapshot_tail_segment = VERIFY_RESULT(log_segments_.back()).get();
+    snapshot_max_wal_segment_seqno_ = snapshot_tail_segment->header().sequence_number();
   }
 
   // Holds the session open between the trim decision and the anchor update below, so a test can
@@ -631,7 +639,7 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
     }
     default:
       info->error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
+      return STATUS_FORMAT(InvalidArgument, "Invalid request type $0", data_id.type());
   }
   DCHECK(info->client_maxlen == 0 ||
          info->data.size() <= implicit_cast<size_t>(info->client_maxlen))
@@ -650,7 +658,7 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDat
     info->data_size = opened_log_segment_file_size_;
     file = opened_log_segment_file_;
   }
-  RETURN_NOT_OK(ReadFileChunkToBuf(file.get(), Substitute("log segment $0", segment_seqno), info));
+  RETURN_NOT_OK(ReadFileChunkToBuf(file.get(), Format("log segment $0", segment_seqno), info));
 
   // Note: We do not eagerly close log segment files, since we share ownership
   // of the LogSegment objects with the Log itself.
@@ -675,8 +683,8 @@ Status RemoteBootstrapSession::GetFilePiece(
   auto file_path = JoinPathSegments(path, file_name);
   if (!env->FileExists(file_path)) {
     info->error_code = RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND;
-    return STATUS(NotFound, Substitute("Unable to find RocksDB file $0 in directory $1",
-                                       file_name, path));
+    return STATUS(NotFound, Format("Unable to find RocksDB file $0 in directory $1",
+                                   file_name, path));
   }
 
   std::unique_ptr<RandomAccessFile> readable_file;
@@ -689,7 +697,7 @@ Status RemoteBootstrapSession::GetFilePiece(
           << ", inode: " << inode;
 
   RETURN_NOT_OK(ReadFileChunkToBuf(
-      readable_file.get(), Substitute("rocksdb file $0", file_name), info));
+      readable_file.get(), Format("rocksdb file $0", file_name), info));
 
   return Status::OK();
 }
@@ -722,7 +730,7 @@ Status RemoteBootstrapSession::ReadSuperblockFromDisk(tablet::RaftGroupReplicaSu
   RETURN_NOT_OK(metadata->Flush(tablet::OnlyIfDirty::kTrue));
   RETURN_NOT_OK_PREPEND(
       metadata->ReadSuperBlockFromDisk(out ? out : &tablet_superblock_),
-      Substitute("Unable to access superblock for tablet $0", tablet_id));
+      Format("Unable to access superblock for tablet $0", tablet_id));
 
   return Status::OK();
 }
@@ -746,6 +754,16 @@ Status RemoteBootstrapSession::InitSources() {
 
 Status RemoteBootstrapSession::OpenLogSegment(
     uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code) {
+  // Note(#29963): If we ever fix the slow intent apply problem with increasing num sst files
+  // or enable compaction during tablet bootstrap, we can go back to shipping incremental WALs.
+  if (PREDICT_TRUE(FLAGS_rbs_skip_stream_incremental_wal) &&
+      segment_seqno > snapshot_max_wal_segment_seqno_) {
+    *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
+    return STATUS_FORMAT(
+        NotFound,
+        "WAL segment $0 is past snapshot boundary ($1) for this remote bootstrap session",
+        segment_seqno, snapshot_max_wal_segment_seqno_);
+  }
   auto active_seqno = tablet_peer_->log()->active_segment_sequence_number();
   auto log_segment_result = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
   // Usually active log segment is extended, while sent of the wire. So we cannot send next segment,

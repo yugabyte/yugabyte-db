@@ -1632,6 +1632,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePrimaryRf9 =
+      new ConfKeyInfo<>(
+          "yb.universe.enable_primary_rf_9",
+          ScopeType.GLOBAL,
+          "Enable primary replication factor 9",
+          "When enabled, allows creating universes and increasing primary cluster replication"
+              + " factor to 9.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",
@@ -2442,7 +2451,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Boolean> showNewUniverseUIToEveryone =
       new ConfKeyInfo<>(
           "yb.ui.enable_new_universe_experience_for_all_users",
@@ -2487,6 +2495,23 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Create yb_storage database on universe creation",
           "When enabled, universe creation creates the yb_storage YSQL database used by the amp"
               + " controller, if it does not already exist.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentHealthCheckerDisabled =
+      new ConfKeyInfo<>(
+          "yb.node_agent.health_checker.disabled",
+          ScopeType.GLOBAL,
+          "Node Agent Health Checker Disabled",
+          "Node agent checker offloaded to run asynchronously on its own schedule",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> multicloudEnabled =
+      new ConfKeyInfo<>(
+          "yb.multicloud.enabled",
+          ScopeType.GLOBAL,
+          "Enable multi-cloud schema (non-k8s)",
+          "When enabled, all internal logic will use multicloud schema."
+              + "V1 API still pretend to use old schema.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

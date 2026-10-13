@@ -1253,6 +1253,9 @@ public enum TaskType {
 
   ManageCloudFederation(com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation.class),
 
+  ConfigureNodeExporterTls(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls.class),
+
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
 

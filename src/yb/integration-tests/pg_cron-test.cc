@@ -17,6 +17,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/ql_value.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -27,6 +28,7 @@
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/monotime.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -234,9 +236,41 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     return stateful_service::PgCronLeaderService::ExtractLastMinute(row.column(1));
   }
 
+  // The pid of the pg_cron launcher on each TServer.
+  Result<std::vector<int32_t>> GetLauncherPids() {
+    std::vector<int32_t> pids;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      auto conn = VERIFY_RESULT(cluster_->ConnectToDB("yugabyte", i));
+      pids.push_back(VERIFY_RESULT(conn.FetchRow<int32_t>(
+          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'pg_cron launcher'")));
+    }
+    return pids;
+  }
+
   std::unique_ptr<pgwrapper::PGConn> conn_;
   TabletId tablet_id_;
 };
+
+// Checks that the pg_cron launcher, a long-lived background worker, takes a fresh origination
+// time for each of its transactions, so it keeps working after work that originated earlier
+// starts being refused.
+TEST_F(PgCronTest, LauncherStampsFreshOriginationTime) {
+  ASSERT_OK(ResultToStatus(Schedule1SecInsertJob()));
+  ASSERT_OK(WaitForRowCountAbove(2));
+  const auto launcher_pids = ASSERT_RESULT(GetLauncherPids());
+
+  // Refuse work that originated before now.  The launchers started before now, so a launcher
+  // still stamping its start time would have its writes to cron.job_run_details refused, exit,
+  // and be restarted by the postmaster; the unchanged pids rule that out.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_persistence_reject_stamped_before_ht",
+      std::to_string(HybridTime::FromMicros(GetCurrentTimeMicros()).ToUint64())));
+  const auto row_count = ASSERT_RESULT(GetRowCount());
+  ASSERT_OK(WaitForRowCountAbove(row_count + 3));
+  ASSERT_EQ(ASSERT_RESULT(GetLauncherPids()), launcher_pids);
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_persistence_reject_stamped_before_ht", "0"));
+}
 
 // Make sure cron jobs are run only once in the provided interval.
 TEST_F(PgCronTest, AtMostOnceTest) {

@@ -35,6 +35,7 @@ import { runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import { AWSProviderEditFormFieldValues } from '../../forms/aws/AWSProviderEditForm';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
+import { isSameImageBundle } from './LinuxVersionUtils';
 import { getAddLinuxVersionSchema } from './ValidationSchemas';
 
 import styles from '../RegionList.module.scss';
@@ -143,6 +144,14 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
     isNonEmptyObject(editDetails) &&
     (editDetails as ImageBundle)?.metadata?.type === ImageBundleType.YBA_ACTIVE;
 
+  // The bundle being edited is left out so that keeping its own name is not reported as a
+  // duplicate.
+  const otherImageBundles = isEditMode
+    ? existingImageBundles.filter(
+        (imageBundle) => !isSameImageBundle(imageBundle, editDetails as ImageBundle)
+      )
+    : existingImageBundles;
+
   const {
     control: formControl,
     handleSubmit,
@@ -160,7 +169,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
       getAddLinuxVersionSchema(
         providerType,
         t,
-        existingImageBundles as any,
+        otherImageBundles as any,
         isEditMode,
         isYBAManagedBundle
       )
@@ -237,7 +246,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             name="name"
             className={classes.nameInput}
             placeholder={t('form.linuxVersionNamePlaceholder')}
-            disabled={isEditMode || isYBAManagedBundle || isDisabled}
+            disabled={isYBAManagedBundle || isDisabled}
             inputProps={{
               'data-testid': 'AddLinuxVersionModal-LinuxVersionNameInput'
             }}

@@ -4,13 +4,20 @@ package com.yugabyte.yw.common.certmgmt;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.spy;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -30,6 +37,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -37,6 +45,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -494,5 +503,73 @@ public class CertificateHelperTest extends FakeDBApplication {
       assertEquals(
           "Certificate with CN = Cloud Intermediate has no associated root", e.getMessage());
     }
+  }
+
+  private static String fipsChain(String intermediate) {
+    return TestUtils.readResource("certs/fips/" + intermediate)
+        + TestUtils.readResource("certs/fips/root-sha256.crt");
+  }
+
+  @Test
+  public void testVerifyFipsComplianceRejectsSha1Intermediate() throws Exception {
+    List<X509Certificate> chain =
+        CertificateHelper.convertStringToX509CertList(fipsChain("intermediate-sha1.crt"));
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> CertificateHelper.verifyFipsCompliance(chain));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    assertTrue(e.getMessage(), e.getMessage().contains("CN=Test FIPS Intermediate"));
+    assertTrue(e.getMessage(), e.getMessage().contains("not FIPS compliant"));
+  }
+
+  @Test
+  public void testVerifyFipsComplianceAcceptsSha256Chain() throws Exception {
+    CertificateHelper.verifyFipsCompliance(
+        CertificateHelper.convertStringToX509CertList(fipsChain("intermediate-sha256.crt")));
+  }
+
+  @Test
+  public void testVerifyFipsComplianceSkipsSelfSignedRootSignature() throws Exception {
+    CertificateHelper.verifyFipsCompliance(
+        CertificateHelper.convertStringToX509CertList(
+            TestUtils.readResource("certs/fips/root-sha1.crt")));
+  }
+
+  @Test
+  public void testUploadRootCARejectsSha1IntermediateWhenFipsEnabled() {
+    try (MockedStatic<AppConfigHelper> appConfig = mockStatic(AppConfigHelper.class)) {
+      appConfig.when(AppConfigHelper::isFipsEnabled).thenReturn(true);
+      PlatformServiceException e =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  CertificateHelper.uploadRootCA(
+                      "test",
+                      c.getUuid(),
+                      "/tmp",
+                      fipsChain("intermediate-sha1.crt"),
+                      null,
+                      CertConfigType.CustomCertHostPath,
+                      null,
+                      null,
+                      false));
+      assertTrue(e.getMessage(), e.getMessage().contains("not FIPS compliant"));
+    }
+  }
+
+  @Test
+  public void testUploadRootCAAcceptsSha1IntermediateWhenFipsDisabled() {
+    UUID rootCA =
+        CertificateHelper.uploadRootCA(
+            "test",
+            c.getUuid(),
+            "/tmp",
+            fipsChain("intermediate-sha1.crt"),
+            null,
+            CertConfigType.CustomCertHostPath,
+            null,
+            null,
+            true);
+    assertNotNull(CertificateInfo.get(rootCA));
   }
 }

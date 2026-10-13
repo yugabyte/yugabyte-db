@@ -2124,41 +2124,52 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 	table_close(partrel, AccessShareLock);
 }
 
-typedef struct YbIndexProcessorState
+typedef struct YbIndiciesHTABEntryData
 {
-	Oid			relid;
 	Relation	relation;
 	List	   *result;
 	Oid			pkeyIndex;
 	Oid			candidateIndex;
-} YbIndexProcessorState;
+} YbIndiciesHTABEntryData;
 
-static inline bool
-YbIsIndexProcessingStarted(const YbIndexProcessorState *state)
+typedef struct YbIndiciesHTABEntry
 {
-	return OidIsValid(state->relid);
-}
+	Oid			key;
+	YbIndiciesHTABEntryData data;
+} YbIndiciesHTABEntry;
 
-static inline bool
-YbIsIndexProcessingRequired(const YbIndexProcessorState *state)
+static void
+YbProcessIndexTuple(HeapTuple htup, HTAB *indicies, bool sys_rel_update_required)
 {
-	return state->relation;
-}
+	Form_pg_index index	 = (Form_pg_index) GETSTRUCT(htup);
 
-static bool
-YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
-{
-	Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
+	/*
+	 * Ignore any indexes that are currently being dropped.  This will
+	 * prevent them from being searched, inserted into, or considered in
+	 * HOT-safety decisions.  It's unsafe to touch such an index at all
+	 * since its catalog entries could disappear at any instant.
+	 */
+	if (!index->indislive)
+		return;
 
-	if (!YbIsIndexProcessingStarted(state) || state->relid != index->indrelid)
-		return false;
-	if (!YbIsIndexProcessingRequired(state))
-		return true;
+	bool found = false;
+	YbIndiciesHTABEntry *entry = hash_search(indicies, &index->indrelid, HASH_ENTER, &found);
+	YbIndiciesHTABEntryData *data = &entry->data;
+	if (!found)
+	{
+		Relation rel;
+		RelationIdCacheLookup(index->indrelid, rel);
+		if (rel && !sys_rel_update_required && IsSystemRelation(rel))
+			rel = NULL;
+		*data = (YbIndiciesHTABEntryData) {.relation = rel};
+	}
+	if (!data->relation)
+		return;
 
 	/* Further code is copy-paste from the RelationGetIndexList function */
 
 	/* add index's OID to result list */
-	state->result = lappend_oid(state->result, index->indexrelid);
+	data->result = lappend_oid(data->result, index->indexrelid);
 
 	/*
 	 * Invalid, non-unique, non-immediate or predicate indexes aren't
@@ -2168,27 +2179,33 @@ YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 	if (!index->indisvalid || !index->indisunique ||
 		!index->indimmediate ||
 		!heap_attisnull(htup, Anum_pg_index_indpred, NULL))
-		return true;
+		return;
 
 	/* remember primary key index if any */
 	if (index->indisprimary)
-		state->pkeyIndex = index->indexrelid;
+		data->pkeyIndex = index->indexrelid;
 
 	/* remember explicitly chosen replica index */
 	if (index->indisreplident)
-		state->candidateIndex = index->indexrelid;
-
-	return true;
+		data->candidateIndex = index->indexrelid;
 }
 
 static void
-YbCompleteIndexProcessingImpl(const YbIndexProcessorState *state)
+YbApplyIndex(const YbIndiciesHTABEntryData *data, bool indicies_are_oid_ordered)
 {
-	Assert(YbIsIndexProcessingRequired(state));
-	Relation	relation = state->relation;
-	Oid			pkeyIndex = state->pkeyIndex;
-	Oid			candidateIndex = state->candidateIndex;
-	List	   *result = state->result;
+	if (!data->relation)
+		return;
+
+	if (!indicies_are_oid_ordered)
+	{
+		/* Sort the result list into OID order, per API spec. */
+		list_sort(data->result, list_oid_cmp);
+	}
+
+	Relation	relation = data->relation;
+	Oid			pkeyIndex = data->pkeyIndex;
+	Oid			candidateIndex = data->candidateIndex;
+	List	   *result = data->result;
 	char		replident = relation->rd_rel->relreplident;
 
 	/* Further code is copy-paste from the RelationGetIndexList function */
@@ -2214,43 +2231,6 @@ YbCompleteIndexProcessingImpl(const YbIndexProcessorState *state)
 	list_free(oldlist);
 }
 
-static void
-YbCompleteIndexProcessing(YbIndexProcessorState *state)
-{
-	if (!YbIsIndexProcessingStarted(state))
-		return;
-	if (YbIsIndexProcessingRequired(state))
-		YbCompleteIndexProcessingImpl(state);
-
-	list_free(state->result);
-	*state = (struct YbIndexProcessorState)
-	{
-		0
-	};
-}
-
-static void
-YbStartNewIndexProcessing(YbIndexProcessorState *state,
-						  bool sys_rel_update_required,
-						  HeapTuple htup)
-{
-	Assert(!YbIsIndexProcessingStarted(state));
-	Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
-
-	Assert(OidIsValid(index->indrelid));
-	state->relid = index->indrelid;
-	Relation	relation;
-
-	RelationIdCacheLookup(state->relid, relation);
-	if (!relation || (!sys_rel_update_required && IsSystemRelation(relation)))
-		return;
-	state->relation = relation;
-	bool		applied = YbApplyIndex(state, htup);
-
-	Assert(applied);
-	(void) applied;
-}
-
 /*
  * YBUpdateRelationsIndicies updates the rd_indexlist field for all relations.
  * The result of calling this function is identical to call the
@@ -2271,45 +2251,52 @@ YbStartNewIndexProcessing(YbIndexProcessorState *state,
 static void
 YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 {
-	Relation	indrel = table_open(IndexRelationId, AccessShareLock);
-	SysScanDesc indscan = systable_beginscan(indrel, IndexIndrelidIndexId,
-											 true /* indexOk */ , NULL, 0,
-											 NULL);
-	HeapTuple	htup;
-	YbIndexProcessorState state = {0};
-	MemoryContext row_cxt = YbCreatePreloadRowContext();
-
+	MemoryContext ctx = AllocSetContextCreate(CurrentMemoryContext,
+											  "update rel indicies",
+											  ALLOCSET_DEFAULT_SIZES);
+	MemoryContext oldctx = MemoryContextSwitchTo(ctx);
+	MemoryContext row_ctx = YbCreatePreloadRowContext();
+	Relation indrel = table_open(IndexRelationId, AccessShareLock);
 	/*
-	 * Unlike the other preload scans, don't process rows in row_cxt:
-	 * YbApplyIndex appends to state.result in the current context, and that
-	 * list must survive until the relation's last row.
+	 * Fetch tuples from IndexRelationId in PK order (ordered by index oid).
+	 * Note: Prefetcher internally might use secondary index, so runtime check is required to make
+	 *       sure desired order is preserved.
+	 * TODO: Remove runtime check after fixing #34746.
 	 */
-	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(indscan,
-															  row_cxt)))
+	SysScanDesc scan = systable_beginscan(indrel, InvalidOid, false /* indexOk */ , NULL, 0, NULL);
+	HeapTuple htup;
+	HASHCTL ctl = {0};
+	ctl.hcxt = ctx;
+	ctl.keysize = sizeof(Oid);
+	ctl.entrysize = sizeof(YbIndiciesHTABEntry);
+	HTAB *indicies = hash_create("indicies hash", 256, &ctl, HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+	Oid prev_index_oid = InvalidOid;
+	bool indicies_are_oid_ordered = true;
+
+	while (HeapTupleIsValid(htup = YbSystableGetNextInContext(scan, row_ctx)))
 	{
-		Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
-
-		/*
-		 * Ignore any indexes that are currently being dropped.  This will
-		 * prevent them from being searched, inserted into, or considered in
-		 * HOT-safety decisions.  It's unsafe to touch such an index at all
-		 * since its catalog entries could disappear at any instant.
-		 */
-		if (!index->indislive)
-			continue;
-
-		if (!YbApplyIndex(&state, htup))
+		YbProcessIndexTuple(htup, indicies, cache_update_state->sys_relations_update_required);
+		if (indicies_are_oid_ordered)
 		{
-			YbCompleteIndexProcessing(&state);
-			YbStartNewIndexProcessing(&state,
-									  cache_update_state->sys_relations_update_required,
-									  htup);
+			const Oid index_oid	= ((Form_pg_index) GETSTRUCT(htup))->indexrelid;
+			if (prev_index_oid != InvalidOid && index_oid <= prev_index_oid)
+				indicies_are_oid_ordered = false;
+			prev_index_oid = index_oid;
 		}
 	}
-	YbCompleteIndexProcessing(&state);
-	MemoryContextDelete(row_cxt);
-	systable_endscan(indscan);
+
+	HASH_SEQ_STATUS seq;
+	YbIndiciesHTABEntry *entry;
+	hash_seq_init(&seq, indicies);
+	while ((entry = hash_seq_search(&seq)) != NULL)
+	{
+		YbApplyIndex(&entry->data, indicies_are_oid_ordered);
+	}
+	hash_destroy(indicies);
+	systable_endscan(scan);
 	table_close(indrel, AccessShareLock);
+	MemoryContextSwitchTo(oldctx);
+	MemoryContextDelete(ctx);
 }
 
 static void

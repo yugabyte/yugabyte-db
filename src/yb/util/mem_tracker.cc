@@ -41,7 +41,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/tserver/server_main_util.h"
 
@@ -135,7 +134,6 @@ using std::stringstream;
 using std::shared_ptr;
 using std::vector;
 
-using strings::Substitute;
 
 namespace {
 
@@ -324,7 +322,7 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id,
       soft_limit_(limit_ == -1 ? -1 : (limit_ * FLAGS_memory_limit_soft_percentage) / 100),
       id_(id),
       consumption_functor_(std::move(consumption_functor)),
-      descr_(Substitute("memory consumption for $0", id)),
+      descr_(Format("memory consumption for $0", id)),
       parent_(std::move(parent)),
       enable_logging_(FLAGS_mem_tracker_logging),
       log_stack_(FLAGS_mem_tracker_log_stack_trace),
@@ -853,10 +851,10 @@ string MemTracker::LogUsage(const string& prefix, int64_t usage_threshold, int i
 }
 
 void MemTracker::LogMemoryLimits() const {
-  LOG(INFO) << StringPrintf("MemTracker: hard memory limit is %.6f GB",
-                            (static_cast<float>(limit_) / (1024.0 * 1024.0 * 1024.0)));
-  LOG(INFO) << StringPrintf("MemTracker: soft memory limit is %.6f GB",
-                            (static_cast<float>(soft_limit_) / (1024.0 * 1024.0 * 1024.0)));
+  LOG(INFO) << Format("MemTracker: hard memory limit is $0 GB",
+                      FixedPoint(static_cast<float>(limit_) / (1024.0 * 1024.0 * 1024.0), 6));
+  LOG(INFO) << Format("MemTracker: soft memory limit is $0 GB",
+                      FixedPoint(static_cast<float>(soft_limit_) / (1024.0 * 1024.0 * 1024.0), 6));
 }
 
 void MemTracker::LogUpdate(bool is_consume, int64_t bytes) const {
@@ -978,10 +976,10 @@ bool CheckMemoryPressureWithLogging(
     return true;
   }
 
-  const std::string msg = StringPrintf(
-      "Soft memory limit exceeded for %s (at %.2f%% of capacity), score: %.2f",
-      soft_limit_exceeded_result.tracker_path.c_str(),
-      soft_limit_exceeded_result.current_capacity_pct, score);
+  const std::string msg = Format(
+      "Soft memory limit exceeded for $0 (at $1% of capacity), score: $2",
+      soft_limit_exceeded_result.tracker_path,
+      FixedPoint(soft_limit_exceeded_result.current_capacity_pct, 2), FixedPoint(score, 2));
   if (soft_limit_exceeded_result.current_capacity_pct >=
       FLAGS_memory_limit_warn_threshold_percentage) {
     YB_LOG_EVERY_N_SECS(WARNING, 1) << error_prefix << msg;

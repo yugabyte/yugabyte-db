@@ -148,6 +148,8 @@ class TransactionTableState {
                            TransactionStatusTablets&& tablets) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     if (!initialized_.load() || status_tablets_version_ < new_version) {
+      LOG(INFO) << "Received status tablets (version bump from " << status_tablets_version_
+                << " to " << new_version << "): " << AsString(tablets);
       tablets_ = std::move(tablets);
       tablespace_region_local_.clear();
       tablespace_contains_tablespace_.clear();

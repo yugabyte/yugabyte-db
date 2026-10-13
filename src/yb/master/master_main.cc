@@ -48,6 +48,7 @@
 #include "yb/server/total_mem_watcher.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"
@@ -93,7 +94,7 @@ static int MasterMain(int argc, char** argv) {
 #endif
 
   // Reset some default values before parsing gflags.
-  FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
+  FLAGS_rpc_bind_addresses = Format("0.0.0.0:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
   // Hotfix for https://github.com/yugabyte/yugabyte-db/issues/8731.
   // Before enabling bloom filters for the master tablet we need to check whether master code use
@@ -102,7 +103,7 @@ static int MasterMain(int argc, char** argv) {
 
   string host_name;
   if (GetHostname(&host_name).ok()) {
-    FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, kMasterDefaultWebPort);
+    FLAGS_metric_node_name = Format("$0:$1", host_name, kMasterDefaultWebPort);
   } else {
     LOG(INFO) << "Failed to get master's host name, keeping default metric_node_name";
   }

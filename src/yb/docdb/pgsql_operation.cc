@@ -72,6 +72,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
 #include "yb/util/result.h"
@@ -2794,9 +2795,10 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   table_iter_.reset();
   PgsqlVectorFilter filter(data_.vector_index->metrics(), &table_iter_);
   auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
+  auto backfill_done = VERIFY_RESULT(data_.vector_index->BackfillDone());
   RSTATUS_DCHECK(
-      data_.vector_index->BackfillDone(), IllegalState,
-      "Vector index query on non ready index: $0", *data_.vector_index);
+      backfill_done, IllegalState, "Vector index query on non ready index: $0",
+      *data_.vector_index);
 
   // Resolve ybctids with the filter's reader so Search sees the same snapshot the filter used
   // (avoids a spurious "Vector not found" when a DELETE applies between the two reads). When the
@@ -3233,7 +3235,7 @@ Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
     return table_iter_->GetTupleId();
   }
 
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", column_id);
+  return STATUS_FORMAT(InvalidArgument, "Invalid column ID: $0", column_id);
 }
 
 Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {

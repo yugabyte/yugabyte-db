@@ -4,8 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { RegionCard } from './RegionCard';
 import { NodeAvailabilityProps } from './dtos';
 import { ResilienceAndRegionsProps, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
-import { canSelectMultipleRegions, getFaultToleranceNeeded } from '../../CreateUniverseUtils';
+import {
+  canSelectMultipleRegions,
+  getFaultToleranceNeeded,
+  maxExpertRfOption
+} from '../../CreateUniverseUtils';
 import { REPLICATION_FACTOR } from '../../fields/FieldNames';
+import { useRuntimeConfigValues } from '../../helpers/utils';
 
 type Args = {
   mode: ResilienceFormMode;
@@ -26,6 +31,7 @@ export function useAvailabilityZonesRegionCards({
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
   const { watch } = useFormContext<NodeAvailabilityProps>();
+  const { enablePrimaryRf9 } = useRuntimeConfigValues();
 
   const availabilityZones = watch('availabilityZones');
   const watchedReplicationFactor = watch(REPLICATION_FACTOR);
@@ -72,7 +78,8 @@ export function useAvailabilityZonesRegionCards({
           (mode === ResilienceFormMode.EXPERT_MODE || ft !== FaultToleranceType.NODE_LEVEL);
         const addAzTooltipKey = isAddAzDisabledByAzLevelCap
           ? mode === ResilienceFormMode.EXPERT_MODE
-            ? effectiveReplicationFactor >= 7
+            ? effectiveReplicationFactor >=
+              maxExpertRfOption(enablePrimaryRf9, effectiveReplicationFactor)
               ? 'tooltips.addAvailabilityZoneDisabledExpertMaxRf'
               : 'tooltips.addAvailabilityZoneDisabledExpert'
             : 'tooltips.addAvailabilityZoneDisabled'
@@ -128,6 +135,7 @@ export function useAvailabilityZonesRegionCards({
       showAddAzButton,
       baselineRegionCodes,
       baselineZoneUuidsByRegion,
+      enablePrimaryRf9,
       t
     ]
   );

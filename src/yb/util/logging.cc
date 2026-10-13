@@ -506,7 +506,7 @@ void LogFatalHandlerSink::send(
   output_str += "F";
   StringAppendStrftime(&output_str, "%Y%m%d %H:%M:%S", tm_time);
   // TODO: append thread id if we need to.
-  StringAppendF(&output_str, " %s:%d] ", full_filename, line_number);
+  output_str += Format(" $0:$1] ", full_filename, line_number);
   output_str += std::string(message, message_len);
   output_str += "\n";
   output_str += GetStackTrace();

@@ -84,7 +84,7 @@ Result<dockv::KeyEntryValue> TEST_GetKeyEntryValue(
     const rocksdb::UserBoundaryValues& values, size_t index) {
   auto value = rocksdb::TEST_UserValueWithTag(values, TagForRangeComponent(index));
   if (!value) {
-    return STATUS_SUBSTITUTE(NotFound, "Not found value for index $0", index);
+    return STATUS_FORMAT(NotFound, "Not found value for index $0", index);
   }
   return dockv::KeyEntryValue::FullyDecodeFromKey(value->AsSlice());
 }

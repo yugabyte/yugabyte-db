@@ -35,7 +35,6 @@ DECLARE_bool(enable_ysql);
 using std::string;
 using std::vector;
 
-using strings::Substitute;
 
 namespace yb {
 
@@ -73,10 +72,10 @@ class TablesCollector : public MasterCollector {
       return;
     }
     if (collection_level == CollectionLevel::LOW) {
-      json_ = Substitute("\"tables\":$0", resp.tables_size());
+      json_ = Format("\"tables\":$0", resp.tables_size());
     } else {
       // TODO: Add more table details.
-      json_ = Substitute("\"tables\":$0", resp.tables_size());
+      json_ = Format("\"tables\":$0", resp.tables_size());
     }
   }
 
@@ -94,10 +93,10 @@ class MasterInfoCollector : public MasterCollector {
     Status s = master()->ListMasters(&masters);
     if (s.ok()) {
       if (collection_level == CollectionLevel::LOW) {
-        json_ = Substitute("\"masters\":$0", masters.size());
+        json_ = Format("\"masters\":$0", masters.size());
       } else {
         // TODO(hector): Add more details.
-        json_ = Substitute("\"masters\":$0", masters.size());
+        json_ = Format("\"masters\":$0", masters.size());
       }
     }
   }
@@ -112,7 +111,7 @@ class TServersInfoCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
-    json_ = Substitute("\"tservers\":$0", master()->ts_manager()->NumDescriptors());
+    json_ = Format("\"tservers\":$0", master()->ts_manager()->NumDescriptors());
   }
 
   string collector_name() override { return "TServersInfoCollector"; }
@@ -126,7 +125,7 @@ class TabletsCollector : public MasterCollector {
 
   void Collect(CollectionLevel collection_level) override {
     int ntablets = 1;
-    json_ = Substitute("\"tablets\":$0", ntablets);
+    json_ = Format("\"tablets\":$0", ntablets);
   }
 
   string collector_name() override { return "TabletsCollector"; }

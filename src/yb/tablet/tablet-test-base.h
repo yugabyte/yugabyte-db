@@ -48,10 +48,10 @@
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -184,7 +184,7 @@ void IntKeyTestSetup<DataType::INT64>::BuildRowKeyFromExistingRow(dockv::YBParti
 template<>
 std::string IntKeyTestSetup<DataType::INT8>::FormatDebugRow(
     int64_t key_idx, int32_t val, bool updated) {
-  return strings::Substitute(
+  return Format(
     "{ int8_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
@@ -192,7 +192,7 @@ std::string IntKeyTestSetup<DataType::INT8>::FormatDebugRow(
 template<>
 std::string IntKeyTestSetup<DataType::INT16>::FormatDebugRow(
     int64_t key_idx, int32_t val, bool updated) {
-  return strings::Substitute(
+  return Format(
     "{ int16_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
@@ -200,7 +200,7 @@ std::string IntKeyTestSetup<DataType::INT16>::FormatDebugRow(
 template<>
 std::string IntKeyTestSetup<DataType::INT32>::FormatDebugRow(
     int64_t key_idx, int32_t val, bool updated) {
-  return strings::Substitute(
+  return Format(
     "{ int32_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
@@ -208,7 +208,7 @@ std::string IntKeyTestSetup<DataType::INT32>::FormatDebugRow(
 template<>
 std::string IntKeyTestSetup<DataType::INT64>::FormatDebugRow(
     int64_t key_idx, int32_t val, bool updated) {
-  return strings::Substitute(
+  return Format(
     "{ int64_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
@@ -242,12 +242,12 @@ struct NullableValueTestSetup {
 
   std::string FormatDebugRow(int64_t key_idx, int64_t val, bool updated) {
     if (!updated && ShouldInsertAsNull(key_idx)) {
-      return strings::Substitute(
+      return Format(
       "(int32 key=$0, int32 key_idx=$1, int32 val=NULL)",
         (int32_t)key_idx, key_idx);
     }
 
-    return strings::Substitute(
+    return Format(
       "{ int32_value: $0 int32_value: $1 int32_value: $2 }",
       (int32_t)key_idx, key_idx, val);
   }

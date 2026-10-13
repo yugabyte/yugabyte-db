@@ -1083,7 +1083,8 @@ public class TestYbQpm extends BasePgSQLTest {
       // Clear the QPM table.
       stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
 
-      int a1ParamValues[] = {0, 5000, 10000};
+      // Keep values far apart so timing noise cannot reorder execution times.
+      int a1ParamValues[] = {0, 100, 10000};
       String charPattern = new String("\'x%\'");
       long queryId = 0;
       long planId = 0;

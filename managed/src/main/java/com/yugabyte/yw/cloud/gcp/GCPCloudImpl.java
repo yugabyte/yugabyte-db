@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.api.services.compute.model.Address;
 import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
 import com.google.api.services.compute.model.ConnectionDraining;
@@ -17,6 +18,8 @@ import com.google.api.services.compute.model.HealthCheck;
 import com.google.api.services.compute.model.InstanceGroup;
 import com.google.api.services.compute.model.InstanceReference;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.LinkedHashMultimap;
+import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
@@ -27,23 +30,28 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.SetUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -56,7 +64,17 @@ public class GCPCloudImpl implements CloudAPI {
   public static final String GOOGLE_APPLICATION_CREDENTIALS_PROPERTY =
       "GOOGLE_APPLICATION_CREDENTIALS";
 
+  // The names YBA gave before the hashed names: hc-<port><UUID> and ig-<UUID>.
+  private static final String UUID_REGEX = "[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}";
+  private static final Pattern OLD_HEALTH_CHECK_NAME = Pattern.compile("hc-\\d+" + UUID_REGEX);
+  private static final Pattern OLD_INSTANCE_GROUP_NAME = Pattern.compile("ig-" + UUID_REGEX);
+
   @Inject private RuntimeConfGetter runtimeConfGetter;
+
+  @VisibleForTesting
+  protected GCPProjectApiClient getApiClient(Provider provider) {
+    return new GCPProjectApiClient(runtimeConfGetter, provider);
+  }
 
   /**
    * Find the instance types offered in availabilityZones.
@@ -81,7 +99,7 @@ public class GCPCloudImpl implements CloudAPI {
   @Override
   public boolean isValidCreds(Provider provider) {
     try {
-      GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
+      GCPProjectApiClient apiClient = getApiClient(provider);
       // Check if the creds have the required permission(s) to fetch instances
       List<String> reqPermission = new ArrayList<>();
       reqPermission.add(GCPUtil.INSTANCE_LIST_PERMISSION);
@@ -141,7 +159,9 @@ public class GCPCloudImpl implements CloudAPI {
    */
   @VisibleForTesting
   protected List<Backend> createNewBackends(
-      GCPProjectApiClient apiClient, Map<String, List<InstanceReference>> nodeAzMap) {
+      GCPProjectApiClient apiClient,
+      String lbName,
+      Map<String, List<InstanceReference>> nodeAzMap) {
     List<Backend> backends = new ArrayList<>();
     if (nodeAzMap == null) {
       return backends;
@@ -152,9 +172,17 @@ public class GCPCloudImpl implements CloudAPI {
       List<InstanceReference> instances = mapEntry.getValue();
       if (instances != null && !CollectionUtils.isEmpty(instances)) {
         try {
-          String instanceGroupUrl = apiClient.createNewInstanceGroupInZone(zone);
-          String instanceGroupName = CloudAPI.getResourceNameFromResourceUrl(instanceGroupUrl);
-          apiClient.addInstancesToInstaceGroup(zone, instanceGroupName, instances);
+          String instanceGroupName = getInstanceGroupName(lbName);
+          // Left by a failed attempt, or by a failed delete after the zone lost its nodes.
+          InstanceGroup existing = apiClient.getInstanceGroupIfExists(zone, instanceGroupName);
+          String instanceGroupUrl;
+          if (existing != null) {
+            instanceGroupUrl = existing.getSelfLink();
+            syncInstanceGroupMembers(apiClient, zone, instanceGroupName, instances);
+          } else {
+            instanceGroupUrl = apiClient.createNewInstanceGroupInZone(zone, instanceGroupName);
+            apiClient.addInstancesToInstaceGroup(zone, instanceGroupName, instances);
+          }
           backend.setGroup(instanceGroupUrl);
           backends.add(backend);
         } catch (IOException e) {
@@ -185,20 +213,12 @@ public class GCPCloudImpl implements CloudAPI {
     for (Map.Entry<String, List<InstanceReference>> zoneToNodes : zonesToNodes.entrySet()) {
       String zone = zoneToNodes.getKey();
       Backend backend = zonesToBackend.get(zone);
-      Set<InstanceReference> newInstances = new HashSet(zoneToNodes.getValue());
       String instanceGroupUrl = backend.getGroup();
       String instanceGroupName = CloudAPI.getResourceNameFromResourceUrl(instanceGroupUrl);
       InstanceGroup instanceGroup = apiClient.getInstanceGroup(zone, instanceGroupName);
       log.info("Sucessfully fetched instance group " + instanceGroupName);
       try {
-        Set<InstanceReference> existingInstances =
-            new HashSet(apiClient.getInstancesForInstanceGroup(zone, instanceGroupName));
-        List<InstanceReference> instancesToAdd =
-            new ArrayList(SetUtils.difference(newInstances, existingInstances));
-        apiClient.addInstancesToInstaceGroup(zone, instanceGroupName, instancesToAdd);
-        List<InstanceReference> instancesToRemove =
-            new ArrayList(SetUtils.difference(existingInstances, newInstances));
-        apiClient.removeInstancesFromInstaceGroup(zone, instanceGroupName, instancesToRemove);
+        syncInstanceGroupMembers(apiClient, zone, instanceGroupName, zoneToNodes.getValue());
       } catch (IOException e) {
         log.error(e.getMessage());
         throw new PlatformServiceException(
@@ -207,16 +227,39 @@ public class GCPCloudImpl implements CloudAPI {
     }
   }
 
+  // Adds the missing instances to the group and removes the others.
+  private void syncInstanceGroupMembers(
+      GCPProjectApiClient apiClient,
+      String zone,
+      String instanceGroupName,
+      List<InstanceReference> instances)
+      throws IOException {
+    Set<InstanceReference> newInstances = new HashSet<>(instances);
+    Set<InstanceReference> existingInstances =
+        new HashSet<>(apiClient.getInstancesForInstanceGroup(zone, instanceGroupName));
+    apiClient.addInstancesToInstaceGroup(
+        zone,
+        instanceGroupName,
+        new ArrayList<>(SetUtils.difference(newInstances, existingInstances)));
+    apiClient.removeInstancesFromInstaceGroup(
+        zone,
+        instanceGroupName,
+        new ArrayList<>(SetUtils.difference(existingInstances, newInstances)));
+  }
+
   // Helper function to get map a given list of backends to the zones in which they belong
   private Map<String, Backend> mapBackendsToZones(List<Backend> backends) {
     Map<String, Backend> backendToZoneMap = new HashMap<>();
     for (Backend backend : backends) {
-      String instanceGroupUrl = backend.getGroup();
-      String[] urlComponents = instanceGroupUrl.split("/", 0);
-      String zone = urlComponents[urlComponents.length - 3];
-      backendToZoneMap.put(zone, backend);
+      backendToZoneMap.put(getZoneFromResourceUrl(backend.getGroup()), backend);
     }
     return backendToZoneMap;
+  }
+
+  // .../zones/<zone>/instanceGroups/<name>
+  private static String getZoneFromResourceUrl(String url) {
+    String[] parts = url.split("/");
+    return parts[parts.length - 3];
   }
 
   /**
@@ -232,6 +275,7 @@ public class GCPCloudImpl implements CloudAPI {
   @VisibleForTesting
   protected List<Backend> ensureBackends(
       GCPProjectApiClient apiClient,
+      String lbName,
       Map<String, List<InstanceReference>> nodeAzMap,
       List<Backend> backends) {
     if (backends == null) {
@@ -250,29 +294,15 @@ public class GCPCloudImpl implements CloudAPI {
         nodeAzMap.entrySet().stream()
             .filter(mapEntry -> zonesToUpdate.contains(mapEntry.getKey()))
             .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
-    Map<String, Backend> backendsInZonesToRemove =
-        backendToZoneMap.entrySet().stream()
-            .filter(mapEntry -> zonesToRemove.contains(mapEntry.getKey()))
-            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
-    log.info("About to remove LB backends for zones {}", backendToZoneMap.keySet());
-    try {
-      apiClient.deleteBackends(backendsInZonesToRemove);
-    } catch (Exception e) {
-      log.warn("Failed to remove extra backends: " + backendsInZonesToRemove);
-      // In this case instead of throwind a Platform service exception, we simply continue to do the
-      // rest of the operations.
-      // This is because failure to delete extra backends is not a very critical error. Since we are
-      // updating the forwarding rules with the updated list of backends without these backends, so
-      // no traffic would be forwarded to the incorrect backends.
-      // Client can manually delete these extra and non-required backends as and when required
-    }
+    // The backend service still uses the groups of removed zones, so manageNodeGroup deletes them
+    // after it updates the service.
     backends =
         new ArrayList(
             backendToZoneMap.entrySet().stream()
                 .filter(mapEntry -> !zonesToRemove.contains(mapEntry.getKey()))
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()))
                 .values());
-    backends.addAll(createNewBackends(apiClient, nodesInNewZones));
+    backends.addAll(createNewBackends(apiClient, lbName, nodesInNewZones));
     updateInstancesInInstanceGroup(apiClient, backendToZoneMap, nodesInUpdateZones);
     return backends;
   }
@@ -306,6 +336,7 @@ public class GCPCloudImpl implements CloudAPI {
   protected List<String> ensureHealthChecks(
       GCPProjectApiClient apiClient,
       String region,
+      String lbName,
       NLBHealthCheckConfiguration healthCheckConfiguration,
       List<String> healthCheckUrls) {
     List<HealthCheck> healthChecks = new ArrayList();
@@ -332,27 +363,31 @@ public class GCPCloudImpl implements CloudAPI {
                 .collect(Collectors.toList()));
     if (!portsWithHealthCheck.contains(healthCheckPort)) {
       log.debug("Creating new health checks on port " + healthCheckPort);
-      try {
-        String newHealthCheckUrl = "";
-        switch (healthCheckProtocol) {
-          case TCP:
-            newHealthCheckUrl = apiClient.createNewTCPHealthCheckForPort(region, healthCheckPort);
-            break;
-          case HTTP:
-            newHealthCheckUrl =
-                apiClient.createNewHTTPHealthCheckForPort(
-                    region,
-                    healthCheckPort,
-                    healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort));
-            break;
+      String healthCheckName = getHealthCheckName(lbName, healthCheckProtocol);
+      String requestPath =
+          healthCheckProtocol == Protocol.HTTP
+              ? healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort)
+              : null;
+      // One check per protocol, so a port change updates it instead of leaving the old one.
+      HealthCheck existing = apiClient.getRegionalHealthCheckIfExists(region, healthCheckName);
+      String newHealthCheckUrl;
+      if (existing != null) {
+        if (healthCheckProtocol == Protocol.HTTP) {
+          existing.getHttpHealthCheck().setPort(healthCheckPort).setRequestPath(requestPath);
+        } else {
+          existing.getTcpHealthCheck().setPort(healthCheckPort);
         }
-        newHealthCheckUrls.add(newHealthCheckUrl);
-        return newHealthCheckUrls;
-      } catch (IOException e) {
-        log.error(e.getMessage());
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Failed to create new health check on port " + healthCheckPort);
+        newHealthCheckUrl = apiClient.updateHealthCheck(region, existing);
+      } else if (healthCheckProtocol == Protocol.HTTP) {
+        newHealthCheckUrl =
+            apiClient.createNewHTTPHealthCheckForPort(
+                region, healthCheckName, healthCheckPort, requestPath);
+      } else {
+        newHealthCheckUrl =
+            apiClient.createNewTCPHealthCheckForPort(region, healthCheckName, healthCheckPort);
       }
+      newHealthCheckUrls.add(newHealthCheckUrl);
+      return newHealthCheckUrls;
     } else {
       // Because of the filter applied while creating the portsWithHealthCheck set, this we are sure
       // that type of health check would always be correct
@@ -386,6 +421,90 @@ public class GCPCloudImpl implements CloudAPI {
       }
     }
     return healthCheckUrls;
+  }
+
+  /**
+   * Returns the name of the health check of a load balancer and protocol: hc-[22 hex
+   * characters]-tcp or -http. The name holds a hash of the load balancer name, which can have 63
+   * characters. Fixed names let a retry reuse what an earlier attempt created and let
+   * deleteManagedLoadBalancer find the checks after the backend service is gone.
+   */
+  @VisibleForTesting
+  static String getHealthCheckName(String lbName, Protocol protocol) {
+    return "hc-" + lbNameHash(lbName) + "-" + protocol.name().toLowerCase();
+  }
+
+  /** The name of the instance group in each zone of a load balancer: ig-[22 hex characters]. */
+  @VisibleForTesting
+  static String getInstanceGroupName(String lbName) {
+    return "ig-" + lbNameHash(lbName);
+  }
+
+  private static String lbNameHash(String lbName) {
+    return DigestUtils.sha256Hex(lbName).substring(0, 22);
+  }
+
+  /**
+   * Deletes the instance groups and health checks that the backend service stopped using. GCP
+   * refuses to delete one that a backend service uses, so this runs after the update. It deletes
+   * only the names that YBA gives, so a user's own check or group stays. A failed delete logs a
+   * warning and does not fail the task.
+   */
+  private void deleteUnusedGroupsAndChecks(
+      GCPProjectApiClient apiClient,
+      String region,
+      String lbName,
+      List<Backend> oldBackends,
+      List<Backend> backends,
+      List<String> oldHealthChecks,
+      List<String> healthChecks) {
+    // Compare names: two links to one resource can differ in host or API version.
+    Set<String> usedGroups =
+        backends.stream().map(b -> zoneAndName(b.getGroup())).collect(Collectors.toSet());
+    for (Backend backend : oldBackends) {
+      if (usedGroups.contains(zoneAndName(backend.getGroup()))) {
+        continue;
+      }
+      String zone = getZoneFromResourceUrl(backend.getGroup());
+      String name = CloudAPI.getResourceNameFromResourceUrl(backend.getGroup());
+      if (!name.equals(getInstanceGroupName(lbName))
+          && !OLD_INSTANCE_GROUP_NAME.matcher(name).matches()) {
+        log.info("Not deleting instance group {} in {}: YBA did not create it", name, zone);
+        continue;
+      }
+      try {
+        apiClient.deleteInstanceGroup(zone, name);
+      } catch (RuntimeException e) {
+        log.warn("Could not delete unused instance group {} in {}", name, zone, e);
+      }
+    }
+    Set<String> usedChecks =
+        healthChecks.stream()
+            .map(CloudAPI::getResourceNameFromResourceUrl)
+            .collect(Collectors.toSet());
+    for (String url : oldHealthChecks) {
+      String name = CloudAPI.getResourceNameFromResourceUrl(url);
+      if (usedChecks.contains(name)) {
+        continue;
+      }
+      if (!name.equals(getHealthCheckName(lbName, Protocol.TCP))
+          && !name.equals(getHealthCheckName(lbName, Protocol.HTTP))
+          && !OLD_HEALTH_CHECK_NAME.matcher(name).matches()) {
+        log.info("Not deleting health check {}: YBA did not create it", name);
+        continue;
+      }
+      try {
+        apiClient.deleteRegionalHealthCheck(region, name);
+      } catch (RuntimeException e) {
+        log.warn("Could not delete unused health check {}", name, e);
+      }
+    }
+  }
+
+  private static String zoneAndName(String instanceGroupUrl) {
+    return getZoneFromResourceUrl(instanceGroupUrl)
+        + "/"
+        + CloudAPI.getResourceNameFromResourceUrl(instanceGroupUrl);
   }
 
   /**
@@ -426,7 +545,7 @@ public class GCPCloudImpl implements CloudAPI {
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
       List<Integer> portsToForward,
       NLBHealthCheckConfiguration healthCheckConfig) {
-    GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
+    GCPProjectApiClient apiClient = getApiClient(provider);
     manageNodeGroup(
         provider,
         regionCode,
@@ -479,8 +598,9 @@ public class GCPCloudImpl implements CloudAPI {
           getAzToInstanceReferenceMap(apiClient, azToNodeIDs);
       BackendService backendService = apiClient.getBackendService(regionCode, backendServiceName);
       List<Backend> backends = backendService.getBackends();
+      List<Backend> oldBackends = new ArrayList<>(CollectionUtils.emptyIfNull(backends));
       log.debug("Reconciling LB backends....");
-      backends = ensureBackends(apiClient, nodeAzMap, backends);
+      backends = ensureBackends(apiClient, lbName, nodeAzMap, backends);
       Duration connectionDrainingTimeout =
           runtimeConfGetter.getConfForScope(
               provider, ProviderConfKeys.gcpConnectionDrainingTimeout);
@@ -491,10 +611,13 @@ public class GCPCloudImpl implements CloudAPI {
       backendService.setProtocol(lbProtocol);
       log.debug("Checking health checks....");
       List<String> healthChecks = backendService.getHealthChecks();
+      List<String> oldHealthChecks = new ArrayList<>(CollectionUtils.emptyIfNull(healthChecks));
       healthChecks =
-          ensureHealthChecks(apiClient, regionCode, healthCheckConfiguration, healthChecks);
+          ensureHealthChecks(apiClient, regionCode, lbName, healthCheckConfiguration, healthChecks);
       backendService.setHealthChecks(healthChecks);
       apiClient.updateBackendService(regionCode, backendService);
+      deleteUnusedGroupsAndChecks(
+          apiClient, regionCode, lbName, oldBackends, backends, oldHealthChecks, healthChecks);
 
       // Get forwarding rules for backend service
       log.debug("Checking forwarding rules....");
@@ -507,6 +630,205 @@ public class GCPCloudImpl implements CloudAPI {
     }
   }
 
+  // Managed load balancer methods
+
+  @Override
+  public boolean supportsManagedLoadBalancer() {
+    return true;
+  }
+
+  /**
+   * Creates the health check, the INTERNAL backend service, the internal address and the forwarding
+   * rule, or reuses the ones with the load balancer's name. manageNodeGroup adds the instance
+   * groups. GCP cannot change the ports of a forwarding rule, so a rule that misses a port is
+   * replaced; the reserved address keeps the IP.
+   *
+   * @return the internal IP of the load balancer.
+   */
+  @Override
+  public String ensureManagedLoadBalancer(
+      Provider provider,
+      String regionCode,
+      String name,
+      List<AvailabilityZone> zones,
+      List<Integer> ports,
+      Map<String, String> tags) {
+    GCPCloudInfo cloudInfo = CloudInfoInterface.get(provider);
+    String vpcProject = GCPUtil.getVpcProject(cloudInfo);
+    String network = GCPUtil.getVpcNetwork(cloudInfo);
+    if (StringUtils.isEmpty(network)) {
+      throw new PlatformServiceException(BAD_REQUEST, "The provider has no VPC network");
+    }
+    String networkUrl = String.format(GCPUtil.NETWORK_SELFLINK, vpcProject, network);
+    String subnetworkUrl =
+        String.format(
+            GCPUtil.SUBNETWORK_SELFLINK,
+            vpcProject,
+            regionCode,
+            getSubnet(zones, regionCode, name));
+    GCPProjectApiClient apiClient = getApiClient(provider);
+
+    BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
+    String backendServiceUrl;
+    if (backendService != null) {
+      backendServiceUrl = backendService.getSelfLink();
+    } else {
+      // GCP requires a health check. ensureHealthChecks finds this one by name.
+      String healthCheckName = getHealthCheckName(name, Protocol.TCP);
+      HealthCheck healthCheck =
+          apiClient.getRegionalHealthCheckIfExists(regionCode, healthCheckName);
+      String healthCheckUrl =
+          healthCheck != null
+              ? healthCheck.getSelfLink()
+              : apiClient.createNewTCPHealthCheckForPort(regionCode, healthCheckName, ports.get(0));
+      backendServiceUrl =
+          apiClient.createInternalBackendService(regionCode, name, networkUrl, healthCheckUrl);
+    }
+    Address address = apiClient.getRegionalAddressIfExists(regionCode, name);
+    if (address == null) {
+      address = apiClient.createInternalAddress(regionCode, name, subnetworkUrl);
+    }
+    ForwardingRule rule = apiClient.getRegionalForwardingRuleIfExists(regionCode, name);
+    // Read before a replacement, which starts without labels.
+    Map<String, String> ruleLabels = rule != null ? rule.getLabels() : null;
+    if (rule == null || !forwardsPorts(rule, ports)) {
+      if (rule != null) {
+        log.info(
+            "Replacing forwarding rule {} in {}: it forwards {} and not {}",
+            name,
+            regionCode,
+            rule.getPorts(),
+            ports);
+        apiClient.deleteRegionalForwardingRule(regionCode, name);
+      }
+      rule =
+          apiClient.createInternalForwardingRule(
+              regionCode,
+              name,
+              backendServiceUrl,
+              address.getSelfLink(),
+              networkUrl,
+              subnetworkUrl,
+              ports);
+    }
+    applyLabels(apiClient, regionCode, name, address, rule, ruleLabels, tags);
+    log.info("Load balancer {} in {} has address {}", name, regionCode, address.getAddress());
+    return address.getAddress();
+  }
+
+  /**
+   * Deletes the forwarding rule, the backend service, its health checks and instance groups, then
+   * the address: GCP refuses to delete a resource that another still references. The fixed names
+   * find the checks and groups of a run that deleted the backend service and then failed; the
+   * backend service references also find ones under other names.
+   */
+  @Override
+  public void deleteManagedLoadBalancer(Provider provider, String regionCode, String name) {
+    GCPProjectApiClient apiClient = getApiClient(provider);
+    apiClient.deleteRegionalForwardingRule(regionCode, name);
+    Set<String> healthCheckNames = new LinkedHashSet<>();
+    SetMultimap<String, String> instanceGroupsByZone = LinkedHashMultimap.create();
+    BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
+    if (backendService != null) {
+      for (String url : CollectionUtils.emptyIfNull(backendService.getHealthChecks())) {
+        healthCheckNames.add(CloudAPI.getResourceNameFromResourceUrl(url));
+      }
+      for (Backend backend : CollectionUtils.emptyIfNull(backendService.getBackends())) {
+        instanceGroupsByZone.put(
+            getZoneFromResourceUrl(backend.getGroup()),
+            CloudAPI.getResourceNameFromResourceUrl(backend.getGroup()));
+      }
+      apiClient.deleteRegionalBackendService(regionCode, name);
+    }
+    healthCheckNames.add(getHealthCheckName(name, Protocol.TCP));
+    healthCheckNames.add(getHealthCheckName(name, Protocol.HTTP));
+    Region region = Region.getByCode(provider, regionCode);
+    if (region != null) {
+      // Inactive zones too: a zone can be deactivated after its group was created.
+      for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(region.getUuid(), false)) {
+        instanceGroupsByZone.put(zone.getCode(), getInstanceGroupName(name));
+      }
+    }
+    healthCheckNames.forEach(check -> apiClient.deleteRegionalHealthCheck(regionCode, check));
+    instanceGroupsByZone.forEach(apiClient::deleteInstanceGroup);
+    apiClient.deleteRegionalAddress(regionCode, name);
+    log.info("Deleted load balancer {} in {}", name, regionCode);
+  }
+
+  private static boolean forwardsPorts(ForwardingRule rule, List<Integer> ports) {
+    if (Boolean.TRUE.equals(rule.getAllPorts())) {
+      return true;
+    }
+    List<String> rulePorts = rule.getPorts() == null ? List.of() : rule.getPorts();
+    return ports.stream().map(String::valueOf).allMatch(rulePorts::contains);
+  }
+
+  // Only the address and the forwarding rule take labels. Never removes a label; a label error is
+  // not worth failing the task.
+  private static void applyLabels(
+      GCPProjectApiClient apiClient,
+      String region,
+      String name,
+      Address address,
+      ForwardingRule rule,
+      Map<String, String> ruleLabels,
+      Map<String, String> tags) {
+    Map<String, String> labels = toLabels(tags);
+    if (labels.isEmpty()) {
+      return;
+    }
+    try {
+      apiClient.setAddressLabels(
+          region, name, address.getLabelFingerprint(), withLabels(address.getLabels(), labels));
+      apiClient.setForwardingRuleLabels(
+          region, name, rule.getLabelFingerprint(), withLabels(ruleLabels, labels));
+    } catch (RuntimeException e) {
+      log.warn("Could not update the labels of load balancer {}: {}", name, e.getMessage());
+    }
+  }
+
+  private static Map<String, String> withLabels(
+      Map<String, String> existing, Map<String, String> labels) {
+    Map<String, String> merged = new HashMap<>();
+    if (existing != null) {
+      merged.putAll(existing);
+    }
+    merged.putAll(labels);
+    return merged;
+  }
+
+  // GCP labels: lowercase letters, digits, '-' and '_', at most 63 characters, key starts with a
+  // letter. A tag whose key cannot become a label is skipped.
+  @VisibleForTesting
+  static Map<String, String> toLabels(Map<String, String> tags) {
+    Map<String, String> labels = new HashMap<>();
+    for (Map.Entry<String, String> tag : tags.entrySet()) {
+      String key = toLabelPart(tag.getKey());
+      if (!key.isEmpty() && Character.isLetter(key.charAt(0))) {
+        labels.put(key, toLabelPart(tag.getValue()));
+      }
+    }
+    return labels;
+  }
+
+  private static String toLabelPart(String value) {
+    String part = StringUtils.defaultString(value).toLowerCase().replaceAll("[^a-z0-9_-]", "_");
+    return part.length() > 63 ? part.substring(0, 63) : part;
+  }
+
+  // The zones of a GCP region share one subnet.
+  private static String getSubnet(List<AvailabilityZone> zones, String regionCode, String name) {
+    return zones.stream()
+        .map(AvailabilityZone::getSubnet)
+        .filter(StringUtils::isNotBlank)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    BAD_REQUEST,
+                    "No zone of region " + regionCode + " has a subnet for load balancer " + name));
+  }
+
   @Override
   public Optional<CloudAPI.NodeDiskSpec> describeNodeDataDiskSpec(
       Provider provider, NodeDetails node) {
@@ -517,7 +839,7 @@ public class GCPCloudImpl implements CloudAPI {
       throw new PlatformServiceException(BAD_REQUEST, "GCP node is missing zone or name");
     }
     try {
-      GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
+      GCPProjectApiClient apiClient = getApiClient(provider);
       return Optional.of(apiClient.describeNodeDataDiskSpec(node.cloudInfo.az, node.nodeName));
     } catch (PlatformServiceException e) {
       throw e;

@@ -100,14 +100,17 @@ DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
+DECLARE_bool(ysql_yb_enable_update_reltuples_after_create_index);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
 DECLARE_bool(TEST_block_apply_intent);
 DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
+DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
+DECLARE_int32(TEST_sleep_before_vector_index_backfill_seconds);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_cache_connection);
@@ -731,6 +734,28 @@ TEST_F(XClusterDDLReplicationTest, TableInNonDefaultSchema) {
   ASSERT_OK(producer_conn_->ExecuteFormat("SET search_path TO $0", kSchemaName));
   ASSERT_OK(producer_conn_->ExecuteFormat("TRUNCATE TABLE $0", kTableName));
   ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (3)", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
+}
+
+TEST_F(XClusterDDLReplicationTest, DDLResolvesObjectsThroughFullSearchPath) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // A type that lives in public, standing in for an extension type like pgvector's `vector`.
+  ASSERT_OK(producer_conn_->Execute("CREATE DOMAIN public.pos_int AS int CHECK (VALUE > 0)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // The application uses its own schema first in the search path, with public after it.
+  // The CREATE TABLE lands in app_schema but resolves pos_int through public.
+  const std::string kSchemaName = "app_schema";
+  const std::string kTableName = "app_items";
+  ASSERT_OK(producer_conn_->ExecuteFormat("SET search_path TO $0, public", kSchemaName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE SCHEMA $0", kSchemaName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key int PRIMARY KEY, v pos_int)", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10), (2, 20)", kTableName));
+
+  // The target must replay the DDL with the same search path, so that pos_int resolves there too.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
 }
@@ -5696,24 +5721,28 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexCreatedBeforeDrSetup) {
 }
 
 class XClusterDDLReplicationVectorIndexParamTest : public XClusterDDLReplicationTest,
-                                                 public ::testing::WithParamInterface<bool> {};
+                                                 public ::testing::WithParamInterface<bool> {
+ protected:
+  Status SetUpVectorIndexReplication() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.is_colocated = GetParam();
+    RETURN_NOT_OK(SetUpClusters(params));
+    RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      return conn.Execute("CREATE EXTENSION vector");
+    }));
+    RETURN_NOT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    return CreateReplicationFromCheckpoint();
+  }
+};
 
 INSTANTIATE_TEST_SUITE_P(
     ColocationMode, XClusterDDLReplicationVectorIndexParamTest, ::testing::Values(false, true));
 
 TEST_P(XClusterDDLReplicationVectorIndexParamTest, VectorIndex) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
-  const bool use_colocated_db = GetParam();
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.is_colocated = use_colocated_db;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
-    return Status::OK();
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(SetUpVectorIndexReplication());
   ASSERT_OK(producer_conn_->Execute(
       "CREATE TABLE vec_test (id serial PRIMARY KEY, embedding vector(3))"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -5813,6 +5842,71 @@ TEST_P(XClusterDDLReplicationVectorIndexParamTest, VectorIndex) {
   ASSERT_EQ(p_search, c_search);
 }
 
+// Renaming a vector index, or moving its table to another schema, must not stall replication.
+TEST_P(XClusterDDLReplicationVectorIndexParamTest, AlterVectorIndex) {
+  ASSERT_OK(SetUpVectorIndexReplication());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test SELECT g, array_fill(g::real, ARRAY[3])::vector "
+      "FROM generate_series(1, 20) g"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto consumer_has_relation = [this](const std::string& name) {
+    return consumer_conn_->FetchRow<bool>(Format("SELECT to_regclass('$0') IS NOT NULL", name));
+  };
+
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX vec_test_idx RENAME TO vec_test_idx2"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(consumer_has_relation("public.vec_test_idx2")));
+
+  ASSERT_OK(producer_conn_->Execute("CREATE SCHEMA s"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE vec_test SET SCHEMA s"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(consumer_has_relation("s.vec_test_idx2")));
+
+  // Later table changes and writes still replicate.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE s.vec_test ADD COLUMN c int"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO s.vec_test SELECT g, array_fill(g::real, ARRAY[3])::vector, g "
+      "FROM generate_series(21, 30) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  constexpr auto kSelectAll = "SELECT id, embedding, c FROM s.vec_test ORDER BY id";
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kSelectAll)),
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kSelectAll)));
+
+  // Make sure the table's own schema changes weren't skipped too. Row checks can't tell, since
+  // both sides happen to have the same schema versions here. Only non-colocated streams skip.
+  if (!GetParam()) {
+    auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+        &producer_cluster_, namespace_name, "s", "vec_test", /*verify_table_name=*/true,
+        /*verify_schema_name=*/true))));
+    auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table->id()));
+    auto cluster_config = ASSERT_RESULT(GetClusterConfig(consumer_cluster_));
+    const auto& schema_versions = cluster_config.consumer_registry()
+                                      .producer_map()
+                                      .at(kReplicationGroupId.ToString())
+                                      .stream_map()
+                                      .at(stream_id.ToString())
+                                      .schema_versions();
+    ASSERT_EQ(
+        schema_versions.current_producer_schema_version(), producer_table->schema().version());
+  }
+
+  // Target search uses the renamed index. No distance ties, so the order is stable.
+  constexpr auto kSearch =
+      "SELECT id FROM s.vec_test ORDER BY embedding <-> '[25.1, 25.1, 25.1]' LIMIT 5";
+  auto c_explain =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(Format("EXPLAIN (COSTS OFF) $0", kSearch)));
+  ASSERT_STR_CONTAINS(c_explain, "vec_test_idx2");
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kSearch)),
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kSearch)));
+}
+
 // When updating the vector index during apply intent, we skip the row if commit_ht is less than
 // the vector index's hybrid_time, to avoid double write since backfill will handle the committed
 // intents. However, this is an issue on xCluster target: backfill on target does not see committed
@@ -5876,6 +5970,116 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
       "SELECT id FROM vector_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
   ASSERT_EQ(p_search, c_search)
       << "Producer and consumer vector search should match (commit_ht < index ht case).";
+}
+
+// A DDL that creates a vector index must not commit on the target before backfill completes.
+TEST_F(XClusterDDLReplicationTest, VectorIndexReadyBeforeTargetDDLCommits) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  // So index_build on the target would write the table's reltuples, like with CBO on.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_update_reltuples_after_create_index) = true;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, v1 text, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test SELECT g, 'v_' || g, ARRAY[g, g + 1, g + 2]::vector "
+      "FROM generate_series(1, 100) AS g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // CREATE INDEX below must keep the target's reltuples, not reset it to 0. The rewrite isn't
+  // checked: it resets reltuples to -1 by itself, on the source too.
+  ASSERT_OK(consumer_conn_->Execute("ANALYZE vec_test"));
+  auto target_reltuples = [this] {
+    return consumer_conn_->FetchRow<int64_t>(
+        "SELECT reltuples::bigint FROM pg_class WHERE relname = 'vec_test'");
+  };
+  ASSERT_EQ(ASSERT_RESULT(target_reltuples()), 100);
+
+  const std::string kSearch = "SELECT id FROM vec_test ORDER BY embedding <-> '[1, 2, 3]' LIMIT 5";
+  constexpr auto kBackfillSleepSec = 5;
+
+  // Runs ddl on the producer only, then slows the target's vector index backfill and lets the
+  // target run ddl, once confirm commit, vector index search should work.
+  auto run_ddl_with_slow_target_backfill = [&](const std::string& ddl,
+                                               const std::string& is_visible_query) -> Status {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+    RETURN_NOT_OK(producer_conn_->Execute(ddl));
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) =
+        kBackfillSleepSec;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return consumer_conn_->FetchRow<bool>(is_visible_query);
+        },
+        kTimeout, Format("Commit of $0 on target", ddl)));
+    // The index is visible on the target now, so it must serve searches.
+    RETURN_NOT_OK(consumer_conn_->Fetch(kSearch));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) = 0;
+
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto c_explain =
+        VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN (COSTS OFF) " + kSearch));
+    SCHECK_STR_CONTAINS(c_explain, "vec_test_idx");
+    auto p_search = VERIFY_RESULT(producer_conn_->FetchAllAsString(kSearch));
+    auto c_search = VERIFY_RESULT(consumer_conn_->FetchAllAsString(kSearch));
+    SCHECK_EQ(p_search, c_search, IllegalState, "Producer and consumer searches differ");
+    return Status::OK();
+  };
+
+  // CREATE INDEX: the target tablets build the vector index on target
+  ASSERT_OK(run_ddl_with_slow_target_backfill(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)",
+      "SELECT EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+      "WHERE c.relname = 'vec_test_idx' AND i.indisready AND i.indisvalid)"));
+  ASSERT_EQ(ASSERT_RESULT(target_reltuples()), 100);
+
+  // Table rewrite: the target rebuilds the vector index on the new table's tablets.
+  ASSERT_OK(run_ddl_with_slow_target_backfill(
+      "ALTER TABLE vec_test ALTER COLUMN v1 TYPE varchar(200)",
+      "SELECT format_type(atttypid, atttypmod) = 'character varying(200)' FROM pg_attribute "
+      "WHERE attrelid = 'vec_test'::regclass AND attname = 'v1'"));
+}
+
+// A failed vector index build on the target fails the replayed DDL instead of stalling DDL
+// replication, and the retry works once the build can succeed.
+TEST_F(XClusterDDLReplicationTest, VectorIndexFailedTargetBuildIsRetried) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test SELECT g, ARRAY[g, g + 1, g + 2]::vector "
+      "FROM generate_series(1, 100) AS g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Build the index on the producer, then fail the target's build.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+  StringWaiterLogSink replay_failed_log("Vector index backfill failed on tablet");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(replay_failed_log.WaitFor(kTimeout));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
+      "SELECT EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+      "WHERE c.relname = 'vec_test_idx' AND i.indisready AND i.indisvalid)")));
 }
 
 TEST_F(XClusterDDLReplicationTest, CloneSourceDatabaseIncludesDDLReplicationTables) {

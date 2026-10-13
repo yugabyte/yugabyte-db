@@ -277,9 +277,6 @@ SET hnsw.ef_search = 100;
     Unlike concurrent index creation on non-vector data types, the index backfill will take an exclusive lock (ACCESS_EXCLUSIVE) on the table, and writes to the table are blocked while index backfill is in progress. {{<issue 26402>}}
 
 - Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
-- A vector index can't be placed in a tablespace.
-- `ybhnsw` indexes support a single `vector` column. Unique, multicolumn, and `INCLUDE` indexes are not supported.
-- A query can use only one vector index.
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/), including xCluster DR.
 - Vector indexes are not supported for [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR).
 - Vector indexes are not supported for [instant database cloning](../../../manage/backup-restore/point-in-time-recovery/clone/).

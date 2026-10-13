@@ -23,8 +23,8 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
+#include "yb/gutil/strings/numbers.h"
 #include "yb/integration-tests/redis_table_test_base.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -39,6 +39,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/protobuf.h"
@@ -94,7 +95,6 @@ namespace redisserver {
 using std::string;
 using std::unique_ptr;
 using std::vector;
-using strings::Substitute;
 using yb::integration_tests::RedisTableTestBase;
 
 #if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
@@ -366,7 +366,7 @@ class TestRedisService : public RedisTableTestBase {
   void TestTSTtl(const std::string& expire_command, int64_t ttl_sec, int64_t expire_val,
       const std::string& redis_key) {
     DoRedisTestOk(__LINE__, {"TSADD", redis_key, "10", "v1", "20", "v2", "30", "v3", expire_command,
-        strings::Substitute("$0", expire_val)});
+        Format("$0", expire_val)});
     SyncClient();
     DoRedisTestOk(__LINE__, {"TSADD", redis_key, "40", "v4"});
     DoRedisTestOk(__LINE__, {"TSADD", redis_key, "10", "v5"});
@@ -441,13 +441,13 @@ class TestRedisService : public RedisTableTestBase {
     // Populate keys.
     const int kKeyCount = 100;
     for (int i = 0; i < kKeyCount; i++) {
-      DoRedisTestOk(__LINE__, {"SET", Substitute("k$0", i),  Substitute("v$0", i)});
+      DoRedisTestOk(__LINE__, {"SET", Format("k$0", i),  Format("v$0", i)});
     }
     SyncClient();
 
     // Verify keys.
     for (int i = 0; i < kKeyCount; i++) {
-      DoRedisTestBulkString(__LINE__, {"GET", Substitute("k$0", i)}, Substitute("v$0", i));
+      DoRedisTestBulkString(__LINE__, {"GET", Format("k$0", i)}, Format("v$0", i));
     }
     SyncClient();
 
@@ -461,7 +461,7 @@ class TestRedisService : public RedisTableTestBase {
     DoRedisTestOk(__LINE__, {flush_cmd});
     SyncClient();
     for (int i = 0; i < kKeyCount; i++) {
-      DoRedisTestNull(__LINE__, {"GET", Substitute("k$0", i)});
+      DoRedisTestNull(__LINE__, {"GET", Format("k$0", i)});
     }
     SyncClient();
 
@@ -469,7 +469,7 @@ class TestRedisService : public RedisTableTestBase {
     DoRedisTestOk(__LINE__, {flush_cmd});
     SyncClient();
     for (int i = 0; i < kKeyCount; i++) {
-      DoRedisTestNull(__LINE__, {"GET", Substitute("k$0", i)});
+      DoRedisTestNull(__LINE__, {"GET", Format("k$0", i)});
     }
     SyncClient();
   }
@@ -920,7 +920,7 @@ Status TestRedisService::SendCommandAndGetResponse(
   resp_.resize(bytes_read);
   if (expected_resp_length != bytes_read) {
     return STATUS(
-        IOError, Substitute("Received $1 bytes instead of $2", bytes_read, expected_resp_length));
+        IOError, Format("Received $0 bytes instead of $1", bytes_read, expected_resp_length));
   }
   return Status::OK();
 }
@@ -2692,7 +2692,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp))
     UseClient(pc1);
     for (int i = 0; i < kNumMsgs; i++) {
       // Now send msg1 to topic 1.
-      auto msg = Substitute("trial-$0 : $1", i, padding);
+      auto msg = Format("trial-$0 : $1", i, padding);
       VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
       DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
       ASSERT_NO_FATALS(SyncClient());
@@ -2705,7 +2705,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp))
       // Verify the received messages.
       VLOG(2) << "Trial " << i << ". Receiving subscribed message";
       UseClient(sc1);
-      auto msg = Substitute("trial-$0 : $1", i, padding);
+      auto msg = Format("trial-$0 : $1", i, padding);
       DoRedisTestArray(__LINE__, {}, {"message", topic1, msg});
       ASSERT_NO_FATALS(SyncClient());
     }
@@ -2717,7 +2717,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp))
   for (int loops = 0; loops < kNumLoops; loops++) {
     // Write > soft limit sized data in one shot.
     UseClient(pc1);
-    auto msg = Substitute("Big-$0", big_padding);
+    auto msg = Format("Big-$0", big_padding);
     VLOG(2) << loops << ". Publishing a big message of size " << msg.length();
     DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
     ASSERT_NO_FATALS(SyncClient());
@@ -2757,7 +2757,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersSoftLimit)) 
   // Write approx 15MB of data. Something more than the soft limit.
   for (int i = 0; i < 15; i++) {
     // Now send msg1 to topic 1.
-    auto msg = Substitute("trial-$0 : $1", i, padding);
+    auto msg = Format("trial-$0 : $1", i, padding);
     VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
     DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
     ASSERT_NO_FATALS(SyncClient());
@@ -2770,7 +2770,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersSoftLimit)) 
   ASSERT_NO_FATALS(SyncClient());
   for (int i = 15; i < 30; i++) {
     // Now send msg1 to topic 1.
-    auto msg = Substitute("trial-$0 : $1", i, padding);
+    auto msg = Format("trial-$0 : $1", i, padding);
     VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
     DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 0);
     ASSERT_NO_FATALS(SyncClient());
@@ -2805,7 +2805,7 @@ TEST_F(TestRedisServiceExternal, TestSlowSubscribersHardLimit) {
   // Write approx 32MB of data.
   for (int i = 0; i < 32; i++) {
     // Now send msg1 to topic 1.
-    auto msg = Substitute("trial-$0 : $1", i, padding);
+    auto msg = Format("trial-$0 : $1", i, padding);
     VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
     DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
     ASSERT_NO_FATALS(SyncClient());
@@ -2814,7 +2814,7 @@ TEST_F(TestRedisServiceExternal, TestSlowSubscribersHardLimit) {
   // Let's allow for some msgs to be either sent to the subscriber or unsent, to account for
   // buffering in the lower layers.
   for (int i = 32; i < 40; i++) {
-    auto msg = Substitute("trial-$0 : $1", i, padding);
+    auto msg = Format("trial-$0 : $1", i, padding);
     VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
     DoRedisTestApproxInt(__LINE__, {"PUBLISH", topic1, msg}, 1, 1);
     ASSERT_NO_FATALS(SyncClient());
@@ -2823,7 +2823,7 @@ TEST_F(TestRedisServiceExternal, TestSlowSubscribersHardLimit) {
   // The slow subscriber should have been disconnected. Expect the msg to be sent to no one.
   for (int i = 40; i < 50; i++) {
     // Now send msg1 to topic 1.
-    auto msg = Substitute("trial-$0 : $1", i, padding);
+    auto msg = Format("trial-$0 : $1", i, padding);
     VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
     DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 0);
     ASSERT_NO_FATALS(SyncClient());
@@ -3010,7 +3010,7 @@ TEST_F(TestRedisService, TestRenameSameTabletRandomized) {
   // Rename to a key in the same tablet
   // randomized 1/24 odds of being in the same tablet as k0.
   for (int i = 1; i < 100; i++) {
-    const string dest = strings::Substitute("k$0", i);
+    const string dest = Format("k$0", i);
     VLOG(1) << "Renaming from k0 to " << dest;
     DoRedisTestOk(__LINE__, {"SET", "k0", "5"});
     SyncClient();
@@ -3428,10 +3428,10 @@ TEST_F(TestRedisService, TestSortedSets) {
   DoRedisTestInt(__LINE__, {"ZADD", "z_key", "30.0", "v6"}, 1);
   SyncClient();
   DoRedisTestInt(__LINE__, {"ZADD", "z_key",
-      strings::Substitute("$0", std::numeric_limits<double>::max()), "vmax"}, 1);
+      SimpleDtoa(std::numeric_limits<double>::max()), "vmax"}, 1);
   SyncClient();
   DoRedisTestInt(__LINE__, {"ZADD", "z_key",
-      strings::Substitute("$0",  -std::numeric_limits<double>::max()), "vmin"}, 1);
+      SimpleDtoa(-std::numeric_limits<double>::max()), "vmin"}, 1);
   SyncClient();
   DoRedisTestInt(__LINE__, {"ZADD", "z_key", "40.0", "v6"}, 0);
   SyncClient();
@@ -3459,8 +3459,8 @@ TEST_F(TestRedisService, TestSortedSets) {
       "30.000001", "v7", "30.000001", "v8"}, 2);
   SyncClient();
   DoRedisTestInt(__LINE__, {"ZADD", "z_multi",
-      strings::Substitute("$0", std::numeric_limits<double>::max()), "vmax",
-      strings::Substitute("$0", -std::numeric_limits<double>::max()), "vmin"}, 2);
+      SimpleDtoa(std::numeric_limits<double>::max()), "vmax",
+      SimpleDtoa(-std::numeric_limits<double>::max()), "vmin"}, 2);
   SyncClient();
   DoRedisTestInt(__LINE__, {"ZCARD", "z_multi"}, 10);
 

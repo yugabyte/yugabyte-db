@@ -35,6 +35,7 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/map-util.h"
@@ -49,7 +50,6 @@ namespace yb {
 
 using std::unordered_map;
 using std::string;
-using strings::Substitute;
 
 const int64_t RandomizedFailureMonitor::kMinWakeUpTimeMillis = 10;
 
@@ -71,7 +71,7 @@ Status TimedFailureDetector::Track(const string& name,
   node->status = ALIVE;
   if (!InsertIfNotPresent(&nodes_, name, node.get())) {
     return STATUS(AlreadyPresent,
-        Substitute("Node with name '$0' is already being monitored", name));
+        Format("Node with name '$0' is already being monitored", name));
   }
   node.release();
   return Status::OK();
@@ -81,7 +81,7 @@ Status TimedFailureDetector::UnTrack(const string& name) {
   std::lock_guard lock(lock_);
   Node* node = EraseKeyReturnValuePtr(&nodes_, name);
   if (PREDICT_FALSE(node == NULL)) {
-    return STATUS(NotFound, Substitute("Node with name '$0' not found", name));
+    return STATUS(NotFound, Format("Node with name '$0' not found", name));
   }
   delete node;
   return Status::OK();
@@ -98,7 +98,7 @@ Status TimedFailureDetector::MessageFrom(const std::string& name, const MonoTime
   Node* node = FindPtrOrNull(nodes_, name);
   if (node == NULL) {
     VLOG(1) << "Not tracking node: " << name;
-    return STATUS(NotFound, Substitute("Message from unknown node '$0'", name));
+    return STATUS(NotFound, Format("Message from unknown node '$0'", name));
   }
   node->last_heard_of = now;
   node->status = ALIVE;
@@ -129,7 +129,7 @@ void TimedFailureDetector::CheckForFailures(const MonoTime& now) {
   for (const auto& entry : callbacks) {
     const string& node_name = entry.first;
     const FailureDetectedCallback& callback = entry.second;
-    callback.Run(node_name, STATUS(RemoteError, Substitute("Node '$0' failed", node_name)));
+    callback.Run(node_name, STATUS(RemoteError, Format("Node '$0' failed", node_name)));
   }
 }
 
@@ -178,7 +178,7 @@ Status RandomizedFailureMonitor::MonitorFailureDetector(const string& name,
   std::lock_guard l(lock_);
   bool inserted = InsertIfNotPresent(&fds_, name, fd);
   if (PREDICT_FALSE(!inserted)) {
-    return STATUS(AlreadyPresent, Substitute("Already monitoring failure detector '$0'", name));
+    return STATUS(AlreadyPresent, Format("Already monitoring failure detector '$0'", name));
   }
   return Status::OK();
 }
@@ -187,7 +187,7 @@ Status RandomizedFailureMonitor::UnmonitorFailureDetector(const string& name) {
   std::lock_guard l(lock_);
   auto count = fds_.erase(name);
   if (PREDICT_FALSE(count == 0)) {
-    return STATUS(NotFound, Substitute("Failure detector '$0' not found", name));
+    return STATUS(NotFound, Format("Failure detector '$0' not found", name));
   }
   return Status::OK();
 }

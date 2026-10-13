@@ -347,6 +347,7 @@ function(ADD_YB_CQL_TEST TEST_NAME)
   YB_TEST_TARGET_LINK_LIBRARIES(${TEST_NAME} yb-cql)
 endfunction()
 
+ADD_YB_CQL_TEST(cql-audit-storm-test)
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)

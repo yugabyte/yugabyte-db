@@ -154,6 +154,10 @@ static inline kiwi_var_t *kiwi_vars_get(kiwi_vars_t *vars, kiwi_var_type_t type)
 static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 				    char *value, int value_len)
 {
+	/* YB: name/value are fixed-size buffers; lengths include the NUL */
+	if (name_len > KIWI_MAX_NAME_SIZE || value_len > KIWI_MAX_VAR_SIZE)
+		return;
+
 	vars->size++;
 	if (vars->size == 1)
 		vars->vars = malloc(sizeof(kiwi_var_t));

@@ -46,7 +46,6 @@
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 #include "yb/consensus/multi_raft_batcher.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
@@ -130,7 +129,6 @@ using std::shared_ptr;
 using std::string;
 using rpc::Messenger;
 using rpc::PeriodicTimer;
-using strings::Substitute;
 
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, PeerProxyPtr proxy,
@@ -468,9 +466,9 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
       response->error().code() == tserver::TabletServerErrorPB::WRONG_SERVER_UUID) {
     queue_->NotifyObserversOfFailedFollower(
         peer_pb_.permanent_uuid(),
-        Substitute("Leader communication with peer $0 received error $1, will try to "
-                   "evict peer", peer_pb_.permanent_uuid(),
-                   response->error().ShortDebugString()));
+        Format("Leader communication with peer $0 received error $1, will try to "
+               "evict peer", peer_pb_.permanent_uuid(),
+               response->error().ShortDebugString()));
     ProcessResponseError(StatusFromPB(response->error().status()));
     return false;
   }

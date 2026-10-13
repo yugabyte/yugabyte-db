@@ -469,7 +469,15 @@ class Node:
 
     def set_link_command(self, link_cmd: List[str]) -> None:
         assert self.link_cmd is None
+        self._set_link_command(link_cmd)
+
+    def _set_link_command(self, link_cmd: List[str]) -> None:
         self.link_cmd = link_cmd
+        # get_node_type_by_path only recognizes an executable once it is built. A linked output that
+        # is not a library or test is one anyway, and lto.py relies on that to stop its object walk
+        # at build tools (e.g. bfql_codegen) that aren't built yet.
+        if self.node_type == NodeType.OTHER:
+            self.node_type = NodeType.EXECUTABLE
 
     def as_json(self) -> Dict[str, Any]:
         d: Dict[str, Any] = dict(
@@ -481,7 +489,7 @@ class Node:
 
     def update_from_json(self, json_data: Dict[str, Any]) -> None:
         if 'link_cmd' in json_data:
-            self.link_cmd = json_data['link_cmd']
+            self._set_link_command(json_data['link_cmd'])
 
 
 class CMakeDepGraph:

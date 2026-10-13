@@ -839,11 +839,15 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       keepFailedTestLogs();
     }
     if ((!failed || !KEEP_FAILED_UNIVERSE) && !KEEP_ALWAYS) {
+      // Stop the processes before deleting their directories. A postgres that is still running
+      // keeps its shared memory attached, and once its data directory is deleted, a postgres data
+      // directory created meanwhile by another test (forks share /tmp) can get the same inode and
+      // fail to start with "pre-existing shared memory block ... is still in use".
+      localNodeManager.shutdown();
       try {
         FileUtils.deleteDirectory(Paths.get(baseDir, subDir, testName).toFile());
       } catch (Exception ignored) {
       }
-      localNodeManager.shutdown();
     }
   }
 

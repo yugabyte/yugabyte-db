@@ -170,6 +170,8 @@ class PgApiImpl {
   ReplicationInfoSnapshot& replication_info_snapshot() { return replication_info_snapshot_; }
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
+
+  [[nodiscard]] uint32_t GetSharedYsqlCatalogPrefetchLoad() const;
   Result<uint32_t> GetNumberOfDatabases();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
@@ -677,7 +679,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction(int64_t start_time);
+  Status BeginTransaction(int64_t start_time, uint64_t origination_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);

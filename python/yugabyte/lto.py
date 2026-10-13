@@ -567,9 +567,8 @@ class LinkHelper:
                 self.new_args.append(static_lib_path)
 
         if self.yb_pgbackend_needed:
-            # Only a binary with the embedded Postgres backend needs the server variant of
-            # libpgcommon; its objects reference backend symbols (palloc, errstart, ...) that would
-            # not resolve in e.g. a benchmark.
+            # Backend code, needed only next to libyb_pgbackend. Reading it needs a built Postgres
+            # tree, which targets that don't link the backend (libyb_thin_client.so) can't require.
             self.add_pgcommon_srv_library()
         self.new_args.append('-fwhole-program')
         if self.yb_pgbackend_needed:

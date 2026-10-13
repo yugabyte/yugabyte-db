@@ -618,7 +618,7 @@ cleanV2ServerStubs := {
   ybLog("Cleaning Openapi v2 server stubs...")
   Process("rm -rf openapi", target.value) !
   val openapiDir = baseDirectory.value / "src/main/resources/openapi"
-  Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
+  Process("rm -f ../openapi.yaml", openapiDir) !
 }
 
 lazy val cleanClients = taskKey[Int]("Clean generated clients")
@@ -1102,6 +1102,12 @@ dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.137.Final"
 
 // Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
 dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
+
+// cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
+// The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
+// Hibernate Validator needs an EL implementation at runtime, so swap the artifact.
+excludeDependencies += "org.glassfish" % "javax.el"
+libraryDependencies += "org.glassfish" % "jakarta.el" % "3.0.4"
 
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
