@@ -1055,6 +1055,12 @@ dependencyOverrides += "io.netty" % "netty-transport" % "4.1.136.Final"
 // Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
 dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
 
+// cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
+// The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
+// Hibernate Validator needs an EL implementation at runtime, so swap the artifact.
+excludeDependencies += "org.glassfish" % "javax.el"
+libraryDependencies += "org.glassfish" % "jakarta.el" % "3.0.4"
+
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
