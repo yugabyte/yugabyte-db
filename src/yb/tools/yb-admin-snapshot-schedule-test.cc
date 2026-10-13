@@ -4125,6 +4125,17 @@ class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest 
  public:
   // Suppresses the base class flags; keep the defaults.
   std::vector<std::string> ExtraTSFlags() override { return {}; }
+
+  // Under TSAN, pthread_create on the master leader can stall for ~12s around snapshot completion,
+  // starving raft heartbeats. Tolerate that without a master leader change, which would abort the
+  // in-flight restore. Raise the heartbeat interval rather than the missed-periods count, since the
+  // cluster appends its own sanitizer value for the latter after these flags.
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
+    flags.push_back("--raft_heartbeat_interval_ms=2000");
+    flags.push_back("--leader_lease_duration_ms=6000");
+    return flags;
+  }
 };
 
 Status WaitWrites(int num, std::atomic<int>* current) {
@@ -4292,7 +4303,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotCons
           return false;
         }
         auto status = future.Wait();
-        if (!status.ok() && !status.IsTimedOut()) {
+        // Restore rolls back the status tablet, aborting transactions in flight across it.
+        if (!status.ok() && !status.IsTimedOut() &&
+            status.ToString().find("aborted") == std::string::npos) {
           EXPECT_OK(status);
         }
         return true;

@@ -92,6 +92,44 @@ const (
 	// CipherTrustKeySizeField field name to denote in Json request
 	CipherTrustKeySizeField = "KEY_SIZE"
 
+	// OCI KMS config field names. These match OciKmsAuthConfigField on the server.
+	// OCITenancyIDField field name to denote in Json request
+	OCITenancyIDField = "ociTenancyId"
+	// OCIUserIDField field name to denote in Json request
+	OCIUserIDField = "ociUserId"
+	// OCIFingerprintField field name to denote in Json request
+	OCIFingerprintField = "ociFingerprint"
+	// OCIPrivateKeyContentField field name to denote in Json request
+	OCIPrivateKeyContentField = "ociPrivateKeyContent"
+	// OCIAuthTypeField field name to denote in Json request
+	OCIAuthTypeField = "ociAuthType"
+	// OCICompartmentIDField field name to denote in Json request
+	OCICompartmentIDField = "ociCompartmentId"
+	// OCIVaultIDField field name to denote in Json request
+	OCIVaultIDField = "ociVaultId"
+	// OCIRegionField field name to denote in Json request
+	OCIRegionField = "ociRegion"
+	// OCIKeyNameField field name to denote in Json request
+	OCIKeyNameField = "ociKeyName"
+	// OCIKeyOCIDField field name to denote in Json request
+	OCIKeyOCIDField = "ociKeyOcid"
+
+	// OCIKmsAuthTypeAPIKey is API signing key authentication
+	OCIKmsAuthTypeAPIKey = "API_KEY"
+	// OCIKmsAuthTypeInstancePrincipal is OCI instance principal authentication
+	OCIKmsAuthTypeInstancePrincipal = "INSTANCE_PRINCIPAL"
+
+	// OCITenancyIDEnv env variable name for oci kms config
+	OCITenancyIDEnv = "OCI_TENANCY"
+	// OCIUserIDEnv env variable name for oci kms config
+	OCIUserIDEnv = "OCI_USER"
+	// OCIFingerprintEnv env variable name for oci kms config
+	OCIFingerprintEnv = "OCI_FINGERPRINT"
+	// OCIPrivateKeyFileEnv env variable name for oci kms config
+	OCIPrivateKeyFileEnv = "OCI_PRIVATE_KEY_FILE"
+	// OCIRegionEnv env variable name for oci kms config
+	OCIRegionEnv = "OCI_REGION"
+
 	// HashicorpVaultTokenEnv env variable name for hashicorp vault
 	HashicorpVaultTokenEnv = "VAULT_TOKEN"
 	// HashicorpVaultAddressEnv env variable name for hashicorp vault
@@ -562,6 +600,8 @@ const (
 	HashicorpVaultEARType = "HASHICORP"
 	// CipherTrustEARType type
 	CipherTrustEARType = "CIPHERTRUST"
+	// OCIEARType type
+	OCIEARType = "OCI"
 )
 
 // Different storage configuration types

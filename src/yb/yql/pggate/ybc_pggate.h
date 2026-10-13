@@ -106,6 +106,10 @@ void YBCRefreshClusterReplicationInfo();
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 
+// Catalog prefetch load on the master leader as of the last heartbeat. Values match
+// YsqlCatalogPrefetchLoadPB: 0 unknown, 1 low, 2 busy, 3 super busy.
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad();
+
 // Set per-db catalog_version to the local tserver's per-db catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedDBCatalogVersion(
@@ -756,7 +760,7 @@ YbcStatus YBCSRFGetNext(YbcPgFunction handle, uint64_t *values, bool *is_nulls, 
 YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 
 // Transaction control -----------------------------------------------------------------------------
-YbcStatus YBCPgBeginTransaction(int64_t start_time);
+YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
 YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);

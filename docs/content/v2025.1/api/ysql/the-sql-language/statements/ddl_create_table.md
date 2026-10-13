@@ -163,7 +163,7 @@ Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default per
 
 ### TABLESPACE
 
-Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
+Specify the name of the [tablespace](../ddl_create_tablespace/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
 
 ### SPLIT INTO
 
@@ -221,6 +221,10 @@ Setting `COLOCATION = true` has no effect if the database that the table is part
 ### Storage parameters
 
 Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+
+### INHERITS
+
+A table can inherit columns, check constraints, and not-null constraints from one or more parent tables. Primary keys, unique constraints, indexes, and foreign keys are not inherited. See [Table inheritance](../../ddl-inherit/).
 
 ### PARTITION BY
 

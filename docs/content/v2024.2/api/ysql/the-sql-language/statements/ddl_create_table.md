@@ -133,7 +133,7 @@ Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default per
 
 ### TABLESPACE
 
-Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
+Specify the name of the [tablespace](../ddl_create_tablespace/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
 
 ### SPLIT INTO
 

@@ -86,7 +86,32 @@ func (p postgresCheck) Execute() Result {
 		return res
 	}
 
+	if viper.GetBool("perfAdvisor.enabled") {
+		if err := p.testPerfAdvisorDatabase(); err != nil {
+			log.Error("failed subtest 'testPerfAdvisorDatabase': " + err.Error())
+			res.Status = StatusCritical
+			res.Error = err
+			return res
+		}
+	}
+
 	return res
+}
+
+// testPerfAdvisorDatabase checks that the existing postgres server can hold Perf Advisor's
+// database: it is already there, or the configured user may create it.
+func (p postgresCheck) testPerfAdvisorDatabase() error {
+	exists, canCreate, err := common.ExistingPostgresDatabaseState(common.PerfAdvisorDBName)
+	if err != nil {
+		return err
+	}
+	if exists || canCreate {
+		return nil
+	}
+	return fmt.Errorf("perfAdvisor.enabled needs a database named %s on the existing postgres "+
+		"server, and it does not exist and user %s may not create databases. Create it, grant the "+
+		"user CREATEDB, or set perfAdvisor.enabled to false", common.PerfAdvisorDBName,
+		viper.GetString("postgres.useExisting.username"))
 }
 
 // If the user has specified their own postgres db endpoint, this method attempts to

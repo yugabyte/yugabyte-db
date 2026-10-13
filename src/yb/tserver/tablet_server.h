@@ -283,6 +283,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetYsqlDBCatalogInvalMessagesUnlocked(
       const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       uint64_t debug_id) REQUIRES(lock_);
+  void SetYsqlCatalogPrefetchLoad(uint32_t load);
+
   void SetYsqlDBCatalogVersionsWithInvalMessages(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
       const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)

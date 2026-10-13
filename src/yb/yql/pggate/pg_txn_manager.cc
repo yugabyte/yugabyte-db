@@ -274,7 +274,7 @@ void PgTxnManager::Shutdown() {
   WARN_NOT_OK(AbortPlainTransaction(), "Failed to abort plain transaction during shutdown");
 }
 
-Status PgTxnManager::BeginTransaction(int64_t start_time) {
+Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_time) {
   VLOG_TXN_STATE(2);
   if (YBCIsInitDbModeEnvVarSet()) {
     return Status::OK();
@@ -286,6 +286,8 @@ Status PgTxnManager::BeginTransaction(int64_t start_time) {
   }
 
   pg_txn_start_us_ = start_time;
+  origination_time_ = origination_time;
+  client_->SetOriginationHt(GetOriginationHt());
   // NOTE: Do not reset in_txn_blk_ when restarting txns internally
   // (i.e., via PgTxnManager::RecreateTransaction).
   in_txn_blk_ = false;
@@ -934,6 +936,7 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
   options.set_pg_txn_start_us(pg_txn_start_us_);
   options.set_connected_database_oid(connected_database_oid_);
+  options.set_origination_ht(GetOriginationHt());
   options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);

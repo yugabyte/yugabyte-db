@@ -2147,7 +2147,8 @@ YBRunWithInitTransactionData(YbcStatus (*Callback) (const YbcPgInitTransactionDa
 			.enable_tracing = YBEnableTracing(),
 			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
 			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs(),
+			.origination_time = yb_origination_time
 		};
 
 		HandleYBStatus((*Callback) (&data));
@@ -2307,7 +2308,18 @@ StartTransaction(void)
 	xactStopTimestamp = 0;
 
 	if (IsYugaByteEnabled())
+	{
 		YBCSetObjectLockingInfraForCurrTxn();
+
+		/*
+		 * A background worker receives no messages, so it takes a fresh
+		 * origination time for each transaction, before AtStart_Cache
+		 * refreshes the catalog cache the transaction uses.  A parallel
+		 * worker keeps its leader's.
+		 */
+		if (IsBackgroundWorker && !IsParallelWorker())
+			YbRefreshOriginationTime();
+	}
 
 	/*
 	 * initialize other subsystems for new transaction

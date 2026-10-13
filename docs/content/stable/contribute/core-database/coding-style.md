@@ -628,6 +628,17 @@ Format("$0|", PadRight(name, 20));                   // printf("%-20s")
 
 Note that `Format` prints a `bool` as `1` or `0` and a `char` as its numeric value. Use `std::string_view(&c, 1)` to print a single character.
 
+### Preferred utilities
+
+In new code, use the following utilities rather than the legacy forms that do the same job:
+
+| Use | Instead of |
+| --- | --- |
+| `CheckedStol`, `CheckedStoll`, `CheckedStoInt` and the other `CheckedSto*` functions in `yb/util/stol_utils.h`, which return a `Result` instead of throwing | `std::sto*`, `safe_strto*` |
+| `std::function` | `boost::function` |
+| `std::optional` | `boost::optional` |
+| `ScopeExit` from `yb/util/scope_exit.h` | `BOOST_SCOPE_EXIT`, `absl::Cleanup` |
+
 ### consensus::OpId
 
 `consensus::OpId` is just an alias for `yb::OpIdPB`, a protobuf class. Use this _only_ where you really need to use protobuf, for example inside other protobuf messages. For the rest of the code, use `yb::OpId`, a normal C++ class.

@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.cronutils.utils.StringUtils;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AppConfigHelper;
@@ -49,6 +50,7 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -58,12 +60,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.validator.routines.InetAddressValidator;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERSequence;
+import org.bouncycastle.asn1.oiw.OIWObjectIdentifiers;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralName;
@@ -81,6 +87,7 @@ import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
@@ -106,6 +113,16 @@ public class CertificateHelper {
   public static final String CLIENT_KEY = "yugabytedb.key";
 
   public static final String SIGNATURE_ALGO = "SHA256withRSA";
+
+  // Signature digests the OpenSSL FIPS provider rejects during the TLS handshake
+  // ("CA signature digest too weak").
+  private static final Set<ASN1ObjectIdentifier> FIPS_WEAK_DIGESTS =
+      ImmutableSet.of(
+          OIWObjectIdentifiers.idSHA1,
+          PKCSObjectIdentifiers.md2,
+          PKCSObjectIdentifiers.md4,
+          PKCSObjectIdentifiers.md5);
+  private static final int FIPS_MIN_RSA_KEY_BITS = 2048;
 
   private static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
   private static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
@@ -464,6 +481,14 @@ public class CertificateHelper {
               convertStringToX509CertList(customServerCertData.serverCertContent);
         } catch (CertificateException e) {
           throw new PlatformServiceException(BAD_REQUEST, "Unable to get server cert Objects");
+        }
+      }
+      // Not gated by `validate`: FIPS-mode servers reject these at the TLS handshake, so an
+      // upload that skips this check can only produce a universe that fails at WaitForServer.
+      if (AppConfigHelper.isFipsEnabled()) {
+        verifyFipsCompliance(x509CACerts);
+        if (x509ServerCertificates != null) {
+          verifyFipsCompliance(x509ServerCertificates);
         }
       }
       // Verify the cert and key at the beginning for all types of certs.
@@ -1064,6 +1089,52 @@ public class CertificateHelper {
         X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
         throw new PlatformServiceException(
             BAD_REQUEST, "Certificate " + x500Name + " is missing CA=true extension");
+      }
+    }
+  }
+
+  /**
+   * Rejects certificates a FIPS-mode YB server would refuse: RSA keys under 2048 bits, and
+   * signatures using a weak digest. A self-signed root's own signature is skipped because OpenSSL
+   * never verifies the trust anchor's signature, so a SHA-1 root with SHA-256 descendants works.
+   */
+  static void verifyFipsCompliance(List<X509Certificate> certs) {
+    DefaultDigestAlgorithmIdentifierFinder digestFinder =
+        new DefaultDigestAlgorithmIdentifierFinder();
+    for (X509Certificate cert : certs) {
+      String subject = cert.getSubjectX500Principal().getName();
+      if (cert.getPublicKey() instanceof RSAPublicKey) {
+        int bits = ((RSAPublicKey) cert.getPublicKey()).getModulus().bitLength();
+        if (bits < FIPS_MIN_RSA_KEY_BITS) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Certificate %s has a %d-bit RSA key. FIPS mode requires at least %d bits.",
+                  subject, bits, FIPS_MIN_RSA_KEY_BITS));
+        }
+      }
+      if (cert.getSubjectX500Principal().equals(cert.getIssuerX500Principal())
+          && verifyCertValidity(cert, cert)) {
+        continue;
+      }
+      ASN1ObjectIdentifier digest = null;
+      try {
+        AlgorithmIdentifier sigAlg =
+            new X509CertificateHolder(cert.getEncoded()).getSignatureAlgorithm();
+        AlgorithmIdentifier digestAlg = digestFinder.find(sigAlg);
+        digest = digestAlg == null ? null : digestAlg.getAlgorithm();
+      } catch (Exception e) {
+        // Unknown signature algorithm; the DB will report it if it is unsupported.
+        log.warn("Unable to determine signature digest for certificate {}", subject, e);
+      }
+      if (digest != null && FIPS_WEAK_DIGESTS.contains(digest)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Certificate %s is signed with %s, which is not FIPS compliant. "
+                    + "FIPS mode requires SHA-256 or stronger signatures on every certificate "
+                    + "in the chain except a self-signed root.",
+                subject, cert.getSigAlgName()));
       }
     }
   }

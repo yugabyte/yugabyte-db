@@ -1035,6 +1035,12 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
           ready = false;
           break;
         }
+        for (const auto& failure : status_resp.tablet_status().vector_index_failed_backfills()) {
+          if (failure.table_id() == req.table_id()) {
+            return StatusFromPB(failure.status()).CloneAndPrepend(
+                Format("Vector index backfill failed on tablet $0", tablet->tablet_id()));
+          }
+        }
         bool tablet_ready = false;
         VLOG_WITH_FUNC(4)
             << "Finished on " << tablet->tablet_id() << ": "
@@ -3027,6 +3033,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     session_context_.TEST_mock_service = mock;
   }
 
+  PgTableCache& TEST_TableCache() { return table_cache_; }
+
  private:
   client::YBClient& client() { return *client_future_.get(); }
 
@@ -3253,6 +3261,8 @@ size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
 void PgClientServiceImpl::TEST_SetMockService(PgClientServiceMockImpl* mock) {
   impl_->TEST_SetMockService(mock);
 }
+
+PgTableCache& PgClientServiceImpl::TEST_TableCache() { return impl_->TEST_TableCache(); }
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 

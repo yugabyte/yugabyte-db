@@ -116,6 +116,11 @@ _AVAILABILITY_DOMAIN_DEPENDENT_ATTRIBUTES = frozenset((
     "cluster_placement_group_id",
 ))
 
+
+def is_local_nvme_shape(shape):
+    return bool(shape) and ("DenseIO" in shape or "HPC" in shape)
+
+
 OCI_TENANCY_ID_ENV = "OCI_TENANCY_ID"
 OCI_USER_ID_ENV = "OCI_USER_ID"
 OCI_FINGERPRINT_ENV = "OCI_FINGERPRINT"
@@ -369,15 +374,23 @@ class OciCloudAdmin:
         shapes = self.get_shapes()
         result = {}
         for shape in shapes:
+            # Flex DenseIO/HPC ListShapes fields are family defaults (1 OCPU / 16 GB), not a
+            # launchable SKU. YAML owns those types.
+            if is_local_nvme_shape(shape.shape) and "Flex" in shape.shape:
+                continue
             ocpus = getattr(shape, 'ocpus', None) or getattr(shape, 'ocpu_count', 0)
             memory_gb = getattr(shape, 'memory_in_gbs', 0)
 
             if ocpus and memory_gb:
+                local_disks = getattr(shape, "local_disks", 0) or 0
+                local_disks_in_gbs = getattr(shape, "local_disks_in_gbs", 0) or 0
                 result[shape.shape] = {
                     "numCores": float(ocpus),
                     "memSizeGb": float(memory_gb),
                     "description": shape.shape,
-                    "isShared": "Flex" in shape.shape or "Micro" in shape.shape
+                    "isShared": "Flex" in shape.shape or "Micro" in shape.shape,
+                    "localDisks": int(local_disks),
+                    "localDisksInGbs": float(local_disks_in_gbs)
                 }
         return result
 
@@ -656,10 +669,21 @@ class OciCloudAdmin:
 
         shape_config = None
         if "Flex" in shape:
-            shape_config = LaunchInstanceShapeConfigDetails(
-                ocpus=float(ocpus) if ocpus else 2.0,
-                memory_in_gbs=float(memory_in_gbs) if memory_in_gbs else 16.0
-            )
+            if is_local_nvme_shape(shape):
+                if not ocpus or not memory_in_gbs:
+                    raise YBOpsRuntimeError(
+                        "DenseIO/HPC Flex shape {} requires --ocpus and --memory_in_gbs".format(
+                            shape))
+                shape_config = LaunchInstanceShapeConfigDetails(
+                    ocpus=float(ocpus),
+                    memory_in_gbs=float(memory_in_gbs),
+                    nvmes=int(num_volumes) if num_volumes else 1
+                )
+            else:
+                shape_config = LaunchInstanceShapeConfigDetails(
+                    ocpus=float(ocpus) if ocpus else 2.0,
+                    memory_in_gbs=float(memory_in_gbs) if memory_in_gbs else 16.0
+                )
 
         actual_boot_size = max(boot_volume_size_gb or DEFAULT_BOOT_VOLUME_SIZE_GB,
                                MIN_BOOT_VOLUME_SIZE_GB)
@@ -740,7 +764,7 @@ class OciCloudAdmin:
         try:
             instance = self._wait_for_instance_state(instance.id, OCI_INSTANCE_RUNNING)
 
-            if num_volumes and num_volumes > 0:
+            if num_volumes and num_volumes > 0 and not is_local_nvme_shape(shape):
                 volume_tags = dict(freeform_tags) if freeform_tags else {}
                 for i in range(num_volumes):
                     volume = self.create_volume(

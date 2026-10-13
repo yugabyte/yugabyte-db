@@ -70,9 +70,13 @@ public class EnsureManagedLoadBalancer extends UniverseTaskBase {
     }
     List<AvailabilityZone> zones =
         params.azUUIDs.stream().map(AvailabilityZone::getOrBadRequest).collect(Collectors.toList());
+    // Read when the subtask runs: ConfigureDBApis stores the new ports after it creates this task.
+    List<Integer> ports =
+        ManageLoadBalancerGroup.getForwardedPorts(
+            getUserIntent(), getUniverse().getUniverseDetails().communicationPorts);
     String address =
         cloudAPI.ensureManagedLoadBalancer(
-            provider, params.regionCode, params.lbName, zones, params.tags);
+            provider, params.regionCode, params.lbName, zones, ports, params.tags);
     saveState(address);
   }
 

@@ -823,6 +823,10 @@ class PgClient::Impl : public BigDataFetcher {
     timeouts_.SetPGTimeoutAsGlobalDeadline(timeout_ms);
   }
 
+  void SetOriginationHt(uint64_t origination_ht) {
+    origination_ht_ = origination_ht;
+  }
+
   void ClearTimeout() {
     timeouts_.ClearGlobalDeadline();
   }
@@ -991,6 +995,7 @@ class PgClient::Impl : public BigDataFetcher {
                              bool is_called) {
     tserver::PgInsertSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
@@ -1013,6 +1018,7 @@ class PgClient::Impl : public BigDataFetcher {
                                    std::optional<bool> expected_is_called) {
     tserver::PgUpdateSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
@@ -1042,6 +1048,7 @@ class PgClient::Impl : public BigDataFetcher {
                                                          bool cycle) {
     tserver::PgFetchSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
@@ -1085,6 +1092,7 @@ class PgClient::Impl : public BigDataFetcher {
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
     tserver::PgDeleteSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
 
@@ -1098,6 +1106,7 @@ class PgClient::Impl : public BigDataFetcher {
   Status DeleteDBSequences(int64_t db_oid) {
     tserver::PgDeleteDBSequencesRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
 
     tserver::PgDeleteDBSequencesResponsePB resp;
@@ -2168,6 +2177,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   rpc::RpcController controller_;
   uint64_t session_id_ = 0;
+  uint64_t origination_ht_ = 0;
 
   rpc::Poller heartbeat_poller_;
   std::atomic<bool> heartbeat_running_{false};
@@ -2218,6 +2228,10 @@ void PgClient::Interrupt() {
 
 void PgClient::SetTimeout(int timeout_ms) {
   impl_->SetTimeout(timeout_ms);
+}
+
+void PgClient::SetOriginationHt(uint64_t origination_ht) {
+  impl_->SetOriginationHt(origination_ht);
 }
 
 void PgClient::ClearTimeout() {
