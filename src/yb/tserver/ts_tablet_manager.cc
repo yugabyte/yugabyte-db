@@ -1628,11 +1628,6 @@ Status TSTabletManager::DoApplyCloneTablet(
     // The master leaves the hybrid time of colocated_tables entries unset. A vector index only
     // takes intent applies committed after it, so an invalid one keeps every transactional write to
     // the clone out of the index.
-    //
-    // Leave op_id unset: clone_op_id is from the source tablet's log, and a backfill resumed on
-    // the clone writes the table's op_id into flushed frontiers, which would then claim WAL
-    // entries of the target that were never flushed. The primary table above can take it, since
-    // only vector indexes read TableInfo::op_id and a vector index is never the primary table.
     if (!table_info->hybrid_time.is_valid()) {
       table_info->hybrid_time = operation->hybrid_time();
     }
