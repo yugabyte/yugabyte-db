@@ -177,6 +177,7 @@ struct CDCSDKStreamInfo {
 
 namespace internal {
 class ClientMasterRpcBase;
+struct RequestIdAllocation;
 }
 
 using GetTableLocationsCallback =
@@ -209,9 +210,6 @@ struct TableCompactionStatus {
   HybridTime last_request_time;
   std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
 };
-
-using RetryableRequestIdRange =
-    boost::any_range<RetryableRequestId, boost::forward_traversal_tag, RetryableRequestId>;
 
 // Creates a new YBClient with the desired options.
 //
@@ -1132,11 +1130,10 @@ class YBClient {
 
   const CloudInfoPB& cloud_info() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+  // The allocation carries the client id to send with the request and what finishes it.
+  internal::RequestIdAllocation NextRequestIdAndMinRunningRequestId();
 
   void AddMetaCacheInfo(JsonWriter* writer) const;
-
-  void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
   void Shutdown();
 

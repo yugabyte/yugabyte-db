@@ -996,6 +996,51 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testManualRollbackNotOfferedAfterAutoRollback() {
+    // PLAT-22827: auto-rollback already restored the universe, so there is nothing to roll back.
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "true");
+    // Manual rollback must be enabled, or the button is hidden for an unrelated reason.
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    CustomerTask editCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            taskInfo.getUuid(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Edit,
+            universe.getName());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // The edit keeps updatingTaskUUID (so it stays retryable) but no longer holds the placement
+    // lock or a checkpoint.
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertEquals(taskInfo.getUuid(), universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    assertNull(universe.getStateTransitionDetails());
+    assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+    assertFalse(listingCanRollback(editCustomerTask, taskInfo, universe));
+  }
+
+  @Test
   public void testFullMoveNoRollback() {
     ShellResponse badShellResponse = new ShellResponse();
     badShellResponse.code = 100;
@@ -2886,19 +2931,24 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     CustomerTask loaded =
         CustomerTask.getOrBadRequest(customerTask.getCustomerUUID(), customerTask.getTaskUUID());
     Map<UUID, Set<String>> updatingTasks = new HashMap<>();
+    Map<UUID, Set<String>> placementLockTasks = new HashMap<>();
     Set<String> ids = new java.util.HashSet<>();
+    Set<String> lockIds = new java.util.HashSet<>();
     if (universe.getUniverseDetails().updatingTaskUUID != null) {
       ids.add(universe.getUniverseDetails().updatingTaskUUID.toString());
     }
     if (universe.getUniverseDetails().placementModificationTaskUuid != null) {
       ids.add(universe.getUniverseDetails().placementModificationTaskUuid.toString());
+      lockIds.add(universe.getUniverseDetails().placementModificationTaskUuid.toString());
     }
     updatingTasks.put(loaded.getTargetUUID(), ids);
+    placementLockTasks.put(loaded.getTargetUUID(), lockIds);
     Map<UUID, CustomerTask> lastTaskByTarget = new HashMap<>();
     lastTaskByTarget.put(loaded.getTargetUUID(), loaded);
     ObjectNode status =
         commissioner
-            .buildTaskStatus(loaded, taskInfo.getSubTasks(), updatingTasks, lastTaskByTarget)
+            .buildTaskStatus(
+                loaded, taskInfo.getSubTasks(), updatingTasks, placementLockTasks, lastTaskByTarget)
             .orElseThrow(() -> new AssertionError("expected task status"));
     return status.get("canRollback").asBoolean();
   }

@@ -366,6 +366,11 @@ DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
     "tablet once it has applied an external (xCluster target) write batch, until "
     "the next tserver restart.");
 
+DEFINE_RUNTIME_bool(advance_deactivated_vector_index_flushed_op_id, true,
+    "If true, the flushed op id of a deactivated vector index, e.g. one dropped while a snapshot "
+    "schedule retains it, is advanced to that of the regular db after a regular db flush.");
+TAG_FLAG(advance_deactivated_vector_index_flushed_op_id, advanced);
+
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
 TAG_FLAG(vector_index_include_into_post_split_compaction, hidden);
@@ -665,6 +670,9 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
     LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
         << "Failed to update intents db flushed op id: " << status;
+    status = tablet_.MayAdvanceDeactivatedVectorIndexesFlushedOpId();
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+        << "Failed to advance deactivated vector indexes flushed op id: " << status;
   }
 
  private:
@@ -1759,6 +1767,10 @@ void Tablet::Start() {
   // safe time; running it during bootstrap (before TabletPeer::tablet_ is assigned) would race with
   // that assignment.
   vector_indexes_->LaunchBackfillsIfNecessary();
+  // Bootstrap can replay rows committed before the cutoff into a deactivated index. Nothing else
+  // flushes it, since it gets no new rows, and its unflushed rows would hold back log GC and
+  // intents DB flushes.
+  vector_indexes_->FlushDeactivated();
 }
 
 bool Tablet::StartShutdown(
@@ -3332,13 +3344,18 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
     }
   }
 
+  // Unset when bootstrap replays a change metadata operation from a superblock that does not
+  // track the last applied one, and in tests that apply the operation locally. Neither removes a
+  // vector index from an index map: a superblock hosting a vector index always tracks it.
+  const auto hybrid_time = operation->hybrid_time_even_if_unset();
   if (operation->has_new_table_name()) {
     metadata_->SetSchemaAndTableName(
         *operation->schema(), operation->index_map(), deleted_cols,
         operation->schema_version(), current_table_info->namespace_name,
         operation->new_table_name().ToBuffer(),
         operation->op_id(),
-        current_table_info->table_id);
+        current_table_info->table_id,
+        hybrid_time);
     // We shouldn't update the attributes of the colocation parent table's metrics when we alter
     // a colocated table.
     if (!metadata_->colocated()) {
@@ -3356,7 +3373,8 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
         *operation->schema(), operation->index_map(), deleted_cols,
         operation->schema_version(),
         operation->op_id(),
-        current_table_info->table_id);
+        current_table_info->table_id,
+        hybrid_time);
   }
 
   // The alter could bring back a vector column that was missing when its vector index table was
@@ -3364,6 +3382,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
   RETURN_NOT_OK(vector_indexes_->CreateSkippedIndexes(
       VERIFY_RESULT(metadata_->GetTableInfo(current_table_info->table_id)),
       state_ == State::kBootstrapping));
+  vector_indexes_->RefreshDeactivation();
 
   // Cleanup the index from cache which are deleted or updated.
   if (current_table_info->index_map && !current_table_info->index_map->empty()) {
@@ -4566,6 +4585,28 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
       }
     }
   }
+}
+
+Status Tablet::MayAdvanceDeactivatedVectorIndexesFlushedOpId() {
+  if (!FLAGS_advance_deactivated_vector_index_flushed_op_id) {
+    return Status::OK();
+  }
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+  if (!regular_db_) {
+    return Status::OK();
+  }
+  // Read before the indexes' flush ability, as in MayModifyIntentsDbFlushedOpId. A row that passes
+  // the write gate is registered in the index's mutable chunk while its regular DB write is
+  // applied, so an index that took rows from an operation up to this OpId still has them
+  // unflushed, or already in the manifest.
+  auto regular_op_id = docdb::MaxPersistentOpIdForDb(
+      regular_db_.get(), /* invalid_if_no_new_data= */ false);
+  if (!regular_op_id.is_valid_not_empty()) {
+    return Status::OK();
+  }
+  vector_indexes_->AdvanceDeactivatedFlushedOpIds(regular_op_id);
+  return Status::OK();
 }
 
 Status Tablet::MayModifyIntentsDbFlushedOpId() {

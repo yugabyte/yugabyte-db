@@ -48,7 +48,9 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
            "YBTestRunner constructor invoked for an abstract class " + specifiedClassName;
 
     if (ConfForTesting.onlyCollectingTests()) {
-      getFilteredChildren().forEach(method -> {
+      // @Ignore'd methods are only skipped here, not in getChildren(), so that regular runs still
+      // report them as skipped.
+      getFilteredChildren().filter(m -> !isIgnored(m)).forEach(method -> {
         Class declaringClass = method.getDeclaringClass();
         final String declaringClassName = declaringClass.getName();
         final String methodName = method.getMethod().getName();

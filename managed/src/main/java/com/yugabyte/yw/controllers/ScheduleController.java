@@ -394,7 +394,7 @@ public class ScheduleController extends AuthenticatedController {
     // Generate task params with modified schedule params
     BackupScheduleTaskParams taskParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            request, BackupScheduleTaskParams.class, universe);
+            request, BackupScheduleTaskParams.class, universe.getUniverseUUID(), confGetter);
     taskParams.setCustomerUUID(customerUUID);
     taskParams.setScheduleUUID(schedule.getScheduleUUID());
     taskParams.setScheduleParams(scheduleParams);

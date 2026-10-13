@@ -25,7 +25,7 @@ yba ear oci create --name <config-name> \
 ```
       --auth-type string               [Optional] OCI authentication type. Allowed values: API_KEY, INSTANCE_PRINCIPAL. (default "API_KEY")
       --vault-id string                [Required] OCI vault OCID.
-      --region string                  OCI region identifier, for example us-ashburn-1. Can also be set using environment variable OCI_REGION.
+      --region string                  [Required] OCI region identifier, for example us-ashburn-1. Can also be set using environment variable OCI_REGION.
       --compartment-id string          [Required] OCI compartment OCID.
       --key-name string                [Required] Display name of the AES key in the vault. An existing enabled AES key with this name is used. Otherwise a new key is created.
       --tenancy-id string              OCI tenancy OCID. Required for API_KEY auth-type. Can also be set using environment variable OCI_TENANCY.

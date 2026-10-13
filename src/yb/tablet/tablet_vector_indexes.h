@@ -130,6 +130,19 @@ class TabletVectorIndexes :
 
   void LaunchBackfillsIfNecessary();
 
+  // Reloads TableInfo::vector_index_deactivated_ht of every index from the tablet metadata, after
+  // an alter changed the index map of an indexed table, and flushes the deactivated indexes.
+  void RefreshDeactivation() EXCLUDES(vector_indexes_mutex_);
+
+  // Flushes deactivated indexes holding unflushed rows. Nothing else flushes them since they get no
+  // new rows, while their unflushed rows keep the log and the intents DB from being cleaned up.
+  void FlushDeactivated() EXCLUDES(vector_indexes_mutex_);
+
+  // Advances the flushed OpId of deactivated indexes holding nothing unflushed to op_id, the
+  // regular DB's flushed OpId. Otherwise it stays where the index was deactivated, and bootstrap
+  // replays all the log after it.
+  void AdvanceDeactivatedFlushedOpIds(const OpId& op_id) EXCLUDES(vector_indexes_mutex_);
+
   // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
   // been taken before a backfill finished, e.g. by a replica still bootstrapping.
   void ScheduleBackfillAfterRestore();
@@ -144,7 +157,8 @@ class TabletVectorIndexes :
 
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
-  std::optional<google::protobuf::RepeatedPtrField<std::string>> FinishedBackfills();
+  // Adds finished and failed vector index backfills to the tablet status.
+  void FillBackfillStatus(TabletStatusPB& tablet_status);
 
   docdb::DocVectorIndexPtr IndexForTable(
       const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);

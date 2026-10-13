@@ -273,7 +273,10 @@ public interface UserIntentMapper {
   @Mapping(target = "imageBundleUuid", source = "imageBundleUUID")
   @Mapping(target = "helmOverrides", source = "universeOverrides")
   @Mapping(target = "azHelmOverrides", source = "azOverrides")
-  @Mapping(target = "provider", expression = "java(UUID.fromString(userIntent.provider))")
+  @Mapping(
+      target = "provider",
+      expression =
+          "java(userIntent.provider == null ? null : UUID.fromString(userIntent.provider))")
   ClusterProviderSpec userIntentToClusterProviderSpec(UserIntent userIntent);
 
   // v2 to v1 mappings begin here

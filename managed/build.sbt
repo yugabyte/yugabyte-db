@@ -751,6 +751,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
     version := "1.0.2",
+    openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
 
@@ -767,6 +768,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
     version := "1.8.7",
+    openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
 
@@ -817,6 +819,9 @@ lazy val pythongen = project.in(file("client/python"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/python/openapi-python-config.json",
+    version := "2.7.3.0",
+    openApiAdditionalProperties += ("packageVersion" -> version.value),
+    openApiHttpUserAgent := s"yba-python-client/${version.value}",
     target := file("client/python/target/v1"),
   )
 
@@ -830,6 +835,9 @@ lazy val pythonGenV2Client = project.in(file("client/python"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/python/openapi-python-config-v2.json",
+    version := "2.0.0",
+    openApiAdditionalProperties += ("packageVersion" -> version.value),
+    openApiHttpUserAgent := s"yba-python-client/${version.value}",
     target := file("client/python/target/v2"),
   )
 
@@ -843,6 +851,9 @@ lazy val gogen = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config.json",
+    version := "2.0.0",
+    openApiAdditionalProperties += ("packageVersion" -> version.value),
+    openApiHttpUserAgent := s"yba-go-client/${version.value}",
     openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v1"),
   )
@@ -857,6 +868,9 @@ lazy val goGenV2Client = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config-v2.json",
+    version := "2.0.0",
+    openApiAdditionalProperties += ("packageVersion" -> version.value),
+    openApiHttpUserAgent := s"yba-go-client/${version.value}",
     openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v2"),
     openApiGlobalProperties += ("skipFormModel" -> "false"),
@@ -1102,6 +1116,12 @@ dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.137.Final"
 
 // Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
 dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
+
+// cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
+// The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
+// Hibernate Validator needs an EL implementation at runtime, so swap the artifact.
+excludeDependencies += "org.glassfish" % "javax.el"
+libraryDependencies += "org.glassfish" % "jakarta.el" % "3.0.4"
 
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 

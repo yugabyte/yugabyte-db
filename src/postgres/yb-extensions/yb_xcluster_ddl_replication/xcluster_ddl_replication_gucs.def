@@ -18,6 +18,11 @@
  * These all need to be lowercase.
  */
 
+/*
+ * This affects how unqualified names in the DDL are resolved (types, functions,
+ * operator classes, tables, ...), not just which schema new objects land in.
+ */
+X("search_path")
 /* This affects what tablespace a table is created in. */
 X("default_tablespace")
 /* This affects whether a table is range or hash started. */
