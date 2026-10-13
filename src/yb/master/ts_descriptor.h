@@ -174,8 +174,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   bool PreCheckTabletReport(const TabletReportPB& report) const;
 
-  // Marks the full report complete after its last chunk is processed, unless the tserver restarted
-  // meanwhile.
   void CompleteFullReport(const NodeInstancePB& ts_instance);
 
   bool has_faulty_drive() const;

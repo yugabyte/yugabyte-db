@@ -326,6 +326,8 @@ bool TSDescriptor::PreCheckTabletReport(const TabletReportPB& report) const {
   return false;
 }
 
+// Marks the full report complete after its last chunk is processed, unless the tserver restarted
+// meanwhile.
 void TSDescriptor::CompleteFullReport(const NodeInstancePB& ts_instance) {
   auto cow_lock = LockForRead();
   std::lock_guard lock(mutex_);
