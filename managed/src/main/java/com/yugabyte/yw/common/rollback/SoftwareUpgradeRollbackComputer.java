@@ -48,8 +48,12 @@ public class SoftwareUpgradeRollbackComputer implements TaskRollbackComputer {
    *       downgrade that upgrade.
    * </ul>
    *
-   * <p>A task that stopped earlier (in prechecks, or after the freeze but before {@code Upgrading})
-   * upgraded no node, so it is refused and stays retryable.
+   * <p>The check is on the universe state, not on what this task did. {@code UpgradeFailed} means
+   * some attempt in the retry chain got past {@code Upgrading}, so a retry that froze and then
+   * stopped before its own {@code Upgrading} step is allowed. A task that stopped in prechecks
+   * never froze the universe, so it does not own it and is refused. A first attempt that froze but
+   * stopped before {@code Upgrading} upgraded no node and left the state unchanged, so it is
+   * refused and stays retryable.
    */
   @Override
   public boolean canRollback(TaskInfo failedTask, UUID universeUUID) {
@@ -60,10 +64,7 @@ public class SoftwareUpgradeRollbackComputer implements TaskRollbackComputer {
   }
 
   private static boolean canRollback(TaskInfo failedTask, UniverseDefinitionTaskParams details) {
-    boolean ownsUniverse =
-        failedTask.getUuid().equals(details.updatingTaskUUID)
-            || failedTask.getUuid().equals(details.placementModificationTaskUuid);
-    if (!ownsUniverse || !details.isSoftwareRollbackAllowed) {
+    if (!details.isOwnedByTask(failedTask.getUuid()) || !details.isSoftwareRollbackAllowed) {
       return false;
     }
     switch (details.softwareUpgradeState) {
@@ -77,7 +78,11 @@ public class SoftwareUpgradeRollbackComputer implements TaskRollbackComputer {
     }
   }
 
-  /** Whether a subtask of {@code task} set {@code state} with rollback allowed, and succeeded. */
+  /**
+   * Whether a subtask of {@code task} set {@code state} with rollback allowed, and succeeded. Runs
+   * only for {@code PreFinalize} / {@code Ready}. It queries the subtasks itself because the
+   * listing's subtask rows are a partial fetch without task type or params.
+   */
   private static boolean setRollbackAllowedState(TaskInfo task, SoftwareUpgradeState state) {
     return TaskInfo.find
         .query()

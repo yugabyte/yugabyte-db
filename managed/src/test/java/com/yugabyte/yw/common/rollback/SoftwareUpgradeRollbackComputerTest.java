@@ -120,9 +120,9 @@ public class SoftwareUpgradeRollbackComputerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAllowedForRetryFailedBeforeUpgrading() {
-    // A retry failed in prechecks after an earlier attempt reached Upgrading: no state subtask of
-    // its own, but the universe is UpgradeFailed from that attempt.
+  public void testAllowedForRetryStoppedBeforeItsOwnUpgrading() {
+    // An earlier attempt got past Upgrading and left UpgradeFailed. The retry froze the universe
+    // (so it owns it) and stopped before its own Upgrading step, with no state subtask of its own.
     assertTrue(canRollbackWith(failedUpgrade.getUuid(), SoftwareUpgradeState.UpgradeFailed, true));
   }
 

@@ -1171,6 +1171,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
   @Test
   public void testRollbackAllowedWhenAbortedAfterUpgradeStarts() throws InterruptedException {
+    String oldVersion = primaryVersion();
     TaskInfo taskInfo = abortUpgradeAroundUpgradingState(true);
 
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
@@ -1181,6 +1182,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     CustomerTask customerTask = createCustomerTask(taskInfo);
     assertTrue(listingCanRollback(customerTask));
     assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    assertRollbackSubmitted(customerTask, oldVersion);
   }
 
   @Test
@@ -1191,6 +1193,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .thenReturn(requireFinalize);
     // Abort right after the last state update (PreFinalize, or Ready with no finalize), before
     // UpdateSoftwareVersion, the post-upgrade hooks and MarkUniverseUpdateSuccess.
+    String oldVersion = primaryVersion();
     TaskInfo taskInfo =
         abortUpgradeAfterSubTask(
             taskUuid -> lastSubTaskPosition(taskUuid, TaskType.UpdateUniverseState) + 1);
@@ -1207,6 +1210,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     CustomerTask customerTask = createCustomerTask(taskInfo);
     assertTrue(listingCanRollback(customerTask));
     assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    assertRollbackSubmitted(customerTask, oldVersion);
   }
 
   /**
@@ -1301,6 +1305,31 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
                 customerTaskManager.rollbackCustomerTask(
                     defaultCustomer.getUuid(), taskInfo.getUuid()));
     assertThat(ex.getMessage(), containsString("cannot be rolled back"));
+  }
+
+  /**
+   * The rollback API submits a downgrade to {@code oldVersion}. UpdateSoftwareVersion has not run
+   * yet, so the universe's user intent still holds the old version when the rollback is computed.
+   */
+  private void assertRollbackSubmitted(CustomerTask customerTask, String oldVersion)
+      throws InterruptedException {
+    CustomerTask rollback =
+        customerTaskManager.rollbackCustomerTask(
+            defaultCustomer.getUuid(), customerTask.getTaskUUID());
+    assertEquals(CustomerTask.TaskType.RollbackUpgrade, rollback.getType());
+    TaskInfo rollbackTask = waitForTask(rollback.getTaskUUID());
+    assertEquals(TaskType.RollbackUpgrade, rollbackTask.getTaskType());
+    RollbackUpgradeParams params =
+        play.libs.Json.fromJson(rollbackTask.getTaskParams(), RollbackUpgradeParams.class);
+    assertEquals(oldVersion, params.ybSoftwareVersion);
+  }
+
+  private String primaryVersion() {
+    return Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .ybSoftwareVersion;
   }
 
   /**
