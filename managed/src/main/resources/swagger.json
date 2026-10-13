@@ -45501,7 +45501,7 @@
         ]
       },
       "get" : {
-        "description" : "Available since YBA version 2.2.0.0.",
+        "description" : "Available since YBA version 2.2.0.0. Early access: when the runtime flag yb.api.conditional_get.enabled is set, this endpoint supports conditional requests. Send a previously returned ETag in If-None-Match to get 304 Not Modified if the universe is unchanged. Fields derived from related resources (for example DR configs or pricing) may be stale in that case.",
         "operationId" : "getUniverse",
         "parameters" : [
           {
