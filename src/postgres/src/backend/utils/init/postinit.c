@@ -98,8 +98,8 @@
 #include "commands/dbcommands.h"
 #include "utils/catcache.h"
 #include "utils/yb_inheritscache.h"
-#include "yb_ash.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb_ash.h"
 
 /* has this backend called EmitConnectionWarnings()? */
 static bool ConnectionWarningsEmitted;
@@ -760,24 +760,11 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 				 errhint("Recreate the database with another locale or install the missing locale.")));
 
 	/*
-	 * YB_TODO_PG19MERGE: PG made default_locale a file-static inside pg_locale.c
-	 * (no longer extern)
+	 * YB: default_locale may already be set up by YbPresetDatabaseCollation
+	 * for the same database.
 	 */
-	if (IsYugaByteEnabled())
-	{
-#if 0
-		if (default_locale.info.icu.locale)
-			pfree((void *) default_locale.info.icu.locale);
-		if (default_locale.info.icu.ucol)
-			ucol_close(default_locale.info.icu.ucol);
-		default_locale = (struct pg_locale_struct)
-		{
-			0
-		};
-#endif
-	}
-
-	init_database_collation();
+	if (!(IsYugaByteEnabled() && yb_default_collation_resolved))
+		init_database_collation();
 
 	/*
 	 * Check collation version.  See similar code in
@@ -1897,10 +1884,12 @@ YbPresetDatabaseCollation(HeapTuple tuple)
 						   " which is not recognized by setlocale().", collate),
 				 errhint("Recreate the database with another locale or install the missing locale.")));
 	elog(DEBUG1, "LC_COLLATE of %u is set to %s", MyDatabaseId, collate);
-	/* YB_TODO_PG19MERGE: PG19 renamed daticulocale -> datlocale and made
-	 * default_locale + make_icu_collator file-private in pg_locale.c. The
-	 * YB "preset the database collation early for prefetching" path needs to
-	 * be reworked against the new init_database_collation/pg_newlocale_* API. */
+	/*
+	 * Set up default_locale now, otherwise
+	 * pg_newlocale_from_collation(DEFAULT_COLLATION_OID) returns NULL until
+	 * CheckMyDatabase runs, which is after relcache preloading.
+	 */
+	init_database_collation();
 	yb_default_collation_resolved = true;
 }
 
