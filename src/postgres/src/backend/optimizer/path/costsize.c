@@ -11033,16 +11033,18 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
  * statistics estimate the fraction of outer rows that sort before that
  * boundary.  This is the outer half of what initial_cost_mergejoin derives.
  *
- * Unlike merge join, we make that fraction FILTER-AWARE
- * (yb_bnl_outer_skip_selectivity): mergejoinscansel measures the leading
- * mismatch over the FULL outer column histogram, ignoring the outer scan's
- * own restriction.  Multiplying that full-column fraction by the already
- * restricted outer_path_rows over-counts the skip whenever the outer is
- * itself bounded to start at/above the inner's matching range (e.g.
- * "outer.k >= c" with c >= min(inner.k) has NO leading mismatch, yet the
- * full-column fraction is large).  Conditioning the fraction on the outer
- * relation's baserestrictinfo collapses it to ~0 there while preserving a
- * genuine low-key prefix.
+ * We make that fraction FILTER-AWARE
+ * (yb_bnl_outer_skip_selectivity): the full-column fraction ignores the outer
+ * scan's own restriction, so multiplying it by the already restricted
+ * outer_path_rows over-counts the skip whenever the outer is itself bounded
+ * to start at/above the inner's matching range (e.g. "outer.k >= c" with
+ * c >= min(inner.k) has NO leading mismatch, yet the full-column fraction is
+ * large).  Conditioning the fraction on the outer relation's baserestrictinfo
+ * collapses it to ~0 there while preserving a genuine low-key prefix.  Merge
+ * join conditions its start fraction on the join key's own range bounds
+ * instead, which also reach a join-relation outer, whose restriction list
+ * here is empty, and it tightens the fraction by the inner's range bounds,
+ * which do not move this skip.
  *
  * Returns 0 (the conservative fallback merge join also uses) when the outer is
  * unsorted, no mergejoinable join clause matches the leading pathkey, or the
