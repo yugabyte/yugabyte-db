@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -47,19 +48,6 @@ public class ConfirmEditRollbackMembership extends ServerSubTaskBase {
     return (Params) taskParams;
   }
 
-  /**
-   * The master may report a dual-NIC server by its secondary IP: secondary-IP mode binds it first,
-   * and legacy dual-net tservers broadcast it.
-   */
-  public static Set<String> getNodeIps(NodeDetails node) {
-    if (node == null || node.cloudInfo == null) {
-      return Set.of();
-    }
-    return Stream.of(node.cloudInfo.private_ip, node.cloudInfo.secondary_private_ip)
-        .filter(ip -> StringUtils.isNotBlank(ip) && !"null".equals(ip))
-        .collect(Collectors.toSet());
-  }
-
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -71,7 +59,7 @@ public class ConfirmEditRollbackMembership extends ServerSubTaskBase {
     Set<String> allowedIps = new HashSet<>();
     for (NodeDetails node : before.nodeDetailsSet) {
       if (node.state == NodeDetails.NodeState.Live) {
-        allowedIps.addAll(getNodeIps(node));
+        allowedIps.addAll(Util.getNodeIps(node));
       }
     }
     // Master may still briefly report ADD IPs after destroy; allow those captured at enqueue time.
