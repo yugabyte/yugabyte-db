@@ -70,6 +70,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -1182,11 +1183,49 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
   }
 
+  @Test
+  @Parameters({"true", "false"})
+  public void testRollbackAllowedWhenAbortedAfterEndOfUpgradeState(boolean requireFinalize)
+      throws InterruptedException {
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(requireFinalize);
+    // Abort right after the last state update (PreFinalize, or Ready with no finalize), before
+    // UpdateSoftwareVersion, the post-upgrade hooks and MarkUniverseUpdateSuccess.
+    TaskInfo taskInfo =
+        abortUpgradeAfterSubTask(
+            taskUuid -> lastSubTaskPosition(taskUuid, TaskType.UpdateUniverseState) + 1);
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    // The failure handler leaves the end-of-upgrade state, and the task still owns the universe.
+    assertEquals(taskInfo.getUuid(), details.updatingTaskUUID);
+    assertEquals(
+        requireFinalize ? SoftwareUpgradeState.PreFinalize : SoftwareUpgradeState.Ready,
+        details.softwareUpgradeState);
+    assertTrue(details.isSoftwareRollbackAllowed);
+    CustomerTask customerTask = createCustomerTask(taskInfo);
+    assertTrue(listingCanRollback(customerTask));
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+  }
+
   /**
    * Runs an upgrade past FreezeUniverse and aborts it just before the Upgrading state update, or
    * just after it when {@code afterStateUpdate}.
    */
   private TaskInfo abortUpgradeAroundUpgradingState(boolean afterStateUpdate)
+      throws InterruptedException {
+    return abortUpgradeAfterSubTask(
+        taskUuid ->
+            firstSubTaskPosition(taskUuid, TaskType.UpdateUniverseState)
+                + (afterStateUpdate ? 1 : 0));
+  }
+
+  /**
+   * Runs an upgrade past FreezeUniverse, then aborts it at the subtask position {@code
+   * abortPosition} computes from the created subtasks.
+   */
+  private TaskInfo abortUpgradeAfterSubTask(ToIntFunction<UUID> abortPosition)
       throws InterruptedException {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";
@@ -1206,14 +1245,20 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
       setPausePosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
       commissioner.resumeTask(taskUuid);
       waitForTaskPaused(taskUuid);
-      setAbortPosition(
-          firstSubTaskPosition(taskUuid, TaskType.UpdateUniverseState)
-              + (afterStateUpdate ? 1 : 0));
+      setAbortPosition(abortPosition.applyAsInt(taskUuid));
       commissioner.resumeTask(taskUuid);
       return waitForTask(taskUuid);
     } finally {
       clearAbortOrPausePositions();
     }
+  }
+
+  private static int lastSubTaskPosition(UUID taskUuid, TaskType taskType) {
+    return TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+        .filter(t -> t.getTaskType() == taskType)
+        .mapToInt(TaskInfo::getPosition)
+        .max()
+        .orElseThrow();
   }
 
   private static int firstSubTaskPosition(UUID taskUuid, TaskType taskType) {
