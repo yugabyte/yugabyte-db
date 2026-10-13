@@ -1256,6 +1256,11 @@ typedef struct
 	/* set to true if the current statement being executed is a DDL */
 	bool		is_top_level_ddl_active;
 	NodeTag		current_stmt_node_tag;
+	/*
+	 * Whether the statement named by current_stmt_node_tag provably cannot
+	 * increment the catalog version. See YbDdlCannotIncrementCatalogVersion.
+	 */
+	bool		stmt_cannot_increment_version;
 	CommandTag	current_stmt_ddl_command_tag;
 	CommandTag	last_stmt_ddl_command_tag;
 	/*
@@ -2608,6 +2613,12 @@ YBIsCurrentStmtDdl()
 	return ddl_transaction_state.is_top_level_ddl_active;
 }
 
+bool
+YBCurrentStmtCannotIncrementCatalogVersion()
+{
+	return ddl_transaction_state.stmt_cannot_increment_version;
+}
+
 static bool
 YBIsCurrentStmtCreateFunction()
 {
@@ -3696,6 +3707,53 @@ YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
 		 ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
 }
 
+/*
+ * This function tells if a statement can never increment the catalog version.
+ *
+ * This function examines the statement. It does not examine the DDL mode,
+ * because the DDL mode is not enough. A statement can start without the
+ * YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT aspect and increment the catalog
+ * version later. There are three ways for this to occur:
+ *
+ * - A subcommand increments the catalog version. For example, CREATE TABLE ...
+ *	 REFERENCES executes an ALTER TABLE subcommand for the foreign key. The
+ *	 subcommand has the aspect, but the CREATE TABLE statement does not have it.
+ * - An event trigger executes a DDL. YbGetDdlMode calculates the mode of that
+ *	 DDL separately from the mode of the statement that fires the trigger.
+ * - A later statement in the same transaction block increments the catalog
+ *	 version.
+ *
+ * The statements for which this function returns true prevent all three of
+ * these conditions.
+ *
+ * DISCARD ALL is the only such statement. It changes the state of the
+ * session only. It drops the temporary objects of the session, but no other
+ * session can see those objects, and the catalog version does not change.
+ * PostgreSQL also makes DISCARD ALL a standalone statement.
+ * PreventInTransactionBlock() rejects it in a transaction block, in a
+ * subtransaction, in a pipeline, and in a function body. But this function is
+ * called before that check, and the lock decision persists if a savepoint
+ * rollback catches the error. Thus this function does the same check with
+ * IsInTransactionBlock(). A DISCARD ALL that passes it is the only DDL of its
+ * transaction.
+ *
+ * DROP TABLE of a temporary table is not such a statement. It also does not
+ * increment the catalog version, but it does not prevent the three conditions
+ * above. DISCARD ALL deletes its temporary objects with performDeletion(), and
+ * the DISCARD statement does not fire an event trigger. DROP TABLE does fire
+ * event triggers, and an event trigger can execute a DDL that increments the
+ * catalog version. A transaction block can also contain DROP TABLE and a later
+ * statement that increments the catalog version.
+ */
+static bool
+YbDdlCannotIncrementCatalogVersion(Node *parsetree,
+								   ProcessUtilityContext context)
+{
+	return IsA(parsetree, DiscardStmt) &&
+		castNode(DiscardStmt, parsetree)->target == DISCARD_ALL &&
+		!IsInTransactionBlock(context == PROCESS_UTILITY_TOPLEVEL);
+}
+
 YbDdlModeOptional
 YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
@@ -3751,6 +3809,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		 * be incremented.
 		 */
 		ddl_transaction_state.current_stmt_node_tag = node_tag;
+		ddl_transaction_state.stmt_cannot_increment_version =
+			YbDdlCannotIncrementCatalogVersion(parsetree, context);
 		if (ddl_transaction_state.current_stmt_ddl_command_tag != CMDTAG_UNKNOWN)
 			ddl_transaction_state.last_stmt_ddl_command_tag =
 				ddl_transaction_state.current_stmt_ddl_command_tag;
@@ -4523,6 +4583,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction;
+
+	Assert(!(ddl_transaction_state.stmt_cannot_increment_version &&
+			 is_version_increment));
 
 	if (!is_version_increment)
 		ddl_transaction_state.current_stmt_ddl_command_tag = CMDTAG_UNKNOWN;
