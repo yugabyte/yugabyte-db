@@ -33,7 +33,7 @@ Contact {{% support-general %}} to discuss alternative tools and migration appro
 
 ### Enhancements
 
-- [Export data](../reference/data-migration/export-data/) now verifies and fails on schema drift with mitigation advise when a PostgreSQL live export fails because Debezium stopped while streaming changes.
+- [Export data](../reference/data-migration/export-data/) now checks for schema drift when a PostgreSQL live export fails because Debezium stopped while streaming changes, and prints the result after the failure message.
 - [Initiate cutover to target](../reference/cutover-archive/cutover/#cutover-to-target) now checks the PostgreSQL source for schema drift before cutting over, so the source and target schemas still match.
 - [Table inheritance](../known-issues/postgresql/#data-migration-for-table-inheritance-is-not-supported) is supported on YugabyteDB {{<release "2025.1">}} {{<tags/feature/tp>}}, {{<release "2025.2">}} {{<tags/feature/tp>}}, and {{<release "2026.1">}} {{<tags/feature/ga>}}. The assessment report shows a data-migration caveat for inherited tables, and export data exits with an error when any table in the migration uses `INHERITS`, because Voyager cannot migrate data for inherited tables.
 - [refcursor](https://www.postgresql.org/docs/current/plpgsql-cursors.html) columns are reported as an unsupported data type for live migration and skipped during live export. Assessment and [analyze-schema](../reference/schema-migration/analyze-schema/) flag each such column. See [Unsupported datatypes by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
