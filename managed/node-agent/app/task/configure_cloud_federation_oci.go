@@ -35,16 +35,14 @@ const (
 	// The timer refreshes every 20 minutes (see yb-federation-oci-token.timer.j2). A token must outlive
 	// that gap with room to spare, so setup refuses one valid for less than this.
 	ociTokenMinLifetime = 30 * time.Minute
-	// A token with less than this left means the refresher is not keeping up. A healthy one, right
-	// before its next run, still has the minimum lifetime less one refresh interval (10 minutes), so
-	// this sits below that.
+	// A token with less than this left means the refresher is not keeping up; a healthy one, right
+	// before its next run, still has 10 minutes.
 	ociTokenMinRemaining = 5 * time.Minute
 )
 
 // ociTokenFresh reports whether the token file holds a token with time left. It reads the token's
-// own expiry rather than the file's age, which says nothing about how long the token lives. Without
-// it a stopped timer, or an outage that outlasted the token, would look like a configured node and
-// never be repaired. A pure read, safe from inSync.
+// own expiry rather than the file's age, so a stopped timer, or an outage that outlasted the token,
+// does not look like a configured node. A pure read, safe from inSync.
 func ociTokenFresh(tokenFile string) bool {
 	token, err := ocitoken.ReadTokenFile(tokenFile)
 	return err == nil && ocitoken.RequireLifetime(token, ociTokenMinRemaining, time.Now()) == nil

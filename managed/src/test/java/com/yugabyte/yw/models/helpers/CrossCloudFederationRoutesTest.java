@@ -70,16 +70,11 @@ public class CrossCloudFederationRoutesTest {
 
   @Test
   public void testValidOciIdentityDomainUrl() {
-    assertTrue(
-        CrossCloudFederationTarget.isValidOciIdentityDomainUrl(
-            "https://idcs-abc123.identity.oraclecloud.com"));
+    String host = "https://idcs-abc123.identity.oraclecloud.com";
     // The OCI console shows the domain URL with the port, so users paste it that way.
-    assertTrue(
-        CrossCloudFederationTarget.isValidOciIdentityDomainUrl(
-            "https://idcs-abc123.identity.oraclecloud.com:443"));
-    assertTrue(
-        CrossCloudFederationTarget.isValidOciIdentityDomainUrl(
-            "https://idcs-abc123.identity.oraclegovcloud.com"));
+    for (String url : new String[] {host, host + ":443", host.replace("cloud", "govcloud")}) {
+      assertTrue(url, CrossCloudFederationTarget.isValidOciIdentityDomainUrl(url));
+    }
   }
 
   @Test

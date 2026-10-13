@@ -324,41 +324,33 @@ func jwtExpiringAt(exp time.Time) string {
 // expiry, not how recently the file was written.
 func TestOciTokenFresh(t *testing.T) {
 	token := filepath.Join(t.TempDir(), ociTokenFileName)
-	write := func(content string) {
-		t.Helper()
-		if err := os.WriteFile(token, []byte(content), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	if ociTokenFresh(token) {
 		t.Error("a missing token file must not count as fresh")
 	}
-	write("not a token")
-	if ociTokenFresh(token) {
-		t.Error("a file that is not a token must not count as fresh")
-	}
-	write(jwtExpiringAt(time.Now().Add(ociTokenMinRemaining + time.Minute)))
-	if !ociTokenFresh(token) {
-		t.Error("a token just above the remaining-lifetime floor must count as fresh")
-	}
-	write(jwtExpiringAt(time.Now().Add(ociTokenMinRemaining - time.Minute)))
-	if ociTokenFresh(token) {
-		t.Error("a token just below the floor must not count as fresh")
-	}
-	// Written a moment ago, but already expired: a recent mtime must not vouch for it.
-	write(jwtExpiringAt(time.Now().Add(-time.Hour)))
-	if ociTokenFresh(token) {
-		t.Error("an expired token must not count as fresh, however recently it was written")
-	}
-	// Written two hours ago, but good for a day: an old mtime must not condemn it.
-	write(jwtExpiringAt(time.Now().Add(24 * time.Hour)))
-	old := time.Now().Add(-2 * time.Hour)
-	if err := os.Chtimes(token, old, old); err != nil {
-		t.Fatal(err)
-	}
-	if !ociTokenFresh(token) {
-		t.Error("a long-lived token must count as fresh whatever the file's age")
+	// The token's own expiry decides, not when the file was written: a recent mtime must not vouch
+	// for an expired token, nor an old one condemn a token good for a day.
+	for _, tc := range []struct {
+		name    string
+		content string
+		age     time.Duration
+		want    bool
+	}{
+		{"not a token", "not a token", 0, false},
+		{"above the floor", jwtExpiringAt(time.Now().Add(ociTokenMinRemaining + time.Minute)), 0, true},
+		{"below the floor", jwtExpiringAt(time.Now().Add(ociTokenMinRemaining - time.Minute)), 0, false},
+		{"expired, just written", jwtExpiringAt(time.Now().Add(-time.Hour)), 0, false},
+		{"long-lived, old file", jwtExpiringAt(time.Now().Add(24 * time.Hour)), 2 * time.Hour, true},
+	} {
+		if err := os.WriteFile(token, []byte(tc.content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		mtime := time.Now().Add(-tc.age)
+		if err := os.Chtimes(token, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+		if got := ociTokenFresh(token); got != tc.want {
+			t.Errorf("%s: fresh = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 

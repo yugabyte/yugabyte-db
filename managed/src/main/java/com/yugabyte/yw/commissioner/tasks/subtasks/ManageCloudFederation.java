@@ -92,7 +92,8 @@ public class ManageCloudFederation extends NodeTaskBase {
     }
 
     // For aws/gcp/oci the provider already names the cloud every node runs on. For on-prem it does
-    // not, so the node's own metadata service is what decides.
+    // not, so the node's own metadata service decides; it reports only aws, gcp or onprem, so OCI
+    // here always means an OCI provider, whose identity domain URL applyFederationRoute requires.
     CloudType sourceCloud =
         providerCloud == CloudType.onprem
             ? detectAndPersistPhysicalCloud(universe, node)
