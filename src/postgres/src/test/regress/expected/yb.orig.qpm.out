@@ -8,10 +8,11 @@ SET yb_pg_stat_plans_track = 'top';
 SET yb_pg_stat_plans_track_catalog_queries = OFF;
 -- The number of plans reset vary between debug and release builds. Therefore discard the result.
 DO $$ BEGIN PERFORM yb_pg_stat_plans_reset(NULL, NULL, NULL, NULL); END $$;
-SELECT pg_stat_statements_reset();
- pg_stat_statements_reset 
---------------------------
- 
+-- pg_stat_statements_reset() returns a timestamp, which changes every run, so check IS NOT NULL.
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
 (1 row)
 
 SELECT val FROM qpm_timing_test WHERE id = 1;
@@ -129,8 +130,8 @@ ORDER BY pgss.queryid ASC
 /* __YB_STAT_PLANS_SKIP */;
                               query                               | times_match | time_positive | calls 
 ------------------------------------------------------------------+-------------+---------------+-------
- SELECT count(*)        FROM qpm_timing_test                      | t           | t             |     1
  SELECT relname FROM pg_class WHERE relname = $1 AND relkind = $2 | t           | t             |     1
+ SELECT count(*)        FROM qpm_timing_test                      | t           | t             |     1
  SELECT val FROM qpm_timing_test WHERE id = $1                    | t           | t             |     5
 (3 rows)
 
