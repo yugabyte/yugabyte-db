@@ -10,7 +10,6 @@ package ocitoken
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,12 +17,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/common/auth"
 )
@@ -203,21 +202,18 @@ func errorDetail(r tokenResponse) string {
 // The expiry is read without verifying the signature: the token came from the endpoint we called
 // (or from the file the refresher wrote), and the value only decides whether to proceed.
 func RequireLifetime(token string, min time.Duration, now time.Time) error {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
+	claims := jwt.MapClaims{}
+	_, _, err := jwt.NewParser(jwt.WithPaddingAllowed()).ParseUnverified(token, claims)
+	// The library fills in the claims before it looks up the signing algorithm. An algorithm it
+	// does not know is of no concern here, because nothing is verified.
+	if err != nil && !errors.Is(err, jwt.ErrTokenUnverifiable) {
 		return errors.New("could not read the token's lifetime: not a JWT")
 	}
-	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
-	if err != nil {
-		return errors.New("could not read the token's lifetime: undecodable payload")
-	}
-	var claims struct {
-		Exp int64 `json:"exp"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == 0 {
+	exp, err := claims.GetExpirationTime()
+	if err != nil || exp == nil {
 		return errors.New("could not read the token's lifetime: no exp claim")
 	}
-	if lifetime := time.Unix(claims.Exp, 0).Sub(now); lifetime < min {
+	if lifetime := exp.Sub(now); lifetime < min {
 		return fmt.Errorf(
 			"the identity domain issued a token valid for %s, shorter than the %s needed between "+
 				"refreshes; raise the access token lifetime of the identity domain",
@@ -226,44 +222,7 @@ func RequireLifetime(token string, min time.Duration, now time.Time) error {
 	return nil
 }
 
-// WriteTokenFile atomically replaces path with token, readable only by the owner. Replacing in one
-// step means a reader (YBC reloading its credential) never sees a half-written token.
-func WriteTokenFile(path, token string) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".oci-token-*")
-	if err != nil {
-		return fmt.Errorf("could not create a temporary token file: %w", err)
-	}
-	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) }
-
-	// CreateTemp already uses 0600; set it explicitly so the guarantee does not rest on that.
-	if err := tmp.Chmod(0600); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("could not restrict the token file: %w", err)
-	}
-	if _, err := tmp.WriteString(token); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("could not write the token file: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("could not flush the token file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		cleanup()
-		return fmt.Errorf("could not close the token file: %w", err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		cleanup()
-		return fmt.Errorf("could not install the token file: %w", err)
-	}
-	return nil
-}
-
-// ReadTokenFile returns the token WriteTokenFile stored at path. The read is bounded by the size of
+// ReadTokenFile returns the token the refresher stored at path. The read is bounded by the size of
 // a token Exchange would accept, so a file that is not one cannot be pulled into memory.
 func ReadTokenFile(path string) (string, error) {
 	f, err := os.Open(path)

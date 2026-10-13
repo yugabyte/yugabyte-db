@@ -37,9 +37,16 @@ public class ManageCloudFederationSelectTargetTest {
     return CrossCloudFederationTarget.of(CloudType.oci, AUDIENCE, null);
   }
 
+  /** A node whose cloud was detected from its metadata service, as on an on-prem provider. */
   private static CrossCloudFederationTarget select(
       CloudType source, CrossCloudFederationTarget... targets) {
-    return ManageCloudFederation.selectTarget("node-1", source, Arrays.asList(targets));
+    return ManageCloudFederation.selectTarget("node-1", source, false, Arrays.asList(targets));
+  }
+
+  /** A node whose cloud is named by its provider, as on an AWS, GCP or OCI provider. */
+  private static CrossCloudFederationTarget selectFixed(
+      CloudType source, CrossCloudFederationTarget... targets) {
+    return ManageCloudFederation.selectTarget("node-1", source, true, Arrays.asList(targets));
   }
 
   // --- configure ---
@@ -85,11 +92,14 @@ public class ManageCloudFederationSelectTargetTest {
     assertNull(select(CloudType.azu, gcs(), s3()));
   }
 
-  // --- skip: no route ---
+  // --- skip: no route, cloud detected from the node ---
 
-  /** OCI has no route to S3, so a node there is left alone rather than given credentials. */
+  /**
+   * An on-prem provider is shared by nodes of any cloud, so a target one of them has no route to is
+   * left out rather than refused.
+   */
   @Test
-  public void testOciNodeHasNoRouteToS3() {
+  public void testDetectedOciNodeHasNoRouteToS3() {
     assertNull(select(CloudType.oci, s3()));
   }
 
@@ -99,7 +109,7 @@ public class ManageCloudFederationSelectTargetTest {
     assertEquals(CloudType.gcp, select(CloudType.oci, s3(), gcs()).targetCloud);
   }
 
-  /** Nothing reaches OCI storage yet: it must be neither chosen nor allowed to fail the node. */
+  /** Nothing reaches OCI storage yet, so a detected node never picks it. */
   @Test
   public void testOciTargetIsNotReachableFromAnywhere() {
     assertNull(select(CloudType.aws, oci()));
@@ -112,9 +122,10 @@ public class ManageCloudFederationSelectTargetTest {
 
   @Test
   public void testNoTargetsMeansNothingToDo() {
-    assertNull(ManageCloudFederation.selectTarget("node-1", CloudType.aws, null));
+    assertNull(ManageCloudFederation.selectTarget("node-1", CloudType.aws, false, null));
     assertNull(
-        ManageCloudFederation.selectTarget("node-1", CloudType.aws, Collections.emptyList()));
+        ManageCloudFederation.selectTarget(
+            "node-1", CloudType.aws, false, Collections.emptyList()));
   }
 
   @Test
@@ -123,14 +134,33 @@ public class ManageCloudFederationSelectTargetTest {
     CrossCloudFederationTarget noRole =
         CrossCloudFederationTarget.of(CloudType.aws, AUDIENCE, null);
     assertNull(select(CloudType.gcp, noRole));
-    assertNull(ManageCloudFederation.selectTarget("n", CloudType.gcp, Arrays.asList(null, noRole)));
+    assertNull(
+        ManageCloudFederation.selectTarget("n", CloudType.gcp, false, Arrays.asList(null, noRole)));
     assertEquals(
         CloudType.gcp,
-        ManageCloudFederation.selectTarget("n", CloudType.aws, Arrays.asList(null, gcs()))
+        ManageCloudFederation.selectTarget("n", CloudType.aws, false, Arrays.asList(null, gcs()))
             .targetCloud);
   }
 
   // --- fail ---
+
+  /**
+   * A provider that names the node's cloud has every node there, so a target with no route can
+   * never be served. Validation refuses it, but can be bypassed; the node must not be left silently
+   * without credentials for a bucket its provider says it reaches. Everything else is unchanged.
+   */
+  @Test
+  public void testProviderFixedSourceFailsOnATargetWithNoRoute() {
+    IllegalStateException e =
+        assertThrows(IllegalStateException.class, () -> selectFixed(CloudType.oci, s3()));
+    assertTrue(e.getMessage(), e.getMessage().contains("no federation route to [aws]"));
+    assertThrows(IllegalStateException.class, () -> selectFixed(CloudType.oci, s3(), gcs()));
+    assertThrows(IllegalStateException.class, () -> selectFixed(CloudType.aws, oci(), gcs()));
+
+    assertEquals(CloudType.gcp, selectFixed(CloudType.oci, gcs()).targetCloud);
+    assertNull(selectFixed(CloudType.aws, s3()));
+    assertNull(selectFixed(CloudType.oci));
+  }
 
   /** A guess would write credentials that cannot work and hide a node that should be federated. */
   @Test
@@ -151,7 +181,7 @@ public class ManageCloudFederationSelectTargetTest {
     IllegalStateException e =
         assertThrows(
             IllegalStateException.class,
-            () -> ManageCloudFederation.selectTarget("node-1", CloudType.aws, twice));
+            () -> ManageCloudFederation.selectTarget("node-1", CloudType.aws, false, twice));
     // One cloud twice, so the message must not claim that several clouds were configured.
     assertTrue(e.getMessage(), e.getMessage().contains("more than one federated target"));
     assertTrue(e.getMessage(), e.getMessage().contains("gcp, gcp"));

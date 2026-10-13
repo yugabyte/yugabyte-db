@@ -107,7 +107,8 @@ public class ManageCloudFederation extends NodeTaskBase {
           ociSkipReason);
       return;
     }
-    CrossCloudFederationTarget target = resolveTarget(sourceCloud);
+    CrossCloudFederationTarget target =
+        resolveTarget(sourceCloud, providerCloud != CloudType.onprem);
     if (target == null) {
       // Nothing for this node to do: every cloud its provider configures is one it reaches
       // natively or has no federation route to (selectTarget warns about those), or the node is
@@ -152,26 +153,34 @@ public class ManageCloudFederation extends NodeTaskBase {
   /**
    * The one target this node needs, or null when it needs none.
    *
-   * <p>Fails only when the node's cloud could not be determined - configuring a guess would write
-   * credentials that cannot work, and would hide a node that should have been federated. A node
+   * <p>Fails when the node's cloud could not be determined - configuring a guess would write
+   * credentials that cannot work, and would hide a node that should have been federated - and when
+   * the provider names the node's cloud yet configures a target that cloud has no route to. A node
    * whose cloud IS known but has no foreign target simply has nothing to do: it reaches every cloud
-   * its provider configures natively, it has no federation route to the ones it does not, or it is
-   * not a cloud VM at all. That is a legitimate configuration, not an error, and skipping it is
-   * what lets one provider carry a single target while its universe spans several clouds.
+   * its provider configures natively, or it is not a cloud VM at all. That is a legitimate
+   * configuration, not an error, and skipping it is what lets one provider carry a single target
+   * while its universe spans several clouds.
    */
   @Nullable
-  private CrossCloudFederationTarget resolveTarget(@Nullable CloudType sourceCloud) {
-    return selectTarget(taskParams().nodeName, sourceCloud, taskParams().targets);
+  private CrossCloudFederationTarget resolveTarget(
+      @Nullable CloudType sourceCloud, boolean sourceFixedByProvider) {
+    return selectTarget(
+        taskParams().nodeName, sourceCloud, sourceFixedByProvider, taskParams().targets);
   }
 
   /**
    * The decision behind {@link #resolveTarget}, free of task state so every outcome can be tested:
    * the one target a node on {@code sourceCloud} needs, or null when it needs none.
+   *
+   * @param sourceFixedByProvider whether the provider itself names {@code sourceCloud}, as an AWS,
+   *     GCP or OCI provider does, rather than the node's metadata service having been asked, as it
+   *     is for an on-prem provider
    */
   @Nullable
   static CrossCloudFederationTarget selectTarget(
       String nodeName,
       @Nullable CloudType sourceCloud,
+      boolean sourceFixedByProvider,
       @Nullable List<CrossCloudFederationTarget> targets) {
     if (sourceCloud == null) {
       throw new IllegalStateException(
@@ -193,25 +202,34 @@ public class ManageCloudFederation extends NodeTaskBase {
             : targets.stream()
                 .filter(t -> t != null && t.isUsable() && t.targetCloud != sourceCloud)
                 .collect(Collectors.toList());
-    // Of those, only the clouds this node has a route to. A target with no route cannot be served
-    // from here, so it is left out with a warning rather than picked. It is not refused: that would
-    // fail the node over target data that no valid configuration produces. What is refused earlier
-    // is the case that can arise: an OCI provider cannot name an S3 target, because every node it
-    // has is on OCI.
+    // Of those, only the clouds this node has a route to.
     List<CrossCloudFederationTarget> reachable =
         foreign.stream()
             .filter(t -> CrossCloudFederationRoutes.isSupported(sourceCloud, t.targetCloud))
             .collect(Collectors.toList());
     if (reachable.size() < foreign.size()) {
+      List<String> unreachable =
+          foreign.stream()
+              .filter(t -> !reachable.contains(t))
+              .map(t -> String.valueOf(t.targetCloud))
+              .collect(Collectors.toList());
+      // Every node of a provider that names the node's cloud is there, so such a target can never
+      // be served. Validation refuses it at save but can be bypassed (validate=false,
+      // ignoreValidationErrors=true); fail rather than leave the node without credentials for it.
+      if (sourceFixedByProvider) {
+        throw new IllegalStateException(
+            String.format(
+                "Node %s runs on %s, which has no federation route to %s, yet its provider"
+                    + " configures a federated target there. Remove that target from the provider.",
+                nodeName, sourceCloud, unreachable));
+      }
+      // The node's cloud was detected and the provider serves nodes of other clouds too: leave it.
       log.warn(
           "Node {} runs on {}, which has no federation route to {}; a backup from this node to a"
               + " bucket there will not work",
           nodeName,
           sourceCloud,
-          foreign.stream()
-              .filter(t -> !reachable.contains(t))
-              .map(t -> String.valueOf(t.targetCloud))
-              .collect(Collectors.toList()));
+          unreachable);
     }
     if (reachable.isEmpty()) {
       return null;

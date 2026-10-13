@@ -100,12 +100,6 @@ func (h *ConfigureCloudFederation) isOciSource() bool {
 	return h.param.GetSourceCloud() == pb.ConfigureCloudFederationInput_OCI
 }
 
-// shellQuote single-quotes s for the shell. Every value passed through it has already been
-// validated, so this is a second layer rather than the only one.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
 // ociRefresherPresent reports whether any of the refresher's units is installed, which is what
 // decides whether teardown has something to remove. A pure read, safe from inSync and
 // federationArtifactsPresent.
@@ -160,9 +154,9 @@ func (h *ConfigureCloudFederation) setupOciSource(
 			"fetch-initial-oci-identity-token",
 			fmt.Sprintf(
 				"%s federation oci-token --identity-domain-url %s --output %s --min-lifetime %s",
-				shellQuote(util.NodeAgentBinaryPath()),
-				shellQuote(identityDomainURL),
-				shellQuote(tokenFile),
+				shellSingleQuote(util.NodeAgentBinaryPath()),
+				shellSingleQuote(identityDomainURL),
+				shellSingleQuote(tokenFile),
 				ociTokenMinLifetime,
 			),
 		},
@@ -242,7 +236,7 @@ func (h *ConfigureCloudFederation) removeOciRefresher(ctx context.Context) error
 		if isUser {
 			toRemove = path
 		} else {
-			systemPaths = append(systemPaths, shellQuote(path))
+			systemPaths = append(systemPaths, shellSingleQuote(path))
 		}
 		if err := module.DisableSystemdService(
 			ctx, h.username, name, toRemove, h.logOut); err != nil {

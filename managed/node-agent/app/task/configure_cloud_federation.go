@@ -432,7 +432,7 @@ func (h *ConfigureCloudFederation) installSystemdFile(
 			Desc string
 			Cmd  string
 		}{
-			{"create-" + what + "-dir", fmt.Sprintf("mkdir -p %s", shellQuote(dir))},
+			{"create-" + what + "-dir", fmt.Sprintf("mkdir -p %s", shellSingleQuote(dir))},
 		}, h.logOut); err != nil {
 			return err
 		}
@@ -453,17 +453,17 @@ func (h *ConfigureCloudFederation) installSystemdFile(
 		Desc string
 		Cmd  string
 	}{
-		{"create-" + what + "-dir", fmt.Sprintf("sudo mkdir -p %s", shellQuote(dir))},
+		{"create-" + what + "-dir", fmt.Sprintf("sudo mkdir -p %s", shellSingleQuote(dir))},
 		{
 			"install-" + what,
 			fmt.Sprintf(
 				"sudo cp %s %s && sudo chmod 0644 %s",
-				shellQuote(tmp),
-				shellQuote(dest),
-				shellQuote(dest),
+				shellSingleQuote(tmp),
+				shellSingleQuote(dest),
+				shellSingleQuote(dest),
 			),
 		},
-		{"cleanup-tmp-" + what, fmt.Sprintf("rm -f %s", shellQuote(tmp))},
+		{"cleanup-tmp-" + what, fmt.Sprintf("rm -f %s", shellSingleQuote(tmp))},
 	}, h.logOut)
 }
 
