@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <numeric>
 #include <queue>
 
@@ -2108,13 +2109,13 @@ class PgVectorIndexColocationOnlyTest
   // Ids that a search through the vector index of test returns, sorted. A seq scan would return
   // every row whatever the index holds, so the read must go through the index.
   Result<std::vector<int64_t>> FetchIdsThroughIndex(PGConn& conn, size_t limit) {
+    auto restore_flag = ScopeExit([prev = tablet::TEST_fail_on_seq_scan_with_vector_indexes] {
+      ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = prev;
+    });
     ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
-    auto ids = conn.FetchRows<int64_t>(Format(
-        "SELECT id FROM test ORDER BY $0 LIMIT $1", DistanceToQuery(Vector(1)), limit));
-    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
-    if (ids.ok()) {
-      std::ranges::sort(*ids);
-    }
+    auto ids = VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
+        "SELECT id FROM test ORDER BY $0 LIMIT $1", DistanceToQuery(Vector(1)), limit)));
+    std::ranges::sort(ids);
     return ids;
   }
 
@@ -2361,11 +2362,15 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
            std::ranges::all_of(indexes, [](const auto& index) { return index->BackfillDone(); });
   }, 60s * kTimeMultiplier, "Clone backfills done"));
   {
-    // Otherwise the clone did not take the unfinished index and this test checks nothing. Scoped:
-    // an index must not outlive its tablet, which the restart below replaces.
+    // The clone resumed the unfinished backfill rather than starting over: it inserted some rows,
+    // but fewer than the table has. Scoped: an index must not outlive its tablet, which the
+    // restart below replaces.
     auto lagging_clone_indexes = ListTableVectorIndexes(clone_table_id, lagging_uuid);
     ASSERT_EQ(lagging_clone_indexes.size(), 1);
-    ASSERT_GT(lagging_clone_indexes.front()->metrics().backfill_inserted_entries->value(), 0);
+    const auto backfilled =
+        lagging_clone_indexes.front()->metrics().backfill_inserted_entries->value();
+    ASSERT_GT(backfilled, 0);
+    ASSERT_LT(backfilled, make_signed(kNumRows));
   }
 
   auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
