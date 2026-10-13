@@ -1625,12 +1625,15 @@ Status TSTabletManager::DoApplyCloneTablet(
         "Adding table $0 to the tablet: $1", colocated_table.table_id(), target_tablet_id);
     auto table_info = VERIFY_RESULT(
         tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table));
-    // The master does not fill these in. Stamp every table, as AddTable would, not just vector
-    // indexes: they are the only readers today, but a vector index only takes intent applies
-    // committed after its hybrid time, so an invalid one keeps every transactional write to the
-    // clone out of the index.
-    table_info->op_id = clone_op_id;
-    table_info->hybrid_time = operation->hybrid_time();
+    // The master leaves the hybrid time unset. A vector index only takes intent applies committed
+    // after it, so an invalid one keeps every transactional write to the clone out of the index.
+    //
+    // Leave op_id unset: clone_op_id is from the source tablet's log, and a backfill resumed on
+    // the clone writes the table's op_id into flushed frontiers, which would then claim WAL
+    // entries of the target that were never flushed.
+    if (!table_info->hybrid_time.is_valid()) {
+      table_info->hybrid_time = operation->hybrid_time();
+    }
     colocated_tables_infos.push_back(std::move(table_info));
   }
   // Setup raft group metadata. If we crash between here and when we set the tablet data state to
