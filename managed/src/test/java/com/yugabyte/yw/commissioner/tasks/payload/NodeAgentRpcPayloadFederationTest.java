@@ -20,7 +20,7 @@ import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput.CloudProvider;
 import org.junit.Before;
 import org.junit.Test;
 
-/** The route-dependent part of the node-agent federation input. */
+/** The direction-dependent part of the node-agent federation input. */
 public class NodeAgentRpcPayloadFederationTest extends FakeDBApplication {
 
   private static final String AUDIENCE =
@@ -64,7 +64,7 @@ public class NodeAgentRpcPayloadFederationTest extends FakeDBApplication {
   private static ConfigureCloudFederationInput apply(
       Provider provider, CloudType source, CrossCloudFederationTarget target) {
     ConfigureCloudFederationInput.Builder builder = ConfigureCloudFederationInput.newBuilder();
-    NodeAgentRpcPayload.applyFederationRoute(builder, provider, source, target);
+    NodeAgentRpcPayload.applyFederationDirection(builder, provider, source, target);
     return builder.build();
   }
 
@@ -108,7 +108,7 @@ public class NodeAgentRpcPayloadFederationTest extends FakeDBApplication {
 
   /** OCI to S3 has no flow, so no input may be produced for it. */
   @Test
-  public void testOciToAwsHasNoRoute() {
+  public void testOciToAwsIsNotSupported() {
     RuntimeException e =
         assertThrows(
             RuntimeException.class,
@@ -117,7 +117,7 @@ public class NodeAgentRpcPayloadFederationTest extends FakeDBApplication {
                     ociProvider(DOMAIN_URL),
                     CloudType.oci,
                     target(CloudType.aws, AUDIENCE, ROLE_ARN)));
-    assertTrue(e.getMessage(), e.getMessage().contains("no route from oci to aws"));
+    assertTrue(e.getMessage(), e.getMessage().contains("from oci to aws is not supported"));
   }
 
   /** Nothing reaches OCI storage yet. */
@@ -129,11 +129,11 @@ public class NodeAgentRpcPayloadFederationTest extends FakeDBApplication {
           assertThrows(
               RuntimeException.class,
               () -> apply(provider, source, target(CloudType.oci, AUDIENCE, null)));
-      assertTrue(e.getMessage(), e.getMessage().contains("no route"));
+      assertTrue(e.getMessage(), e.getMessage().contains("is not supported"));
     }
   }
 
-  /** Regression: the AWS-node-to-GCS route is unchanged and carries no OCI source. */
+  /** Regression: the AWS-node-to-GCS direction is unchanged and carries no OCI source. */
   @Test
   public void testAwsNodeReachingGcsIsUnchanged() {
     ConfigureCloudFederationInput input =
@@ -148,7 +148,7 @@ public class NodeAgentRpcPayloadFederationTest extends FakeDBApplication {
     assertFalse(input.hasOciSource());
   }
 
-  /** Regression: the GCP-node-to-S3 route is unchanged and carries no OCI source. */
+  /** Regression: the GCP-node-to-S3 direction is unchanged and carries no OCI source. */
   @Test
   public void testGcpNodeReachingS3IsUnchanged() {
     ConfigureCloudFederationInput input =

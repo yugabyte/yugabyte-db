@@ -47,7 +47,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-import com.yugabyte.yw.models.helpers.CrossCloudFederationRoutes;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationDirections;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -670,8 +670,8 @@ public class NodeAgentRpcPayload {
 
   /**
    * Builds the node-agent input for cross-cloud federated IAM on a node, filling the audience (and,
-   * for S3-on-GCP, the role ARN) for the given route, plus the identity domain when the node runs
-   * on OCI. Only static config is passed; credentials are minted on the node.
+   * for S3-on-GCP, the role ARN) for the given direction, plus the identity domain when the node
+   * runs on OCI. Only static config is passed; credentials are minted on the node.
    *
    * <p>The direction is decided by the caller rather than derived from the provider type here: an
    * on-prem provider serves both, and only the node's detected physical cloud says which one this
@@ -706,24 +706,24 @@ public class NodeAgentRpcPayload {
       throw new RuntimeException(
           "Source and target cloud are required to configure cross-cloud federation");
     }
-    applyFederationRoute(builder, provider, sourceCloud, target);
+    applyFederationDirection(builder, provider, sourceCloud, target);
     return builder.build();
   }
 
   /**
-   * Fills the parts of the input that depend on the route: the two clouds, the settings of the
+   * Fills the parts of the input that depend on the direction: the two clouds, the settings of the
    * storage cloud being reached, and - for a node on OCI - the identity domain it proves itself at.
-   * Kept separate, and static, so the route rules can be tested without a universe.
+   * Kept separate, and static, so the direction rules can be tested without a universe.
    */
-  static void applyFederationRoute(
+  static void applyFederationDirection(
       ConfigureCloudFederationInput.Builder builder,
       Provider provider,
       CloudType sourceCloud,
       CrossCloudFederationTarget target) {
-    if (!CrossCloudFederationRoutes.isSupported(sourceCloud, target.targetCloud)) {
+    if (!CrossCloudFederationDirections.isSupported(sourceCloud, target.targetCloud)) {
       throw new RuntimeException(
           String.format(
-              "Cross-cloud federation has no route from %s to %s",
+              "Cross-cloud federation from %s to %s is not supported",
               sourceCloud, target.targetCloud));
     }
     builder.setSourceCloud(toProto(sourceCloud));

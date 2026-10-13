@@ -20,7 +20,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-import com.yugabyte.yw.models.helpers.CrossCloudFederationRoutes;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationDirections;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import java.util.HashSet;
 import java.util.List;
@@ -63,12 +63,12 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
 
   /**
    * Storage clouds this provider may name as a federation target. An OCI provider's nodes all run
-   * on OCI, so it is limited to the clouds that have a route from OCI; refusing the rest here tells
-   * the admin up front, instead of leaving a node with no credentials for that bucket.
+   * on OCI, so it is limited to the clouds OCI can federate to; refusing the rest here tells the
+   * admin up front, instead of leaving a node with no credentials for that bucket.
    */
   private static Set<CloudType> allowedTargetClouds(Provider provider) {
     return provider.getCloudCode() == CloudType.oci
-        ? CrossCloudFederationRoutes.supportedTargets(CloudType.oci)
+        ? CrossCloudFederationDirections.supportedTargets(CloudType.oci)
         : SUPPORTED_TARGET_CLOUDS;
   }
 

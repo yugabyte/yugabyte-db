@@ -51,7 +51,7 @@ func hashOf(t *testing.T, h *ConfigureCloudFederation, home string) string {
 	return s
 }
 
-func TestValidateFederationRoute(t *testing.T) {
+func TestValidateFederationDirection(t *testing.T) {
 	const (
 		aws  = pb.ConfigureCloudFederationInput_AWS
 		gcp  = pb.ConfigureCloudFederationInput_GCP
@@ -64,7 +64,7 @@ func TestValidateFederationRoute(t *testing.T) {
 		{none, gcp}, {none, aws},
 	}
 	for _, r := range supported {
-		if err := validateFederationRoute(r[0], r[1]); err != nil {
+		if err := validateFederationDirection(r[0], r[1]); err != nil {
 			t.Errorf("%s -> %s should be supported: %v", r[0], r[1], err)
 		}
 	}
@@ -74,7 +74,7 @@ func TestValidateFederationRoute(t *testing.T) {
 		{oci, oci}, {aws, aws}, {gcp, gcp},
 	}
 	for _, r := range unsupported {
-		if err := validateFederationRoute(r[0], r[1]); err == nil {
+		if err := validateFederationDirection(r[0], r[1]); err == nil {
 			t.Errorf("%s -> %s should be rejected", r[0], r[1])
 		}
 	}
@@ -147,8 +147,7 @@ func TestDesiredStateHashOciSourceRejectsBadInput(t *testing.T) {
 		}
 	}
 
-	// OCI to S3 has no route, so it must fail rather than produce a hash for credentials that
-	// cannot work.
+	// OCI to S3 is not a supported direction: it must fail, not hash credentials that cannot work.
 	h := &ConfigureCloudFederation{
 		param: &pb.ConfigureCloudFederationInput{
 			SourceCloud: pb.ConfigureCloudFederationInput_OCI,
@@ -163,8 +162,8 @@ func TestDesiredStateHashOciSourceRejectsBadInput(t *testing.T) {
 		},
 	}
 	_, err := h.desiredStateHash(testHome)
-	if err == nil || !strings.Contains(err.Error(), "no federation route") {
-		t.Errorf("OCI to S3 must be refused as having no route, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "is not supported") {
+		t.Errorf("OCI to S3 must be refused as unsupported, got %v", err)
 	}
 }
 

@@ -188,7 +188,7 @@ func (h *ConfigureCloudFederation) restartYbc(ctx context.Context) error {
 // Templates are deterministic, so identical inputs render identical files; comparing the hash to
 // the applied stamp is equivalent to comparing rendered content, without re-rendering here.
 func (h *ConfigureCloudFederation) desiredStateHash(ybHome string) (string, error) {
-	if err := validateFederationRoute(h.param.GetSourceCloud(), h.param.GetTargetCloud()); err != nil {
+	if err := validateFederationDirection(h.param.GetSourceCloud(), h.param.GetTargetCloud()); err != nil {
 		return "", err
 	}
 	var canonical string

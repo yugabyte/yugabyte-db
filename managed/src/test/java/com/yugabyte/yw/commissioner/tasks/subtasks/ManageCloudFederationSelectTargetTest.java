@@ -17,8 +17,8 @@ import org.junit.Test;
 /**
  * Which target a node gets, as a function of the cloud it runs on and what its provider configures.
  * Every outcome is a deliberate decision, so each one is pinned: configure, skip because the node
- * already reaches the cloud natively, skip because it is not a cloud VM, skip because no route
- * exists, and fail because the node's cloud is unknown.
+ * already reaches the cloud natively, skip because it is not a cloud VM, skip because the direction
+ * is unsupported, and fail because the node's cloud is unknown.
  */
 public class ManageCloudFederationSelectTargetTest {
 
@@ -61,7 +61,7 @@ public class ManageCloudFederationSelectTargetTest {
     assertEquals(CloudType.aws, select(CloudType.gcp, s3()).targetCloud);
   }
 
-  /** The new route: a node on OCI reaches GCS. */
+  /** The new direction: a node on OCI reaches GCS. */
   @Test
   public void testOciNodeReachesGcs() {
     assertEquals(CloudType.gcp, select(CloudType.oci, gcs()).targetCloud);
@@ -92,14 +92,14 @@ public class ManageCloudFederationSelectTargetTest {
     assertNull(select(CloudType.azu, gcs(), s3()));
   }
 
-  // --- skip: no route, cloud detected from the node ---
+  // --- skip: unsupported direction, cloud detected from the node ---
 
   /**
-   * An on-prem provider is shared by nodes of any cloud, so a target one of them has no route to is
-   * left out rather than refused.
+   * An on-prem provider is shared by nodes of any cloud, so a target one of them cannot federate to
+   * is left out rather than refused.
    */
   @Test
-  public void testDetectedOciNodeHasNoRouteToS3() {
+  public void testDetectedOciNodeCannotFederateToS3() {
     assertNull(select(CloudType.oci, s3()));
   }
 
@@ -145,15 +145,15 @@ public class ManageCloudFederationSelectTargetTest {
   // --- fail ---
 
   /**
-   * A provider that names the node's cloud has every node there, so a target with no route can
-   * never be served. Validation refuses it, but can be bypassed; the node must not be left silently
+   * A provider that names the node's cloud has every node there, so an unsupported target can never
+   * be served. Validation refuses it, but can be bypassed; the node must not be left silently
    * without credentials for a bucket its provider says it reaches. Everything else is unchanged.
    */
   @Test
-  public void testProviderFixedSourceFailsOnATargetWithNoRoute() {
+  public void testProviderFixedSourceFailsOnAnUnsupportedTarget() {
     IllegalStateException e =
         assertThrows(IllegalStateException.class, () -> selectFixed(CloudType.oci, s3()));
-    assertTrue(e.getMessage(), e.getMessage().contains("no federation route to [aws]"));
+    assertTrue(e.getMessage(), e.getMessage().contains("cannot federate to [aws]"));
     assertThrows(IllegalStateException.class, () -> selectFixed(CloudType.oci, s3(), gcs()));
     assertThrows(IllegalStateException.class, () -> selectFixed(CloudType.aws, oci(), gcs()));
 
@@ -201,7 +201,7 @@ public class ManageCloudFederationSelectTargetTest {
     assertTrue(gateOff, gateOff.contains("yb.cross_cloud_federation.enable_oci_source"));
   }
 
-  /** Only OCI is held back: every other node is judged by the route rules alone. */
+  /** Only OCI is held back: every other node is judged by the direction rules alone. */
   @Test
   public void testOtherSourcesAreNeverHeldBackByTheOciGate() {
     for (CloudType cloud :
