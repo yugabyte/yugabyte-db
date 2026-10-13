@@ -219,7 +219,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
     switch (Engine()) {
       case VectorIndexEngine::kYbHnswUsearch:
-        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw";
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
         break;
       case VectorIndexEngine::kYbHnswHnswlib:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_hnswlib";
@@ -6302,11 +6302,11 @@ TEST_P(PgVectorIndexStorageSetCapacityTest, BootstrapReplayWith64VectorIndexes) 
 
 class PgVectorIndexBackendFlagTest : public YBTest {};
 
-TEST_F(PgVectorIndexBackendFlagTest, RejectsNonBlockBasedBackends) {
-  for (const auto* backend : {"usearch", "hnswlib"}) {
+TEST_F(PgVectorIndexBackendFlagTest, RejectsRemovedBackends) {
+  for (const auto* backend : {"usearch", "hnswlib", "yb_hnsw"}) {
     ASSERT_NOK(SET_FLAG(vector_index_backend, backend));
   }
-  for (const auto* backend : {"yb_hnsw", "yb_hnsw_usearch", "yb_hnsw_hnswlib"}) {
+  for (const auto* backend : {"yb_hnsw_usearch", "yb_hnsw_hnswlib"}) {
     ASSERT_OK(SET_FLAG(vector_index_backend, backend));
   }
 }

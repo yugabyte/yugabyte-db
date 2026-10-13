@@ -636,16 +636,14 @@ TAG_FLAG(emergency_repair_mode, unsafe);
 DEPRECATE_FLAG(bool, vector_index_use_hnswlib, "02_2026");
 DEPRECATE_FLAG(bool, vector_index_use_yb_hnsw, "02_2026");
 
-static constexpr char kYbHnsw[] = "yb_hnsw";
 static constexpr char kYbHnswUsearch[] = "yb_hnsw_usearch";
 static constexpr char kYbHnswHnswlib[] = "yb_hnsw_hnswlib";
 
 DEFINE_RUNTIME_string(vector_index_backend, kYbHnswHnswlib,
-    "Which vector index backend to use. Options are \"yb_hnsw\", \"yb_hnsw_usearch\", and "
-    "\"yb_hnsw_hnswlib\". \"yb_hnsw\" has the same effect as \"yb_hnsw_usearch\".");
+    "Which vector index backend to use. Options are \"yb_hnsw_usearch\" and \"yb_hnsw_hnswlib\".");
 
 DEFINE_validator(vector_index_backend,
-    FLAG_IN_SET_VALIDATOR(kYbHnsw, kYbHnswUsearch, kYbHnswHnswlib));
+    FLAG_IN_SET_VALIDATOR(kYbHnswUsearch, kYbHnswHnswlib));
 
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
@@ -4742,9 +4740,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       vector_index_options.set_store_payload(
           FLAGS_vector_index_store_payload ||
           indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
-      auto backend = FLAGS_vector_index_backend;
       vector_index_options.mutable_hnsw()->set_backend(
-          backend == kYbHnswUsearch || backend == kYbHnsw
+          FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
