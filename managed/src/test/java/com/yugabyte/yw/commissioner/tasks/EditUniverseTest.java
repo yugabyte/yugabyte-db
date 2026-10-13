@@ -2403,6 +2403,108 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testRollbackEditUniverseRetryClearsBlacklistOfAlreadyDestroyedNodes()
+      throws InterruptedException {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+
+    Universe universe = defaultUniverse;
+    Set<String> beforeNames =
+        universe.getNodes().stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo failedEdit = submitTask(taskParams);
+    assertEquals(Failure, failedEdit.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Set<String> addedNames =
+        universe.getNodes().stream()
+            .map(NodeDetails::getNodeName)
+            .filter(name -> name != null && !beforeNames.contains(name))
+            .collect(Collectors.toSet());
+    Set<String> addIps =
+        universe.getNodes().stream()
+            .filter(n -> addedNames.contains(n.getNodeName()))
+            .map(n -> n.cloudInfo == null ? null : n.cloudInfo.private_ip)
+            .filter(ip -> ip != null && !ip.isBlank())
+            .collect(Collectors.toSet());
+    assertFalse(addedNames.isEmpty());
+    assertFalse(addIps.isEmpty());
+
+    stubNodeManagerOkWithInstancesPresent();
+    UniverseDefinitionTaskParams rollbackParams =
+        Json.fromJson(failedEdit.getTaskParams(), UniverseDefinitionTaskParams.class);
+    rollbackParams.setUniverseUUID(universe.getUniverseUUID());
+    rollbackParams.expectedUniverseVersion = -1;
+    // Abort after the ADD nodes are destroyed and before ModifyBlackList clears their IPs.
+    setAbortPosition(5);
+    UUID rollbackUuid;
+    try {
+      rollbackUuid = commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams);
+      CustomerTask.create(
+          defaultCustomer,
+          universe.getUniverseUUID(),
+          rollbackUuid,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.RollbackEditUniverse,
+          universe.getName());
+      TaskInfo aborted = waitForTask(rollbackUuid);
+      String sequence =
+          aborted.getSubTasks().stream()
+              .map(t -> t.getTaskType() + ":" + t.getTaskState())
+              .collect(Collectors.joining(", "));
+      assertEquals(sequence, Aborted, aborted.getTaskState());
+      assertTrue(
+          sequence,
+          aborted.getSubTasks().stream()
+              .anyMatch(
+                  t ->
+                      t.getTaskType() == TaskType.AnsibleDestroyServer
+                          && t.getTaskState() == Success));
+      assertTrue(
+          sequence,
+          aborted.getSubTasks().stream()
+              .noneMatch(
+                  t -> t.getTaskType() == TaskType.ModifyBlackList && t.getTaskState() == Success));
+    } finally {
+      clearAbortOrPausePositions();
+    }
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(
+        "ADD nodes should be gone from the universe details after destroy",
+        universe.getNodes().stream().noneMatch(n -> addedNames.contains(n.getNodeName())));
+
+    CustomerTask retryTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), rollbackUuid);
+    TaskInfo retryInfo = waitForTask(retryTask.getTaskUUID());
+    assertEquals(Success, retryInfo.getTaskState());
+    // The retry cannot find the destroyed nodes in the universe details any more.
+    assertTrue(privateIpsFromModifyBlackListRemoveNodes(retryInfo).containsAll(addIps));
+    Set<String> confirmedDestroyedIps =
+        retryInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ConfirmEditRollbackMembership)
+            .flatMap(
+                t ->
+                    com.google.common.collect.Streams.stream(
+                        t.getTaskParams().path("destroyedNodeIps").elements()))
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+    assertTrue(confirmedDestroyedIps.containsAll(addIps));
+  }
+
+  @Test
   public void testRollbackEditUniverseRevertsInstanceTagsAfterFailedTagsEdit()
       throws InterruptedException {
     Map<String, String> beforeTags = ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3");
